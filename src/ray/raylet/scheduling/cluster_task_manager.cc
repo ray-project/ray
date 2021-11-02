@@ -311,21 +311,11 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         continue;
       }
 
-      if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity) {
+      if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity
+          && work->GetState() == internal::WorkStatus::WAITING) {
         RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_()
                        << " next update time=" << sched_cls_info.next_update_time;
-        if (get_time_() >= sched_cls_info.next_update_time) {
-          // Don't increase the capacity on the very first update since that
-          // will unblock a new task immediately, instead of after the timeout.
-          if (sched_cls_info.num_updates > 0) {
-            sched_cls_info.capacity++;
-          }
-
-          int64_t wait_time =
-              (1e6 * sched_cls_cap_interval_ms_) * (1L << sched_cls_info.num_updates++);
-          sched_cls_info.next_update_time = get_time_() + wait_time;
-          continue;
-        } else {
+        if (get_time_() < sched_cls_info.next_update_time) {
           break;
         }
       }
@@ -408,6 +398,14 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         }
         work_it = dispatch_queue.erase(work_it);
       } else {
+        if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity) {
+          int64_t current_capacity = sched_cls_info.running_tasks.size();
+          int64_t allowed_capacity = sched_cls_info.capacity;
+          int64_t exp = current_capacity - allowed_capacity;
+          int64_t wait_time =
+              (1e6 * sched_cls_cap_interval_ms_) * (1L << exp);
+          sched_cls_info.next_update_time = get_time_() + wait_time;
+        }
         // The local node has the available resources to run the task, so we should run
         // it.
         std::string allocated_instances_serialized_json = "{}";
