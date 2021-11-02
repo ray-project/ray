@@ -260,6 +260,8 @@ class LogMonitor:
             nonlocal lines_to_publish
             nonlocal anything_published
             if len(lines_to_publish) > 0:
+                assert file_info.worker_pid is not None, (
+                    f"The file {file_info.filename} is None")
                 self.redis_client.publish(
                     gcs_utils.LOG_FILE_CHANNEL,
                     json.dumps({
