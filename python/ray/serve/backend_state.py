@@ -11,7 +11,7 @@ from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
                               ReplicaTag, ReplicaName, RunningReplicaInfo)
-from ray.serve.config import BackendConfig
+from ray.serve.config import DeploymentConfig
 from ray.serve.constants import (
     CONTROLLER_STARTUP_GRACE_PERIOD_S, SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME,
     MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT, MAX_NUM_DELETED_DEPLOYMENTS)
@@ -156,9 +156,9 @@ class ActorReplicaWrapper:
         """
         self._actor_resources = backend_info.replica_config.resource_dict
         self._max_concurrent_queries = (
-            backend_info.backend_config.max_concurrent_queries)
+            backend_info.deployment_config.max_concurrent_queries)
         self._graceful_shutdown_timeout_s = (
-            backend_info.backend_config.graceful_shutdown_timeout_s)
+            backend_info.deployment_config.graceful_shutdown_timeout_s)
         if USE_PLACEMENT_GROUP:
             self._placement_group = self.create_placement_group(
                 self._placement_group_name, self._actor_resources)
@@ -177,11 +177,11 @@ class ActorReplicaWrapper:
                 self.backend_tag, self.replica_tag,
                 backend_info.replica_config.init_args,
                 backend_info.replica_config.init_kwargs,
-                backend_info.backend_config.to_proto_bytes(), version,
+                backend_info.deployment_config.to_proto_bytes(), version,
                 self._controller_name, self._detached)
 
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-            backend_info.backend_config.user_config)
+            backend_info.deployment_config.user_config)
 
     def update_user_config(self, user_config: Any):
         """
@@ -242,11 +242,11 @@ class ActorReplicaWrapper:
             return ReplicaStartupStatus.PENDING, None
         elif len(ready) > 0:
             try:
-                backend_config, version = ray.get(ready)[0]
+                deployment_config, version = ray.get(ready)[0]
                 self._max_concurrent_queries = (
-                    backend_config.max_concurrent_queries)
+                    deployment_config.max_concurrent_queries)
                 self._graceful_shutdown_timeout_s = (
-                    backend_config.graceful_shutdown_timeout_s)
+                    deployment_config.graceful_shutdown_timeout_s)
             except Exception:
                 return ReplicaStartupStatus.FAILED, None
 
@@ -726,11 +726,11 @@ class BackendState:
 
         if backend_info is not None:
             self._target_info = backend_info
-            self._target_replicas = backend_info.backend_config.num_replicas
+            self._target_replicas = backend_info.deployment_config.num_replicas
 
             self._target_version = DeploymentVersion(
                 backend_info.version,
-                user_config=backend_info.backend_config.user_config)
+                user_config=backend_info.deployment_config.user_config)
 
         else:
             self._target_replicas = 0
@@ -746,7 +746,7 @@ class BackendState:
                backend_info: BackendInfo) -> Tuple[Optional[GoalId], bool]:
         """Deploy the backend.
 
-        If the backend already exists with the same version and BackendConfig,
+        If the backend already exists with the same version and config,
         this is a no-op and returns the GoalId corresponding to the existing
         update if there is one.
 
@@ -760,7 +760,8 @@ class BackendState:
             # Redeploying should not reset the deployment's start time.
             backend_info.start_time_ms = existing_info.start_time_ms
 
-            if (existing_info.backend_config == backend_info.backend_config
+            if (existing_info.deployment_config ==
+                    backend_info.deployment_config
                     and backend_info.version is not None
                     and existing_info.version == backend_info.version):
                 return self._curr_goal, False
@@ -1291,19 +1292,20 @@ class BackendStateManager:
 
         return replicas
 
-    def get_backend_configs(self,
-                            filter_tag: Optional[BackendTag] = None,
-                            include_deleted: Optional[bool] = False
-                            ) -> Dict[BackendTag, BackendConfig]:
-        configs: Dict[BackendTag, BackendConfig] = {}
+    def get_deployment_configs(self,
+                               filter_tag: Optional[BackendTag] = None,
+                               include_deleted: Optional[bool] = False
+                               ) -> Dict[BackendTag, DeploymentConfig]:
+        configs: Dict[BackendTag, DeploymentConfig] = {}
         for backend_tag, backend_state in self._backend_states.items():
             if filter_tag is None or backend_tag == filter_tag:
-                configs[backend_tag] = backend_state.target_info.backend_config
+                configs[
+                    backend_tag] = backend_state.target_info.deployment_config
 
         if include_deleted:
             for backend_tag, info in self._deleted_backend_metadata.items():
                 if filter_tag is None or backend_tag == filter_tag:
-                    configs[backend_tag] = info.backend_config
+                    configs[backend_tag] = info.deployment_config
 
         return configs
 
@@ -1322,7 +1324,7 @@ class BackendStateManager:
                        ) -> Tuple[Optional[GoalId], bool]:
         """Deploy the backend.
 
-        If the backend already exists with the same version and BackendConfig,
+        If the backend already exists with the same version and config,
         this is a no-op and returns the GoalId corresponding to the existing
         update if there is one.
 

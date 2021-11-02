@@ -58,7 +58,7 @@ void GcsResourceManager::HandleUpdateResources(
     const rpc::UpdateResourcesRequest &request, rpc::UpdateResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(INFO) << "Updating resources, node id = " << node_id;
+  RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
   auto changed_resources = std::make_shared<std::unordered_map<std::string, double>>();
   for (const auto &entry : request.resources()) {
     changed_resources->emplace(entry.first, entry.second.resource_capacity());
