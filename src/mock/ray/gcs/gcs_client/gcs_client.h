@@ -39,7 +39,6 @@ class MockGcsClient : public GcsClient {
   MockGcsClient() {
     mock_job_accessor = new MockJobInfoAccessor();
     mock_actor_accessor = new MockActorInfoAccessor();
-    mock_object_accessor = new MockObjectInfoAccessor();
     mock_node_accessor = new MockNodeInfoAccessor();
     mock_node_resource_accessor = new MockNodeResourceInfoAccessor();
     mock_task_accessor = new MockTaskInfoAccessor();
@@ -54,7 +53,6 @@ class MockGcsClient : public GcsClient {
     GcsClient::node_accessor_.reset(mock_node_accessor);
     GcsClient::node_resource_accessor_.reset(mock_node_resource_accessor);
     GcsClient::task_accessor_.reset(mock_task_accessor);
-    GcsClient::object_accessor_.reset(mock_object_accessor);
     GcsClient::stats_accessor_.reset(mock_stats_accessor);
     GcsClient::error_accessor_.reset(mock_error_accessor);
     GcsClient::worker_accessor_.reset(mock_worker_accessor);
@@ -62,7 +60,6 @@ class MockGcsClient : public GcsClient {
   }
   MockActorInfoAccessor *mock_actor_accessor;
   MockJobInfoAccessor *mock_job_accessor;
-  MockObjectInfoAccessor *mock_object_accessor;
   MockNodeInfoAccessor *mock_node_accessor;
   MockNodeResourceInfoAccessor *mock_node_resource_accessor;
   MockTaskInfoAccessor *mock_task_accessor;

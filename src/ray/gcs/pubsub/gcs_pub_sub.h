@@ -38,7 +38,6 @@ inline constexpr std::string_view NODE_CHANNEL = "NODE";
 inline constexpr std::string_view NODE_RESOURCE_CHANNEL = "NODE_RESOURCE";
 inline constexpr std::string_view ACTOR_CHANNEL = "ACTOR";
 inline constexpr std::string_view WORKER_CHANNEL = "WORKER";
-inline constexpr std::string_view OBJECT_CHANNEL = "OBJECT";
 inline constexpr std::string_view TASK_LEASE_CHANNEL = "TASK_LEASE";
 inline constexpr std::string_view RESOURCES_BATCH_CHANNEL = "RESOURCES_BATCH";
 inline constexpr std::string_view ERROR_INFO_CHANNEL = "ERROR_INFO";
@@ -247,11 +246,6 @@ class GcsPublisher {
   Status PublishResourceBatch(const rpc::ResourceUsageBatchData &message,
                               const StatusCallback &done);
 
-  /// TODO: Object publishing is deprecated. Remove this and callsites.
-  /// Uses Redis pubsub.
-  Status PublishObject(const ObjectID &id, const rpc::ObjectLocationChange &message,
-                       const StatusCallback &done);
-
   /// Prints debugging info for the publisher.
   std::string DebugString() const;
 
@@ -316,16 +310,6 @@ class GcsSubscriber {
   Status SubscribeResourcesBatch(
       const ItemCallback<rpc::ResourceUsageBatchData> &subscribe,
       const StatusCallback &done);
-
-  /// TODO: Object subscribing is deprecated. Remove this and callsites.
-  /// Uses Redis pubsub.
-  Status SubscribeObject(
-      const ObjectID &id,
-      const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>>
-          &subscribe,
-      const StatusCallback &done);
-  Status UnsubscribeObject(const ObjectID &id);
-  bool IsObjectUnsubscribed(const ObjectID &id);
 
   /// Prints debugging info for the subscriber.
   std::string DebugString() const;
