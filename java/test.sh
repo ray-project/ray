@@ -108,7 +108,7 @@ run_testng java -Dray.run-mode="SINGLE_PROCESS" -cp "$ROOT_DIR"/../bazel-bin/jav
 echo "Running connecting existing cluster tests."
 case "${OSTYPE}" in
   linux*) ip=$(hostname -I | awk '{print $1}');;
-  darwin*) ip=$(ipconfig getifaddr en0);;
+  darwin*) ip="127.0.0.1";;
   *) echo "Can't get ip address for ${OSTYPE}"; exit 1;;
 esac
 RAY_BACKEND_LOG_LEVEL=debug ray start --head --port=6379 --redis-password=123456
