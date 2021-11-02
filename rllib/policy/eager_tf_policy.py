@@ -110,8 +110,8 @@ def traced_eager_policy(eager_policy_cls):
         def __init__(self, *args, **kwargs):
             self._traced_learn_on_batch_helper = False
             self._traced_compute_actions_helper = False
-            self._traced_compute_gradients_helper = None
-            self._traced_apply_gradients = None
+            self._traced_compute_gradients_helper = False
+            self._traced_apply_gradients_helper = False
             super(TracedEagerPolicy, self).__init__(*args, **kwargs)
 
         @override(Policy)
