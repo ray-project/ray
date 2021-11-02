@@ -26,7 +26,7 @@ def run(smoke_test=False):
         "rollout_fragment_length": 50,
         "train_batch_size": 750,
         "num_workers": 50,
-        "num_envs_per_worker": 5,
+        "num_envs_per_worker": 1,
         "clip_rewards": True,
         "num_sgd_iter": 2,
         "vf_loss_coeff": 1.0,
