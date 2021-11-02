@@ -107,7 +107,11 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
     if (!it->second.pending) {
       resubmit = true;
       it->second.pending = true;
+      num_pending_tasks_++;
 
+      // The task is pending again, so it's no longer counted as lineage. If
+      // the task finishes and we still need the spec, we'll add the task back
+      // to the footprint sum.
       total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
       it->second.lineage_footprint_bytes = 0;
 
@@ -510,6 +514,7 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
       }
     }
 
+    total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
     // The task has finished and none of the return IDs are in scope anymore,
     // so it is safe to remove the task spec.
     submissible_tasks_.erase(it);

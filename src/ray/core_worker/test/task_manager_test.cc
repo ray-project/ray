@@ -39,7 +39,8 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
 
 class TaskManagerTest : public ::testing::Test {
  public:
-  TaskManagerTest(bool lineage_pinning_enabled = false)
+  TaskManagerTest(bool lineage_pinning_enabled = false,
+                  int64_t max_lineage_bytes = 1024 * 1024 * 1024)
       : store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
         subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
@@ -61,7 +62,16 @@ class TaskManagerTest : public ::testing::Test {
             },
             [](const JobID &job_id, const std::string &type,
                const std::string &error_message,
-               double timestamp) { return Status::OK(); }) {}
+               double timestamp) { return Status::OK(); },
+            max_lineage_bytes) {}
+
+  virtual void TearDown() { AssertNoLeaks(); }
+
+  void AssertNoLeaks() {
+    ASSERT_EQ(manager_.submissible_tasks_.size(), 0);
+    ASSERT_EQ(manager_.num_pending_tasks_, 0);
+    ASSERT_EQ(manager_.total_lineage_footprint_bytes_, 0);
+  }
 
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
@@ -76,7 +86,7 @@ class TaskManagerTest : public ::testing::Test {
 
 class TaskManagerLineageTest : public TaskManagerTest {
  public:
-  TaskManagerLineageTest() : TaskManagerTest(true) {}
+  TaskManagerLineageTest() : TaskManagerTest(true, /*max_lineage_bytes=*/10000) {}
 };
 
 TEST_F(TaskManagerTest, TestTaskSuccess) {
@@ -540,8 +550,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
   auto spec = CreateTaskHelper(2, {});
   auto return_id1 = spec.ReturnId(0);
   auto return_id2 = spec.ReturnId(1);
-  int num_retries = 3;
-  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+  manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/1);
 
   // The task completes. Both return objects are stored in plasma.
   {

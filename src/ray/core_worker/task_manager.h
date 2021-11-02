@@ -202,6 +202,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Return the number of pending tasks.
   size_t NumPendingTasks() const;
 
+  int64_t TotalLineageFootprintBytes() const {
+    absl::MutexLock lock(&mu_);
+    return total_lineage_footprint_bytes_;
+  }
+
  private:
   struct TaskEntry {
     TaskEntry(const TaskSpecification &spec_arg, int num_retries_left_arg,
@@ -324,6 +329,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Optional shutdown hook to call when pending tasks all finish.
   std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;
+
+  friend class TaskManagerTest;
 };
 
 }  // namespace core

@@ -517,6 +517,7 @@ void ReferenceCounter::EvictAllLineage() {
     if (!ref.second.OutOfScope(lineage_pinning_enabled_) && ref.second.owned_by_us) {
       owned_objects_in_scope.push_back(ref.first);
       ref.second.lineage_evicted = true;
+      ref.second.is_reconstructable = false;
     }
   }
 

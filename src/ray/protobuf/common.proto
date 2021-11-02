@@ -140,6 +140,7 @@ enum ErrorType {
   OBJECT_DELETED = 10;
   // Indicates there is some error when resolving the dependence
   DEPENDENCY_RESOLUTION_FAILED = 11;
+  OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED = 12;
 }
 
 /// The task exception encapsulates all information about task
