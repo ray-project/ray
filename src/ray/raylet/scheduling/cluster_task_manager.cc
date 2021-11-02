@@ -318,13 +318,15 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       }
 
       if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity) {
-        RAY_LOG(ERROR) << "Hit cap! time=" << get_time_() << " next update time=" << sched_cls_info.next_update_time;
+        RAY_LOG(ERROR) << "Hit cap! time=" << get_time_()
+                       << " next update time=" << sched_cls_info.next_update_time;
         if (get_time_() >= sched_cls_info.next_update_time) {
           // Don't increase the capacity on the very first update since that
           // will unblock a new task immediately, instead of after the timeout.
           if (sched_cls_info.num_updates > 0) {
             sched_cls_info.capacity++;
-            RAY_LOG(ERROR) << "Increasing capacity!!! new capacity=" << sched_cls_info.capacity;
+            RAY_LOG(ERROR) << "Increasing capacity!!! new capacity="
+                           << sched_cls_info.capacity;
           }
 
           int64_t wait_time =

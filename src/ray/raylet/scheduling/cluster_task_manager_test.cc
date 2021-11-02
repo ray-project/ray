@@ -232,10 +232,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
               delayed_execution_.push_back({fn, wait_time_ns});
               return nullptr;
             },
-            /*get_time=*/[this]() {
-              return current_time_ns_;
-            }
-                      ) {}
+            /*get_time=*/[this]() { return current_time_ns_; }) {}
 
   void SetUp() {
     static rpc::GcsNodeInfo node_info;
@@ -1721,8 +1718,8 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
 /// Test that we exponentially increase the amount of time it takes to increase
 /// the dispatch cap for a scheduling class.
 TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
-
-  auto get_unblocked_worker = [](std::vector<std::shared_ptr<MockWorker>> &workers) -> std::shared_ptr<MockWorker> {
+  auto get_unblocked_worker = [](std::vector<std::shared_ptr<MockWorker>> &workers)
+      -> std::shared_ptr<MockWorker> {
     for (auto &worker : workers) {
       if (worker->GetAllocatedInstances() != nullptr && !worker->IsBlocked()) {
         return worker;
@@ -1730,7 +1727,6 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
     }
     return nullptr;
   };
-
 
   int64_t UNIT = 10 * 1e6;
   std::vector<RayTask> tasks;
@@ -1753,7 +1749,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
   std::vector<std::shared_ptr<MockWorker>> workers;
   for (int i = 0; i < 10; i++) {
     std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
     pool_.TriggerCallbacks();
     workers.push_back(worker);
@@ -1771,16 +1767,18 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
     const auto allocated_instances = worker->GetAllocatedInstances();
     RAY_LOG(ERROR) << allocated_instances;
   }
-  ASSERT_TRUE(task_manager_.ReleaseCpuResourcesFromUnblockedWorker(get_unblocked_worker(workers)));
+  ASSERT_TRUE(task_manager_.ReleaseCpuResourcesFromUnblockedWorker(
+      get_unblocked_worker(workers)));
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 2);
   ASSERT_EQ(delayed_execution_.size(), 2);
-  ASSERT_EQ(delayed_execution_[1].second, 2*UNIT);
+  ASSERT_EQ(delayed_execution_[1].second, 2 * UNIT);
 
   // Since we're increasing exponentially, increasing by a unit show no longer be enough.
   current_time_ns_ += UNIT;
-  ASSERT_TRUE(task_manager_.ReleaseCpuResourcesFromUnblockedWorker(get_unblocked_worker(workers)));
+  ASSERT_TRUE(task_manager_.ReleaseCpuResourcesFromUnblockedWorker(
+      get_unblocked_worker(workers)));
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 2);
@@ -1788,18 +1786,16 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
   ASSERT_EQ(delayed_execution_[0].second, UNIT);
 
   // Now it should run
-  current_time_ns_ = 3*UNIT;
+  current_time_ns_ = 3 * UNIT;
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 3);
   ASSERT_EQ(delayed_execution_.size(), 3);
-  ASSERT_EQ(delayed_execution_[2].second, 4*UNIT);
+  ASSERT_EQ(delayed_execution_[2].second, 4 * UNIT);
 }
-
 
 /// Ensure we reset the cap after we've finished executing through the queue.
 TEST_F(ClusterTaskManagerTest, SchedulingClassCapReset) {
-
   int64_t UNIT = 10 * 1e6;
   std::vector<RayTask> tasks;
   for (int i = 0; i < 2; i++) {
@@ -1820,7 +1816,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapReset) {
   auto runtime_env_hash = tasks[0].GetTaskSpecification().GetRuntimeEnvHash();
 
   std::shared_ptr<MockWorker> worker1 =
-    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
   pool_.TriggerCallbacks();
   task_manager_.ScheduleAndDispatchTasks();
@@ -1829,7 +1825,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapReset) {
   current_time_ns_ += UNIT;
 
   std::shared_ptr<MockWorker> worker2 =
-    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
@@ -1843,7 +1839,6 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapReset) {
 
   AssertNoLeaks();
 
-
   for (int i = 0; i < 2; i++) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
                               /*num_args=*/0, /*args=*/{});
@@ -1851,7 +1846,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapReset) {
   }
 
   std::shared_ptr<MockWorker> worker3 =
-    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker3));
   pool_.TriggerCallbacks();
   task_manager_.ScheduleAndDispatchTasks();
@@ -1861,7 +1856,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapReset) {
   current_time_ns_ += UNIT;
 
   std::shared_ptr<MockWorker> worker4 =
-    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker4));
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
@@ -1869,7 +1864,6 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapReset) {
   ASSERT_EQ(num_callbacks, 4);
   ASSERT_EQ(delayed_execution_.back().second, 2 * UNIT);
 }
-
 
 // Regression test for https://github.com/ray-project/ray/issues/16935:
 // When a task requires 1 CPU and is infeasible because head node has 0 CPU,
@@ -1920,8 +1914,6 @@ TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, OneCpuInfeasibleTask) {
     ASSERT_TRUE(one_cpu_found);
   }
 }
-
-
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
