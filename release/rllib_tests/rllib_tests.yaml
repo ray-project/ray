@@ -77,5 +77,5 @@
 
   run:
     use_connect: True
-    timeout: 3600
+    timeout: 6000
     script: python connect_tests/run_connect_tests.py
