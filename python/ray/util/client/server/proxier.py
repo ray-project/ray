@@ -745,9 +745,9 @@ def serve_proxier(connection_str: str,
     # NOTE(edoakes): redis_address and redis_password should only be None in
     # tests.
     if redis_address is not None and redis_password is not None:
-        ip, port = redis_address.split(":")
-        gcs_client = connect_to_gcs(ip, int(port), redis_password)
-        ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+        gcs_cli = GcsClient.connect_to_gcs_by_redis_address(
+            redis_address, redis_password)
+        ray.experimental.internal_kv._initialize_internal_kv(gcs_cli)
 
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
