@@ -8,7 +8,9 @@ from ray import workflow
 
 @workflow.step
 def gen_dataset():
-    return ray.data.range(1000)
+    # TODO(ekl) seems checkpointing hangs with nested refs of
+    # LazyBlockList.
+    return ray.data.range(1000).map(lambda x: x)
 
 
 @workflow.step

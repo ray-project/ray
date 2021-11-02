@@ -70,11 +70,13 @@ class EpsilonGreedy(Exploration):
             self._tf_state_op = self.get_state()
 
     @override(Exploration)
-    def get_exploration_action(self,
-                               *,
-                               action_distribution: ActionDistribution,
-                               timestep: Union[int, TensorType],
-                               explore: bool = True):
+    def get_exploration_action(
+            self,
+            *,
+            action_distribution: ActionDistribution,
+            timestep: Union[int, TensorType],
+            explore: Optional[Union[bool, TensorType]] = True,
+    ):
 
         if self.framework in ["tf2", "tf", "tfe"]:
             return self._get_tf_exploration_action_op(action_distribution,
@@ -126,11 +128,13 @@ class EpsilonGreedy(Exploration):
             ),
             false_fn=lambda: exploit_action)
 
-        if self.framework in ["tf2", "tfe"]:
+        if self.framework in ["tf2", "tfe"
+                              ] and not self.policy_config["eager_tracing"]:
             self.last_timestep = timestep
             return action, tf.zeros_like(action, dtype=tf.float32)
         else:
-            assign_op = tf1.assign(self.last_timestep, timestep)
+            assign_op = tf1.assign(self.last_timestep,
+                                   tf.cast(timestep, tf.int64))
             with tf1.control_dependencies([assign_op]):
                 return action, tf.zeros_like(action, dtype=tf.float32)
 
@@ -210,5 +214,7 @@ class EpsilonGreedy(Exploration):
                   sess: Optional["tf.Session"] = None) -> None:
         if self.framework == "tf":
             self.last_timestep.load(state["last_timestep"], session=sess)
-        else:
+        elif isinstance(self.last_timestep, int):
             self.last_timestep = state["last_timestep"]
+        else:
+            self.last_timestep.assign(state["last_timestep"])
