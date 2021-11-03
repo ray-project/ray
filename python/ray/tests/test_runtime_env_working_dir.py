@@ -7,6 +7,7 @@ import tempfile
 
 import pytest
 from pytest_lazyfixture import lazy_fixture
+from ray._private.runtime_env.validation import ParsedRuntimeEnv
 from ray._private.test_utils import run_string_as_driver
 
 import ray
@@ -14,6 +15,8 @@ import ray.experimental.internal_kv as kv
 from ray._private.test_utils import wait_for_condition
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
+
+# This test requires you have AWS credentials set up in ~/.aws/credentials.
 
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
@@ -354,7 +357,9 @@ def test_multi_node(start_cluster, option: str, source: str):
 
 
 def check_internal_kv_gced():
-    return len(kv._internal_kv_list("gcs://")) == 0
+    return all(
+        len(kv._internal_kv_list(f"{plugin}|gcs://")) == 0
+        for plugin in ParsedRuntimeEnv.known_fields)
 
 
 def check_local_files_gced(cluster):
@@ -385,7 +390,6 @@ def test_job_level_gc(start_cluster, option: str, source: str):
     if option == "working_dir":
         ray.init(address, runtime_env={"working_dir": source})
     elif option == "py_modules":
-        pytest.skip("py_modules GC not implemented.")
         if source != S3_PACKAGE_URI:
             source = str(Path(source) / "test_module")
         ray.init(address, runtime_env={"py_modules": [source]})
@@ -467,7 +471,6 @@ def test_detached_actor_gc(start_cluster, option: str, source: str):
         ray.init(
             address, namespace="test", runtime_env={"working_dir": source})
     elif option == "py_modules":
-        pytest.skip("py_modules GC not implemented.")
         if source != S3_PACKAGE_URI:
             source = str(Path(source) / "test_module")
         ray.init(
@@ -678,9 +681,9 @@ def test_runtime_context(start_cluster, working_dir):
     def check():
         wd = ray.get_runtime_context().runtime_env["working_dir"]
         if working_dir == S3_PACKAGE_URI:
-            assert wd == S3_PACKAGE_URI
+            assert wd == "working_dir" + "|" + S3_PACKAGE_URI
         else:
-            assert wd.startswith("gcs://_ray_pkg_")
+            assert wd.startswith("working_dir|gcs://_ray_pkg_")
 
     check()
 

@@ -6,7 +6,7 @@ from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package, delete_package, get_uri_for_directory,
-    parse_uri, Protocol, upload_package_if_needed)
+    parse_pkg_uri, Protocol, upload_package_if_needed)
 
 default_logger = logging.getLogger(__name__)
 
@@ -28,27 +28,31 @@ def upload_working_dir_if_needed(
             "working_dir must be a string (either a local path or remote "
             f"URI), got {type(working_dir)}.")
 
-    # working_dir is already a URI -- just pass it through.
+    # working_dir is already a URI -- just pass it through, after prepending
+    # "working_dir|" to convert it to the Ray-internal runtime env URI format.
     try:
-        protocol, path = parse_uri(working_dir)
+        protocol, path = parse_pkg_uri(working_dir)
     except ValueError:
         protocol, path = None, None
 
     if protocol is not None:
         if protocol == Protocol.S3 and not path.endswith(".zip"):
             raise ValueError("Only .zip files supported for S3 URIs.")
+        uri = "working_dir" + "|" + working_dir
+        runtime_env["working_dir"] = uri
         return runtime_env
 
     excludes = runtime_env.get("excludes", None)
-    working_dir_uri = get_uri_for_directory(working_dir, excludes=excludes)
+    uri = "working_dir" + "|" + get_uri_for_directory(
+        working_dir, excludes=excludes)
     upload_package_if_needed(
-        working_dir_uri,
+        uri,
         scratch_dir,
         working_dir,
         include_parent_dir=False,
         excludes=excludes,
         logger=logger)
-    runtime_env["working_dir"] = working_dir_uri
+    runtime_env["working_dir"] = uri
     return runtime_env
 
 

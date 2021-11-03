@@ -70,17 +70,18 @@ def load_package(config_path: str) -> "_RuntimePackage":
     # Autofill working directory by uploading to GCS storage.
     if "working_dir" not in runtime_env:
         pkg_uri = get_uri_for_directory(base_dir, excludes=[])
+        uri = "working_dir" + "|" + pkg_uri
 
         def do_register_package():
             # TODO(ekl) does this get garbage collected correctly with the
             # current job id?
-            upload_package_if_needed(pkg_uri, _pkg_tmp(), base_dir)
+            upload_package_if_needed(uri, _pkg_tmp(), base_dir)
 
         if ray.is_initialized():
             do_register_package()
         else:
             ray.worker._post_init_hooks.append(do_register_package)
-        runtime_env["working_dir"] = pkg_uri
+        runtime_env["working_dir"] = uri
 
     # Autofill conda config.
     conda_yaml = os.path.join(base_dir, "conda.yaml")

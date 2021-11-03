@@ -14,26 +14,46 @@ from ray._private.utils import import_attr
 logger = logging.getLogger(__name__)
 
 
-def validate_uri(uri: str):
+def validate_uri(uri: str, plugin: str) -> str:
+    """Validate and return a URI.
+
+    If `uri` has not already been converted to the Ray-internal URI format of
+    "plugin|protocol://hash", then prepend the plugin name and | to `uri`.
+    """
     if not isinstance(uri, str):
         raise TypeError("URIs for working_dir and py_modules must be "
                         f"strings, got {type(uri)}.")
 
     try:
-        from ray._private.runtime_env.packaging import parse_uri, Protocol
-        protocol, path = parse_uri(uri)
+        from ray._private.runtime_env.packaging import (
+            parse_uri, parse_pkg_uri, Protocol)
+        plugin_from_uri, protocol, path = parse_uri(uri)
     except ValueError:
-        raise ValueError(
-            f"{uri} is not a valid URI. Passing directories or modules to "
-            "be dynamically uploaded is only supported at the job level "
-            "(i.e., passed to `ray.init`).")
+        try:
+            plugin_from_uri = None
+            protocol, path = parse_pkg_uri(uri)
+        except ValueError:
+            raise ValueError(
+                f"{uri} is not a valid URI. Passing directories or modules to "
+                "be dynamically uploaded is only supported at the job level "
+                "(i.e., passed to `ray.init`).")
 
     if protocol == Protocol.S3 and not path.endswith(".zip"):
         raise ValueError("Only .zip files supported for S3 URIs.")
 
+    if plugin_from_uri is not None and plugin != plugin_from_uri:
+        raise ValueError(
+            f"Plugin '{plugin}' does not match plugin '{plugin_from_uri}' "
+            f"parsed from uri '{uri}'.")
+
+    if plugin_from_uri is None:
+        uri = plugin + "|" + uri
+
+    return uri
+
 
 def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
-    """Parses and validates a user-provided 'py_modules' option.
+    """Parses and validates a 'py_modules' option.
 
     This should be a list of URIs.
     """
@@ -41,14 +61,13 @@ def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
         raise TypeError("`py_modules` must be a list of strings, got "
                         f"{type(py_modules)}.")
 
-    for uri in py_modules:
-        validate_uri(uri)
+    py_modules = [validate_uri(uri, "py_modules") for uri in py_modules]
 
     return py_modules
 
 
 def parse_and_validate_working_dir(working_dir: str) -> str:
-    """Parses and validates a user-provided 'working_dir' option.
+    """Parses and validates a 'working_dir' option.
 
     This should be a URI.
     """
@@ -58,7 +77,7 @@ def parse_and_validate_working_dir(working_dir: str) -> str:
         raise TypeError("`working_dir` must be a string, got "
                         f"{type(working_dir)}.")
 
-    validate_uri(working_dir)
+    working_dir = validate_uri(working_dir, "working_dir")
 
     return working_dir
 
@@ -334,8 +353,14 @@ class ParsedRuntimeEnv(dict):
             self.clear()
 
     def get_uris(self) -> List[str]:
-        # TODO(edoakes): this should be extended with other resource URIs.
-        return [self["working_dir"]] if "working_dir" in self else []
+        # TODO(architkulkarni): this should programmatically be extended with
+        # URIs from all plugins.
+        uris = []
+        if "working_dir" in self:
+            uris.append(self["working_dir"])
+        if "py_modules" in self:
+            uris += self["py_modules"]
+        return uris
 
     @classmethod
     def deserialize(cls, serialized: str) -> "ParsedRuntimeEnv":

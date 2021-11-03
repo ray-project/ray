@@ -29,7 +29,8 @@ namespace ray {
 /// a delete handler.
 class RuntimeEnvManager {
  public:
-  using DeleteFunc = std::function<void(const std::string &, std::function<void(bool)>)>;
+  using DeleteFunc =
+      std::function<void(const std::string &uri, std::function<void(bool successful)>)>;
   explicit RuntimeEnvManager(DeleteFunc deleter) : deleter_(deleter) {}
 
   /// Increase the reference of URI by job_id and runtime_env.
