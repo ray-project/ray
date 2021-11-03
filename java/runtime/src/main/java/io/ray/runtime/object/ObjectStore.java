@@ -227,7 +227,7 @@ public abstract class ObjectStore {
    * Get the ownership info.
    *
    * @param objectId The ID of the object to promote
-   * @return the serialized ownership address
+   * @return The ownership information of this object.
    */
   public abstract OwnershipInfo getOwnershipInfo(ObjectId objectId);
 
@@ -241,7 +241,7 @@ public abstract class ObjectStore {
    * @param outerObjectId The object ID that contained objectId, if any. This may be nil if the
    *     object ID was inlined directly in a task spec or if it was passed out-of-band by the
    *     application (deserialized from a byte string).
-   * @param ownerAddress The address of the object's owner.
+   * @param ownershipInfo The ownership information of this object.
    */
   public abstract void registerOwnershipInfoAndResolveFuture(
       ObjectId objectId, ObjectId outerObjectId, OwnershipInfo ownershipInfo);
