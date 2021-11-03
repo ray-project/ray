@@ -68,7 +68,7 @@ def _internal_kv_del(key: Union[str, bytes]):
     if isinstance(key, str):
         key = key.encode()
     assert isinstance(key, bytes)
-    return global_gcs_client.internal_kv_exists(key)
+    return global_gcs_client.internal_kv_del(key)
 
 
 @client_mode_hook(auto_init=False)
