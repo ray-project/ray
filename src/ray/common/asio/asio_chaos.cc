@@ -27,10 +27,23 @@ namespace asio {
 namespace testing {
 
 namespace {
+/* DelayManager is a simple chaos testing framework. Before start, users should
+   be able to setup os environment so that some asio calls will be delayed for
+   testing purpose.
+
+   To use this, simply do
+     export RAY_TESTING_ASIO_DELAY="method1=10,method2=20"
+
+   The delay is randomly between 0 and the value. If method equals '*', it means
+   for all methods.
+
+   Please check warnings to make sure delay is on.
+ */
 class DelayManager {
  public:
   DelayManager() {
     auto delay_env = std::getenv("RAY_TESTING_ASIO_DELAY");
+    // RAY_TESTING_ASIO_DELAY="Method1=100,Method2=200"
     if (delay_env == nullptr) {
       return;
     }
@@ -57,7 +70,12 @@ class DelayManager {
     if (it == delay_.end()) {
       return GenRandomDelay(random_delay_ms_);
     }
-    return GenRandomDelay(it->second);
+    auto actual_delay = GenRandomDelay(it->second);
+    if(actual_delay != 0) {
+      RAY_LOG_EVERY_N(DEBUG, 1000)
+          << "Delay method " << name << " for " << actual_delay << "ms";
+    }
+    return actual_delay;
   }
 
  private:
