@@ -212,7 +212,8 @@ class TuneFailResumeGridTest(unittest.TestCase):
             if not self._checked and iteration >= self._check_after:
                 for trial in trials:
                     if trial.status == Trial.PENDING:
-                        assert trial.resources.cpu == self._expected_cpu
+                        assert trial.placement_group_factory.required_resources.get(
+                            "CPU", 0) == self._expected_cpu
                 self._checked = True
 
     def setUp(self):
