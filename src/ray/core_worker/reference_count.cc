@@ -700,16 +700,6 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
   }
 }
 
-bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
-    const ObjectID &object_id, bool for_ref_removed,
-    ReferenceCounter::ReferenceTableProto *proto) {
-  absl::MutexLock lock(&mutex_);
-  ReferenceTable table;
-  bool result = GetAndClearLocalBorrowersInternal(object_id, for_ref_removed, &table);
-  ReferenceTableToProto(table, proto);
-  return result;
-}
-
 bool ReferenceCounter::GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
                                                          bool for_ref_removed,
                                                          ReferenceTable *borrowed_refs) {
@@ -729,15 +719,15 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(const ObjectID &object_
     return true;
   }
 
-  borrowed_refs->emplace(object_id, it->second);
-  // Clear the local list of borrowers that we have accumulated. The receiver
-  // of the returned borrowed_refs must merge this list into their own list
-  // until all active borrowers are merged into the owner.
-  it->second.borrowers.clear();
-  // If a foreign owner process is waiting for this ref to be removed already,
-  // then don't clear its stored metadata. Clearing this will prevent the
-  // foreign owner from learning about the parent task borrowing this value.
   if (for_ref_removed || !it->second.foreign_owner_already_monitoring) {
+    borrowed_refs->emplace(object_id, it->second);
+    // Clear the local list of borrowers that we have accumulated. The receiver
+    // of the returned borrowed_refs must merge this list into their own list
+    // until all active borrowers are merged into the owner.
+    it->second.borrowers.clear();
+    // If a foreign owner process is waiting for this ref to be removed already,
+    // then don't clear its stored metadata. Clearing this will prevent the
+    // foreign owner from learning about the parent task borrowing this value.
     it->second.stored_in_objects.clear();
   }
   // Attempt to pop children.

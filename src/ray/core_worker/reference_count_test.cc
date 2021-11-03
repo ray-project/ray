@@ -1553,7 +1553,13 @@ TEST(DistributedReferenceCountTest, TestDuplicateBorrower) {
 TEST(DistributedReferenceCountTest, TestForeignOwner) {
   auto caller = std::make_shared<MockWorkerClient>("1");
   auto owner = std::make_shared<MockWorkerClient>("2");
-  auto foreign_owner = std::make_shared<MockWorkerClient>("3");
+  auto foreign_owner =
+      std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+        if (addr.ip_address() == owner->address_.ip_address()) {
+          return owner;
+        } else
+          return caller;
+      });
 
   //
   // Phase 1 -- submit and execute owner_task1()
@@ -1564,12 +1570,15 @@ TEST(DistributedReferenceCountTest, TestForeignOwner) {
   auto inner_id = ObjectID::FromRandom();
   owner->PutWithForeignOwner(inner_id, foreign_owner->address_);
   rpc::WorkerAddress addr(caller->address_);
+  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
   auto refs = owner->FinishExecutingTask(ObjectID::Nil(), return_id, &inner_id, &addr);
   ASSERT_TRUE(refs.empty());
   ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
   // Caller receives the owner's message, but inner_id is still in scope
   // because caller has a reference to return_id.
   caller->HandleSubmittedTaskFinished(ObjectID::Nil(), {{return_id, {inner_id}}});
+  ASSERT_TRUE(caller->rc_.HasReference(inner_id));
 
   //
   // Phase 2 -- submit and execute owner_task2(x)
@@ -1577,13 +1586,15 @@ TEST(DistributedReferenceCountTest, TestForeignOwner) {
   auto return_id2 = caller->SubmitTaskWithArg(return_id);
   caller->rc_.RemoveLocalReference(return_id, nullptr);
   ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(caller->rc_.HasReference(inner_id));
   caller->rc_.RemoveLocalReference(return_id2, nullptr);
   // Owner receives a reference to inner_id. It still has a reference when
   // the task returns.
-  owner->ExecuteTaskWithArg(return_id, inner_id, owner->address_);
-  auto refs2 = owner->FinishExecutingTask(return_id, return_id);
+  owner->ExecuteTaskWithArg(return_id, inner_id, caller->address_);
+  auto refs2 = owner->FinishExecutingTask(return_id, return_id2);
   // owner merges ref count into the caller.
   caller->HandleSubmittedTaskFinished(return_id, {}, owner->address_, refs2);
+  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
   ASSERT_FALSE(owner->rc_.HasReference(return_id));
   ASSERT_FALSE(caller->rc_.HasReference(return_id));
   ASSERT_FALSE(owner->rc_.HasReference(return_id2));
@@ -1594,19 +1605,20 @@ TEST(DistributedReferenceCountTest, TestForeignOwner) {
   // Phase 3 -- foreign owner gets ref removed information.
   //
   // Emulate ref removed callback.
-  ReferenceCounter::ReferenceTableProto refs_proto;
-  owner->rc_.GetAndClearLocalBorrowersInternal(inner_id, /*for_ref_removed=*/true,
-                                               &refs_proto);
+  foreign_owner->rc_.AddOwnedObject(inner_id, {}, foreign_owner->address_, "", 0, false);
+  foreign_owner->rc_.AddBorrowerAddress(inner_id, owner->address_);
+
+  // Foreign owner waits on owner.
+  ASSERT_TRUE(owner->FlushBorrowerCallbacks());
+  ASSERT_TRUE(foreign_owner->rc_.HasReference(inner_id));
   ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(caller->FlushBorrowerCallbacks());
+  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  caller->rc_.RemoveLocalReference(inner_id, nullptr);
 
-  // This is the key assert checking the info is still available.
-  ASSERT_EQ(refs_proto[0].stored_in_objects().size(), 1);
-
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
-  owner->rc_.RemoveLocalReference(inner_id, nullptr);
-  owner->rc_.RemoveLocalReference(return_id, nullptr);
-  owner->rc_.RemoveLocalReference(return_id2, nullptr);
+  // Foreign owner waits on caller next.
+  ASSERT_TRUE(caller->FlushBorrowerCallbacks());
   ASSERT_FALSE(owner->rc_.HasReference(inner_id));
   ASSERT_FALSE(foreign_owner->rc_.HasReference(inner_id));
   ASSERT_FALSE(caller->rc_.HasReference(inner_id));

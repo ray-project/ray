@@ -473,11 +473,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   bool IsObjectReconstructable(const ObjectID &object_id) const;
 
-  /// Visible for testing.
-  bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id, bool for_ref_removed,
-                                         ReferenceTableProto *proto)
-      LOCKS_EXCLUDED(mutex_);
-
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
@@ -749,6 +744,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Helper method to add an object that we are borrowing. This is used when
   /// deserializing IDs from a task's arguments, or when deserializing an ID
   /// during ray.get().
+  ///
+  /// \param[in] foreign_owner_already_monitoring Whether to set the bit that an
+  ///            externally assigned owner is monitoring the lifetime of this
+  ///            object. This is the case for `ray.put(..., _owner=ZZZ)`.
   bool AddBorrowedObjectInternal(const ObjectID &object_id, const ObjectID &outer_id,
                                  const rpc::Address &owner_address,
                                  bool foreign_owner_already_monitoring)
