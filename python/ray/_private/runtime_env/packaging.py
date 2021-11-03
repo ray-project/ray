@@ -15,9 +15,6 @@ from ray._private.thirdparty.pathspec import PathSpec
 
 default_logger = logging.getLogger(__name__)
 
-# If the working_dir is beyond this size, print a progress message to prevent
-# the appearance of hanging.
-SILENT_UPLOAD_SIZE_THRESHOLD = 1 * 1024 * 1024  # 1MiB
 # If an individual file is beyond this size, print a warning.
 FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
 # NOTE(edoakes): we should be able to support up to 512 MiB based on the GCS'
@@ -181,12 +178,10 @@ def _store_package_in_gcs(
             f"{_mib_string(GCS_STORAGE_MAX_SIZE)}. You can exclude large "
             "files using the 'excludes' option to the runtime_env.")
 
-    if file_size > SILENT_UPLOAD_SIZE_THRESHOLD:
-        logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to "
-                    "Ray cluster...")
+    logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to "
+                "Ray cluster...")
     _internal_kv_put(pkg_uri, data)
-    if file_size > SILENT_UPLOAD_SIZE_THRESHOLD:
-        logger.info(f"Successfully pushed file package '{pkg_uri}'.")
+    logger.info(f"Successfully pushed file package '{pkg_uri}'.")
     return len(data)
 
 
@@ -234,7 +229,7 @@ def _zip_directory(directory: str,
         _dir_travel(dir_path, excludes, handler, logger=logger)
 
 
-def _package_exists(pkg_uri: str) -> bool:
+def package_exists(pkg_uri: str) -> bool:
     """Check whether the package with given URI exists or not.
 
     Args:
@@ -291,6 +286,38 @@ def get_uri_for_directory(directory: str,
         protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val.hex())
 
 
+def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes):
+    protocol, pkg_name = parse_uri(pkg_uri)
+    if protocol == Protocol.GCS:
+        _store_package_in_gcs(pkg_uri, pkg_bytes)
+    elif protocol == Protocol.S3:
+        raise RuntimeError("push_package should not be called with s3 path.")
+    else:
+        raise NotImplementedError(f"Protocol {protocol} is not supported")
+
+
+def create_package(directory: str,
+                   target_path: Path,
+                   include_parent_dir: bool = False,
+                   excludes: Optional[List[str]] = None,
+                   logger: Optional[logging.Logger] = default_logger):
+    if excludes is None:
+        excludes = []
+
+    if logger is None:
+        logger = default_logger
+
+    if not target_path.exists():
+        logger.info(
+            f"Creating a file package for local directory '{directory}'.")
+        _zip_directory(
+            directory,
+            excludes,
+            target_path,
+            include_parent_dir=include_parent_dir,
+            logger=logger)
+
+
 def upload_package_if_needed(
         pkg_uri: str,
         base_directory: str,
@@ -319,32 +346,20 @@ def upload_package_if_needed(
     if logger is None:
         logger = default_logger
 
-    if _package_exists(pkg_uri):
+    if package_exists(pkg_uri):
         return False
 
-    pkg_file = Path(_get_local_path(base_directory, pkg_uri))
-    if not pkg_file.exists():
-        logger.info(f"Creating a file package '{pkg_uri}' "
-                    f"for local directory '{directory}'.")
-        _zip_directory(
-            directory,
-            excludes,
-            pkg_file,
-            include_parent_dir=include_parent_dir,
-            logger=logger)
+    package_file = Path(_get_local_path(base_directory, pkg_uri))
+    create_package(
+        directory,
+        package_file,
+        include_parent_dir=include_parent_dir,
+        excludes=excludes)
 
-    # Push the data to remote storage
-    protocol, pkg_name = parse_uri(pkg_uri)
-    data = Path(pkg_file).read_bytes()
-    if protocol == Protocol.GCS:
-        _store_package_in_gcs(pkg_uri, data)
-    elif protocol == Protocol.S3:
-        raise RuntimeError("push_package should not be called with s3 path.")
-    else:
-        raise NotImplementedError(f"Protocol {protocol} is not supported")
+    upload_package_to_gcs(pkg_uri, package_file.read_bytes())
 
     # Remove the local file to avoid accumulating temporary zip files.
-    pkg_file.unlink()
+    package_file.unlink()
 
     return True
 

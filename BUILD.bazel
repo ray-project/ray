@@ -1810,23 +1810,6 @@ cc_test(
     ],
 )
 
-cc_test(
-    name = "gcs_object_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_object_manager_test.cc",
-    ],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":gcs_client_lib",
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
 cc_library(
     name = "object_manager",
     srcs = glob([
@@ -1888,6 +1871,13 @@ cc_library(
         "src/ray/util/*.h",
     ]),
     copts = COPTS,
+    linkopts = select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-lpthread",
+        ],
+    }),
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
