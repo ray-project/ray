@@ -424,7 +424,7 @@ def ray_start_chaos_cluster(request):
 
     # Use the shutdown RPC instead of signals because we can't
     # raise a signal in a non-main thread.
-    def kill_raylet(ip, port, graceful=True):
+    def kill_raylet(ip, port, graceful=False):
         raylet_address = f"{ip}:{port}"
         channel = grpc.insecure_channel(raylet_address)
         stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
@@ -461,6 +461,8 @@ def ray_start_chaos_cluster(request):
             print(len(ray.nodes()))
             if time.time() - start > timeout:
                 break
+        assert len(killed_port) > 0, (
+            "None of nodes are killed by the conftest. It is a bug.")
 
     chaos_thread = threading.Thread(target=run_chaos_cluster)
     yield chaos_thread

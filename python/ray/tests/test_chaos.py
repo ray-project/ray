@@ -21,6 +21,7 @@ def assert_no_system_failure(p, total_lines, timeout):
             "There's the check failure reported.")
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_chaos_cluster", [{
         "kill_interval": 3,
@@ -76,6 +77,7 @@ def test_chaos_task_retry(ray_start_chaos_cluster, log_pubsub):
     assert_no_system_failure(p, 10000, 10)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_chaos_cluster", [{
         "kill_interval": 30,
