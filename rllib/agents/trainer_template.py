@@ -289,11 +289,15 @@ def build_trainer(
                     and `overrides`.
 
             Examples:
-                >>> MyClass = SomeOtherClass.with_updates({"name": "Mine"})
-                >>> issubclass(MyClass, SomeOtherClass)
-                ... False
-                >>> issubclass(MyClass, Trainer)
-                ... True
+                >>> from ray.rllib.agents.ppo import PPOTrainer
+                >>> MyPPOClass = PPOTrainer.with_updates({"name": "MyPPO"})
+                >>> issubclass(MyPPOClass, PPOTrainer)
+                False
+                >>> issubclass(MyPPOClass, Trainer)
+                True
+                >>> trainer = MyPPOClass()
+                >>> print(trainer)
+                MyPPO
             """
             return build_trainer(**dict(original_kwargs, **overrides))
 

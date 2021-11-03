@@ -18,12 +18,11 @@ is converted internally into the ``BaseEnv`` API, whose main methods are ``poll(
 .. image:: ../../images/rllib/env_classes_overview.svg
 
 
+The ``BaseEnv`` API allows RLlib to support:
 
-This API allows ``BaseEnv`` to support:
-
-1) Vectorization of sub-environments (i.e. individual gym.Env instances, stacked to form a vector of envs) in order to batch action-computing model forward passes.
-2) External simulators requiring async execution (e.g. Envs that run on separate machines and independently request actions from a policy server).
-3) Stepping through the vectorized sub-environments in parallel by converting all sub-environments into @ray.remote actors.
+1) Vectorization of sub-environments (i.e. individual ``gym.Env`` instances, stacked to form a vector of envs) in order to batch the action computing model forward passes.
+2) External simulators requiring async execution (e.g. envs that run on separate machines and independently request actions from a policy server).
+3) Stepping through the individual sub-environments in parallel via pre-converting them into separate @ray.remote actors.
 4) Multi-agent RL via dicts mapping agent IDs to observations/rewards/etc..
 
 For example, if you provide a custom ``gym.Env`` class to RLlib, auto-conversion to ``BaseEnv`` goes as follows:

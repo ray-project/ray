@@ -139,9 +139,9 @@ def make_multi_agent(
 ) -> Type["MultiAgentEnv"]:
     """Convenience wrapper for any single-agent env to be converted into MA.
 
-    Allows you to convert a simple (single-agent) ``gym.Env`` class
-    into a ``MultiAgentEnv`` class. This function simply stacks n instances
-    of the given ``gym.Env`` class into one unified MultiAgentEnv class and
+    Allows you to convert a simple (single-agent) `gym.Env` class
+    into a `MultiAgentEnv` class. This function simply stacks n instances
+    of the given ```gym.Env``` class into one unified ``MultiAgentEnv`` class and
     returns this class, thus pretending the agents act together in the same
     environment, whereas - under the hood - they live separately from each
     other in n parallel single-agent envs.
