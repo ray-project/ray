@@ -182,10 +182,10 @@ class ActorReplicaWrapper:
             resources=deployment_info.replica_config.resources,
             accelerator_type=deployment_info.replica_config.accelerator_type,
             runtime_env=deployment_info.replica_config.runtime_env).remote(
-                self.backend_tag, self.replica_tag,
+                self.deployment_name, self.replica_tag,
                 deployment_info.replica_config.init_args,
                 deployment_info.replica_config.init_kwargs,
-                deployment_info.backend_config.to_proto_bytes(), version,
+                deployment_info.deployment_config.to_proto_bytes(), version,
                 self._controller_name, self._detached)
 
         self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
