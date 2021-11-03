@@ -580,7 +580,8 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
     # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-example,-flaky,-py37,-soft_imports,-gpu_only python/ray/tune/...
+    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
+    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-example,-flaky,-py37,-soft_imports,-gpu_only python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=example,-tf,-pytorch,-py37,-flaky,-soft_imports,-gpu_only python/ray/tune/...
 
 - label: ":octopus: Tune tests and examples {2/2}"
@@ -590,6 +591,7 @@
     - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
     # Because Python version changed, we need to re-install Ray here
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-flaky,-soft_imports,-gpu_only python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-flaky,-soft_imports,-gpu_only python/ray/tune/...
 
 - label: ":octopus: Tune soft imports test"
