@@ -8,6 +8,7 @@ python:
   pip_packages:
     - gym[atari]
     - pytest
+    - tensorflow
   conda_packages: []
 
 post_build_cmds:
