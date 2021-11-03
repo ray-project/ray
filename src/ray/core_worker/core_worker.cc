@@ -605,7 +605,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           if (spec.IsActorTask()) {
             auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
             actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
-            direct_actor_submitter_->AppendTask(spec);
+            direct_actor_submitter_->SubmitTask(spec);
           } else {
             RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
           }
@@ -654,17 +654,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   actor_creator_ = std::make_shared<DefaultActorCreator>(gcs_client_);
 
-  if (job_config_->max_pending_calls() > 0) {
-    RAY_LOG(INFO) << "Core worker actor task back pressure enabled. max_pending_calls "
-                  << job_config_->max_pending_calls();
-  } else {
-    RAY_LOG(INFO) << "Core worker actor task back pressure disabled.";
-  }
-
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(*core_worker_client_pool_, *memory_store_,
                                              *task_manager_, *actor_creator_,
-                                             on_excess_queueing));
+                                             on_excess_queueing, io_service_));
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     absl::optional<rpc::Address> addr;
@@ -786,7 +779,6 @@ void CoreWorker::Shutdown() {
   if (options_.on_worker_shutdown) {
     options_.on_worker_shutdown(GetWorkerID());
   }
-  direct_actor_submitter_->Shutdown();
 }
 
 void CoreWorker::ConnectToRaylet() {
@@ -922,7 +914,6 @@ void CoreWorker::OnNodeRemoved(const NodeID &node_id) {
 }
 
 void CoreWorker::WaitForShutdown() {
-  direct_actor_submitter_->WaitForShutdown();
   if (io_thread_.joinable()) {
     io_thread_.join();
   }
@@ -1021,7 +1012,7 @@ void CoreWorker::InternalHeartbeat() {
 
   for (auto &spec : tasks_to_resubmit) {
     if (spec.IsActorTask()) {
-      direct_actor_submitter_->AppendTask(spec);
+      direct_actor_submitter_->SubmitTask(spec);
     } else {
       RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
     }
@@ -1789,15 +1780,11 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       actor_creation_options.serialized_runtime_env,
                       actor_creation_options.runtime_env_uris);
 
-  int max_pending_calls = -1;
-  if (actor_creation_options.max_pending_calls == -1) {
-    max_pending_calls = job_config_->max_pending_calls();
-  }
   auto actor_handle = std::make_unique<ActorHandle>(
       actor_id, GetCallerId(), rpc_address_, job_id,
       /*actor_cursor=*/ObjectID::FromIndex(actor_creation_task_id, 1),
       function.GetLanguage(), function.GetFunctionDescriptor(), extension_data,
-      actor_creation_options.max_task_retries, max_pending_calls);
+      actor_creation_options.max_task_retries, actor_creation_options.max_pending_calls);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   builder.SetActorCreationTaskSpec(
@@ -2001,7 +1988,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   } else {
     returned_refs = task_manager_->AddPendingTask(
         rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
-    direct_actor_submitter_->AppendTask(task_spec);
+    direct_actor_submitter_->SubmitTask(task_spec);
   }
   return {returned_refs};
 }

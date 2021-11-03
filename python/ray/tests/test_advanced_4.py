@@ -98,9 +98,9 @@ def test_jemalloc_env_var_propagate():
 
 
 def test_back_pressure():
-    ray.init(job_config=ray.job_config.JobConfig(max_pending_calls=10))
+    ray.init()
 
-    signal_actor = Semaphore.remote(value=0)
+    signal_actor = Semaphore.options(max_pending_calls=10).remote(value=0)
 
     try:
         for i in range(10):
@@ -108,14 +108,8 @@ def test_back_pressure():
     except ray.exceptions.BackPressureError:
         assert False
 
-    back_pressured = False
-    try:
+    with pytest.raises(ray.exceptions.BackPressureError):
         signal_actor.acquire.remote()
-    except ray.exceptions.BackPressureError:
-        back_pressured = True
-        print("BackPressureError")
-    finally:
-        assert back_pressured
 
     @ray.remote
     def release(signal_actor):

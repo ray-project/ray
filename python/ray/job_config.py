@@ -17,9 +17,6 @@ class JobConfig:
         runtime_env (dict): A runtime environment dictionary (see
             ``runtime_env.py`` for detailed documentation).
         client_job (bool): A boolean represent the source of the job.
-        max_pending_calls (int): The max actor calls pending in the sender's
-            client queue when back pressure occurs. -1 means the pending count
-            is unlimited and back pressure disabled.
     """
 
     def __init__(self,
@@ -29,8 +26,7 @@ class JobConfig:
                  runtime_env=None,
                  client_job=False,
                  metadata=None,
-                 ray_namespace=None,
-                 max_pending_calls=-1):
+                 ray_namespace=None):
         self.num_java_workers_per_process = num_java_workers_per_process
         self.jvm_options = jvm_options or []
         self.code_search_path = code_search_path or []
@@ -43,7 +39,6 @@ class JobConfig:
         self.metadata = metadata or {}
         self.ray_namespace = ray_namespace
         self.set_runtime_env(runtime_env)
-        self.max_pending_calls = max_pending_calls
 
     def set_metadata(self, key: str, value: str) -> None:
         self.metadata[key] = value
@@ -95,7 +90,6 @@ class JobConfig:
             pb.runtime_env.uris[:] = parsed_env.get_uris()
             pb.runtime_env.serialized_runtime_env = parsed_env.serialize()
             pb.runtime_env.runtime_env_eager_install = eager_install
-            pb.max_pending_calls = self.max_pending_calls
 
             self._cached_pb = pb
 

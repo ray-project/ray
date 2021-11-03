@@ -340,6 +340,7 @@ message ActorCreationTaskSpec {
   bytes serialized_actor_handle = 12;
   // The concurrency groups of this actor.
   repeated ConcurrencyGroup concurrency_groups = 13;
+  // The max number of pending actor calls.
   int32 max_pending_calls = 14;
 }
 

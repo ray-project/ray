@@ -15,9 +15,7 @@ public class BackPressureTest extends BaseTest {
   private static final Logger LOGGER = LoggerFactory.getLogger(BackPressureTest.class);
 
   @BeforeClass
-  public void setupJobConfig() {
-    System.setProperty("ray.job.max-pending-calls", "10");
-  }
+  public void setupJobConfig() {}
 
   private static final ObjectId objectId = ObjectId.fromRandom();
 
@@ -30,7 +28,7 @@ public class BackPressureTest extends BaseTest {
     /// set max concurrency to 11, 10 of them for executing waitSignal, and 1
     /// of them for executing sendSignal.
     ActorHandle<SignalActor> signalActor =
-        Ray.actor(SignalActor::new).setMaxConcurrency(11).remote();
+        Ray.actor(SignalActor::new).setMaxConcurrency(11).setMaxPendingCalls(10).remote();
     /// Ping the actor to insure the actor is alive already.
     signalActor.task(SignalActor::ping).remote().get();
 

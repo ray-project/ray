@@ -71,16 +71,15 @@ class CoreWorkerDirectActorTaskSubmitter
   CoreWorkerDirectActorTaskSubmitter(
       rpc::CoreWorkerClientPool &core_worker_client_pool, CoreWorkerMemoryStore &store,
       TaskFinisherInterface &task_finisher, ActorCreatorInterface &actor_creator,
-      std::function<void(const ActorID &, int64_t)> warn_excess_queueing)
+      std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
+      instrumented_io_context &io_service)
       : core_worker_client_pool_(core_worker_client_pool),
         resolver_(store, task_finisher, actor_creator),
         task_finisher_(task_finisher),
         warn_excess_queueing_(warn_excess_queueing),
-        actor_task_io_work_(actor_task_io_service_) {
+        io_service_(io_service) {
     next_queueing_warn_threshold_ =
         ::RayConfig::instance().actor_excess_queueing_warn_threshold();
-    actor_task_io_thread_ =
-        std::thread(&CoreWorkerDirectActorTaskSubmitter::RunActorTaskIOService, this);
   }
 
   /// Add an actor queue. This should be called whenever a reference to an
@@ -91,6 +90,13 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] actor_id The actor for whom to add a queue.
   /// \param[in] max_pending_calls The max pending calls for the actor to be added.
   void AddActorQueueIfNotExists(const ActorID &actor_id, int32_t max_pending_calls);
+
+  /// Submit a task to an actor for execution.
+  ///
+  /// \param[in] task_spec The task spec to submit.
+  ///
+  /// \return Status::Invalid if the task is not yet supported.
+  Status SubmitTask(TaskSpecification task_spec);
 
   /// Tell this actor to exit immediately.
   ///
@@ -132,29 +138,16 @@ class CoreWorkerDirectActorTaskSubmitter
   /// Check timeout tasks that are waiting for Death info.
   void CheckTimeoutTasks();
 
-  /// Block the actor_task_io_thread_ until the submitter is shutdown.
-  void WaitForShutdown();
-
-  void Shutdown();
-
-  /// Push a task to corresponding client queue by the actor id.
-  ///
-  /// \param[in] task The task spec to push.
-  /// \param[in] callback  The callback function to be called after the task spec be sent
-  /// out. Only used in test code.
-  /// \return void.
-  void AppendTask(const TaskSpecification &task_spec,
-                  const std::function<void(const ActorID &)> &callback = nullptr);
-
   /// If the the number of tasks in requests is greater than or equal to
   /// max_pending_calls.
   ///
   /// \param[in] actor_id Actor id.
   /// \return Whether the corresponding client queue is full or not.
-  bool FullOfPendingTasks(const ActorID &actor_id);
+  bool FullOfPendingTasks(const ActorID &actor_id) const;
 
  private:
   struct ClientQueue {
+    ClientQueue(int32_t max_pending_calls) : max_pending_calls(max_pending_calls) {}
     /// The current state of the actor. If this is ALIVE, then we should have
     /// an RPC client to the actor. If this is DEAD, then all tasks in the
     /// queue will be marked failed and all other ClientQueue state is ignored.
@@ -248,7 +241,7 @@ class CoreWorkerDirectActorTaskSubmitter
     /// The max number limit of task capacity used for back pressure.
     /// If the number of tasks in requests >= max_pending_calls, it can't continue to
     /// push task to ClientQueue.
-    int32_t max_pending_calls;
+    const int32_t max_pending_calls;
 
     /// The current task number in this client queue.
     int32_t cur_pending_calls = 0;
@@ -288,16 +281,6 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
 
-  /// Submit a task to an actor for execution.
-  ///
-  /// \param[in] task_spec The task spec to submit.
-  ///
-  /// \return Status::Invalid if the task is not yet supported.
-  Status SubmitTask(TaskSpecification task_spec);
-
-  /// Run the actor_task_io_service_ event loop.
-  void RunActorTaskIOService();
-
   /// Pool for producing new core worker clients.
   rpc::CoreWorkerClientPool &core_worker_client_pool_;
 
@@ -320,13 +303,7 @@ class CoreWorkerDirectActorTaskSubmitter
   int64_t next_queueing_warn_threshold_;
 
   /// The event loop where the actor task events are handled.
-  instrumented_io_context actor_task_io_service_;
-
-  /// Keeps the actor_task_io_service_ alive.
-  boost::asio::io_service::work actor_task_io_work_;
-
-  /// The thread that runs actor_task_io_service_;
-  std::thread actor_task_io_thread_;
+  instrumented_io_context &io_service_;
 
   friend class CoreWorkerTest;
 };

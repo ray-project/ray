@@ -291,8 +291,6 @@ message JobConfig {
   string ray_namespace = 5;
   // An opaque kv store for job related metadata.
   map<string, string> metadata = 6;
-  // The max number of pending actor calls.
-  int32 max_pending_calls = 7;
 }
 
 message JobTableData {

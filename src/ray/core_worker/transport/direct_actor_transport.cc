@@ -28,10 +28,9 @@ void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
   absl::MutexLock lock(&mu_);
   // No need to check whether the insert was successful, since it is possible
   // for this worker to have multiple references to the same actor.
-  client_queues_.emplace(actor_id, ClientQueue());
   RAY_LOG(INFO) << "Set max pending calls to " << max_pending_calls << " for actor "
                 << actor_id;
-  client_queues_[actor_id].max_pending_calls = max_pending_calls;
+  client_queues_.emplace(actor_id, ClientQueue(max_pending_calls));
 }
 
 void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
@@ -63,52 +62,75 @@ void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
 }
 
 Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
-  absl::ReleasableMutexLock lock(&mu_);
-  auto task_id = task_spec.TaskId();
+  absl::MutexLock lock(&mu_);
   auto actor_id = task_spec.ActorId();
-  RAY_LOG(DEBUG) << "Submitting task " << task_id;
+  RAY_LOG(DEBUG) << "Submitting task: " << task_spec.DebugString();
   RAY_CHECK(task_spec.IsActorTask());
+  uint64_t send_pos = 0;
+  auto it = client_queues_.find(actor_id);
+  RAY_CHECK(it != client_queues_.end());
 
-  auto queue = client_queues_.find(actor_id);
-  RAY_CHECK(queue != client_queues_.end());
+  // We must fix the send order prior to resolving dependencies, which may
+  // complete out of order. This ensures that we will not deadlock due to
+  // backpressure. The receiving actor will execute the tasks according to
+  // this sequence number.
+  send_pos = task_spec.ActorCounter();
+  auto inserted = it->second.requests.emplace(send_pos, std::make_pair(task_spec, false));
+  RAY_CHECK(inserted.second);
+  io_service_.post(
+      [this, task_spec]() mutable {
+        absl::ReleasableMutexLock lock(&mu_);
+        auto task_id = task_spec.TaskId();
+        auto actor_id = task_spec.ActorId();
+        RAY_LOG(DEBUG) << "Submitting task " << task_id;
+        RAY_CHECK(task_spec.IsActorTask());
 
-  if (queue->second.state != rpc::ActorTableData::DEAD) {
-    // We must release the lock before resolving the task dependencies since
-    // the callback may get called in the same call stack.
-    lock.Release();
-    uint64_t send_pos = task_spec.ActorCounter();
-    resolver_.ResolveDependencies(task_spec, [this, send_pos, actor_id](Status status) {
-      absl::MutexLock lock(&mu_);
-      auto queue = client_queues_.find(actor_id);
-      RAY_CHECK(queue != client_queues_.end());
-      auto it = queue->second.requests.find(send_pos);
-      // Only dispatch tasks if the submitted task is still queued. The task
-      // may have been dequeued if the actor has since failed.
-      if (it != queue->second.requests.end()) {
-        if (status.ok()) {
-          it->second.second = true;
-          SendPendingTasks(actor_id);
+        auto queue = client_queues_.find(actor_id);
+        RAY_CHECK(queue != client_queues_.end());
+
+        if (queue->second.state != rpc::ActorTableData::DEAD) {
+          // We must release the lock before resolving the task dependencies since
+          // the callback may get called in the same call stack.
+          lock.Release();
+          uint64_t send_pos = task_spec.ActorCounter();
+          resolver_.ResolveDependencies(
+              task_spec, [this, send_pos, actor_id](Status status) {
+                absl::MutexLock lock(&mu_);
+                auto queue = client_queues_.find(actor_id);
+                RAY_CHECK(queue != client_queues_.end());
+                auto it = queue->second.requests.find(send_pos);
+                // Only dispatch tasks if the submitted task is still queued. The task
+                // may have been dequeued if the actor has since failed.
+                if (it != queue->second.requests.end()) {
+                  if (status.ok()) {
+                    it->second.second = true;
+                    SendPendingTasks(actor_id);
+                  } else {
+                    auto task_id = it->second.first.TaskId();
+                    queue->second.requests.erase(it);
+                    task_finisher_.PendingTaskFailed(
+                        task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
+                  }
+                }
+              });
         } else {
-          auto task_id = it->second.first.TaskId();
-          queue->second.requests.erase(it);
-          task_finisher_.PendingTaskFailed(
-              task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
+          // Do not hold the lock while calling into task_finisher_.
+          task_finisher_.MarkTaskCanceled(task_id);
+          auto status = Status::IOError("cancelling task of dead actor");
+          // No need to increment the number of completed tasks since the actor is
+          // dead.
+          RAY_UNUSED(!task_finisher_.PendingTaskFailed(
+              task_id, rpc::ErrorType::ACTOR_DIED, &status,
+              queue->second.creation_task_exception));
         }
-      }
-    });
-  } else {
-    // Do not hold the lock while calling into task_finisher_.
-    task_finisher_.MarkTaskCanceled(task_id);
-    auto status = Status::IOError("cancelling task of dead actor");
-    // No need to increment the number of completed tasks since the actor is
-    // dead.
-    RAY_UNUSED(!task_finisher_.PendingTaskFailed(task_id, rpc::ErrorType::ACTOR_DIED,
-                                                 &status,
-                                                 queue->second.creation_task_exception));
-  }
 
-  // If the task submission subsequently fails, then the client will receive
-  // the error in a callback.
+        // If the task submission subsequently fails, then the client will receive
+        // the error in a callback.
+        return Status::OK();
+      },
+      "CoreWorker.SubmitActorTask");
+  it->second.cur_pending_calls++;
+
   return Status::OK();
 }
 
@@ -415,49 +437,8 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != client_queues_.end() && iter->second.rpc_client);
 }
 
-void CoreWorkerDirectActorTaskSubmitter::AppendTask(
-    const TaskSpecification &task_spec,
-    const std::function<void(const ActorID &)> &callback) {
-  auto actor_id = task_spec.ActorId();
-  RAY_LOG(DEBUG) << "AppendTask task: " << task_spec.DebugString();
-  RAY_CHECK(task_spec.IsActorTask());
-  uint64_t send_pos = 0;
-  absl::MutexLock lock(&mu_);
-  auto it = client_queues_.find(actor_id);
-  RAY_CHECK(it != client_queues_.end());
-
-  // We must fix the send order prior to resolving dependencies, which may
-  // complete out of order. This ensures that we will not deadlock due to
-  // backpressure. The receiving actor will execute the tasks according to
-  // this sequence number.
-  send_pos = task_spec.ActorCounter();
-  auto inserted = it->second.requests.emplace(send_pos, std::make_pair(task_spec, false));
-  RAY_CHECK(inserted.second);
-  actor_task_io_service_.post(
-      [this, task_spec, callback, actor_id]() {
-        RAY_UNUSED(SubmitTask(task_spec));
-        if (callback) {
-          callback(actor_id);
-        }
-      },
-      "CoreWorker.SubmitActorTask");
-  it->second.cur_pending_calls++;
-}
-
-void CoreWorkerDirectActorTaskSubmitter::WaitForShutdown() {
-  if (actor_task_io_thread_.joinable()) {
-    actor_task_io_thread_.join();
-  }
-}
-
-void CoreWorkerDirectActorTaskSubmitter::Shutdown() { actor_task_io_service_.stop(); }
-
-void CoreWorkerDirectActorTaskSubmitter::RunActorTaskIOService() {
-  SetThreadName("actor_task");
-  actor_task_io_service_.run();
-}
-
-bool CoreWorkerDirectActorTaskSubmitter::FullOfPendingTasks(const ActorID &actor_id) {
+bool CoreWorkerDirectActorTaskSubmitter::FullOfPendingTasks(
+    const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());

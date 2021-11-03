@@ -72,8 +72,6 @@ public class RayConfig {
   public final List<String> jvmOptionsForJavaWorker;
   public final Map<String, String> workerEnv;
 
-  public final int maxPendingCalls;
-
   private void validate() {
     if (workerMode == WorkerType.WORKER) {
       Preconditions.checkArgument(
@@ -191,8 +189,6 @@ public class RayConfig {
     }
 
     headArgs = config.getStringList("ray.head-args");
-
-    maxPendingCalls = config.getInt("ray.job.max-pending-calls");
 
     // Validate config.
     validate();

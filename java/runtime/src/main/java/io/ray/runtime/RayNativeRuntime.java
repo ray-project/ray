@@ -108,8 +108,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
             JobConfig.newBuilder()
                 .setNumJavaWorkersPerProcess(rayConfig.numWorkersPerProcess)
                 .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
-                .addAllCodeSearchPath(rayConfig.codeSearchPath)
-                .setMaxPendingCalls(rayConfig.maxPendingCalls);
+                .addAllCodeSearchPath(rayConfig.codeSearchPath);
         RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
         if (!rayConfig.workerEnv.isEmpty()) {
           // TODO(SongGuyang): Suppport complete runtime env interface for users.
