@@ -295,6 +295,14 @@ py_test(
     deps = ["//:ray_lib"],
 )
 
+py_test(
+    name = "test_job_manager",
+    size = "small",
+    srcs = glob(["job_manager_tests/**/*.py"]),
+    tags = ["exclusive", "team:serve"],
+    deps = ["//:ray_lib"],
+)
+
 # TODO: use py_test(env = ...) in the build file with bazel 4.0
 py_test(
   name = "test_tracing",

@@ -385,14 +385,16 @@ class JobManager:
         Returns:
             job_status: Latest known job status
         """
-        job_supervisor_actor = self._get_actor_for_job(job_id)
-        if job_supervisor_actor is None:
-            # Job actor either exited or failed, we need to ensure never left
-            # job in non-terminal status in case actor failed without updating
-            # GCS with latest status.
-            last_status = self._status_client.get_status(job_id)
-            if last_status in {JobStatus.PENDING, JobStatus.RUNNING}:
-                self._status_client.put_status(job_id, JobStatus.FAILED)
+        cur_status = self._status_client.get_status(job_id)
+        if cur_status in {JobStatus.PENDING, JobStatus.RUNNING}:
+            job_supervisor_actor = self._get_actor_for_job(job_id)
+            if job_supervisor_actor is None:
+                # Job actor either exited or failed, we need to ensure never
+                # left job in non-terminal status in case actor failed without
+                # updating GCS with latest status.
+                last_status = self._status_client.get_status(job_id)
+                if last_status in {JobStatus.PENDING, JobStatus.RUNNING}:
+                    self._status_client.put_status(job_id, JobStatus.FAILED)
 
         return self._status_client.get_status(job_id)
 
