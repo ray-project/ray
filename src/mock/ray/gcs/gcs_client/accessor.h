@@ -45,10 +45,6 @@ class MockActorInfoAccessor : public ActorInfoAccessor {
               (const TaskSpecification &task_spec,
                const rpc::ClientCallback<rpc::CreateActorReply> &callback),
               (override));
-  MOCK_METHOD(Status, AsyncSubscribeAll,
-              ((const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe),
-               const StatusCallback &done),
-              (override));
   MOCK_METHOD(Status, AsyncSubscribe,
               (const ActorID &actor_id,
                (const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe),
@@ -121,45 +117,6 @@ class MockTaskInfoAccessor : public TaskInfoAccessor {
               (override));
   MOCK_METHOD(void, AsyncResubscribe, (bool is_pubsub_server_restarted), (override));
   MOCK_METHOD(bool, IsTaskLeaseUnsubscribed, (const TaskID &task_id), (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockObjectInfoAccessor : public ObjectInfoAccessor {
- public:
-  MOCK_METHOD(Status, AsyncGetLocations,
-              (const ObjectID &object_id,
-               const OptionalItemCallback<rpc::ObjectLocationInfo> &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncGetAll,
-              (const MultiItemCallback<rpc::ObjectLocationInfo> &callback), (override));
-  MOCK_METHOD(Status, AsyncAddLocation,
-              (const ObjectID &object_id, const NodeID &node_id, size_t object_size,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncAddSpilledUrl,
-              (const ObjectID &object_id, const std::string &spilled_url,
-               const NodeID &spilled_node_id, size_t object_size,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncRemoveLocation,
-              (const ObjectID &object_id, const NodeID &node_id,
-               const StatusCallback &callback),
-              (override));
-  MOCK_METHOD(Status, AsyncSubscribeToLocations,
-              (const ObjectID &object_id,
-               (const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>>
-                    &subscribe),
-               const StatusCallback &done),
-              (override));
-  MOCK_METHOD(Status, AsyncUnsubscribeToLocations, (const ObjectID &object_id),
-              (override));
-  MOCK_METHOD(void, AsyncResubscribe, (bool is_pubsub_server_restarted), (override));
-  MOCK_METHOD(bool, IsObjectUnsubscribed, (const ObjectID &object_id), (override));
 };
 
 }  // namespace gcs
