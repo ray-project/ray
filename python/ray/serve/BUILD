@@ -231,6 +231,15 @@ py_test(
 )
 
 py_test(
+    name = "test_warnings",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
     name = "test_fastapi",
     size = "medium",
     srcs = serve_tests_srcs,

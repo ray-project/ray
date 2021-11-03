@@ -121,40 +121,6 @@ std::vector<std::string> GlobalStateAccessor::GetAllProfileInfo() {
   return profile_table_data;
 }
 
-std::vector<std::string> GlobalStateAccessor::GetAllObjectInfo() {
-  std::vector<std::string> object_table_data;
-  std::promise<bool> promise;
-  {
-    absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK_OK(gcs_client_->Objects().AsyncGetAll(
-        TransformForMultiItemCallback<rpc::ObjectLocationInfo>(object_table_data,
-                                                               promise)));
-  }
-  promise.get_future().get();
-  return object_table_data;
-}
-
-std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
-    const ObjectID &object_id) {
-  std::unique_ptr<std::string> object_info;
-  std::promise<bool> promise;
-  auto on_done = [&object_info, &promise](
-                     const Status &status,
-                     const boost::optional<rpc::ObjectLocationInfo> &result) {
-    RAY_CHECK_OK(status);
-    if (result) {
-      object_info = std::make_unique<std::string>(result->SerializeAsString());
-    }
-    promise.set_value(true);
-  };
-  {
-    absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK_OK(gcs_client_->Objects().AsyncGetLocations(object_id, on_done));
-  }
-  promise.get_future().get();
-  return object_info;
-}
-
 std::string GlobalStateAccessor::GetNodeResourceInfo(const NodeID &node_id) {
   rpc::ResourceMap node_resource_map;
   std::promise<void> promise;
