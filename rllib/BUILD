@@ -1268,6 +1268,15 @@ py_test(
     srcs = ["utils/tests/test_framework_agnostic_components.py"]
 )
 
+# Spaces/Space utils.
+py_test(
+    name = "test_space_utils",
+    tags = ["team:ml", "utils"],
+    size = "large",
+    srcs = ["utils/spaces/tests/test_space_utils.py"]
+)
+
+
 # TaskPool
 py_test(
     name = "test_taskpool",

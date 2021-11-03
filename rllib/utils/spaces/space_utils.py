@@ -3,7 +3,7 @@ from gym.spaces import Tuple, Dict
 import numpy as np
 from ray.rllib.utils.annotations import DeveloperAPI
 import tree  # pip install dm_tree
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 
 def flatten_space(space: gym.Space) -> List[gym.Space]:
@@ -290,17 +290,17 @@ def normalize_action(action, action_space_struct):
 
 
 @DeveloperAPI
-def convert_element_to_space_type(element, sampled_element):
+def convert_element_to_space_type(element: Any, sampled_element: Any) -> Any:
     """Convert all the components of the element to match the space dtypes.
 
     Args:
-        element (Any): The element to be converted.
-        sampled_element (Any): An element sampled from a space to be matched
+        element: The element to be converted.
+        sampled_element: An element sampled from a space to be matched
             to.
 
     Returns:
-        Any: The input element, but with all its components converted to match
-            the space dtypes.
+        The input element, but with all its components converted to match
+        the space dtypes.
     """
 
     def map_(elem, s):
