@@ -247,11 +247,11 @@ class Monitor:
         mirror_node_types = {}
         cluster_full = False
         for resource_message in resources_batch_data.batch:
-            node_id = resource_message.node_id.hex()
+            node_id = resource_message.node_id
             # Generate node type config based on GCS reported node list.
             if self.readonly_config:
                 # Keep prefix in sync with ReadonlyNodeProvider.
-                node_type = format_readonly_node_type(node_id)
+                node_type = format_readonly_node_type(node_id.hex())
                 resources = {}
                 for k, v in resource_message.resources_total.items():
                     resources[k] = v
@@ -283,7 +283,7 @@ class Monitor:
                 if peloton_id is not None:
                     ip = str(int(peloton_id))
                 else:
-                    ip = node_id
+                    ip = node_id.hex()
             else:
                 ip = resource_message.node_manager_address
             self.load_metrics.update(ip, node_id, total_resources,

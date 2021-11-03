@@ -87,7 +87,7 @@ class LoadMetrics:
 
     def update(self,
                ip: str,
-               raylet_id: str,
+               raylet_id: bytes,
                static_resources: Dict[str, Dict],
                dynamic_resources: Dict[str, Dict],
                resource_load: Dict[str, Dict],
