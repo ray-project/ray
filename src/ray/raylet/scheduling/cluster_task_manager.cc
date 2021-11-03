@@ -810,6 +810,11 @@ void ClusterTaskManager::FillResourceUsage(
     by_shape_entry->set_num_infeasible_requests_queued(num_infeasible + count);
     by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
   }
+  
+  if (skipped_requests) {
+    RAY_LOG(INFO) << "More than " << max_resource_shapes_per_load_report_ << 
+      " scheduling classes. Some resource loads may not be reported to the autoscaler.";
+  }
 
   if (RayConfig::instance().enable_light_weight_resource_report()) {
     // Check whether resources have been changed.
