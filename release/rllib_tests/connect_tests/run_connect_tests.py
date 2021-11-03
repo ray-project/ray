@@ -23,17 +23,10 @@ if __name__ == "__main__":
     exp_analysis = run()
     end_time = time.time()
 
-    def _get_trial_name(trial):
-        return re.sub(".+/([^/]+)$", "\\1", trial.local_dir)
-
     result = {
         "time_taken": end_time - start_time,
-        "trial_states": {_get_trial_name(t): t.status
+        "trial_states": {t.config["framework"]: t.status
                          for t in exp_analysis.trials},
-        # This test is to make sure Tune and RLlib run fine
-        # using Anyscale connect. So we do NOT check the actual
-        # learning results.
-        "passed": True,
     }
 
     test_output_json = os.environ.get("TEST_OUTPUT_JSON",
