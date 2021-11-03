@@ -801,6 +801,13 @@ def create_or_find_app_config(
 
     return app_config_id, app_config_name
 
+def run_bash_script(local_dir: str, bash_script: str):
+    previous_dir = os.getcwd()
+    os.chdir(local_dir)
+
+    subprocess.run(bash_script, shell=True)
+
+    os.chdir(previous_dir)
 
 def install_app_config_packages(app_config: Dict[Any, Any]):
     os.environ.update(app_config.get("env_vars", {}))
@@ -1933,6 +1940,12 @@ def run_test(test_config_file: str,
             logger.error(
                 "Saving artifacts are not yet supported when running with "
                 "Anyscale connect.")
+
+
+    # Perform necessary driver side setup.
+    driver_setup_script = test_config.get("driver_setup", None)
+    if driver_setup_script:
+        run_bash_script(local_dir, driver_setup_script)
 
     result = run_test_config(
         local_dir,
