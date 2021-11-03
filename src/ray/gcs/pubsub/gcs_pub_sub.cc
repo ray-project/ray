@@ -312,6 +312,7 @@ Status GcsSubscriber::SubscribeAllJobs(
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   if (subscriber_ != nullptr) {
+    // GCS subscriber.
     auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
       RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_JOB_CHANNEL);
       const JobID id = JobID::FromBinary(msg.key_id());
@@ -320,7 +321,7 @@ Status GcsSubscriber::SubscribeAllJobs(
     auto subscription_failure_callback = [](const std::string &, const Status &status) {
       RAY_LOG(WARNING) << "Subscription to Job channel failed: " << status.ToString();
     };
-    if (subscriber_->SubscribeAll(
+    if (!subscriber_->SubscribeChannel(
             std::make_unique<rpc::SubMessage>(), rpc::ChannelType::GCS_JOB_CHANNEL,
             gcs_address_,
             [done](Status status) {
@@ -330,12 +331,14 @@ Status GcsSubscriber::SubscribeAllJobs(
             },
             std::move(subscribe_item_callback),
             std::move(subscription_failure_callback))) {
-      return Status::OK();
+      return Status::ObjectExists(
+          "Job channel already subscribed. Please unsubscribe first if it needs to be "
+          "resubscribed.");
     }
-    return Status::ObjectExists(
-        "Job channel already subscribed. Please unsubscribe first if it needs to be "
-        "resubscribed.");
+    return Status::OK();
   }
+
+  // Redis subscriber.
   auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
     rpc::JobTableData job_data;
     job_data.ParseFromString(data);
@@ -349,6 +352,7 @@ Status GcsSubscriber::SubscribeActor(
     const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   if (subscriber_ != nullptr) {
+    // GCS subscriber.
     auto subscription_callback = [id, subscribe](const rpc::PubMessage &msg) {
       RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_ACTOR_CHANNEL);
       RAY_CHECK(msg.key_id() == id.Binary());
@@ -360,7 +364,7 @@ Status GcsSubscriber::SubscribeActor(
       RAY_LOG(WARNING) << "Subscription to Actor " << id.Hex()
                        << " failed: " << status.ToString();
     };
-    if (subscriber_->Subscribe(
+    if (!subscriber_->Subscribe(
             std::make_unique<rpc::SubMessage>(), rpc::ChannelType::GCS_ACTOR_CHANNEL,
             gcs_address_, id.Binary(),
             [done](Status status) {
@@ -369,12 +373,14 @@ Status GcsSubscriber::SubscribeActor(
               }
             },
             std::move(subscription_callback), std::move(subscription_failure_callback))) {
-      return Status::OK();
+      return Status::ObjectExists(
+          "Actor already subscribed. Please unsubscribe first if it needs to be "
+          "resubscribed.");
     }
-    return Status::ObjectExists(
-        "Actor already subscribed. Please unsubscribe first if it needs to be "
-        "resubscribed.");
+    return Status::OK();
   }
+
+  // Redis subscriber.
   auto on_subscribe = [subscribe](const std::string &id, const std::string &data) {
     rpc::ActorTableData actor_data;
     actor_data.ParseFromString(data);
@@ -404,6 +410,7 @@ Status GcsSubscriber::SubscribeAllNodeInfo(
     const ItemCallback<rpc::GcsNodeInfo> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   if (subscriber_ != nullptr) {
+    // GCS subscriber.
     auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
       RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
       subscribe(msg.node_info_message());
@@ -412,7 +419,7 @@ Status GcsSubscriber::SubscribeAllNodeInfo(
       RAY_LOG(WARNING) << "Subscription to NodeInfo channel failed: "
                        << status.ToString();
     };
-    if (subscriber_->SubscribeAll(
+    if (!subscriber_->SubscribeChannel(
             std::make_unique<rpc::SubMessage>(), rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
             gcs_address_,
             [done](Status status) {
@@ -422,12 +429,14 @@ Status GcsSubscriber::SubscribeAllNodeInfo(
             },
             std::move(subscribe_item_callback),
             std::move(subscription_failure_callback))) {
-      return Status::OK();
+      return Status::ObjectExists(
+          "NodeInfo channel already subscribed. Please unsubscribe first if it needs to "
+          "be resubscribed.");
     }
-    return Status::ObjectExists(
-        "NodeInfo channel already subscribed. Please unsubscribe first if it needs to be "
-        "resubscribed.");
+    return Status::OK();
   }
+
+  // Redis subscriber.
   auto on_subscribe = [subscribe](const std::string &, const std::string &data) {
     rpc::GcsNodeInfo node_info;
     node_info.ParseFromString(data);
@@ -440,6 +449,7 @@ Status GcsSubscriber::SubscribeAllNodeResources(
     const ItemCallback<rpc::NodeResourceChange> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
   if (subscriber_ != nullptr) {
+    // GCS subscriber.
     auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
       RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL);
       subscribe(msg.node_resource_message());
@@ -448,7 +458,7 @@ Status GcsSubscriber::SubscribeAllNodeResources(
       RAY_LOG(WARNING) << "Subscription to NodeResource channel failed: "
                        << status.ToString();
     };
-    if (subscriber_->SubscribeAll(
+    if (!subscriber_->SubscribeChannel(
             std::make_unique<rpc::SubMessage>(),
             rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL, gcs_address_,
 
@@ -459,12 +469,14 @@ Status GcsSubscriber::SubscribeAllNodeResources(
             },
             std::move(subscribe_item_callback),
             std::move(subscription_failure_callback))) {
-      return Status::OK();
+      return Status::ObjectExists(
+          "NodeResource channel already subscribed. Please unsubscribe first if it needs "
+          "to be resubscribed.");
     }
-    return Status::ObjectExists(
-        "NodeResource channel already subscribed. Please unsubscribe first if it needs "
-        "to be resubscribed.");
+    return Status::OK();
   }
+
+  // Redis subscriber.
   auto on_subscribe = [subscribe](const std::string &, const std::string &data) {
     rpc::NodeResourceChange node_resource_change;
     node_resource_change.ParseFromString(data);

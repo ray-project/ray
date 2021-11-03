@@ -849,10 +849,10 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
     CleanupBorrowersOnRefRemoved({}, object_id, addr);
   };
 
-  object_info_subscriber_->Subscribe(
+  RAY_CHECK(object_info_subscriber_->Subscribe(
       std::move(sub_message), rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
       addr.ToProto(), object_id.Binary(), /*subscribe_done_callback=*/nullptr,
-      message_published_callback, publisher_failed_callback);
+      message_published_callback, publisher_failed_callback));
 }
 
 void ReferenceCounter::AddNestedObjectIds(const ObjectID &object_id,

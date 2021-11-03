@@ -304,9 +304,9 @@ TEST_F(SubscriberTest, TestCallbackNotInvokedForNonSubscribedObject) {
   ASSERT_EQ(object_subscribed_.count(object_id), 0);
 }
 
-TEST_F(SubscriberTest, TestSubscribeAllEntities) {
+TEST_F(SubscriberTest, TestSubscribeChannelEntities) {
   ///
-  /// Make sure SubscribeAll() can receive all entities from a channel.
+  /// Make sure SubscribeChannel() can receive all entities from a channel.
   ///
 
   auto subscription_callback = [this](const rpc::PubMessage &msg) {
@@ -315,9 +315,9 @@ TEST_F(SubscriberTest, TestSubscribeAllEntities) {
   auto failure_callback = EMPTY_FAILURE_CALLBACK;
 
   const auto owner_addr = GenerateOwnerAddress();
-  subscriber_->SubscribeAll(std::make_unique<rpc::SubMessage>(), channel, owner_addr,
-                            /*subscribe_done_callback=*/nullptr, subscription_callback,
-                            failure_callback);
+  subscriber_->SubscribeChannel(std::make_unique<rpc::SubMessage>(), channel, owner_addr,
+                                /*subscribe_done_callback=*/nullptr,
+                                subscription_callback, failure_callback);
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
   ASSERT_EQ(owner_client->GetNumberOfInFlightLongPollingRequests(), 1);
 
@@ -346,7 +346,7 @@ TEST_F(SubscriberTest, TestSubscribeAllEntities) {
   }
 
   // Unsubscribe from the channel.
-  ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr));
+  ASSERT_TRUE(subscriber_->UnsubscribeChannel(channel, owner_addr));
 }
 
 TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscription) {
@@ -390,11 +390,11 @@ TEST_F(SubscriberTest, TestIgnoreBatchAfterUnsubscribeFromAll) {
   auto failure_callback = EMPTY_FAILURE_CALLBACK;
 
   const auto owner_addr = GenerateOwnerAddress();
-  subscriber_->SubscribeAll(std::make_unique<rpc::SubMessage>(), channel, owner_addr,
-                            /*subscribe_done_callback=*/nullptr, subscription_callback,
-                            failure_callback);
+  subscriber_->SubscribeChannel(std::make_unique<rpc::SubMessage>(), channel, owner_addr,
+                                /*subscribe_done_callback=*/nullptr,
+                                subscription_callback, failure_callback);
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
-  ASSERT_TRUE(subscriber_->Unsubscribe(channel, owner_addr));
+  ASSERT_TRUE(subscriber_->UnsubscribeChannel(channel, owner_addr));
   ASSERT_TRUE(owner_client->ReplyCommandBatch());
 
   const auto object_id = ObjectID::FromRandom();

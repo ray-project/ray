@@ -205,9 +205,9 @@ class SubscriberInterface {
   /// There are two modes of subscriptions. Each channel can only be subscribed in one
   /// mode, i.e.
   /// - Calling Subscribe() to subscribe to one or more entities in a channel
-  /// - Calling SubscribeAll() once to subscribe to all entities in a channel
-  /// It is an error to call both Subscribe() and SubscribeAll() on the same channel type.
-  /// This restriction can be relaxed later, if there is a use case.
+  /// - Calling SubscribeChannel() once to subscribe to all entities in a channel
+  /// It is an error to call both Subscribe() and SubscribeChannel() on the same channel
+  /// type. This restriction can be relaxed later, if there is a use case.
 
   /// Subscribe to entity key_id in channel channel_type.
   /// NOTE(sang): All the callbacks could be executed in a different thread from a caller.
@@ -221,12 +221,12 @@ class SubscriberInterface {
   /// information is received by the subscriber.
   /// \param subscription_failure_callback A callback that is invoked whenever the
   /// connection to publisher is broken (e.g. the publisher fails).
-  virtual bool Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
-                         rpc::ChannelType channel_type,
-                         const rpc::Address &publisher_address, const std::string &key_id,
-                         SubscribeDoneCallback subscribe_done_callback,
-                         SubscriptionItemCallback subscription_callback,
-                         SubscriptionFailureCallback subscription_failure_callback) = 0;
+  [[nodiscard]] virtual bool Subscribe(
+      std::unique_ptr<rpc::SubMessage> sub_message, rpc::ChannelType channel_type,
+      const rpc::Address &publisher_address, const std::string &key_id,
+      SubscribeDoneCallback subscribe_done_callback,
+      SubscriptionItemCallback subscription_callback,
+      SubscriptionFailureCallback subscription_failure_callback) = 0;
 
   /// Subscribe to all entities in channel channel_type.
   ///
@@ -237,7 +237,7 @@ class SubscriberInterface {
   /// information is received by the subscriber.
   /// \param subscription_failure_callback A callback that is invoked whenever the
   /// connection to publisher is broken (e.g. the publisher fails).
-  virtual bool SubscribeAll(
+  [[nodiscard]] virtual bool SubscribeChannel(
       std::unique_ptr<rpc::SubMessage> sub_message, rpc::ChannelType channel_type,
       const rpc::Address &publisher_address,
       SubscribeDoneCallback subscribe_done_callback,
@@ -255,24 +255,24 @@ class SubscriberInterface {
                            const rpc::Address &publisher_address,
                            const std::string &key_id) = 0;
 
-  /// Unsubscribe from the channel_type. Must be paired with SubscribeAll().
+  /// Unsubscribe from the channel_type. Must be paired with SubscribeChannel().
   /// NOTE: Calling this method inside subscription_failure_callback is not allowed.
   ///
   /// \param channel_type The channel to unsubscribe from.
   /// \param publisher_address The publisher address that it will unsubscribe from.
   /// \return Returns whether the entity key_id has been subscribed before.
-  virtual bool Unsubscribe(const rpc::ChannelType channel_type,
-                           const rpc::Address &publisher_address) = 0;
+  virtual bool UnsubscribeChannel(const rpc::ChannelType channel_type,
+                                  const rpc::Address &publisher_address) = 0;
 
   /// Test only.
   /// Checks if the entity key_id is being subscribed to specifically.
-  /// Does not consider if SubscribeAll() has been called on the channel.
+  /// Does not consider if SubscribeChannel() has been called on the channel.
   ///
   /// \param publisher_address The publisher address to check.
   /// \param key_id The entity id to check.
-  virtual bool IsSubscribed(const rpc::ChannelType channel_type,
-                            const rpc::Address &publisher_address,
-                            const std::string &key_id) const = 0;
+  [[nodiscard]] virtual bool IsSubscribed(const rpc::ChannelType channel_type,
+                                          const rpc::Address &publisher_address,
+                                          const std::string &key_id) const = 0;
 
   /// Return the statistics string for the subscriber.
   virtual std::string DebugString() const = 0;
@@ -336,18 +336,19 @@ class Subscriber : public SubscriberInterface {
                  SubscriptionItemCallback subscription_callback,
                  SubscriptionFailureCallback subscription_failure_callback) override;
 
-  bool SubscribeAll(std::unique_ptr<rpc::SubMessage> sub_message,
-                    rpc::ChannelType channel_type, const rpc::Address &publisher_address,
-                    SubscribeDoneCallback subscribe_done_callback,
-                    SubscriptionItemCallback subscription_callback,
-                    SubscriptionFailureCallback subscription_failure_callback) override;
+  bool SubscribeChannel(
+      std::unique_ptr<rpc::SubMessage> sub_message, rpc::ChannelType channel_type,
+      const rpc::Address &publisher_address,
+      SubscribeDoneCallback subscribe_done_callback,
+      SubscriptionItemCallback subscription_callback,
+      SubscriptionFailureCallback subscription_failure_callback) override;
 
   bool Unsubscribe(const rpc::ChannelType channel_type,
                    const rpc::Address &publisher_address,
                    const std::string &key_id) override;
 
-  bool Unsubscribe(const rpc::ChannelType channel_type,
-                   const rpc::Address &publisher_address) override;
+  bool UnsubscribeChannel(const rpc::ChannelType channel_type,
+                          const rpc::Address &publisher_address) override;
 
   bool IsSubscribed(const rpc::ChannelType channel_type,
                     const rpc::Address &publisher_address,

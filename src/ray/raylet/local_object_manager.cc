@@ -73,10 +73,10 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
     auto sub_message = std::make_unique<rpc::SubMessage>();
     sub_message->mutable_worker_object_eviction_message()->Swap(wait_request.get());
 
-    core_worker_subscriber_->Subscribe(
+    RAY_CHECK(core_worker_subscriber_->Subscribe(
         std::move(sub_message), rpc::ChannelType::WORKER_OBJECT_EVICTION, owner_address,
         object_id.Binary(), /*subscribe_done_callback=*/nullptr, subscription_callback,
-        owner_dead_callback);
+        owner_dead_callback));
   }
 }
 

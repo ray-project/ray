@@ -64,7 +64,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
     return true;
   }
 
-  MOCK_METHOD6(SubscribeAll,
+  MOCK_METHOD6(SubscribeChannel,
                bool(std::unique_ptr<rpc::SubMessage> sub_message,
                     const rpc::ChannelType channel_type,
                     const rpc::Address &owner_address,
@@ -76,8 +76,8 @@ class MockSubscriber : public pubsub::SubscriberInterface {
                                  const rpc::Address &publisher_address,
                                  const std::string &key_id_binary));
 
-  MOCK_METHOD2(Unsubscribe, bool(const rpc::ChannelType channel_type,
-                                 const rpc::Address &publisher_address));
+  MOCK_METHOD2(UnsubscribeChannel, bool(const rpc::ChannelType channel_type,
+                                        const rpc::Address &publisher_address));
 
   MOCK_CONST_METHOD3(IsSubscribed, bool(const rpc::ChannelType channel_type,
                                         const rpc::Address &publisher_address,

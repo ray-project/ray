@@ -168,7 +168,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
     return failure_callback_it->second.emplace(oid, subscription_failure_callback).second;
   }
 
-  bool SubscribeAll(
+  bool SubscribeChannel(
       const std::unique_ptr<rpc::SubMessage> sub_message,
       const rpc::ChannelType channel_type, const rpc::Address &publisher_address,
       pubsub::SubscribeDoneCallback subscribe_done_callback,
@@ -184,8 +184,8 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
     return true;
   }
 
-  bool Unsubscribe(const rpc::ChannelType channel_type,
-                   const rpc::Address &publisher_address) override {
+  bool UnsubscribeChannel(const rpc::ChannelType channel_type,
+                          const rpc::Address &publisher_address) override {
     return true;
   }
 

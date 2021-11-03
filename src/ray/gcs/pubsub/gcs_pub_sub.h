@@ -333,7 +333,7 @@ class GcsSubscriber {
  private:
   const std::unique_ptr<GcsPubSub> pubsub_;
   const rpc::Address gcs_address_;
-  const std::unique_ptr<pubsub::Subscriber> subscriber_;
+  const std::unique_ptr<pubsub::SubscriberInterface> subscriber_;
 };
 
 }  // namespace gcs

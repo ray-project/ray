@@ -24,7 +24,7 @@ class MockSubscriberInterface : public SubscriberInterface {
                SubscriptionItemCallback subscription_callback,
                SubscriptionFailureCallback subscription_failure_callback),
               (override));
-  MOCK_METHOD(bool, SubscribeAll,
+  MOCK_METHOD(bool, SubscribeChannel,
               (std::unique_ptr<rpc::SubMessage> sub_message,
                const rpc::ChannelType channel_type, const rpc::Address &publisher_address,
                SubscribeDoneCallback subscribe_done_callback,
@@ -35,7 +35,7 @@ class MockSubscriberInterface : public SubscriberInterface {
               (const rpc::ChannelType channel_type, const rpc::Address &publisher_address,
                const std::string &key_id),
               (override));
-  MOCK_METHOD(bool, Unsubscribe,
+  MOCK_METHOD(bool, UnsubscribeChannel,
               (const rpc::ChannelType channel_type,
                const rpc::Address &publisher_address),
               (override));

@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// TODO: move this file to mock/ray/pubsub.
+
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
 
@@ -32,7 +34,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
                     pubsub::SubscriptionItemCallback subscription_callback,
                     pubsub::SubscriptionFailureCallback subscription_failure_callback));
 
-  MOCK_METHOD6(SubscribeAll,
+  MOCK_METHOD6(SubscribeChannel,
                bool(std::unique_ptr<rpc::SubMessage> sub_message,
                     const rpc::ChannelType channel_type,
                     const rpc::Address &owner_address,
@@ -44,8 +46,8 @@ class MockSubscriber : public pubsub::SubscriberInterface {
                bool(const rpc::ChannelType channel_type,
                     const rpc::Address &publisher_address, const std::string &key_id));
 
-  MOCK_METHOD2(Unsubscribe, bool(const rpc::ChannelType channel_type,
-                                 const rpc::Address &publisher_address));
+  MOCK_METHOD2(UnsubscribeChannel, bool(const rpc::ChannelType channel_type,
+                                        const rpc::Address &publisher_address));
 
   MOCK_CONST_METHOD3(IsSubscribed, bool(const rpc::ChannelType channel_type,
                                         const rpc::Address &publisher_address,

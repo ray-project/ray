@@ -234,12 +234,11 @@ bool Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
                            std::move(subscription_failure_callback));
 }
 
-bool Subscriber::SubscribeAll(std::unique_ptr<rpc::SubMessage> sub_message,
-                              const rpc::ChannelType channel_type,
-                              const rpc::Address &publisher_address,
-                              SubscribeDoneCallback subscribe_done_callback,
-                              SubscriptionItemCallback subscription_callback,
-                              SubscriptionFailureCallback subscription_failure_callback) {
+bool Subscriber::SubscribeChannel(
+    std::unique_ptr<rpc::SubMessage> sub_message, const rpc::ChannelType channel_type,
+    const rpc::Address &publisher_address, SubscribeDoneCallback subscribe_done_callback,
+    SubscriptionItemCallback subscription_callback,
+    SubscriptionFailureCallback subscription_failure_callback) {
   return SubscribeInternal(std::move(sub_message), channel_type, publisher_address,
                            std::nullopt, std::move(subscribe_done_callback),
                            std::move(subscription_callback),
@@ -263,8 +262,8 @@ bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
   return Channel(channel_type)->Unsubscribe(publisher_address, key_id);
 }
 
-bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
-                             const rpc::Address &publisher_address) {
+bool Subscriber::UnsubscribeChannel(const rpc::ChannelType channel_type,
+                                    const rpc::Address &publisher_address) {
   // Batch the unsubscribe command.
   auto command = std::make_unique<CommandItem>();
   command->cmd.set_channel_type(channel_type);
