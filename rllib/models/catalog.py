@@ -304,11 +304,16 @@ class ModelCatalog:
             (dtype, shape): Dtype and shape of the actions tensor.
         """
         dl_lib = torch if framework == "torch" else tf
-
         if isinstance(action_space, Discrete):
             return action_space.dtype, (None, )
         elif isinstance(action_space, (Box, Simplex)):
-            return dl_lib.float32, (None, ) + action_space.shape
+            if np.issubdtype(action_space.dtype, np.floating):
+                return dl_lib.float32, (None, ) + action_space.shape
+            elif np.issubdtype(action_space.dtype, np.integer):
+                return dl_lib.int32, (None, ) + action_space.shape
+            else:
+                raise ValueError(
+                    "RLlib doesn't support non int or float box spaces")
         elif isinstance(action_space, MultiDiscrete):
             return action_space.dtype, (None, ) + action_space.shape
         elif isinstance(action_space, (Tuple, Dict)):
@@ -322,7 +327,7 @@ class ModelCatalog:
                     all_discrete = False
                     size += np.product(flat_action_space[i].shape)
             size = int(size)
-            return dl_lib.int64 if all_discrete else dl_lib.float32, \
+            return dl_lib.int32 if all_discrete else dl_lib.float32, \
                 (None, size)
         else:
             raise NotImplementedError(
@@ -342,7 +347,6 @@ class ModelCatalog:
         Returns:
             action_placeholder (Tensor): A placeholder for the actions
         """
-
         dtype, shape = ModelCatalog.get_action_shape(
             action_space, framework="tf")
 
