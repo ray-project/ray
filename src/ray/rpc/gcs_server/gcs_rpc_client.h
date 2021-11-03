@@ -102,8 +102,6 @@ class GcsRpcClient {
                                                                  client_call_manager);
     heartbeat_info_grpc_client_ = std::make_unique<GrpcClient<HeartbeatInfoGcsService>>(
         address, port, client_call_manager);
-    object_info_grpc_client_ = std::make_unique<GrpcClient<ObjectInfoGcsService>>(
-        address, port, client_call_manager);
     task_info_grpc_client_ = std::make_unique<GrpcClient<TaskInfoGcsService>>(
         address, port, client_call_manager);
     stats_grpc_client_ =
@@ -205,22 +203,6 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, CheckAlive,
                              heartbeat_info_grpc_client_, )
 
-  /// Get object's locations from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations,
-                             object_info_grpc_client_, )
-
-  /// Get all object's locations from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetAllObjectLocations,
-                             object_info_grpc_client_, )
-
-  /// Add location of object to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, AddObjectLocation,
-                             object_info_grpc_client_, )
-
-  /// Remove location of object to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, RemoveObjectLocation,
-                             object_info_grpc_client_, )
-
   /// Add a task to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, AddTask, task_info_grpc_client_, )
 
@@ -308,7 +290,6 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
   std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>> node_resource_info_grpc_client_;
   std::unique_ptr<GrpcClient<HeartbeatInfoGcsService>> heartbeat_info_grpc_client_;
-  std::unique_ptr<GrpcClient<ObjectInfoGcsService>> object_info_grpc_client_;
   std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
   std::unique_ptr<GrpcClient<StatsGcsService>> stats_grpc_client_;
   std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
