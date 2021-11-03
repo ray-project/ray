@@ -106,6 +106,11 @@ RAY_CONFIG(float, scheduler_spread_threshold,
                ? std::stof(std::getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
                : 0.5)
 
+/// Whether to include function descriptors, and depth in the scheduling class.
+/// This causes tasks to be queued differently, so it may effect scheduling
+/// behavior.
+RAY_CONFIG(bool, complex_scheduling_class, false)
+
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)

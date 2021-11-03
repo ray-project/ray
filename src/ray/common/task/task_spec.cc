@@ -91,11 +91,12 @@ void TaskSpecification::ComputeResources() {
   }
 
   if (!IsActorTask()) {
+    bool complex_scheduling_class = RayConfig::instance().complex_scheduling_class();
     // There is no need to compute `SchedulingClass` for actor tasks since
     // the actor tasks need not be scheduled.
     const auto &resource_set = GetRequiredResources();
-    const auto &function_descriptor = FunctionDescriptor();
-    auto depth = GetDepth();
+    const auto &function_descriptor = complex_scheduling_class ? FunctionDescriptor() : FunctionDescriptorBuilder::Empty();
+    auto depth = complex_scheduling_class ? GetDepth() : 0;
     auto sched_cls_desc =
         SchedulingClassDescriptor(resource_set, function_descriptor, depth);
     // Map the scheduling class descriptor to an integer for performance.
