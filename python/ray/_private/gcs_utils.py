@@ -1,4 +1,5 @@
 from ray.core.generated.common_pb2 import ErrorType
+from ray._private.utils import init_grpc_channel
 import enum
 import grpc
 import logging
@@ -121,8 +122,7 @@ class GcsCode(enum.IntEnum):
 class GcsClient:
     def __init__(self, address):
         logger.debug(f"Connecting to gcs address: {address}")
-        channel = grpc.insecure_channel(
-            address, options=[("grpc.enable_http_proxy", 0)])
+        channel = init_grpc_channel(address, options=[("grpc.enable_http_proxy", 0)])
         self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(channel)
 
     def internal_kv_get(self, key: bytes) -> bytes:
