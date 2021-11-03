@@ -383,3 +383,9 @@ class TestAsyncAPI:
             # Ensure driver subprocess gets cleaned up after job reached
             # termination state
             wait_for_condition(check_subprocess_cleaned, pid=pid)
+
+
+if __name__ == "__main__":
+    import sys
+    import pytest
+    sys.exit(pytest.main(["-v", __file__]))

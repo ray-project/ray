@@ -24,6 +24,7 @@ from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.test_utils import SignalActor
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 JOB_ID_METADATA_KEY = "job_submission_id"
 
@@ -228,6 +229,9 @@ class JobSupervisor:
                     self._status_client.put_status(self._job_id,
                                                    JobStatus.SUCCEEDED)
                 else:
+                    logger.error(
+                        ">>>> run() put job status as failed FAILED due to "
+                        "driver subprocess exited with non-0 return code.")
                     self._status_client.put_status(self._job_id,
                                                    JobStatus.FAILED)
         except Exception:
@@ -344,6 +348,9 @@ class JobManager:
         except Exception as e:
             if supervisor:
                 ray.kill(supervisor, no_restart=True)
+            logger.error(
+                ">>>> submit_job put job status as failed FAILED due to failed "
+                "to start job actor or ready.remote() didn't return")
             self._status_client.put_status(job_id, JobStatus.FAILED)
             raise RuntimeError(
                 f"Failed to start actor for job {job_id}. This could be "
@@ -398,6 +405,10 @@ class JobManager:
                 # updating GCS with latest status.
                 last_status = self._status_client.get_status(job_id)
                 if last_status in {JobStatus.PENDING, JobStatus.RUNNING}:
+                    logger.error(
+                        ">>>> get_job_status returned FAILED due to no "
+                        "running job actor but latest status in GCS is in "
+                        "non-terminal state.")
                     self._status_client.put_status(job_id, JobStatus.FAILED)
 
         return self._status_client.get_status(job_id)

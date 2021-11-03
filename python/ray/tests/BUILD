@@ -298,7 +298,7 @@ py_test(
 py_test(
     name = "test_job_manager",
     size = "small",
-    srcs = glob(["job_manager_tests/**/*.py"]),
+    srcs = SRCS + ["test_job_manager.py"] + glob(["subprocess_driver_scripts/**/*.py"]),
     tags = ["exclusive", "team:serve"],
     deps = ["//:ray_lib"],
 )
