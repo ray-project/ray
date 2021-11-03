@@ -111,8 +111,8 @@ if __name__ == "__main__":
                     trials = run_experiments(
                         experiments, resume=False, verbose=2)
                 finally:
-                    ray.shutdown()
                     _register_all()
+                    ray.shutdown()
 
             for t in trials:
                 # If we have evaluation workers, use their rewards.
