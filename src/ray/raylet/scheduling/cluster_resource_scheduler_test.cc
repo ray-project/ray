@@ -1127,7 +1127,7 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     ASSERT_EQ(resource_scheduler.GetLocalNodeResources()
                   .predefined_resources[OBJECT_STORE_MEM]
                   .available.Double(),
-              -8951423999);
+              0);
     ASSERT_EQ(resource_scheduler.GetLocalNodeResources()
                   .predefined_resources[OBJECT_STORE_MEM]
                   .total.Double(),

@@ -963,7 +963,8 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
     auto &capacity =
         GetMutableLocalNodeResources()->predefined_resources[OBJECT_STORE_MEM];
     double used = get_used_object_store_memory_();
-    capacity.available = FixedPoint(capacity.total.Double() - used);
+    double total = capacity.total.Double();
+    capacity.available = FixedPoint(total >= used ? total - used : 0.0);
   }
 
   NodeResources resources;
