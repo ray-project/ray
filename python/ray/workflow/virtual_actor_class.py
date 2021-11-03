@@ -2,7 +2,7 @@ import abc
 import functools
 import inspect
 import logging
-from typing import List, TYPE_CHECKING, Any, Tuple, Dict
+from typing import TYPE_CHECKING, Any, Tuple, Dict, Callable
 import uuid
 import json
 import weakref
@@ -12,7 +12,7 @@ from ray.util.inspect import (is_function_or_method, is_class_method,
 from ray._private import signature
 
 from ray.workflow.common import (slugify, WorkflowData, Workflow, WorkflowRef,
-                                 StepType)
+                                 StepType, WorkflowStepRuntimeOptions)
 from ray.workflow import serialization_context
 from ray.workflow.storage import Storage, get_global_storage
 from ray.workflow.workflow_storage import WorkflowStorage
@@ -64,9 +64,11 @@ class ActorMethod(ActorMethodBase):
         _method_name: The name of the actor method.
     """
 
-    def __init__(self, actor, method_name):
+    def __init__(self, actor, method_name,
+                 method_helper: "_VirtualActorMethodHelper"):
         self._actor_ref = weakref.ref(actor)
         self._method_name = method_name
+        self._method_helper = method_helper
 
     def __call__(self, *args, **kwargs):
         raise TypeError("Actor methods cannot be called directly. Instead "
@@ -83,8 +85,8 @@ class ActorMethod(ActorMethodBase):
 
     def options(self,
                 *,
-                max_retries: int = None,
-                catch_exceptions: bool = None,
+                max_retries: int = 1,
+                catch_exceptions: bool = False,
                 name: str = None,
                 metadata: Dict[str, Any] = None,
                 **ray_options) -> ActorMethodBase:
@@ -110,38 +112,16 @@ class ActorMethod(ActorMethodBase):
             The actor method itself.
         """
 
-        if max_retries is not None:
-            if not isinstance(max_retries, int) or max_retries < 1:
-                raise ValueError(
-                    "max_retries should be greater or equal to 1.")
-        if metadata is not None:
-            if not isinstance(metadata, dict):
-                raise ValueError("metadata must be a dict.")
-            for k, v in metadata.items():
-                try:
-                    json.dumps(v)
-                except TypeError as e:
-                    raise ValueError(
-                        "metadata values must be JSON serializable, "
-                        "however '{}' has a value whose {}.".format(k, e))
+        method_helper = self._method_helper.options(
+            max_retries=max_retries,
+            catch_exceptions=catch_exceptions,
+            name=name,
+            metadata=metadata,
+            **ray_options,
+        )
+        return ActorMethod(self._actor_ref(), self._method_name, method_helper)
 
-        func_cls = self
-
-        class FuncWrapper(ActorMethodBase):
-            def run_async(self, *args, **kwargs):
-                return func_cls._run(
-                    args=args,
-                    kwargs=kwargs,
-                    max_retries=max_retries,
-                    catch_exceptions=catch_exceptions,
-                    name=name,
-                    metadata=metadata,
-                    **ray_options)
-
-        return FuncWrapper()
-
-    def _run(self, args: Tuple[Any], kwargs: Dict[str, Any],
-             **options) -> "ObjectRef":
+    def _run(self, args: Tuple[Any], kwargs: Dict[str, Any]) -> "ObjectRef":
         actor = self._actor_ref()
         if actor is None:
             raise RuntimeError("Lost reference to actor. One common cause is "
@@ -152,7 +132,7 @@ class ActorMethod(ActorMethodBase):
                                "actor.method.run()' instead.")
         try:
             return actor._actor_method_call(
-                self._method_name, args=args, kwargs=kwargs, options=options)
+                self._method_helper, args=args, kwargs=kwargs)
         except TypeError as exc:  # capture a friendlier stacktrace
             raise TypeError(
                 "Invalid input arguments for virtual actor "
@@ -162,10 +142,12 @@ class ActorMethod(ActorMethodBase):
         return {
             "actor": self._actor_ref(),
             "method_name": self._method_name,
+            "method_helper": self._method_helper,
         }
 
     def __setstate__(self, state):
-        self.__init__(state["actor"], state["method_name"])
+        self.__init__(state["actor"], state["method_name"],
+                      state["method_helper"])
 
 
 def __getstate(instance):
@@ -189,6 +171,113 @@ def __setstate(instance, v):
         instance.__dict__ = json.loads(v)
 
 
+class _VirtualActorMethodHelper:
+    """This is a helper class for managing options and creating workflow steps
+    from raw class methods."""
+
+    def __init__(self, original_class, method: Callable, method_name: str,
+                 runtime_options: WorkflowStepRuntimeOptions):
+        self._original_class = original_class
+        self._original_method = method
+        # Extract the signature of the method. This will be used
+        # to catch some errors if the methods are called with inappropriate
+        # arguments.
+
+        # Whether or not this method requires binding of its first
+        # argument. For class and static methods, we do not want to bind
+        # the first argument, but we do for instance methods
+        method = inspect.unwrap(method)
+        is_bound = (is_class_method(method)
+                    or is_static_method(original_class, method_name))
+
+        # Print a warning message if the method signature is not
+        # supported. We don't raise an exception because if the actor
+        # inherits from a class that has a method whose signature we
+        # don't support, there may not be much the user can do about it.
+        self._signature = signature.extract_signature(
+            method, ignore_first=not is_bound)
+
+        self._method = method
+        self._method_name = method_name
+        self._options = runtime_options
+        self._name = None
+        self._user_metadata = {}
+
+        # attach properties to the original function, so we can create a
+        # workflow step with the original function inside a virtual actor.
+        self._original_method.step = self.step
+        self._original_method.options = self.options
+
+    @property
+    def readonly(self) -> bool:
+        return self._options.step_type == StepType.READONLY_ACTOR_METHOD
+
+    def step(self, *args, **kwargs):
+        flattened_args = signature.flatten_args(self._signature, args, kwargs)
+        actor_id = workflow_context.get_current_workflow_id()
+        if not self.readonly:
+            if self._method_name == "__init__":
+                state_ref = None
+            else:
+                ws = WorkflowStorage(actor_id, get_global_storage())
+                state_ref = WorkflowRef(ws.get_entrypoint_step_id())
+            # This is a hack to insert a positional argument.
+            flattened_args = [signature.DUMMY_TYPE, state_ref] + flattened_args
+        workflow_inputs = serialization_context.make_workflow_inputs(
+            flattened_args)
+
+        if self.readonly:
+            _actor_method = _wrap_readonly_actor_method(
+                actor_id, self._original_class, self._method_name)
+        else:
+            _actor_method = _wrap_actor_method(self._original_class,
+                                               self._method_name)
+        workflow_data = WorkflowData(
+            func_body=_actor_method,
+            inputs=workflow_inputs,
+            name=self._name,
+            step_options=self._options,
+            user_metadata=self._user_metadata,
+        )
+        wf = Workflow(workflow_data)
+        return wf
+
+    def options(self,
+                *,
+                max_retries=1,
+                catch_exceptions=False,
+                name=None,
+                metadata=None,
+                **ray_options) -> "_VirtualActorMethodHelper":
+        if metadata is not None:
+            if not isinstance(metadata, dict):
+                raise ValueError("metadata must be a dict.")
+            for k, v in metadata.items():
+                try:
+                    json.dumps(v)
+                except TypeError as e:
+                    raise ValueError(
+                        "metadata values must be JSON serializable, "
+                        "however '{}' has a value whose {}.".format(k, e))
+        options = WorkflowStepRuntimeOptions.make(
+            step_type=self._options.step_type,
+            catch_exceptions=catch_exceptions,
+            max_retries=max_retries,
+            ray_options=ray_options)
+        _self = _VirtualActorMethodHelper(
+            self._original_class,
+            self._original_method,
+            self._method_name,
+            runtime_options=options)
+
+        _self._name = name
+        _self._user_metadata = metadata
+        return _self
+
+    def __call__(self, *args, **kwargs):
+        return self._original_method(*args, **kwargs)
+
+
 class VirtualActorMetadata:
     """Recording the metadata of a virtual actor class, including
     the signatures of its methods etc."""
@@ -201,126 +290,21 @@ class VirtualActorMetadata:
         self.module = original_class.__module__
         self.name = original_class.__name__
         self.qualname = original_class.__qualname__
-        self.methods = dict(actor_methods)
-
-        # Extract the signatures of each of the methods. This will be used
-        # to catch some errors if the methods are called with inappropriate
-        # arguments.
-        self.signatures = {}
+        self.methods = {}
         for method_name, method in actor_methods:
-            # Whether or not this method requires binding of its first
-            # argument. For class and static methods, we do not want to bind
-            # the first argument, but we do for instance methods
-            method = inspect.unwrap(method)
-            is_bound = (is_class_method(method)
-                        or is_static_method(original_class, method_name))
-
-            # Print a warning message if the method signature is not
-            # supported. We don't raise an exception because if the actor
-            # inherits from a class that has a method whose signature we
-            # don't support, there may not be much the user can do about it.
-            self.signatures[method_name] = signature.extract_signature(
-                method, ignore_first=not is_bound)
-
-        for method_name, method in actor_methods:
-
-            def step(method_name, method, options, *args, **kwargs):
-                options = options or {}
-                step_options = {}
-                max_retries = options.pop("max_retries", None)
-                if max_retries is not None:
-                    if not isinstance(max_retries, int) or max_retries < 1:
-                        raise ValueError(
-                            "max_retries should be greater or equal to 1.")
-                    step_options["max_retries"] = max_retries
-                catch_exceptions = options.pop("catch_exceptions", None)
-                if catch_exceptions is not None:
-                    step_options["catch_exceptions"] = catch_exceptions
-                name = options.pop("name", None)
-                if name is not None:
-                    step_options["name"] = name
-                metadata = options.pop("metadata", None)
-                if metadata is not None:
-                    if not isinstance(metadata, dict):
-                        raise ValueError("metadata must be a dict.")
-                    for k, v in metadata.items():
-                        try:
-                            json.dumps(v)
-                        except TypeError as e:
-                            raise ValueError(
-                                "metadata values must be JSON serializable, "
-                                "however '{}' has a value whose {}.".format(
-                                    k, e))
-                    step_options["metadata"] = metadata
-                if len(options) != 0:
-                    step_options["ray_options"] = options
-                readonly = getattr(method, "__virtual_actor_readonly__", False)
-                flattened_args = self.flatten_args(method_name, args, kwargs)
-                actor_id = workflow_context.get_current_workflow_id()
-                if not readonly:
-                    if method_name == "__init__":
-                        state_ref = None
-                    else:
-                        ws = WorkflowStorage(actor_id, get_global_storage())
-                        state_ref = WorkflowRef(ws.get_entrypoint_step_id())
-                    # This is a hack to insert a positional argument.
-                    flattened_args = [signature.DUMMY_TYPE, state_ref
-                                      ] + flattened_args
-                workflow_inputs = serialization_context.make_workflow_inputs(
-                    flattened_args)
-
-                if readonly:
-                    _actor_method = _wrap_readonly_actor_method(
-                        actor_id, self.cls, method_name)
-                    step_type = StepType.READONLY_ACTOR_METHOD
-                else:
-                    _actor_method = _wrap_actor_method(self.cls, method_name)
-                    step_type = StepType.ACTOR_METHOD
-                # TODO(suquark): Support actor options.
-                workflow_data = WorkflowData(
-                    func_body=_actor_method,
-                    step_type=step_type,
-                    inputs=workflow_inputs,
-                    max_retries=step_options.get("max_retries", 1),
-                    catch_exceptions=step_options.get("catch_exceptions",
-                                                      False),
-                    ray_options=step_options.get("ray_options", {}),
-                    name=step_options.get("name", None),
-                    user_metadata=step_options.get("metadata", {}),
-                )
-                wf = Workflow(workflow_data)
-                return wf
-
-            method.step = functools.partial(step, method_name, method, None)
-
-            def _options(method_name, method, **options):
-                def _method(*args, **kwargs):
-                    return method(*args, **kwargs)
-
-                _method.step = functools.partial(step, method_name, method,
-                                                 options)
-                return _method
-
-            method.options = functools.partial(_options, method_name, method)
+            self._readonly = getattr(method, "__virtual_actor_readonly__",
+                                     False)
+            if self._readonly:
+                step_type = StepType.READONLY_ACTOR_METHOD
+            else:
+                step_type = StepType.ACTOR_METHOD
+            options = WorkflowStepRuntimeOptions.make(step_type=step_type)
+            self.methods[method_name] = _VirtualActorMethodHelper(
+                original_class, method, method_name, runtime_options=options)
 
     def generate_random_actor_id(self) -> str:
         """Generate random actor ID."""
         return f"{slugify(self.qualname)}.{uuid.uuid4()}"
-
-    def flatten_args(self, method_name: str, args: Tuple[Any],
-                     kwargs: Dict[str, Any]) -> List[Any]:
-        """Check and flatten arguments of the actor method.
-
-        Args:
-            method_name: The name of the actor method in the actor class.
-            args: Positional arguments.
-            kwargs: Keywords arguments.
-
-        Returns:
-            Flattened arguments.
-        """
-        return signature.flatten_args(self.signatures[method_name], args,
-                                      kwargs)
 
 
 class VirtualActorClassBase(metaclass=abc.ABCMeta):
@@ -493,9 +477,9 @@ def _wrap_actor_method(cls: type, method_name: str):
         method = getattr(instance, method_name)
         output = method(*args, **kwargs)
         if isinstance(output, Workflow):
-            if output.data.step_type == StepType.FUNCTION:
+            if output.data.step_options.step_type == StepType.FUNCTION:
                 next_step = deref.step(__getstate(instance), output)
-                next_step.data.step_type = StepType.ACTOR_METHOD
+                next_step.data.step_options.step_type = StepType.ACTOR_METHOD
                 return next_step, None
             return __getstate(instance), output
         return __getstate(instance), output
@@ -515,7 +499,8 @@ class VirtualActor:
     def _create(self, args: Tuple[Any], kwargs: Dict[str, Any]):
         workflow_storage = WorkflowStorage(self._actor_id, self._storage)
         workflow_storage.save_actor_class_body(self._metadata.cls)
-        ref = self._actor_method_call("__init__", args, kwargs)
+        method_helper = self._metadata.methods["__init__"]
+        ref = self._actor_method_call(method_helper, args, kwargs)
         workflow_manager = get_or_create_management_actor()
         # keep the ref in a list to prevent dereference
         ray.get(workflow_manager.init_actor.remote(self._actor_id, [ref]))
@@ -532,23 +517,18 @@ class VirtualActor:
         workflow_manager = get_or_create_management_actor()
         return ray.get(workflow_manager.actor_ready.remote(self._actor_id))
 
-    def __getattr__(self, item):
-        if item in self._metadata.signatures:
-            return ActorMethod(self, item)
-        raise AttributeError(f"No method with name '{item}'")
+    def __getattr__(self, method_name):
+        if method_name in self._metadata.methods:
+            return ActorMethod(self, method_name,
+                               self._metadata.methods[method_name])
+        raise AttributeError(f"No method with name '{method_name}'")
 
-    def _actor_method_call(self, method_name: str, args, kwargs,
-                           options=None) -> "ObjectRef":
-        options = options or {}
-        cls = self._metadata.cls
-        method = getattr(cls, method_name, None)
-        if method is None:
-            raise AttributeError(f"Method '{method_name}' does not exist.")
+    def _actor_method_call(self, method_helper: _VirtualActorMethodHelper,
+                           args, kwargs) -> "ObjectRef":
         with workflow_context.workflow_step_context(self._actor_id,
                                                     self._storage.storage_url):
-            wf = method.options(**options).step(*args, **kwargs)
-            readonly = getattr(method, "__virtual_actor_readonly__", False)
-            if readonly:
+            wf = method_helper.step(*args, **kwargs)
+            if method_helper.readonly:
                 return execute_workflow(wf).volatile_output
             else:
                 return wf.run_async(self._actor_id)

@@ -300,6 +300,10 @@ USER_TESTS = {
             requirements_file="release/train_tests"
             "/driver_requirements.txt")
     ],
+    "~/ray/release/xgboost_tests/xgboost_tests.yaml": [
+        "train_gpu_connect_latest",
+        "train_gpu_connect_master",
+    ]
 }
 
 SUITES = {

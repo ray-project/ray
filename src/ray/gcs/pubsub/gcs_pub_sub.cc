@@ -205,12 +205,6 @@ std::string GcsPubSub::DebugString() const {
   return stream.str();
 }
 
-Status GcsPublisher::PublishObject(const ObjectID &id,
-                                   const rpc::ObjectLocationChange &message,
-                                   const StatusCallback &done) {
-  return pubsub_->Publish(OBJECT_CHANNEL, id.Hex(), message.SerializeAsString(), done);
-}
-
 Status GcsPublisher::PublishActor(const ActorID &id, const rpc::ActorTableData &message,
                                   const StatusCallback &done) {
   if (publisher_ != nullptr) {
@@ -514,26 +508,6 @@ Status GcsSubscriber::UnsubscribeTaskLease(const TaskID &id) {
 
 bool GcsSubscriber::IsTaskLeaseUnsubscribed(const TaskID &id) {
   return pubsub_->IsUnsubscribed(TASK_LEASE_CHANNEL, id.Hex());
-}
-
-Status GcsSubscriber::SubscribeObject(
-    const ObjectID &id,
-    const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>> &subscribe,
-    const StatusCallback &done) {
-  auto on_subscribe = [id, subscribe](const std::string &, const std::string &data) {
-    rpc::ObjectLocationChange object_location_change;
-    object_location_change.ParseFromString(data);
-    subscribe(id, {object_location_change});
-  };
-  return pubsub_->Subscribe(OBJECT_CHANNEL, id.Hex(), on_subscribe, done);
-}
-
-Status GcsSubscriber::UnsubscribeObject(const ObjectID &id) {
-  return pubsub_->Unsubscribe(OBJECT_CHANNEL, id.Hex());
-}
-
-bool GcsSubscriber::IsObjectUnsubscribed(const ObjectID &id) {
-  return pubsub_->IsUnsubscribed(OBJECT_CHANNEL, id.Hex());
 }
 
 Status GcsSubscriber::SubscribeAllWorkerFailures(
