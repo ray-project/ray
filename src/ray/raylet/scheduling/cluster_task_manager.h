@@ -67,12 +67,14 @@ enum class UnscheduledWorkCause {
 class Work {
  public:
   RayTask task;
+  const bool grant_or_reject;
   rpc::RequestWorkerLeaseReply *reply;
   std::function<void(void)> callback;
   std::shared_ptr<TaskResourceInstances> allocated_instances;
-  Work(RayTask task, rpc::RequestWorkerLeaseReply *reply,
+  Work(RayTask task, bool grant_or_reject, rpc::RequestWorkerLeaseReply *reply,
        std::function<void(void)> callback, WorkStatus status = WorkStatus::WAITING)
       : task(task),
+        grant_or_reject(grant_or_reject),
         reply(reply),
         callback(callback),
         allocated_instances(nullptr),
@@ -160,7 +162,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param task: The incoming task to be queued and scheduled.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  void QueueAndScheduleTask(const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
+  void QueueAndScheduleTask(const RayTask &task, bool grant_or_reject,
+                            rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
   /// Move tasks from waiting to ready for dispatch. Called when a task's

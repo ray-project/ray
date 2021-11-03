@@ -425,14 +425,14 @@ bool ClusterTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &wor
 }
 
 void ClusterTaskManager::QueueAndScheduleTask(
-    const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
+    const RayTask &task, bool grant_or_reject, rpc::RequestWorkerLeaseReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
   metric_tasks_queued_++;
-  auto work = std::make_shared<internal::Work>(task, reply, [send_reply_callback] {
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  });
+  auto work = std::make_shared<internal::Work>(
+      task, grant_or_reject, reply,
+      [send_reply_callback] { send_reply_callback(Status::OK(), nullptr, nullptr); });
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
@@ -1187,6 +1187,14 @@ void ClusterTaskManager::Dispatch(
 
 void ClusterTaskManager::Spillback(const NodeID &spillback_to,
                                    const std::shared_ptr<internal::Work> &work) {
+  auto send_reply_callback = work->callback;
+
+  if (work->grant_or_reject) {
+    work->reply->set_rejected(true);
+    send_reply_callback();
+    return;
+  }
+
   metric_tasks_spilled_++;
   const auto &task = work->task;
   const auto &task_spec = task.GetTaskSpecification();
@@ -1208,11 +1216,6 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
   reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
 
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    reply->set_rejected(true);
-  }
-
-  auto send_reply_callback = work->callback;
   send_reply_callback();
 }
 

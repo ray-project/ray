@@ -1562,7 +1562,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   RayTask task(task_message);
-  bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
+  const bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
   metrics_num_task_scheduled_ += 1;
 
@@ -1582,13 +1582,13 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     worker_pool_.PrestartWorkers(task_spec, request.backlog_size(), available_cpus);
   }
 
-  if (!(RayConfig::instance().gcs_actor_scheduling_enabled() &&
-        task.GetTaskSpecification().IsActorCreationTask())) {
-    cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback);
+  if (!request.grant_or_reject()) {
+    cluster_task_manager_->QueueAndScheduleTask(task, false, reply, send_reply_callback);
     return;
   }
 
-  auto send_reply_callback_wrapper = [this, actor_id, reply, send_reply_callback](
+  auto send_reply_callback_wrapper = [this, is_actor_creation_task, actor_id, reply,
+                                      send_reply_callback](
                                          Status status, std::function<void()> success,
                                          std::function<void()> failure) {
     if (!reply->rejected()) {
@@ -1596,34 +1596,37 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
       return;
     }
 
-    // If the reqiured resource and normal task resource exceed available resource,
-    // reject it.
-    ResourceSet normal_task_resources = cluster_task_manager_->CalcNormalTaskResources();
-    RAY_LOG(DEBUG) << "Reject leasing as the raylet has no enough resources."
-                   << " actor_id = " << actor_id
-                   << ", normal_task_resources = " << normal_task_resources.ToString()
-                   << ", local_resoruce_view = "
-                   << cluster_resource_scheduler_->GetLocalResourceViewString();
-    auto resources_data = reply->mutable_resources_data();
-    resources_data->set_node_id(self_node_id_.Binary());
-    resources_data->set_resources_normal_task_changed(true);
-    auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
-    normal_task_map = {normal_task_resources.GetResourceMap().begin(),
-                       normal_task_resources.GetResourceMap().end()};
-    resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
+    if (is_actor_creation_task) {
+      // If resources are not enough due to normal tasks' preemption, return a rejection
+      // with normal task resource usages.
+      ResourceSet normal_task_resources =
+          cluster_task_manager_->CalcNormalTaskResources();
+      RAY_LOG(DEBUG) << "Reject leasing as the raylet has no enough resources."
+                     << " actor_id = " << actor_id
+                     << ", normal_task_resources = " << normal_task_resources.ToString()
+                     << ", local_resoruce_view = "
+                     << cluster_resource_scheduler_->GetLocalResourceViewString();
+      auto resources_data = reply->mutable_resources_data();
+      resources_data->set_node_id(self_node_id_.Binary());
+      resources_data->set_resources_normal_task_changed(true);
+      auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
+      normal_task_map = {normal_task_resources.GetResourceMap().begin(),
+                         normal_task_resources.GetResourceMap().end()};
+      resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
+    }
 
     send_reply_callback(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
   };
 
-  // If resources are not enough due to normal tasks' preemption, return a rejection with
-  // normal task resource usages.
+  // If the reqiured resource exceeds available resource, reject it.
   if (!cluster_task_manager_->IsLocallySchedulable(task)) {
     reply->set_rejected(true);
     send_reply_callback_wrapper(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
     return;
   }
 
-  cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback_wrapper);
+  cluster_task_manager_->QueueAndScheduleTask(task, true, reply,
+                                              send_reply_callback_wrapper);
 }
 
 void NodeManager::HandlePrepareBundleResources(

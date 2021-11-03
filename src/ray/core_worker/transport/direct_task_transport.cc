@@ -516,6 +516,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   resource_spec_msg.set_task_id(TaskID::ForFakeTask().Binary());
   const TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
   rpc::Address best_node_address;
+  const bool is_spillback = (raylet_address != nullptr);
   if (raylet_address == nullptr) {
     // If no raylet address is given, find the best worker for our next lease request.
     best_node_address = lease_policy_->GetBestNodeForTask(resource_spec);
@@ -527,6 +528,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
   lease_client->RequestWorkerLease(
       resource_spec,
+      /*grant_or_reject=*/is_spillback,
       [this, scheduling_key, task_id, raylet_address = *raylet_address](
           const Status &status, const rpc::RequestWorkerLeaseReply &reply) {
         absl::MutexLock lock(&mu_);
