@@ -125,8 +125,6 @@ def get_or_create_conda_env(conda_env_path: str,
 
     return env_name
 
-def remove_conda_env() -> bool:
-    pass
 
 def get_conda_env_list() -> list:
     """

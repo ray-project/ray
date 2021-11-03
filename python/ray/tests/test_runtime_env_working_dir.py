@@ -7,7 +7,6 @@ import tempfile
 
 import pytest
 from pytest_lazyfixture import lazy_fixture
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
 from ray._private.test_utils import run_string_as_driver
 
 import ray
