@@ -1,5 +1,4 @@
 from ray.core.generated.common_pb2 import ErrorType
-from ray._private.utils import init_grpc_channel
 import enum
 import logging
 from typing import List
@@ -122,6 +121,7 @@ class GcsClient:
     MAX_MESSAGE_LENGTH = 512 * 1024 * 1024  # 512MB
 
     def __init__(self, address):
+        from ray._private.utils import init_grpc_channel
         logger.debug(f"Connecting to gcs address: {address}")
         options = [("grpc.enable_http_proxy",
                     0), ("grpc.max_send_message_length",
