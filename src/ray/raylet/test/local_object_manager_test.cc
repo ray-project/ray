@@ -18,7 +18,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/gcs/accessor.h"
+#include "ray/gcs/gcs_client/accessor.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/test/util.h"
 #include "ray/raylet/worker_pool.h"
@@ -36,14 +36,16 @@ using ::testing::_;
 
 class MockSubscriber : public pubsub::SubscriberInterface {
  public:
-  void Subscribe(
+  bool Subscribe(
       const std::unique_ptr<rpc::SubMessage> sub_message,
       const rpc::ChannelType channel_type, const rpc::Address &owner_address,
       const std::string &key_id_binary,
-      pubsub::SubscriptionCallback subscription_callback,
+      pubsub::SubscribeDoneCallback subscribe_done_callback,
+      pubsub::SubscriptionItemCallback subscription_callback,
       pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
     callbacks.push_back(
         std::make_pair(ObjectID::FromBinary(key_id_binary), subscription_callback));
+    return true;
   }
 
   bool PublishObjectEviction() {
@@ -62,9 +64,20 @@ class MockSubscriber : public pubsub::SubscriberInterface {
     return true;
   }
 
+  MOCK_METHOD6(SubscribeChannel,
+               bool(std::unique_ptr<rpc::SubMessage> sub_message,
+                    const rpc::ChannelType channel_type,
+                    const rpc::Address &owner_address,
+                    pubsub::SubscribeDoneCallback subscribe_done_callback,
+                    pubsub::SubscriptionItemCallback subscription_callback,
+                    pubsub::SubscriptionFailureCallback subscription_failure_callback));
+
   MOCK_METHOD3(Unsubscribe, bool(const rpc::ChannelType channel_type,
                                  const rpc::Address &publisher_address,
                                  const std::string &key_id_binary));
+
+  MOCK_METHOD2(UnsubscribeChannel, bool(const rpc::ChannelType channel_type,
+                                        const rpc::Address &publisher_address));
 
   MOCK_CONST_METHOD3(IsSubscribed, bool(const rpc::ChannelType channel_type,
                                         const rpc::Address &publisher_address,
@@ -73,7 +86,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
   MOCK_CONST_METHOD0(DebugString, std::string());
 
   rpc::ChannelType channel_type_ = rpc::ChannelType::WORKER_OBJECT_EVICTION;
-  std::deque<std::pair<ObjectID, pubsub::SubscriptionCallback>> callbacks;
+  std::deque<std::pair<ObjectID, pubsub::SubscriptionItemCallback>> callbacks;
 };
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
@@ -225,58 +238,6 @@ class MockIOWorkerPool : public IOWorkerPoolInterface {
       std::make_shared<MockIOWorker>(WorkerID::FromRandom(), 1234, io_worker_client);
 };
 
-class MockObjectInfoAccessor : public gcs::ObjectInfoAccessor {
- public:
-  MOCK_METHOD2(
-      AsyncGetLocations,
-      Status(const ObjectID &object_id,
-             const gcs::OptionalItemCallback<rpc::ObjectLocationInfo> &callback));
-
-  MOCK_METHOD1(AsyncGetAll,
-               Status(const gcs::MultiItemCallback<rpc::ObjectLocationInfo> &callback));
-
-  MOCK_METHOD4(AsyncAddLocation,
-               Status(const ObjectID &object_id, const NodeID &node_id,
-                      size_t object_size, const gcs::StatusCallback &callback));
-
-  Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
-                            const NodeID &spilled_node_id, size_t object_size,
-                            const gcs::StatusCallback &callback) {
-    object_urls[object_id] = spilled_url;
-    callbacks.push_back(callback);
-    return Status();
-  }
-
-  bool ReplyAsyncAddSpilledUrl() {
-    if (callbacks.size() == 0) {
-      return false;
-    }
-    auto callback = callbacks.front();
-    callback(Status::OK());
-    callbacks.pop_front();
-    return true;
-  }
-
-  MOCK_METHOD3(AsyncRemoveLocation,
-               Status(const ObjectID &object_id, const NodeID &node_id,
-                      const gcs::StatusCallback &callback));
-
-  MOCK_METHOD3(AsyncSubscribeToLocations,
-               Status(const ObjectID &object_id,
-                      const gcs::SubscribeCallback<
-                          ObjectID, std::vector<rpc::ObjectLocationChange>> &subscribe,
-                      const gcs::StatusCallback &done));
-
-  MOCK_METHOD1(AsyncUnsubscribeToLocations, Status(const ObjectID &object_id));
-
-  MOCK_METHOD1(AsyncResubscribe, void(bool is_pubsub_server_restarted));
-
-  MOCK_METHOD1(IsObjectUnsubscribed, bool(const ObjectID &object_id));
-
-  absl::flat_hash_map<ObjectID, std::string> object_urls;
-  std::list<gcs::StatusCallback> callbacks;
-};
-
 class MockObjectBuffer : public Buffer {
  public:
   MockObjectBuffer(size_t size, ObjectID object_id,
@@ -308,7 +269,7 @@ class LocalObjectManagerTest : public ::testing::Test {
         max_fused_object_count_(15),
         manager(
             manager_node_id_, "address", 1234, free_objects_batch_size,
-            /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
+            /*free_objects_period_ms=*/1000, worker_pool, client_pool,
             /*max_io_workers=*/2,
             /*min_spilling_size=*/0,
             /*is_external_storage_type_fs=*/true,
@@ -341,7 +302,6 @@ class LocalObjectManagerTest : public ::testing::Test {
   std::shared_ptr<MockWorkerClient> owner_client;
   rpc::CoreWorkerClientPool client_pool;
   MockIOWorkerPool worker_pool;
-  MockObjectInfoAccessor object_table;
   NodeID manager_node_id_;
   size_t max_fused_object_count_;
   LocalObjectManager manager;
