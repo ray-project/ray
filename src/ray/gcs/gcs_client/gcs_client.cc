@@ -67,6 +67,7 @@ void GcsSubscriberClient::PubsubCommandBatch(
     const rpc::ClientCallback<rpc::PubsubCommandBatchReply> &callback) {
   rpc::GcsSubscriberCommandBatchRequest req;
   req.set_subscriber_id(request.subscriber_id());
+  *req.mutable_commands() = request.commands();
   rpc_client_->GcsSubscriberCommandBatch(
       req, [callback](const Status &status,
                       const rpc::GcsSubscriberCommandBatchReply &batch_reply) {
@@ -270,10 +271,8 @@ void GcsClient::GcsServiceFailureDetected(rpc::GcsServiceFailureType type) {
     // If GCS sever address has changed, reconnect to GCS server and redo
     // subscription.
     ReconnectGcsServer();
-    // NOTE(ffbin): Currently we don't support the case where the pub-sub server restarts,
-    // because we use the same Redis server for both GCS storage and pub-sub. So the
-    // following flag is always false.
-    resubscribe_func_(false);
+    // If using GCS server for pubsub, resubscribe to GCS publishers.
+    resubscribe_func_(RayConfig::instance().gcs_grpc_based_pubsub());
     break;
   default:
     RAY_LOG(FATAL) << "Unsupported failure type: " << type;
