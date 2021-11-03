@@ -303,10 +303,10 @@ def get_pkg_uri(protocol, pkg_name):
         protocol=protocol, pkg_name=pkg_name)
 
 
-def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes):
-    protocol, pkg_name = parse_uri(pkg_uri)
+def upload_package_to_gcs(uri: str, pkg_bytes: bytes):
+    plugin, protocol, pkg_name = parse_uri(uri)
     if protocol == Protocol.GCS:
-        _store_package_in_gcs(pkg_uri, pkg_bytes)
+        _store_package_in_gcs(uri, pkg_bytes)
     elif protocol == Protocol.S3:
         raise RuntimeError("push_package should not be called with s3 path.")
     else:
