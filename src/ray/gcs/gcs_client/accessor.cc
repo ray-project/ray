@@ -263,32 +263,6 @@ Status ActorInfoAccessor::AsyncCreateActor(
   return Status::OK();
 }
 
-Status ActorInfoAccessor::AsyncSubscribeAll(
-    const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-    const StatusCallback &done) {
-  RAY_CHECK(subscribe != nullptr);
-  fetch_all_data_operation_ = [this, subscribe](const StatusCallback &done) {
-    auto callback = [subscribe, done](
-                        const Status &status,
-                        const std::vector<rpc::ActorTableData> &actor_info_list) {
-      for (auto &actor_info : actor_info_list) {
-        subscribe(ActorID::FromBinary(actor_info.actor_id()), actor_info);
-      }
-      if (done) {
-        done(status);
-      }
-    };
-    RAY_CHECK_OK(AsyncGetAll(callback));
-  };
-
-  subscribe_all_operation_ = [this, subscribe](const StatusCallback &done) {
-    return client_impl_->GetGcsSubscriber().SubscribeAllActors(subscribe, done);
-  };
-
-  return subscribe_all_operation_(
-      [this, done](const Status &status) { fetch_all_data_operation_(done); });
-}
-
 Status ActorInfoAccessor::AsyncSubscribe(
     const ActorID &actor_id,
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
@@ -312,19 +286,32 @@ Status ActorInfoAccessor::AsyncSubscribe(
     RAY_CHECK_OK(AsyncGet(actor_id, callback));
   };
 
-  auto subscribe_operation = [this, actor_id,
-                              subscribe](const StatusCallback &subscribe_done) {
-    return client_impl_->GetGcsSubscriber().SubscribeActor(actor_id, subscribe,
-                                                           subscribe_done);
-  };
-
   {
     absl::MutexLock lock(&mutex_);
-    subscribe_operations_[actor_id] = subscribe_operation;
+    resubscribe_operations_[actor_id] =
+        [this, actor_id, subscribe](const StatusCallback &subscribe_done) {
+          // Unregister the previous subscription before subscribing the to new
+          // GCS instance. Otherwise, the existing long poll on the previous GCS
+          // instance could leak or access invalid memory when returned.
+          // In future if long polls can be cancelled, this might become unnecessary.
+          while (true) {
+            Status s = client_impl_->GetGcsSubscriber().UnsubscribeActor(actor_id);
+            if (s.ok()) {
+              break;
+            }
+            RAY_LOG(WARNING) << "Unsubscribing failed for " << actor_id.Hex()
+                             << ", retrying ...";
+            absl::SleepFor(absl::Seconds(1));
+          }
+          return client_impl_->GetGcsSubscriber().SubscribeActor(actor_id, subscribe,
+                                                                 subscribe_done);
+        };
     fetch_data_operations_[actor_id] = fetch_data_operation;
   }
-  return subscribe_operation(
-      [fetch_data_operation, done](const Status &status) { fetch_data_operation(done); });
+
+  return client_impl_->GetGcsSubscriber().SubscribeActor(
+      actor_id, subscribe,
+      [fetch_data_operation, done](const Status &) { fetch_data_operation(done); });
 }
 
 Status ActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
@@ -332,7 +319,7 @@ Status ActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
                  << ", job id = " << actor_id.JobId();
   auto status = client_impl_->GetGcsSubscriber().UnsubscribeActor(actor_id);
   absl::MutexLock lock(&mutex_);
-  subscribe_operations_.erase(actor_id);
+  resubscribe_operations_.erase(actor_id);
   fetch_data_operations_.erase(actor_id);
   RAY_LOG(DEBUG) << "Finished cancelling subscription to an actor, actor id = "
                  << actor_id << ", job id = " << actor_id.JobId();
@@ -341,24 +328,13 @@ Status ActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
 
 void ActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
   RAY_LOG(DEBUG) << "Reestablishing subscription for actor info.";
-  auto fetch_all_done = [](const Status &status) {
-    RAY_LOG(INFO) << "Finished fetching all actor information from gcs server after gcs "
-                     "server or pub-sub server is restarted.";
-  };
-
   // If only the GCS sever has restarted, we only need to fetch data from the GCS server.
   // If the pub-sub server has also restarted, we need to resubscribe to the pub-sub
   // server first, then fetch data from the GCS server.
   absl::MutexLock lock(&mutex_);
   if (is_pubsub_server_restarted) {
-    if (subscribe_all_operation_ != nullptr) {
-      RAY_CHECK_OK(subscribe_all_operation_([this, fetch_all_done](const Status &status) {
-        fetch_all_data_operation_(fetch_all_done);
-      }));
-    }
-    for (auto &item : subscribe_operations_) {
-      auto &actor_id = item.first;
-      RAY_CHECK_OK(item.second([this, actor_id](const Status &status) {
+    for (auto &[actor_id, resubscribe_op] : resubscribe_operations_) {
+      RAY_CHECK_OK(resubscribe_op([this, actor_id = actor_id](const Status &status) {
         absl::MutexLock lock(&mutex_);
         auto fetch_data_operation = fetch_data_operations_[actor_id];
         // `fetch_data_operation` is called in the callback function of subscribe.
@@ -370,9 +346,6 @@ void ActorInfoAccessor::AsyncResubscribe(bool is_pubsub_server_restarted) {
       }));
     }
   } else {
-    if (fetch_all_data_operation_ != nullptr) {
-      fetch_all_data_operation_(fetch_all_done);
-    }
     for (auto &item : fetch_data_operations_) {
       item.second(nullptr);
     }

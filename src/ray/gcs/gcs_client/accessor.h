@@ -110,17 +110,6 @@ class ActorInfoAccessor {
       const TaskSpecification &task_spec,
       const rpc::ClientCallback<rpc::CreateActorReply> &callback);
 
-  /// Subscribe to any register or update operations of actors.
-  ///
-  /// \param subscribe Callback that will be called each time when an actor is registered
-  /// or updated.
-  /// \param done Callback that will be called when subscription is complete and we
-  /// are ready to receive notification.
-  /// \return Status
-  virtual Status AsyncSubscribeAll(
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const StatusCallback &done);
-
   /// Subscribe to any update operations of an actor.
   ///
   /// \param actor_id The ID of actor to be subscribed to.
@@ -154,19 +143,11 @@ class ActorInfoAccessor {
   virtual bool IsActorUnsubscribed(const ActorID &actor_id);
 
  private:
-  /// Save the subscribe operation in this function, so we can call it again when PubSub
-  /// server restarts from a failure.
-  SubscribeOperation subscribe_all_operation_;
-
-  /// Save the fetch data operation in this function, so we can call it again when GCS
-  /// server restarts from a failure.
-  FetchDataOperation fetch_all_data_operation_;
-
-  // Mutex to protect the subscribe_operations_ field and fetch_data_operations_ field.
+  // Mutex to protect the resubscribe_operations_ field and fetch_data_operations_ field.
   absl::Mutex mutex_;
 
-  /// Save the subscribe operation of actors.
-  std::unordered_map<ActorID, SubscribeOperation> subscribe_operations_
+  /// Resubscribe operations for actors.
+  std::unordered_map<ActorID, SubscribeOperation> resubscribe_operations_
       GUARDED_BY(mutex_);
 
   /// Save the fetch data operation of actors.
