@@ -99,8 +99,7 @@ class TestGetURIForDirectory:
 class TestUploadPackageIfNeeded:
     def test_create_upload_once(self, empty_dir, random_dir,
                                 ray_start_regular):
-        pkg_uri = get_uri_for_directory(random_dir)
-        uri = "test_plugin" + "|" + pkg_uri
+        uri = get_uri_for_directory(random_dir)
         uploaded = upload_package_if_needed(uri, empty_dir, random_dir)
         assert uploaded
         assert _internal_kv_exists(uri)

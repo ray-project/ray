@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 import sys
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union, Tuple
 import yaml
 
 import ray
@@ -14,42 +14,33 @@ from ray._private.utils import import_attr
 logger = logging.getLogger(__name__)
 
 
-def validate_uri(uri: str, plugin: str) -> str:
-    """Validate and return a URI.
+def _encode_plugin_uri(plugin: str, uri: str) -> str:
+    return plugin + "|" + uri
 
-    If `uri` has not already been converted to the Ray-internal URI format of
-    "plugin|protocol://hash", then prepend the plugin name and | to `uri`.
-    """
+
+def _decode_plugin_uri(plugin_uri: str) -> Tuple[str, str]:
+    if "|" not in plugin_uri:
+        raise ValueError(
+            f"Plugin URI must be of the form 'plugin|uri', not {plugin_uri}")
+    return tuple(plugin_uri.split("|", 2))
+
+
+def validate_uri(uri: str):
     if not isinstance(uri, str):
         raise TypeError("URIs for working_dir and py_modules must be "
                         f"strings, got {type(uri)}.")
 
     try:
-        from ray._private.runtime_env.packaging import (
-            parse_uri, parse_pkg_uri, Protocol)
-        plugin_from_uri, protocol, path = parse_uri(uri)
+        from ray._private.runtime_env.packaging import parse_uri, Protocol
+        protocol, path = parse_uri(uri)
     except ValueError:
-        try:
-            plugin_from_uri = None
-            protocol, path = parse_pkg_uri(uri)
-        except ValueError:
-            raise ValueError(
-                f"{uri} is not a valid URI. Passing directories or modules to "
-                "be dynamically uploaded is only supported at the job level "
-                "(i.e., passed to `ray.init`).")
+        raise ValueError(
+            f"{uri} is not a valid URI. Passing directories or modules to "
+            "be dynamically uploaded is only supported at the job level "
+            "(i.e., passed to `ray.init`).")
 
     if protocol == Protocol.S3 and not path.endswith(".zip"):
         raise ValueError("Only .zip files supported for S3 URIs.")
-
-    if plugin_from_uri is not None and plugin != plugin_from_uri:
-        raise ValueError(
-            f"Plugin '{plugin}' does not match plugin '{plugin_from_uri}' "
-            f"parsed from uri '{uri}'.")
-
-    if plugin_from_uri is None:
-        uri = plugin + "|" + uri
-
-    return uri
 
 
 def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
@@ -61,7 +52,8 @@ def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
         raise TypeError("`py_modules` must be a list of strings, got "
                         f"{type(py_modules)}.")
 
-    py_modules = [validate_uri(uri, "py_modules") for uri in py_modules]
+    for uri in py_modules:
+        validate_uri(uri)
 
     return py_modules
 
@@ -77,7 +69,7 @@ def parse_and_validate_working_dir(working_dir: str) -> str:
         raise TypeError("`working_dir` must be a string, got "
                         f"{type(working_dir)}.")
 
-    working_dir = validate_uri(working_dir, "working_dir")
+    validate_uri(working_dir)
 
     return working_dir
 
@@ -355,12 +347,14 @@ class ParsedRuntimeEnv(dict):
     def get_uris(self) -> List[str]:
         # TODO(architkulkarni): this should programmatically be extended with
         # URIs from all plugins.
-        uris = []
+        plugin_uris = []
         if "working_dir" in self:
-            uris.append(self["working_dir"])
+            plugin_uris.append(
+                _encode_plugin_uri("working_dir", self["working_dir"]))
         if "py_modules" in self:
-            uris += self["py_modules"]
-        return uris
+            for uri in self["my_modules"]:
+                plugin_uris.append(_encode_plugin_uri("py_modules", uri))
+        return plugin_uris
 
     @classmethod
     def deserialize(cls, serialized: str) -> "ParsedRuntimeEnv":

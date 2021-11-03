@@ -7,14 +7,14 @@ from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package, delete_package, get_uri_for_directory,
-    parse_pkg_uri, Protocol, upload_package_if_needed)
+    parse_uri, Protocol, upload_package_if_needed)
 
 default_logger = logging.getLogger(__name__)
 
 
 def _check_is_uri(s: str) -> bool:
     try:
-        protocol, path = parse_pkg_uri(s)
+        protocol, path = parse_uri(s)
     except ValueError:
         protocol, path = None, None
 
@@ -60,22 +60,24 @@ def upload_py_modules_if_needed(
                             f"or imported modules, got {type(module)}.")
 
         if _check_is_uri(module_path):
-            uri = "py_modules" + "|" + module_path
+            module_uri = module_path
         else:
             # module_path is a local path.
             excludes = runtime_env.get("excludes", None)
-            uri = "py_modules" + "|" + get_uri_for_directory(
-                module_path, excludes=excludes)
+            module_uri = get_uri_for_directory(module_path, excludes=excludes)
             upload_package_if_needed(
-                uri,
+                module_uri,
                 scratch_dir,
                 module_path,
                 excludes=excludes,
                 include_parent_dir=True,
                 logger=logger)
-        py_modules_uris.append(uri)
+
+        py_modules_uris.append(module_uri)
+
     # TODO(architkulkarni): Expose a single URI for py_modules.  This plugin
     # should internally handle the "sub-URIs", the individual modules.
+
     runtime_env["py_modules"] = py_modules_uris
     return runtime_env
 

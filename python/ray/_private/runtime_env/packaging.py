@@ -110,40 +110,27 @@ def _hash_directory(
     return hash_val
 
 
-def parse_uri(uri: str) -> Tuple[str, Protocol, str]:
+def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     """
-    Parse resource uri into plugin name, protocol and package name based on its
-    format. Note that the output of this function is not for handling actual
-    IO, it's only for setting up local directory folders by using package name
-    as path.
+    Parse resource uri into protocol and package name based on its format.
+    Note that the output of this function is not for handling actual IO, it's
+    only for setting up local directory folders by using package name as path.
     For GCS URIs, netloc is the package name.
-        parse_uri("working_dir|gcs://_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
-            -> "working_dir", URLParseResult(
+        urlparse("gcs://_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
+            -> ParseResult(
                 scheme='gcs',
                 netloc='_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip'
             )
-            -> ("working_dir", "gcs",
-                "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
+            -> ("gcs", "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
     For S3 URIs, the bucket and path will have '/' replaced with '_'.
-        parse_uri("py_modules|s3://bucket/dir/file.zip")
-            -> "py_modules", URLParseResult(
+        urlparse("s3://bucket/dir/file.zip")
+            -> ParseResult(
                 scheme='s3',
                 netloc='bucket',
                 path='/dir/file.zip'
             )
-            -> ("py_modules", "s3",
-                "s3_bucket_dir_file.zip")
+            -> ("s3", "s3_bucket_dir_file.zip")
     """
-    if "|" not in uri:
-        raise ValueError(
-            f"Plugin URI must be of the form 'plugin|pkg_uri', not {uri}")
-
-    [plugin, pkg_uri] = uri.split("|", 2)
-    protocol, pkg_name = parse_pkg_uri(pkg_uri)
-    return plugin, protocol, pkg_name
-
-
-def parse_pkg_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
     if protocol == Protocol.S3:
@@ -179,10 +166,10 @@ def _get_gitignore(path: Path) -> Optional[Callable]:
         return None
 
 
-def _store_package_in_gcs(uri: str,
-                          data: bytes,
-                          logger: Optional[logging.Logger] = default_logger
-                          ) -> int:
+def _store_package_in_gcs(
+        pkg_uri: str,
+        data: bytes,
+        logger: Optional[logging.Logger] = default_logger) -> int:
     file_size = len(data)
     size_str = _mib_string(file_size)
     if len(data) >= GCS_STORAGE_MAX_SIZE:
@@ -191,15 +178,15 @@ def _store_package_in_gcs(uri: str,
             f"{_mib_string(GCS_STORAGE_MAX_SIZE)}. You can exclude large "
             "files using the 'excludes' option to the runtime_env.")
 
-    logger.info(f"Pushing file package '{uri}' ({size_str}) to "
+    logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to "
                 "Ray cluster...")
-    _internal_kv_put(uri, data)
-    logger.info(f"Successfully pushed file package '{uri}'.")
+    _internal_kv_put(pkg_uri, data)
+    logger.info(f"Successfully pushed file package '{pkg_uri}'.")
     return len(data)
 
 
-def _get_local_path(base_directory: str, uri: str) -> str:
-    plugin, protocol, pkg_name = parse_uri(uri)
+def _get_local_path(base_directory: str, pkg_uri: str) -> str:
+    _, pkg_name = parse_uri(pkg_uri)
     return os.path.join(base_directory, pkg_name)
 
 
@@ -242,18 +229,18 @@ def _zip_directory(directory: str,
         _dir_travel(dir_path, excludes, handler, logger=logger)
 
 
-def package_exists(uri: str) -> bool:
+def package_exists(pkg_uri: str) -> bool:
     """Check whether the package with given URI exists or not.
 
     Args:
-        uri (str): The uri of the package
+        pkg_uri (str): The uri of the package
 
     Return:
         True for package existing and False for not.
     """
-    plugin, protocol, pkg_name = parse_uri(uri)
+    protocol, pkg_name = parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
-        return _internal_kv_exists(uri)
+        return _internal_kv_exists(pkg_uri)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -294,19 +281,15 @@ def get_uri_for_directory(directory: str,
 
     hash_val = _hash_directory(directory, directory,
                                _get_excludes(directory, excludes))
-    return get_pkg_uri(
+
+    return "{protocol}://{pkg_name}.zip".format(
         protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val.hex())
 
 
-def get_pkg_uri(protocol, pkg_name):
-    return "{protocol}://{pkg_name}.zip".format(
-        protocol=protocol, pkg_name=pkg_name)
-
-
-def upload_package_to_gcs(uri: str, pkg_bytes: bytes):
-    plugin, protocol, pkg_name = parse_uri(uri)
+def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes):
+    protocol, pkg_name = parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
-        _store_package_in_gcs(uri, pkg_bytes)
+        _store_package_in_gcs(pkg_uri, pkg_bytes)
     elif protocol == Protocol.S3:
         raise RuntimeError("push_package should not be called with s3 path.")
     else:
@@ -336,7 +319,7 @@ def create_package(directory: str,
 
 
 def upload_package_if_needed(
-        uri: str,
+        pkg_uri: str,
         base_directory: str,
         directory: str,
         include_parent_dir: bool = False,
@@ -350,7 +333,7 @@ def upload_package_if_needed(
     If the package already exists in storage, this is a no-op.
 
     Args:
-        uri: URI of the package to upload.
+        pkg_uri: URI of the package to upload.
         base_directory: Directory where package files are stored.
         directory: Directory to be uploaded.
         include_parent_dir: If true, includes the top-level directory as a
@@ -363,17 +346,17 @@ def upload_package_if_needed(
     if logger is None:
         logger = default_logger
 
-    if package_exists(uri):
+    if package_exists(pkg_uri):
         return False
 
-    package_file = Path(_get_local_path(base_directory, uri))
+    package_file = Path(_get_local_path(base_directory, pkg_uri))
     create_package(
         directory,
         package_file,
         include_parent_dir=include_parent_dir,
         excludes=excludes)
 
-    upload_package_to_gcs(uri, package_file.read_bytes())
+    upload_package_to_gcs(pkg_uri, package_file.read_bytes())
 
     # Remove the local file to avoid accumulating temporary zip files.
     package_file.unlink()
@@ -382,7 +365,7 @@ def upload_package_if_needed(
 
 
 def download_and_unpack_package(
-        uri: str,
+        pkg_uri: str,
         base_directory: str,
         logger: Optional[logging.Logger] = default_logger,
 ) -> str:
@@ -390,29 +373,27 @@ def download_and_unpack_package(
 
     Will be written to a directory named {base_directory}/{uri}.
     """
-    pkg_file = Path(_get_local_path(base_directory, uri))
+    pkg_file = Path(_get_local_path(base_directory, pkg_uri))
     with FileLock(str(pkg_file) + ".lock"):
         if logger is None:
             logger = default_logger
 
-        logger.debug(f"Fetching package for URI: {uri}")
+        logger.debug(f"Fetching package for URI: {pkg_uri}")
 
         local_dir = pkg_file.with_suffix("")
         assert local_dir != pkg_file, "Invalid pkg_file!"
         if local_dir.exists():
             assert local_dir.is_dir(), f"{local_dir} is not a directory"
         else:
-            plugin, protocol, pkg_name = parse_uri(uri)
+            protocol, pkg_name = parse_uri(pkg_uri)
             if protocol == Protocol.GCS:
                 # Download package from the GCS.
-                code = _internal_kv_get(uri)
+                code = _internal_kv_get(pkg_uri)
                 if code is None:
-                    raise IOError(f"Failed to fetch URI {uri} from GCS.")
+                    raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
                 code = code or b""
                 pkg_file.write_bytes(code)
             elif protocol == Protocol.S3:
-                # TODO(architkulkarni): cleanup
-                uri = uri[len(plugin + "|"):]
                 # Download package from S3.
                 try:
                     from smart_open import open
@@ -424,7 +405,7 @@ def download_and_unpack_package(
                         "bucket.")
 
                 tp = {"client": boto3.client("s3")}
-                with open(uri, "rb", transport_params=tp) as package_zip:
+                with open(pkg_uri, "rb", transport_params=tp) as package_zip:
                     with open(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
             else:
@@ -440,18 +421,18 @@ def download_and_unpack_package(
         return str(local_dir)
 
 
-def delete_package(uri: str, base_directory: str) -> bool:
+def delete_package(pkg_uri: str, base_directory: str) -> bool:
     """Deletes a specific URI from the local filesystem.
 
     Args:
-        uri (str): URI to delete.
+        pkg_uri (str): URI to delete.
 
     Returns:
         True if the URI was successfully deleted, else False.
     """
 
     deleted = False
-    path = Path(_get_local_path(base_directory, uri))
+    path = Path(_get_local_path(base_directory, pkg_uri))
     with FileLock(str(path) + ".lock"):
         path = path.with_suffix("")
         if path.exists():

@@ -6,8 +6,8 @@ import logging
 import os
 import time
 from typing import Dict, Set
-from ray._private.runtime_env.packaging import parse_uri
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
+from ray._private.runtime_env.validation import (ParsedRuntimeEnv,
+                                                 _decode_plugin_uri)
 from ray._private.utils import import_attr
 
 from ray.core.generated import runtime_env_agent_pb2
@@ -112,8 +112,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
                 # Add the mapping of URIs -> the serialized environment to be
                 # used for cache invalidation.
-                for uri in runtime_env.get_uris():
-                    self._uris_to_envs[uri].add(serialized_runtime_env)
+                for plugin_uri in runtime_env.get_uris():
+                    self._uris_to_envs[plugin_uri].add(serialized_runtime_env)
 
                 # Run setup function from all the plugins
                 for plugin_class_path in runtime_env.get("plugins", {}).keys():
@@ -199,14 +199,13 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
         failed_uris = []  # URIs that we failed to delete.
 
-        for uri in request.uris:
+        for plugin_uri in request.uris:
             # Invalidate the env cache for any envs that contain this URI.
-            for env in self._uris_to_envs.get(uri, []):
+            for env in self._uris_to_envs.get(plugin_uri, []):
                 if env in self._env_cache:
                     del self._env_cache[env]
 
-            plugin, protocol, pkg_uri = parse_uri(uri)
-
+            plugin, uri = _decode_plugin_uri(plugin_uri)
             if plugin == "working_dir":
                 if not self._working_dir_manager.delete_uri(uri):
                     failed_uris.append(uri)

@@ -16,7 +16,8 @@ from ray._private.test_utils import wait_for_condition
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 
-# This test requires you have AWS credentials set up in ~/.aws/credentials.
+# This test requires you have AWS credentials set up (any AWS credentials will
+# do, this test only accesses a public bucket).
 
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
@@ -357,9 +358,7 @@ def test_multi_node(start_cluster, option: str, source: str):
 
 
 def check_internal_kv_gced():
-    return all(
-        len(kv._internal_kv_list(f"{plugin}|gcs://")) == 0
-        for plugin in ParsedRuntimeEnv.known_fields)
+    return len(kv._internal_kv_list("gcs://")) == 0
 
 
 def check_local_files_gced(cluster):
@@ -681,9 +680,9 @@ def test_runtime_context(start_cluster, working_dir):
     def check():
         wd = ray.get_runtime_context().runtime_env["working_dir"]
         if working_dir == S3_PACKAGE_URI:
-            assert wd == "working_dir" + "|" + S3_PACKAGE_URI
+            assert wd == S3_PACKAGE_URI
         else:
-            assert wd.startswith("working_dir|gcs://_ray_pkg_")
+            assert wd.startswith("gcs://_ray_pkg_")
 
     check()
 
