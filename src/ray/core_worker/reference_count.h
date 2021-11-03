@@ -562,7 +562,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
     // object's lineage.
-    const bool is_reconstructable = false;
+    bool is_reconstructable = false;
 
     /// The local ref count for the ObjectID in the language frontend.
     size_t local_ref_count = 0;

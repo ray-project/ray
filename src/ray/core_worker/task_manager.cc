@@ -93,7 +93,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   return returned_refs;
 }
 
-Status TaskManager::ResubmitTask(const TaskID &task_id,
+bool TaskManager::ResubmitTask(const TaskID &task_id,
                                  std::vector<ObjectID> *task_deps) {
   TaskSpecification spec;
   bool resubmit = false;
@@ -101,7 +101,9 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it == submissible_tasks_.end()) {
-      return Status::Invalid("Task spec missing");
+      // This can happen when the task has already been
+      // retried up to its max attempts.
+      return false;
     }
 
     if (!it->second.pending) {
@@ -148,7 +150,7 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
     retry_task_callback_(spec, /*delay=*/false);
   }
 
-  return Status::OK();
+  return true;
 }
 
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {

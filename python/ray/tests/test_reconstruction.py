@@ -170,7 +170,7 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
         num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
 
     if reconstruction_enabled:
-        with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
+        with pytest.raises(ray.exceptions.ObjectReconstructionFailedMaxAttemptsExceededError):
             ray.get(obj)
     else:
         with pytest.raises(ray.exceptions.ObjectLostError):
@@ -681,17 +681,14 @@ def test_nondeterministic_output(ray_start_cluster, reconstruction_enabled):
             ray.get(x)
 
 
-@pytest.mark.parametrize("reconstruction_enabled", [False, True])
-def test_lineage_evicted(ray_start_cluster, reconstruction_enabled):
+def test_lineage_evicted(ray_start_cluster):
     config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_period_milliseconds": 100,
         "object_timeout_milliseconds": 200,
         "max_lineage_bytes": 10_000,
+        "lineage_pinning_enabled": True,
     }
-    # Workaround to reset the config to the default value.
-    if not reconstruction_enabled:
-        config["lineage_pinning_enabled"] = False
 
     cluster = ray_start_cluster
     # Head node with no resources.
@@ -745,7 +742,7 @@ def test_lineage_evicted(ray_start_cluster, reconstruction_enabled):
             ray.get(dependent_task.remote(obj))
             assert False
         except ray.exceptions.RayTaskError as e:
-            assert "ObjectReconstructionFailedError" in str(e)
+            assert "ObjectReconstructionFailedLineageEvictedError" in str(e)
     else:
         with pytest.raises(ray.exceptions.RayTaskError):
             ray.get(dependent_task.remote(obj))
