@@ -2,7 +2,7 @@
 - name: learning_tests_core
   cluster:
     app_config: app_config.yaml
-    compute_template: 8gpus_64cpus.yaml
+    compute_template: 10gpus_160cpus.yaml
 
   run:
     timeout: 14400
