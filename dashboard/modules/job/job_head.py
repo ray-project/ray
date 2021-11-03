@@ -19,7 +19,7 @@ routes = dashboard_utils.ClassMethodRouteTable
 
 RAY_INTERNAL_JOBS_NAMESPACE = "_ray_internal_jobs_"
 
-JOBS_API_PREFIX = "/api/jobs"
+JOBS_API_PREFIX = "/api/jobs/"
 JOBS_API_ROUTE_LOGS = JOBS_API_PREFIX + "logs"
 JOBS_API_ROUTE_SUBMIT = JOBS_API_PREFIX + "submit"
 JOBS_API_ROUTE_STATUS = JOBS_API_PREFIX + "status"
