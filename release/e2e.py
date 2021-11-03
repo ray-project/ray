@@ -803,9 +803,14 @@ def create_or_find_app_config(
 
 def run_bash_script(local_dir: str, bash_script: str):
     previous_dir = os.getcwd()
-    os.chdir(local_dir)
 
-    subprocess.run(bash_script, shell=True)
+    bash_script_local_dir = os.path.dirname(bash_script)
+    file_name = os.path.basename(bash_script)
+
+    full_local_dir = os.path.join(local_dir, bash_script_local_dir)
+    os.chdir(full_local_dir)
+
+    subprocess.run("./"+file_name, shell=True)
 
     os.chdir(previous_dir)
 
