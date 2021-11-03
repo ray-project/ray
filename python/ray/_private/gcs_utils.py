@@ -119,13 +119,15 @@ class GcsCode(enum.IntEnum):
 
 
 class GcsClient:
-    MAX_MESSAGE_LENGTH = 512 * 1024 * 1024 # 512MB
+    MAX_MESSAGE_LENGTH = 512 * 1024 * 1024  # 512MB
 
     def __init__(self, address):
         logger.debug(f"Connecting to gcs address: {address}")
-        options =  [("grpc.enable_http_proxy", 0),
-                    ("grpc.max_send_message_length", GcsClient.MAX_MESSAGE_LENGTH),
-                    ('grpc.max_receive_message_length', GcsClient.MAX_MESSAGE_LENGTH)]
+        options = [("grpc.enable_http_proxy",
+                    0), ("grpc.max_send_message_length",
+                         GcsClient.MAX_MESSAGE_LENGTH),
+                   ("grpc.max_receive_message_length",
+                    GcsClient.MAX_MESSAGE_LENGTH)]
         channel = init_grpc_channel(address, options=options)
         self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(channel)
 
