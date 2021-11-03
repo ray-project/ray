@@ -590,7 +590,7 @@
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-flaky,-soft_imports,-gpu_only,-rllib python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-flaky,-soft_imports,-gpu_only,-rllib python/ray/tune/...
 
-- label: ":octopus: Tune tests and examples {using RLlib}"
+- label: ":octopus: :brain: Tune tests and examples {using RLlib}"
   conditions: ["RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
