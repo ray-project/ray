@@ -16,7 +16,7 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray.actor import ActorHandle
-from ray.serve.common import BackendInfo, GoalId, ReplicaTag
+from ray.serve.common import DeploymentInfo, GoalId, ReplicaTag
 from ray.serve.config import (AutoscalingConfig, DeploymentConfig, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (DEFAULT_CHECKPOINT_PATH, HTTP_PROXY_TIMEOUT,
@@ -258,11 +258,11 @@ class Client:
             ray.get(self._controller.delete_deployment.remote(name)))
 
     @_ensure_connected
-    def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
+    def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
         return ray.get(self._controller.get_deployment_info.remote(name))
 
     @_ensure_connected
-    def list_deployments(self) -> Dict[str, Tuple[BackendInfo, str]]:
+    def list_deployments(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
         return ray.get(self._controller.list_deployments.remote())
 
     @_ensure_connected
@@ -1082,21 +1082,21 @@ def get_deployment(name: str) -> Deployment:
         Deployment
     """
     try:
-        backend_info, route_prefix = _get_global_client().get_deployment_info(
-            name)
+        deployment_info, route_prefix = _get_global_client(
+        ).get_deployment_info(name)
     except KeyError:
         raise KeyError(f"Deployment {name} was not found. "
                        "Did you call Deployment.deploy()?")
     return Deployment(
         cloudpickle.loads(
-            backend_info.replica_config.serialized_deployment_def),
+            deployment_info.replica_config.serialized_deployment_def),
         name,
-        backend_info.deployment_config,
-        version=backend_info.version,
-        init_args=backend_info.replica_config.init_args,
-        init_kwargs=backend_info.replica_config.init_kwargs,
+        deployment_info.deployment_config,
+        version=deployment_info.version,
+        init_args=deployment_info.replica_config.init_args,
+        init_kwargs=deployment_info.replica_config.init_kwargs,
         route_prefix=route_prefix,
-        ray_actor_options=backend_info.replica_config.ray_actor_options,
+        ray_actor_options=deployment_info.replica_config.ray_actor_options,
         _internal=True,
     )
 
@@ -1110,17 +1110,17 @@ def list_deployments() -> Dict[str, Deployment]:
     infos = _get_global_client().list_deployments()
 
     deployments = {}
-    for name, (backend_info, route_prefix) in infos.items():
+    for name, (deployment_info, route_prefix) in infos.items():
         deployments[name] = Deployment(
             cloudpickle.loads(
-                backend_info.replica_config.serialized_deployment_def),
+                deployment_info.replica_config.serialized_deployment_def),
             name,
-            backend_info.deployment_config,
-            version=backend_info.version,
-            init_args=backend_info.replica_config.init_args,
-            init_kwargs=backend_info.replica_config.init_kwargs,
+            deployment_info.deployment_config,
+            version=deployment_info.version,
+            init_args=deployment_info.replica_config.init_args,
+            init_kwargs=deployment_info.replica_config.init_kwargs,
             route_prefix=route_prefix,
-            ray_actor_options=backend_info.replica_config.ray_actor_options,
+            ray_actor_options=deployment_info.replica_config.ray_actor_options,
             _internal=True,
         )
 
