@@ -16,7 +16,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.torch_ops import set_torch_seed
+from ray.rllib.utils.torch_utils import set_torch_seed
 
 logger = logging.getLogger(__name__)
 

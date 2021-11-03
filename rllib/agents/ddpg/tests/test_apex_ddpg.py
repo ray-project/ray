@@ -27,7 +27,7 @@ class TestApexDDPG(unittest.TestCase):
         for _ in framework_iterator(config, with_eager_tracing=True):
             plain_config = config.copy()
             trainer = apex_ddpg.ApexDDPGTrainer(
-                config=plain_config, env="Pendulum-v0")
+                config=plain_config, env="Pendulum-v1")
 
             # Test per-worker scale distribution.
             infos = trainer.workers.foreach_policy(

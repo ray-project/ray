@@ -1,4 +1,5 @@
 import aiohttp.web
+from base64 import b64decode
 from functools import wraps
 import logging
 from typing import Callable
@@ -6,11 +7,13 @@ from typing import Callable
 import ray
 import ray.dashboard.utils as dashboard_utils
 from ray._private.job_manager import JobManager
+from ray._private.runtime_env.packaging import (package_exists,
+                                                upload_package_to_gcs)
 from ray.dashboard.modules.job.data_types import (
-    JobStatus, JobSubmitRequest, JobSubmitResponse, JobStatusRequest,
-    JobStatusResponse, JobLogsRequest, JobLogsResponse)
-from ray.experimental.internal_kv import (_initialize_internal_kv,
-                                          _internal_kv_initialized)
+    GetPackageRequest, GetPackageResponse, UploadPackageRequest, JobStatus,
+    JobSubmitRequest, JobSubmitResponse, JobStatusRequest, JobStatusResponse,
+    JobLogsRequest, JobLogsResponse)
+
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
@@ -31,16 +34,41 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
 
-        # Initialize internal KV to be used by the working_dir setup code.
-        _initialize_internal_kv(dashboard_head.gcs_client)
-        assert _internal_kv_initialized()
-
         self._job_manager = None
+
+    @routes.get("/package")
+    @_ensure_ray_initialized
+    async def get_package(self,
+                          req: aiohttp.web.Request) -> aiohttp.web.Response:
+        req_data = await req.json()
+        package_uri = GetPackageRequest(**req_data).package_uri
+        already_exists = package_exists(package_uri)
+        exists_str = "exists" if already_exists else "does not exist"
+        return dashboard_utils.rest_response(
+            success=True,
+            convert_google_style=False,
+            data=GetPackageResponse(package_exists=already_exists).dict(),
+            message=f"Package {package_uri} {exists_str}.")
+
+    @routes.put("/package")
+    @_ensure_ray_initialized
+    async def upload_package(self,
+                             req: aiohttp.web.Request) -> aiohttp.web.Response:
+        req_data = await req.json()
+        upload_req = UploadPackageRequest(**req_data)
+        package_uri = upload_req.package_uri
+        logger.info(f"Uploading package {package_uri} to the GCS.")
+        upload_package_to_gcs(package_uri,
+                              b64decode(upload_req.encoded_package_bytes))
+        return dashboard_utils.rest_response(
+            success=True,
+            convert_google_style=False,
+            message=f"Successfully uploaded {package_uri}.")
 
     @routes.post("/submit")
     @_ensure_ray_initialized
-    async def submit(self, req) -> aiohttp.web.Response:
-        req_data = dict(await req.json())
+    async def submit(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        req_data = await req.json()
         submit_request = JobSubmitRequest(**req_data)
         job_id = self._job_manager.submit_job(
             submit_request.job_spec.entrypoint,
@@ -52,11 +80,11 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             success=True,
             convert_google_style=False,
             data=resp.dict(),
-            message=f"Submitted job {job_id}")
+            message=f"Submitted job {job_id}.")
 
     @routes.get("/status")
     @_ensure_ray_initialized
-    async def status(self, req) -> aiohttp.web.Response:
+    async def status(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         req_data = dict(await req.json())
         status_request = JobStatusRequest(**req_data)
 
@@ -71,7 +99,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/logs")
     @_ensure_ray_initialized
-    async def logs(self, req) -> aiohttp.web.Response:
+    async def logs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         req_data = dict(await req.json())
         logs_request = JobLogsRequest(**req_data)
 
