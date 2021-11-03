@@ -2886,6 +2886,9 @@ def test_groupby_arrow(ray_start_regular_shared):
 
 def test_groupby_arrow_count(ray_start_regular_shared):
     # Test built-in count aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_count with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
     agg_ds = ray.data.from_items([{
@@ -2900,6 +2903,9 @@ def test_groupby_arrow_count(ray_start_regular_shared):
 
 def test_groupby_arrow_sum(ray_start_regular_shared):
     # Test built-in sum aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_sum with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
     agg_ds = ray.data.from_items([{
@@ -2918,6 +2924,9 @@ def test_groupby_arrow_sum(ray_start_regular_shared):
 
 def test_groupby_arrow_min(ray_start_regular_shared):
     # Test built-in min aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_min with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
     agg_ds = ray.data.from_items([{
@@ -2936,6 +2945,9 @@ def test_groupby_arrow_min(ray_start_regular_shared):
 
 def test_groupby_arrow_max(ray_start_regular_shared):
     # Test built-in max aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_max with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
     agg_ds = ray.data.from_items([{
@@ -2954,6 +2966,9 @@ def test_groupby_arrow_max(ray_start_regular_shared):
 
 def test_groupby_arrow_mean(ray_start_regular_shared):
     # Test built-in mean aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_mean with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
     agg_ds = ray.data.from_items([{
@@ -2973,6 +2988,9 @@ def test_groupby_arrow_mean(ray_start_regular_shared):
 
 def test_groupby_arrow_std(ray_start_regular_shared):
     # Test built-in std aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_std with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
@@ -3000,6 +3018,9 @@ def test_groupby_arrow_std(ray_start_regular_shared):
 
 
 def test_groupby_simple(ray_start_regular_shared):
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple with: {seed}")
+    random.seed(seed)
     parallelism = 3
     xs = [("A", 2), ("A", 4), ("A", 9), ("B", 10), ("B", 20), ("C", 3),
           ("C", 5), ("C", 8), ("C", 12)]
@@ -3048,6 +3069,9 @@ def test_groupby_simple(ray_start_regular_shared):
 
 def test_groupby_simple_count(ray_start_regular_shared):
     # Test built-in count aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_count with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
     agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).count()
@@ -3058,6 +3082,9 @@ def test_groupby_simple_count(ray_start_regular_shared):
 
 def test_groupby_simple_sum(ray_start_regular_shared):
     # Test built-in sum aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_sum with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
     agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).sum()
@@ -3071,6 +3098,9 @@ def test_groupby_simple_sum(ray_start_regular_shared):
 
 def test_groupby_simple_min(ray_start_regular_shared):
     # Test built-in min aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_min with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
     agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).min()
@@ -3084,6 +3114,9 @@ def test_groupby_simple_min(ray_start_regular_shared):
 
 def test_groupby_simple_max(ray_start_regular_shared):
     # Test built-in max aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_max with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
     agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).max()
@@ -3098,6 +3131,9 @@ def test_groupby_simple_max(ray_start_regular_shared):
 
 def test_groupby_simple_mean(ray_start_regular_shared):
     # Test built-in mean aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_mean with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
     agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).mean()
