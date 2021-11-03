@@ -35,7 +35,7 @@ def transform_action_space(env_name_or_creator) -> Type[gym.Env]:
 
     Examples:
          >>> # By gym string:
-         >>> pendulum_300_to_500_cls = transform_action_space("Pendulum-v0")
+         >>> pendulum_300_to_500_cls = transform_action_space("Pendulum-v1")
          >>> # Create a transformed pendulum env.
          >>> pendulum_300_to_500 = pendulum_300_to_500_cls({"_low": -15.0})
          >>> pendulum_300_to_500.action_space
@@ -71,4 +71,4 @@ def transform_action_space(env_name_or_creator) -> Type[gym.Env]:
     return TransformedActionSpaceEnv
 
 
-TransformedActionPendulum = transform_action_space("Pendulum-v0")
+TransformedActionPendulum = transform_action_space("Pendulum-v1")

@@ -17,6 +17,8 @@ from ray.experimental.internal_kv import (
 from ray.dashboard.modules.job.data_types import JobStatus
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 
+JOB_ID_METADATA_KEY = "job_submission_id"
+
 
 class JobLogStorageClient:
     """
@@ -123,7 +125,9 @@ class JobSupervisor:
         self._status_client = JobStatusStorageClient()
         self._log_client = JobLogStorageClient()
         self._runtime_env = ray.get_runtime_context().runtime_env
+
         self._metadata = metadata
+        self._metadata[JOB_ID_METADATA_KEY] = job_id
 
     def ready(self):
         pass
