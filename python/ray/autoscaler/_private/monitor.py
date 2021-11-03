@@ -155,6 +155,8 @@ class Monitor:
             gcs_address, options)
         self.gcs_node_resources_stub = \
             gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
+        self.gcs_node_info_stub = \
+            gcs_service_pb2_grpc.NodeInfoGcsServiceStub(gcs_channel)
 
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
@@ -222,7 +224,9 @@ class Monitor:
             self.load_metrics,
             prefix_cluster_info=self.prefix_cluster_info,
             event_summarizer=self.event_summarizer,
-            prom_metrics=self.prom_metrics)
+            prom_metrics=self.prom_metrics,
+            gcs_node_info_stub=self.gcs_node_info_stub,
+        )
 
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
@@ -243,11 +247,11 @@ class Monitor:
         mirror_node_types = {}
         cluster_full = False
         for resource_message in resources_batch_data.batch:
+            node_id = resource_message.node_id.hex()
             # Generate node type config based on GCS reported node list.
             if self.readonly_config:
                 # Keep prefix in sync with ReadonlyNodeProvider.
-                node_type = format_readonly_node_type(
-                    resource_message.node_id.hex())
+                node_type = format_readonly_node_type(node_id)
                 resources = {}
                 for k, v in resource_message.resources_total.items():
                     resources[k] = v
@@ -279,12 +283,12 @@ class Monitor:
                 if peloton_id is not None:
                     ip = str(int(peloton_id))
                 else:
-                    ip = resource_message.node_id.hex()
+                    ip = node_id
             else:
                 ip = resource_message.node_manager_address
-            self.load_metrics.update(ip, total_resources, available_resources,
-                                     resource_load, waiting_bundles,
-                                     infeasible_bundles,
+            self.load_metrics.update(ip, node_id, total_resources,
+                                     available_resources, resource_load,
+                                     waiting_bundles, infeasible_bundles,
                                      pending_placement_groups, cluster_full)
         if self.readonly_config:
             self.readonly_config["available_node_types"].update(

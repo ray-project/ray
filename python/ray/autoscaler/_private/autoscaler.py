@@ -42,6 +42,8 @@ from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
 from ray.autoscaler._private.constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
     AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
+from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
+
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
@@ -87,6 +89,7 @@ class StandardAutoscaler:
             # TODO(ekl): require config reader to be a callable always.
             config_reader: Union[str, Callable[[], dict]],
             load_metrics: LoadMetrics,
+            gcs_node_info_stub: gcs_service_pb2_grpc.NodeInfoGcsServiceStub,
             max_launch_batch: int = AUTOSCALER_MAX_LAUNCH_BATCH,
             max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
             max_failures: int = AUTOSCALER_MAX_NUM_FAILURES,
@@ -94,7 +97,8 @@ class StandardAutoscaler:
             update_interval_s: int = AUTOSCALER_UPDATE_INTERVAL_S,
             prefix_cluster_info: bool = False,
             event_summarizer: Optional[EventSummarizer] = None,
-            prom_metrics: Optional[AutoscalerPrometheusMetrics] = None):
+            prom_metrics: Optional[AutoscalerPrometheusMetrics] = None,
+    ):
         """Create a StandardAutoscaler.
 
         Args:
@@ -112,6 +116,8 @@ class StandardAutoscaler:
             prefix_cluster_info: Whether to add the cluster name to info strs.
             event_summarizer: Utility to consolidate duplicated messages.
             prom_metrics: Prometheus metrics for autoscaler-related operations.
+            gcs_node_info_stub: Stub for interactions with Ray nodes via GCS.
+                Used to drain nodes before termination.
         """
 
         if isinstance(config_reader, str):
@@ -198,6 +204,8 @@ class StandardAutoscaler:
             remote: os.path.expanduser(local)
             for remote, local in self.config["file_mounts"].items()
         }
+
+        self.gcs_node_info_stub = gcs_node_info_stub
 
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
@@ -380,6 +388,7 @@ class StandardAutoscaler:
         """Terminate scheduled nodes and clean associated autoscaler state."""
         if not self.nodes_to_terminate:
             return
+        self.drain_nodes_via_gcs()
         self.provider.terminate_nodes(self.nodes_to_terminate)
         for node in self.nodes_to_terminate:
             self.node_tracker.untrack(node)
@@ -387,6 +396,34 @@ class StandardAutoscaler:
 
         self.nodes_to_terminate = []
         self.update_worker_list()
+
+    def drain_nodes_via_gcs(self):
+        node_ips = [self.provider.internal_ip(node_id)
+                    for node_id in self.nodes_to_terminate]
+        raylet_ids_to_drain = {self.load_metrics.raylet_id_by_ip[ip]
+                               for ip in node_ips}
+
+        logger.info(f"Draining raylets with ids {raylet_ids_to_drain}.")
+        request = gcs_service_pb2.DrainNodeRequest(
+            [gcs_service_pb2.DrainNodeData(raylet_id)
+             for raylet_id in raylet_ids_to_drain]
+        )
+        try:
+            response = self.gcs_node_info_stub.DrainNode(request)
+            drained_raylet_ids = {status_item.node_id for status_item
+                                  in response.drain_node_status}
+            failed_to_drain = raylet_ids_to_drain - drained_raylet_ids
+            if failed_to_drain:
+                logger.error(
+                    f"Failed to drain raylets with ids {failed_to_drain}.")
+        except Exception as e:
+            # If we're here, it means the GCS is using Ray version < 1.8.0,
+            # for which DrainNode is not implemented. Fail silently.
+            pass
+        except Exception:
+            # We don't need to interrupt the autoscaler update with an
+            # exception, but we should log what went wrong.
+            logger.exception("Failed to drain Ray nodes. Traceback follows.")
 
     def launch_required_nodes(self, to_launch: Dict[NodeType, int]) -> None:
         if to_launch:
