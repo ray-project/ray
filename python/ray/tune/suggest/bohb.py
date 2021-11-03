@@ -5,7 +5,7 @@ import logging
 import math
 # use cloudpickle instead of pickle to make BOHB obj
 # pickleable
-import cloudpickle
+from ray import cloudpickle
 from typing import Dict, List, Optional, Union
 
 from ray.tune.result import DEFAULT_METRIC

@@ -45,7 +45,7 @@ async def _send_request_to_handle(handle, scope, receive, send):
         del scope["endpoint"]
 
     # NOTE(edoakes): it's important that we defer building the starlette
-    # request until it reaches the backend replica to avoid unnecessary
+    # request until it reaches the replica to avoid unnecessary
     # serialization cost, so we use a simple dataclass here.
     request = HTTPRequestWrapper(scope, http_body_bytes)
     # Perform a pickle here to improve latency. Stdlib pickle for simple

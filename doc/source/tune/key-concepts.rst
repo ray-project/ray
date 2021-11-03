@@ -185,15 +185,8 @@ To optimize the hyperparameters of your training process, you will want to use a
         verbose=2)
 
 
-Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as :ref:`Nevergrad <nevergrad>` and :ref:`Hyperopt <tune-hyperopt>`. Tune automatically converts the provided search space into the search
+Tune has SearchAlgorithms that integrate with many popular **optimization** libraries, such as :ref:`Nevergrad <nevergrad>` and :ref:`HyperOpt <tune-hyperopt>`. Tune automatically converts the provided search space into the search
 spaces the search algorithms/underlying library expect.
-
-.. note::
-    We are currently in the process of implementing automatic search space
-    conversions for all search algorithms. Currently this works for
-    AxSearch, BayesOpt, Hyperopt and Optuna. The other search algorithms
-    will follow shortly, but have to be instantiated with their respective
-    search spaces at the moment.
 
 See the documentation: :ref:`tune-search-alg`.
 

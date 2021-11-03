@@ -3,9 +3,9 @@ import gym
 import numpy as np
 from typing import Callable, List, Optional, Tuple
 
-from ray.rllib.utils.annotations import override, PublicAPI
-from ray.rllib.utils.typing import EnvActionType, EnvConfigDict, EnvInfoDict, \
-    EnvObsType, EnvType, PartialTrainerConfigDict
+from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
+from ray.rllib.utils.typing import EnvActionType, EnvInfoDict, \
+    EnvObsType, EnvType
 
 logger = logging.getLogger(__name__)
 
@@ -17,34 +17,51 @@ class VectorEnv:
 
     def __init__(self, observation_space: gym.Space, action_space: gym.Space,
                  num_envs: int):
-        """Initializes a VectorEnv object.
+        """Initializes a VectorEnv instance.
 
         Args:
-            observation_space (Space): The observation Space of a single
+            observation_space: The observation Space of a single
                 sub-env.
-            action_space (Space): The action Space of a single sub-env.
-            num_envs (int): The number of clones to make of the given sub-env.
+            action_space: The action Space of a single sub-env.
+            num_envs: The number of clones to make of the given sub-env.
         """
         self.observation_space = observation_space
         self.action_space = action_space
         self.num_envs = num_envs
 
     @staticmethod
-    def wrap(make_env: Optional[Callable[[int], EnvType]] = None,
-             existing_envs: Optional[List[gym.Env]] = None,
-             num_envs: int = 1,
-             action_space: Optional[gym.Space] = None,
-             observation_space: Optional[gym.Space] = None,
-             env_config: Optional[EnvConfigDict] = None,
-             policy_config: Optional[PartialTrainerConfigDict] = None):
+    def vectorize_gym_envs(
+            make_env: Optional[Callable[[int], EnvType]] = None,
+            existing_envs: Optional[List[gym.Env]] = None,
+            num_envs: int = 1,
+            action_space: Optional[gym.Space] = None,
+            observation_space: Optional[gym.Space] = None,
+            # Deprecated. These seem to have never been used.
+            env_config=None,
+            policy_config=None) -> "_VectorizedGymEnv":
+        """Translates any given gym.Env(s) into a VectorizedEnv object.
+
+        Args:
+            make_env: Factory that produces a new gym.Env taking the sub-env's
+                vector index as only arg. Must be defined if the
+                number of `existing_envs` is less than `num_envs`.
+            existing_envs: Optional list of already instantiated sub
+                environments.
+            num_envs: Total number of sub environments in this VectorEnv.
+            action_space: The action space. If None, use existing_envs[0]'s
+                action space.
+            observation_space: The observation space. If None, use
+                existing_envs[0]'s action space.
+
+        Returns:
+            The resulting _VectorizedGymEnv object (subclass of VectorEnv).
+        """
         return _VectorizedGymEnv(
             make_env=make_env,
             existing_envs=existing_envs or [],
             num_envs=num_envs,
             observation_space=observation_space,
             action_space=action_space,
-            env_config=env_config,
-            policy_config=policy_config,
         )
 
     @PublicAPI
@@ -52,7 +69,7 @@ class VectorEnv:
         """Resets all sub-environments.
 
         Returns:
-            obs (List[any]): List of observations from each environment.
+            List of observations from each environment.
         """
         raise NotImplementedError
 
@@ -61,10 +78,10 @@ class VectorEnv:
         """Resets a single environment.
 
         Args:
-            index (Optional[int]): An optional sub-env index to reset.
+            index: An optional sub-env index to reset.
 
         Returns:
-            obs (obj): Observations from the reset sub environment.
+            Observations from the reset sub environment.
         """
         raise NotImplementedError
 
@@ -75,22 +92,23 @@ class VectorEnv:
         """Performs a vectorized step on all sub environments using `actions`.
 
         Args:
-            actions (List[any]): List of actions (one for each sub-env).
+            actions: List of actions (one for each sub-env).
 
         Returns:
-            obs (List[any]): New observations for each sub-env.
-            rewards (List[any]): Reward values for each sub-env.
-            dones (List[any]): Done values for each sub-env.
-            infos (List[any]): Info values for each sub-env.
+            A tuple consisting of
+            1) New observations for each sub-env.
+            2) Reward values for each sub-env.
+            3) Done values for each sub-env.
+            4) Info values for each sub-env.
         """
         raise NotImplementedError
 
     @PublicAPI
-    def get_unwrapped(self) -> List[EnvType]:
+    def get_sub_environments(self) -> List[EnvType]:
         """Returns the underlying sub environments.
 
         Returns:
-            List[Env]: List of all underlying sub environments.
+            List of all underlying sub environments.
         """
         return []
 
@@ -100,14 +118,21 @@ class VectorEnv:
         """Renders a single environment.
 
         Args:
-            index (Optional[int]): An optional sub-env index to render.
+            index: An optional sub-env index to render.
 
         Returns:
-            Optional[np.ndarray]: Either a numpy RGB image
-                (shape=(w x h x 3) dtype=uint8) or None in case
-                rendering is handled directly by this method.
+            Either a numpy RGB image (shape=(w x h x 3) dtype=uint8) or
+            None in case rendering is handled directly by this method.
         """
         pass
+
+    @Deprecated(new="vectorize_gym_envs", error=False)
+    def wrap(self, *args, **kwargs) -> "_VectorizedGymEnv":
+        return self.vectorize_gym_envs(*args, **kwargs)
+
+    @Deprecated(new="get_sub_environments", error=False)
+    def get_unwrapped(self) -> List[EnvType]:
+        return self.get_sub_environments()
 
 
 class _VectorizedGymEnv(VectorEnv):
@@ -116,32 +141,29 @@ class _VectorizedGymEnv(VectorEnv):
 
     def __init__(
             self,
-            make_env=None,
-            existing_envs=None,
-            num_envs=1,
+            make_env: Optional[Callable[[int], EnvType]] = None,
+            existing_envs: Optional[List[gym.Env]] = None,
+            num_envs: int = 1,
             *,
-            observation_space=None,
-            action_space=None,
+            observation_space: Optional[gym.Space] = None,
+            action_space: Optional[gym.Space] = None,
+            # Deprecated. These seem to have never been used.
             env_config=None,
             policy_config=None,
     ):
         """Initializes a _VectorizedGymEnv object.
 
         Args:
-            make_env (Optional[callable]): Factory that produces a new gym env
-                taking a single `config` dict arg. Must be defined if the
+            make_env: Factory that produces a new gym.Env taking the sub-env's
+                vector index as only arg. Must be defined if the
                 number of `existing_envs` is less than `num_envs`.
-            existing_envs (Optional[List[Env]]): Optional list of already
-                instantiated sub environments.
-            num_envs (int): Total number of sub environments in this VectorEnv.
-            action_space (Optional[Space]): The action space. If None, use
+            existing_envs: Optional list of already instantiated sub
+                environments.
+            num_envs: Total number of sub environments in this VectorEnv.
+            action_space: The action space. If None, use existing_envs[0]'s
+                action space.
+            observation_space: The observation space. If None, use
                 existing_envs[0]'s action space.
-            observation_space (Optional[Space]): The observation space.
-                If None, use existing_envs[0]'s action space.
-            env_config (Optional[dict]): Additional sub env config to pass to
-                make_env as first arg.
-            policy_config (Optional[PartialTrainerConfigDict]): An optional
-                trainer/policy config dict.
         """
         self.envs = existing_envs
 
@@ -185,7 +207,7 @@ class _VectorizedGymEnv(VectorEnv):
         return obs_batch, rew_batch, done_batch, info_batch
 
     @override(VectorEnv)
-    def get_unwrapped(self):
+    def get_sub_environments(self):
         return self.envs
 
     @override(VectorEnv)

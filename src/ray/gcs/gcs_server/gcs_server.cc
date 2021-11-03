@@ -21,7 +21,6 @@
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
@@ -38,7 +37,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
                   config.node_ip_address == "127.0.0.1", config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
-      client_call_manager_(main_service),
+      client_call_manager_(main_service,
+                           RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
       pubsub_periodical_runner_(main_service_),
@@ -68,9 +68,10 @@ void GcsServer::Start() {
     // TODO: Move this into GcsPublisher.
     inner_publisher = std::make_unique<pubsub::Publisher>(
         /*channels=*/std::vector<
-            rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                              rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                              rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
+            rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
+                              rpc::ChannelType::GCS_JOB_CHANNEL,
+                              rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
+                              rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL},
         /*periodical_runner=*/&pubsub_periodical_runner_,
         /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
         /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
@@ -103,6 +104,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init KV Manager
   InitKVManager();
 
+  // Init Pub/Sub handler
+  InitPubSubHandler();
+
   // Init RuntimeENv manager
   InitRuntimeEnvManager();
 
@@ -114,9 +118,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init gcs actor manager.
   InitGcsActorManager(gcs_init_data);
-
-  // Init object manager.
-  InitObjectManager(gcs_init_data);
 
   // Init gcs worker manager.
   InitGcsWorkerManager();
@@ -246,12 +247,13 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
 void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_node_manager_);
   std::unique_ptr<GcsActorSchedulerInterface> scheduler;
-  auto schedule_failure_handler = [this](std::shared_ptr<GcsActor> actor) {
+  auto schedule_failure_handler = [this](std::shared_ptr<GcsActor> actor,
+                                         bool destroy_actor) {
     // When there are no available nodes to schedule the actor the
     // gcs_actor_scheduler will treat it as failed and invoke this handler. In
     // this case, the actor manager should schedule the actor once an
     // eligible node is registered.
-    gcs_actor_manager_->OnActorCreationFailed(std::move(actor));
+    gcs_actor_manager_->OnActorCreationFailed(std::move(actor), destroy_actor);
   };
   auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor,
                                          const rpc::PushTaskReply &reply) {
@@ -323,18 +325,6 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   rpc_server_.RegisterService(*placement_group_info_service_);
 }
 
-void GcsServer::InitObjectManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_node_manager_);
-  gcs_object_manager_.reset(
-      new GcsObjectManager(gcs_table_storage_, gcs_publisher_, *gcs_node_manager_));
-  // Initialize by gcs tables data.
-  gcs_object_manager_->Initialize(gcs_init_data);
-  // Register service.
-  object_info_service_.reset(
-      new rpc::ObjectInfoGrpcService(main_service_, *gcs_object_manager_));
-  rpc_server_.RegisterService(*object_info_service_);
-}
-
 void GcsServer::StoreGcsServerAddressInRedis() {
   std::string ip = config_.node_ip_address;
   if (ip.empty()) {
@@ -398,6 +388,15 @@ void GcsServer::InitKVManager() {
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_);
+}
+
+// TODO: Investigating optimal threading for PubSub, e.g. separate io_context.
+void GcsServer::InitPubSubHandler() {
+  pubsub_handler_ = std::make_unique<InternalPubSubHandler>(gcs_publisher_);
+  pubsub_service_ =
+      std::make_unique<rpc::InternalPubSubGrpcService>(main_service_, *pubsub_handler_);
+  // Register service.
+  rpc_server_.RegisterService(*pubsub_service_);
 }
 
 void GcsServer::InitRuntimeEnvManager() {
@@ -510,7 +509,6 @@ void GcsServer::PrintDebugInfo() {
   std::ostringstream stream;
   stream << gcs_node_manager_->DebugString() << "\n"
          << gcs_actor_manager_->DebugString() << "\n"
-         << gcs_object_manager_->DebugString() << "\n"
          << gcs_placement_group_manager_->DebugString() << "\n"
          << gcs_publisher_->DebugString() << "\n"
          << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();
