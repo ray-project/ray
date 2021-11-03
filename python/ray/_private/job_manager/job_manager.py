@@ -254,8 +254,6 @@ class JobManager:
     as lost once the ray cluster running job manager instance is down.
     """
     JOB_ACTOR_NAME = "_ray_internal_job_actor_{job_id}"
-    # Time given to setup runtime_env for job supervisor actor.
-    START_ACTOR_TIMEOUT_S = 60
 
     def __init__(self):
         self._status_client = JobStatusStorageClient()
@@ -323,33 +321,19 @@ class JobManager:
         """
         job_id = str(uuid4())
         self._status_client.put_status(job_id, JobStatus.PENDING)
-        supervisor = None
 
-        try:
-            logger.debug(
-                f"Submitting job with generated internal job_id: {job_id}")
-            supervisor = self._supervisor_actor_cls.options(
-                lifetime="detached",
-                name=self.JOB_ACTOR_NAME.format(job_id=job_id),
-                # Currently we assume JobManager is created by dashboard server
-                # running on headnode, same for job supervisor actors scheduled
-                resources={
-                    self._get_current_node_resource_key(): 0.001,
-                },
-                # For now we assume supervisor actor and driver script have
-                # same runtime_env.
-                runtime_env=runtime_env).remote(job_id, metadata or {})
-            ray.get(
-                supervisor.ready.remote(), timeout=self.START_ACTOR_TIMEOUT_S)
-        except Exception as e:
-            if supervisor:
-                ray.kill(supervisor, no_restart=True)
-            self._status_client.put_status(job_id, JobStatus.FAILED)
-            raise RuntimeError(
-                f"Failed to start actor for job {job_id}. This could be "
-                "runtime_env configuration failure, or timed out after "
-                f"{self.START_ACTOR_TIMEOUT_S} secs. "
-                f"Exception message: {str(e)}")
+        logger.debug(f"Submitting job with job_id: {job_id}.")
+        supervisor = self._supervisor_actor_cls.options(
+            lifetime="detached",
+            name=self.JOB_ACTOR_NAME.format(job_id=job_id),
+            # Currently we assume JobManager is created by dashboard server
+            # running on headnode, same for job supervisor actors scheduled
+            resources={
+                self._get_current_node_resource_key(): 0.001,
+            },
+            # For now we assume supervisor actor and driver script have
+            # same runtime_env.
+            runtime_env=runtime_env).remote(job_id, metadata or {})
 
         # Kick off the job to run in the background.
         supervisor.run.remote(entrypoint, _start_signal_actor)
