@@ -42,11 +42,12 @@ namespace {
 class DelayManager {
  public:
   DelayManager() {
-    auto delay_env = std::getenv("RAY_TESTING_ASIO_DELAY");
+    auto delay_env = std::getenv("RAY_TESTING_ASIO_DELAY_MS");
     // RAY_TESTING_ASIO_DELAY="Method1=100,Method2=200"
     if (delay_env == nullptr) {
       return;
     }
+    RAY_LOG(WARNING) << "RAY_TESTING_ASIO_DELAY_MS is set to be " << delay_env;
     std::vector<std::string_view> items = absl::StrSplit(delay_env, ",");
     for (const auto &item : items) {
       std::vector<std::string_view> delay = absl::StrSplit(item, "=");
