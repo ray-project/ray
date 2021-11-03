@@ -266,6 +266,7 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     # Rebuild with TSAN enabled.
+    - find /
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; RAY_DEBUG_BUILD=tsan ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_env=CONDA_EXE
