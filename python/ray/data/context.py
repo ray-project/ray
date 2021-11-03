@@ -1,10 +1,12 @@
 from typing import Optional
+import threading
 
 import ray
 from ray.util.annotations import DeveloperAPI
 
 # The context singleton on this process.
 _default_context: "Optional[DatasetContext]" = None
+_context_lock = threading.Lock()
 
 
 @DeveloperAPI
@@ -30,23 +32,26 @@ class DatasetContext:
         """
         global _default_context
 
-        if _default_context is None:
-            _default_context = DatasetContext(None, 500 * 1024 * 1024)
+        with _context_lock:
 
-        if _default_context.block_owner is None:
-            owner = _DesignatedBlockOwner.options(lifetime="detached").remote()
-            ray.get(owner.ping.remote())
+            if _default_context is None:
+                _default_context = DatasetContext(None, 500 * 1024 * 1024)
 
-            # Clear the actor handle after Ray reinits since it's no longer
-            # valid.
-            def clear_owner():
-                if _default_context:
-                    _default_context.block_owner = None
+            if _default_context.block_owner is None:
+                owner = _DesignatedBlockOwner.options(
+                    lifetime="detached").remote()
+                ray.get(owner.ping.remote())
 
-            ray.worker._post_init_hooks.append(clear_owner)
-            _default_context.block_owner = owner
+                # Clear the actor handle after Ray reinits since it's no longer
+                # valid.
+                def clear_owner():
+                    if _default_context:
+                        _default_context.block_owner = None
 
-        return _default_context
+                ray.worker._post_init_hooks.append(clear_owner)
+                _default_context.block_owner = owner
+
+            return _default_context
 
     @staticmethod
     def _set_current(context: "DatasetContext") -> None:
