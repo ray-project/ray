@@ -5,7 +5,6 @@ import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
-import io.ray.api.runtime.RayRuntime;
 import io.ray.runtime.RayRuntimeInternal;
 import java.util.List;
 
@@ -99,7 +98,8 @@ public class GlobalStateAccessor {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
       RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
-      return nativeGetPlacementGroupInfoByName(globalStateAccessorNativePointer, name, runtime.getRayConfig().namespace, global);
+      return nativeGetPlacementGroupInfoByName(
+          globalStateAccessorNativePointer, name, runtime.getRayConfig().namespace, global);
     }
   }
 
