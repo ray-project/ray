@@ -3,7 +3,7 @@ from typing import Optional, Dict
 
 import ray
 from ray.rllib.agents.ppo.ppo_torch_policy import ValueNetworkMixin
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
 from ray.rllib.models.action_dist import ActionDistribution
@@ -13,9 +13,9 @@ from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
-from ray.rllib.utils.annotations import Deprecated
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import apply_grad_clipping, sequence_mask
+from ray.rllib.utils.torch_utils import apply_grad_clipping, sequence_mask
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
     PolicyID, LocalOptimizer
 
@@ -30,7 +30,7 @@ def add_advantages(
         policy: Policy,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[PolicyID, SampleBatch]] = None,
-        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+        episode: Optional[Episode] = None) -> SampleBatch:
 
     return compute_gae_for_sample_batch(policy, sample_batch,
                                         other_agent_batches, episode)

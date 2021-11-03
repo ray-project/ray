@@ -172,31 +172,6 @@ bool ClusterResourceScheduler::RemoveNode(const std::string &node_id_string) {
   return RemoveNode(node_id);
 }
 
-bool ClusterResourceScheduler::IsFeasible(const ResourceRequest &resource_request,
-                                          const NodeResources &resources) const {
-  // First, check predefined resources.
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    if (resource_request.predefined_resources[i] >
-        resources.predefined_resources[i].total) {
-      return false;
-    }
-  }
-
-  // Now check custom resources.
-  for (const auto &task_req_custom_resource : resource_request.custom_resources) {
-    auto it = resources.custom_resources.find(task_req_custom_resource.first);
-
-    if (it == resources.custom_resources.end()) {
-      return false;
-    }
-    if (task_req_custom_resource.second > it->second.total) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
                                                 int64_t node_id,
                                                 const NodeResources &resources) const {
@@ -271,10 +246,15 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     return best_node;
   }
 
+  auto spread_threshold = spread_threshold_;
+  // If the scheduling decision is made by gcs, we ignore the spread threshold
+  if (actor_creation && RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    spread_threshold = 1.0;
+  }
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
-      resource_request, local_node_id_, nodes_, spread_threshold_, force_spillback,
+      resource_request, local_node_id_, nodes_, spread_threshold, force_spillback,
       force_spillback, [this](auto node_id) { return this->NodeAlive(node_id); });
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {

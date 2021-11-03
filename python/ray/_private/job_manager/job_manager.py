@@ -1,14 +1,14 @@
-import subprocess
-import pickle
-import os
 import json
+import os
+import pickle
+import subprocess
 from typing import Any, Dict, Tuple, Optional
+from uuid import uuid4
 
 import ray
 import ray.ray_constants as ray_constants
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
-from ray.serve.utils import get_current_node_resource_key
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_get,
@@ -117,11 +117,13 @@ class JobSupervisor:
     Job supervisor actor should fate share with subprocess it created.
     """
 
-    def __init__(self, job_id: str):
+    def __init__(self, job_id: str, metadata: Dict[str, str]):
         self._job_id = job_id
         self._status = JobStatus.PENDING
         self._status_client = JobStatusStorageClient()
         self._log_client = JobLogStorageClient()
+        self._runtime_env = ray.get_runtime_context().runtime_env
+        self._metadata = metadata
 
     def ready(self):
         pass
@@ -138,11 +140,10 @@ class JobSupervisor:
         exit_code = None
 
         try:
-            # 2) Run the command until it finishes, appending logs as it goes.
             # Set JobConfig for the child process (runtime_env, metadata).
-            #  - RAY_JOB_CONFIG_JSON_ENV_VAR={...}
             os.environ[RAY_JOB_CONFIG_JSON_ENV_VAR] = json.dumps({
-                "runtime_env": ray.get_runtime_context().runtime_env
+                "runtime_env": self._runtime_env,
+                "metadata": self._metadata,
             })
             ray_redis_address = ray._private.services.find_redis_address_or_die(  # noqa: E501
             )
@@ -190,11 +191,27 @@ class JobManager:
         except ValueError:  # Ray returns ValueError for nonexistent actor.
             return None
 
+    def _get_current_node_resource_key(self) -> str:
+        """Get the Ray resource key for current node.
+
+        It can be used for actor placement.
+        """
+        current_node_id = ray.get_runtime_context().node_id.hex()
+        for node in ray.nodes():
+            if node["NodeID"] == current_node_id:
+                # Found the node.
+                for key in node["Resources"].keys():
+                    if key.startswith("node:"):
+                        return key
+        else:
+            raise ValueError(
+                "Cannot found the node dictionary for current node.")
+
     def submit_job(
             self,
-            job_id: str,
             entrypoint: str,
             runtime_env: Optional[Dict[str, Any]] = None,
+            metadata: Optional[Dict[str, str]] = None,
     ) -> str:
         """
         1) Create new detached actor with same runtime_env as job spec
@@ -204,18 +221,19 @@ class JobManager:
 
         Returns unique job_id.
         """
+        job_id = str(uuid4())
         supervisor = self._supervisor_actor_cls.options(
             lifetime="detached",
             name=self.JOB_ACTOR_NAME.format(job_id=job_id),
             # Currently we assume JobManager is created by dashboard server
             # running on headnode, same for job supervisor actors scheduled
             resources={
-                get_current_node_resource_key(): 0.001,
+                self._get_current_node_resource_key(): 0.001,
             },
             # For now we assume supervisor actor and driver script have same
             # runtime_env.
             runtime_env=runtime_env,
-        ).remote(job_id)
+        ).remote(job_id, metadata or {})
 
         try:
             ray.get(

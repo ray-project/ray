@@ -16,15 +16,14 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
-#include "ray/gcs/gcs_client/service_based_accessor.h"
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/pubsub/mock_pubsub.h"
 
 // clang-format off
-#include "mock/ray/gcs/accessor.h"
+#include "mock/ray/gcs/gcs_client/accessor.h"
 // clang-format on
 
 namespace ray {

@@ -23,7 +23,7 @@ class TestDQN(unittest.TestCase):
 
         num_iterations = 1
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, with_eager_tracing=True):
             # Double-dueling DQN.
             print("Double-dueling")
             plain_config = config.copy()

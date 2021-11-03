@@ -7,7 +7,7 @@ import logging
 import numpy as np
 # use cloudpickle instead of pickle to make lambda funcs
 # in dragonfly pickleable
-import cloudpickle
+from ray import cloudpickle
 from typing import Dict, List, Optional, Union
 
 from ray.tune.result import DEFAULT_METRIC

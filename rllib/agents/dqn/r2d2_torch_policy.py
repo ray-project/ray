@@ -19,7 +19,7 @@ from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+from ray.rllib.utils.torch_utils import apply_grad_clipping, \
     concat_multi_gpu_td_errors, FLOAT_MIN, huber_loss, sequence_mask
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 

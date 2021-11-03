@@ -160,11 +160,13 @@
     - bash streaming/src/test/run_streaming_queue_test.sh
 
 - label: ":cpp: Worker"
+  conditions: [ "RAY_CI_CPP_AFFECTED" ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/travis/ci.sh test_cpp
 
 - label: ":cpp: Tests"
+  conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=llvm $(./scripts/bazel_export_options)
@@ -173,6 +175,7 @@
       -- //:all -rllib/... -core_worker_test
 
 - label: ":cpp: Tests (ASAN)"
+  conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=asan-clang $(./scripts/bazel_export_options)
@@ -182,6 +185,7 @@
       -- //:all -//:core_worker_test
 
 - label: ":cpp: Tests (UBSAN)"
+  conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=ubsan $(./scripts/bazel_export_options)
@@ -191,6 +195,7 @@
       -- //:all -//:core_worker_test -//:logging_test
 
 - label: ":cpp: Tests (TSAN)"
+  conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=tsan-clang $(./scripts/bazel_export_options)
@@ -231,6 +236,8 @@
       python/ray/tests/test_basic_2
     - bazel test --test_output=streamed --config=ci $(./scripts/bazel_export_options)
       python/ray/tests/test_basic_3
+    - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
+      python/ray/tests/test_output
     - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
       python/ray/tests/test_runtime_env_ray_minimal
     - bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 $(./scripts/bazel_export_options)
@@ -321,7 +328,7 @@
     #- docker run --rm --privileged -v /ray/containers:/var/lib/containers -v /ray:/ray --entrypoint /bin/bash
       #rayproject/ray-worker-container:nightly-py36-cpu /ray/ci/travis/test-worker-in-container.sh
 
-- label: ":brain: RLlib: Learning discr. actions TF2 (from rllib/tuned_examples/*.yaml)"
+- label: ":brain: RLlib: Learning discr. actions TF2-static-graph (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -330,9 +337,10 @@
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_discrete_tf,-fake_gpus_tf,-fake_gpus_torch,-flaky,-multi_gpu
+      --test_tag_filters=learning_tests_discrete,-fake_gpus,-torch_only,-flaky
+      --test_arg=--framework=tf
       rllib/...
-- label: ":brain: RLlib: Learning cont. actions TF2 (from rllib/tuned_examples/*.yaml)"
+- label: ":brain: RLlib: Learning cont. actions TF2-static-graph (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -341,9 +349,34 @@
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_continuous_tf,-fake_gpus_tf,-fake_gpus_torch,-flaky,-multi_gpu
+      --test_tag_filters=learning_tests_continuous,-fake_gpus,-torch_only,-flaky
+      --test_arg=--framework=tf
       rllib/...
-- label: ":brain: RLlib: Learning discr. actions TF1 (from rllib/tuned_examples/*.yaml)"
+- label: ":brain: RLlib: Learning discr. actions TF2-eager-tracing (from rllib/tuned_examples/*.yaml)"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
+    # Because Python version changed, we need to re-install Ray here
+    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=learning_tests_discrete,-fake_gpus,-torch_only,-flaky,-multi_gpu,-no_tf_eager_tracing
+      --test_arg=--framework=tf2
+      rllib/...
+- label: ":brain: RLlib: Learning cont. actions TF2-eager-tracing (from rllib/tuned_examples/*.yaml)"
+  conditions: ["RAY_CI_RLLIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
+    # Because Python version changed, we need to re-install Ray here
+    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=learning_tests_continuous,-fake_gpus,-torch_only,-flaky,-multi_gpu
+      --test_arg=--framework=tf2
+      rllib/...
+- label: ":brain: RLlib: Learning discr. actions TF1-static-graph (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -352,9 +385,10 @@
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_discrete_tf,-fake_gpus_tf,-fake_gpus_torch,-flaky,-multi_gpu
+      --test_tag_filters=learning_tests_discrete,-fake_gpus,-torch_only,-flaky,-multi_gpu
+      --test_arg=--framework=tf
       rllib/...
-- label: ":brain: RLlib: Learning cont. actions TF1 (from rllib/tuned_examples/*.yaml)"
+- label: ":brain: RLlib: Learning cont. actions TF1-static-graph (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -363,9 +397,10 @@
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_continuous_tf,-fake_gpus_tf,-fake_gpus_torch,-flaky,-multi_gpu
+      --test_tag_filters=learning_tests_continuous,-fake_gpus,-torch_only,-flaky,-multi_gpu
+      --test_arg=--framework=tf
       rllib/...
-- label: ":brain: RLlib: Learning discr. actions Torch (from rllib/tuned_examples/*.yaml)"
+- label: ":brain: RLlib: Learning discr. actions PyTorch (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -374,9 +409,10 @@
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_discrete_torch,-fake_gpus_tf,-fake_gpus_torch,-flaky,-multi_gpu
+      --test_tag_filters=learning_tests_discrete,-fake_gpus,-tf_only,-flaky,-multi_gpu
+      --test_arg=--framework=torch
       rllib/...
-- label: ":brain: RLlib: Learning cont. actions Torch (from rllib/tuned_examples/*.yaml)"
+- label: ":brain: RLlib: Learning cont. actions PyTorch (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -385,9 +421,10 @@
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=learning_tests_continuous_torch,-fake_gpus_tf,-fake_gpus_torch,-flaky,-multi_gpu
+      --test_tag_filters=learning_tests_continuous,-fake_gpus,-tf_only,-flaky,-multi_gpu
+      --test_arg=--framework=torch
       rllib/...
-- label: ":brain: RLlib: Learning tests w/ 2 fake GPUs TF (from rllib/tuned_examples/*.yaml)"
+- label: ":brain: RLlib: Learning tests w/ 2 fake GPUs TF2-static-graph (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -396,9 +433,11 @@
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=fake_gpus_tf,-flaky,-multi_gpu
+      --test_tag_filters=fake_gpus,-torch_only,-flaky,-multi_gpu
+      --test_arg=--framework=tf
       rllib/...
-- label: ":brain: RLlib: Learning tests w/ 2 fake GPUs Torch (from rllib/tuned_examples/*.yaml)"
+# TODO: (sven) tf2 (eager) multi-GPU
+- label: ":brain: RLlib: Learning tests w/ 2 fake GPUs PyTorch (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -407,7 +446,8 @@
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=fake_gpus_torch,-flaky,-multi_gpu
+      --test_tag_filters=fake_gpus,-tf_only,-flaky,-multi_gpu
+      --test_arg=--framework=torch
       rllib/...
 
 - label: ":brain: RLlib: Quick Agent train.py runs (TODO: obsolete)"
@@ -448,7 +488,7 @@
     # "learning_tests|quick_train|examples|tests_dir".
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=-learning_tests_tf,-learning_tests_torch,-quick_train,-examples,-tests_dir,-trainers_dir,-flaky,-multi_gpu
+      --test_tag_filters=-learning_tests,-quick_train,-examples,-tests_dir,-trainers_dir,-flaky,-multi_gpu
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
@@ -538,7 +578,9 @@
   conditions: ["RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
+    - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
+    # Because Python version changed, we need to re-install Ray here
+    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-example,-flaky,-py37,-soft_imports,-gpu_only python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=example,-tf,-pytorch,-py37,-flaky,-soft_imports,-gpu_only python/ray/tune/...
 
@@ -546,7 +588,9 @@
   conditions: ["RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
+    - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
+    # Because Python version changed, we need to re-install Ray here
+    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-flaky,-soft_imports,-gpu_only python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-flaky,-soft_imports,-gpu_only python/ray/tune/...
 
