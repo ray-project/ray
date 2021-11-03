@@ -273,6 +273,8 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
+      # First check that links are not broken in the docs
+      make linkcheck
       sphinx-build -q -E -W -T -b html source _build/html
     fi
   )
