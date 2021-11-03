@@ -25,6 +25,8 @@ from ray._private.test_utils import SignalActor
 
 logger = logging.getLogger(__name__)
 
+JOB_ID_METADATA_KEY = "job_submission_id"
+
 
 class JobLogStorageClient:
     """
@@ -106,7 +108,9 @@ class JobSupervisor:
         self._status_client = JobStatusStorageClient()
         self._log_client = JobLogStorageClient()
         self._runtime_env = ray.get_runtime_context().runtime_env
+
         self._metadata = metadata
+        self._metadata[JOB_ID_METADATA_KEY] = job_id
 
         # fire and forget call from outer job manager to this actor
         self._stop_event = asyncio.Event()
