@@ -1,10 +1,17 @@
+from enum import Enum
 from typing import Any, Dict
 
-from pydantic import BaseModel
-from enum import Enum
+try:
+    from pydantic import BaseModel
+except ImportError:
+    # Lazy import without breaking class def
+    BaseModel = object
 
 
 class JobStatus(str, Enum):
+    def __str__(self):
+        return f"{self.value}"
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     STOPPED = "STOPPED"
@@ -22,6 +29,25 @@ class JobSpec(BaseModel):
     metadata: Dict[str, str]
     # Likely there will be more fields needed later on for different apps
     # but we should keep it minimal and delegate policies to job manager
+
+
+# ==== Get Package ====
+
+
+class GetPackageRequest(BaseModel):
+    package_uri: str
+
+
+class GetPackageResponse(BaseModel):
+    package_exists: bool
+
+
+# ==== Upload Package ====
+
+
+class UploadPackageRequest(BaseModel):
+    package_uri: str
+    encoded_package_bytes: str
 
 
 # ==== Job Submit ====

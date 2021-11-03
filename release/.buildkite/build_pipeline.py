@@ -20,7 +20,12 @@ import yaml
 
 
 class ReleaseTest:
-    def __init__(self, name: str, smoke_test: bool = False, retry: int = 0):
+    def __init__(
+            self,
+            name: str,
+            smoke_test: bool = False,
+            retry: int = 0,
+    ):
         self.name = name
         self.smoke_test = smoke_test
         self.retry = retry
@@ -189,8 +194,7 @@ NIGHTLY_TESTS = {
         "serve_cluster_fault_tolerance",
     ],
     "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
-        "rte_many_tasks_actors",
-        "wheel_urls",
+        "rte_many_tasks_actors", "wheel_urls", "rte_ray_client"
     ],
 }
 
@@ -244,6 +248,19 @@ MANUAL_TESTS = {
     ],
 }
 
+HOROVOD_INSTALL_ENV_VARS = [
+    "HOROVOD_WITH_GLOO", "HOROVOD_WITHOUT_MPI", "HOROVOD_WITHOUT_TENSORFLOW",
+    "HOROVOD_WITHOUT_MXNET", "HOROVOD_WITH_PYTORCH"
+]
+
+HOROVOD_SETUP_COMMANDS = [
+    "sudo apt update", "sudo apt -y install build-essential",
+    "pip install cmake"
+] + [
+    f"export {horovod_env_var}=1"
+    for horovod_env_var in HOROVOD_INSTALL_ENV_VARS
+]
+
 # This test suite holds "user" tests to test important user workflows
 # in a particular environment.
 # All workloads in this test suite should:
@@ -251,7 +268,43 @@ MANUAL_TESTS = {
 #   2. Use autoscaling/scale up (no wait_cluster.py)
 #   3. Use GPUs if applicable
 #   4. Have the `use_connect` flag set.
-USER_TESTS = {}
+USER_TESTS = {
+    "~/ray/release/ray_lightning_tests/ray_lightning_tests.yaml": [
+        ConnectTest(
+            "ray_lightning_user_test_latest",
+            requirements_file="release/ray_lightning_tests"
+            "/driver_requirements.txt"),
+        ConnectTest(
+            "ray_lightning_user_test_master",
+            requirements_file="release/ray_lightning_tests"
+            "/driver_requirements.txt")
+    ],
+    "~/ray/release/horovod_tests/horovod_tests.yaml": [
+        ConnectTest(
+            "horovod_user_test_latest",
+            setup_commands=HOROVOD_SETUP_COMMANDS,
+            requirements_file="release/horovod_tests/driver_requirements.txt"),
+        ConnectTest(
+            "horovod_user_test_master",
+            setup_commands=HOROVOD_SETUP_COMMANDS,
+            requirements_file="release/horovod_tests"
+            "/driver_requirements_master.txt")
+    ],
+    "~/ray/release/train_tests/train_tests.yaml": [
+        ConnectTest(
+            "train_tensorflow_mnist_test",
+            requirements_file="release/train_tests"
+            "/driver_requirements.txt"),
+        ConnectTest(
+            "train_torch_linear_test",
+            requirements_file="release/train_tests"
+            "/driver_requirements.txt")
+    ],
+    "~/ray/release/xgboost_tests/xgboost_tests.yaml": [
+        "train_gpu_connect_latest",
+        "train_gpu_connect_master",
+    ]
+}
 
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
@@ -474,22 +527,21 @@ def create_test_step(
             }]
         }
 
-    step_conf["commands"] = [
-        "pip install -q -r release/requirements.txt",
-        "pip install -U boto3 botocore",
-        f"git clone -b {ray_test_branch} {ray_test_repo} ~/ray", cmd,
-        "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
-        "|| true"
-    ]
-
     if isinstance(test_name, ConnectTest):
         # Add driver side setup commands to the step.
         pip_requirements_command = [f"pip install -U -r "
                                     f"{test_name.requirements_file}"] if \
             test_name.requirements_file else []
         step_conf["commands"] = test_name.setup_commands \
-            + pip_requirements_command \
-            + step_conf["commands"]
+            + pip_requirements_command
+
+    step_conf["commands"] += [
+        "pip install -q -r release/requirements.txt",
+        "pip install -U boto3 botocore",
+        f"git clone -b {ray_test_branch} {ray_test_repo} ~/ray", cmd,
+        "sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts "
+        "|| true"
+    ]
 
     step_conf["label"] = (
         f"{test_name} "
