@@ -5,7 +5,6 @@ Runs a couple of hard learning tests using Anyscale connect.
 
 import json
 import os
-import re
 import time
 
 import ray
