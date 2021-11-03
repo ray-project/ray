@@ -567,6 +567,13 @@ std::string ClusterResourceScheduler::DebugString(void) const {
   return buffer.str();
 }
 
+uint64_t ClusterResourceScheduler::GetNumCpus(void) const {
+  auto it = nodes_.find(local_node_id_);
+  RAY_CHECK(it != nodes_.end());
+  return static_cast<uint64_t>(
+      it->second.GetLocalView().predefined_resources[CPU].total.Double());
+}
+
 void ClusterResourceScheduler::InitResourceInstances(
     FixedPoint total, bool unit_instances, ResourceInstanceCapacities *instance_list) {
   if (unit_instances) {
@@ -784,10 +791,13 @@ void ClusterResourceScheduler::UpdateLocalAvailableResourcesFromResourceInstance
   auto local_view = it_local_node->second.GetMutableLocalView();
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     local_view->predefined_resources[i].available = 0;
+    local_view->predefined_resources[i].total = 0;
     for (size_t j = 0; j < local_resources_.predefined_resources[i].available.size();
          j++) {
       local_view->predefined_resources[i].available +=
           local_resources_.predefined_resources[i].available[j];
+      local_view->predefined_resources[i].total +=
+          local_resources_.predefined_resources[i].total[j];
     }
   }
 
