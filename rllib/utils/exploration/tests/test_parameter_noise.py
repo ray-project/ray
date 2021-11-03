@@ -18,12 +18,12 @@ class TestParameterNoise(unittest.TestCase):
 
     def test_ddpg_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
-            ddpg.DDPGTrainer, ddpg.DEFAULT_CONFIG, "Pendulum-v0", {},
+            ddpg.DDPGTrainer, ddpg.DEFAULT_CONFIG, "Pendulum-v1", {},
             np.array([1.0, 0.0, -1.0]))
 
     def test_dqn_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
-            dqn.DQNTrainer, dqn.DEFAULT_CONFIG, "FrozenLake-v0", {
+            dqn.DQNTrainer, dqn.DEFAULT_CONFIG, "FrozenLake-v1", {
                 "is_slippery": False,
                 "map_name": "4x4"
             }, np.array(0))
