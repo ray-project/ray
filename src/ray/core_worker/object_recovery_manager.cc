@@ -76,13 +76,9 @@ void ObjectRecoveryManager::PinOrReconstructObject(
     const auto location = locations_copy.back();
     locations_copy.pop_back();
     PinExistingObjectCopy(object_id, location, locations_copy);
-  } else if (lineage_reconstruction_enabled_) {
+  } else {
     // There are no more copies to pin, try to reconstruct the object.
     ReconstructObject(object_id);
-  } else {
-    // All copies lost, and lineage reconstruction is disabled.
-    recovery_failure_callback_(object_id, rpc::ErrorType::OBJECT_LOST,
-                               /*pin_object=*/true);
   }
 }
 
@@ -130,6 +126,14 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
 }
 
 void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
+  if (!reference_counter_->IsObjectReconstructable(object_id)) {
+    RAY_LOG(DEBUG) << "Object " << object_id << " is not reconstructable";
+    recovery_failure_callback_(object_id, rpc::ErrorType::OBJECT_LOST,
+                               /*pin_object=*/true);
+    return;
+  }
+
+  RAY_LOG(DEBUG) << "Attempting to reconstruct object " << object_id;
   // Notify the task manager that we are retrying the task that created this
   // object.
   const auto task_id = object_id.TaskId();

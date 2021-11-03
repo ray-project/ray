@@ -8,6 +8,7 @@ from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.images import resize
+from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
@@ -39,6 +40,7 @@ class Preprocessor:
         self.shape = self._init_shape(obs_space, self._options)
         self._size = int(np.product(self.shape))
         self._i = 0
+        self._obs_for_type_matching = self._obs_space.sample()
 
     @PublicAPI
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
@@ -61,11 +63,10 @@ class Preprocessor:
             # Convert lists to np.ndarrays.
             if type(observation) is list and isinstance(
                     self._obs_space, gym.spaces.Box):
-                observation = np.array(observation)
-            # Ignore float32/float64 diffs.
-            if isinstance(self._obs_space, gym.spaces.Box) and \
-                    self._obs_space.dtype != observation.dtype:
-                observation = observation.astype(self._obs_space.dtype)
+                observation = np.array(observation).astype(np.float32)
+            if not self._obs_space.contains(observation):
+                observation = convert_element_to_space_type(
+                    observation, self._obs_for_type_matching)
             try:
                 if not self._obs_space.contains(observation):
                     raise ValueError(

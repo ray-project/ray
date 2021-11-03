@@ -155,6 +155,47 @@ To scale out a deployment to many processes, simply configure the number of repl
   # Scale back down to 1 replica.
   func.options(num_replicas=1).deploy()
 
+Autoscaling
+^^^^^^^^^^^
+
+Serve also has experimental support for a demand-based replica autoscaler.
+It reacts to traffic spikes via observing queue sizes and making scaling decisions.
+To configure it, you can set the ``_autoscaling`` field in deployment options.
+
+.. warning::
+  The API is experimental and subject to change. We welcome you to test it out
+  and leave us feedback through `Github Issues <https://github.com/ray-project/ray/issues>`_ or our `discussion forum <https://discuss.ray.io/>`_!
+
+.. code-block:: python
+
+  @serve.deployment(
+      _autoscaling_config={
+          "min_replicas": 1,
+          "max_replicas": 5,
+          "target_num_ongoing_requests_per_replica": 10,
+      },
+      version="v1")
+  def func(_):
+      time.sleep(1)
+      return ""
+  
+  func.deploy() # The func deployment will now autoscale based on requests demand.
+
+The ``min_replicas`` and ``max_replicas`` fields configure the range of replicas which the
+Serve autoscaler chooses from.  Deployments will start with ``min_replicas`` initially.
+
+The ``target_num_ongoing_requests_per_replica`` configuration specifies how aggressively the
+autoscaler should react to traffic. Serve will try to make sure that each replica has roughly that number
+of requests being processed and waiting in the queue. For example, if your processing time is ``10ms``
+and the latency constraint is ``100ms``, you can have at most ``10`` requests ongoing per replica so
+the last requests can finish within the latency constraint. We recommend you benchmark your application
+code and set this number based on end to end latency objective.
+
+.. note::
+  The ``version`` field is required for autoscaling. We are actively working on removing
+  this limitation.
+
+
 .. _`serve-cpus-gpus`:
 
 Resource Management (CPUs, GPUs)

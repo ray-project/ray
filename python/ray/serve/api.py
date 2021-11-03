@@ -3,13 +3,13 @@ import atexit
 import collections
 import inspect
 import logging
+import random
 import re
 import time
 from dataclasses import dataclass
 from functools import wraps
 from typing import Any, Callable, Dict, Optional, Tuple, Union, overload
 import warnings
-from weakref import WeakValueDictionary
 
 from fastapi import APIRouter, FastAPI
 from starlette.requests import Request
@@ -17,11 +17,12 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray.actor import ActorHandle
-from ray.serve.common import BackendInfo, GoalId, ReplicaTag
-from ray.serve.config import (AutoscalingConfig, BackendConfig, HTTPOptions,
+from ray.serve.common import DeploymentInfo, GoalId, ReplicaTag
+from ray.serve.config import (AutoscalingConfig, DeploymentConfig, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (DEFAULT_CHECKPOINT_PATH, HTTP_PROXY_TIMEOUT,
-                                 SERVE_CONTROLLER_NAME)
+                                 SERVE_CONTROLLER_NAME, MAX_CACHED_HANDLES,
+                                 CONTROLLER_MAX_CONCURRENCY)
 from ray.serve.controller import ServeController
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeHandle, RayServeSyncHandle
@@ -116,7 +117,8 @@ class Client:
         self._root_url = ray.get(self._controller.get_root_url.remote())
 
         # Each handle has the overhead of long poll client, therefore cached.
-        self.handle_cache = WeakValueDictionary()
+        self.handle_cache = dict()
+        self._evicted_handle_keys = set()
 
         # NOTE(edoakes): Need this because the shutdown order isn't guaranteed
         # when the interpreter is exiting so we can't rely on __del__ (it
@@ -195,7 +197,7 @@ class Client:
     @_ensure_connected
     def deploy(self,
                name: str,
-               backend_config: BackendConfig,
+               deployment_config: DeploymentConfig,
                replica_config: ReplicaConfig,
                version: Optional[str] = None,
                prev_version: Optional[str] = None,
@@ -211,10 +213,11 @@ class Client:
             ray.get_runtime_context().runtime_env)
 
         goal_id, updating = ray.get(
-            self._controller.deploy.remote(
-                name, backend_config.to_proto_bytes(), replica_config, version,
-                prev_version, route_prefix,
-                ray.get_runtime_context().job_id))
+            self._controller.deploy.remote(name,
+                                           deployment_config.to_proto_bytes(),
+                                           replica_config, version,
+                                           prev_version, route_prefix,
+                                           ray.get_runtime_context().job_id))
 
         tag = f"component=serve deployment={name}"
 
@@ -241,11 +244,11 @@ class Client:
             ray.get(self._controller.delete_deployment.remote(name)))
 
     @_ensure_connected
-    def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
+    def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
         return ray.get(self._controller.get_deployment_info.remote(name))
 
     @_ensure_connected
-    def list_deployments(self) -> Dict[str, Tuple[BackendInfo, str]]:
+    def list_deployments(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
         return ray.get(self._controller.list_deployments.remote())
 
     @_ensure_connected
@@ -271,7 +274,9 @@ class Client:
         """
         cache_key = (endpoint_name, missing_ok, sync)
         if cache_key in self.handle_cache:
-            return self.handle_cache[cache_key]
+            cached_handle = self.handle_cache[cache_key]
+            if cached_handle.is_polling and cached_handle.is_same_loop:
+                return cached_handle
 
         all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
         if not missing_ok and endpoint_name not in all_endpoints:
@@ -314,6 +319,23 @@ class Client:
             )
 
         self.handle_cache[cache_key] = handle
+        if cache_key in self._evicted_handle_keys:
+            logger.warning(
+                "You just got a ServeHandle that was evicted from internal "
+                "cache. This means you are getting too many ServeHandles in "
+                "the same process, this will bring down Serve's performance. "
+                "Please post a github issue at "
+                "https://github.com/ray-project/ray/issues to let the Serve "
+                "team to find workaround for your use case.")
+
+        if len(self.handle_cache) > MAX_CACHED_HANDLES:
+            # Perform random eviction to keep the handle cache from growing
+            # infinitely. We used use WeakValueDictionary but hit
+            # https://github.com/ray-project/ray/issues/18980.
+            evict_key = random.choice(list(self.handle_cache.keys()))
+            self._evicted_handle_keys.add(evict_key)
+            self.handle_cache.pop(evict_key)
+
         return handle
 
 
@@ -366,6 +388,7 @@ def start(
             raise ValueError(
                 f"{key} is deprecated, please use serve.start(http_options="
                 f'{{"{key}": {kwargs[key]}}}) instead.')
+
     # Initialize ray if needed.
     ray.worker.global_worker.filter_logs_by_job = False
     if not ray.is_initialized():
@@ -403,6 +426,7 @@ def start(
             get_current_node_resource_key(): 0.01
         },
         namespace=controller_namespace,
+        max_concurrency=CONTROLLER_MAX_CONCURRENCY,
     ).remote(
         controller_name,
         http_options,
@@ -434,8 +458,8 @@ def _connect() -> Client:
     If calling from the driver program, the Serve instance on this Ray cluster
     must first have been initialized using `serve.start(detached=True)`.
 
-    If called from within a backend, this will connect to the same Serve
-    instance that the backend is running in.
+    If called from within a replica, this will connect to the same Serve
+    instance that the replica is running in.
     """
 
     # Initialize ray if needed.
@@ -443,7 +467,7 @@ def _connect() -> Client:
     if not ray.is_initialized():
         ray.init(namespace="serve")
 
-    # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
+    # When running inside of a replica, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
     if _INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
@@ -507,8 +531,9 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
     """Mark an ASGI application ingress for Serve.
 
     Args:
-        app (FastAPI,APIRouter,Starlette, etc): the app or router object serve
-            as ingress for this backend. It can be any ASGI compatible object.
+        app (FastAPI,APIRouter,Starlette,etc): the app or router object serve
+            as ingress for this deployment. It can be any ASGI compatible
+            object.
 
     Example:
     >>> app = FastAPI()
@@ -566,14 +591,20 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
                 )
                 return sender.build_starlette_response()
 
-            def __del__(self):
+            # NOTE: __del__ must be async so that we can run asgi shutdown
+            # in the same event loop.
+            async def __del__(self):
                 # LifespanOn's logger logs in INFO level thus becomes spammy
                 # Within this block we temporarily uplevel for cleaner logging
                 with LoggingContext(
                         self._serve_asgi_lifespan.logger,
                         level=logging.WARNING):
-                    asyncio.get_event_loop().run_until_complete(
-                        self._serve_asgi_lifespan.shutdown())
+                    await self._serve_asgi_lifespan.shutdown()
+
+                # Make sure to call user's del method as well.
+                super_cls = super()
+                if hasattr(super_cls, "__del__"):
+                    super_cls.__del__()
 
         ASGIAppWrapper.__name__ = cls.__name__
         return ASGIAppWrapper
@@ -585,7 +616,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
 class Deployment:
     def __init__(self,
                  name: str,
-                 backend_config: BackendConfig,
+                 deployment_config: DeploymentConfig,
                  replica_config: ReplicaConfig,
                  version: Optional[str] = None,
                  prev_version: Optional[str] = None,
@@ -621,7 +652,8 @@ class Deployment:
 
         # TODO(architkulkarni): Enforce that autoscaling_config and
         # user-provided num_replicas should be mutually exclusive.
-        if version is None and backend_config.autoscaling_config is not None:
+        if (version is None
+                and deployment_config.autoscaling_config is not None):
             # TODO(architkulkarni): Remove this restriction.
             raise ValueError(
                 "Currently autoscaling is only supported for "
@@ -630,7 +662,7 @@ class Deployment:
         self._name: str = name
         self._version: Optional[str] = version
         self._prev_version: Optional[str] = prev_version
-        self._backend_config: BackendConfig = backend_config
+        self._deployment_config: DeploymentConfig = deployment_config
         self._replica_config: ReplicaConfig = replica_config
         self._route_prefix: Optional[str] = route_prefix
 
@@ -664,17 +696,17 @@ class Deployment:
     @property
     def num_replicas(self) -> int:
         """Current target number of replicas."""
-        return self._backend_config.num_replicas
+        return self._deployment_config.num_replicas
 
     @property
     def user_config(self) -> Any:
         """Current dynamic user-provided config options."""
-        return self._backend_config.user_config
+        return self._deployment_config.user_config
 
     @property
     def max_concurrent_queries(self) -> int:
         """Current max outstanding queries from each handle."""
-        return self._backend_config.max_concurrent_queries
+        return self._deployment_config.max_concurrent_queries
 
     @property
     def route_prefix(self) -> Optional[str]:
@@ -763,7 +795,7 @@ class Deployment:
 
         return _get_global_client().deploy(
             self._name,
-            self._backend_config,
+            self._deployment_config,
             replica_config,
             version=self._version,
             prev_version=self._prev_version,
@@ -821,13 +853,14 @@ class Deployment:
         Only those options passed in will be updated, all others will remain
         unchanged from the existing deployment.
         """
-        new_backend_config = self._backend_config.copy()
+        new_deployment_config = self._deployment_config.copy()
         if num_replicas is not None:
-            new_backend_config.num_replicas = num_replicas
+            new_deployment_config.num_replicas = num_replicas
         if user_config is not None:
-            new_backend_config.user_config = user_config
+            new_deployment_config.user_config = user_config
         if max_concurrent_queries is not None:
-            new_backend_config.max_concurrent_queries = max_concurrent_queries
+            new_deployment_config.max_concurrent_queries = (
+                max_concurrent_queries)
 
         if name is None:
             name = self._name
@@ -842,14 +875,14 @@ class Deployment:
                 route_prefix = self._route_prefix
 
         if _autoscaling_config is None:
-            new_backend_config.autoscaling_config = _autoscaling_config
+            new_deployment_config.autoscaling_config = _autoscaling_config
 
         if _graceful_shutdown_wait_loop_s is not None:
-            new_backend_config.graceful_shutdown_wait_loop_s = (
+            new_deployment_config.graceful_shutdown_wait_loop_s = (
                 _graceful_shutdown_wait_loop_s)
 
         if _graceful_shutdown_timeout_s is not None:
-            new_backend_config.graceful_shutdown_timeout_s = (
+            new_deployment_config.graceful_shutdown_timeout_s = (
                 _graceful_shutdown_timeout_s)
 
         new_replica_config = self._replica_config.copy()
@@ -883,7 +916,7 @@ class Deployment:
 
         return Deployment(
             name,
-            new_backend_config,
+            new_deployment_config,
             new_replica_config,
             version=version,
             prev_version=prev_version,
@@ -895,7 +928,7 @@ class Deployment:
         return all([
             self._name == other._name,
             self._version == other._version,
-            self._backend_config == other._config,
+            self._deployment_config == other._config,
             self._replica_config == other._replica_config,
             self._route_prefix == other._route_prefix,
         ])
@@ -1026,25 +1059,29 @@ def deployment(
         Deployment
     """
 
-    backend_config = BackendConfig()
+    deployment_config = DeploymentConfig()
     if num_replicas is not None:
-        backend_config.num_replicas = num_replicas
+        if _autoscaling_config is not None:
+            raise ValueError(
+                "Manually setting num_replicas is not allowed when "
+                "_autoscaling_config is provided.")
+        deployment_config.num_replicas = num_replicas
 
     if user_config is not None:
-        backend_config.user_config = user_config
+        deployment_config.user_config = user_config
 
     if max_concurrent_queries is not None:
-        backend_config.max_concurrent_queries = max_concurrent_queries
+        deployment_config.max_concurrent_queries = max_concurrent_queries
 
     if _autoscaling_config is not None:
-        backend_config.autoscaling_config = _autoscaling_config
+        deployment_config.autoscaling_config = _autoscaling_config
 
     if _graceful_shutdown_wait_loop_s is not None:
-        backend_config.graceful_shutdown_wait_loop_s = (
+        deployment_config.graceful_shutdown_wait_loop_s = (
             _graceful_shutdown_wait_loop_s)
 
     if _graceful_shutdown_timeout_s is not None:
-        backend_config.graceful_shutdown_timeout_s = (
+        deployment_config.graceful_shutdown_timeout_s = (
             _graceful_shutdown_timeout_s)
 
     def decorator(_func_or_class):
@@ -1064,7 +1101,7 @@ def deployment(
 
         return Deployment(
             name if name is not None else _func_or_class.__name__,
-            backend_config,
+            deployment_config,
             replica_config,
             version=version,
             prev_version=prev_version,
@@ -1097,16 +1134,16 @@ def get_deployment(name: str) -> Deployment:
         Deployment
     """
     try:
-        backend_info, route_prefix = _get_global_client().get_deployment_info(
-            name)
+        deployment_info, route_prefix = _get_global_client(
+        ).get_deployment_info(name)
     except KeyError:
         raise KeyError(f"Deployment {name} was not found. "
                        "Did you call Deployment.deploy()?")
     return Deployment(
         name,
-        backend_info.backend_config,
-        backend_info.replica_config,
-        version=backend_info.version,
+        deployment_info.deployment_config,
+        deployment_info.replica_config,
+        version=deployment_info.version,
         route_prefix=route_prefix,
         _internal=True,
     )
@@ -1121,12 +1158,12 @@ def list_deployments() -> Dict[str, Deployment]:
     infos = _get_global_client().list_deployments()
 
     deployments = {}
-    for name, (backend_info, route_prefix) in infos.items():
+    for name, (deployment_info, route_prefix) in infos.items():
         deployments[name] = Deployment(
             name,
-            backend_info.backend_config,
-            backend_info.replica_config,
-            version=backend_info.version,
+            deployment_info.deployment_config,
+            deployment_info.replica_config,
+            version=deployment_info.version,
             route_prefix=route_prefix,
             _internal=True,
         )

@@ -177,6 +177,10 @@ streaming/java/**/.classpath
 streaming/java/**/.project
 streaming/java/**/*.log
 
+# pom.xml files generated from pom_template.xml
+java/**/pom.xml
+streaming/java/**/pom.xml
+
 # python virtual env
 venv
 

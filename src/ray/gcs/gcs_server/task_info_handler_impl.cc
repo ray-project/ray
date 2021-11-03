@@ -78,9 +78,8 @@ void DefaultTaskInfoHandler::HandleAddTaskLease(const AddTaskLeaseRequest &reque
       RAY_LOG(ERROR) << "Failed to add task lease, job id = " << task_id.JobId()
                      << ", task id = " << task_id << ", node id = " << node_id;
     } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(TASK_LEASE_CHANNEL, task_id.Hex(),
-                                         request.task_lease_data().SerializeAsString(),
-                                         nullptr));
+      RAY_CHECK_OK(
+          gcs_publisher_->PublishTaskLease(task_id, request.task_lease_data(), nullptr));
       RAY_LOG(DEBUG) << "Finished adding task lease, job id = " << task_id.JobId()
                      << ", task id = " << task_id << ", node id = " << node_id;
     }

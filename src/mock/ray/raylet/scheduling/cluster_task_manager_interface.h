@@ -39,7 +39,7 @@ class MockClusterTaskManagerInterface : public ClusterTaskManagerInterface {
               (const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
-  MOCK_METHOD(bool, AnyPendingTasks,
+  MOCK_METHOD(bool, AnyPendingTasksForResourceAcquisition,
               (RayTask * exemplar, bool *any_pending, int *num_pending_actor_creation,
                int *num_pending_tasks),
               (const, override));

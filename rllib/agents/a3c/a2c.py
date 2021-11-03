@@ -29,8 +29,8 @@ A2C_DEFAULT_CONFIG = merge_dicts(
 )
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
     """Execution plan of the A2C algorithm. Defines the distributed
     dataflow.
 
@@ -42,6 +42,9 @@ def execution_plan(workers: WorkerSet,
     Returns:
         LocalIterator[dict]: A local iterator over training metrics.
     """
+    assert len(kwargs) == 0, (
+        "A2C execution_plan does NOT take any additional parameters")
+
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
     if config["microbatch_size"]:

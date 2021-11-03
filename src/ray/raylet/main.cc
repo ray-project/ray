@@ -20,7 +20,7 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
@@ -48,6 +48,8 @@ DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(agent_command, "", "Dashboard agent command.");
 DEFINE_string(cpp_worker_command, "", "CPP worker command.");
+DEFINE_string(native_library_path, "",
+              "The native library path which includes the core libraries.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
@@ -71,7 +73,7 @@ int main(int argc, char *argv[]) {
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
-  ray::RayLog::InstallFailureSignalHandler();
+  ray::RayLog::InstallFailureSignalHandler(argv[0]);
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   const std::string raylet_socket_name = FLAGS_raylet_socket_name;
@@ -94,6 +96,7 @@ int main(int argc, char *argv[]) {
   const std::string java_worker_command = FLAGS_java_worker_command;
   const std::string agent_command = FLAGS_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
+  const std::string native_library_path = FLAGS_native_library_path;
   const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
@@ -125,7 +128,7 @@ int main(int argc, char *argv[]) {
       /*enable_async_conn=*/false, /*enable_subscribe_conn=*/true);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
-  gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
+  gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
   std::unique_ptr<ray::raylet::Raylet> raylet(nullptr);
@@ -187,6 +190,7 @@ int main(int argc, char *argv[]) {
           node_manager_config.worker_commands.emplace(
               make_pair(ray::Language::CPP, ParseCommandLine(cpp_worker_command)));
         }
+        node_manager_config.native_library_path = native_library_path;
         if (python_worker_command.empty() && java_worker_command.empty() &&
             cpp_worker_command.empty()) {
           RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "

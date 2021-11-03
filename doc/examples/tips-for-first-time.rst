@@ -33,7 +33,7 @@ Ray provides a highly flexible, yet minimalist and easy to use API. On this page
        | By default, it returns one ready object ID at a time.
 
 
-All the results reported in this page were obtained on a 13-inches MacBook Pro with a 2.7 GHz Core i7 CPU and 16GB of RAM. While ``ray.init()`` automatically detects the number of cores when it runs on a single machine, to reduce the variability of the results you observe on your machine when running the code below, here we specify num_cpus = 4, i.e., a machine with 4 CPUs.
+All the results reported in this page were obtained on a 13-inch MacBook Pro with a 2.7 GHz Core i7 CPU and 16GB of RAM. While ``ray.init()`` automatically detects the number of cores when it runs on a single machine, to reduce the variability of the results you observe on your machine when running the code below, here we specify num_cpus = 4, i.e., a machine with 4 CPUs.
 
 Since each task requests by default one CPU, this setting allows us to execute up to four tasks in parallel. As a result, our Ray system consists of one driver executing the program, and up to four workers running remote tasks or actors.
 
@@ -59,7 +59,7 @@ Unfortunately, it is quite natural for a new Ray user to inadvertently use ``ray
     print("results = ", results)
 
 
-The output of a program execution is below. As expected, the program takes around 4 secs:
+The output of a program execution is below. As expected, the program takes around 4 seconds:
 
 .. code-block:: bash
 
@@ -78,7 +78,7 @@ Now, let’s parallelize the above program with Ray. Some first-time users will 
 
     @ray.remote
     def do_some_work(x):
-        time.sleep(1) # Replace this is with work you need to do.
+        time.sleep(1) # Replace this with work you need to do.
         return x
 
     start = time.time()
@@ -93,7 +93,7 @@ However, when executing the above program one gets:
     duration = 0.0003619194030761719
     results =  [ObjectRef(df5a1a828c9685d3ffffffff0100000001000000), ObjectRef(cb230a572350ff44ffffffff0100000001000000), ObjectRef(7bbd90284b71e599ffffffff0100000001000000), ObjectRef(bd37d2621480fc7dffffffff0100000001000000)]
 
-When looking at this output, two things jump out. First, the program finishes immediately, i.e., in less than 1 ms. Second, instead of the expected results (i.e., [0, 1, 2, 3]) we get a bunch of identifiers. Of course, this should come as no surprise. Recall that remote operations are asynchronous and they return futures (i.e., object IDs) instead of the results themselves. This is exactly what we see here. We measure only the time it takes to invoke the tasks, not their running times, and we get the IDs of the results corresponding to the four tasks.
+When looking at this output, two things jump out. First, the program finishes immediately, i.e., in less than 1 ms. Second, instead of the expected results (i.e., [0, 1, 2, 3]) we get a bunch of identifiers. Recall that remote operations are asynchronous and they return futures (i.e., object IDs) instead of the results themselves. This is exactly what we see here. We measure only the time it takes to invoke the tasks, not their running times, and we get the IDs of the results corresponding to the four tasks.
 
 To get the actual results,  we need to use ray.get(), and here the first instinct is to just call ``ray.get()`` on the remote operation invocation, i.e., replace line 12 with:
 
@@ -108,7 +108,7 @@ By re-running the program after this change we get:
     duration = 4.018050909042358
     results =  [0, 1, 2, 3]
 
-So now the results are correct, but it still takes 4sec, so no speedup! What’s going on? The observant reader will already have the answer: ``ray.get()`` is blocking so calling it after each remote operation means that we wait for that operation to complete, which essentially means that we execute one operation at a time, hence no parallelism!
+So now the results are correct, but it still takes 4 seconds, so no speedup! What’s going on? The observant reader will already have the answer: ``ray.get()`` is blocking so calling it after each remote operation means that we wait for that operation to complete, which essentially means that we execute one operation at a time, hence no parallelism!
 
 To enable parallelism, we need to call ``ray.get()`` after invoking all tasks. We can easily do so in our example by replacing line 12 with:
 
@@ -123,7 +123,7 @@ By re-running the program after this change we now get:
     duration = 1.0064549446105957
     results =  [0, 1, 2, 3]
 
-So finally, success! Our Ray program now runs in just 1 sec which means that all invocations of ``do_some_work()`` are running in parallel.
+So finally, success! Our Ray program now runs in just 1 second which means that all invocations of ``do_some_work()`` are running in parallel.
 
 In summary, always keep in mind that ``ray.get()`` is a blocking operation, and thus if called eagerly it can hurt the parallelism. Instead, you should try to write your program such that ``ray.get()`` is called as late as possible.
 
@@ -154,7 +154,7 @@ By running this program we get:
 
 This result should be expected since the lower bound of executing 100,000 tasks that take 0.1ms each is 10s, to which we need to add other overheads such as function calls, etc.
 
-Let’s now parallelize this code using Ray, by making every invocation of ``do_some_work()`` remote:
+Let’s now parallelize this code using Ray, by making every invocation of ``tiny_work()`` remote:
 
 .. code-block:: python
 
@@ -165,7 +165,7 @@ Let’s now parallelize this code using Ray, by making every invocation of ``do_
 
     @ray.remote
     def tiny_work(x):
-        time.sleep(0.0001) # Replace this is with work you need to do.
+        time.sleep(0.0001) # Replace this with work you need to do.
         return x
 
     start = time.time()
@@ -181,7 +181,7 @@ The result of running this code is:
 
 Surprisingly, not only Ray didn’t improve the execution time, but the Ray program is actually slower than the sequential program! What’s going on? Well, the issue here is that every task invocation has a non-trivial overhead (e.g., scheduling, inter-process communication, updating the system state) and this overhead dominates the actual time it takes to execute the task.
 
-One way to speed up this program is to make the remote tasks larger in order to amortize the invocation overhead. Here is one possible solution where we aggregate 1000 tiny_work() function calls in a single bigger remote function:
+One way to speed up this program is to make the remote tasks larger in order to amortize the invocation overhead. Here is one possible solution where we aggregate 1000 ``tiny_work()`` function calls in a single bigger remote function:
 
 .. code-block:: python
 
@@ -236,7 +236,7 @@ Tip 3: Avoid passing same object repeatedly to remote tasks
 
 When we pass a large object as an argument to a remote function, Ray calls ``ray.put()`` under the hood to store that object in the local object store. This can significantly improve the performance of a remote task invocation when the remote task is executed locally, as all local tasks share the object store.
 
-However, there are cases when automatically calling ``ray.put()`` on a task invocation leads to performance issues. On example is passing the same large object as an argument repeatedly, as illustrated by the program below:
+However, there are cases when automatically calling ``ray.put()`` on a task invocation leads to performance issues. One example is passing the same large object as an argument repeatedly, as illustrated by the program below:
 
 .. code-block:: python
 
@@ -263,9 +263,9 @@ This program outputs:
     duration = 1.0837509632110596
 
 
-This running time is quite large for a program that calls just 10 remote tasks that do nothing. The reason for this unexpected high running time is that each time we invoke ``no_work(a)``, Ray calls ``ray.put(a)`` which results in copying array a to the object store. Since array a has 2.5 million entries copying it takes a non-trivial time.
+This running time is quite large for a program that calls just 10 remote tasks that do nothing. The reason for this unexpected high running time is that each time we invoke ``no_work(a)``, Ray calls ``ray.put(a)`` which results in copying array ``a`` to the object store. Since array ``a`` has 2.5 million entries, copying it takes a non-trivial time.
 
-To avoid copying array a every time ``no_work()`` is invoked, one simple solution is to explicitly call ray.put(a), and then pass a’s ID to no_work(), as illustrated below:
+To avoid copying array ``a`` every time ``no_work()`` is invoked, one simple solution is to explicitly call ``ray.put(a)``, and then pass ``a``’s ID to ``no_work()``, as illustrated below:
 
 .. code-block:: python
 
@@ -291,7 +291,7 @@ Running this program takes only:
 
     duration = 0.132796049118042
 
-This is 7 times faster than the original program which is to be expected since the main overhead of invoking no_work(a) was copying the array a to the object store, which now happens only once.
+This is 7 times faster than the original program which is to be expected since the main overhead of invoking ``no_work(a)`` was copying the array ``a`` to the object store, which now happens only once.
 
 Arguably a more important advantage of avoiding multiple copies of the same object to the object store is that it precludes the object store filling up prematurely and incur the cost of object eviction.
 
@@ -301,7 +301,7 @@ Tip 4: Pipeline data processing
 
 If we use ``ray.get()`` on the results of multiple tasks we will have to wait until the last one of these tasks finishes. This can be an issue if tasks take widely different amounts of time.
 
-To illustrate this issue, consider the following example where we run four ``do_some_work()`` tasks in parallel, with each task taking a time uniformly distributed between 0 and 4 sec. Next, assume the results of these tasks are processed by ``process_results()``, which takes 1 sec per result. The expected running time is then (1) the time it takes to execute the slowest of the ``do_some_work()`` tasks, plus (2) 4 sec which is the time it takes to execute ``process_results()``.
+To illustrate this issue, consider the following example where we run four ``do_some_work()`` tasks in parallel, with each task taking a time uniformly distributed between 0 and 4 seconds. Next, assume the results of these tasks are processed by ``process_results()``, which takes 1 sec per result. The expected running time is then (1) the time it takes to execute the slowest of the ``do_some_work()`` tasks, plus (2) 4 seconds which is the time it takes to execute ``process_results()``.
 
 .. code-block:: python
 
@@ -348,7 +348,7 @@ Fortunately, Ray allows you to do exactly this by calling ``ray.wait()`` on a li
 
     @ray.remote
     def do_some_work(x):
-        time.sleep(random.uniform(0, 4)) # Replace this is with work you need to do.
+        time.sleep(random.uniform(0, 4)) # Replace this with work you need to do.
         return x
 
     def process_incremental(sum, result):

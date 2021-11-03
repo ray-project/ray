@@ -1,5 +1,3 @@
-.. _xgboost-ray:
-
 ..
   This part of the docs is generated from the XGBoost-Ray readme using m2r
   To update:
@@ -11,6 +9,8 @@
   - Adjust some link targets (e.g. for "Ray Tune") to anonymous references
     by adding a second underscore (use `target <link>`__)
   - Search for `\ **` and delete this from the links (bold links are not supported)
+
+.. _xgboost-ray:
 
 Distributed XGBoost on Ray
 ==========================

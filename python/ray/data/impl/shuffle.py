@@ -15,15 +15,15 @@ from ray.data.impl.util import _get_spread_resources_iter
 T = TypeVar("T")
 
 
-def simple_shuffle(
-        input_blocks: BlockList[T],
-        output_num_blocks: int,
-        *,
-        random_shuffle: bool = False,
-        random_seed: Optional[int] = None,
-        map_ray_remote_args: Optional[Dict[str, Any]] = None,
-        reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
-        _spread_resource_prefix: Optional[str] = None) -> BlockList[T]:
+def simple_shuffle(input_blocks: BlockList,
+                   output_num_blocks: int,
+                   *,
+                   random_shuffle: bool = False,
+                   random_seed: Optional[int] = None,
+                   map_ray_remote_args: Optional[Dict[str, Any]] = None,
+                   reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
+                   _spread_resource_prefix: Optional[str] = None) -> BlockList:
+    input_blocks = list(input_blocks.iter_blocks())
     if map_ray_remote_args is None:
         map_ray_remote_args = {}
     if reduce_ray_remote_args is None:

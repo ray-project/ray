@@ -8,7 +8,7 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import apply_grad_clipping, explained_variance
+from ray.rllib.utils.torch_utils import apply_grad_clipping, explained_variance
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType
 from ray.rllib.policy.policy import Policy
 from ray.rllib.models.action_dist import ActionDistribution
@@ -19,7 +19,7 @@ torch, _ = try_import_torch()
 
 def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
                 train_batch: SampleBatch) -> TensorType:
-    model_out, _ = model.from_batch(train_batch)
+    model_out, _ = model(train_batch)
     action_dist = dist_class(model_out, model)
     actions = train_batch[SampleBatch.ACTIONS]
     # log\pi_\theta(a|s)

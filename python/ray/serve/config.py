@@ -6,23 +6,26 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
-from pydantic import (BaseModel, NonNegativeFloat, PositiveInt, validator)
-from ray.serve.constants import (DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT)
-from ray.serve.generated.serve_pb2 import (BackendConfig as BackendConfigProto,
-                                           AutoscalingConfig as
-                                           AutoscalingConfigProto)
-from ray.serve.generated.serve_pb2 import BackendLanguage
+from pydantic import BaseModel, NonNegativeFloat, PositiveInt, validator
+from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
+from ray.serve.generated.serve_pb2 import (
+    DeploymentConfig as DeploymentConfigProto, AutoscalingConfig as
+    AutoscalingConfigProto)
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
 
 from ray import cloudpickle as cloudpickle
 
 
 class AutoscalingConfig(BaseModel):
+    # Please keep these options in sync with those in
+    # `src/ray/protobuf/serve.proto`.
+
     # Publicly exposed options
-    min_replicas: int
-    max_replicas: int
+    min_replicas: int = 1
+    max_replicas: int = 1
     target_num_ongoing_requests_per_replica: int = 1
 
-    # Private options below
+    # Private options below.
 
     # Metrics scraping options
 
@@ -36,13 +39,14 @@ class AutoscalingConfig(BaseModel):
     # Multiplicative "gain" factor to limit scaling decisions
     smoothing_factor: float = 1.0
 
-    # TODO(architkulkarni): implement below
-    # loop_period_s = 30 # How frequently to make autoscaling decisions
+    # How frequently to make autoscaling decisions
+    # loop_period_s: float = CONTROL_LOOP_PERIOD_S
     # How long to wait before scaling down replicas
-    # downscale_delay_s: float = 600.0
+    downscale_delay_s: float = 600.0
     # How long to wait before scaling up replicas
-    # upscale_delay_s: float = 30.0
+    upscale_delay_s: float = 30.0
 
+    # TODO(architkulkarni): implement below
     # The number of replicas to start with when creating the deployment
     # initial_replicas: int = 1
     # The num_ongoing_requests_per_replica error ratio (desired / current)
@@ -53,21 +57,21 @@ class AutoscalingConfig(BaseModel):
     # TODO(architkulkarni): Add pydantic validation.  E.g. max_replicas>=min
 
 
-class BackendConfig(BaseModel):
-    """Configuration options for a backend, to be set by the user.
+class DeploymentConfig(BaseModel):
+    """Configuration options for a deployment, to be set by the user.
 
     Args:
         num_replicas (Optional[int]): The number of processes to start up that
-            will handle requests to this backend. Defaults to 1.
+            will handle requests to this deployment. Defaults to 1.
         max_concurrent_queries (Optional[int]): The maximum number of queries
-            that will be sent to a replica of this backend without receiving a
-            response. Defaults to 100.
+            that will be sent to a replica of this deployment without receiving
+            a response. Defaults to 100.
         user_config (Optional[Any]): Arguments to pass to the reconfigure
-            method of the backend. The reconfigure method is called if
+            method of the deployment. The reconfigure method is called if
             user_config is not None.
         graceful_shutdown_wait_loop_s (Optional[float]): Duration
-            that backend workers will wait until there is no more work to be
-            done before shutting down. Defaults to 2s.
+            that deployment replicas will wait until there is no more work to
+            be done before shutting down. Defaults to 2s.
         graceful_shutdown_timeout_s (Optional[float]):
             Controller waits for this duration to forcefully kill the replica
             for shutdown. Defaults to 20s.
@@ -104,21 +108,32 @@ class BackendConfig(BaseModel):
         if data.get("autoscaling_config"):
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"])
-        return BackendConfigProto(
+        return DeploymentConfigProto(
             is_cross_language=False,
-            backend_language=BackendLanguage.PYTHON,
+            deployment_language=DeploymentLanguage.PYTHON,
             **data,
         ).SerializeToString()
 
     @classmethod
     def from_proto_bytes(cls, proto_bytes: bytes):
-        proto = BackendConfigProto.FromString(proto_bytes)
-        data = MessageToDict(proto, preserving_proto_field_name=True)
+        proto = DeploymentConfigProto.FromString(proto_bytes)
+        data = MessageToDict(
+            proto,
+            including_default_value_fields=True,
+            preserving_proto_field_name=True)
         if "user_config" in data:
-            data["user_config"] = pickle.loads(proto.user_config)
+            if data["user_config"] != "":
+                data["user_config"] = pickle.loads(proto.user_config)
+            else:
+                data["user_config"] = None
         if "autoscaling_config" in data:
             data["autoscaling_config"] = AutoscalingConfig(
                 **data["autoscaling_config"])
+
+        # Delete fields which are only used in protobuf, not in Python.
+        del data["is_cross_language"]
+        del data["deployment_language"]
+
         return cls(**data)
 
 
