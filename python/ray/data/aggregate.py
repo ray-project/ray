@@ -1,4 +1,6 @@
-from typing import Callable, Optional, Union, Any
+import math
+from typing import Callable, Optional, Union, Any, List
+
 from ray.util.annotations import PublicAPI
 from ray.data.block import T, U, KeyType, AggType
 
@@ -101,6 +103,60 @@ class Mean(AggregateFn):
             merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
             finalize=lambda a: a[0] / a[1],
             name=(f"mean({str(on)})"))
+
+
+class Std(AggregateFn):
+    """Defines standard deviation aggregation."""
+
+    # Uses Welford's online method for an accumulator-style computation of the
+    # standard deviation. This method was chosen due to it's numerical
+    # stability, and it being computable in a single pass. See
+    # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+
+    def __init__(self, on: AggregateOnT = None, ddof: int = 1):
+        on_fn = _to_on_fn(on)
+
+        def accumulate(a: List[float], r: float):
+            # Accumulates the current count, the current mean, and the sum of
+            # squared differences from the current mean (M2).
+            M2, mean, count = a
+            # Select the data on which we want to calculate the mean.
+            val = on_fn(r)
+
+            count += 1
+            delta = val - mean
+            mean += delta / count
+            delta2 = val - mean
+            M2 += delta * delta2
+            return [M2, mean, count]
+
+        def merge(a: List[float], b: List[float]):
+            # Merges two accumulations into one.
+            M2_a, mean_a, count_a = a
+            M2_b, mean_b, count_b = b
+            delta = mean_b - mean_a
+            count = count_a + count_b
+            # NOTE: We use this mean calculation since it's more numerically
+            # stable than mean_a + delta * count_b / count, which actually
+            # deviates from Pandas in the ~15th decimal place and causes our
+            # exact comparison tests to fail.
+            mean = (mean_a * count_a + mean_b * count_b) / count
+            # Update the sum of squared differences.
+            M2 = M2_a + M2_b + (delta**2) * count_a * count_b / count
+            return [M2, mean, count]
+
+        def finalize(a: List[float]):
+            M2, mean, count = a
+            if count < 2:
+                return 0.0
+            return math.sqrt(M2 / (count - ddof))
+
+        super().__init__(
+            init=lambda k: [0, 0, 0],
+            accumulate=accumulate,
+            merge=merge,
+            finalize=finalize,
+            name=(f"std({str(on)})"))
 
 
 def _to_on_fn(on: AggregateOnT):
