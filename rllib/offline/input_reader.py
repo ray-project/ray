@@ -2,9 +2,8 @@ from abc import ABCMeta, abstractmethod
 import logging
 import numpy as np
 import threading
-from typing import Union
 
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.framework import try_import_tf
 from typing import Dict, List

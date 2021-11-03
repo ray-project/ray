@@ -23,7 +23,20 @@ class TFModelV2(ModelV2):
     def __init__(self, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space, num_outputs: int,
                  model_config: ModelConfigDict, name: str):
-        """Initializes a TFModelV2 instance."""
+        """Initializes a TFModelV2 instance.
+
+        Here is an example implementation for a subclass
+        ``MyModelClass(TFModelV2)``::
+
+            def __init__(self, *args, **kwargs):
+                super(MyModelClass, self).__init__(*args, **kwargs)
+                input_layer = tf.keras.layers.Input(...)
+                hidden_layer = tf.keras.layers.Dense(...)(input_layer)
+                output_layer = tf.keras.layers.Dense(...)(hidden_layer)
+                value_layer = tf.keras.layers.Dense(...)(hidden_layer)
+                self.base_model = tf.keras.Model(
+                    input_layer, [output_layer, value_layer])
+        """
         super().__init__(
             obs_space,
             action_space,

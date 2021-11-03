@@ -14,7 +14,8 @@ class MultiAgentEnv(gym.Env):
     """An environment that hosts multiple independent agents.
 
     Agents are identified by (string) agent ids. Note that these "agents" here
-    are not to be confused with RLlib agents.
+    are not to be confused with RLlib Trainers, which are also sometimes refered
+    to as "agents" or "RL agents".
 
     Examples:
         >>> env = MyMultiAgentEnv()
@@ -158,11 +159,15 @@ def make_multi_agent(
          ... {0: [...], 1: [...]}
 
          >>> # By env-maker callable:
+         >>> from ray.rllib.examples.env.stateless_cartpole import \
+         ...    StatelessCartPole
          >>> ma_stateless_cartpole_cls = make_multi_agent(
          ...    lambda config: StatelessCartPole(config))
-         >>> # Create a 2 agent multi-agent stateless cartpole.
+         >>> # Create a 3 agent multi-agent stateless cartpole.
          >>> ma_stateless_cartpole = ma_stateless_cartpole_cls(
-         ...    {"num_agents": 2})
+         ...    {"num_agents": 3})
+         >>> print(obs)
+         ... {0: [...], 1: [...], 2: [...]}
     """
 
     class MultiEnv(MultiAgentEnv):

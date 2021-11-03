@@ -3,61 +3,46 @@
 Environment APIs
 ================
 
-.. _baseenv-docs:
+.. toctree::
+   :maxdepth: 2
 
-BaseEnv API (rllib.env.base_env.BaseEnv)
-++++++++++++++++++++++++++++++++++++++++
+   env/base_env.rst
+   env/multi_agent_env.rst
+   env/vector_env.rst
+   env/external_env.rst
 
-All environments in RLlib are converted internally into the RLlib ``BaseEnv`` API,
-whose main methods are ``poll()`` and ``send_actions()``.
+Any environment type provided by you to RLlib (e.g. a user-defined ``gym.Env`` class),
+is converted internally into the ``BaseEnv`` API, whose main methods are ``poll()`` and ``send_actions()``:
+
+.. https://docs.google.com/drawings/d/1NtbVk-Mo89liTRx-sHu_7fqi3Kn7Hjdf3i6jIMbxGlY/edit
+.. image:: ../../images/rllib/env_classes_overview.svg
+
+
 
 This API allows ``BaseEnv`` to support:
 
-1) Vectorization of sub-envs in order to batch action-computing model forward passes.
-2) Async execution via its ``poll()``/``send_actions`` methods, such that external simulators (e.g. Envs that run on separate machines and independently request actions from a policy server) can be handled through the API as well.
-3) Parallelization of the vectorized sub-envs via ray.remote.
-4) Multi-agent support via dicts mapping agentIDs to observations/rewards/etc..
+1) Vectorization of sub-environments (i.e. individual gym.Env instances, stacked to form a vector of envs) in order to batch action-computing model forward passes.
+2) External simulators requiring async execution (e.g. Envs that run on separate machines and independently request actions from a policy server).
+3) Stepping through the vectorized sub-environments in parallel by converting all sub-environments into @ray.remote actors.
+4) Multi-agent RL via dicts mapping agent IDs to observations/rewards/etc..
 
-The user, however, may conveniently provide any of the supported environment types.
-The path from a user provided env type (or env generating callable) to
-an RLlib BaseEnv is usually one of the following:
+For example, if you provide a custom ``gym.Env`` class to RLlib, auto-conversion to ``BaseEnv`` goes as follows:
 
-- User provides a gym.Env -> VectorEnv -> BaseEnv
-- User provides a custom MultiAgentEnv (is-a gym.Env) -> VectorEnv -> BaseEnv
-- User uses a policy client (via an external env) -> ExternalEnv -> BaseEnv
-- User provides a custom VectorEnv -> BaseEnv
-- User provides a custom BaseEnv -> do nothing
+- User provides a ``gym.Env`` -> ``_VectorizedGymEnv`` (is-a ``VectorEnv``) -> ``BaseEnv``
 
-.. autoclass:: ray.rllib.env.base_env.BaseEnv
-    :members:
+Here is a simple example:
 
-.. _multiagentenv-docs:
+.. literalinclude:: ../../../../rllib/examples/documentation/custom_gym_env.py
+   :language: python
 
-MultiAgentEnv API (rllib.env.multi_agent_env.MultiAgentEnv)
-+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+..   start-after: __sphinx_doc_model_construct_1_begin__
+..   end-before: __sphinx_doc_model_construct_1_end__
 
-.. autoclass:: ray.rllib.env.multi_agent_env.MultiAgentEnv
-    :special-members: __init__
-    :members: reset, step, render, with_agent_groups
+However, you may also conveniently sub-class any of the other supported RLlib-specific
+environment types. The automated paths from those env types (or callables returning instances of those types) to
+an RLlib ``BaseEnv`` is as follows:
 
-A convenience method to convert a simple (single-agent) gym env
-into a multi-agent env is provided as follows:
-
-.. automodule:: ray.rllib.env.multi_agent_env
-    :members: make_multi_agent
-
-
-VectorEnv (rllib.env.vector_env.VectorEnv)
-++++++++++++++++++++++++++++++++++++++++++
-
-.. autoclass:: ray.rllib.env.vector_env.VectorEnv
-    :special-members: __init__
-    :members:
-
-ExternalEnv API (rllib.env.external_env.ExternalEnv)
-++++++++++++++++++++++++++++++++++++++++++++++++++++
-
-.. autoclass:: ray.rllib.env.external_env.ExternalEnv
-    :special-members: __init__
-    :members:
-
+- User provides a custom ``MultiAgentEnv`` (is-a ``gym.Env``) -> ``VectorEnv`` -> ``BaseEnv``
+- User uses a policy client (via an external simulator) -> ``ExternalEnv|ExternalMultiAgentEnv`` -> ``BaseEnv``
+- User provides a custom ``VectorEnv`` -> ``BaseEnv``
+- User provides a custom ``BaseEnv`` -> do nothing
