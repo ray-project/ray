@@ -4,7 +4,7 @@ Environment APIs
 ================
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
    env/base_env.rst
    env/multi_agent_env.rst
