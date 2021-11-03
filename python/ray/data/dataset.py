@@ -28,7 +28,8 @@ from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, \
 from ray.data.datasource import (
     Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
     ParquetDatasource, BlockWritePathProvider, DefaultBlockWritePathProvider)
-from ray.data.aggregate import AggregateOnT, AggregateFn, Sum, Max, Min, Mean
+from ray.data.aggregate import AggregateOnT, AggregateFn, Sum, Max, Min, \
+    Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
@@ -921,6 +922,28 @@ class Dataset(Generic[T]):
         ret = self.aggregate(Mean(on))
         if ret is None:
             raise ValueError("Cannot compute mean on an empty dataset")
+        else:
+            return ret[0]
+
+    def std(self, on: AggregateOnT = None, ddof: int = 1) -> U:
+        """Compute standard deviation over entire dataset.
+
+        Examples:
+            >>> ray.data.range(100).std()
+            >>> ray.data.range_arrow(100).std("value")
+
+        Args:
+            on: The data on which to compute the standard deviation.
+                It can be the column name for Arrow dataset.
+            ddof: Delta Degrees of Freedom. The divisor used in calculations
+                is N - ddof, where N represents the number of elements.
+
+        Returns:
+            The standard deviation result.
+        """
+        ret = self.aggregate(Std(on, ddof))
+        if ret is None:
+            raise ValueError("Cannot compute std on an empty dataset")
         else:
             return ret[0]
 
