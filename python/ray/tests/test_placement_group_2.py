@@ -745,7 +745,6 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
 
     # Create a placement group.
     placement_group = ray.util.placement_group([{"CPU": 1}, {"CPU": 1}])
-
     # Create an actor that occupies resources after gcs server restart.
     cluster.head_node.kill_gcs_server()
     cluster.head_node.start_gcs_server()
