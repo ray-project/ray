@@ -269,7 +269,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           self_node_id_, config.node_manager_address, config.node_manager_port,
           RayConfig::instance().free_objects_batch_size(),
           RayConfig::instance().free_objects_period_milliseconds(), worker_pool_,
-          gcs_client_->Objects(), worker_rpc_pool_,
+          worker_rpc_pool_,
           /*max_io_workers*/ config.max_io_workers,
           /*min_spilling_size*/ config.min_spilling_size,
           /*is_external_storage_type_fs*/
@@ -890,7 +890,12 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                                         const ResourceSet &createUpdatedResources) {
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from node id " << node_id
                  << " with created or updated resources: "
-                 << createUpdatedResources.ToString() << ". Updating resource map.";
+                 << createUpdatedResources.ToString() << ". Updating resource map."
+                 << " skip=" << (node_id == self_node_id_);
+
+  // Skip updating local node since local node always has the latest information.
+  // Updating local node could result in a inconsistence view in cluster resource
+  // scheduler which could make task hang.
   if (node_id == self_node_id_) {
     return;
   }
@@ -915,7 +920,14 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
     }
     RAY_LOG(DEBUG) << "[ResourceDeleted] received callback from node id " << node_id
                    << " with deleted resources: " << oss.str()
-                   << ". Updating resource map.";
+                   << ". Updating resource map. skip=" << (node_id == self_node_id_);
+  }
+
+  // Skip updating local node since local node always has the latest information.
+  // Updating local node could result in a inconsistence view in cluster resource
+  // scheduler which could make task hang.
+  if (node_id == self_node_id_) {
+    return;
   }
 
   // Update local_available_resources_ and SchedulingResources

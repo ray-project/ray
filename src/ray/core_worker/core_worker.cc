@@ -1214,8 +1214,9 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
     // by invoking `AddLocalReference` first. Note that in worker.py we set
     // skip_adding_local_ref=True to avoid double referencing the object.
     AddLocalReference(*object_id);
-    RAY_UNUSED(reference_counter_->AddBorrowedObject(*object_id, ObjectID::Nil(),
-                                                     real_owner_address));
+    RAY_UNUSED(reference_counter_->AddBorrowedObject(
+        *object_id, ObjectID::Nil(), real_owner_address,
+        /*foreign_owner_already_monitoring=*/true));
 
     // Remote call `AssignObjectOwner()`.
     rpc::AssignObjectOwnerRequest request;

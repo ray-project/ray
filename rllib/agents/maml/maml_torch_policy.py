@@ -8,7 +8,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
 from ray.rllib.agents.ppo.ppo_torch_policy import vf_preds_fetches, \
     ValueNetworkMixin
-from ray.rllib.utils.torch_ops import apply_grad_clipping
+from ray.rllib.utils.torch_utils import apply_grad_clipping
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
