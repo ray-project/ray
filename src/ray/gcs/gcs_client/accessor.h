@@ -110,17 +110,6 @@ class ActorInfoAccessor {
       const TaskSpecification &task_spec,
       const rpc::ClientCallback<rpc::CreateActorReply> &callback);
 
-  /// Subscribe to any register or update operations of actors.
-  ///
-  /// \param subscribe Callback that will be called each time when an actor is registered
-  /// or updated.
-  /// \param done Callback that will be called when subscription is complete and we
-  /// are ready to receive notification.
-  /// \return Status
-  virtual Status AsyncSubscribeAll(
-      const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
-      const StatusCallback &done);
-
   /// Subscribe to any update operations of an actor.
   ///
   /// \param actor_id The ID of actor to be subscribed to.
@@ -154,19 +143,11 @@ class ActorInfoAccessor {
   virtual bool IsActorUnsubscribed(const ActorID &actor_id);
 
  private:
-  /// Save the subscribe operation in this function, so we can call it again when PubSub
-  /// server restarts from a failure.
-  SubscribeOperation subscribe_all_operation_;
-
-  /// Save the fetch data operation in this function, so we can call it again when GCS
-  /// server restarts from a failure.
-  FetchDataOperation fetch_all_data_operation_;
-
-  // Mutex to protect the subscribe_operations_ field and fetch_data_operations_ field.
+  // Mutex to protect the resubscribe_operations_ field and fetch_data_operations_ field.
   absl::Mutex mutex_;
 
-  /// Save the subscribe operation of actors.
-  std::unordered_map<ActorID, SubscribeOperation> subscribe_operations_
+  /// Resubscribe operations for actors.
+  std::unordered_map<ActorID, SubscribeOperation> resubscribe_operations_
       GUARDED_BY(mutex_);
 
   /// Save the fetch data operation of actors.
@@ -339,113 +320,6 @@ class TaskInfoAccessor {
   std::unordered_map<TaskID, FetchDataOperation> fetch_task_lease_data_operations_;
 
   GcsClient *client_impl_;
-};
-
-/// `ObjectInfoAccessor` is a sub-interface of `GcsClient`.
-/// This class includes all the methods that are related to accessing
-/// object information in the GCS.
-class ObjectInfoAccessor {
- public:
-  ObjectInfoAccessor() = default;
-  explicit ObjectInfoAccessor(GcsClient *client_impl);
-  virtual ~ObjectInfoAccessor() = default;
-  /// Get object's locations from GCS asynchronously.
-  ///
-  /// \param object_id The ID of object to lookup in GCS.
-  /// \param callback Callback that will be called after lookup finishes.
-  /// \return Status
-  virtual Status AsyncGetLocations(
-      const ObjectID &object_id,
-      const OptionalItemCallback<rpc::ObjectLocationInfo> &callback);
-
-  /// Get all object's locations from GCS asynchronously.
-  ///
-  /// \param callback Callback that will be called after lookup finished.
-  /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::ObjectLocationInfo> &callback);
-
-  /// Add location of object to GCS asynchronously.
-  ///
-  /// \param object_id The ID of object which location will be added to GCS.
-  /// \param node_id The location that will be added to GCS.
-  /// \param callback Callback that will be called after object has been added to GCS.
-  /// \return Status
-  virtual Status AsyncAddLocation(const ObjectID &object_id, const NodeID &node_id,
-                                  size_t object_size, const StatusCallback &callback);
-
-  /// Add spilled location of object to GCS asynchronously.
-  ///
-  /// \param object_id The ID of object which location will be added to GCS.
-  /// \param spilled_url The URL where the object has been spilled.
-  /// \param spilled_node_id The NodeID where the object has been spilled.
-  /// \param callback Callback that will be called after object has been added to GCS.
-  /// \return Status
-  virtual Status AsyncAddSpilledUrl(const ObjectID &object_id,
-                                    const std::string &spilled_url,
-                                    const NodeID &spilled_node_id, size_t object_size,
-                                    const StatusCallback &callback);
-
-  /// Remove location of object from GCS asynchronously.
-  ///
-  /// \param object_id The ID of object which location will be removed from GCS.
-  /// \param node_id The location that will be removed from GCS.
-  /// \param callback Callback that will be called after the delete finished.
-  /// \return Status
-  virtual Status AsyncRemoveLocation(const ObjectID &object_id, const NodeID &node_id,
-                                     const StatusCallback &callback);
-
-  /// Subscribe to any update of an object's location.
-  ///
-  /// \param object_id The ID of the object to be subscribed to.
-  /// \param subscribe Callback that will be called each time when the object's
-  /// location is updated.
-  /// \param done Callback that will be called when subscription is complete.
-  /// \return Status
-  virtual Status AsyncSubscribeToLocations(
-      const ObjectID &object_id,
-      const SubscribeCallback<ObjectID, std::vector<rpc::ObjectLocationChange>>
-          &subscribe,
-      const StatusCallback &done);
-
-  /// Cancel subscription to any update of an object's location.
-  ///
-  /// \param object_id The ID of the object to be unsubscribed to.
-  /// \return Status
-  virtual Status AsyncUnsubscribeToLocations(const ObjectID &object_id);
-
-  /// Reestablish subscription.
-  /// This should be called when GCS server restarts from a failure.
-  /// PubSub server restart will cause GCS server restart. In this case, we need to
-  /// resubscribe from PubSub server, otherwise we only need to fetch data from GCS
-  /// server.
-  ///
-  /// \param is_pubsub_server_restarted Whether pubsub server is restarted.
-  virtual void AsyncResubscribe(bool is_pubsub_server_restarted);
-
-  /// Check if the specified object is unsubscribed.
-  ///
-  /// \param object_id The ID of the object.
-  /// \return Whether the specified object is unsubscribed.
-  virtual bool IsObjectUnsubscribed(const ObjectID &object_id);
-
- private:
-  // Mutex to protect the subscribe_object_operations_ field and
-  // fetch_object_data_operations_ field.
-  absl::Mutex mutex_;
-
-  /// Save the subscribe operations, so we can call them again when PubSub
-  /// server restarts from a failure.
-  std::unordered_map<ObjectID, SubscribeOperation> subscribe_object_operations_
-      GUARDED_BY(mutex_);
-
-  /// Save the fetch data operation in this function, so we can call it again when GCS
-  /// server restarts from a failure.
-  std::unordered_map<ObjectID, FetchDataOperation> fetch_object_data_operations_
-      GUARDED_BY(mutex_);
-
-  GcsClient *client_impl_;
-
-  Sequencer<ObjectID> sequencer_;
 };
 
 /// \class NodeInfoAccessor
