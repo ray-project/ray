@@ -37,4 +37,4 @@ RUN sudo apt-get update \
 RUN python -c "import tensorflow_probability"
 
 # Install Atari ROMs. Previously these have been shipped with atari_py \
-RUN ./install_atari_roms.sh
+# RUN ./install_atari_roms.sh

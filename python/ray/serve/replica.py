@@ -14,7 +14,7 @@ from ray.actor import ActorHandle
 from ray._private.async_compat import sync_to_async
 
 from ray.serve.autoscaling_metrics import start_metrics_pusher
-from ray.serve.common import BackendTag, ReplicaTag
+from ray.serve.common import str, ReplicaTag
 from ray.serve.config import DeploymentConfig
 from ray.serve.http_util import ASGIHTTPSender
 from ray.serve.utils import parse_request_item, _get_logger
@@ -41,7 +41,7 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
 
     # TODO(architkulkarni): Add type hints after upgrading cloudpickle
     class RayServeWrappedReplica(object):
-        async def __init__(self, backend_tag, replica_tag, init_args,
+        async def __init__(self, deployment_name, replica_tag, init_args,
                            init_kwargs, deployment_config_proto_bytes: bytes,
                            version: DeploymentVersion, controller_name: str,
                            detached: bool):
@@ -61,34 +61,52 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
             # backend code will connect to the instance that this backend is
             # running in.
             ray.serve.api._set_internal_replica_context(
-                backend_tag,
+                deployment_name,
                 replica_tag,
                 controller_name,
                 servable_object=None)
-            if is_function:
-                _callable = backend
-            else:
-                # This allows backends to define an async __init__ method
-                # (required for FastAPI backend definition).
-                _callable = backend.__new__(backend)
-                await sync_to_async(_callable.__init__)(*init_args,
-                                                        **init_kwargs)
-            # Setting the context again to update the servable_object.
-            ray.serve.api._set_internal_replica_context(
-                backend_tag,
-                replica_tag,
-                controller_name,
-                servable_object=_callable)
 
             assert controller_name, "Must provide a valid controller_name"
+
             controller_namespace = ray.serve.api._get_controller_namespace(
                 detached)
             controller_handle = ray.get_actor(
                 controller_name, namespace=controller_namespace)
-            self.backend = RayServeReplica(
-                _callable, backend_tag, replica_tag, deployment_config,
-                deployment_config.user_config, version, is_function,
-                controller_handle)
+
+            # This closure initializes user code and finalizes replica
+            # startup. By splitting the initialization step like this,
+            # we can already access this actor before the user code
+            # has finished initializing.
+            # The supervising state manager can then wait
+            # for allocation of this replica by using the `is_allocated`
+            # method. After that, it calls `reconfigure` to trigger
+            # user code initialization.
+            async def initialize_backend():
+                if is_function:
+                    _callable = backend
+                else:
+                    # This allows backends to define an async __init__ method
+                    # (required for FastAPI backend definition).
+                    _callable = backend.__new__(backend)
+                    await sync_to_async(_callable.__init__)(*init_args,
+                                                            **init_kwargs)
+                # Setting the context again to update the servable_object.
+                ray.serve.api._set_internal_replica_context(
+                    deployment_name,
+                    replica_tag,
+                    controller_name,
+                    servable_object=_callable)
+
+                self.backend = RayServeReplica(
+                    _callable, deployment_name, replica_tag, deployment_config,
+                    deployment_config.user_config, version, is_function,
+                    controller_handle)
+
+            # Is it fine that backend is None here?
+            # Should we add a check in all methods that use self.backend
+            # or, alternatively, create an async get_backend() method?
+            self.backend = None
+            self._initialize_backend = initialize_backend
 
             # asyncio.Event used to signal that the replica is shutting down.
             self.shutdown_event = asyncio.Event()
@@ -108,8 +126,21 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.backend.handle_request(query)
 
+        async def is_allocated(self):
+            """poke the replica to check whether it's alive.
+
+            When calling this method on an ActorHandle, it will complete as
+            soon as the actor has started running. We use this mechanism to
+            detect when a replica has been allocated a worker slot.
+            At this time, the replica can transition from PENDING_ALLOCATION
+            to PENDING_INITIALIZATION startup state.
+            """
+            pass
+
         async def reconfigure(self, user_config: Optional[Any] = None
                               ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+            if self.backend is None:
+                await self._initialize_backend()
             if user_config is not None:
                 await self.backend.reconfigure(user_config)
 
@@ -145,12 +176,12 @@ def wrap_to_ray_error(function_name: str,
 class RayServeReplica:
     """Handles requests with the provided callable."""
 
-    def __init__(self, _callable: Callable, backend_tag: BackendTag,
+    def __init__(self, _callable: Callable, deployment_name: str,
                  replica_tag: ReplicaTag, deployment_config: DeploymentConfig,
                  user_config: Any, version: DeploymentVersion,
                  is_function: bool, controller_handle: ActorHandle) -> None:
         self.deployment_config = deployment_config
-        self.backend_tag = backend_tag
+        self.deployment_name = deployment_name
         self.replica_tag = replica_tag
         self.callable = _callable
         self.is_function = is_function
@@ -165,7 +196,7 @@ class RayServeReplica:
                          "processed in this replica."),
             tag_keys=("deployment", "replica"))
         self.request_counter.set_default_tags({
-            "deployment": self.backend_tag,
+            "deployment": self.deployment_name,
             "replica": self.replica_tag
         })
 
@@ -175,7 +206,7 @@ class RayServeReplica:
                          "occurred in this replica."),
             tag_keys=("deployment", "replica"))
         self.error_counter.set_default_tags({
-            "deployment": self.backend_tag,
+            "deployment": self.deployment_name,
             "replica": self.replica_tag
         })
 
@@ -185,7 +216,7 @@ class RayServeReplica:
                          "has been restarted due to failure."),
             tag_keys=("deployment", "replica"))
         self.restart_counter.set_default_tags({
-            "deployment": self.backend_tag,
+            "deployment": self.deployment_name,
             "replica": self.replica_tag
         })
 
@@ -195,7 +226,7 @@ class RayServeReplica:
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
             tag_keys=("deployment", "replica"))
         self.processing_latency_tracker.set_default_tags({
-            "deployment": self.backend_tag,
+            "deployment": self.deployment_name,
             "replica": self.replica_tag
         })
 
@@ -204,7 +235,7 @@ class RayServeReplica:
             description="The current number of queries being processed.",
             tag_keys=("deployment", "replica"))
         self.num_processing_items.set_default_tags({
-            "deployment": self.backend_tag,
+            "deployment": self.deployment_name,
             "replica": self.replica_tag
         })
 
@@ -225,7 +256,7 @@ class RayServeReplica:
             handler.setFormatter(
                 logging.Formatter(
                     handler.formatter._fmt +
-                    f" component=serve deployment={self.backend_tag} "
+                    f" component=serve deployment={self.deployment_name} "
                     f"replica={self.replica_tag}"))
 
     def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
@@ -323,7 +354,7 @@ class RayServeReplica:
                 "deployment_def must be a class to use user_config")
         elif not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
             raise RayServeException("user_config specified but backend " +
-                                    self.backend_tag + " missing " +
+                                    self.deployment_name + " missing " +
                                     BACKEND_RECONFIGURE_METHOD + " method")
         reconfigure_method = sync_to_async(
             getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
