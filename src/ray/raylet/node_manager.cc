@@ -897,6 +897,7 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
   // Updating local node could result in a inconsistence view in cluster resource
   // scheduler which could make task hang.
   if (node_id == self_node_id_) {
+    cluster_task_manager_->ScheduleAndDispatchTasks();
     return;
   }
 
