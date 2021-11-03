@@ -892,6 +892,10 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                  << " with created or updated resources: "
                  << createUpdatedResources.ToString() << ". Updating resource map."
                  << " skip=" << (node_id == self_node_id_);
+
+  // Skip updating local node since local node always has the latest information.
+  // Updating local node could result in a inconsistence view in cluster resource
+  // scheduler which could make task hang.
   if (node_id == self_node_id_) {
     return;
   }
@@ -919,6 +923,9 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
                    << ". Updating resource map. skip=" << (node_id == self_node_id_);
   }
 
+  // Skip updating local node since local node always has the latest information.
+  // Updating local node could result in a inconsistence view in cluster resource
+  // scheduler which could make task hang.
   if (node_id == self_node_id_) {
     return;
   }
