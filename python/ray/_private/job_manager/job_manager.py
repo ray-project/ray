@@ -278,8 +278,6 @@ class JobManager:
     as lost once the ray cluster running job manager instance is down.
     """
     JOB_ACTOR_NAME = "_ray_internal_job_actor_{job_id}"
-    # Time given to setup runtime_env for job supervisor actor.
-    START_ACTOR_TIMEOUT_S = 60
 
     def __init__(self):
         self._status_client = JobStatusStorageClient()
@@ -364,8 +362,7 @@ class JobManager:
                 # For now we assume supervisor actor and driver script have
                 # same runtime_env.
                 runtime_env=runtime_env).remote(job_id, metadata or {})
-            ray.get(
-                supervisor.ready.remote(), timeout=self.START_ACTOR_TIMEOUT_S)
+            ray.get(supervisor.ready.remote())
         except Exception as e:
             if supervisor:
                 ray.kill(supervisor, no_restart=True)
