@@ -137,11 +137,13 @@ class GcsPlacementGroup {
   /// Setup states other than placement_group_table_data_.
   void SetupStates() {
     auto stats = placement_group_table_data_.mutable_stats();
-    // If the value has never been set, it is 0.
+    // The default value for the field is 0
     if (stats->creation_request_received_ns() == 0) {
       auto now = absl::GetCurrentTimeNanos();
       stats->set_creation_request_received_ns(now);
     }
+    // The default value for the field is 0
+    // Only set the state to the QUEUED when the state wasn't persisted before.
     if (stats->scheduling_state() == 0) {
       stats->set_scheduling_state(rpc::PlacementGroupStats::QUEUED);
     }

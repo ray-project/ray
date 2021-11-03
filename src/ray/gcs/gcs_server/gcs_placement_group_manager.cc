@@ -562,8 +562,7 @@ void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
   auto on_done =
       [this, reply, send_reply_callback](
           const std::unordered_map<PlacementGroupID, PlacementGroupTableData> &result) {
-        for (auto &data : result) {
-          const auto &placement_group_id = data.first;
+        for (auto &[placement_group_id, data] : result) {
           auto it = registered_placement_groups_.find(placement_group_id);
           // If the pg entry exists in memory just copy from it since
           // it has less stale data. It is useful because we don't
@@ -573,7 +572,7 @@ void GcsPlacementGroupManager::HandleGetAllPlacementGroup(
             reply->add_placement_group_table_data()->CopyFrom(
                 it->second->GetPlacementGroupTableData());
           } else {
-            reply->add_placement_group_table_data()->CopyFrom(data.second);
+            reply->add_placement_group_table_data()->CopyFrom(data);
           }
         }
         RAY_LOG(DEBUG) << "Finished getting all placement group info.";
