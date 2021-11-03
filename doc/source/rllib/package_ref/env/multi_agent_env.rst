@@ -1,7 +1,10 @@
-.. _multiagentenv-docs:
+.. _multi_agent_env-docs:
 
-MultiAgentEnv API (rllib.env.multi_agent_env.MultiAgentEnv)
-===========================================================
+MultiAgentEnv API
+=================
+
+rllib.env.multi_agent_env.MultiAgentEnv
+---------------------------------------
 
 .. autoclass:: ray.rllib.env.multi_agent_env.MultiAgentEnv
     :members:
@@ -9,11 +12,8 @@ MultiAgentEnv API (rllib.env.multi_agent_env.MultiAgentEnv)
     :undoc-members:
 
 
-Convert single-agent envs into multi-agent ones via cloning
------------------------------------------------------------
-
-A convenience method to convert a simple (single-agent) ``gym.Env`` class
-into a ``MultiAgentEnv`` class is provided here:
+Convert gym.Env into MultiAgentEnv
+----------------------------------
 
 .. automodule:: ray.rllib.env.multi_agent_env
     :members: make_multi_agent

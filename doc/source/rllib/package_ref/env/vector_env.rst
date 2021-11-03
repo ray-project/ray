@@ -1,5 +1,10 @@
-VectorEnv API (rllib.env.vector_env.VectorEnv)
-==============================================
+.. _vector_env-docs:
+
+VectorEnv API
+=============
+
+rllib.env.vector_env.VectorEnv
+------------------------------
 
 .. autoclass:: ray.rllib.env.vector_env.VectorEnv
     :special-members: __init__

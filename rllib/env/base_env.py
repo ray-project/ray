@@ -262,10 +262,10 @@ class BaseEnv:
 
     @PublicAPI
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
-        """Tries to render the environment.
+        """Tries to render the sub-environment with the given id or all.
 
         Args:
-            env_id: The sub-environment's ID if applicable.
+            env_id: The sub-environment's ID, if applicable.
                 If None, renders the entire Env (i.e. all sub-environments).
         """
 

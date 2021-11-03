@@ -1,7 +1,10 @@
-.. _baseenv-docs:
+.. _base_env-docs:
 
-BaseEnv API (rllib.env.base_env.BaseEnv)
-========================================
+BaseEnv API
+===========
+
+rllib.env.base_env.BaseEnv
+--------------------------
 
 .. autoclass:: ray.rllib.env.base_env.BaseEnv
     :members:

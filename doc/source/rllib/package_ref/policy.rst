@@ -4,37 +4,19 @@
 Policy APIs
 ===========
 
-Base Policy class (ray.rllib.policy.policy.Policy)
-++++++++++++++++++++++++++++++++++++++++++++++++++
+.. toctree::
+   :maxdepth: 1
 
-.. autoclass:: ray.rllib.policy.policy.Policy
-    :special-members: __init__
-    :members:
+   policy/policy.rst
+   policy/tf_policies.rst
+   policy/torch_policy.rst
 
 
-DL Framework Specific Sub-Classes
-+++++++++++++++++++++++++++++++++
+Any environment type provided by you to RLlib (e.g. a user-defined ``gym.Env`` class),
+is converted internally into the ``BaseEnv`` API, whose main methods are ``poll()`` and ``send_actions()``:
 
-TFPolicy
---------
-
-.. autoclass:: ray.rllib.policy.tf_policy.TFPolicy
-    :special-members: __init__
-    :members:
-
-DynamicTFPolicy
----------------
-
-.. autoclass:: ray.rllib.policy.dynamic_tf_policy.DynamicTFPolicy
-    :special-members: __init__
-    :members:
-
-TorchPolicy
------------
-
-.. autoclass:: ray.rllib.policy.torch_policy.TorchPolicy
-    :special-members: __init__
-    :members:
+.. https://docs.google.com/drawings/d/1NtbVk-Mo89liTRx-sHu_7fqi3Kn7Hjdf3i6jIMbxGlY/edit
+.. image:: ../../images/rllib/env_classes_overview.svg
 
 
 Building Custom Policy Classes

@@ -2,7 +2,7 @@ import gym
 from typing import Callable, Dict, List, Tuple, Type, Union
 
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import ExperimentalAPI, override, PublicAPI
 from ray.rllib.utils.typing import AgentID, EnvType, MultiAgentDict
 
 # If the obs space is Dict type, look for the global state under this key.
@@ -16,37 +16,6 @@ class MultiAgentEnv(gym.Env):
     Agents are identified by (string) agent ids. Note that these "agents" here
     are not to be confused with RLlib Trainers, which are also sometimes refered
     to as "agents" or "RL agents".
-
-    Examples:
-        >>> env = MyMultiAgentEnv()
-        >>> obs = env.reset()
-        >>> print(obs)
-        {
-            "car_0": [2.4, 1.6],
-            "car_1": [3.4, -3.2],
-            "traffic_light_1": [0, 3, 5, 1],
-        }
-        >>> obs, rewards, dones, infos = env.step(
-        ...    action_dict={
-        ...        "car_0": 1, "car_1": 0, "traffic_light_1": 2,
-        ...    })
-        >>> print(rewards)
-        {
-            "car_0": 3,
-            "car_1": -1,
-            "traffic_light_1": 0,
-        }
-        >>> print(dones)
-        {
-            "car_0": False,    # car_0 is still running
-            "car_1": True,     # car_1 is done
-            "__all__": False,  # the env is not done
-        }
-        >>> print(infos)
-        {
-            "car_0": {},  # info for car_0
-            "car_1": {},  # info for car_1
-        }
     """
 
     @PublicAPI
@@ -55,6 +24,16 @@ class MultiAgentEnv(gym.Env):
 
         Returns:
             New observations for each ready agent.
+
+        Examples:
+            >>> env = MyMultiAgentEnv()
+            >>> obs = env.reset()
+            >>> print(obs)
+            {
+                "car_0": [2.4, 1.6],
+                "car_1": [3.4, -3.2],
+                "traffic_light_1": [0, 3, 5, 1],
+            }
         """
         raise NotImplementedError
 
@@ -74,6 +53,29 @@ class MultiAgentEnv(gym.Env):
             3) Done values for each ready agent. The special key
             "__all__" (required) is used to indicate env termination.
             4) Optional info values for each agent id.
+
+        Examples:
+            >>> obs, rewards, dones, infos = env.step(
+            ...    action_dict={
+            ...        "car_0": 1, "car_1": 0, "traffic_light_1": 2,
+            ...    })
+            >>> print(rewards)
+            {
+                "car_0": 3,
+                "car_1": -1,
+                "traffic_light_1": 0,
+            }
+            >>> print(dones)
+            {
+                "car_0": False,    # car_0 is still running
+                "car_1": True,     # car_1 is done
+                "__all__": False,  # the env is not done
+            }
+            >>> print(infos)
+            {
+                "car_0": {},  # info for car_0
+                "car_1": {},  # info for car_1
+            }
         """
         raise NotImplementedError
 
@@ -86,7 +88,7 @@ class MultiAgentEnv(gym.Env):
 
 # yapf: disable
 # __grouping_doc_begin__
-    @PublicAPI
+    @ExperimentalAPI
     def with_agent_groups(
             self,
             groups: Dict[str, List[AgentID]],
@@ -94,7 +96,7 @@ class MultiAgentEnv(gym.Env):
             act_space: gym.Space = None) -> "MultiAgentEnv":
         """Convenience method for grouping together agents in this env.
 
-        An agent group is a list of agent ids that are mapped to a single
+        An agent group is a list of agent IDs that are mapped to a single
         logical agent. All agents of the group must act at the same time in the
         environment. The grouped agent exposes Tuple action and observation
         spaces that are the concatenated action and obs spaces of the
@@ -137,7 +139,15 @@ def make_multi_agent(
 ) -> Type["MultiAgentEnv"]:
     """Convenience wrapper for any single-agent env to be converted into MA.
 
-    Agent IDs are int numbers starting from 0 (first agent).
+    Allows you to convert a simple (single-agent) ``gym.Env`` class
+    into a ``MultiAgentEnv`` class. This function simply stacks n instances
+    of the given ``gym.Env`` class into one unified MultiAgentEnv class and
+    returns this class, thus pretending the agents act together in the same
+    environment, whereas - under the hood - they live separately from each
+    other in n parallel single-agent envs.
+
+    Agent IDs in the resulting and are int numbers starting from 0
+    (first agent).
 
     Args:
         env_name_or_creator: String specifier or env_maker function taking
