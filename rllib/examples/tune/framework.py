@@ -14,18 +14,17 @@ logger = logging.getLogger("tune_framework")
 
 
 def run(smoke_test=False):
-    if smoke_test:
-        stop = {"training_iteration": 1}
-    else:
-        stop = {"training_iteration": 50}
+    stop = {"training_iteration": 1 if smoke_test else 50}
+    num_workers = 1 if smoke_test else 50
+    num_gpus = 0 if smoke_test else 1
 
     config = {
         "env": "PongNoFrameskip-v4",
         "framework": tune.grid_search(["tf", "torch"]),
-        "num_gpus": 1,
+        "num_gpus": num_gpus,
         "rollout_fragment_length": 50,
         "train_batch_size": 750,
-        "num_workers": 50,
+        "num_workers": num_workers,
         "num_envs_per_worker": 1,
         "clip_rewards": True,
         "num_sgd_iter": 2,
