@@ -352,7 +352,7 @@ class ParsedRuntimeEnv(dict):
             plugin_uris.append(
                 _encode_plugin_uri("working_dir", self["working_dir"]))
         if "py_modules" in self:
-            for uri in self["my_modules"]:
+            for uri in self["py_modules"]:
                 plugin_uris.append(_encode_plugin_uri("py_modules", uri))
         return plugin_uris
 
