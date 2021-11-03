@@ -266,7 +266,6 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     # Rebuild with TSAN enabled.
-    - find /
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; RAY_DEBUG_BUILD=tsan ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_env=CONDA_EXE
@@ -274,7 +273,7 @@
       --test_env=CONDA_SHLVL
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
-      --test_env=LD_PRELOAD=/lib/x86_64-linux-gnu/libtsan.so.0
+      --test_env=LD_PRELOAD=/opt/miniconda/lib/libtsan.so.0
       python/ray/tests:test_basic
 - label: ":python: (Small & Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
