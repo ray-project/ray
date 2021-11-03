@@ -87,8 +87,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
       }
 
-      gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-
       if (rayConfig.workerMode == WorkerType.DRIVER) {
         GcsNodeInfo nodeInfo = gcsClient.getNodeToConnectForDriver(rayConfig.nodeIp);
         rayConfig.rayletSocketName = nodeInfo.getRayletSocketName();
@@ -108,7 +106,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
             JobConfig.newBuilder()
                 .setNumJavaWorkersPerProcess(rayConfig.numWorkersPerProcess)
                 .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
-                .addAllCodeSearchPath(rayConfig.codeSearchPath);
+                .addAllCodeSearchPath(rayConfig.codeSearchPath)
+                .setRayNamespace(rayConfig.namespace);
         RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
         if (!rayConfig.workerEnv.isEmpty()) {
           // TODO(SongGuyang): Suppport complete runtime env interface for users.

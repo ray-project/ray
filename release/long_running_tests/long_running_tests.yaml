@@ -89,6 +89,7 @@
   smoke_test:
     run:
       timeout: 3600
+  stable: false
 
 
 - name: many_tasks

@@ -15,6 +15,7 @@ from ray.rllib.agents.trainer import COMMON_CONFIG, with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.contrib.maddpg.maddpg_policy import MADDPGTFPolicy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils import merge_dicts
 
 logger = logging.getLogger(__name__)
@@ -66,7 +67,11 @@ DEFAULT_CONFIG = with_common_config({
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
-    "buffer_size": int(1e6),
+    "buffer_size": DEPRECATED_VALUE,
+    "replay_buffer_config": {
+        "type": "LocalReplayBuffer",
+        "capacity": int(1e6),
+    },
     # Observation compression. Note that compression makes simulation slow in
     # MPE.
     "compress_observations": False,

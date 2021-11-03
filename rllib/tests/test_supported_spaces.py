@@ -15,7 +15,7 @@ from ray.rllib.utils.test_utils import framework_iterator
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
     "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-    "vector2": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
+    "vector2": Box(-1.0, 1.0, (5, ), dtype=np.float32),
     "int_actions": Box(0, 3, (2, 3), dtype=np.int32),
     "multidiscrete": MultiDiscrete([1, 2, 3, 4]),
     "tuple": Tuple(
@@ -114,7 +114,7 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
 class TestSupportedSpacesPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=6)
+        ray.init(local_mode=True)
 
     @classmethod
     def tearDownClass(cls) -> None:

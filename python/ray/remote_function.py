@@ -251,6 +251,8 @@ class RemoteFunction:
         if not self._is_cross_language and \
                 self._last_export_session_and_job != \
                 worker.current_session_and_job:
+            self._function_descriptor = PythonFunctionDescriptor.from_function(
+                self._function, self._uuid)
             # There is an interesting question here. If the remote function is
             # used by a subsequent driver (in the same script), should the
             # second driver pickle the function again? If yes, then the remote
@@ -260,9 +262,15 @@ class RemoteFunction:
             # independent of whether or not the function was invoked by the
             # first driver. This is an argument for repickling the function,
             # which we do here.
-            self._pickled_function = pickle.dumps(self._function)
-            self._function_descriptor = PythonFunctionDescriptor.from_function(
-                self._function, self._uuid)
+            try:
+                self._pickled_function = pickle.dumps(self._function)
+            except TypeError as e:
+                msg = (
+                    "Could not serialize the function "
+                    f"{self._function_descriptor.repr}. Check "
+                    "https://docs.ray.io/en/master/serialization.html#troubleshooting "  # noqa
+                    "for more information.")
+                raise TypeError(msg) from e
 
             self._last_export_session_and_job = worker.current_session_and_job
             worker.function_actor_manager.export(self)

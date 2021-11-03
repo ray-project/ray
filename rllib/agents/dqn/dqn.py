@@ -158,7 +158,8 @@ def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
         LocalIterator[dict]: A local iterator over training metrics.
     """
     assert "local_replay_buffer" in kwargs, (
-        "DQN execution plan requires a local replay buffer.")
+        "GenericOffPolicyTrainer execution plan requires a "
+        "local replay buffer.")
 
     # Assign to Trainer, so we can store the LocalReplayBuffer's
     # data when we save checkpoints.
