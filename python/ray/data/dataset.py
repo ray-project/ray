@@ -932,6 +932,14 @@ class Dataset(Generic[T]):
             >>> ray.data.range(100).std()
             >>> ray.data.range_arrow(100).std("value")
 
+        NOTE: This uses Welford's online method for an accumulator-style
+        computation of the standard deviation. This method was chosen due to
+        it's numerical stability, and it being computable in a single pass.
+        This may give different (but more accurate) results than NumPy, Pandas,
+        and sklearn, which use a less numerically stable two-pass algorithm.
+        See
+        https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+
         Args:
             on: The data on which to compute the standard deviation.
                 It can be the column name for Arrow dataset.

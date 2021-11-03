@@ -1,3 +1,4 @@
+import math
 import os
 import random
 import requests
@@ -5,7 +6,6 @@ import shutil
 import time
 
 from unittest.mock import patch
-import math
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -2978,11 +2978,21 @@ def test_groupby_arrow_std(ray_start_regular_shared):
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
     agg_ds = ray.data.from_pandas(df).groupby("A").std("B")
     assert agg_ds.count() == 3
-    expected = df.groupby("A")["B"].std()
-    assert agg_ds.to_pandas()["std(B)"].equals(expected)
+    result = agg_ds.to_pandas()["std(B)"].to_numpy()
+    expected = df.groupby("A")["B"].std().to_numpy()
+    np.testing.assert_array_equal(result, expected)
+    # ddof of 0
+    agg_ds = ray.data.from_pandas(df).groupby("A").std("B", ddof=0)
+    assert agg_ds.count() == 3
+    result = agg_ds.to_pandas()["std(B)"].to_numpy()
+    expected = df.groupby("A")["B"].std(ddof=0).to_numpy()
+    np.testing.assert_array_equal(result, expected)
     # Test built-in global std aggregation
     df = pd.DataFrame({"A": xs})
-    ray.data.from_pandas(df).std("A") == df["A"].std()
+    assert math.isclose(ray.data.from_pandas(df).std("A"), df["A"].std())
+    # ddof of 0
+    assert math.isclose(
+        ray.data.from_pandas(df).std("A", ddof=0), df["A"].std(ddof=0))
     with pytest.raises(ValueError):
         ray.data.from_pandas(pd.DataFrame({"A": []})).std("A")
     # Test edge cases
@@ -3035,6 +3045,8 @@ def test_groupby_simple(ray_start_regular_shared):
         lambda r: r).count()
     assert agg_ds.count() == 0
 
+
+def test_groupby_simple_count(ray_start_regular_shared):
     # Test built-in count aggregation
     xs = list(range(100))
     random.shuffle(xs)
@@ -3042,6 +3054,9 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 34), (1, 33), (2,
                                                                           33)]
+
+
+def test_groupby_simple_sum(ray_start_regular_shared):
     # Test built-in sum aggregation
     xs = list(range(100))
     random.shuffle(xs)
@@ -3053,6 +3068,8 @@ def test_groupby_simple(ray_start_regular_shared):
     assert ray.data.from_items(xs).sum() == 4950
     assert ray.data.range(10).filter(lambda r: r > 10).sum() == 0
 
+
+def test_groupby_simple_min(ray_start_regular_shared):
     # Test built-in min aggregation
     xs = list(range(100))
     random.shuffle(xs)
@@ -3064,6 +3081,8 @@ def test_groupby_simple(ray_start_regular_shared):
     with pytest.raises(ValueError):
         ray.data.range(10).filter(lambda r: r > 10).min()
 
+
+def test_groupby_simple_max(ray_start_regular_shared):
     # Test built-in max aggregation
     xs = list(range(100))
     random.shuffle(xs)
@@ -3076,6 +3095,8 @@ def test_groupby_simple(ray_start_regular_shared):
     with pytest.raises(ValueError):
         ray.data.range(10).filter(lambda r: r > 10).max()
 
+
+def test_groupby_simple_mean(ray_start_regular_shared):
     # Test built-in mean aggregation
     xs = list(range(100))
     random.shuffle(xs)
@@ -3087,6 +3108,43 @@ def test_groupby_simple(ray_start_regular_shared):
     assert ray.data.from_items(xs).mean() == 49.5
     with pytest.raises(ValueError):
         ray.data.range(10).filter(lambda r: r > 10).mean()
+
+
+def test_groupby_simple_std(ray_start_regular_shared):
+    # Test built-in std aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_std with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).std()
+    assert agg_ds.count() == 3
+    df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
+    expected = df.groupby("A")["B"].std()
+    result = agg_ds.sort(key=lambda r: r[0]).take(3)
+    groups, stds = zip(*result)
+    result_df = pd.DataFrame({"A": list(groups), "B": list(stds)})
+    result_df = result_df.set_index("A")
+    pd.testing.assert_series_equal(result_df["B"], expected)
+    # ddof of 0
+    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).std(ddof=0)
+    assert agg_ds.count() == 3
+    df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
+    expected = df.groupby("A")["B"].std(ddof=0)
+    result = agg_ds.sort(key=lambda r: r[0]).take(3)
+    groups, stds = zip(*result)
+    result_df = pd.DataFrame({"A": list(groups), "B": list(stds)})
+    result_df = result_df.set_index("A")
+    pd.testing.assert_series_equal(result_df["B"], expected)
+    # Test built-in global std aggregation
+    assert math.isclose(ray.data.from_items(xs).std(), pd.Series(xs).std())
+    # ddof of 0
+    assert math.isclose(
+        ray.data.from_items(xs).std(ddof=0), pd.Series(xs).std(ddof=0))
+    with pytest.raises(ValueError):
+        ray.data.from_items([]).std()
+    # Test edge cases
+    assert ray.data.from_items([3]).std() == 0
 
 
 def test_sort_simple(ray_start_regular_shared):
