@@ -18,11 +18,11 @@ import org.testng.annotations.Test;
 
 public class ReplicaSetTest {
 
-  private String backendTag = "ReplicaSetTest";
+  private String deploymentName = "ReplicaSetTest";
 
   @Test
   public void setMaxConcurrentQueriesTest() {
-    ReplicaSet replicaSet = new ReplicaSet(backendTag);
+    ReplicaSet replicaSet = new ReplicaSet(deploymentName);
     DeploymentConfig.Builder builder = DeploymentConfig.newBuilder();
     builder.setMaxConcurrentQueries(200);
 
@@ -32,7 +32,7 @@ public class ReplicaSetTest {
 
   @Test
   public void updateWorkerReplicasTest() {
-    ReplicaSet replicaSet = new ReplicaSet(backendTag);
+    ReplicaSet replicaSet = new ReplicaSet(deploymentName);
     ActorSet.Builder builder = ActorSet.newBuilder();
 
     replicaSet.updateWorkerReplicas(builder.build());
@@ -48,8 +48,8 @@ public class ReplicaSetTest {
     Ray.init();
 
     try {
-      String controllerName = backendTag + "_controller";
-      String replicaTag = backendTag + "_replica";
+      String controllerName = deploymentName + "_controller";
+      String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
 
@@ -62,7 +62,7 @@ public class ReplicaSetTest {
       deploymentConfigBuilder.setDeploymentLanguage(DeploymentLanguage.JAVA);
       byte[] deploymentConfigBytes = deploymentConfigBuilder.build().toByteArray();
 
-      Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
+      Object[] initArgs = new Object[] {deploymentName, replicaTag, controllerName, new Object()};
       byte[] initArgsBytes = MessagePackSerializer.encode(initArgs).getLeft();
 
       DeploymentInfo deploymentInfo = new DeploymentInfo();
@@ -75,7 +75,7 @@ public class ReplicaSetTest {
       ActorHandle<RayServeWrappedReplica> replicaHandle =
           Ray.actor(
                   RayServeWrappedReplica::new,
-                  backendTag,
+                  deploymentName,
                   replicaTag,
                   deploymentInfo,
                   controllerName)
@@ -84,7 +84,7 @@ public class ReplicaSetTest {
       replicaHandle.task(RayServeWrappedReplica::ready).remote();
 
       // ReplicaSet
-      ReplicaSet replicaSet = new ReplicaSet(backendTag);
+      ReplicaSet replicaSet = new ReplicaSet(deploymentName);
       ActorSet.Builder builder = ActorSet.newBuilder();
       builder.addNames(actorName);
       replicaSet.updateWorkerReplicas(builder.build());
@@ -93,12 +93,12 @@ public class ReplicaSetTest {
 
       RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
       requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
-      requestMetadata.setCallMethod("getBackendTag");
+      requestMetadata.setCallMethod("getDeploymentName");
 
       Query query = new Query(requestMetadata.build(), null);
       ObjectRef<Object> resultRef = replicaSet.assignReplica(query);
 
-      Assert.assertEquals((String) resultRef.get(), backendTag);
+      Assert.assertEquals((String) resultRef.get(), deploymentName);
     } finally {
       if (!inited) {
         Ray.shutdown();
