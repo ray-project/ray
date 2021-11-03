@@ -32,8 +32,8 @@ class IgnoresWorkerFailure(unittest.TestCase):
             ray.init(num_cpus=6, ignore_reinit_error=True)
             fn(alg, config)
         finally:
-            ray.shutdown()
             _register_all()  # re-register the evicted objects
+            ray.shutdown()
 
     def _do_test_fault_recover(self, alg, config):
         register_env("fault_env", lambda c: FaultInjectEnv(c))
