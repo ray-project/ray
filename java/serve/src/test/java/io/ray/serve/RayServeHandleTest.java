@@ -20,9 +20,9 @@ public class RayServeHandleTest {
     Ray.init();
 
     try {
-      String backendTag = "RayServeHandleTest";
-      String controllerName = backendTag + "_controller";
-      String replicaTag = backendTag + "_replica";
+      String deploymentName = "RayServeHandleTest";
+      String controllerName = deploymentName + "_controller";
+      String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
 
@@ -35,7 +35,7 @@ public class RayServeHandleTest {
       deploymentConfigBuilder.setDeploymentLanguage(DeploymentLanguage.JAVA);
       byte[] deploymentConfigBytes = deploymentConfigBuilder.build().toByteArray();
 
-      Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
+      Object[] initArgs = new Object[] {deploymentName, replicaTag, controllerName, new Object()};
       byte[] initArgsBytes = MessagePackSerializer.encode(initArgs).getLeft();
 
       DeploymentInfo deploymentInfo = new DeploymentInfo();
@@ -48,7 +48,7 @@ public class RayServeHandleTest {
       ActorHandle<RayServeWrappedReplica> replicaHandle =
           Ray.actor(
                   RayServeWrappedReplica::new,
-                  backendTag,
+                  deploymentName,
                   replicaTag,
                   deploymentInfo,
                   controllerName)
@@ -58,15 +58,15 @@ public class RayServeHandleTest {
 
       // RayServeHandle
       RayServeHandle rayServeHandle =
-          new RayServeHandle(controllerHandle, backendTag, null, null)
-              .setMethodName("getBackendTag");
+          new RayServeHandle(controllerHandle, deploymentName, null, null)
+              .setMethodName("getDeploymentName");
       ActorSet.Builder builder = ActorSet.newBuilder();
       builder.addNames(actorName);
       rayServeHandle.getRouter().getReplicaSet().updateWorkerReplicas(builder.build());
 
       // remote
       ObjectRef<Object> resultRef = rayServeHandle.remote(null);
-      Assert.assertEquals((String) resultRef.get(), backendTag);
+      Assert.assertEquals((String) resultRef.get(), deploymentName);
     } finally {
       if (!inited) {
         Ray.shutdown();

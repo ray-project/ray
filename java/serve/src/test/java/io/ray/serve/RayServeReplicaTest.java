@@ -25,7 +25,7 @@ public class RayServeReplicaTest {
 
     try {
       String controllerName = "RayServeReplicaTest";
-      String backendTag = "b_tag";
+      String deploymentName = "b_tag";
       String replicaTag = "r_tag";
       String version = "v1";
 
@@ -35,7 +35,7 @@ public class RayServeReplicaTest {
       DeploymentConfig.Builder deploymentConfigBuilder = DeploymentConfig.newBuilder();
       deploymentConfigBuilder.setDeploymentLanguage(DeploymentLanguage.JAVA);
       byte[] deploymentConfigBytes = deploymentConfigBuilder.build().toByteArray();
-      Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
+      Object[] initArgs = new Object[] {deploymentName, replicaTag, controllerName, new Object()};
       byte[] initArgsBytes = MessagePackSerializer.encode(initArgs).getLeft();
 
       DeploymentInfo deploymentInfo = new DeploymentInfo();
@@ -48,7 +48,7 @@ public class RayServeReplicaTest {
       ActorHandle<RayServeWrappedReplica> backendHandle =
           Ray.actor(
                   RayServeWrappedReplica::new,
-                  backendTag,
+                  deploymentName,
                   replicaTag,
                   deploymentInfo,
                   controllerName)
@@ -60,7 +60,7 @@ public class RayServeReplicaTest {
       // handle request
       RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
       requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
-      requestMetadata.setCallMethod("getBackendTag");
+      requestMetadata.setCallMethod("getDeploymentName");
       RequestWrapper.Builder requestWrapper = RequestWrapper.newBuilder();
 
       ObjectRef<Object> resultRef =
@@ -70,7 +70,7 @@ public class RayServeReplicaTest {
                   requestMetadata.build().toByteArray(),
                   requestWrapper.build().toByteArray())
               .remote();
-      Assert.assertEquals((String) resultRef.get(), backendTag);
+      Assert.assertEquals((String) resultRef.get(), deploymentName);
 
       // reconfigure
       ObjectRef<byte[]> versionRef =

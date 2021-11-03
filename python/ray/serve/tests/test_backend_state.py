@@ -10,7 +10,7 @@ from ray.actor import ActorHandle
 from ray.serve.common import (
     DeploymentConfig,
     DeploymentInfo,
-    BackendTag,
+    str,
     ReplicaConfig,
     ReplicaTag,
 )
@@ -31,10 +31,10 @@ from ray.serve.utils import get_random_letters
 
 class MockReplicaActorWrapper:
     def __init__(self, actor_name: str, detached: bool, controller_name: str,
-                 replica_tag: ReplicaTag, backend_tag: BackendTag):
+                 replica_tag: ReplicaTag, deployment_name: str):
         self._actor_name = actor_name
         self._replica_tag = replica_tag
-        self._backend_tag = backend_tag
+        self._deployment_name = deployment_name
 
         # Will be set when `start()` is called.
         self.started = False
@@ -62,8 +62,8 @@ class MockReplicaActorWrapper:
         return str(self._replica_tag)
 
     @property
-    def backend_tag(self) -> str:
-        return self._backend_tag
+    def deployment_name(self) -> str:
+        return self._deployment_name
 
     @property
     def actor_handle(self) -> ActorHandle:
