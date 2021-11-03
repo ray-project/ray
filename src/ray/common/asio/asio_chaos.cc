@@ -32,7 +32,7 @@ namespace {
   should set up os environment to use this feature for testing purposes.
 
   To use this, simply do
-      export RAY_TESTING_ASIO_DELAY="method1=10,method2=20"
+      export RAY_TESTING_ASIO_DELAY_MS="method1=10,method2=20"
 
    The delay is a random number between 0 and the value. If method equals '*',
    it will apply to all methods.
