@@ -32,6 +32,8 @@ class TestSyncFunctionality(unittest.TestCase):
         ray.init(num_cpus=2)
 
     def tearDown(self):
+        # shutdown should be put after _register_all where
+        # internal kv is used
         _register_all()  # re-register the evicted objects
         ray.shutdown()
 

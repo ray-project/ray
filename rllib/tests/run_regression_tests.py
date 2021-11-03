@@ -111,6 +111,8 @@ if __name__ == "__main__":
                     trials = run_experiments(
                         experiments, resume=False, verbose=2)
                 finally:
+                    # shutdown should be put after _register_all where
+                    # internal kv is used
                     _register_all()
                     ray.shutdown()
 

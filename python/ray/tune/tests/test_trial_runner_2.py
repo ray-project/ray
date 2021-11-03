@@ -45,6 +45,8 @@ class TrialRunnerTest2(unittest.TestCase):
         os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
 
     def tearDown(self):
+        # shutdown should be put after _register_all where
+        # internal kv is used
         _register_all()  # re-register the evicted objects
         ray.shutdown()
 

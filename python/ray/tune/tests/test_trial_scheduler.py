@@ -47,6 +47,8 @@ class EarlyStoppingSuite(unittest.TestCase):
         ray.init(num_cpus=2)
 
     def tearDown(self):
+        # shutdown should be put after _register_all where
+        # internal kv is used
         _register_all()  # re-register the evicted objects
         ray.shutdown()
 
@@ -315,6 +317,8 @@ class HyperbandSuite(unittest.TestCase):
         ray.init(object_store_memory=int(1e8))
 
     def tearDown(self):
+        # shutdown should be put after _register_all where
+        # internal kv is used
         _register_all()  # re-register the evicted objects
         ray.shutdown()
 
@@ -690,6 +694,8 @@ class BOHBSuite(unittest.TestCase):
         ray.init(object_store_memory=int(1e8))
 
     def tearDown(self):
+        # shutdown should be put after _register_all where
+        # internal kv is used
         _register_all()  # re-register the evicted objects
         ray.shutdown()
 
@@ -862,6 +868,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         ray.init(num_cpus=2)
 
     def tearDown(self):
+        # shutdown should be put after _register_all where
+        # internal kv is used
         _register_all()  # re-register the evicted objects
         ray.shutdown()
 
@@ -1847,6 +1855,8 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
         ray.init(num_cpus=4)
 
     def tearDown(self):
+        # shutdown should be put after _register_all where
+        # internal kv is used
         _register_all()  # re-register the evicted objects
         ray.shutdown()
 
@@ -1948,6 +1958,8 @@ class AsyncHyperBandSuite(unittest.TestCase):
         ray.init(num_cpus=2)
 
     def tearDown(self):
+        # shutdown should be put after _register_all where
+        # internal kv is used
         _register_all()  # re-register the evicted objects
         ray.shutdown()
 

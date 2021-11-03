@@ -63,6 +63,8 @@ class TuneRestoreTest(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.logdir)
+        # shutdown should be put after _register_all where
+        # internal kv is used
         _register_all()
         ray.shutdown()
 
@@ -443,6 +445,8 @@ class TuneExampleTest(unittest.TestCase):
         ray.init(num_cpus=2)
 
     def tearDown(self):
+        # shutdown should be put after _register_all where
+        # internal kv is used
         _register_all()
         ray.shutdown()
 
@@ -478,6 +482,8 @@ class AutoInitTest(unittest.TestCase):
         self.assertTrue(ray.is_initialized())
 
     def tearDown(self):
+        # shutdown should be put after _register_all where
+        # internal kv is used
         _register_all()
         ray.shutdown()
 
@@ -490,6 +496,8 @@ class AbstractWarmStartTest:
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir)
+        # shutdown should be put after _register_all where
+        # internal kv is used
         _register_all()
         ray.shutdown()
 

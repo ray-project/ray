@@ -96,6 +96,8 @@ class TrialRunnerCallbacks(unittest.TestCase):
             experiments=[None], total_num_samples=1)
 
     def tearDown(self):
+        # shutdown should be put after _register_all where
+        # internal kv is used
         _register_all()  # re-register the evicted objects
         ray.shutdown()
         if "CUDA_VISIBLE_DEVICES" in os.environ:

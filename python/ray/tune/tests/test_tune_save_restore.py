@@ -45,6 +45,8 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
         if self.absolute_local_dir is not None:
             shutil.rmtree(self.absolute_local_dir, ignore_errors=True)
             self.absolute_local_dir = None
+        # shutdown should be put after _register_all where
+        # internal kv is used
         # Without this line, test_tune_server.testAddTrial would fail.
         _register_all()
         ray.shutdown()

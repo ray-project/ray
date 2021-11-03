@@ -57,6 +57,8 @@ class TuneServerSuite(unittest.TestCase):
             self.runner = None
         except Exception as e:
             print(e)
+        # shutdown should be put after _register_all where
+        # internal kv is used
         _register_all()
         ray.shutdown()
 

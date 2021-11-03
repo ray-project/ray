@@ -32,6 +32,8 @@ class IgnoresWorkerFailure(unittest.TestCase):
             ray.init(num_cpus=6, ignore_reinit_error=True)
             fn(alg, config)
         finally:
+            # shutdown should be put after _register_all where internal kv
+            # is used
             _register_all()  # re-register the evicted objects
             ray.shutdown()
 
