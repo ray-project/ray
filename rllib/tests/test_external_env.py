@@ -6,7 +6,7 @@ import uuid
 
 import ray
 from ray.rllib.agents.dqn import DQNTrainer
-from ray.rllib.agents.pg import PGTrainer
+from ray.rllib.trainer.pg import PGTrainer
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.evaluation.tests.test_rollout_worker import (BadPolicy,

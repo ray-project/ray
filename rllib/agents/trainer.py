@@ -1,3 +1,4 @@
+import concurrent
 import copy
 from datetime import datetime
 import functools
@@ -28,8 +29,8 @@ from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils import deep_update, FilterManager, merge_dicts
-from ray.rllib.utils.annotations import DeveloperAPI, override, \
-    PublicAPI
+from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, \
+    override, PublicAPI
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning, \
     DEPRECATED_VALUE
@@ -576,10 +577,14 @@ class Trainer(Trainable):
     _override_all_subkeys_if_type_changes = ["exploration_config"]
 
     @PublicAPI
-    def __init__(self,
-                 config: TrainerConfigDict = None,
-                 env: Union[str, EnvType, None] = None,
-                 logger_creator: Callable[[], Logger] = None):
+    def __init__(
+            self,
+            config: TrainerConfigDict = None,
+            env: Union[str, EnvType, None] = None,
+            logger_creator: Callable[[], Logger] = None,
+            *,
+            name: Optional[str] = None,
+    ):
         """Initializes a Trainer instance.
 
         Args:
@@ -672,8 +677,8 @@ class Trainer(Trainable):
         # Merge the supplied config with the class default, but store the
         # user-provided one.
         self.raw_user_config = config
-        self.config = self.merge_trainer_configs(self._default_config, config,
-                                                 self._allow_unknown_configs)
+        self.config = self.merge_trainer_configs(
+            self.get_default_config(), config, self._allow_unknown_configs)
 
         # Check and resolve DL framework settings.
         # Enable eager/tracing support.
@@ -717,7 +722,16 @@ class Trainer(Trainable):
         # method to implement custom initialization logic.
         self._init(self.config, self.env_creator)
 
-        # Evaluation setup.
+        # "Rollout" WorkerSet setup.
+        if not hasattr(self, "workers") and not hasattr(self, "_workers"):
+            self.workers = self._make_workers(
+                env_creator=self.env_creator,
+                validate_env=self.validate_env,
+                policy_class=self.get_default_policy_class(),
+                config=config,
+                num_workers=self.config["num_workers"])
+
+        # Evaluation WorkerSet setup.
         self.evaluation_workers = None
         self.evaluation_metrics = {}
         # Do automatic evaluation from time to time.
@@ -747,6 +761,7 @@ class Trainer(Trainable):
             self.evaluation_workers = self._make_workers(
                 env_creator=self.env_creator,
                 validate_env=None,
+                # TODO: Replace with self.get_default_policy_class(),
                 policy_class=self._policy_class,
                 config=evaluation_config,
                 num_workers=self.config["evaluation_num_workers"])
@@ -766,15 +781,73 @@ class Trainer(Trainable):
         """
         raise NotImplementedError
 
+    @ExperimentalAPI
+    def get_default_policy_class(self, config: PartialTrainerConfigDict):
+        """Returns a default Policy class to use, given a config.
+
+        This class will be used inside RolloutWorkers' PolicyMaps in case
+        the policy class is not provided by the user in any single- or
+        multi-agent PolicySpec.
+
+        This method is experimental and currently only used, iff the Trainer
+        class was not created using the `build_trainer` utility and if
+        the Trainer sub-class does not override `_init()` and create it's
+        own WorkerSet in `_init()`.
+        """
+        raise NotImplementedError
+
+    #@override(Trainable)
+    #@PublicAPI
+    #def train(self) -> ResultDict:
+    #    """Overrides super.train to handle main WorkerSet failures.
+
+    #    Also syncs filter states after the train step.
+    #    """
+
+    #    result = None
+    #    for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
+    #        # Try to train one step.
+    #        try:
+    #            result = Trainable.train(self)
+    #        # @ray.remote RolloutWorker failure -> Try to recover,
+    #        # if necessary.
+    #        except RayError as e:
+    #            if self.config["ignore_worker_failures"]:
+    #                logger.exception(
+    #                    "Error in train call, attempting to recover")
+    #                self._try_recover()
+    #            else:
+    #                logger.info(
+    #                    "Worker crashed during call to train(). To attempt to "
+    #                    "continue training without the failed worker, set "
+    #                    "`'ignore_worker_failures': True`.")
+    #                raise e
+    #        # allow logs messages to propagate
+    #        except Exception as e:
+    #            time.sleep(0.5)
+    #            raise e
+    #        else:
+    #            break
+    #
+    #    # Still no result (even after n retries).
+    #    if result is None:
+    #        raise RuntimeError("Failed to recover from worker crash.")
+    #
+    #    if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
+    #        self._sync_filters_if_needed(self.workers)
+    #
+    #    return result
+
     @override(Trainable)
-    @PublicAPI
-    def train(self) -> ResultDict:
-        """Overrides super.train to synchronize global vars."""
+    def step(self):
 
         result = None
         for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
+            # Try to train one step.
             try:
-                result = Trainable.train(self)
+                result = self._step(self)
+            # @ray.remote RolloutWorker failure -> Try to recover,
+            # if necessary.
             except RayError as e:
                 if self.config["ignore_worker_failures"]:
                     logger.exception(
@@ -786,18 +859,90 @@ class Trainer(Trainable):
                         "continue training without the failed worker, set "
                         "`'ignore_worker_failures': True`.")
                     raise e
+            # allow logs messages to propagate
             except Exception as e:
-                time.sleep(0.5)  # allow logs messages to propagate
+                time.sleep(0.5)
                 raise e
             else:
                 break
+
+        # Still no result (even after n retries).
         if result is None:
-            raise RuntimeError("Failed to recover from worker crash")
+            raise RuntimeError("Failed to recover from worker crash.")
 
         if hasattr(self, "workers") and isinstance(self.workers, WorkerSet):
             self._sync_filters_if_needed(self.workers)
 
         return result
+
+    def _step(self):
+        # self._iteration gets incremented after this function returns,
+        # meaning that e. g. the first time this function is called,
+        # self._iteration will be 0.
+        evaluate_this_iter = \
+            self.config["evaluation_interval"] and \
+            (self._iteration + 1) % self.config["evaluation_interval"] == 0
+
+        # No evaluation necessary, just run the next training iteration.
+        if not evaluate_this_iter:
+            step_results = next(self.train_exec_impl)
+        # We have to evaluate in this training iteration.
+        else:
+            # No parallelism.
+            if not self.config["evaluation_parallel_to_training"]:
+                step_results = next(self.train_exec_impl)
+
+            # Kick off evaluation-loop (and parallel train() call,
+            # if requested).
+            # Parallel eval + training.
+            if self.config["evaluation_parallel_to_training"]:
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    train_future = executor.submit(
+                        lambda: next(self.train_exec_impl))
+                    if self.config["evaluation_num_episodes"] == "auto":
+
+                        # Run at least one `evaluate()` (num_episodes_done
+                        # must be > 0), even if the training is very fast.
+                        def episodes_left_fn(num_episodes_done):
+                            if num_episodes_done > 0 and \
+                                    train_future.done():
+                                return 0
+                            else:
+                                return self.config[
+                                    "evaluation_num_workers"]
+
+                        evaluation_metrics = self.evaluate(
+                            episodes_left_fn=episodes_left_fn)
+                    else:
+                        evaluation_metrics = self.evaluate()
+                    # Collect the training results from the future.
+                    step_results = train_future.result()
+            # Sequential: train (already done above), then eval.
+            else:
+                evaluation_metrics = self.evaluate()
+
+            # Add evaluation results to train results.
+            assert isinstance(evaluation_metrics, dict), \
+                "Trainer.evaluate() needs to return a dict."
+            step_results.update(evaluation_metrics)
+
+        # Check `env_task_fn` for possible update of the env's task.
+        if self.config["env_task_fn"] is not None:
+            if not callable(self.config["env_task_fn"]):
+                raise ValueError(
+                    "`env_task_fn` must be None or a callable taking "
+                    "[train_results, env, env_ctx] as args!")
+
+            def fn(env, env_context, task_fn):
+                new_task = task_fn(step_results, env, env_context)
+                cur_task = env.get_task()
+                if cur_task != new_task:
+                    env.set_task(new_task)
+
+            fn = functools.partial(fn, task_fn=self.config["env_task_fn"])
+            self.workers.foreach_env_with_context(fn)
+
+        return step_results
 
     @PublicAPI
     def evaluate(self, episodes_left_fn: Optional[Callable[[int], int]] = None
@@ -1448,7 +1593,7 @@ class Trainer(Trainable):
         # workers to determine their CPU/GPU resource needs.
 
         # Convenience config handles.
-        cf = dict(cls._default_config, **config)
+        cf = dict(cls.get_default_config(), **config)
         eval_cf = cf["evaluation_config"]
 
         # TODO(ekl): add custom resources here once tune supports them
@@ -1547,13 +1692,18 @@ class Trainer(Trainable):
 
     @property
     def _name(self) -> str:
-        """Subclasses should override this to declare their name."""
-        raise NotImplementedError
+        """Subclasses may override this to declare their name."""
+        # By default, return the class' name.
+        return type(self).__name__
 
     @property
     def _default_config(self) -> TrainerConfigDict:
         """Subclasses should override this to declare their default config."""
-        raise NotImplementedError
+        return {}
+
+    @classmethod
+    def get_default_config(cls) -> TrainerConfigDict:
+        return cls._default_config or COMMON_CONFIG
 
     @classmethod
     @override(Trainable)
@@ -1767,8 +1917,8 @@ class Trainer(Trainable):
         an error is raised.
         """
 
-        assert hasattr(self, "execution_plan")
-        workers = self.workers
+        #assert hasattr(self, "execution_plan")
+        workers = self.workers if hasattr(self, "workers") else self._workers
 
         logger.info("Health checking all workers...")
         checks = []
@@ -1794,10 +1944,12 @@ class Trainer(Trainable):
             raise RuntimeError(
                 "Not enough healthy workers remain to continue.")
 
-        logger.warning("Recreating execution plan after failure")
+        logger.warning("Recreating execution plan after failure.")
         workers.reset(healthy_workers)
-        self.train_exec_impl = self.execution_plan(
-            workers, self.config, **self._kwargs_for_execution_plan())
+        if hasattr(self, "execution_plan"):
+            if callable(self.execution_plan):
+                self.train_exec_impl = self.execution_plan(
+                    workers, self.config, **self._kwargs_for_execution_plan())
 
     @override(Trainable)
     def _export_model(self, export_formats: List[str],

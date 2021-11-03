@@ -4,7 +4,7 @@ import unittest
 
 import ray
 import ray.rllib.agents.dqn as dqn
-import ray.rllib.agents.pg as pg
+import ray.rllib.trainer.pg as pg
 import ray.rllib.agents.ppo as ppo
 import ray.rllib.agents.sac as sac
 from ray.rllib.utils.framework import try_import_tf
