@@ -24,7 +24,12 @@ from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.test_utils import SignalActor
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+
+# asyncio python version compatibility
+try:
+    create_task = asyncio.create_task
+except AttributeError:
+    create_task = asyncio.ensure_future
 
 JOB_ID_METADATA_KEY = "job_submission_id"
 
@@ -104,6 +109,8 @@ class JobSupervisor:
     Job supervisor actor should fate share with subprocess it created.
     """
 
+    SUBPROCESS_POLL_PERIOD_S = 0.1
+
     def __init__(self, job_id: str, metadata: Dict[str, str]):
         self._job_id = job_id
         self._status_client = JobStatusStorageClient()
@@ -125,7 +132,7 @@ class JobSupervisor:
 
     async def _exec_entrypoint_cmd(
             self, entrypoint_cmd: str, stdout_path: str, stderr_path: str
-    ) -> Tuple[asyncio.coroutine, asyncio.subprocess.Process]:
+    ) -> subprocess.Popen:
         """
         Runs a command as a child process, streaming stderr & stdout to given
         log files.
@@ -141,20 +148,20 @@ class JobSupervisor:
             stderr_path: File path on head node's local disk to store driver
                 command's stderr.
         Returns:
-            task_coro: Asyncio coroutine that is reponsible for driver command
-                execution. Can be canceled upon user calling stop().
+
             child_process: Child process that runs the driver command. Can be
-                terminated or killed upon user claling stop().
+                terminated or killed upon user calling stop().
         """
         with open(stdout_path, "a+") as stdout, open(stderr_path,
                                                      "a+") as stderr:
-            parent_pid = os.getpid()
-            # Create new pgid with new subprocess to execute driver command
-            child_process = await asyncio.create_subprocess_shell(
+            child_process = subprocess.Popen(
                 entrypoint_cmd,
+                shell=True,
                 start_new_session=True,
                 stdout=stdout,
                 stderr=stderr)
+            parent_pid = os.getpid()
+            # Create new pgid with new subprocess to execute driver command
             child_pid = child_process.pid
             child_pgid = os.getpgid(child_pid)
 
@@ -168,8 +175,23 @@ class JobSupervisor:
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+            return child_process
 
-            return asyncio.create_task(child_process.wait()), child_process
+    async def _polling(self, child_process) -> int:
+        try:
+            while child_process is not None:
+                retcode = child_process.poll()
+                if retcode is not None:
+                    # done
+                    return retcode
+                else:
+                    # still running, yield control, 0.1s by default
+                    await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
+        except:
+            if child_process:
+                # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
+                child_process.kill()
+            return 1
 
     async def run(
             self,
@@ -208,15 +230,18 @@ class JobSupervisor:
             stdout_path, stderr_path = self._log_client.get_log_file_paths(
                 self._job_id)
 
-            task, child_proc = await self._exec_entrypoint_cmd(
+            child_process = await self._exec_entrypoint_cmd(
                 entrypoint_cmd, stdout_path, stderr_path)
 
+            polling_task = create_task(self._polling(child_process))
+
             finished, _ = await asyncio.wait(
-                [task, self._stop_event.wait()], return_when=FIRST_COMPLETED)
+                [polling_task, self._stop_event.wait()], return_when=FIRST_COMPLETED)
 
             if self._stop_event.is_set():
-                task.cancel()
-                child_proc.kill()
+                polling_task.cancel()
+                # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
+                child_process.kill()
                 self._status_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
@@ -229,9 +254,6 @@ class JobSupervisor:
                     self._status_client.put_status(self._job_id,
                                                    JobStatus.SUCCEEDED)
                 else:
-                    logger.error(
-                        ">>>> run() put job status as failed FAILED due to "
-                        "driver subprocess exited with non-0 return code.")
                     self._status_client.put_status(self._job_id,
                                                    JobStatus.FAILED)
         except Exception:
@@ -335,6 +357,7 @@ class JobManager:
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=self.JOB_ACTOR_NAME.format(job_id=job_id),
+                num_cpus=0,
                 # Currently we assume JobManager is created by dashboard server
                 # running on headnode, same for job supervisor actors scheduled
                 resources={
@@ -348,9 +371,6 @@ class JobManager:
         except Exception as e:
             if supervisor:
                 ray.kill(supervisor, no_restart=True)
-            logger.error(
-                ">>>> submit_job put job status as failed FAILED due to failed "
-                "to start job actor or ready.remote() didn't return")
             self._status_client.put_status(job_id, JobStatus.FAILED)
             raise RuntimeError(
                 f"Failed to start actor for job {job_id}. This could be "
@@ -396,20 +416,15 @@ class JobManager:
         Returns:
             job_status: Latest known job status
         """
-        cur_status = self._status_client.get_status(job_id)
-        if cur_status in {JobStatus.PENDING, JobStatus.RUNNING}:
-            job_supervisor_actor = self._get_actor_for_job(job_id)
-            if job_supervisor_actor is None:
-                # Job actor either exited or failed, we need to ensure never
-                # left job in non-terminal status in case actor failed without
-                # updating GCS with latest status.
-                last_status = self._status_client.get_status(job_id)
-                if last_status in {JobStatus.PENDING, JobStatus.RUNNING}:
-                    logger.error(
-                        ">>>> get_job_status returned FAILED due to no "
-                        "running job actor but latest status in GCS is in "
-                        "non-terminal state.")
-                    self._status_client.put_status(job_id, JobStatus.FAILED)
+
+        job_supervisor_actor = self._get_actor_for_job(job_id)
+        if job_supervisor_actor is None:
+            # Job actor either exited or failed, we need to ensure never
+            # left job in non-terminal status in case actor failed without
+            # updating GCS with latest status.
+            last_status = self._status_client.get_status(job_id)
+            if last_status in {JobStatus.PENDING, JobStatus.RUNNING}:
+                self._status_client.put_status(job_id, JobStatus.FAILED)
 
         return self._status_client.get_status(job_id)
 
