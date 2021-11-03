@@ -17,10 +17,10 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, \
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.util.iter import ParallelIteratorWorker
 from ray.util.debug import log_once
-from ray.rllib.utils.annotations import Deprecated
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE, \
+    deprecation_warning
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils.window_stat import WindowStat
+from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.typing import SampleBatchType
 
 # Constant that represents all policies in lockstep replay mode.

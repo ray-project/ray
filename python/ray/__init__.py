@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,20 @@ def _configure_system():
                            "an internal component by another module). Please "
                            "make sure you are using pickle5 >= 0.0.10 because "
                            "previous versions may leak memory.")
+
+    # Check that grpc can actually be imported on Apple Silicon. Some package
+    # managers (such as `pip`) can't properly install the grpcio library yet,
+    # so provide a proactive error message if that's the case.
+    if platform.system() == "Darwin" and platform.machine() == "arm64":
+        try:
+            import grpc  # noqa: F401
+        except ImportError:
+            raise ImportError(
+                "Failed to import grpc on Apple Silicon. On Apple"
+                " Silicon machines, try `pip uninstall grpcio; conda "
+                "install grpcio`. Check out "
+                "https://docs.ray.io/en/master/installation.html"
+                "#apple-silicon-support for more details.")
 
     if "OMP_NUM_THREADS" not in os.environ:
         logger.debug("[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "

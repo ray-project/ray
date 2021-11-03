@@ -12,15 +12,23 @@ def handle_result(created_on: datetime.datetime, category: str,
     last_update_diff = results.get("last_update_diff", float("inf"))
 
     if test_name in [
-            "actor_deaths", "many_actor_tasks", "many_drivers", "many_tasks",
-            "many_tasks_serialized_ids", "node_failures",
-            "object_spilling_shuffle", "serve", "serve_failure"
+            "actor_deaths",
+            "many_actor_tasks",
+            "many_drivers",
+            "many_tasks",
+            "many_tasks_serialized_ids",
+            "node_failures",
+            "object_spilling_shuffle",
     ]:
         # Core tests
         target_update_diff = 120
 
     elif test_name in ["apex", "impala", "many_ppo", "pbt"]:
         # Tune/RLLib style tests
+        target_update_diff = 360
+    elif test_name in ["serve", "serve_failure"]:
+        # Serve tests have workload logs every five minutes.
+        # Leave up to 60 seconds overhead.
         target_update_diff = 360
     else:
         return None

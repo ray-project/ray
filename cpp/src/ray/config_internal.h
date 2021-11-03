@@ -14,8 +14,10 @@
 
 #pragma once
 #include <ray/api/ray_config.h>
+
 #include <memory>
 #include <string>
+
 #include "ray/core_worker/common.h"
 
 namespace ray {
@@ -52,6 +54,8 @@ class ConfigInternal {
   std::string logs_dir = "";
 
   std::string node_ip_address = "";
+
+  StartupToken startup_token;
 
   std::vector<std::string> head_args = {};
 

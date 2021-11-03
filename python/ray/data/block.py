@@ -7,17 +7,31 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
     from ray.data.impl.block_builder import BlockBuilder
+    from ray.data.aggregate import AggregateFn
+    from ray.data.grouped_dataset import GroupKeyT
 
+from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
 
 T = TypeVar("T")
+U = TypeVar("U")
+KeyType = TypeVar("KeyType")
+AggType = TypeVar("AggType")
 
 # Represents a batch of records to be stored in the Ray object store.
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
 Block = Union[List[T], "pyarrow.Table", bytes]
+
+# A list of block references pending computation by a single task. For example,
+# this may be the output of a task reading a file.
+BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
+
+# The metadata that describes the output of a BlockPartition. This has the
+# same type as the metadata that describes each block in the partition.
+BlockPartitionMetadata = "BlockMetadata"
 
 
 @DeveloperAPI
@@ -51,7 +65,7 @@ class BlockAccessor(Generic[T]):
     this is needed if we want to support storing ``pyarrow.Table`` directly
     as a top-level Ray object, without a wrapping class (issue #17186).
 
-    There are three types of block accessors: ``SimpleBlockAccessor``, which
+    There are two types of block accessors: ``SimpleBlockAccessor``, which
     operates over a plain Python list, and ``ArrowBlockAccessor`` for
     ``pyarrow.Table`` type blocks.
     """
@@ -152,9 +166,20 @@ class BlockAccessor(Generic[T]):
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
+    def combine(self, key: "GroupKeyT", agg: "AggregateFn") -> Block[U]:
+        """Combine rows with the same key into an accumulator."""
+        raise NotImplementedError
+
     @staticmethod
     def merge_sorted_blocks(
             blocks: List["Block[T]"], key: Any,
             descending: bool) -> Tuple[Block[T], BlockMetadata]:
         """Return a sorted block by merging a list of sorted blocks."""
+        raise NotImplementedError
+
+    @staticmethod
+    def aggregate_combined_blocks(
+            blocks: List[Block], key: "GroupKeyT",
+            agg: "AggregateFn") -> Tuple[Block[U], BlockMetadata]:
+        """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError

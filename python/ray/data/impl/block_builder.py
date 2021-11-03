@@ -17,3 +17,7 @@ class BlockBuilder(Generic[T]):
     def build(self) -> Block:
         """Build the block."""
         raise NotImplementedError
+
+    def get_estimated_memory_usage(self) -> int:
+        """Return the estimated memory usage so far in bytes."""
+        raise NotImplementedError

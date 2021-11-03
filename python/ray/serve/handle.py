@@ -103,6 +103,19 @@ class RayServeHandle:
             event_loop=asyncio.get_event_loop(),
         )
 
+    @property
+    def is_polling(self) -> bool:
+        """Whether this handle is actively polling for replica updates."""
+        return self.router.long_poll_client.is_running
+
+    @property
+    def is_same_loop(self) -> bool:
+        """Whether the caller's asyncio loop is the same loop for handle.
+
+        This is only useful for async handles.
+        """
+        return asyncio.get_event_loop() == self.router._event_loop
+
     def options(
             self,
             *,
@@ -188,6 +201,12 @@ class RayServeHandle:
 
 
 class RayServeSyncHandle(RayServeHandle):
+    @property
+    def is_same_loop(self) -> bool:
+        # NOTE(simon): For sync handle, the caller doesn't have to be in the
+        # same loop as the handle's loop, so we always return True here.
+        return True
+
     def _make_router(self) -> Router:
         # Delayed import because ray.serve.api depends on handles.
         return Router(

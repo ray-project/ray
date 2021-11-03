@@ -35,6 +35,7 @@ from ray.util.client.server.server_stubs import current_server
 from ray.ray_constants import env_integer
 from ray.util.placement_group import PlacementGroup
 from ray._private.client_mode_hook import disable_client_hook
+from ray._private.tls_utils import add_port_to_grpc_server
 
 logger = logging.getLogger(__name__)
 
@@ -686,7 +687,7 @@ def serve(connection_str, ray_connect_handler=None):
         data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
         logs_servicer, server)
-    server.add_insecure_port(connection_str)
+    add_port_to_grpc_server(server, connection_str)
     current_handle = ClientServerHandle(
         task_servicer=task_servicer,
         data_servicer=data_servicer,

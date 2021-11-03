@@ -125,7 +125,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
 
         >>> # In addition to doing Pandas operations on the tensor column,
         >>> # you can now put the DataFrame into a Dataset.
-        >>> ds = ray.data.from_pandas([ray.put(df)])
+        >>> ds = ray.data.from_pandas(df)
         >>> # Internally, this column is represented the corresponding
         >>> # Arrow tensor extension type.
         >>> ds.schema()
@@ -407,7 +407,7 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
 
         >>> # In addition to doing Pandas operations on the tensor column,
         >>> # you can now put the DataFrame into a Dataset.
-        >>> ds = ray.data.from_pandas([ray.put(df)])
+        >>> ds = ray.data.from_pandas(df)
         >>> # Internally, this column is represented the corresponding
         >>> # Arrow tensor extension type.
         >>> ds.schema()

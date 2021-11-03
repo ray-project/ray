@@ -1,3 +1,5 @@
+import json
+import os
 import re
 import socket
 import subprocess
@@ -23,7 +25,7 @@ def search_agents(cluster):
         for p in processes:
             try:
                 for c in p.cmdline():
-                    if "dashboard/agent.py" in c:
+                    if os.path.join("dashboard", "agent.py") in c:
                         return p
             except Exception:
                 pass
@@ -139,16 +141,24 @@ def test_dashboard(shutdown_only):
                     f"Dashboard output log: {out_log}\n")
 
 
+@pytest.fixture
+def set_agent_failure_env_var():
+    os.environ["_RAY_AGENT_FAILING"] = "1"
+    yield
+    del os.environ["_RAY_AGENT_FAILING"]
+
+
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
-        "metrics_export_port": 6379,
         "_system_config": {
             "agent_restart_interval_ms": 10,
             "agent_max_restart_count": 5
         }
     }],
     indirect=True)
-def test_dashboard_agent_restart(ray_start_cluster_head, error_pubsub):
+def test_dashboard_agent_restart(set_agent_failure_env_var,
+                                 ray_start_cluster_head, error_pubsub,
+                                 log_pubsub):
     """Test that when the agent fails to start many times in a row
     if the error message is suppressed correctly without spamming
     the driver.
@@ -157,12 +167,28 @@ def test_dashboard_agent_restart(ray_start_cluster_head, error_pubsub):
     p = error_pubsub
     errors = get_error_message(
         p, 1, ray_constants.DASHBOARD_AGENT_DIED_ERROR, timeout=10)
+    assert len(errors) == 1
     for e in errors:
-        assert ("There are 2 possible problems "
+        assert ("There are 3 possible problems "
                 "if you see this error." in e.error_message)
     # Make sure the agent process is not started anymore.
     cluster = ray_start_cluster_head
     wait_for_condition(lambda: search_agents(cluster) is None)
+    # Make sure there's no spammy message for 5 seconds.
+    timeout = 5
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        msg = log_pubsub.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            continue
+        log_data = json.loads(ray._private.utils.decode(msg["data"]))
+        # Only autoscaler logs should be printed from the log channel.
+        is_autoscaler_log = log_data["pid"] == "autoscaler"
+        if not is_autoscaler_log:
+            raise AssertionError(
+                "There are spammy logs during Ray agent restart process."
+                f"Logs: {log_data['lines']}")
 
 
 if __name__ == "__main__":
