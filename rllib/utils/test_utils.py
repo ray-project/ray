@@ -29,18 +29,13 @@ torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
 
-# Dict holding the run-times of each frameworks' `framework_iterator`.
-# This only gets written to if `framework_iterator()` is called with the
-# `time_iterations=True` argument.
-FRAMEWORK_ITERATOR_LAST_RUN_TIMES = {}
-
 
 def framework_iterator(
         config: Optional[PartialTrainerConfigDict] = None,
         frameworks: Sequence[str] = ("tf2", "tf", "tfe", "torch"),
         session: bool = False,
         with_eager_tracing: bool = False,
-        time_iterations: bool = False,
+        time_iterations: Optional[dict] = None,
 ) -> Union[str, Tuple[str, Optional["tf1.Session"]]]:
     """An generator that allows for looping through n frameworks for testing.
 
@@ -58,18 +53,15 @@ def framework_iterator(
             deterministic.
         with_eager_tracing: Include `eager_tracing=True` in the returned
             configs, when framework=[tfe|tf2].
-        time_iterations: Whether to time each (framework's) iteration.
-            The timing results can be retrieved after the generator finished
-            via `from ray.rllib.utils.test_utils import
-            FRAMEWORK_ITERATOR_LAST_RUN_TIMES`.
+        time_iterations: If provided, will write to the given dict (by
+            framework key) the times in seconds that each (framework's)
+            iteration takes.
 
     Yields:
         If `session` is False: The current framework [tf2|tf|tfe|torch] used.
         If `session` is True: A tuple consisting of the current framework
         string and the tf1.Session (if fw="tf", otherwise None).
     """
-    global FRAMEWORK_ITERATOR_LAST_RUN_TIMES
-
     config = config or {}
     frameworks = [frameworks] if isinstance(frameworks, str) else \
         list(frameworks)
@@ -127,10 +119,10 @@ def framework_iterator(
                 print(f"framework={fw} (eager-tracing={tracing})")
                 time_started = time.time()
                 yield fw if session is False else (fw, sess)
-                if time_iterations:
+                if time_iterations is not None:
                     time_total = time.time() - time_started
-                    FRAMEWORK_ITERATOR_LAST_RUN_TIMES[
-                        fw + ("+tracing" if tracing else "")] = time_total
+                    time_iterations[fw + ("+tracing" if tracing else "")] = \
+                        time_total
                     print(f".. took {time_total}sec")
                 config["eager_tracing"] = False
         # Yield current framework + tf-session (if necessary).
@@ -138,10 +130,10 @@ def framework_iterator(
             print(f"framework={fw}")
             time_started = time.time()
             yield fw if session is False else (fw, sess)
-            if time_iterations:
+            if time_iterations is not None:
                 time_total = time.time() - time_started
-                FRAMEWORK_ITERATOR_LAST_RUN_TIMES[
-                    fw + ("+tracing" if tracing else "")] = time_total
+                time_iterations[fw + ("+tracing" if tracing else "")] = \
+                    time_total
                 print(f".. took {time_total}sec")
 
         # Exit any context we may have entered.

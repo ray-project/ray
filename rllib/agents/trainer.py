@@ -245,7 +245,7 @@ COMMON_CONFIG: TrainerConfigDict = {
     # factor of 4, without the user noticing what the root cause for this
     # slowdown could be.
     # Only necessary for framework=[tf2|tfe].
-    # Set to None or 0 to ignore the re-trace count and never throw an error.
+    # Set to None to ignore the re-trace count and never throw an error.
     "eager_max_retraces": 10,
 
     # === Exploration Settings ===

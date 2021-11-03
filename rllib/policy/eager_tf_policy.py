@@ -101,10 +101,29 @@ def _disallow_var_creation(next_creator, **kw):
                      "model initialization: {}".format(v.name))
 
 
-def traced_eager_policy(eager_policy_cls):
-    """Wrapper that enables tracing for all eager policy methods.
+def check_too_many_retraces(obj):
+    """Asserts that a given number of re-traces is not breached."""
 
-    This is enabled by the --trace / "eager_tracing" config."""
+    def _func(self_, *args, **kwargs):
+        if self_.config.get("eager_max_retraces") is not None and \
+                self_._re_trace_counter > self_.config["eager_max_retraces"]:
+            raise RuntimeError(
+                "Too many tf-eager re-traces detected! This could lead to"
+                " significant slow-downs (even slower than running in "
+                "tf-eager mode w/ `eager_tracing=False`). To switch off "
+                "these re-trace counting checks, set `eager_max_retraces`"
+                " in your config to None.")
+        return obj(*args, **kwargs)
+
+    return _func
+
+
+def traced_eager_policy(eager_policy_cls):
+    """Wrapper class that enables tracing for all eager policy methods.
+
+    This is enabled by the `--trace`/`eager_tracing=True` config when
+    framework=[tf2|tfe].
+    """
 
     class TracedEagerPolicy(eager_policy_cls):
         def __init__(self, *args, **kwargs):
@@ -114,6 +133,7 @@ def traced_eager_policy(eager_policy_cls):
             self._traced_apply_gradients_helper = False
             super(TracedEagerPolicy, self).__init__(*args, **kwargs)
 
+        @check_too_many_retraces
         @override(Policy)
         def compute_actions_from_input_dict(
                 self,
@@ -124,8 +144,6 @@ def traced_eager_policy(eager_policy_cls):
                 **kwargs
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             """Traced version of Policy.compute_actions_from_input_dict."""
-
-            self._check_too_many_retraces()
 
             # Create a traced version of `self._compute_actions_helper`.
             if self._traced_compute_actions_helper is False:
@@ -147,11 +165,10 @@ def traced_eager_policy(eager_policy_cls):
                     **kwargs,
             )
 
+        @check_too_many_retraces
         @override(eager_policy_cls)
         def learn_on_batch(self, samples):
             """Traced version of Policy.learn_on_batch."""
-
-            self._check_too_many_retraces()
 
             # Create a traced version of `self._learn_on_batch_helper`.
             if self._traced_learn_on_batch_helper is False:
@@ -166,12 +183,11 @@ def traced_eager_policy(eager_policy_cls):
             # apply_gradients (which will call the traced helper).
             return super(TracedEagerPolicy, self).learn_on_batch(samples)
 
+        @check_too_many_retraces
         @override(eager_policy_cls)
         def compute_gradients(self, samples: SampleBatch) -> \
                 ModelGradients:
             """Traced version of Policy.compute_gradients."""
-
-            self._check_too_many_retraces()
 
             # Create a traced version of `self._compute_gradients_helper`.
             if self._traced_compute_gradients_helper is False:
@@ -186,11 +202,10 @@ def traced_eager_policy(eager_policy_cls):
             # apply_gradients (which will call the traced helper).
             return super(TracedEagerPolicy, self).compute_gradients(samples)
 
+        @check_too_many_retraces
         @override(Policy)
         def apply_gradients(self, grads: ModelGradients) -> None:
             """Traced version of Policy.apply_gradients."""
-
-            self._check_too_many_retraces()
 
             # Create a traced version of `self._apply_gradients_helper`.
             if self._traced_apply_gradients_helper is False:
@@ -204,11 +219,6 @@ def traced_eager_policy(eager_policy_cls):
             # Now that the helper method is traced, call super's
             # apply_gradients (which will call the traced helper).
             return super(TracedEagerPolicy, self).apply_gradients(grads)
-
-        def _check_too_many_retraces(self):
-            if self.config.get("eager_max_retraces") and \
-                    self.re_trace_counter > self.config["eager_max_retraces"]:
-                raise RuntimeError("Too many tf-eager re-traces detected!")
 
     TracedEagerPolicy.__name__ = eager_policy_cls.__name__ + "_traced"
     TracedEagerPolicy.__qualname__ = eager_policy_cls.__qualname__ + "_traced"
@@ -303,7 +313,10 @@ def build_eager_tf_policy(
             # `self._compute_actions_helper`) has been re-traced by tensorflow.
             # We will raise an error if more than n re-tracings have been
             # detected, since this would considerably slow down execution.
-            self.re_trace_counter = 0
+            # The variable below should only get incremented during the
+            # tf.function trace operations, never when calling the already
+            # traced function after that.
+            self._re_trace_counter = 0
 
             self._loss_initialized = False
             self._loss = loss_fn
@@ -556,15 +569,13 @@ def build_eager_tf_policy(
                 train_batch=postprocessed_batch,
                 result=learn_stats)
 
-            if not isinstance(postprocessed_batch, SampleBatch) or \
-                    not postprocessed_batch.zero_padded:
-                pad_batch_to_sequences_of_same_size(
-                    postprocessed_batch,
-                    max_seq_len=self._max_seq_len,
-                    shuffle=False,
-                    batch_divisibility_req=self.batch_divisibility_req,
-                    view_requirements=self.view_requirements,
-                )
+            pad_batch_to_sequences_of_same_size(
+                postprocessed_batch,
+                max_seq_len=self._max_seq_len,
+                shuffle=False,
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
 
             self._is_training = True
             postprocessed_batch = self._lazy_tensor_dict(postprocessed_batch)
@@ -576,6 +587,7 @@ def build_eager_tf_policy(
         @override(Policy)
         def compute_gradients(self, postprocessed_batch: SampleBatch) -> \
                 Tuple[ModelGradients, Dict[str, TensorType]]:
+
             pad_batch_to_sequences_of_same_size(
                 postprocessed_batch,
                 shuffle=False,
@@ -683,8 +695,10 @@ def build_eager_tf_policy(
         def _compute_actions_helper(self, input_dict, state_batches, episodes,
                                     explore, timestep):
             # Increase the tracing counter to make sure we don't re-trace too
-            # often.
-            self.re_trace_counter += 1
+            # often. If eager_tracing=True, this counter should only get
+            # incremented during the @tf.function trace operations, never when
+            # calling the already traced function after that.
+            self._re_trace_counter += 1
 
             # Calculate RNN sequence lengths.
             batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
@@ -771,8 +785,10 @@ def build_eager_tf_policy(
 
         def _learn_on_batch_helper(self, samples):
             # Increase the tracing counter to make sure we don't re-trace too
-            # often.
-            self.re_trace_counter += 1
+            # often. If eager_tracing=True, this counter should only get
+            # incremented during the @tf.function trace operations, never when
+            # calling the already traced function after that.
+            self._re_trace_counter += 1
 
             with tf.variable_creator_scope(_disallow_var_creation):
                 grads_and_vars, _, stats = self._compute_gradients_helper(
@@ -786,6 +802,12 @@ def build_eager_tf_policy(
         @with_lock
         def _compute_gradients_helper(self, samples):
             """Computes and returns grads as eager tensors."""
+
+            # Increase the tracing counter to make sure we don't re-trace too
+            # often. If eager_tracing=True, this counter should only get
+            # incremented during the @tf.function trace operations, never when
+            # calling the already traced function after that.
+            self._re_trace_counter += 1
 
             # Gather all variables for which to calculate losses.
             if isinstance(self.model, tf.keras.Model):
@@ -841,6 +863,12 @@ def build_eager_tf_policy(
             return grads_and_vars, grads, stats
 
         def _apply_gradients_helper(self, grads_and_vars):
+            # Increase the tracing counter to make sure we don't re-trace too
+            # often. If eager_tracing=True, this counter should only get
+            # incremented during the @tf.function trace operations, never when
+            # calling the already traced function after that.
+            self._re_trace_counter += 1
+
             if apply_gradients_fn:
                 if self.config["_tf_policy_handles_more_than_one_loss"]:
                     apply_gradients_fn(self, self._optimizers, grads_and_vars)

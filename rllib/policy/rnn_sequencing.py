@@ -45,21 +45,22 @@ def pad_batch_to_sequences_of_same_size(
     Padding depends on episodes found in batch and `max_seq_len`.
 
     Args:
-        batch (SampleBatch): The SampleBatch object. All values in here have
+        batch: The SampleBatch object. All values in here have
             the shape [B, ...].
-        max_seq_len (int): The max. sequence length to use for chopping.
-        shuffle (bool): Whether to shuffle batch sequences. Shuffle may
+        max_seq_len: The max. sequence length to use for chopping.
+        shuffle: Whether to shuffle batch sequences. Shuffle may
             be done in-place. This only makes sense if you're further
             applying minibatch SGD after getting the outputs.
-        batch_divisibility_req (int): The int by which the batch dimension
+        batch_divisibility_req: The int by which the batch dimension
             must be dividable.
-        feature_keys (Optional[List[str]]): An optional list of keys to apply
-            sequence-chopping to. If None, use all keys in batch that are not
+        feature_keys: An optional list of keys to apply sequence-chopping
+            to. If None, use all keys in batch that are not
             "state_in/out_"-type keys.
-        view_requirements (Optional[ViewRequirementsDict]): An optional
-            Policy ViewRequirements dict to be able to infer whether
-            e.g. dynamic max'ing should be applied over the seq_lens.
+        view_requirements: An optional Policy ViewRequirements dict to
+            be able to infer whether e.g. dynamic max'ing should be
+            applied over the seq_lens.
     """
+    # If already zero-padded, skip.
     if batch.zero_padded:
         return
 
