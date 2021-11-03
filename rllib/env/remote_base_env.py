@@ -15,7 +15,7 @@ class RemoteBaseEnv(BaseEnv):
 
     This provides dynamic batching of inference as observations are returned
     from the remote simulator actors. Both single and multi-agent child envs
-    are supported, and envs can be stepped synchronously or async.
+    are supported, and envs can be stepped synchronously or asynchronously.
 
     You shouldn't need to instantiate this class directly. It's automatically
     inserted when you use the `remote_worker_envs=True` option in your
@@ -28,21 +28,24 @@ class RemoteBaseEnv(BaseEnv):
                  multiagent: bool,
                  remote_env_batch_wait_ms: int,
                  existing_envs: Optional[List[ray.actor.ActorHandle]] = None):
-        """Initializes a RemoteBaseEnv instance.
+        """Initializes a RemoteVectorEnv instance.
 
         Args:
             make_env: Callable that produces a single (non-vectorized) env,
                 given the vector env index as only arg.
-            num_envs: The number of sub-envs to create for the vectorization.
+            num_envs: The number of sub-environments to create for the
+                vectorization.
             multiagent: Whether this is a multiagent env or not.
             remote_env_batch_wait_ms: Time to wait for (ray.remote)
                 sub-environments to have new observations available when
-                polled. When none of the sub-envs is ready, simply repeat the
-                ray.wait call until at least one sub-env is ready.
-            existing_envs: Optional list of already created sub-envs.
+                polled. When none of the sub-environments is ready, simply
+                repeat the ray.wait call until at least one sub-env is
+                ready.
+            existing_envs: Optional list of already created sub-environments.
                 These will be used as-is and only as many new sub-envs as
                 necessary (`num_envs - len(existing_envs)`) will be created.
         """
+
         # Could be creating local or remote envs.
         self.make_env = make_env
         # Whether the given `make_env` callable already returns ray.remote
@@ -176,7 +179,7 @@ class RemoteBaseEnv(BaseEnv):
 
     @override(BaseEnv)
     @PublicAPI
-    def get_sub_environments(self):
+    def get_sub_environments(self) -> List[EnvType]:
         return self.actors
 
 

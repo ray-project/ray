@@ -1007,11 +1007,12 @@ class RolloutWorker(ParallelIteratorWorker):
         return out
 
     @DeveloperAPI
-    def foreach_env(self, func: Callable[[BaseEnv], T]) -> List[T]:
-        """Apply the given function to each underlying sub-environment.
+    def foreach_env(self, func: Callable[[EnvType], T]) -> List[T]:
+        """Calls the given function with each sub-environment as arg.
 
         Args:
-            func: The function to call for each environment (as only arg).
+            func: The function to call for each underlying
+                sub-environment (as only arg).
 
         Returns:
              The list of return values of all calls to `func([env])`.
@@ -1031,12 +1032,12 @@ class RolloutWorker(ParallelIteratorWorker):
 
     @DeveloperAPI
     def foreach_env_with_context(
-            self, func: Callable[[BaseEnv, EnvContext], T]) -> List[T]:
-        """Apply the given function to each underlying sub-environment.
+            self, func: Callable[[EnvType, EnvContext], T]) -> List[T]:
+        """Calls given function with each sub-env plus env_ctx as args.
 
         Args:
-            func: The function to call for each environment and its EnvContext
-                (as the args).
+            func: The function to call for each underlying
+                sub-environment and its EnvContext (as the args).
 
         Returns:
              The list of return values of all calls to `func([env, ctx])`.

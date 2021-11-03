@@ -9,9 +9,6 @@ proto_library(
     srcs = ["src/protobuf/streaming.proto"],
     strip_import_prefix = "src",
     visibility = ["//visibility:public"],
-    deps = [
-        "@com_google_protobuf//:any_proto",
-    ],
 )
 
 proto_library(

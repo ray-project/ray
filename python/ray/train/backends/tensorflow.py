@@ -54,27 +54,23 @@ def setup_tensorflow_environment(worker_addresses: List[str], index: int):
 class TensorflowBackend(Backend):
     def on_start(self, worker_group: WorkerGroup,
                  backend_config: TensorflowConfig):
-        if len(worker_group) > 1:
-            # Compute URL for initializing distributed setup.
-            def get_url():
-                address, port = get_address_and_port()
-                return f"{address}:{port}"
+        # Compute URL for initializing distributed setup.
+        def get_url():
+            address, port = get_address_and_port()
+            return f"{address}:{port}"
 
-            urls = worker_group.execute(get_url)
+        urls = worker_group.execute(get_url)
 
-            # Get setup tasks in order to throw errors on failure.
-            setup_futures = []
-            for i in range(len(worker_group)):
-                setup_futures.append(
-                    worker_group.execute_single_async(
-                        i,
-                        setup_tensorflow_environment,
-                        worker_addresses=urls,
-                        index=i))
-            ray.get(setup_futures)
-
-        else:
-            logger.info("Distributed Tensorflow is not being used.")
+        # Get setup tasks in order to throw errors on failure.
+        setup_futures = []
+        for i in range(len(worker_group)):
+            setup_futures.append(
+                worker_group.execute_single_async(
+                    i,
+                    setup_tensorflow_environment,
+                    worker_addresses=urls,
+                    index=i))
+        ray.get(setup_futures)
 
     def handle_failure(self, worker_group: WorkerGroup,
                        failed_worker_indexes: List[int],
