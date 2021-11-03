@@ -239,7 +239,6 @@ class ClientActorClass(ClientStub):
         task.name = self._name
         task.payload_id = self._ref.id
         set_task_options(task, self._options, "baseline_options")
-        print(f"task option {task.options.serialized_runtime_env}")
         return task
 
     @staticmethod
@@ -420,18 +419,8 @@ def set_task_options(task: ray_client_pb2.ClientTask,
     pg = options.get("placement_group", None)
     if pg and pg != "default":
         options["placement_group"] = options["placement_group"].to_dict()
-    
-    runtime_env = None
-    if "runtime_env" in options:
-        runtime_env = options["runtime_env"]
-        # Pop "runtime_env" to avoid json dump error for bytes
-        options.pop("runtime_env", None)
-        if runtime_env:
-            getattr(task, field).serialized_runtime_env = runtime_env
+
     options_str = json.dumps(options)
-    if runtime_env:
-        # Push "runtime_env" back to options
-        options["runtime_env"] = runtime_env
     getattr(task, field).json_options = options_str
 
 

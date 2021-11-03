@@ -12,6 +12,7 @@ from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated.common_pb2 import RuntimeEnv
+from google.protobuf import json_format
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.modules.runtime_env.runtime_env_consts \
     as runtime_env_consts
@@ -84,8 +85,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                                      serialized_allocated_resource_instances):
             # This function will be ran inside a thread
             def run_setup_with_logger():
-                runtime_env = RuntimeEnv()
-                runtime_env.ParseFromString(serialized_runtime_env)
+                logger.info(f"The serialized runtime env: {serialized_runtime_env}")
+                runtime_env = json_format.Parse(serialized_runtime_env, RuntimeEnv())
                 logger.info(f"The parsed runtime env: {runtime_env}")
                 allocated_resource: dict = json.loads(
                     serialized_allocated_resource_instances or "{}")

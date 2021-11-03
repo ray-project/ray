@@ -13,7 +13,7 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 import ray
-from ray.core.generated.common_pb2 import CondaRuntimeEnv, RuntimeEnv
+from ray.core.generated.common_pb2 import RuntimeEnv, CondaRuntimeEnv
 from ray._private.runtime_env.conda_utils import (get_conda_activate_commands,
                                                   get_or_create_conda_env)
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -22,18 +22,19 @@ from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
 
 default_logger = logging.getLogger(__name__)
 
-
-def get_proto_conda_runtime_env(runtime_env) -> CondaRuntimeEnv:
-    """ Construct a conda runtime env protobuf from a runtime env dict.
+def build_proto_conda_runtime_env(runtime_env_dict: dict, runtime_env: RuntimeEnv):
+    """ Construct conda runtime env protobuf from runtime env dict.
     """
+    if runtime_env_dict.get("conda"):
+        runtime_env.conda_runtime_env.config = json.dumps(
+            runtime_env_dict["conda"], sort_keys=True)
 
-    if runtime_env.get("conda"):
-        conda_runtime_env = CondaRuntimeEnv()
-        conda_runtime_env.config = json.dumps(
-            runtime_env["conda"], sort_keys=True)
-        return conda_runtime_env
 
-    return None
+def parse_proto_conda_runtime_env(runtime_env: RuntimeEnv, runtime_env_dict: dict):
+    """ Parse conda runtime env protobuf to runtime env dict.
+    """
+    if runtime_env.HasField("conda_runtime_env"):
+        runtime_env_dict["conda"] = json.loads(runtime_env.conda_runtime_env.config)
 
 
 def _resolve_current_ray_path():
@@ -96,7 +97,7 @@ def get_conda_dict(runtime_env, runtime_env_dir) -> Optional[Dict[Any, Any]]:
         else:
             return None
     if runtime_env.HasField("pip_runtime_env"):
-        requirements_txt = "\n".join(runtime_env.pip_runtime_env.config.config) + "\n"
+        requirements_txt = "\n".join(runtime_env.pip_runtime_env.config.packages) + "\n"
         pip_hash = hashlib.sha1(requirements_txt.encode("utf-8")).hexdigest()
         pip_hash_str = f"pip-generated-{pip_hash}"
 

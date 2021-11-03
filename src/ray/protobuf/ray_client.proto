@@ -46,7 +46,6 @@ message Arg {
 // strongly defined and typed fields, without migrating the original ClientTask.
 message TaskOptions {
   string json_options = 1;
-  bytes serialized_runtime_env = 2;
 }
 
 // Represents one unit of work to be executed by the server.
@@ -182,7 +181,7 @@ message ClusterInfoResponse {
     bytes job_id = 1;
     bytes node_id = 2;
     string namespace = 3;
-    bytes runtime_env = 4;
+    string runtime_env = 4;
     bool capture_client_tasks = 5;
   }
 

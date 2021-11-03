@@ -635,14 +635,13 @@ def test_inheritance(start_cluster):
 
         # Passing working_dir URI through directly should work.
         env1 = ray.get_runtime_context().runtime_env
-        assert env1.working_dir
-        print(f"env1.working_dir {env1.working_dir}")
+        assert "working_dir" in env1
         t = Test.options(runtime_env=env1).remote()
         assert ray.get(t.f.remote()) == "world"
 
         # Passing a local directory should not work.
         env2 = ray.get_runtime_context().runtime_env
-        env2.working_dir = "."
+        env2["working_dir"] = "."
         with pytest.raises(ValueError):
             t = Test.options(runtime_env=env2).remote()
 

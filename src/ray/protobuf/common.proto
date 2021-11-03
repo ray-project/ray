@@ -158,7 +158,7 @@ message PipRuntimeEnv {
   /// The pip packages config.
   message Config {
     /// A list of pip packages, such as ["redis >= 3.5.0", "numpy"].
-    repeated string config = 1;
+    repeated string packages = 1;
   }
   oneof pip_runtime_env {
     /// The pip packages config.
@@ -251,7 +251,7 @@ message RuntimeEnv {
 /// The serialized runtime env which is transfered between ray core processes.
 message SerializedRuntimeEnv {
   /// The serialized runtime env passed from the user.
-  bytes serialized_runtime_env = 1;
+  string serialized_runtime_env = 1;
   /// URIs used in this runtime env. These will be used for reference counting.
   repeated string uris = 2;
   /// Indicates whether to install runtime env eagerly before the workers are leased.

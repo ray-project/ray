@@ -408,8 +408,8 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = bytes()
-        if isinstance(runtime_env, bytes):
+        new_runtime_env = str()
+        if isinstance(runtime_env, str):
             new_runtime_env = runtime_env
         elif isinstance(runtime_env, RuntimeEnv):
             new_runtime_env = runtime_env.SerializeToString()
@@ -434,8 +434,8 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = bytes()
-        if isinstance(runtime_env, bytes):
+        new_runtime_env = str()
+        if isinstance(runtime_env, str):
             new_runtime_env = runtime_env
         elif isinstance(runtime_env, RuntimeEnv):
             new_runtime_env = runtime_env.SerializeToString()
@@ -506,8 +506,8 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = bytes()
-        if isinstance(runtime_env, bytes):
+        new_runtime_env = str()
+        if isinstance(runtime_env, str):
             new_runtime_env = runtime_env
         elif isinstance(runtime_env, RuntimeEnv):
             new_runtime_env = runtime_env.SerializeToString()
@@ -765,9 +765,9 @@ class ActorClass:
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
 
-        new_runtime_env = bytes()
+        new_runtime_env = str()
         if runtime_env:
-            if isinstance(runtime_env, bytes):
+            if isinstance(runtime_env, str):
                 # Serialzed protobuf runtime env from Ray client.
                 new_runtime_env = runtime_env
             elif isinstance(runtime_env, RuntimeEnv):

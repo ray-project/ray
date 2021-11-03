@@ -24,6 +24,7 @@
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/util.h"
+#include <google/protobuf/util/json_util.h>
 
 namespace ray {
 namespace core {
@@ -439,7 +440,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   RAY_LOG(INFO) << "job_serialized_runtime_env " << job_serialized_runtime_env;
   if (!job_serialized_runtime_env.empty()) {
     job_runtime_env_.reset(new rpc::RuntimeEnv());
-    job_runtime_env_->ParseFromString(job_config_->serialized_runtime_env().serialized_runtime_env());
+    RAY_CHECK(google::protobuf::util::JsonStringToMessage(job_config_->serialized_runtime_env().serialized_runtime_env(), job_runtime_env_.get()).ok());
     RAY_LOG(INFO) << "job_serialized_runtime_env uri size " << job_runtime_env_->uris().size();
   }
 
@@ -1705,7 +1706,7 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(const rpc::RuntimeEnv *run
 
 static std::vector<std::string> GetUrisFromSerializedRuntimeEnv(const std::string &serialized_runtime_env) {
   rpc::RuntimeEnv runtime_env;
-  runtime_env.ParseFromString(serialized_runtime_env);
+  RAY_CHECK(google::protobuf::util::JsonStringToMessage(serialized_runtime_env, &runtime_env).ok());
   return GetUrisFromRuntimeEnv(&runtime_env);
 }
 
@@ -1730,10 +1731,10 @@ std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(const std::string &seriali
     }
     if (parent) {
       rpc::RuntimeEnv child_runtime_env;
-      child_runtime_env.ParseFromString(serialized_runtime_env);
+      RAY_CHECK(google::protobuf::util::JsonStringToMessage(serialized_runtime_env, &child_runtime_env).ok());
       auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
       std::string result;
-      RAY_CHECK(override_runtime_env.SerializeToString(&result));
+      RAY_CHECK(google::protobuf::util::MessageToJsonString(override_runtime_env, &result).ok());
       RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 22222 " << result;
       *runtime_env_uris = GetUrisFromRuntimeEnv(&override_runtime_env);
       RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 22222 result working dir {}" << override_runtime_env.working_dir();

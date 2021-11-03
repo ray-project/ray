@@ -20,7 +20,7 @@ package ray.rpc;
 import "src/ray/protobuf/agent_manager.proto";
 
 message CreateRuntimeEnvRequest {
-  bytes serialized_runtime_env = 1;
+  string serialized_runtime_env = 1;
   bytes job_id = 2;
   // Serialized allocated resource instances. Key is resource type, value is allocated
   // instances. For example,{"CPU":20000,"memory":40000,"GPU":[10000, 10000]} means 2 cpu

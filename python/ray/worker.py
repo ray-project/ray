@@ -191,10 +191,8 @@ class Worker:
 
     @property
     def runtime_env(self):
-        """Get the runtime env in byte string"""
-        runtime_env = RuntimeEnv()
-        runtime_env.ParseFromString(self.core_worker.get_job_config().serialized_runtime_env.serialized_runtime_env)
-        return runtime_env
+        """Get the runtime env in string"""
+        return self.core_worker.get_job_config().serialized_runtime_env.serialized_runtime_env
 
     def get_serialization_context(self, job_id=None):
         """Get the SerializationContext of the job that this worker is processing.

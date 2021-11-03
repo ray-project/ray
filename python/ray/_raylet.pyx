@@ -116,7 +116,6 @@ import ray.ray_constants as ray_constants
 from ray._private.async_compat import sync_to_async, get_new_event_loop
 from ray._private.client_mode_hook import disable_client_hook
 import ray._private.gcs_utils as gcs_utils
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
 from ray._private.utils import decode
