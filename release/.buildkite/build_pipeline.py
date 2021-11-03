@@ -2,7 +2,6 @@ import copy
 import logging
 import os
 import sys
-from typing import Optional, List
 
 import yaml
 
@@ -247,8 +246,6 @@ USER_TESTS = {
         "horovod_user_test_master",
         "xgboost_gpu_connect_latest",
         "xgboost_gpu_connect_master",
-
-
     ]
 }
 
@@ -472,14 +469,6 @@ def create_test_step(
                 "limit": test_name.retry
             }]
         }
-
-    if isinstance(test_name, ConnectTest):
-        # Add driver side setup commands to the step.
-        pip_requirements_command = [f"pip install -U -r "
-                                    f"{test_name.requirements_file}"] if \
-            test_name.requirements_file else []
-        step_conf["commands"] = test_name.setup_commands \
-            + pip_requirements_command
 
     step_conf["commands"] += [
         "pip install -q -r release/requirements.txt",
