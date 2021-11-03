@@ -201,8 +201,7 @@ class Trial:
         local_dir (str): Local_dir as passed to tune.run.
         logdir (str): Directory where the trial logs are saved.
         evaluated_params (dict): Evaluated parameters by search algorithm,
-        experiment_tag (str): Identifying trial name to show in the console.
-        resources (Resources): Amount of resources that this trial will use.
+        experiment_tag (str): Identifying trial name to show in the console
         status (str): One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
         error_file (str): Path to the errors that this trial has raised.
 

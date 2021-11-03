@@ -8,11 +8,12 @@ from ray.rllib import _register_all
 from ray import tune
 from ray.tune import TuneError, register_trainable
 from ray.tune.ray_trial_executor import RayTrialExecutor
+from ray.tune.resources import Resources
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
+from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.resources import Resources
-from ray.tune.suggest import BasicVariantGenerator
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
 class TrialRunnerTest(unittest.TestCase):
@@ -77,7 +78,12 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 1
             },
-            "resources": Resources(cpu=1, gpu=0, extra_cpu=3, extra_gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{
+                "CPU": 1
+            }, {
+                "CPU": 3,
+                "GPU": 1
+            }]),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
@@ -98,7 +104,10 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 1
             },
-            "resources": Resources(cpu=1, gpu=0, custom_resources={"a": 2}),
+            "placement_group_factory": PlacementGroupFactory([{
+                "CPU": 1,
+                "a": 2
+            }]),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:
@@ -118,8 +127,11 @@ class TrialRunnerTest(unittest.TestCase):
             "stopping_criterion": {
                 "training_iteration": 1
             },
-            "resources": Resources(
-                cpu=1, gpu=0, extra_custom_resources={"a": 2}),
+            "placement_group_factory": PlacementGroupFactory([{
+                "CPU": 1
+            }, {
+                "a": 2
+            }]),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         for t in trials:

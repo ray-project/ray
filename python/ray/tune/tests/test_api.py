@@ -280,6 +280,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         # self.assertEqual(f(0, 0).status, Trial.TERMINATED)
 
         # Too large resource request
+        # TODO(xwjiang): Re-enable after https://github.com/ray-project/ray/issues/19985.  # noqa
         self.assertRaises(TuneError, lambda: f(100, 100))
         self.assertRaises(TuneError, lambda: f(0, 100))
         self.assertRaises(TuneError, lambda: f(100, 0))

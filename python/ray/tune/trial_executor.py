@@ -24,11 +24,8 @@ def _get_cluster_resources_no_autoscaler() -> Dict:
 
 
 def _get_trial_cpu_and_gpu(trial: Trial) -> Dict:
-    cpu = trial.resources.cpu + trial.resources.extra_cpu
-    gpu = trial.resources.gpu + trial.resources.extra_gpu
-    if trial.placement_group_factory is not None:
-        cpu = trial.placement_group_factory.required_resources.get("CPU", 0)
-        gpu = trial.placement_group_factory.required_resources.get("GPU", 0)
+    cpu = trial.placement_group_factory.required_resources.get("CPU", 0)
+    gpu = trial.placement_group_factory.required_resources.get("GPU", 0)
     return {"CPU": cpu, "GPU": gpu}
 
 
