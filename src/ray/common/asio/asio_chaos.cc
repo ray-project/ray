@@ -27,18 +27,18 @@ namespace asio {
 namespace testing {
 
 namespace {
-/* DelayManager is a simple chaos testing framework. Before start, users should
-   be able to setup os environment so that some asio calls will be delayed for
-   testing purpose.
+/*
+  DelayManager is a simple chaos testing framework. Before starting ray, users
+  should set up os environment to use this feature for testing purposes.
 
-   To use this, simply do
-     export RAY_TESTING_ASIO_DELAY="method1=10,method2=20"
+  To use this, simply do
+      export RAY_TESTING_ASIO_DELAY="method1=10,method2=20"
 
-   The delay is randomly between 0 and the value. If method equals '*', it means
-   for all methods.
+   The delay is a random number between 0 and the value. If method equals '*',
+   it will apply to all methods.
 
    Please check warnings to make sure delay is on.
- */
+*/
 class DelayManager {
  public:
   DelayManager() {
