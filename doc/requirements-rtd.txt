@@ -6,7 +6,7 @@ pillow==8.3.2
 alabaster>=0.7,<0.8,!=0.7.5
 commonmark==0.8.1
 recommonmark==0.5.0
-sphinx==3.0.4
+sphinx==4.2.0
 readthedocs-sphinx-ext<1.1
 sphinx-book-theme==0.0.42
 sphinx-sitemap==2.2.0

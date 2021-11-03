@@ -17,7 +17,7 @@ pygments
 pyyaml
 recommonmark
 redis
-sphinx==3.0.4
+sphinx==4.2.0
 sphinx-click
 sphinx-copybutton
 sphinxemoji
