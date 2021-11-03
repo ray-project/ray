@@ -1043,6 +1043,16 @@ std::string ClusterTaskManager::DebugStr() const {
            << "\n";
   }
   buffer << "}\n";
+  buffer << "Running tasks by scheduling class:\n";
+
+  for (const auto &pair : info_by_sched_cls_) {
+    const auto &sched_cls = pair.first;
+    const auto &info = pair.second;
+    const auto &descriptor = TaskSpecification::GetSchedulingClassDescriptor(sched_cls);
+    buffer << "    - " << descriptor.DebugString() << ": " << info.running_tasks.size()
+           << "/" << info.capacity << "\n";
+  }
+
   buffer << "==================================================\n";
   return buffer.str();
 }
