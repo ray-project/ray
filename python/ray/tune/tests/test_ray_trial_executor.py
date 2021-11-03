@@ -90,8 +90,8 @@ class RayTrialExecutorTest(unittest.TestCase):
         _register_all()  # Needed for flaky tests
 
     def tearDown(self):
-        ray.shutdown()
         _register_all()  # re-register the evicted objects
+        ray.shutdown()
 
     def testStartStop(self):
         trial = Trial("__fake")
@@ -359,9 +359,9 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         _register_all()
 
     def tearDown(self):
+        _register_all()  # re-register the evicted objects
         ray.shutdown()
         self.cluster.shutdown()
-        _register_all()  # re-register the evicted objects
 
     def testResourcesAvailableNoPlacementGroup(self):
         def train(config):
@@ -472,8 +472,8 @@ class LocalModeExecutorTest(RayTrialExecutorTest):
         self.trial_executor = RayTrialExecutor()
 
     def tearDown(self):
-        ray.shutdown()
         _register_all()  # re-register the evicted objects
+        ray.shutdown()
 
     def testForceTrialCleanup(self):
         self.skipTest("Skipping as force trial cleanup is not applicable"

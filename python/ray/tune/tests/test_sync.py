@@ -32,8 +32,8 @@ class TestSyncFunctionality(unittest.TestCase):
         ray.init(num_cpus=2)
 
     def tearDown(self):
-        ray.shutdown()
         _register_all()  # re-register the evicted objects
+        ray.shutdown()
 
     @patch("ray.tune.sync_client.S3_PREFIX", "test")
     def testNoUploadDir(self):

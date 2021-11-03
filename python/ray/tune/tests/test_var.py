@@ -18,8 +18,8 @@ class VariantGeneratorTest(unittest.TestCase):
         ray.init(num_cpus=2)
 
     def tearDown(self):
-        ray.shutdown()
         _register_all()  # re-register the evicted objects
+        ray.shutdown()
 
     def generate_trials(self, spec, name):
         suggester = BasicVariantGenerator()

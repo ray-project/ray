@@ -45,8 +45,8 @@ class TrialRunnerTest2(unittest.TestCase):
         os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
 
     def tearDown(self):
-        ray.shutdown()
         _register_all()  # re-register the evicted objects
+        ray.shutdown()
 
     def testErrorHandling(self):
         ray.init(num_cpus=4, num_gpus=2)

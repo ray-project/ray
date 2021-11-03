@@ -11,8 +11,8 @@ from ray.tune.utils import diagnose_serialization
 
 class ExperimentTest(unittest.TestCase):
     def tearDown(self):
-        ray.shutdown()
         _register_all()  # re-register the evicted objects
+        ray.shutdown()
 
     def setUp(self):
         def train(config, reporter):

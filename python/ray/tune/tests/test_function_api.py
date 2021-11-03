@@ -301,8 +301,8 @@ class FunctionApiTest(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=0, object_store_memory=150 * 1024 * 1024)
 
     def tearDown(self):
-        ray.shutdown()
         _register_all()  # re-register the evicted objects
+        ray.shutdown()
 
     def testCheckpointError(self):
         def train(config, checkpoint_dir=False):

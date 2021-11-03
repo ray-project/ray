@@ -41,9 +41,9 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         _register_all()
 
     def tearDown(self):
+        _register_all()  # re-register the evicted objects
         ray.shutdown()
         self.cluster.shutdown()
-        _register_all()  # re-register the evicted objects
 
     def _assertCleanup(self, trial_executor):
         # Assert proper cleanup

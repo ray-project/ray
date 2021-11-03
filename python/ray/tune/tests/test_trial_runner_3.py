@@ -39,8 +39,8 @@ class TrialRunnerTest3(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
-        ray.shutdown()
         _register_all()  # re-register the evicted objects
+        ray.shutdown()
         if "CUDA_VISIBLE_DEVICES" in os.environ:
             del os.environ["CUDA_VISIBLE_DEVICES"]
         shutil.rmtree(self.tmpdir)
@@ -809,8 +809,8 @@ class SearchAlgorithmTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        ray.shutdown()
         _register_all()
+        ray.shutdown()
 
     def testNestedSuggestion(self):
         class TestSuggestion(Searcher):

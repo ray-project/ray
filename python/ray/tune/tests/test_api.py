@@ -50,8 +50,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
-        ray.shutdown()
         _register_all()  # re-register the evicted objects
+        ray.shutdown()
         shutil.rmtree(self.tmpdir)
 
     def checkAndReturnConsistentLogs(self, results, sleep_per_iter=None):
@@ -1501,8 +1501,8 @@ class ApiTestFast(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        ray.shutdown()
         _register_all()
+        ray.shutdown()
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
@@ -1699,8 +1699,8 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        ray.shutdown()
         _register_all()
+        ray.shutdown()
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()

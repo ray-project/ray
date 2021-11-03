@@ -47,8 +47,8 @@ class EarlyStoppingSuite(unittest.TestCase):
         ray.init(num_cpus=2)
 
     def tearDown(self):
-        ray.shutdown()
         _register_all()  # re-register the evicted objects
+        ray.shutdown()
 
     def basicSetup(self, rule):
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
@@ -315,8 +315,8 @@ class HyperbandSuite(unittest.TestCase):
         ray.init(object_store_memory=int(1e8))
 
     def tearDown(self):
-        ray.shutdown()
         _register_all()  # re-register the evicted objects
+        ray.shutdown()
 
     def schedulerSetup(self, num_trials, max_t=81):
         """Setup a scheduler and Runner with max Iter = 9.
@@ -690,8 +690,8 @@ class BOHBSuite(unittest.TestCase):
         ray.init(object_store_memory=int(1e8))
 
     def tearDown(self):
-        ray.shutdown()
         _register_all()  # re-register the evicted objects
+        ray.shutdown()
 
     def testLargestBracketFirst(self):
         sched = HyperBandForBOHB(
@@ -862,8 +862,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         ray.init(num_cpus=2)
 
     def tearDown(self):
-        ray.shutdown()
         _register_all()  # re-register the evicted objects
+        ray.shutdown()
 
     def basicSetup(self,
                    num_trials=5,
@@ -1847,8 +1847,8 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
         ray.init(num_cpus=4)
 
     def tearDown(self):
-        ray.shutdown()
         _register_all()  # re-register the evicted objects
+        ray.shutdown()
 
     def basicSetup(self,
                    resample_prob=0.0,
@@ -1948,8 +1948,8 @@ class AsyncHyperBandSuite(unittest.TestCase):
         ray.init(num_cpus=2)
 
     def tearDown(self):
-        ray.shutdown()
         _register_all()  # re-register the evicted objects
+        ray.shutdown()
 
     def basicSetup(self, scheduler):
         t1 = Trial("PPO")  # mean is 450, max 900, t_max=10

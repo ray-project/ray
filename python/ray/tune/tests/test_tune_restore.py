@@ -63,8 +63,8 @@ class TuneRestoreTest(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.logdir)
-        ray.shutdown()
         _register_all()
+        ray.shutdown()
 
     def testTuneRestore(self):
         self.assertTrue(os.path.isfile(self.checkpoint_path))
@@ -443,8 +443,8 @@ class TuneExampleTest(unittest.TestCase):
         ray.init(num_cpus=2)
 
     def tearDown(self):
-        ray.shutdown()
         _register_all()
+        ray.shutdown()
 
     def testPBTKeras(self):
         from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
@@ -478,8 +478,8 @@ class AutoInitTest(unittest.TestCase):
         self.assertTrue(ray.is_initialized())
 
     def tearDown(self):
-        ray.shutdown()
         _register_all()
+        ray.shutdown()
 
 
 class AbstractWarmStartTest:
@@ -490,8 +490,8 @@ class AbstractWarmStartTest:
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir)
-        ray.shutdown()
         _register_all()
+        ray.shutdown()
 
     def set_basic_conf(self):
         raise NotImplementedError()
