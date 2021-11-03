@@ -47,6 +47,9 @@ spec:
             # explicitly killed.
             command: ["/bin/bash", "-c", "--"]
             args: ['trap : TERM INT; sleep infinity & wait;']
+            env:
+            - name: RAY_gcs_server_rpc_server_thread_num
+              value: "1"
             ports:
             - containerPort: 6379  # Redis port
             - containerPort: 10001  # Used by Ray Client

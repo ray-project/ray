@@ -41,7 +41,7 @@ TaskSpecification CreateActorTaskHelper(ActorID actor_id, WorkerID caller_worker
                                         int64_t counter,
                                         TaskID caller_id = TaskID::Nil()) {
   TaskSpecification task;
-  task.GetMutableMessage().set_task_id(TaskID::Nil().Binary());
+  task.GetMutableMessage().set_task_id(TaskID::ForFakeTask().Binary());
   task.GetMutableMessage().set_caller_id(caller_id.Binary());
   task.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task.GetMutableMessage().mutable_caller_address()->set_worker_id(
@@ -146,7 +146,7 @@ TEST_F(DirectActorSubmitterTest, TestSubmitTask) {
   ASSERT_EQ(1, io_context.run_one());
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(TaskID::Nil(), _, _))
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _))
       .Times(worker_client_->callbacks.size());
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(_, _, _, _, _)).Times(0);
   while (!worker_client_->callbacks.empty()) {
@@ -295,10 +295,10 @@ TEST_F(DirectActorSubmitterTest, TestActorDead) {
   }
 
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(_, _, _, _, _)).Times(0);
-  submitter_.DisconnectActor(actor_id, 0, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
   // Actor marked as dead. All queued tasks should get failed.
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _, _, _)).Times(1);
-  submitter_.DisconnectActor(actor_id, 1, /*dead=*/true);
+  submitter_.DisconnectActor(actor_id, 2, /*dead=*/true);
 }
 
 TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
@@ -324,14 +324,16 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
   ASSERT_EQ(1, io_context.run_one());
 
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(2);
-  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _, _, _)).Times(2);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _, _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task3.TaskId(), _, _, _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task4.TaskId(), _, _)).Times(1);
   // First task finishes. Second task fails.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
   // Simulate the actor failing.
-  submitter_.DisconnectActor(actor_id, 0, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
   // Third task fails after the actor is disconnected. It should not get
   // retried.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
@@ -371,17 +373,20 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartRetry) {
   ASSERT_EQ(1, io_context.run_one());
 
   // All tasks will eventually finish.
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(4);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _)).Times(4);
   // Tasks 2 and 3 will be retried.
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _, _, _))
-      .Times(2)
+      .Times(1)
+      .WillRepeatedly(Return(true));
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task3.TaskId(), _, _, _, _))
+      .Times(1)
       .WillRepeatedly(Return(true));
   // First task finishes. Second task fails.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
   // Simulate the actor failing.
-  submitter_.DisconnectActor(actor_id, 0, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
   // Third task fails after the actor is disconnected.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 
@@ -426,7 +431,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
   ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
   ASSERT_EQ(1, io_context.run_one());
   // All tasks will eventually finish.
-  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(3);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _)).Times(3);
 
   // Tasks 2 will be retried
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _, _, _))
@@ -437,7 +442,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK(), /*index=*/1));
   // Simulate the actor failing.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError(""), /*index=*/0));
-  submitter_.DisconnectActor(actor_id, 0, /*dead=*/false);
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
 
   // Actor gets restarted.
   addr.set_port(1);
@@ -528,6 +533,47 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(task.TaskId(), _, _, _, _)).Times(1);
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
   ASSERT_EQ(1, io_context.run_one());
+}
+
+TEST_F(DirectActorSubmitterTest, TestActorRestartFailInflightTasks) {
+  rpc::Address addr;
+  auto worker_id = WorkerID::FromRandom();
+  addr.set_worker_id(worker_id.Binary());
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  submitter_.AddActorQueueIfNotExists(actor_id);
+  addr.set_port(0);
+  submitter_.ConnectActor(actor_id, addr, 0);
+  ASSERT_EQ(worker_client_->callbacks.size(), 0);
+  ASSERT_EQ(num_clients_connected_, 1);
+
+  // Create 3 tasks for the actor.
+  auto task1 = CreateActorTaskHelper(actor_id, worker_id, 0);
+  auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
+  auto task3 = CreateActorTaskHelper(actor_id, worker_id, 1);
+  // Submit a task.
+  ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(1);
+  ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
+
+  // Submit 2 tasks.
+  ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  // Actor failed, but the task replies are delayed (or in some scenarios, lost).
+  // We should still be able to fail the inflight tasks.
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _, _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task3.TaskId(), _, _, _, _)).Times(1);
+  submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
+
+  // The task replies are now received. Since the tasks are already failed, they will not
+  // be marked as failed or finished again.
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task2.TaskId(), _, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _, _, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, CompletePendingTask(task3.TaskId(), _, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, PendingTaskFailed(task3.TaskId(), _, _, _, _)).Times(0);
+  // Task 2 replied with OK.
+  ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
+  // Task 3 replied with error.
+  ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 }
 
 class MockDependencyWaiter : public DependencyWaiter {

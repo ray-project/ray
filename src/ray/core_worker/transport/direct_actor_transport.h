@@ -238,6 +238,11 @@ class CoreWorkerDirectActorTaskSubmitter
     /// client to the actor is available.
     absl::optional<rpc::KillActorRequest> pending_force_kill;
 
+    /// Stores all callbacks of inflight tasks. Note that this doesn't include tasks
+    /// without replies.
+    std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+        inflight_task_callbacks;
+
     /// The max number limit of task capacity used for back pressure.
     /// If the number of tasks in requests >= max_pending_calls, it can't continue to
     /// push task to ClientQueue.
@@ -256,7 +261,7 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] skip_queue Whether to skip the task queue. This will send the
   /// task for execution immediately.
   /// \return Void.
-  void PushActorTask(const ClientQueue &queue, const TaskSpecification &task_spec,
+  void PushActorTask(ClientQueue &queue, const TaskSpecification &task_spec,
                      bool skip_queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Send all pending tasks for an actor.
@@ -274,6 +279,11 @@ class CoreWorkerDirectActorTaskSubmitter
 
   /// Disconnect the RPC client for an actor.
   void DisconnectRpcClient(ClientQueue &queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Fail all in-flight tasks.
+  void FailInflightTasks(
+      const std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+          &inflight_task_callbacks) LOCKS_EXCLUDED(mu_);
 
   /// Whether the specified actor is alive.
   ///

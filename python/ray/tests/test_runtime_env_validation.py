@@ -3,6 +3,7 @@ import pytest
 import sys
 import tempfile
 from pathlib import Path
+from ray import job_config
 import yaml
 
 from ray._private.runtime_env.validation import (
@@ -317,6 +318,14 @@ class TestOverrideRuntimeEnvs:
         parent_env = {"pip": ["pkg-name"], "uris": ["a", "b"]}
         result_env = override_task_or_actor_runtime_env(child_env, parent_env)
         assert result_env == {"uris": ["a"], "pip": ["pkg-name"]}
+
+
+class TestParseJobConfig:
+    def test_parse_runtime_env_from_json_env_variable(self):
+        job_config_json = {"runtime_env": {"working_dir": "uri://abc"}}
+        config = job_config.JobConfig.from_json(job_config_json)
+        assert config.runtime_env == job_config_json.get("runtime_env")
+        assert config.metadata == {}
 
 
 if __name__ == "__main__":

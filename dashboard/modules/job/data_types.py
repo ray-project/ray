@@ -1,5 +1,11 @@
-from pydantic import BaseModel
 from enum import Enum
+from typing import Any, Dict
+
+try:
+    from pydantic import BaseModel
+except ImportError:
+    # Lazy import without breaking class def
+    BaseModel = object
 
 
 class JobStatus(str, Enum):
@@ -12,14 +18,33 @@ class JobStatus(str, Enum):
 
 class JobSpec(BaseModel):
     # Dict to setup execution environment, better to have schema for this
-    runtime_env: dict
+    runtime_env: Dict[str, Any]
     # Command to start execution, ex: "python script.py"
     entrypoint: str
     # Metadata to pass in to configure job behavior or use as tags
     # Required by Anyscale product and already supported in Ray drivers
-    metadata: dict
+    metadata: Dict[str, str]
     # Likely there will be more fields needed later on for different apps
     # but we should keep it minimal and delegate policies to job manager
+
+
+# ==== Get Package ====
+
+
+class GetPackageRequest(BaseModel):
+    package_uri: str
+
+
+class GetPackageResponse(BaseModel):
+    package_exists: bool
+
+
+# ==== Upload Package ====
+
+
+class UploadPackageRequest(BaseModel):
+    package_uri: str
+    encoded_package_bytes: str
 
 
 # ==== Job Submit ====
@@ -27,13 +52,6 @@ class JobSpec(BaseModel):
 
 class JobSubmitRequest(BaseModel):
     job_spec: JobSpec
-    # Globally unique job id. It’s recommended to generate this id from
-    # external job manager first, then pass into this API.
-    # If job server never had a job running with given id:
-    #   - Start new job execution
-    # Else if job server has a running job with given id:
-    #   - Fail, deployment update and reconfigure should happen in job manager
-    job_id: str = None
 
 
 class JobSubmitResponse(BaseModel):

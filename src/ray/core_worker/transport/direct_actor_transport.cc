@@ -141,121 +141,161 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue)
   queue.pending_force_kill.reset();
 }
 
+void CoreWorkerDirectActorTaskSubmitter::FailInflightTasks(
+    const std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+        &inflight_task_callbacks) {
+  // NOTE(kfstorm): We invoke the callbacks with a bad status to act like there's a
+  // network issue. We don't call `task_finisher_.PendingTaskFailed` directly because
+  // there's much more work to do in the callback.
+  auto status = Status::IOError("Fail all inflight tasks due to actor state change.");
+  rpc::PushTaskReply reply;
+  for (const auto &entry : inflight_task_callbacks) {
+    entry.second(status, reply);
+  }
+}
+
 void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
                                                       const rpc::Address &address,
                                                       int64_t num_restarts) {
   RAY_LOG(DEBUG) << "Connecting to actor " << actor_id << " at worker "
                  << WorkerID::FromBinary(address.worker_id());
-  absl::MutexLock lock(&mu_);
 
-  auto queue = client_queues_.find(actor_id);
-  RAY_CHECK(queue != client_queues_.end());
-  if (num_restarts < queue->second.num_restarts) {
-    // This message is about an old version of the actor and the actor has
-    // already restarted since then. Skip the connection.
-    RAY_LOG(INFO) << "Skip actor connection that has already been restarted, actor_id="
-                  << actor_id;
-    return;
+  std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+      inflight_task_callbacks;
+
+  {
+    absl::MutexLock lock(&mu_);
+
+    auto queue = client_queues_.find(actor_id);
+    RAY_CHECK(queue != client_queues_.end());
+    if (num_restarts < queue->second.num_restarts) {
+      // This message is about an old version of the actor and the actor has
+      // already restarted since then. Skip the connection.
+      RAY_LOG(INFO) << "Skip actor connection that has already been restarted, actor_id="
+                    << actor_id;
+      return;
+    }
+
+    if (queue->second.rpc_client &&
+        queue->second.rpc_client->Addr().ip_address() == address.ip_address() &&
+        queue->second.rpc_client->Addr().port() == address.port()) {
+      RAY_LOG(DEBUG) << "Skip actor that has already been connected, actor_id="
+                     << actor_id;
+      return;
+    }
+
+    if (queue->second.state == rpc::ActorTableData::DEAD) {
+      // This message is about an old version of the actor and the actor has
+      // already died since then. Skip the connection.
+      return;
+    }
+
+    queue->second.num_restarts = num_restarts;
+    if (queue->second.rpc_client) {
+      // Clear the client to the old version of the actor.
+      DisconnectRpcClient(queue->second);
+      inflight_task_callbacks = std::move(queue->second.inflight_task_callbacks);
+      queue->second.inflight_task_callbacks.clear();
+    }
+
+    queue->second.state = rpc::ActorTableData::ALIVE;
+    // Update the mapping so new RPCs go out with the right intended worker id.
+    queue->second.worker_id = address.worker_id();
+    // Create a new connection to the actor.
+    queue->second.rpc_client = core_worker_client_pool_.GetOrConnect(address);
+    // This assumes that all replies from the previous incarnation
+    // of the actor have been received. This assumption should be OK
+    // because we fail all inflight tasks in `DisconnectRpcClient`.
+    RAY_LOG(DEBUG) << "Resetting caller starts at for actor " << actor_id << " from "
+                   << queue->second.caller_starts_at << " to "
+                   << queue->second.next_task_reply_position;
+    queue->second.caller_starts_at = queue->second.next_task_reply_position;
+
+    RAY_LOG(INFO) << "Connecting to actor " << actor_id << " at worker "
+                  << WorkerID::FromBinary(address.worker_id());
+    ResendOutOfOrderTasks(actor_id);
+    SendPendingTasks(actor_id);
   }
 
-  if (queue->second.rpc_client &&
-      queue->second.rpc_client->Addr().ip_address() == address.ip_address() &&
-      queue->second.rpc_client->Addr().port() == address.port()) {
-    RAY_LOG(DEBUG) << "Skip actor that has already been connected, actor_id=" << actor_id;
-    return;
-  }
-
-  if (queue->second.state == rpc::ActorTableData::DEAD) {
-    // This message is about an old version of the actor and the actor has
-    // already died since then. Skip the connection.
-    return;
-  }
-
-  queue->second.num_restarts = num_restarts;
-  if (queue->second.rpc_client) {
-    // Clear the client to the old version of the actor.
-    DisconnectRpcClient(queue->second);
-  }
-
-  queue->second.state = rpc::ActorTableData::ALIVE;
-  // Update the mapping so new RPCs go out with the right intended worker id.
-  queue->second.worker_id = address.worker_id();
-  // Create a new connection to the actor.
-  queue->second.rpc_client = core_worker_client_pool_.GetOrConnect(address);
-  // TODO(swang): This assumes that all replies from the previous incarnation
-  // of the actor have been received. Fix this by setting an epoch for each
-  // actor task, so we can ignore completed tasks from old epochs.
-  RAY_LOG(DEBUG) << "Resetting caller starts at for actor " << actor_id << " from "
-                 << queue->second.caller_starts_at << " to "
-                 << queue->second.next_task_reply_position;
-  queue->second.caller_starts_at = queue->second.next_task_reply_position;
-
-  RAY_LOG(INFO) << "Connecting to actor " << actor_id << " at worker "
-                << WorkerID::FromBinary(address.worker_id());
-  ResendOutOfOrderTasks(actor_id);
-  SendPendingTasks(actor_id);
+  // NOTE(kfstorm): We need to make sure the lock is released before invoking callbacks.
+  FailInflightTasks(inflight_task_callbacks);
 }
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     const ActorID &actor_id, int64_t num_restarts, bool dead,
     const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   RAY_LOG(DEBUG) << "Disconnecting from actor " << actor_id;
-  absl::MutexLock lock(&mu_);
-  auto queue = client_queues_.find(actor_id);
-  RAY_CHECK(queue != client_queues_.end());
-  if (num_restarts <= queue->second.num_restarts && !dead) {
-    // This message is about an old version of the actor that has already been
-    // restarted successfully. Skip the message handling.
-    RAY_LOG(INFO) << "Skip actor disconnection that has already been restarted, actor_id="
-                  << actor_id;
-    return;
-  }
 
-  // The actor failed, so erase the client for now. Either the actor is
-  // permanently dead or the new client will be inserted once the actor is
-  // restarted.
-  DisconnectRpcClient(queue->second);
+  std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+      inflight_task_callbacks;
 
-  if (dead) {
-    queue->second.state = rpc::ActorTableData::DEAD;
-    queue->second.creation_task_exception = creation_task_exception;
-    // If there are pending requests, treat the pending tasks as failed.
-    RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id
-                  << " because the actor is already dead.";
-    auto &requests = queue->second.requests;
-    auto head = requests.begin();
-
-    auto status = Status::IOError("cancelling all pending tasks of dead actor");
-    while (head != requests.end()) {
-      const auto &task_spec = head->second.first;
-      task_finisher_.MarkTaskCanceled(task_spec.TaskId());
-      // No need to increment the number of completed tasks since the actor is
-      // dead.
-      RAY_UNUSED(!task_finisher_.PendingTaskFailed(task_spec.TaskId(),
-                                                   rpc::ErrorType::ACTOR_DIED, &status,
-                                                   creation_task_exception));
-      head = requests.erase(head);
+  {
+    absl::MutexLock lock(&mu_);
+    auto queue = client_queues_.find(actor_id);
+    RAY_CHECK(queue != client_queues_.end());
+    if (!dead) {
+      RAY_CHECK(num_restarts > 0);
+    }
+    if (num_restarts <= queue->second.num_restarts && !dead) {
+      // This message is about an old version of the actor that has already been
+      // restarted successfully. Skip the message handling.
+      RAY_LOG(INFO)
+          << "Skip actor disconnection that has already been restarted, actor_id="
+          << actor_id;
+      return;
     }
 
-    auto &wait_for_death_info_tasks = queue->second.wait_for_death_info_tasks;
+    // The actor failed, so erase the client for now. Either the actor is
+    // permanently dead or the new client will be inserted once the actor is
+    // restarted.
+    DisconnectRpcClient(queue->second);
+    inflight_task_callbacks = std::move(queue->second.inflight_task_callbacks);
+    queue->second.inflight_task_callbacks.clear();
 
-    RAY_LOG(INFO) << "Failing tasks waiting for death info, size="
-                  << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
-    for (auto &net_err_task : wait_for_death_info_tasks) {
-      RAY_UNUSED(task_finisher_.MarkPendingTaskFailed(
-          net_err_task.second, rpc::ErrorType::ACTOR_DIED, creation_task_exception));
+    if (dead) {
+      queue->second.state = rpc::ActorTableData::DEAD;
+      queue->second.creation_task_exception = creation_task_exception;
+      // If there are pending requests, treat the pending tasks as failed.
+      RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id
+                    << " because the actor is already dead.";
+      auto &requests = queue->second.requests;
+      auto head = requests.begin();
+
+      auto status = Status::IOError("cancelling all pending tasks of dead actor");
+      while (head != requests.end()) {
+        const auto &task_spec = head->second.first;
+        task_finisher_.MarkTaskCanceled(task_spec.TaskId());
+        // No need to increment the number of completed tasks since the actor is
+        // dead.
+        RAY_UNUSED(!task_finisher_.PendingTaskFailed(task_spec.TaskId(),
+                                                     rpc::ErrorType::ACTOR_DIED, &status,
+                                                     creation_task_exception));
+        head = requests.erase(head);
+      }
+
+      auto &wait_for_death_info_tasks = queue->second.wait_for_death_info_tasks;
+
+      RAY_LOG(INFO) << "Failing tasks waiting for death info, size="
+                    << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
+      for (auto &net_err_task : wait_for_death_info_tasks) {
+        RAY_UNUSED(task_finisher_.MarkPendingTaskFailed(
+            net_err_task.second, rpc::ErrorType::ACTOR_DIED, creation_task_exception));
+      }
+
+      // No need to clean up tasks that have been sent and are waiting for
+      // replies. They will be treated as failed once the connection dies.
+      // We retain the sequencing information so that we can properly fail
+      // any tasks submitted after the actor death.
+    } else if (queue->second.state != rpc::ActorTableData::DEAD) {
+      // Only update the actor's state if it is not permanently dead. The actor
+      // will eventually get restarted or marked as permanently dead.
+      queue->second.state = rpc::ActorTableData::RESTARTING;
+      queue->second.num_restarts = num_restarts;
     }
-
-    // No need to clean up tasks that have been sent and are waiting for
-    // replies. They will be treated as failed once the connection dies.
-    // We retain the sequencing information so that we can properly fail
-    // any tasks submitted after the actor death.
-  } else if (queue->second.state != rpc::ActorTableData::DEAD) {
-    // Only update the actor's state if it is not permanently dead. The actor
-    // will eventually get restarted or marked as permanently dead.
-    queue->second.state = rpc::ActorTableData::RESTARTING;
-    queue->second.num_restarts = num_restarts;
   }
+
+  // NOTE(kfstorm): We need to make sure the lock is released before invoking callbacks.
+  FailInflightTasks(inflight_task_callbacks);
 }
 
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
@@ -326,7 +366,7 @@ void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderTasks(const ActorID &ac
   client_queue.out_of_order_completed_tasks.clear();
 }
 
-void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
+void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
                                                        const TaskSpecification &task_spec,
                                                        bool skip_queue) {
   auto request = std::make_unique<rpc::PushTaskRequest>();
@@ -356,10 +396,9 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
   }
 
   rpc::Address addr(queue.rpc_client->Addr());
-  queue.rpc_client->PushActorTask(
-      std::move(request), skip_queue,
+  rpc::ClientCallback<rpc::PushTaskReply> reply_callback =
       [this, addr, task_id, actor_id, actor_counter, task_spec, task_skipped](
-          Status status, const rpc::PushTaskReply &reply) {
+          const Status &status, const rpc::PushTaskReply &reply) {
         bool increment_completed_tasks = true;
 
         if (task_skipped) {
@@ -427,7 +466,30 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(const ClientQueue &queue,
                          << queue.out_of_order_completed_tasks.size();
         }
         queue.cur_pending_calls--;
-      });
+      };
+
+  queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback));
+  rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
+      [this, task_id, actor_id](const Status &status, const rpc::PushTaskReply &reply) {
+        rpc::ClientCallback<rpc::PushTaskReply> reply_callback;
+        {
+          absl::MutexLock lock(&mu_);
+          auto it = client_queues_.find(actor_id);
+          RAY_CHECK(it != client_queues_.end());
+          auto &queue = it->second;
+          auto callback_it = queue.inflight_task_callbacks.find(task_id);
+          if (callback_it == queue.inflight_task_callbacks.end()) {
+            RAY_LOG(DEBUG) << "The task " << task_id
+                           << " has already been marked as failed. Ingore the reply.";
+            return;
+          }
+          reply_callback = std::move(callback_it->second);
+          queue.inflight_task_callbacks.erase(callback_it);
+        }
+        reply_callback(status, reply);
+      };
+
+  queue.rpc_client->PushActorTask(std::move(request), skip_queue, wrapped_callback);
 }
 
 bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
