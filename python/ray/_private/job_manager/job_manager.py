@@ -130,9 +130,8 @@ class JobSupervisor:
         """
         pass
 
-    async def _exec_entrypoint_cmd(
-            self, entrypoint_cmd: str, stdout_path: str, stderr_path: str
-    ) -> subprocess.Popen:
+    async def _exec_entrypoint_cmd(self, entrypoint_cmd: str, stdout_path: str,
+                                   stderr_path: str) -> subprocess.Popen:
         """
         Runs a command as a child process, streaming stderr & stdout to given
         log files.
@@ -148,7 +147,6 @@ class JobSupervisor:
             stderr_path: File path on head node's local disk to store driver
                 command's stderr.
         Returns:
-
             child_process: Child process that runs the driver command. Can be
                 terminated or killed upon user calling stop().
         """
@@ -180,14 +178,14 @@ class JobSupervisor:
     async def _polling(self, child_process) -> int:
         try:
             while child_process is not None:
-                retcode = child_process.poll()
-                if retcode is not None:
-                    # done
-                    return retcode
+                return_code = child_process.poll()
+                if return_code is not None:
+                    # subprocess finished with return code
+                    return return_code
                 else:
                     # still running, yield control, 0.1s by default
                     await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
-        except:
+        except Exception:
             if child_process:
                 # TODO (jiaodong): Improve this with SIGTERM then SIGKILL
                 child_process.kill()
@@ -227,16 +225,16 @@ class JobSupervisor:
             )
             os.environ[ray_constants.
                        RAY_ADDRESS_ENVIRONMENT_VARIABLE] = ray_redis_address
+
             stdout_path, stderr_path = self._log_client.get_log_file_paths(
                 self._job_id)
-
             child_process = await self._exec_entrypoint_cmd(
                 entrypoint_cmd, stdout_path, stderr_path)
 
             polling_task = create_task(self._polling(child_process))
-
             finished, _ = await asyncio.wait(
-                [polling_task, self._stop_event.wait()], return_when=FIRST_COMPLETED)
+                [polling_task, self._stop_event.wait()],
+                return_when=FIRST_COMPLETED)
 
             if self._stop_event.is_set():
                 polling_task.cancel()
@@ -416,7 +414,6 @@ class JobManager:
         Returns:
             job_status: Latest known job status
         """
-
         job_supervisor_actor = self._get_actor_for_job(job_id)
         if job_supervisor_actor is None:
             # Job actor either exited or failed, we need to ensure never
