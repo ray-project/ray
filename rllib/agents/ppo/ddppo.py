@@ -26,8 +26,8 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, LEARN_ON_BATCH_TIMER, \
-    _get_shared_metrics, _get_global_vars
+    STEPS_TRAINED_COUNTER, STEPS_TRAINED_THIS_ITER_COUNTER,\
+    LEARN_ON_BATCH_TIMER, _get_shared_metrics, _get_global_vars
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import do_minibatch_sgd
@@ -146,8 +146,8 @@ def validate_config(config):
         raise ValueError("DDPPO doesn't support KL penalties like PPO-1")
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
     """Execution plan of the DD-PPO algorithm. Defines the distributed dataflow.
 
     Args:
@@ -159,6 +159,9 @@ def execution_plan(workers: WorkerSet,
         LocalIterator[dict]: The Policy class to use with PGTrainer.
             If None, use `default_policy` provided in build_trainer().
     """
+    assert len(kwargs) == 0, (
+        "DDPPO execution_plan does NOT take any additional parameters")
+
     rollouts = ParallelRollouts(workers, mode="raw")
 
     # Setup the distributed processes.
@@ -212,6 +215,7 @@ def execution_plan(workers: WorkerSet,
             for item in items:
                 info, count = item
                 metrics = _get_shared_metrics()
+                metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = count
                 metrics.counters[STEPS_SAMPLED_COUNTER] += count
                 metrics.counters[STEPS_TRAINED_COUNTER] += count
                 metrics.info[LEARNER_INFO] = info

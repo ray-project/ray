@@ -116,7 +116,8 @@ class ResourceDemandScheduler:
         for node_type, config in self.node_types.items():
             max_of_type = config.get("max_workers", 0)
             node_resources = config["resources"]
-            if max_of_type > 0 and _fits(node_resources, bundle):
+            if (node_type == self.head_node_type or max_of_type > 0) and _fits(
+                    node_resources, bundle):
                 return True
         return False
 

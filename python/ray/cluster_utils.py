@@ -1,4 +1,9 @@
 import logging
+import json
+import yaml
+import os
+import subprocess
+import tempfile
 import time
 
 import ray
@@ -6,6 +11,70 @@ import ray._private.services
 from ray import ray_constants
 
 logger = logging.getLogger(__name__)
+
+
+class AutoscalingCluster:
+    """Create a local autoscaling cluster for testing.
+
+    See test_autoscaler_fake_multinode.py for an end-to-end example.
+    """
+
+    def __init__(self, head_resources: dict, worker_node_types: dict):
+        """Create the cluster.
+
+        Args:
+            head_resources: resources of the head node, including CPU.
+            worker_node_types: autoscaler node types config for worker nodes.
+        """
+        base_config = yaml.safe_load(
+            open(
+                os.path.join(
+                    os.path.dirname(ray.__file__),
+                    "autoscaler/_private/fake_multi_node/example.yaml")))
+        base_config["available_node_types"] = worker_node_types
+        base_config["available_node_types"]["ray.head.default"] = {
+            "resources": head_resources,
+            "node_config": {},
+            "max_workers": 0,
+        }
+        self._head_resources = head_resources
+        self._config = base_config
+        self._process = None
+
+    def start(self):
+        """Start the cluster.
+
+        After this call returns, you can connect to the cluster with
+        ray.init("auto").
+        """
+        subprocess.check_call(["ray", "stop", "--force"])
+        fake_config = tempfile.mktemp()
+        with open(fake_config, "w") as f:
+            f.write(json.dumps(self._config))
+        cmd = [
+            "ray", "start", "--autoscaling-config={}".format(fake_config),
+            "--head", "--block"
+        ]
+        if "CPU" in self._head_resources:
+            cmd.append("--num-cpus={}".format(self._head_resources.pop("CPU")))
+        if "GPU" in self._head_resources:
+            cmd.append("--num-gpus={}".format(self._head_resources.pop("GPU")))
+        if self._head_resources:
+            cmd.append("--resources='{}'".format(
+                json.dumps(self._head_resources)))
+        env = os.environ.copy()
+        env.update({
+            "AUTOSCALER_UPDATE_INTERVAL_S": "1",
+            "RAY_FAKE_CLUSTER": "1"
+        })
+        self._process = subprocess.Popen(cmd, env=env)
+        time.sleep(5)  # TODO(ekl) wait for it properly
+
+    def shutdown(self):
+        """Terminate the cluster."""
+        if self._process:
+            self._process.kill()
+        subprocess.check_call(["ray", "stop", "--force"])
 
 
 class Cluster:

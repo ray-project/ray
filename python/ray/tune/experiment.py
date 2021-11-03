@@ -19,10 +19,8 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
-def _raise_on_durable(trainable_name, sync_to_driver, upload_dir):
-    trainable_cls = get_trainable_cls(trainable_name)
-    from ray.tune.durable_trainable import DurableTrainable
-    if issubclass(trainable_cls, DurableTrainable):
+def _raise_on_durable(is_durable_trainable, sync_to_driver, upload_dir):
+    if is_durable_trainable:
         if sync_to_driver is not False:
             raise ValueError(
                 "EXPERIMENTAL: DurableTrainable will automatically sync "
@@ -87,7 +85,7 @@ class Experiment:
             max_failures=2)
     """
 
-    # keys that will be present in `public_spec` dict
+    # Keys that will be present in `public_spec` dict.
     PUBLIC_KEYS = {"stop", "num_samples"}
 
     def __init__(self,
@@ -149,26 +147,28 @@ class Experiment:
         if not stop:
             pass
         elif isinstance(stop, list):
-            if any(not isinstance(s, Stopper) for s in stop):
+            bad_stoppers = [s for s in stop if not isinstance(s, Stopper)]
+            if bad_stoppers:
+                stopper_types = [type(s) for s in stop]
                 raise ValueError(
                     "If you pass a list as the `stop` argument to "
                     "`tune.run()`, each element must be an instance of "
-                    "`tune.stopper.Stopper`.")
+                    f"`tune.stopper.Stopper`. Got {stopper_types}.")
             self._stopper = CombinedStopper(*stop)
         elif isinstance(stop, dict):
             stopping_criteria = stop
         elif callable(stop):
             if FunctionStopper.is_valid_function(stop):
                 self._stopper = FunctionStopper(stop)
-            elif issubclass(type(stop), Stopper):
+            elif isinstance(stop, Stopper):
                 self._stopper = stop
             else:
                 raise ValueError("Provided stop object must be either a dict, "
                                  "a function, or a subclass of "
-                                 "`ray.tune.Stopper`.")
+                                 f"`ray.tune.Stopper`. Got {type(stop)}.")
         else:
-            raise ValueError("Invalid stop criteria: {}. Must be a "
-                             "callable or dict".format(stop))
+            raise ValueError(f"Invalid stop criteria: {stop}. Must be a "
+                             f"callable or dict. Got {type(stop)}.")
 
         if time_budget_s:
             if self._stopper:
@@ -177,7 +177,8 @@ class Experiment:
             else:
                 self._stopper = TimeoutStopper(time_budget_s)
 
-        _raise_on_durable(self._run_identifier, sync_to_driver, upload_dir)
+        _raise_on_durable(self.is_durable_trainable, sync_to_driver,
+                          upload_dir)
 
         stdout_file, stderr_file = _validate_log_to_file(log_to_file)
 
@@ -301,6 +302,13 @@ class Experiment:
     def run_identifier(self):
         """Returns a string representing the trainable identifier."""
         return self._run_identifier
+
+    @property
+    def is_durable_trainable(self):
+        # Local import to avoid cyclical dependencies
+        from ray.tune.durable_trainable import DurableTrainable
+        trainable_cls = get_trainable_cls(self._run_identifier)
+        return issubclass(trainable_cls, DurableTrainable)
 
     @property
     def public_spec(self) -> Dict[str, Any]:

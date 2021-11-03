@@ -85,7 +85,7 @@ struct Mocker {
 
   static BundleSpecification GenBundleCreation(
       const PlacementGroupID &placement_group_id, const int bundle_index,
-      std::unordered_map<std::string, double> &unit_resource) {
+      absl::flat_hash_map<std::string, double> &unit_resource) {
     rpc::Bundle bundle;
     auto mutable_bundle_id = bundle.mutable_bundle_id();
     mutable_bundle_id->set_bundle_index(bundle_index);

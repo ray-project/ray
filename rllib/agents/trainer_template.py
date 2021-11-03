@@ -18,7 +18,11 @@ from ray.rllib.utils.typing import EnvConfigDict, EnvType, \
 logger = logging.getLogger(__name__)
 
 
-def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict):
+def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                           **kwargs):
+    assert len(kwargs) == 0, (
+        "Default execution_plan does NOT take any additional parameters")
+
     # Collects experiences in parallel from multiple RolloutWorker actors.
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -72,17 +76,17 @@ def build_trainer(
         allow_unknown_subkeys: Optional[List[str]] = None,
         override_all_subkeys_if_type_changes: Optional[List[str]] = None,
 ) -> Type[Trainer]:
-    """Helper function for defining a custom trainer.
+    """Helper function for defining a custom Trainer class.
 
     Functions will be run in this order to initialize the trainer:
-        1. Config setup: validate_config, get_policy
-        2. Worker setup: before_init, execution_plan
-        3. Post setup: after_init
+        1. Config setup: validate_config, get_policy.
+        2. Worker setup: before_init, execution_plan.
+        3. Post setup: after_init.
 
     Args:
-        name: Name of the trainer (e.g. "PPO").
-        default_config: The default config dict of the algorithm, otherwise
-            uses the Trainer default config.
+        name: name of the trainer (e.g., "PPO")
+        default_config: The default config dict of the algorithm,
+            otherwise uses the Trainer default config.
         validate_config: Optional callable that takes the config to check
             for correctness. It may mutate the config as needed.
         default_policy: The default Policy class to use if `get_policy_class`
@@ -100,21 +104,23 @@ def build_trainer(
             Takes the Trainer instance as argument.
         before_evaluate_fn: Callback to run before evaluation. This takes
             the trainer instance as argument.
-        mixins: list of any class mixins for the returned trainer class.
+        mixins: List of any class mixins for the returned trainer class.
             These mixins will be applied in order and will have higher
             precedence than the Trainer class.
         training_iteration_fn: Optional callable that gets called for each
             training iteration, taking Trainer as arg and returning a results
             dict. Only used when
             `config._disable_distributed_execution_api=False`.
-        execution_plan: Optional callable that sets up the distributed
-            execution workflow. Only used when
+        execution_plan (Optional[Callable[[WorkerSet, TrainerConfigDict],
+            Iterable[ResultDict]]]): Optional callable that sets up the
+            distributed execution workflow. Only used when
             `config._disable_distributed_execution_api=True`.
-        allow_unknown_configs: Whether to allow unknown top-level config keys.
-        allow_unknown_subkeys: List of top-level keys
+        allow_unknown_configs (bool): Whether to allow unknown top-level config
+            keys.
+        allow_unknown_subkeys (Optional[List[str]]): List of top-level keys
             with value=dict, for which new sub-keys are allowed to be added to
             the value dict. Appends to Trainer class defaults.
-        override_all_subkeys_if_type_changes: List of top
+        override_all_subkeys_if_type_changes (Optional[List[str]]): List of top
             level keys with value=dict, for which we always override the entire
             value (dict), iff the "type" key in that value dict changes.
             Appends to Trainer class defaults.
@@ -191,8 +197,8 @@ def build_trainer(
                 assert execution_plan is not None
                 self.execution_plan = execution_plan
                 try:
-                    self.train_exec_impl = execution_plan(self, self.workers,
-                                                          config)
+                    self.train_exec_impl = execution_plan(
+                        self.workers, config, **self._kwargs_for_execution_plan())
                 except TypeError as e:
                     # Keyword error: Try old way w/o trainer arg.
                     if "() takes 2 positional arguments but 3" in e.args[0]:

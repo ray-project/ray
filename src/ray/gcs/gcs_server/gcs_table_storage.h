@@ -295,11 +295,8 @@ class GcsTableStorage {
     task_lease_table_ = std::make_unique<GcsTaskLeaseTable>(store_client_);
     task_reconstruction_table_ =
         std::make_unique<GcsTaskReconstructionTable>(store_client_);
-    object_table_ = std::make_unique<GcsObjectTable>(store_client_);
     node_table_ = std::make_unique<GcsNodeTable>(store_client_);
     node_resource_table_ = std::make_unique<GcsNodeResourceTable>(store_client_);
-    placement_group_schedule_table_ =
-        std::make_unique<GcsPlacementGroupScheduleTable>(store_client_);
     placement_group_schedule_table_ =
         std::make_unique<GcsPlacementGroupScheduleTable>(store_client_);
     resource_usage_batch_table_ =
@@ -337,11 +334,6 @@ class GcsTableStorage {
   GcsTaskReconstructionTable &TaskReconstructionTable() {
     RAY_CHECK(task_reconstruction_table_ != nullptr);
     return *task_reconstruction_table_;
-  }
-
-  GcsObjectTable &ObjectTable() {
-    RAY_CHECK(object_table_ != nullptr);
-    return *object_table_;
   }
 
   GcsNodeTable &NodeTable() {
@@ -392,7 +384,6 @@ class GcsTableStorage {
   std::unique_ptr<GcsTaskTable> task_table_;
   std::unique_ptr<GcsTaskLeaseTable> task_lease_table_;
   std::unique_ptr<GcsTaskReconstructionTable> task_reconstruction_table_;
-  std::unique_ptr<GcsObjectTable> object_table_;
   std::unique_ptr<GcsNodeTable> node_table_;
   std::unique_ptr<GcsNodeResourceTable> node_resource_table_;
   std::unique_ptr<GcsPlacementGroupScheduleTable> placement_group_schedule_table_;

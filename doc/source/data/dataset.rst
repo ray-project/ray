@@ -5,7 +5,7 @@ Datasets: Flexible Distributed Data Loading
 
 .. tip::
 
-  Datasets is available as **alpha** in Ray 1.6+. Please file feature requests and bug reports on GitHub Issues or join the discussion on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
+  Datasets is available as **beta** in Ray 1.8+. Please file feature requests and bug reports on GitHub Issues or join the discussion on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
 
 Ray Datasets are the standard way to load and exchange data in Ray libraries and applications. Datasets provide basic distributed data transformations such as ``map``, ``filter``, and ``repartition``, and are compatible with a variety of file formats, datasources, and distributed frameworks.
 
@@ -16,7 +16,7 @@ Ray Datasets are the standard way to load and exchange data in Ray libraries and
 
 Concepts
 --------
-Ray Datasets implement `Distributed Arrow <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__ or a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data.
+Ray Datasets implement `Distributed Arrow <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__ or a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data (e.g., into :ref:`Ray Train <train-docs>` for ML training).
 
 The following figure visualizes a Dataset that has three Arrow table blocks, each block holding 1000 rows each:
 
@@ -117,16 +117,19 @@ Datasource Compatibility Matrices
      - ``ds.to_mars()``
      - (todo)
    * - Arrow Table Objects
-     - ``ds.to_arrow()``
+     - ``ds.to_arrow_refs()``
      - ✅
    * - Arrow Table Iterator
      - ``ds.iter_batches(batch_format="pyarrow")``
      - ✅
-   * - Pandas Dataframe Objects
+   * - Single Pandas Dataframe
      - ``ds.to_pandas()``
      - ✅
+   * - Pandas Dataframe Objects
+     - ``ds.to_pandas_refs()``
+     - ✅
    * - NumPy ndarray Objects
-     - ``ds.to_numpy()``
+     - ``ds.to_numpy_refs()``
      - ✅
    * - Pandas Dataframe Iterator
      - ``ds.iter_batches(batch_format="pandas")``
@@ -147,7 +150,7 @@ Creating Datasets
 
 .. tip::
 
-   Run ``pip install ray[data]`` to get started!
+   Run ``pip install "ray[data]"`` to get started!
 
 Get started by creating Datasets from synthetic data using ``ray.data.range()`` and ``ray.data.from_items()``. Datasets can hold either plain Python objects (schema is a Python type), or Arrow records (schema is Arrow).
 
@@ -170,11 +173,11 @@ Get started by creating Datasets from synthetic data using ``ray.data.range()`` 
     # -> Dataset(num_blocks=200, num_rows=10000, schema={col1: int64, col2: string})
 
     ds.show(5)
-    # -> ArrowRow({'col1': 0, 'col2': '0'})
-    # -> ArrowRow({'col1': 1, 'col2': '1'})
-    # -> ArrowRow({'col1': 2, 'col2': '2'})
-    # -> ArrowRow({'col1': 3, 'col2': '3'})
-    # -> ArrowRow({'col1': 4, 'col2': '4'})
+    # -> {'col1': 0, 'col2': '0'}
+    # -> {'col1': 1, 'col2': '1'}
+    # -> {'col1': 2, 'col2': '2'}
+    # -> {'col1': 3, 'col2': '3'}
+    # -> {'col1': 4, 'col2': '4'}
 
     ds.schema()
     # -> col1: int64
@@ -261,7 +264,7 @@ To take advantage of vectorized functions, use ``.map_batches()``. Note that you
         lambda df: df.applymap(lambda x: x * 2), batch_format="pandas")
     # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1927.62it/s]
     ds.take(5)
-    # -> [ArrowRow({'value': 0}), ArrowRow({'value': 2}), ...]
+    # -> [{'value': 0}, {'value': 2}, ...]
 
 By default, transformations are executed using Ray tasks. For transformations that require setup, specify ``compute="actors"`` and Ray will use an autoscaling actor pool to execute your transforms instead. The following is an end-to-end example of reading, transforming, and saving batch inference results using Datasets:
 

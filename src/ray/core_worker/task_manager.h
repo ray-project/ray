@@ -34,7 +34,7 @@ class TaskFinisherInterface {
   virtual bool RetryTaskIfPossible(const TaskID &task_id) = 0;
 
   virtual bool PendingTaskFailed(
-      const TaskID &task_id, rpc::ErrorType error_type, Status *status,
+      const TaskID &task_id, rpc::ErrorType error_type, const Status *status,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr,
       bool immediately_mark_object_fail = true) = 0;
 
@@ -61,6 +61,8 @@ class TaskResubmissionInterface {
   virtual ~TaskResubmissionInterface() {}
 };
 
+using PutInLocalPlasmaCallback =
+    std::function<void(const RayObject &object, const ObjectID &object_id)>;
 using RetryTaskCallback = std::function<void(TaskSpecification &spec, bool delay)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;
 using PushErrorCallback =
@@ -71,12 +73,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
  public:
   TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
               std::shared_ptr<ReferenceCounter> reference_counter,
+              PutInLocalPlasmaCallback put_in_local_plasma_callback,
               RetryTaskCallback retry_task_callback,
               const std::function<bool(const NodeID &node_id)> &check_node_alive,
               ReconstructObjectCallback reconstruct_object_callback,
               PushErrorCallback push_error_callback)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
+        put_in_local_plasma_callback_(put_in_local_plasma_callback),
         retry_task_callback_(retry_task_callback),
         check_node_alive_(check_node_alive),
         reconstruct_object_callback_(reconstruct_object_callback),
@@ -142,7 +146,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// result object as failed.
   /// \return Whether the task will be retried or not.
   bool PendingTaskFailed(
-      const TaskID &task_id, rpc::ErrorType error_type, Status *status = nullptr,
+      const TaskID &task_id, rpc::ErrorType error_type, const Status *status = nullptr,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr,
       bool immediately_mark_object_fail = true) override;
 
@@ -221,6 +225,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     // Number of times this task may be resubmitted. If this reaches 0, then
     // the task entry may be erased.
     int num_retries_left;
+    // Number of times this task successfully completed execution so far.
+    int num_successful_executions = 0;
     // Whether this task is currently pending execution. This is used to pin
     // the task entry if the task is still pending but all of its return IDs
     // are out of scope.
@@ -262,6 +268,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// The task manager is responsible for managing all references related to
   /// submitted tasks (dependencies and return objects).
   std::shared_ptr<ReferenceCounter> reference_counter_;
+
+  /// Callback to store objects in plasma. This is used for objects that were
+  /// originally stored in plasma. During reconstruction, we ensure that these
+  /// objects get stored in plasma again so that any reference holders can
+  /// retrieve them.
+  const PutInLocalPlasmaCallback put_in_local_plasma_callback_;
 
   /// Called when a task should be retried.
   const RetryTaskCallback retry_task_callback_;

@@ -16,7 +16,6 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
@@ -47,18 +46,22 @@ class TaskManagerTest : public ::testing::Test {
         reference_counter_(std::shared_ptr<ReferenceCounter>(
             new ReferenceCounter(rpc::Address(), publisher_.get(), subscriber_.get(),
                                  lineage_pinning_enabled))),
-        manager_(store_, reference_counter_,
-                 [this](TaskSpecification &spec, bool delay) {
-                   num_retries_++;
-                   return Status::OK();
-                 },
-                 [this](const NodeID &node_id) { return all_nodes_alive_; },
-                 [this](const ObjectID &object_id) {
-                   objects_to_recover_.push_back(object_id);
-                 },
-                 [](const JobID &job_id, const std::string &type,
-                    const std::string &error_message,
-                    double timestamp) { return Status::OK(); }) {}
+        manager_(
+            store_, reference_counter_,
+            [this](const RayObject &object, const ObjectID &object_id) {
+              stored_in_plasma.insert(object_id);
+            },
+            [this](TaskSpecification &spec, bool delay) {
+              num_retries_++;
+              return Status::OK();
+            },
+            [this](const NodeID &node_id) { return all_nodes_alive_; },
+            [this](const ObjectID &object_id) {
+              objects_to_recover_.push_back(object_id);
+            },
+            [](const JobID &job_id, const std::string &type,
+               const std::string &error_message,
+               double timestamp) { return Status::OK(); }) {}
 
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
@@ -68,6 +71,7 @@ class TaskManagerTest : public ::testing::Test {
   std::vector<ObjectID> objects_to_recover_;
   TaskManager manager_;
   int num_retries_ = 0;
+  std::unordered_set<ObjectID> stored_in_plasma;
 };
 
 class TaskManagerLineageTest : public TaskManagerTest {
@@ -525,6 +529,63 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_FALSE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps).ok());
   ASSERT_TRUE(resubmitted_task_deps.empty());
   ASSERT_EQ(num_retries_, 1);
+}
+
+// Test resubmission for a task that was successfully executed once and stored
+// its return values in plasma. On re-execution, the task's return values
+// should be stored in plasma again, even if the worker returns its values
+// directly.
+TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(2, {});
+  auto return_id1 = spec.ReturnId(0);
+  auto return_id2 = spec.ReturnId(1);
+  int num_retries = 3;
+  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+
+  // The task completes. Both return objects are stored in plasma.
+  {
+    reference_counter_->AddLocalReference(return_id1, "");
+    reference_counter_->AddLocalReference(return_id2, "");
+    rpc::PushTaskReply reply;
+    auto return_object1 = reply.add_return_objects();
+    return_object1->set_object_id(return_id1.Binary());
+    auto data = GenerateRandomBuffer();
+    return_object1->set_data(data->Data(), data->Size());
+    return_object1->set_in_plasma(true);
+    auto return_object2 = reply.add_return_objects();
+    return_object2->set_object_id(return_id2.Binary());
+    return_object2->set_data(data->Data(), data->Size());
+    return_object2->set_in_plasma(true);
+    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  }
+
+  // The task finished, its return ID is still in scope, and the return object
+  // was stored in plasma. It is okay to resubmit it now.
+  ASSERT_TRUE(stored_in_plasma.empty());
+  std::vector<ObjectID> resubmitted_task_deps;
+  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps).ok());
+  ASSERT_EQ(num_retries_, 1);
+
+  // The re-executed task completes again. One of the return objects is now
+  // returned directly.
+  {
+    reference_counter_->AddLocalReference(return_id1, "");
+    reference_counter_->AddLocalReference(return_id2, "");
+    rpc::PushTaskReply reply;
+    auto return_object1 = reply.add_return_objects();
+    return_object1->set_object_id(return_id1.Binary());
+    auto data = GenerateRandomBuffer();
+    return_object1->set_data(data->Data(), data->Size());
+    return_object1->set_in_plasma(false);
+    auto return_object2 = reply.add_return_objects();
+    return_object2->set_object_id(return_id2.Binary());
+    return_object2->set_data(data->Data(), data->Size());
+    return_object2->set_in_plasma(true);
+    manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
+  }
+  ASSERT_TRUE(stored_in_plasma.count(return_id1));
+  ASSERT_FALSE(stored_in_plasma.count(return_id2));
 }
 
 }  // namespace core

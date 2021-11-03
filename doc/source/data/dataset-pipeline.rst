@@ -1,3 +1,5 @@
+.. _dataset-pipeline:
+
 Dataset Pipelines
 =================
 
@@ -69,6 +71,42 @@ You can also create a DatasetPipeline from a custom iterator over dataset creato
     splits = ray.data.range(1000, parallelism=200).split(20)
     pipe = DatasetPipeline.from_iterable([lambda s=s: s for s in splits])
 
+Handling Epochs
+~~~~~~~~~~~~~~~
+
+It's common in ML training to want to divide data ingest into epochs, or repetitions over the original source dataset. DatasetPipeline provides a convenient ``.iter_epochs()`` method that can be used to split up the pipeline into epoch-delimited pipeline segments. Epochs are defined by the last call to ``.repeat()`` in a pipeline, for example:
+
+.. code-block:: python
+
+    pipe = ray.data.from_items([0, 1, 2, 3, 4]) \
+        .repeat(3) \
+        .random_shuffle_each_window()
+    for i, epoch in enumerate(pipe.iter_epochs()):
+        print("Epoch {}", i)
+        for row in epoch.iter_rows():
+            print(row)
+    # ->
+    # Epoch 0
+    # 2
+    # 1
+    # 3
+    # 4
+    # 0
+    # Epoch 1
+    # 3
+    # 4
+    # 0
+    # 2
+    # 1
+    # Epoch 2
+    # 3
+    # 2
+    # 4
+    # 1
+    # 0
+
+Note that while epochs commonly consist of a single window, they can also contain multiple windows if ``.window()`` is used or there are multiple ``.repeat()`` calls.
+
 Per-Window Transformations
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -77,14 +115,19 @@ While most Dataset operations are per-row (e.g., map, filter), some operations a
 .. code-block:: python
 
     # Example of randomly shuffling each window of a pipeline.
-    ray.data.range(5).repeat(2).random_shuffle_each_window().show_windows()
+    ray.data.from_items([0, 1, 2, 3, 4]) \
+        .repeat(2) \
+        .random_shuffle_each_window() \
+        .show_windows()
     # -> 
+    # ----- Epoch 0 ------
     # === Window 0 ===
     # 4
     # 3
     # 1
     # 0
     # 2
+    # ----- Epoch 1 ------
     # === Window 1 ===
     # 2
     # 1
@@ -97,14 +140,19 @@ You can also apply arbitrary transformations to each window using ``DatasetPipel
 .. code-block:: python
 
     # Equivalent transformation using .foreach_window() 
-    ray.data.range(5).repeat(2).foreach_window(lambda w: w.random_shuffle()).show_windows()
+    ray.data.from_items([0, 1, 2, 3, 4]) \
+        .repeat(2) \
+        .foreach_window(lambda w: w.random_shuffle()) \
+        .show_windows()
     # -> 
+    # ----- Epoch 0 ------
     # === Window 0 ===
     # 1
     # 0
     # 4
     # 2
     # 3
+    # ----- Epoch 1 ------
     # === Window 1 ===
     # 4
     # 2
@@ -175,8 +223,15 @@ Tune the throughput vs latency of your pipeline with the ``blocks_per_window`` s
 
 .. image:: dataset-pipeline-3.svg
 
+.. _dataset-pipeline-per-epoch-shuffle:
+
 Example: Per-Epoch Shuffle Pipeline
 -----------------------------------
+.. tip::
+
+    If you interested in distributed ingest for deep learning, it is
+    recommended to use Ray Datasets in conjunction with :ref:`Ray Train <train-docs>`.
+    See the :ref:`example below<dataset-pipeline-ray-train>` for more info.
 
 ..
   https://docs.google.com/drawings/d/1vWQ-Zfxy2_Gthq8l3KmNsJ7nOCuYUQS9QMZpj5GHYx0/edit
@@ -186,7 +241,9 @@ The other method of creating a pipeline is calling ``.repeat()`` on an existing 
 Pre-repeat vs post-repeat transforms
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Transformations made prior to the Dataset prior to the call to ``.repeat()`` are executed once. Transformations made to the DatasetPipeline after the repeat will be executed once for each repetition of the Dataset. For example, in the following pipeline, the datasource read only occurs once. However, the random shuffle is applied to each repetition in the pipeline.
+Transformations made prior to the Dataset prior to the call to ``.repeat()`` are executed once. Transformations made to the DatasetPipeline after the repeat will be executed once for each repetition of the Dataset.
+
+For example, in the following pipeline, the datasource read only occurs once. However, the random shuffle is applied to each repetition in the pipeline.
 
 **Code**:
 
@@ -243,19 +300,61 @@ Similar to how you can ``.split()`` a Dataset, you can also split a DatasetPipel
 
 .. image:: dataset-repeat-2.svg
 
+.. _dataset-pipeline-ray-train:
+
+Distributed Ingest with Ray Train
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Ray Datasets integrates with :ref:`Ray Train <train-docs>`, further simplifying your distributed ingest pipeline.
+
+Ray Train is a lightweight library for scalable deep learning on Ray.
+
+1. It allows you to focus on the training logic and automatically handles distributed setup for your framework of choice (PyTorch, Tensorflow, or Horovod).
+2. It has out of the box fault-tolerance and elastic training
+3. And it comes with support for standard ML tools and features that practitioners love such as checkpointing and logging.
+
+**Code**
+
+.. code-block:: python
+
+    def train_func():
+        # This is a dummy train function just iterating over the dataset shard.
+        # You should replace this with your training logic.
+        shard = ray.train.get_dataset_shard()
+        for row in shard.iter_rows():
+            print(row)
+
+    # Create a pipeline that loops over its source dataset indefinitely.
+    pipe: DatasetPipeline = ray.data \
+        .read_parquet(...) \
+        .repeat() \
+        .random_shuffle_each_window()
+
+
+    # Pass in the pipeline to the Trainer.
+    # The Trainer will automatically split the DatasetPipeline for you.
+    trainer = Trainer(num_workers=8, backend="torch")
+    result = trainer.run(
+        train_func,
+        config={"worker_batch_size": 64, "num_epochs": 2},
+        dataset=pipe)
+
+Ray Train is responsible for the orchestration of the training workers and will automatically split the Dataset for you.
+See :ref:`the Train User Guide <train-dataset-pipeline>` for more details.
+
 Changing Pipeline Structure
 ---------------------------
 
-Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).rewindow(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``. The latter may produce windows that span multiple copies of the same original data:
+Sometimes, you may want to change the structure of an existing pipeline. For example, after generating a pipeline with ``ds.window(k)``, you may want to repeat that windowed pipeline ``n`` times. This can be done with ``ds.window(k).repeat(n)``. As another example, suppose you have a repeating pipeline generated with ``ds.repeat(n)``. The windowing of that pipeline can be changed with ``ds.repeat(n).rewindow(k)``. Note the subtle difference in the two examples: the former is repeating a windowed pipeline that has a base window size of ``k``, while the latter is re-windowing a pipeline of initial window size of ``ds.num_blocks()``. The latter may produce windows that span multiple copies of the same original data if ``preserve_epoch=False`` is set:
 
 .. code-block:: python
 
     # Window followed by repeat.
-    ray.data.range(5) \
+    ray.data.from_items([0, 1, 2, 3, 4]) \
         .window(blocks_per_window=2) \
         .repeat(2) \
         .show_windows()
     # ->
+    # ------ Epoch 0 ------
     # === Window 0 ===
     # 0
     # 1
@@ -264,6 +363,7 @@ Sometimes, you may want to change the structure of an existing pipeline. For exa
     # 3
     # === Window 2 ===
     # 4
+    # ------ Epoch 1 ------
     # === Window 3 ===
     # 0
     # 1
@@ -273,12 +373,15 @@ Sometimes, you may want to change the structure of an existing pipeline. For exa
     # === Window 5 ===
     # 4
 
-    # Repeat followed by window.
-    ray.data.range(5) \
+    # Repeat followed by window. Since preserve_epoch=True, at epoch boundaries
+    # windows may be smaller than the target size. If it was set to False, all
+    # windows except the last would be the target size.
+    ray.data.from_items([0, 1, 2, 3, 4]) \
         .repeat(2) \
-        .rewindow(blocks_per_window=2) \
+        .rewindow(blocks_per_window=2, preserve_epoch=True) \
         .show_windows()
     # ->
+    # ------ Epoch 0 ------
     # === Window 0 ===
     # 0
     # 1
@@ -287,10 +390,12 @@ Sometimes, you may want to change the structure of an existing pipeline. For exa
     # 3
     # === Window 2 ===
     # 4
-    # 0
+    # ------ Epoch 1 ------
     # === Window 3 ===
+    # 0
     # 1
-    # 2
     # === Window 4 ===
+    # 2
     # 3
+    # === Window 5 ===
     # 4

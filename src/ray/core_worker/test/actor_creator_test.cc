@@ -16,7 +16,7 @@
 #include "gtest/gtest.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/common/test_util.h"
-#include "mock/ray/gcs/gcs_client.h"
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
 // clang-format on
 
 namespace ray {
@@ -89,6 +89,6 @@ int main(int argc, char **argv) {
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
-  ray::RayLog::InstallFailureSignalHandler();
+  ray::RayLog::InstallFailureSignalHandler(argv[0]);
   return RUN_ALL_TESTS();
 }

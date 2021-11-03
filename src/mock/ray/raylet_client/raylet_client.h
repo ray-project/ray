@@ -116,6 +116,10 @@ class MockRayletClientInterface : public RayletClientInterface {
   MOCK_METHOD(ray::Status, WaitForDirectActorCallArgs,
               (const std::vector<rpc::ObjectReference> &references, int64_t tag),
               (override));
+  MOCK_METHOD(void, ReportWorkerBacklog,
+              (const WorkerID &worker_id,
+               const std::vector<rpc::WorkerBacklogReport> &backlog_reports),
+              (override));
   MOCK_METHOD(
       void, RequestWorkerLease,
       (const ray::TaskSpecification &resource_spec,
@@ -176,6 +180,10 @@ class MockRayletClientInterface : public RayletClientInterface {
               (override));
   MOCK_METHOD(void, RequestResourceReport,
               (const rpc::ClientCallback<rpc::RequestResourceReportReply> &callback),
+              (override));
+  MOCK_METHOD(void, ShutdownRaylet,
+              (const NodeID &node_id, bool graceful,
+               const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback),
               (override));
 };
 

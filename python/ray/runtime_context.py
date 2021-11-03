@@ -177,8 +177,8 @@ class RuntimeContext(object):
 
         Returns:
             A dictionary keyed by the function name. The values are
-            dictionaries with form ``{"received": 0, "executing": 1,
-            "exectued": 2}``.
+            dictionaries with form ``{"pending": 0, "running": 1,
+            "finished": 2}``.
         """
         worker = self.worker
         worker.check_connected()

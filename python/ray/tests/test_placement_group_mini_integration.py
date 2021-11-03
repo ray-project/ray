@@ -11,6 +11,7 @@ except ImportError:
 
 import ray
 import ray.cluster_utils
+from ray._private.test_utils import wait_for_condition
 from ray.util.placement_group import (placement_group, remove_placement_group)
 
 
@@ -38,6 +39,7 @@ def test_placement_group_remove_stress(ray_start_cluster, execution_number):
                 num_gpus=resource_quantity,
                 resources=custom_resources))
     cluster.wait_for_nodes()
+    num_nodes = len(nodes)
 
     ray.init(address=cluster.address)
     while not ray.is_initialized():
@@ -70,7 +72,11 @@ def test_placement_group_remove_stress(ray_start_cluster, execution_number):
         # Randomly schedule tasks or actors on placement groups that
         # are not removed.
         for pg in pgs_unremoved:
-            tasks.append(mock_task.options(placement_group=pg).remote())
+            for i in range(num_nodes):
+                tasks.append(
+                    mock_task.options(
+                        placement_group=pg,
+                        placement_group_bundle_index=i).remote())
         # Remove the rest of placement groups.
         for pg in pgs_removed:
             remove_placement_group(pg)
@@ -84,6 +90,23 @@ def test_placement_group_remove_stress(ray_start_cluster, execution_number):
         pg_launchers.append(pg_launcher.remote(num_pg // 3))
 
     ray.get(pg_launchers, timeout=120)
+    ray.shutdown()
+    ray.init(address=cluster.address)
+
+    cluster_resources = ray.cluster_resources()
+    cluster_resources.pop("memory")
+    cluster_resources.pop("object_store_memory")
+
+    def wait_for_resource_recovered():
+        for resource, val in ray.available_resources().items():
+            if (resource in cluster_resources
+                    and cluster_resources[resource] != val):
+                return False
+            if "_group_" in resource:
+                return False
+        return True
+
+    wait_for_condition(wait_for_resource_recovered)
 
 
 if __name__ == "__main__":

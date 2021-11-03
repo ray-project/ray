@@ -10,7 +10,7 @@ Ray also comes packaged with several libraries solving problems in the machine l
 - :doc:`../tune/index`
 - :ref:`rllib-index`
 - :ref:`sgd-index`
-- :ref:`datasets` (alpha)
+- :ref:`datasets` (beta)
 
 As well as libraries for taking ML and distributed apps to production:
 

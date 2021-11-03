@@ -6,18 +6,21 @@
 #    - TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
 #    - pip install -Ur ./python/requirements_ml_docker.txt
 #    - ./ci/travis/env_info.sh
-#    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-jenkins_only,-flaky,gpu,gpu_only python/ray/tune/...
+#    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-flaky,gpu,gpu_only python/ray/tune/...
 
 - label: ":tv: :brain: RLlib: GPU Examples {A/B}"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - RLLIB_TESTING=1 ./ci/travis/install-dependencies.sh
+    - RLLIB_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
+    # Because Python version changed, we need to re-install Ray here
+    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
     - pip install -Ur ./python/requirements_ml_docker.txt
     - ./ci/travis/env_info.sh
-# Todo: enable once tests pass
-#    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
-#      --test_tag_filters=examples_A,examples_B,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 --test_env=RLLIB_NUM_GPUS=1 rllib/...
+    # --jobs 1 is necessary as we only have 1 GPU on the machine and running tests in parallel
+    # would cause timeouts as the other scripts would wait for the GPU to become available.
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --jobs 1
+      --test_tag_filters=gpu,-flaky, --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 --test_env=RLLIB_NUM_GPUS=1 rllib/...
 
 # Todo: enable once tests pass
 #- label: ":tv: :brain: RLlib: GPU Examples {C/D}"

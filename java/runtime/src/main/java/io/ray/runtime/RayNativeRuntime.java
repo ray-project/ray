@@ -6,6 +6,7 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
 import io.ray.api.id.UniqueId;
+import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.runtime.config.RayConfig;
 import io.ray.runtime.context.NativeWorkerContext;
 import io.ray.runtime.exception.RayIntentionalSystemExitException;
@@ -23,6 +24,7 @@ import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.locks.Lock;
@@ -85,8 +87,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
       }
 
-      gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-
       if (rayConfig.workerMode == WorkerType.DRIVER) {
         GcsNodeInfo nodeInfo = gcsClient.getNodeToConnectForDriver(rayConfig.nodeIp);
         rayConfig.rayletSocketName = nodeInfo.getRayletSocketName();
@@ -106,7 +106,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
             JobConfig.newBuilder()
                 .setNumJavaWorkersPerProcess(rayConfig.numWorkersPerProcess)
                 .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
-                .addAllCodeSearchPath(rayConfig.codeSearchPath);
+                .addAllCodeSearchPath(rayConfig.codeSearchPath)
+                .setRayNamespace(rayConfig.namespace);
         RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
         if (!rayConfig.workerEnv.isEmpty()) {
           // TODO(SongGuyang): Suppport complete runtime env interface for users.
@@ -134,7 +135,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
           new GcsClientOptions(rayConfig),
           numWorkersPerProcess,
           rayConfig.logDir,
-          serializedJobConfig);
+          serializedJobConfig,
+          rayConfig.getStartupToken());
 
       taskExecutor = new NativeTaskExecutor(this);
       workerContext = new NativeWorkerContext();
@@ -232,6 +234,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     nativeRunTaskExecutor(taskExecutor);
   }
 
+  @Override
+  public Map<String, List<ResourceValue>> getAvailableResourceIds() {
+    return nativeGetResourceIds();
+  }
+
   private static native void nativeInitialize(
       int workerMode,
       String ndoeIpAddress,
@@ -243,7 +250,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       GcsClientOptions gcsClientOptions,
       int numWorkersPerProcess,
       String logDir,
-      byte[] serializedJobConfig);
+      byte[] serializedJobConfig,
+      int startupToken);
 
   private static native void nativeRunTaskExecutor(TaskExecutor taskExecutor);
 
@@ -254,6 +262,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static native byte[] nativeGetActorIdOfNamedActor(String actorName, boolean global);
 
   private static native void nativeSetCoreWorker(byte[] workerId);
+
+  private static native Map<String, List<ResourceValue>> nativeGetResourceIds();
 
   static class AsyncContext {
 

@@ -4,7 +4,6 @@ import yaml
 import os
 import aiohttp.web
 from aioredis.pubsub import Receiver
-from grpc.experimental import aio as aiogrpc
 
 import ray
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
@@ -38,8 +37,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
             options = (("grpc.enable_http_proxy", 0), )
-            channel = aiogrpc.insecure_channel(
-                f"{ip}:{ports[1]}", options=options)
+            channel = ray._private.utils.init_grpc_channel(
+                f"{ip}:{ports[1]}", options=options, asynchronous=True)
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
 

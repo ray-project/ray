@@ -263,7 +263,7 @@ this default behavior by passing in specific resources.
 .. tabs::
   .. group-tab:: Python
 
-    ``ray.init(num_cpus=8, num_gpus=4, resources={'Custom': 2})```
+    ``ray.init(num_cpus=8, num_gpus=4, resources={'Custom': 2})``
 
   .. group-tab:: Java
 
@@ -340,6 +340,11 @@ Below are more examples of resource specifications:
 
     // Ray aslo supports fractional and custom resources.
     ray::Task(MyFunction).SetResource("GPU", 0.5).SetResource("Custom", 1.0).Remote();
+
+.. tip::
+
+  Besides compute resources, you can also specify an environment for a task to run in,
+  which can include Python packages, local files, environment variables, and more--see :ref:`Runtime Environments <runtime-environments>` for details.
 
 Multiple returns
 ~~~~~~~~~~~~~~~~

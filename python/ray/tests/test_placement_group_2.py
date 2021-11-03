@@ -12,8 +12,9 @@ import ray.cluster_utils
 import ray._private.gcs_utils as gcs_utils
 
 from ray._private.test_utils import (
-    generate_system_config_map, kill_actor_and_wait_for_failure,
-    run_string_as_driver, wait_for_condition, get_error_message)
+    get_other_nodes, generate_system_config_map,
+    kill_actor_and_wait_for_failure, run_string_as_driver, wait_for_condition,
+    get_error_message, placement_group_assert_no_leak)
 from ray.util.placement_group import get_current_placement_group
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 
@@ -58,6 +59,8 @@ def test_check_bundle_index(ray_start_cluster, connect_to_client):
 
         with pytest.raises(ValueError, match="bundle index must be -1"):
             Actor.options(placement_group_bundle_index=0).remote()
+
+        placement_group_assert_no_leak([placement_group])
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
@@ -750,6 +753,41 @@ def test_create_actor_with_placement_group_after_gcs_server_restart(
         placement_group=placement_group,
         placement_group_bundle_index=1).remote()
     assert ray.get(actor_2.method.remote(1)) == 3
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [
+        generate_system_config_map(
+            num_heartbeats_timeout=10, ping_gcs_rpc_server_max_retries=60)
+    ],
+    indirect=True)
+def test_bundle_recreated_when_raylet_fo_after_gcs_server_restart(
+        ray_start_cluster_head):
+    cluster = ray_start_cluster_head
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    # Create one placement group and make sure its creation successfully.
+    placement_group = ray.util.placement_group([{"CPU": 2}])
+    ray.get(placement_group.ready(), timeout=10)
+    table = ray.util.placement_group_table(placement_group)
+    assert table["state"] == "CREATED"
+
+    # Restart gcs server.
+    cluster.head_node.kill_gcs_server()
+    cluster.head_node.start_gcs_server()
+
+    # Restart the raylet.
+    cluster.remove_node(get_other_nodes(cluster, exclude_head=True)[-1])
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    # Schedule an actor and make sure its creaton successfully.
+    actor = Increase.options(
+        placement_group=placement_group,
+        placement_group_bundle_index=0).remote()
+
+    assert ray.get(actor.method.remote(1), timeout=5) == 3
 
 
 if __name__ == "__main__":

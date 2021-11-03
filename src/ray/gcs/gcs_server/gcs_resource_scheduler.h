@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #pragma once
+#include <optional>
 
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
@@ -173,8 +174,8 @@ class GcsResourceScheduler {
   /// \param required_resources The resources to be scheduled.
   /// \param candidate_nodes The nodes can be used for scheduling.
   /// \return Score of all nodes.
-  std::list<NodeScore> ScoreNodes(const ResourceSet &required_resources,
-                                  const absl::flat_hash_set<NodeID> &candidate_nodes);
+  std::optional<NodeID> GetBestNode(const ResourceSet &required_resources,
+                                    const absl::flat_hash_set<NodeID> &candidate_nodes);
 
   /// Return the resources temporarily deducted from gcs resource manager.
   ///

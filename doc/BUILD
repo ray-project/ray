@@ -29,6 +29,13 @@ py_test(
 )
 
 py_test(
+    name = "big_data_ingestion",
+    size = "small",
+    srcs = ["source/data/_examples/big_data_ingestion.py"],
+    tags = ["exclusive", "team:core", "py37"]
+)
+
+py_test(
     name = "plot_hyperparameter",
     size = "small",
     srcs = ["examples/plot_hyperparameter.py"],
