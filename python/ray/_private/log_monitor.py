@@ -152,12 +152,9 @@ class LogMonitor:
         # runtime_env setup process is logged here
         runtime_env_setup_paths = glob.glob(
             f"{self.logs_dir}/runtime_env*.log")
-        # XXX DO NOT MERGE
-        x = glob.glob(f"{self.logs_dir}/dashboard_agent*")
-        y = glob.glob(f"{self.logs_dir}/ray_client*")
         total_files = 0
         for file_path in (log_file_paths + raylet_err_paths + gcs_err_path +
-                          monitor_log_paths + runtime_env_setup_paths + x + y):
+                          monitor_log_paths + runtime_env_setup_paths):
             if os.path.isfile(
                     file_path) and file_path not in self.log_filenames:
                 job_match = JOB_LOG_PATTERN.match(file_path)
