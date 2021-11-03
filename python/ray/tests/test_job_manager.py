@@ -7,7 +7,8 @@ import psutil
 import pytest
 
 import ray
-from ray._private.job_manager import (JobManager, JobStatus, JOB_ID_METADATA_KEY)
+from ray._private.job_manager import (JobManager, JobStatus,
+                                      JOB_ID_METADATA_KEY)
 from ray._private.test_utils import SignalActor, wait_for_condition
 
 TEST_NAMESPACE = "jobs_test_namespace"
@@ -192,8 +193,8 @@ class TestRuntimeEnv:
             assert job_manager.get_job_status(job_id) == JobStatus.FAILED
 
     def test_pass_metadata(self, job_manager):
-		def dict_to_binary(d):
-			return str(dict(sorted(d.items()))).encode("utf-8")
+        def dict_to_binary(d):
+            return str(dict(sorted(d.items()))).encode("utf-8")
 
         print_metadata_cmd = (
             "python -c\""
@@ -208,9 +209,9 @@ class TestRuntimeEnv:
 
         wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id)
-		assert job_manager.get_job_stdout(job_id) == dict_to_binary({
-			JOB_ID_METADATA_KEY: job_id
-		})
+        assert job_manager.get_job_stdout(job_id) == dict_to_binary({
+            JOB_ID_METADATA_KEY: job_id
+        })
 
         # Check that we can pass custom metadata.
         job_id = job_manager.submit_job(
@@ -221,11 +222,11 @@ class TestRuntimeEnv:
 
         wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id)
-		assert job_manager.get_job_stdout(job_id) == dict_to_binary({
-			JOB_ID_METADATA_KEY: job_id,
-			"key1": "val1",
-			"key2": "val2"
-		})
+        assert job_manager.get_job_stdout(job_id) == dict_to_binary({
+            JOB_ID_METADATA_KEY: job_id,
+            "key1": "val1",
+            "key2": "val2"
+        })
 
 
 class TestAsyncAPI:
