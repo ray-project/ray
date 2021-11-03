@@ -189,7 +189,7 @@ const ResourceSet ResourceSet::GetNumCpus() const {
   return cpu_resource_set;
 }
 
-double ResourceSet::GetNumCpusDouble() const {
+double ResourceSet::GetNumCpusAsDouble() const {
   const FixedPoint cpu_quantity = GetResource(kCPU_ResourceLabel);
   return cpu_quantity.Double();
 }

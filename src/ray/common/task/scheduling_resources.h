@@ -150,7 +150,7 @@ class ResourceSet {
   /// Return the number of CPUs.
   ///
   /// \return Number of CPUs.
-  double GetNumCpusDouble() const;
+  double GetNumCpusAsDouble() const;
 
   /// Return true if the resource set is empty. False otherwise.
   ///
