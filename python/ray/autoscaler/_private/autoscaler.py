@@ -12,6 +12,8 @@ import time
 import yaml
 from enum import Enum
 
+import grpc
+
 try:
     from urllib3.exceptions import MaxRetryError
 except ImportError:
@@ -398,28 +400,37 @@ class StandardAutoscaler:
         self.update_worker_list()
 
     def drain_nodes_via_gcs(self):
-        node_ips = [self.provider.internal_ip(node_id)
-                    for node_id in self.nodes_to_terminate]
-        raylet_ids_to_drain = {self.load_metrics.raylet_id_by_ip[ip]
-                               for ip in node_ips}
+        node_ips = [
+            self.provider.internal_ip(node_id)
+            for node_id in self.nodes_to_terminate
+        ]
+        raylet_ids_to_drain = {
+            self.load_metrics.raylet_id_by_ip[ip]
+            for ip in node_ips
+        }
 
         logger.info(f"Draining raylets with ids {raylet_ids_to_drain}.")
-        request = gcs_service_pb2.DrainNodeRequest(
-            [gcs_service_pb2.DrainNodeData(raylet_id)
-             for raylet_id in raylet_ids_to_drain]
-        )
+        request = gcs_service_pb2.DrainNodeRequest(drain_node_data=[
+            gcs_service_pb2.DrainNodeData(node_id=raylet_id)
+            for raylet_id in raylet_ids_to_drain
+        ])
         try:
             response = self.gcs_node_info_stub.DrainNode(request)
-            drained_raylet_ids = {status_item.node_id for status_item
-                                  in response.drain_node_status}
+            drained_raylet_ids = {
+                status_item.node_id
+                for status_item in response.drain_node_status
+            }
             failed_to_drain = raylet_ids_to_drain - drained_raylet_ids
             if failed_to_drain:
                 logger.error(
                     f"Failed to drain raylets with ids {failed_to_drain}.")
-        except Exception as e:
-            # If we're here, it means the GCS is using Ray version < 1.8.0,
-            # for which DrainNode is not implemented. Fail silently.
-            pass
+        except grpc._channel._InactiveRpcError as e:
+            if e.code().name == "UNIMPLEMENTED":
+                # If we're here, it means the GCS is using Ray version < 1.8.0,
+                # for which DrainNode is not implemented. Fail silently.
+                pass
+            else:
+                raise e
         except Exception:
             # We don't need to interrupt the autoscaler update with an
             # exception, but we should log what went wrong.

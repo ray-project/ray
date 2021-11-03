@@ -143,8 +143,7 @@ class LoadMetrics:
             unwanted_ips = set(mapping) - active_ips
             for unwanted_ip in unwanted_ips:
                 if should_log:
-                    logger.info("LoadMetrics: "
-                                "Removed ip: {unwanted_ip}.")
+                    logger.info("LoadMetrics: " "Removed ip: {unwanted_ip}.")
                 del mapping[unwanted_ip]
             if unwanted_ips and should_log:
                 logger.info(

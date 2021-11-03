@@ -3,7 +3,7 @@
 # RayCluster settings:
 
 # image is Ray image to use for the head and workers of this Ray cluster.
-image: rayproject/ray:latest
+image: rayproject/ray:1.8.0
 # headPodType is the podType used for the Ray head node (as configured below).
 headPodType: rayHeadType
 # podTypes is the list of pod configurations available for use as Ray nodes.
@@ -96,7 +96,7 @@ namespacedOperator: false
 # in which to launch the operator.
 operatorNamespace: default
 # operatorImage - The image used in the operator deployment.
-operatorImage: rayproject/ray:latest
+operatorImage: rayproject/ray:nightly
 # `rayproject/ray:latest` contains the latest official release version of Ray.
 # `rayproject/ray:nightly` runs the current master version of Ray.
 # For a particular official release version of Ray, use `rayproject/ray:1.x.y`.
