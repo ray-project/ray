@@ -27,7 +27,7 @@ class RequestMetadata:
     http_headers: Dict[str, str] = field(default_factory=dict)
 
     # This flag will be set to true if the input argument is manually pickled
-    # and it needs to be deserialized by the backend worker.
+    # and it needs to be deserialized by the replica.
     http_arg_is_pickled: bool = False
 
     def __post_init__(self):
@@ -139,7 +139,7 @@ class ReplicaSet:
     async def assign_replica(self, query: Query) -> ray.ObjectRef:
         """Given a query, submit it to a replica and return the object ref.
         This method will keep track of the in flight queries for each replicas
-        and only send a query to available replicas (determined by the backend
+        and only send a query to available replicas (determined by the
         max_concurrent_quries value.)
         """
         endpoint = query.metadata.endpoint
@@ -179,7 +179,7 @@ class Router:
             deployment_name: str,
             event_loop: asyncio.BaseEventLoop = None,
     ):
-        """Router process incoming queries: choose backend, and assign replica.
+        """Router process incoming queries: assign a replica.
 
         Args:
             controller_handle(ActorHandle): The controller handle.

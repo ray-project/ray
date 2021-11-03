@@ -106,12 +106,16 @@ class Mean(AggregateFn):
 
 
 class Std(AggregateFn):
-    """Defines standard deviation aggregation."""
+    """Defines standard deviation aggregation.
 
-    # Uses Welford's online method for an accumulator-style computation of the
-    # standard deviation. This method was chosen due to it's numerical
-    # stability, and it being computable in a single pass. See
-    # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+    Uses Welford's online method for an accumulator-style computation of the
+    standard deviation. This method was chosen due to it's numerical
+    stability, and it being computable in a single pass.
+    This may give different (but more accurate) results than NumPy, Pandas,
+    and sklearn, which use a less numerically stable two-pass algorithm.
+    See
+    https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+    """
 
     def __init__(self, on: AggregateOnT = None, ddof: int = 1):
         on_fn = _to_on_fn(on)
@@ -120,7 +124,8 @@ class Std(AggregateFn):
             # Accumulates the current count, the current mean, and the sum of
             # squared differences from the current mean (M2).
             M2, mean, count = a
-            # Select the data on which we want to calculate the mean.
+            # Select the data on which we want to calculate the standard
+            # deviation.
             val = on_fn(r)
 
             count += 1
@@ -132,6 +137,8 @@ class Std(AggregateFn):
 
         def merge(a: List[float], b: List[float]):
             # Merges two accumulations into one.
+            # See
+            # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
             M2_a, mean_a, count_a = a
             M2_b, mean_b, count_b = b
             delta = mean_b - mean_a
@@ -146,6 +153,8 @@ class Std(AggregateFn):
             return [M2, mean, count]
 
         def finalize(a: List[float]):
+            # Compute the final standard deviation from the accumulated
+            # sum of squared differences from current mean and the count.
             M2, mean, count = a
             if count < 2:
                 return 0.0
