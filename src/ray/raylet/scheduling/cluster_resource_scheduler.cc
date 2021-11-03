@@ -342,7 +342,7 @@ const NodeResources &ClusterResourceScheduler::GetLocalNodeResources() const {
 }
 
 NodeResources *ClusterResourceScheduler::GetMutableLocalNodeResources() {
-  const auto &node_it = nodes_.find(local_node_id_);
+  auto node_it = nodes_.find(local_node_id_);
   RAY_CHECK(node_it != nodes_.end());
   return node_it->second.GetMutableLocalView();
 }
