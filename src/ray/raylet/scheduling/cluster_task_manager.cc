@@ -714,50 +714,8 @@ void ClusterTaskManager::FillResourceUsage(
 
   int num_reported = 0;
 
-  // 1-CPU optimization
-  static const ResourceSet one_cpu_resource_set(
-      absl::flat_hash_map<std::string, double>({{kCPU_ResourceLabel, 1}}));
-  static const SchedulingClass one_cpu_scheduling_cls(
-      TaskSpecification::GetSchedulingClass(one_cpu_resource_set));
-  {
-    num_reported++;
-    int ready_count = 0;
-    auto it = tasks_to_schedule_.find(one_cpu_scheduling_cls);
-    if (it != tasks_to_schedule_.end()) {
-      ready_count += it->second.size();
-    }
-    it = tasks_to_dispatch_.find(one_cpu_scheduling_cls);
-    if (it != tasks_to_dispatch_.end()) {
-      ready_count += it->second.size();
-    }
-    int infeasible_count = 0;
-    it = infeasible_tasks_.find(one_cpu_scheduling_cls);
-    if (it != infeasible_tasks_.end()) {
-      infeasible_count += it->second.size();
-    }
-    const int total_count = ready_count + infeasible_count;
-    if (total_count > 0) {
-      auto by_shape_entry = resource_load_by_shape->Add();
-
-      for (const auto &[label, quantity] : one_cpu_resource_set.GetResourceMap()) {
-        // Add to `resource_loads`.
-        (*resource_loads)[label] += quantity * total_count;
-
-        // Add to `resource_load_by_shape`.
-        (*by_shape_entry->mutable_shape())[label] = quantity;
-      }
-
-      by_shape_entry->set_num_ready_requests_queued(ready_count);
-      by_shape_entry->set_num_infeasible_requests_queued(infeasible_count);
-      by_shape_entry->set_backlog_size(TotalBacklogSize(one_cpu_scheduling_cls));
-    }
-  }
-
   for (const auto &pair : tasks_to_schedule_) {
     const auto &scheduling_class = pair.first;
-    if (scheduling_class == one_cpu_scheduling_cls) {
-      continue;
-    }
     if (num_reported++ >= max_resource_shapes_per_load_report_ &&
         max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
@@ -792,9 +750,6 @@ void ClusterTaskManager::FillResourceUsage(
 
   for (const auto &pair : tasks_to_dispatch_) {
     const auto &scheduling_class = pair.first;
-    if (scheduling_class == one_cpu_scheduling_cls) {
-      continue;
-    }
     if (num_reported++ >= max_resource_shapes_per_load_report_ &&
         max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
@@ -825,9 +780,6 @@ void ClusterTaskManager::FillResourceUsage(
 
   for (const auto &pair : infeasible_tasks_) {
     const auto &scheduling_class = pair.first;
-    if (scheduling_class == one_cpu_scheduling_cls) {
-      continue;
-    }
     if (num_reported++ >= max_resource_shapes_per_load_report_ &&
         max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
