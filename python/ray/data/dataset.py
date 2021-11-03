@@ -825,13 +825,13 @@ class Dataset(Generic[T]):
 
         Examples:
             >>> ray.data.range(100).aggregate(Max())
-            >>> ray.data.range_arrow(100).aggregate(Max("value"))
+            >>> ray.data.range_arrow(100).aggregate(
+                Max("value"), Mean("value"))
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             aggs: Aggregations to do.
-                Currently only single aggregation is supported.
 
         Returns:
             If the input dataset is a simple dataset then the output is
