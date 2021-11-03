@@ -226,9 +226,12 @@ Java_io_ray_runtime_object_NativeObjectStore_nativeGetOwnershipInfo(JNIEnv *env,
   CoreWorkerProcess::GetCoreWorker().GetOwnershipInfo(object_id, &address,
                                                       &serialized_object_status);
   auto address_str = address.SerializeAsString();
-  auto arr = NativeStringToJavaByteArray(env, address_str);
+  jobject java_ownership_info =
+      env->NewObject(java_ownership_info_class, java_ownership_info_init,
+                     NativeStringToJavaByteArray(env, address_str),
+                     NativeStringToJavaByteArray(env, serialized_object_status));
 
-  return arr;
+  return java_ownership_info;
 }
 
 JNIEXPORT void JNICALL

@@ -64,6 +64,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     out.writeObject(this.getType());
     RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
     OwnershipInfo info = runtime.getObjectStore().getOwnershipInfo(this.getId());
+
     out.writeInt(info.getSerializedOwnerAddress().length);
     out.write(info.getSerializedOwnerAddress());
     out.writeInt(info.getSerializedObjectStatus().length);
@@ -76,11 +77,12 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     this.id = (ObjectId) in.readObject();
     this.type = (Class<T>) in.readObject();
     int ownerAddressByteslen = in.readInt();
+
     byte[] serializedOwnerAddress = new byte[ownerAddressByteslen];
-    in.readFully(serializedOwnerAddress, 0, ownerAddressByteslen);
+    in.readFully(serializedOwnerAddress);
     int objectStatusBytesLen = in.readInt();
     byte[] serializedObjectStatus = new byte[objectStatusBytesLen];
-    in.readFully(serializedObjectStatus, 0, objectStatusBytesLen);
+    in.readFully(serializedObjectStatus);
     addLocalReference();
     RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
     runtime
