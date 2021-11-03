@@ -21,7 +21,7 @@ public class NamespaceTest {
   public void testIsolationBetweenNamespaces() throws IOException, InterruptedException {
     System.setProperty("ray.job.namespace", "test2");
     testIsolation(
-        NamespaceTest.class,
+        MainClassForNamespaceTest.class,
         () ->
             Assert.assertThrows(
                 NoSuchElementException.class,
@@ -34,15 +34,38 @@ public class NamespaceTest {
   public void testIsolationInTheSameNamespaces() throws IOException, InterruptedException {
     System.setProperty("ray.job.namespace", "test1");
     testIsolation(
-        NamespaceTest.class,
+        MainClassForNamespaceTest.class,
         () -> {
           ActorHandle<A> a = (ActorHandle<A>) Ray.getGlobalActor("a").get();
           Assert.assertEquals("hello", a.task(A::hello).remote().get());
         });
   }
 
-  public static void main(String[] args) throws IOException, InterruptedException {
-    System.setProperty("ray.job.namespace", "test1");
+  public void testIsolationBetweenAnonymousNamespaces() throws IOException, InterruptedException {
+    NamespaceTest.testIsolation(
+        MainClassForAnonymousNamespaceTest.class,
+        () ->
+            Assert.assertThrows(
+                NoSuchElementException.class,
+                () -> {
+                  Ray.getGlobalActor("a").get();
+                }));
+  }
+
+  public static class MainClassForNamespaceTest {
+    public static void main(String[] args) throws IOException, InterruptedException {
+      System.setProperty("ray.job.namespace", "test1");
+      startDriverWithGlobalActor();
+    }
+  }
+
+  public static class MainClassForAnonymousNamespaceTest {
+    public static void main(String[] args) throws IOException, InterruptedException {
+      startDriverWithGlobalActor();
+    }
+  }
+
+  private static void startDriverWithGlobalActor() throws InterruptedException {
     Ray.init();
     ActorHandle<A> a = Ray.actor(A::new).setGlobalName("a").remote();
     Assert.assertEquals("hello", a.task(A::hello).remote().get());
@@ -53,7 +76,7 @@ public class NamespaceTest {
     Ray.shutdown();
   }
 
-  static void testIsolation(Class<?> driverClass, Runnable runnable)
+  private static void testIsolation(Class<?> driverClass, Runnable runnable)
       throws IOException, InterruptedException {
     Process driver = null;
     try {
