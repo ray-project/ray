@@ -16,7 +16,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import apply_grad_clipping
+from ray.rllib.utils.torch_utils import apply_grad_clipping
 from ray.rllib.utils.typing import TrainerConfigDict
 
 torch, nn = try_import_torch()

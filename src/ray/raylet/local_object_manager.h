@@ -39,10 +39,8 @@ class LocalObjectManager {
   LocalObjectManager(
       const NodeID &node_id, std::string self_node_address, int self_node_port,
       size_t free_objects_batch_size, int64_t free_objects_period_ms,
-      IOWorkerPoolInterface &io_worker_pool,
-      gcs::ObjectInfoAccessor &object_info_accessor,
-      rpc::CoreWorkerClientPool &owner_client_pool, int max_io_workers,
-      int64_t min_spilling_size, bool is_external_storage_type_fs,
+      IOWorkerPoolInterface &io_worker_pool, rpc::CoreWorkerClientPool &owner_client_pool,
+      int max_io_workers, int64_t min_spilling_size, bool is_external_storage_type_fs,
       int64_t max_fused_object_count,
       std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
@@ -53,7 +51,6 @@ class LocalObjectManager {
         free_objects_period_ms_(free_objects_period_ms),
         free_objects_batch_size_(free_objects_batch_size),
         io_worker_pool_(io_worker_pool),
-        object_info_accessor_(object_info_accessor),
         owner_client_pool_(owner_client_pool),
         on_objects_freed_(on_objects_freed),
         last_free_objects_at_ms_(current_time_ms()),
@@ -196,9 +193,6 @@ class LocalObjectManager {
 
   /// A worker pool, used for spilling and restoring objects.
   IOWorkerPoolInterface &io_worker_pool_;
-
-  /// A GCS client, used to update locations for spilled objects.
-  gcs::ObjectInfoAccessor &object_info_accessor_;
 
   /// Cache of gRPC clients to owners of objects pinned on
   /// this node.
