@@ -419,7 +419,7 @@ to make sure the data is evenly distributed across the source files.
 Lastly, LightGBM-Ray supports **distributed dataframe** representations, such
 as `Modin <https://modin.readthedocs.io/en/latest/>`_ and
 `Dask dataframes <https://docs.dask.org/en/latest/dataframe.html>`_
-(used with `Dask on Ray <https://docs.ray.io/en/master/dask-on-ray.html>`_\ ).
+(used with `Dask on Ray <https://docs.ray.io/en/master/data/dask-on-ray.html>`_\ ).
 Here, LightGBM-Ray will check on which nodes the distributed partitions
 are currently located, and will assign partitions to actors in order to
 minimize cross-node data transfer. Please note that we also assume here
@@ -522,11 +522,11 @@ More examples
 For complete end to end examples, please have a look at
 the `examples folder <https://github.com/ray-project/lightgbm_ray/tree/master/examples/>`_\ :
 
-* `Simple sklearn breastcancer dataset example <https://github.com/ray-project/lightgbm_ray/tree/master/examples/simple.py>`_ (requires ``sklearn``\ )
-* `HIGGS classification example <https://github.com/ray-project/lightgbm_ray/tree/master/examples/higgs.py>`_
+* `Simple sklearn breastcancer dataset example <https://github.com/ray-project/lightgbm_ray/blob/main/lightgbm_ray/examples/simple.py>`_ (requires ``sklearn``\ )
+* `HIGGS classification example <https://github.com/ray-project/lightgbm_ray/blob/main/lightgbm_ray/examples/higgs.py>`_
   (\ `download dataset (2.6 GB) <https://archive.ics.uci.edu/ml/machine-learning-databases/00280/HIGGS.csv.gz>`_\ )
-* `HIGGS classification example with Parquet <https://github.com/ray-project/lightgbm_ray/tree/master/examples/higgs_parquet.py>`_ (uses the same dataset)
-* `Test data classification <https://github.com/ray-project/lightgbm_ray/tree/master/examples/train_on_test_data.py>`_ (uses a self-generated dataset)
+* `HIGGS classification example with Parquet <https://github.com/ray-project/lightgbm_ray/blob/main/lightgbm_ray/examples/higgs_parquet.py>`_ (uses the same dataset)
+* `Test data classification <https://github.com/ray-project/lightgbm_ray/blob/main/lightgbm_ray/examples/train_on_test_data.py>`_ (uses a self-generated dataset)
 
 API reference
 -------------
