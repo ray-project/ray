@@ -459,7 +459,7 @@ def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
     cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
 
-    @ray.remote
+    @ray.remote(num_cpus=1)
     class A:
         def ready(self):
             pass
@@ -644,6 +644,58 @@ def test_placement_group_removal_leak_regression(ray_start_cluster):
         return expected_bundle_wildcard_val == bundle_resources
 
     wait_for_condition(check_bundle_leaks)
+
+
+def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
+    """Please refer to https://github.com/ray-project/ray/pull/19911
+    for more details.
+    """
+    with monkeypatch.context() as m:
+        # Increase broadcasting interval so that node resource will arrive
+        # at raylet after local resource all being allocated.
+        m.setenv("RAY_raylet_report_resources_period_milliseconds", "2000")
+        m.setenv("RAY_grpc_based_resource_broadcast", "true")
+        cluster = ray_start_cluster
+
+        cluster.add_node(num_cpus=16, object_store_memory=1e9)
+        cluster.wait_for_nodes()
+        cluster.add_node(num_cpus=16, num_gpus=1)
+        cluster.wait_for_nodes()
+        NUM_CPU_BUNDLES = 30
+
+        @ray.remote(num_cpus=1)
+        class Worker(object):
+            def __init__(self, i):
+                self.i = i
+
+            def work(self):
+                time.sleep(0.1)
+                print("work ", self.i)
+
+        @ray.remote(num_cpus=1, num_gpus=1)
+        class Trainer(object):
+            def __init__(self, i):
+                self.i = i
+
+            def train(self):
+                time.sleep(0.2)
+                print("train ", self.i)
+
+        ray.init(address="auto")
+        bundles = [{"CPU": 1, "GPU": 1}]
+        bundles += [{"CPU": 1} for _ in range(NUM_CPU_BUNDLES)]
+        pg = placement_group(bundles, strategy="PACK")
+        ray.get(pg.ready())
+
+        # Local resource will be allocated and here we are to ensure
+        # local view is consistent and node resouce updates are discarded
+        workers = [
+            Worker.options(placement_group=pg).remote(i)
+            for i in range(NUM_CPU_BUNDLES)
+        ]
+        trainer = Trainer.options(placement_group=pg).remote(0)
+        ray.get([workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)])
+        ray.get(trainer.train.remote())
 
 
 if __name__ == "__main__":
