@@ -8,6 +8,8 @@ from ray._private.test_utils import get_error_message, init_error_pubsub, \
     run_string_as_driver
 from ray.cluster_utils import Cluster
 
+avoid_multi_node = (sys.platform == 'win32')
+
 
 def test_isolation(shutdown_only):
     info = ray.init(namespace="namespace")
@@ -184,6 +186,7 @@ def test_detached_warning(shutdown_only):
     assert error.type == ray_constants.DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR
 
 
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_namespace_client():
     cluster = Cluster()
     cluster.add_node(num_cpus=4, ray_client_server_port=8080)

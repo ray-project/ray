@@ -17,6 +17,8 @@ from ray.core.generated import gcs_service_pb2_grpc
 from ray._private.test_utils import (init_error_pubsub, get_error_message,
                                      run_string_as_driver, wait_for_condition)
 
+avoid_multi_node = (sys.platform == 'win32')
+
 
 def search_raylet(cluster):
     """Return the number of running processes."""
@@ -94,6 +96,7 @@ def test_retry_application_level_error(ray_start_regular):
         ray.get(r3)
 
 
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_connect_with_disconnected_node(shutdown_only):
     config = {
         "num_heartbeats_timeout": 50,
@@ -178,7 +181,6 @@ if __name__ == "__main__":
     assert x == 42
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("debug_enabled", [False, True])
 def test_object_lost_error(ray_start_cluster, debug_enabled):
     cluster = ray_start_cluster
@@ -245,7 +247,6 @@ def test_object_lost_error(ray_start_cluster, debug_enabled):
         assert ("test_object_lost_error" in error) == debug_enabled
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 0,
@@ -338,7 +339,6 @@ def test_raylet_graceful_shutdown_through_rpc(ray_start_cluster_head,
     ray.get(f.options(num_cpus=0).remote())
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [{
         "num_cpus": 0,

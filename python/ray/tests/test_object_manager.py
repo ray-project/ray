@@ -1,6 +1,7 @@
 from collections import defaultdict
 import multiprocessing
 import numpy as np
+import os
 import pytest
 import time
 import warnings
@@ -12,6 +13,8 @@ from ray.exceptions import GetTimeoutError
 if (multiprocessing.cpu_count() < 40
         or ray._private.utils.get_system_memory() < 50 * 10**9):
     warnings.warn("This test must be run on large machines.")
+
+avoid_multi_node = (os.name == 'nt')
 
 
 def create_cluster(num_nodes):
@@ -25,6 +28,8 @@ def create_cluster(num_nodes):
 
 @pytest.fixture()
 def ray_start_cluster_with_resource():
+    if avoid_multi_node:
+        pytest.skip('multi-node not supported')
     num_nodes = 5
     cluster = create_cluster(num_nodes)
     yield cluster, num_nodes
@@ -265,6 +270,7 @@ def test_many_small_transfers(ray_start_cluster_with_resource):
 # (4) Allow the local object to be evicted.
 # (5) Try to get the object again. Now the retry timer should kick in and
 #     successfuly pull the remote object.
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_pull_request_retry(shutdown_only):
     cluster = Cluster()
     cluster.add_node(num_cpus=0, num_gpus=1, object_store_memory=100 * 2**20)
@@ -296,6 +302,7 @@ def test_pull_request_retry(shutdown_only):
     ray.get(driver.remote())
 
 
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_pull_bundles_admission_control(shutdown_only):
     cluster = Cluster()
     object_size = int(6e6)
@@ -329,6 +336,7 @@ def test_pull_bundles_admission_control(shutdown_only):
     ray.get(tasks)
 
 
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_pull_bundles_pinning(shutdown_only):
     cluster = Cluster()
     object_size = int(50e6)
@@ -353,6 +361,7 @@ def test_pull_bundles_pinning(shutdown_only):
     ray.get(foo.remote(*task_args))
 
 
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_pull_bundles_admission_control_dynamic(shutdown_only):
     # This test is the same as test_pull_bundles_admission_control, except that
     # the object store's capacity starts off higher and is later consumed
@@ -399,6 +408,7 @@ def test_pull_bundles_admission_control_dynamic(shutdown_only):
     del allocated
 
 
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_max_pinned_args_memory(shutdown_only):
     cluster = Cluster()
     cluster.add_node(
@@ -431,6 +441,7 @@ def test_max_pinned_args_memory(shutdown_only):
     ray.get(large_arg.remote(ref))
 
 
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_ray_get_task_args_deadlock(shutdown_only):
     cluster = Cluster()
     object_size = int(6e6)

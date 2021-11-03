@@ -1,9 +1,12 @@
 import numpy as np
 import pytest
+import sys
 import time
 
 import ray
 from ray.cluster_utils import Cluster
+
+avoid_multi_node = (sys.platform == 'win32')
 
 
 @pytest.fixture(params=[(1, 4), (4, 4)])
@@ -11,6 +14,8 @@ def ray_start_combination(request):
     num_nodes = request.param[0]
     num_workers_per_scheduler = request.param[1]
     # Start the Ray processes.
+    if avoid_multi_node:
+        pytest.skip('multi-node not supported')
     cluster = Cluster(
         initialize_head=True,
         head_node_args={

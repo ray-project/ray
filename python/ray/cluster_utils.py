@@ -96,6 +96,8 @@ class Cluster:
             shutdown_at_exit (bool): If True, registers an exit hook
                 for shutting down all started processes.
         """
+        if os.name == 'nt':
+            raise RuntimeError('cannot currently use clusters on windows')
         self.head_node = None
         self.worker_nodes = set()
         self.redis_address = None

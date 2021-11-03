@@ -8,6 +8,8 @@ from ray.cluster_utils import Cluster
 import ray.ray_constants as ray_constants
 from ray._private.test_utils import get_error_message
 
+avoid_multi_node = (sys.platform == 'win32')
+
 
 @pytest.fixture(params=[1, 4])
 def ray_start_reconstruction(request):
@@ -15,6 +17,8 @@ def ray_start_reconstruction(request):
 
     plasma_store_memory = int(0.5 * 10**9)
 
+    if avoid_multi_node:
+        pytest.skip('multi-node not supported')
     cluster = Cluster(
         initialize_head=True,
         head_node_args={

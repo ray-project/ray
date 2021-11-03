@@ -13,6 +13,8 @@ from ray.autoscaler import sdk
 
 IMAGE_ENV = "KUBERNETES_CLUSTER_LAUNCHER_TEST_IMAGE"
 
+avoid_multi_node = (os.name == 'nt')
+
 
 def fill_image_field(pod_config):
     image = os.getenv(IMAGE_ENV, "rayproject/ray:nightly")
@@ -35,6 +37,8 @@ def get_config():
 
 
 class KubernetesTest(unittest.TestCase):
+    @pytest.mark.xfail("avoid_multi_node",
+                       reason="cluster requires multi-node")
     def test_up_and_down(self):
         """(1) Runs 'ray up' with a Kubernetes config that specifies
         min_workers=1.

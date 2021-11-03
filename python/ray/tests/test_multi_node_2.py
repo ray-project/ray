@@ -1,5 +1,6 @@
 import logging
 import pytest
+import sys
 import time
 
 import ray
@@ -13,7 +14,10 @@ from ray._private.test_utils import (generate_system_config_map,
 
 logger = logging.getLogger(__name__)
 
+avoid_multi_node = (sys.platform == 'win32')
 
+
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_cluster():
     """Basic test for adding and removing nodes in cluster."""
     g = Cluster(initialize_head=False)
@@ -26,6 +30,7 @@ def test_cluster():
     assert not any(n.any_processes_alive() for n in [node, node2])
 
 
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_shutdown():
     g = Cluster(initialize_head=False)
     node = g.add_node()

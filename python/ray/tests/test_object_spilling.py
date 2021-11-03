@@ -18,6 +18,8 @@ from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.internal.internal_api import memory_summary
 
+avoid_multi_node = (sys.platform == 'win32')
+
 
 def run_basic_workload():
     """Run the workload that requires spilling."""
@@ -126,8 +128,6 @@ def test_default_config(shutdown_only):
     assert config["type"] == "mock_distributed_fs"
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
 def test_default_config_cluster(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
@@ -480,8 +480,6 @@ def test_spill_deadlock(object_spilling_config, shutdown_only):
     assert_no_thrashing(address["redis_address"])
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
 def test_partial_retval_allocation(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(object_store_memory=100 * 1024 * 1024)
@@ -497,8 +495,6 @@ def test_partial_retval_allocation(ray_start_cluster):
         print(obj.size)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
 def test_pull_spilled_object(ray_start_cluster,
                              multi_node_object_spilling_config, shutdown_only):
     cluster = ray_start_cluster
@@ -601,8 +597,7 @@ def test_pull_spilled_object_failure(object_spilling_config,
     assert hash_value == hash_value1
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_spill_dir_cleanup_on_raylet_start(object_spilling_config):
     object_spilling_config, temp_folder = object_spilling_config
     cluster = Cluster()

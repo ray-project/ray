@@ -121,6 +121,8 @@ def ray_start_10_cpus(request):
 
 @contextmanager
 def _ray_start_cluster(**kwargs):
+    if os.name == 'nt':
+        pytest.skip('multi-node not supported on windows')
     init_kwargs = get_default_fixture_ray_kwargs()
     num_nodes = 0
     do_init = False
@@ -273,6 +275,8 @@ def two_node_cluster():
         "object_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
     }
+    if os.name == 'nt':
+        pytest.skip('multi-node not supported on windows')
     cluster = ray.cluster_utils.Cluster(
         head_node_args={"_system_config": system_config})
     for _ in range(2):

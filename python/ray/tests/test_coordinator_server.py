@@ -22,6 +22,8 @@ import pytest
 
 class OnPremCoordinatorServerTest(unittest.TestCase):
     def setUp(self):
+        if os.name == 'nt':
+            pytest.skip('multi-node not supported on windows')
         self.list_of_node_ips = ["0.0.0.0:1", "0.0.0.0:2"]
         self.host, self.port = socket.gethostbyname(socket.gethostname()), 1234
         self.server = OnPremCoordinatorServer(

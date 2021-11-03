@@ -37,6 +37,8 @@ PID = "pid"
 OBJECT_SIZE = "object size"
 REFERENCE_TYPE = "reference type"
 
+avoid_multi_node = (os.name == 'nt')
+
 
 def data_lines(memory_str):
     for line in memory_str.split("\n"):
@@ -233,6 +235,7 @@ def test_pinned_object_call_site(ray_start_regular):
     assert num_objects(info) == 0, info
 
 
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_multi_node_stats(shutdown_only):
     # NOTE(mwtian): using env var only enables the feature on workers, while
     # using head_node_args={"_system_config": ray_config} only enables the

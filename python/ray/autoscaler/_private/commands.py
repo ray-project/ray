@@ -160,6 +160,8 @@ def create_or_update_cluster(
     # no_monitor_on_head is an internal flag used by the Ray K8s operator.
     # If True, prevents autoscaling config sync to the Ray head during cluster
     # creation. See https://github.com/ray-project/ray/pull/13720.
+    if os.name == 'nt':
+        raise RuntimeError('cannot currently use multi-node on windows')
     set_using_login_shells(use_login_shells)
     if not use_login_shells:
         cmd_output_util.set_allow_interactive(False)

@@ -1,11 +1,9 @@
 # coding: utf-8
 import collections
 import logging
-import platform
 import subprocess
 import sys
 import time
-import unittest
 
 import numpy as np
 import pytest
@@ -21,6 +19,8 @@ from ray._private.test_utils import (wait_for_condition, new_scheduler_enabled,
                                      SignalActor)
 
 logger = logging.getLogger(__name__)
+
+avoid_multi_node = (sys.platform == 'win32')
 
 
 def attempt_to_load_balance(remote_function,
@@ -42,7 +42,6 @@ def attempt_to_load_balance(remote_function,
     assert attempts < num_attempts
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_load_balancing(ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets
     # in a roughly equal manner.
@@ -62,7 +61,6 @@ def test_load_balancing(ray_start_cluster):
     attempt_to_load_balance(f, [], 1000, num_nodes, 100)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Times out on Windows")
 def test_hybrid_policy(ray_start_cluster):
 
     cluster = ray_start_cluster
@@ -223,8 +221,6 @@ def test_load_balancing_with_dependencies(ray_start_cluster, fast):
     attempt_to_load_balance(f, [x], 100, num_nodes, 25)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows. Multi node.")
 def test_load_balancing_under_constrained_memory(ray_start_cluster):
     # This test ensures that tasks are being assigned to all raylets in a
     # roughly equal manner even when the tasks have dependencies.
@@ -269,8 +265,6 @@ def test_load_balancing_under_constrained_memory(ray_start_cluster):
     ray.get(tasks)
 
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows. Multi node.")
 def test_spillback_waiting_task_on_oom(ray_start_cluster):
     # This test ensures that tasks are spilled if they are not schedulable due
     # to lack of object store memory.
@@ -425,7 +419,6 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
     }).remote([f_obj])) == worker_node.unique_id
 
 
-@unittest.skipIf(sys.platform == "win32", "Failing on Windows.")
 def test_lease_request_leak(shutdown_only):
     ray.init(num_cpus=1, _system_config={"object_timeout_milliseconds": 200})
 
@@ -447,7 +440,6 @@ def test_lease_request_leak(shutdown_only):
     wait_for_condition(lambda: object_memory_usage() == 0)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_many_args(ray_start_cluster):
     cluster = ray_start_cluster
     object_size = int(1e6)
@@ -521,6 +513,7 @@ def test_pull_manager_at_capacity_reports(ray_start_cluster):
     wait_for_condition(lambda: not fetches_queued())
 
 
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def build_cluster(num_cpu_nodes, num_gpu_nodes):
     cluster = ray.cluster_utils.Cluster()
     gpu_ids = [
@@ -534,7 +527,7 @@ def build_cluster(num_cpu_nodes, num_gpu_nodes):
     return cluster, cpu_ids, gpu_ids
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_gpu(monkeypatch):
     monkeypatch.setenv("RAY_scheduler_avoid_gpu_nodes", "1")
     n = 5
@@ -620,7 +613,6 @@ def test_head_node_without_cpu(ray_start_cluster):
         time.sleep(1)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_gpu_scheduling_liveness(ray_start_cluster):
     """Check if the GPU scheduling is in progress when
         it is used with the placement group

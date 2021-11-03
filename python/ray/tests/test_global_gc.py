@@ -1,6 +1,7 @@
 # coding: utf-8
 import gc
 import logging
+import sys
 import weakref
 
 import numpy as np
@@ -13,6 +14,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.internal.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
+avoid_multi_node = (sys.platform == 'win32')
 
 
 def test_auto_local_gc(shutdown_only):
@@ -58,6 +60,7 @@ def test_auto_local_gc(shutdown_only):
         gc.enable()
 
 
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_global_gc(shutdown_only):
     cluster = ray.cluster_utils.Cluster()
     cluster.add_node(
@@ -108,6 +111,7 @@ def test_global_gc(shutdown_only):
         gc.enable()
 
 
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_global_gc_when_full(shutdown_only):
     cluster = ray.cluster_utils.Cluster()
     for _ in range(2):

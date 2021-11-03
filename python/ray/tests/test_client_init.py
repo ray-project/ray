@@ -1,4 +1,5 @@
 """Client tests that run their own init (as with init_and_serve) live here"""
+import os
 import pytest
 
 import time
@@ -42,6 +43,8 @@ class C:
 
 @pytest.fixture
 def init_and_serve_lazy():
+    if os.name == 'nt':
+        pytest.skip('multi-node not supported on windows')
     cluster = ray.cluster_utils.Cluster()
     cluster.add_node(num_cpus=1, num_gpus=0)
     cluster.wait_for_nodes(1)

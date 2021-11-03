@@ -81,6 +81,8 @@ boto3_list = [{
     }
 }]
 
+avoid_multi_node = (sys.platform == 'win32')
+
 
 @pytest.fixture
 def configure_lang():
@@ -494,6 +496,7 @@ def test_ray_status():
     ray.shutdown()
 
 
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_ray_status_multinode():
     from ray.cluster_utils import Cluster
     cluster = Cluster()

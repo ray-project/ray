@@ -35,6 +35,8 @@ file mounts.
 START = "start"
 JOIN = "join"
 
+avoid_multi_node = (sys.platform == 'win32')
+
 
 def mock_start(self):
     # Detects any file mounts passed in NodeUpdaterThread.__init__()
@@ -134,6 +136,8 @@ def custom_resources():
 
 
 class OperatorTest(unittest.TestCase):
+    @pytest.mark.xfail("avoid_multi_node",
+                       reason="cluster requires multi-node")
     def test_no_file_mounts_k8s_operator_cluster_launch(self):
         with patch.object(NodeUpdaterThread, START, mock_start),\
                 patch.object(NodeUpdaterThread, JOIN, mock_join),\

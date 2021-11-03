@@ -1,12 +1,13 @@
 import pytest
-import platform
+import sys
 
 import ray
 from ray.cluster_utils import AutoscalingCluster
 
+avoid_multi_node = (sys.platform == 'win32')
 
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+
+@pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
 def test_fake_autoscaler_basic_e2e(shutdown_only):
     # __example_begin__
     cluster = AutoscalingCluster(

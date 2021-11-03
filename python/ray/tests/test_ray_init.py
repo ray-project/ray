@@ -15,6 +15,8 @@ from ray._raylet import ClientObjectRef
 from ray.util.client.worker import Worker
 import grpc
 
+avoid_multi_node = (sys.platform == 'win32')
+
 
 @pytest.fixture
 def password():
@@ -70,6 +72,8 @@ class TestRedisPassword:
             host=redis_ip, port=redis_port, password=password)
         assert redis_client.ping()
 
+    @pytest.mark.xfail("avoid_multi_node",
+                       reason="cluster requires multi-node")
     def test_redis_password_cluster(self, password, shutdown_only):
         @ray.remote
         def f():
