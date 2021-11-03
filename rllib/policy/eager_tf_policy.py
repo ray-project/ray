@@ -430,7 +430,7 @@ def build_eager_tf_policy(
 
             # Pass lazy (eager) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
-            input_dict.is_training = False
+            input_dict.eval()
             # Pack internal state inputs into (separate) list.
             state_batches = [
                 input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
