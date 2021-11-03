@@ -242,7 +242,7 @@ def _zip_directory(directory: str,
         _dir_travel(dir_path, excludes, handler, logger=logger)
 
 
-def _package_exists(uri: str) -> bool:
+def package_exists(uri: str) -> bool:
     """Check whether the package with given URI exists or not.
 
     Args:
@@ -303,6 +303,38 @@ def get_pkg_uri(protocol, pkg_name):
         protocol=protocol, pkg_name=pkg_name)
 
 
+def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes):
+    protocol, pkg_name = parse_uri(pkg_uri)
+    if protocol == Protocol.GCS:
+        _store_package_in_gcs(pkg_uri, pkg_bytes)
+    elif protocol == Protocol.S3:
+        raise RuntimeError("push_package should not be called with s3 path.")
+    else:
+        raise NotImplementedError(f"Protocol {protocol} is not supported")
+
+
+def create_package(directory: str,
+                   target_path: Path,
+                   include_parent_dir: bool = False,
+                   excludes: Optional[List[str]] = None,
+                   logger: Optional[logging.Logger] = default_logger):
+    if excludes is None:
+        excludes = []
+
+    if logger is None:
+        logger = default_logger
+
+    if not target_path.exists():
+        logger.info(
+            f"Creating a file package for local directory '{directory}'.")
+        _zip_directory(
+            directory,
+            excludes,
+            target_path,
+            include_parent_dir=include_parent_dir,
+            logger=logger)
+
+
 def upload_package_if_needed(
         uri: str,
         base_directory: str,
@@ -331,32 +363,20 @@ def upload_package_if_needed(
     if logger is None:
         logger = default_logger
 
-    if _package_exists(uri):
+    if package_exists(uri):
         return False
 
-    pkg_file = Path(_get_local_path(base_directory, uri))
-    if not pkg_file.exists():
-        logger.info(f"Creating a file package '{uri}' "
-                    f"for local directory '{directory}'.")
-        _zip_directory(
-            directory,
-            excludes,
-            pkg_file,
-            include_parent_dir=include_parent_dir,
-            logger=logger)
+    package_file = Path(_get_local_path(base_directory, uri))
+    create_package(
+        directory,
+        package_file,
+        include_parent_dir=include_parent_dir,
+        excludes=excludes)
 
-    # Push the data to remote storage
-    plugin, protocol, pkg_name = parse_uri(uri)
-    data = Path(pkg_file).read_bytes()
-    if protocol == Protocol.GCS:
-        _store_package_in_gcs(uri, data)
-    elif protocol == Protocol.S3:
-        raise RuntimeError("push_package should not be called with s3 path.")
-    else:
-        raise NotImplementedError(f"Protocol {protocol} is not supported")
+    upload_package_to_gcs(uri, package_file.read_bytes())
 
     # Remove the local file to avoid accumulating temporary zip files.
-    pkg_file.unlink()
+    package_file.unlink()
 
     return True
 

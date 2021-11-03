@@ -9,7 +9,7 @@ import pytest
 from ray.actor import ActorHandle
 from ray.serve.common import (
     DeploymentConfig,
-    BackendInfo,
+    DeploymentInfo,
     BackendTag,
     ReplicaConfig,
     ReplicaTag,
@@ -42,8 +42,8 @@ class MockReplicaActorWrapper:
         self.recovering = False
         # Will be set when `start()` is called.
         self.version = None
-        # Expected to be set in the test.
-        self.ready = False
+        # Initial state for a replica is PENDING_ALLOCATION.
+        self.ready = ReplicaStartupStatus.PENDING_ALLOCATION
         # Will be set when `graceful_stop()` is called.
         self.stopped = False
         # Expected to be set in the test.
@@ -89,10 +89,11 @@ class MockReplicaActorWrapper:
         """Mocked backend_worker return version from reconfigure()"""
         self.starting_version = version
 
-    def start(self, backend_info: BackendInfo, version: DeploymentVersion):
+    def start(self, deployment_info: DeploymentInfo,
+              version: DeploymentVersion):
         self.started = True
         self.version = version
-        self.backend_info = backend_info
+        self.deployment_info = deployment_info
 
     def update_user_config(self, user_config: Any):
         self.started = True
@@ -106,7 +107,7 @@ class MockReplicaActorWrapper:
 
     def check_ready(self) -> ReplicaStartupStatus:
         ready = self.ready
-        self.ready = ReplicaStartupStatus.PENDING
+        self.ready = ReplicaStartupStatus.PENDING_INITIALIZATION
         if ready == ReplicaStartupStatus.SUCCEEDED and self.recovering:
             self.recovering = False
             self.started = True
@@ -130,7 +131,8 @@ class MockReplicaActorWrapper:
     def graceful_stop(self) -> None:
         assert self.started
         self.stopped = True
-        return self.backend_info.deployment_config.graceful_shutdown_timeout_s
+        return (
+            self.deployment_info.deployment_config.graceful_shutdown_timeout_s)
 
     def check_stopped(self) -> bool:
         return self.done_stopping
@@ -146,11 +148,11 @@ class MockReplicaActorWrapper:
         return self.healthy
 
 
-def backend_info(version: Optional[str] = None,
-                 num_replicas: Optional[int] = 1,
-                 user_config: Optional[Any] = None,
-                 **config_opts) -> Tuple[BackendInfo, DeploymentVersion]:
-    info = BackendInfo(
+def deployment_info(version: Optional[str] = None,
+                    num_replicas: Optional[int] = 1,
+                    user_config: Optional[Any] = None,
+                    **config_opts) -> Tuple[DeploymentInfo, DeploymentVersion]:
+    info = DeploymentInfo(
         actor_def=None,
         version=version,
         start_time_ms=0,
@@ -379,12 +381,12 @@ class TestReplicaStateContainer:
 def test_override_goals(mock_backend_state):
     backend_state, _, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info()
+    b_info_1, b_version_1 = deployment_info()
     initial_goal, updating = backend_state.deploy(b_info_1)
     assert updating
     assert not goal_manager.check_complete(initial_goal)
 
-    b_info_2, b_version_2 = backend_info(num_replicas=2)
+    b_info_2, b_version_2 = deployment_info(num_replicas=2)
     new_goal, updating = backend_state.deploy(b_info_2)
     assert updating
     assert goal_manager.check_complete(initial_goal)
@@ -394,7 +396,7 @@ def test_override_goals(mock_backend_state):
 def test_return_existing_goal(mock_backend_state):
     backend_state, _, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info(version="1")
+    b_info_1, b_version_1 = deployment_info(version="1")
     initial_goal, updating = backend_state.deploy(b_info_1)
     assert updating
     assert not goal_manager.check_complete(initial_goal)
@@ -425,7 +427,7 @@ def check_counts(backend_state: BackendState,
 def test_create_delete_single_replica(mock_backend_state):
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info()
+    b_info_1, b_version_1 = deployment_info()
     create_goal, updating = backend_state.deploy(b_info_1)
     assert updating
 
@@ -466,7 +468,7 @@ def test_force_kill(mock_backend_state):
     backend_state, timer, goal_manager = mock_backend_state
 
     grace_period_s = 10
-    b_info_1, b_version_1 = backend_info(
+    b_info_1, b_version_1 = deployment_info(
         graceful_shutdown_timeout_s=grace_period_s)
 
     # Create and delete the backend.
@@ -518,7 +520,7 @@ def test_redeploy_same_version(mock_backend_state):
     # Redeploying with the same version and code should do nothing.
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info(version="1")
+    b_info_1, b_version_1 = deployment_info(version="1")
     goal_1, updating = backend_state.deploy(b_info_1)
     assert updating
 
@@ -570,7 +572,7 @@ def test_redeploy_no_version(mock_backend_state):
     # the replicas.
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info(version=None)
+    b_info_1, b_version_1 = deployment_info(version=None)
     goal_1, updating = backend_state.deploy(b_info_1)
     assert updating
 
@@ -611,7 +613,7 @@ def test_redeploy_no_version(mock_backend_state):
     assert goal_manager.check_complete(goal_2)
 
     # Now deploy a third version after the transition has finished.
-    b_info_3, b_version_3 = backend_info(version="3")
+    b_info_3, b_version_3 = deployment_info(version="3")
     goal_3, updating = backend_state.deploy(b_info_3)
     assert updating
     assert not goal_manager.check_complete(goal_3)
@@ -642,7 +644,7 @@ def test_redeploy_new_version(mock_backend_state):
     # Redeploying with a new version should start a new replica.
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info(version="1")
+    b_info_1, b_version_1 = deployment_info(version="1")
     goal_1, updating = backend_state.deploy(b_info_1)
     assert updating
 
@@ -655,7 +657,7 @@ def test_redeploy_new_version(mock_backend_state):
     assert not goal_manager.check_complete(goal_1)
 
     # Test redeploying while the initial deployment is still pending.
-    b_info_2, b_version_2 = backend_info(version="2")
+    b_info_2, b_version_2 = deployment_info(version="2")
     goal_2, updating = backend_state.deploy(b_info_2)
     assert updating
     assert goal_1 != goal_2
@@ -700,7 +702,7 @@ def test_redeploy_new_version(mock_backend_state):
     assert goal_manager.check_complete(goal_2)
 
     # Now deploy a third version after the transition has finished.
-    b_info_3, b_version_3 = backend_info(version="3")
+    b_info_3, b_version_3 = deployment_info(version="3")
     goal_3, updating = backend_state.deploy(b_info_3)
     assert updating
     assert not goal_manager.check_complete(goal_3)
@@ -744,7 +746,7 @@ def test_deploy_new_config_same_version(mock_backend_state):
     # replica.
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info(version="1")
+    b_info_1, b_version_1 = deployment_info(version="1")
     goal_id, updated = backend_state.deploy(b_info_1)
 
     # Create the replica initially.
@@ -759,7 +761,7 @@ def test_deploy_new_config_same_version(mock_backend_state):
     assert goal_manager.check_complete(goal_id)
 
     # Update to a new config without changing the version.
-    b_info_2, b_version_2 = backend_info(
+    b_info_2, b_version_2 = deployment_info(
         version="1", user_config={"hello": "world"})
     goal_id, updated = backend_state.deploy(b_info_2)
     check_counts(
@@ -793,7 +795,7 @@ def test_deploy_new_config_new_version(mock_backend_state):
     # Deploying a new config with a new version should deploy a new replica.
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info(version="1")
+    b_info_1, b_version_1 = deployment_info(version="1")
     create_goal = backend_state.deploy(b_info_1)
 
     # Create the replica initially.
@@ -808,7 +810,7 @@ def test_deploy_new_config_new_version(mock_backend_state):
     assert goal_manager.check_complete(create_goal)
 
     # Update to a new config and a new version.
-    b_info_2, b_version_2 = backend_info(
+    b_info_2, b_version_2 = deployment_info(
         version="2", user_config={"hello": "world"})
     update_goal = backend_state.deploy(b_info_2)
 
@@ -849,7 +851,7 @@ def test_initial_deploy_no_throttling(mock_backend_state):
     # All replicas should be started at once for a new deployment.
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info(num_replicas=10, version="1")
+    b_info_1, b_version_1 = deployment_info(num_replicas=10, version="1")
     goal_1, updating = backend_state.deploy(b_info_1)
     assert updating
 
@@ -874,7 +876,7 @@ def test_new_version_deploy_throttling(mock_backend_state):
     # should apply to both code version and user config updates.
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info(
+    b_info_1, b_version_1 = deployment_info(
         num_replicas=10, version="1", user_config="1")
     goal_1, updating = backend_state.deploy(b_info_1)
     assert updating
@@ -894,7 +896,7 @@ def test_new_version_deploy_throttling(mock_backend_state):
     assert goal_manager.check_complete(goal_1)
 
     # Now deploy a new version. Two old replicas should be stopped.
-    b_info_2, b_version_2 = backend_info(
+    b_info_2, b_version_2 = deployment_info(
         num_replicas=10, version="2", user_config="2")
     goal_2, updating = backend_state.deploy(b_info_2)
     assert updating
@@ -1135,7 +1137,7 @@ def test_reconfigure_throttling(mock_backend_state):
     # When the version is updated, it should be throttled.
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info(
+    b_info_1, b_version_1 = deployment_info(
         num_replicas=2, version="1", user_config="1")
     goal_1, updating = backend_state.deploy(b_info_1)
     assert updating
@@ -1153,7 +1155,7 @@ def test_reconfigure_throttling(mock_backend_state):
     assert goal_manager.check_complete(goal_1)
 
     # Now deploy a new user_config. One replica should be updated.
-    b_info_2, b_version_2 = backend_info(
+    b_info_2, b_version_2 = deployment_info(
         num_replicas=2, version="1", user_config="2")
     goal_2, updating = backend_state.deploy(b_info_2)
     assert updating
@@ -1214,7 +1216,7 @@ def test_new_version_and_scale_down(mock_backend_state):
     # turned down, then the rolling update should happen.
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info(num_replicas=10, version="1")
+    b_info_1, b_version_1 = deployment_info(num_replicas=10, version="1")
     goal_1, updating = backend_state.deploy(b_info_1)
     assert updating
 
@@ -1234,7 +1236,7 @@ def test_new_version_and_scale_down(mock_backend_state):
 
     # Now deploy a new version and scale down the number of replicas to 2.
     # First, 8 old replicas should be stopped to bring it down to the target.
-    b_info_2, b_version_2 = backend_info(num_replicas=2, version="2")
+    b_info_2, b_version_2 = deployment_info(num_replicas=2, version="2")
     goal_2, updating = backend_state.deploy(b_info_2)
     assert updating
     backend_state.update()
@@ -1371,7 +1373,7 @@ def test_new_version_and_scale_up(mock_backend_state):
     # turned up. When they're up, rolling update should trigger.
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info(num_replicas=2, version="1")
+    b_info_1, b_version_1 = deployment_info(num_replicas=2, version="1")
     goal_1, updating = backend_state.deploy(b_info_1)
     assert updating
 
@@ -1389,7 +1391,7 @@ def test_new_version_and_scale_up(mock_backend_state):
 
     # Now deploy a new version and scale up the number of replicas to 10.
     # 8 new replicas should be started.
-    b_info_2, b_version_2 = backend_info(num_replicas=10, version="2")
+    b_info_2, b_version_2 = deployment_info(num_replicas=10, version="2")
     goal_2, updating = backend_state.deploy(b_info_2)
     assert updating
     backend_state.update()
@@ -1473,7 +1475,7 @@ def test_new_version_and_scale_up(mock_backend_state):
 def test_health_check(mock_backend_state):
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info(num_replicas=2, version="1")
+    b_info_1, b_version_1 = deployment_info(num_replicas=2, version="1")
     goal_1, updating = backend_state.deploy(b_info_1)
     assert updating
 
@@ -1567,7 +1569,7 @@ def test_deploy_with_consistent_constructor_failure(mock_backend_state):
     """
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info(num_replicas=2)
+    b_info_1, b_version_1 = deployment_info(num_replicas=2)
     create_goal_id, updating = backend_state.deploy(b_info_1)
     goal_obj = goal_manager.get_goal(create_goal_id)
     deleted = _constructor_failure_loop_two_replica(backend_state, 3)
@@ -1596,7 +1598,7 @@ def test_deploy_with_partial_constructor_failure(mock_backend_state):
     """
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info(num_replicas=2)
+    b_info_1, b_version_1 = deployment_info(num_replicas=2)
     create_goal, updating = backend_state.deploy(b_info_1)
     goal_obj = goal_manager.get_goal(create_goal)
 
@@ -1689,7 +1691,7 @@ def test_deploy_with_transient_constructor_failure(mock_backend_state):
     """
     backend_state, timer, goal_manager = mock_backend_state
 
-    b_info_1, b_version_1 = backend_info(num_replicas=2)
+    b_info_1, b_version_1 = deployment_info(num_replicas=2)
     create_goal, updating = backend_state.deploy(b_info_1)
     goal_obj = goal_manager.get_goal(create_goal)
 
@@ -1751,7 +1753,7 @@ def test_shutdown(mock_backend_state_manager):
     tag = "test"
 
     grace_period_s = 10
-    b_info_1, b_version_1 = backend_info(
+    b_info_1, b_version_1 = deployment_info(
         graceful_shutdown_timeout_s=grace_period_s)
     create_goal, updating = backend_state_manager.deploy_backend(tag, b_info_1)
 
@@ -1795,7 +1797,7 @@ def test_resume_backend_state_from_replica_tags(mock_backend_state_manager):
     tag = "test"
 
     # Step 1: Create some backend info with actors in running state
-    b_info_1, b_version_1 = backend_info(version="1")
+    b_info_1, b_version_1 = deployment_info(version="1")
     create_goal, updating = backend_state_manager.deploy_backend(tag, b_info_1)
 
     backend_state = backend_state_manager._backend_states[tag]
