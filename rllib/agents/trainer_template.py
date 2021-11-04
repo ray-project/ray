@@ -6,9 +6,6 @@ from typing import Callable, Iterable, List, Optional, Type, Union
 from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.evaluation.worker_set import WorkerSet
-from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
-from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
-from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.policy import Policy
 from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
@@ -18,41 +15,7 @@ from ray.rllib.utils.typing import EnvConfigDict, EnvType, \
 logger = logging.getLogger(__name__)
 
 
-def default_execution_plan(workers: WorkerSet, config: TrainerConfigDict,
-                           **kwargs):
-    assert len(kwargs) == 0, (
-        "Default execution_plan does NOT take any additional parameters")
-
-    # Collects experiences in parallel from multiple RolloutWorker actors.
-    rollouts = ParallelRollouts(workers, mode="bulk_sync")
-
-    # Combine experiences batches until we hit `train_batch_size` in size.
-    # Then, train the policy on those experiences and update the workers.
-    train_op = rollouts.combine(
-        ConcatBatches(
-            min_batch_size=config["train_batch_size"],
-            count_steps_by=config["multiagent"]["count_steps_by"],
-        ))
-
-    if config.get("simple_optimizer") is True:
-        train_op = train_op.for_each(TrainOneStep(workers))
-    else:
-        train_op = train_op.for_each(
-            MultiGPUTrainOneStep(
-                workers=workers,
-                sgd_minibatch_size=config.get("sgd_minibatch_size",
-                                              config["train_batch_size"]),
-                num_sgd_iter=config.get("num_sgd_iter", 1),
-                num_gpus=config["num_gpus"],
-                shuffle_sequences=config.get("shuffle_sequences", False),
-                _fake_gpus=config["_fake_gpus"],
-                framework=config["framework"]))
-
-    # Add on the standard episode reward, etc. metrics reporting. This returns
-    # a LocalIterator[metrics_dict] representing metrics for each train step.
-    return StandardMetricsReporting(train_op, workers, config)
-
-
+# TODO: Deprecate
 @DeveloperAPI
 def build_trainer(
         name: str,
@@ -70,7 +33,7 @@ def build_trainer(
         execution_plan: Optional[Union[Callable[
             [WorkerSet, TrainerConfigDict], Iterable[ResultDict]], Callable[[
                 Trainer, WorkerSet, TrainerConfigDict
-            ], Iterable[ResultDict]]]] = default_execution_plan,
+            ], Iterable[ResultDict]]]] = None,
         allow_unknown_configs: bool = False,
         allow_unknown_subkeys: Optional[List[str]] = None,
         override_all_subkeys_if_type_changes: Optional[List[str]] = None,
@@ -151,7 +114,6 @@ def build_trainer(
                 # where each policy can have its own default policy class).
                 if not config["multiagent"]["policies"]:
                     assert default_policy is not None
-                #self._policy_class = default_policy
             # Query the function for a class to use.
             else:
                 self._policy_class = get_policy_class(config)
@@ -170,9 +132,9 @@ def build_trainer(
                 policy_class=self._policy_class,
                 config=config,
                 num_workers=self.config["num_workers"])
-            self.execution_plan = execution_plan
-            self.train_exec_impl = execution_plan(
-                self.workers, config, **self._kwargs_for_execution_plan())
+            if execution_plan is not None:
+                self.execution_plan = execution_plan
+                self.train_exec_impl = execution_plan()
 
             if after_init:
                 after_init(self)
@@ -261,19 +223,6 @@ def build_trainer(
         def _before_evaluate(self):
             if before_evaluate_fn:
                 before_evaluate_fn(self)
-
-        @override(Trainer)
-        def __getstate__(self):
-            state = Trainer.__getstate__(self)
-            state["train_exec_impl"] = (
-                self.train_exec_impl.shared_metrics.get().save())
-            return state
-
-        @override(Trainer)
-        def __setstate__(self, state):
-            Trainer.__setstate__(self, state)
-            self.train_exec_impl.shared_metrics.get().restore(
-                state["train_exec_impl"])
 
         @staticmethod
         @override(Trainer)

@@ -14,7 +14,7 @@ from ray.rllib.trainer.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.trainer.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import ExperimentalAPI, override
-from ray.rllib.utils.typing import PartialTrainerConfigDict, TrainerConfigDict
+from ray.rllib.utils.typing import TrainerConfigDict
 
 # yapf: disable
 # __sphinx_doc_begin__
@@ -33,15 +33,9 @@ DEFAULT_CONFIG = with_common_config({
 
 
 class PGTrainer(Trainer):
-
     @ExperimentalAPI
     def train_one_step(self):
         pass  # TODO: implement pythonic exec function for PG
-
-    # TODO: Deprecate (will be called by Trainer super class for backward
-    #  compat reasons, but we shouldn't use this anymore)
-    def _init(self, config, env_creator):
-        pass
 
     @override(Trainer)
     def get_default_policy_class(self) -> Type[Policy]:
