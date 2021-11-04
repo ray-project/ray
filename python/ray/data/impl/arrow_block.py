@@ -341,7 +341,8 @@ class ArrowBlockAccessor(BlockAccessor):
         ret.append(_copy_table(table.slice(prev_i)))
         return ret
 
-    def combine(self, key: GroupKeyT, *aggs: AggregateFn) -> Block[ArrowRow]:
+    def combine(self, key: GroupKeyT,
+                aggs: Tuple[AggregateFn]) -> Block[ArrowRow]:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -416,7 +417,7 @@ class ArrowBlockAccessor(BlockAccessor):
     @staticmethod
     def aggregate_combined_blocks(
             blocks: List[Block[ArrowRow]], key: GroupKeyT,
-            *aggs: AggregateFn) -> Tuple[Block[ArrowRow], BlockMetadata]:
+            aggs: Tuple[AggregateFn]) -> Tuple[Block[ArrowRow], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
         This assumes blocks are already sorted by key in ascending order,

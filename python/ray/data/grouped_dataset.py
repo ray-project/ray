@@ -92,7 +92,7 @@ class GroupedDataset(Generic[T]):
         map_results = np.empty((num_mappers, num_reducers), dtype=object)
         for i, block in enumerate(blocks):
             map_results[i, :] = partition_and_combine_block.remote(
-                block, boundaries, self._key, *aggs)
+                block, boundaries, self._key, aggs)
         map_bar = ProgressBar("GroupBy Map", len(map_results))
         map_bar.block_until_complete([ret[0] for ret in map_results])
         map_bar.close()
@@ -264,7 +264,7 @@ class GroupedDataset(Generic[T]):
 
 def _partition_and_combine_block(block: Block[T], boundaries: List[KeyType],
                                  key: GroupKeyT,
-                                 *aggs: AggregateFn) -> List[Block]:
+                                 aggs: Tuple[AggregateFn]) -> List[Block]:
     """Partition the block and combine rows with the same key."""
     if key is None:
         partitions = [block]
@@ -272,14 +272,14 @@ def _partition_and_combine_block(block: Block[T], boundaries: List[KeyType],
         partitions = BlockAccessor.for_block(block).sort_and_partition(
             boundaries, [(key, "ascending")] if isinstance(key, str) else key,
             descending=False)
-    return [BlockAccessor.for_block(p).combine(key, *aggs) for p in partitions]
+    return [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
 
 
 def _aggregate_combined_blocks(
-        num_reducers: int, key: GroupKeyT, aggs: List[AggregateFn],
+        num_reducers: int, key: GroupKeyT, aggs: Tuple[AggregateFn],
         *blocks: Tuple[Block, ...]) -> Tuple[Block[U], BlockMetadata]:
     """Aggregate sorted and partially combined blocks."""
     if num_reducers == 1:
         blocks = [b[0] for b in blocks]  # Ray weirdness
     return BlockAccessor.for_block(blocks[0]).aggregate_combined_blocks(
-        list(blocks), key, *aggs)
+        list(blocks), key, aggs)

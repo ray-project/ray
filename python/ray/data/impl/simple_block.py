@@ -149,7 +149,7 @@ class SimpleBlockAccessor(BlockAccessor):
         return ret
 
     def combine(self, key: GroupKeyT,
-                *aggs: AggregateFn) -> Block[Tuple[KeyType, AggType]]:
+                aggs: Tuple[AggregateFn]) -> Block[Tuple[KeyType, AggType]]:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -218,7 +218,7 @@ class SimpleBlockAccessor(BlockAccessor):
     @staticmethod
     def aggregate_combined_blocks(
             blocks: List[Block[Tuple[KeyType, AggType]]], key: GroupKeyT,
-            *aggs: AggregateFn
+            aggs: Tuple[AggregateFn]
     ) -> Tuple[Block[Tuple[KeyType, U]], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 

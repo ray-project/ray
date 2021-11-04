@@ -3052,7 +3052,10 @@ def test_groupby_arrow_multi_agg(ray_start_regular_shared):
     for agg in ["sum", "min", "max", "mean", "std"]:
         result = result_row[f"{agg}(A)"]
         expected = getattr(df["A"], agg)()
-        assert math.isclose(result, expected)
+        if agg == "std":
+            assert math.isclose(result, expected)
+        else:
+            assert result == expected
 
 
 def test_groupby_simple(ray_start_regular_shared):
@@ -3268,7 +3271,10 @@ def test_groupby_simple_multi_agg(ray_start_regular_shared):
     for idx, agg in enumerate(["sum", "min", "max", "mean", "std"]):
         result = result_row[idx]
         expected = getattr(series, agg)()
-        assert math.isclose(result, expected)
+        if agg == "std":
+            assert math.isclose(result, expected)
+        else:
+            assert result == expected
 
 
 def test_sort_simple(ray_start_regular_shared):
