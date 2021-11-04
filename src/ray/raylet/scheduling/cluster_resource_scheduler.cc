@@ -172,31 +172,6 @@ bool ClusterResourceScheduler::RemoveNode(const std::string &node_id_string) {
   return RemoveNode(node_id);
 }
 
-bool ClusterResourceScheduler::IsFeasible(const ResourceRequest &resource_request,
-                                          const NodeResources &resources) const {
-  // First, check predefined resources.
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    if (resource_request.predefined_resources[i] >
-        resources.predefined_resources[i].total) {
-      return false;
-    }
-  }
-
-  // Now check custom resources.
-  for (const auto &task_req_custom_resource : resource_request.custom_resources) {
-    auto it = resources.custom_resources.find(task_req_custom_resource.first);
-
-    if (it == resources.custom_resources.end()) {
-      return false;
-    }
-    if (task_req_custom_resource.second > it->second.total) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
                                                 int64_t node_id,
                                                 const NodeResources &resources) const {
@@ -271,10 +246,15 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     return best_node;
   }
 
+  auto spread_threshold = spread_threshold_;
+  // If the scheduling decision is made by gcs, we ignore the spread threshold
+  if (actor_creation && RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    spread_threshold = 1.0;
+  }
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
-      resource_request, local_node_id_, nodes_, spread_threshold_, force_spillback,
+      resource_request, local_node_id_, nodes_, spread_threshold, force_spillback,
       force_spillback, [this](auto node_id) { return this->NodeAlive(node_id); });
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {
@@ -359,6 +339,12 @@ const NodeResources &ClusterResourceScheduler::GetLocalNodeResources() const {
   const auto &node_it = nodes_.find(local_node_id_);
   RAY_CHECK(node_it != nodes_.end());
   return node_it->second.GetLocalView();
+}
+
+NodeResources *ClusterResourceScheduler::GetMutableLocalNodeResources() {
+  auto node_it = nodes_.find(local_node_id_);
+  RAY_CHECK(node_it != nodes_.end());
+  return node_it->second.GetMutableLocalView();
 }
 
 int64_t ClusterResourceScheduler::NumNodes() const { return nodes_.size(); }
@@ -804,10 +790,13 @@ void ClusterResourceScheduler::UpdateLocalAvailableResourcesFromResourceInstance
   auto local_view = it_local_node->second.GetMutableLocalView();
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     local_view->predefined_resources[i].available = 0;
+    local_view->predefined_resources[i].total = 0;
     for (size_t j = 0; j < local_resources_.predefined_resources[i].available.size();
          j++) {
       local_view->predefined_resources[i].available +=
           local_resources_.predefined_resources[i].available[j];
+      local_view->predefined_resources[i].total +=
+          local_resources_.predefined_resources[i].total[j];
     }
   }
 
@@ -972,6 +961,15 @@ void ClusterResourceScheduler::UpdateLastResourceUsage(
 }
 
 void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_data) {
+  // Update local object store usage and report to other raylets.
+  if (get_used_object_store_memory_ != nullptr) {
+    auto &capacity =
+        GetMutableLocalNodeResources()->predefined_resources[OBJECT_STORE_MEM];
+    double used = get_used_object_store_memory_();
+    double total = capacity.total.Double();
+    capacity.available = FixedPoint(total >= used ? total - used : 0.0);
+  }
+
   NodeResources resources;
 
   RAY_CHECK(GetNodeResources(local_node_id_, &resources))
@@ -993,15 +991,6 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
     if (node.first != local_node_id_) {
       node.second.ResetLocalView();
     }
-  }
-
-  // Automatically report object store usage.
-  // XXX: this MUTATES the resources field, which is needed since we are storing
-  // it in last_report_resources_.
-  if (get_used_object_store_memory_ != nullptr) {
-    auto &capacity = resources.predefined_resources[OBJECT_STORE_MEM];
-    double used = get_used_object_store_memory_();
-    capacity.available = FixedPoint(capacity.total.Double() - used);
   }
 
   for (int i = 0; i < PredefinedResources_MAX; i++) {

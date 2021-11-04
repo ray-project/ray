@@ -9,7 +9,6 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError, RayActorError
-from ray.serve.utils import get_current_node_resource_key
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_get,
@@ -17,6 +16,8 @@ from ray.experimental.internal_kv import (
 )
 from ray.dashboard.modules.job.data_types import JobStatus
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
+
+JOB_ID_METADATA_KEY = "job_submission_id"
 
 
 class JobLogStorageClient:
@@ -124,7 +125,9 @@ class JobSupervisor:
         self._status_client = JobStatusStorageClient()
         self._log_client = JobLogStorageClient()
         self._runtime_env = ray.get_runtime_context().runtime_env
+
         self._metadata = metadata
+        self._metadata[JOB_ID_METADATA_KEY] = job_id
 
     def ready(self):
         pass
@@ -192,10 +195,25 @@ class JobManager:
         except ValueError:  # Ray returns ValueError for nonexistent actor.
             return None
 
+    def _get_current_node_resource_key(self) -> str:
+        """Get the Ray resource key for current node.
+
+        It can be used for actor placement.
+        """
+        current_node_id = ray.get_runtime_context().node_id.hex()
+        for node in ray.nodes():
+            if node["NodeID"] == current_node_id:
+                # Found the node.
+                for key in node["Resources"].keys():
+                    if key.startswith("node:"):
+                        return key
+        else:
+            raise ValueError(
+                "Cannot found the node dictionary for current node.")
+
     def submit_job(
             self,
             entrypoint: str,
-            job_id: Optional[str] = None,
             runtime_env: Optional[Dict[str, Any]] = None,
             metadata: Optional[Dict[str, str]] = None,
     ) -> str:
@@ -207,14 +225,14 @@ class JobManager:
 
         Returns unique job_id.
         """
-        job_id = job_id or str(uuid4())
+        job_id = str(uuid4())
         supervisor = self._supervisor_actor_cls.options(
             lifetime="detached",
             name=self.JOB_ACTOR_NAME.format(job_id=job_id),
             # Currently we assume JobManager is created by dashboard server
             # running on headnode, same for job supervisor actors scheduled
             resources={
-                get_current_node_resource_key(): 0.001,
+                self._get_current_node_resource_key(): 0.001,
             },
             # For now we assume supervisor actor and driver script have same
             # runtime_env.

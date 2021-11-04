@@ -1,9 +1,8 @@
-from uuid import uuid4
-
 import pytest
 
 import ray
-from ray._private.job_manager import JobManager, JobStatus
+from ray._private.job_manager import (JobManager, JobStatus,
+                                      JOB_ID_METADATA_KEY)
 from ray._private.test_utils import wait_for_condition
 
 TEST_NAMESPACE = "jobs_test_namespace"
@@ -37,15 +36,6 @@ def check_job_failed(job_manager, job_id):
 
 def test_submit_basic_echo(job_manager):
     job_id = job_manager.submit_job("echo hello")
-
-    wait_for_condition(
-        check_job_succeeded, job_manager=job_manager, job_id=job_id)
-    assert job_manager.get_job_stdout(job_id) == b"hello"
-
-
-def test_pass_in_job_id(job_manager):
-    job_id = job_manager.submit_job("echo hello", job_id="my_job_id")
-    assert job_id == "my_job_id"
 
     wait_for_condition(
         check_job_succeeded, job_manager=job_manager, job_id=job_id)
@@ -122,11 +112,7 @@ class TestRuntimeEnv:
 
     def test_multiple_runtime_envs(self, job_manager):
         # Test that you can run two jobs in different envs without conflict.
-        job_id_1 = str(uuid4())
-        job_id_2 = str(uuid4())
-
-        job_manager.submit_job(
-            job_id_1,
+        job_id_1 = job_manager.submit_job(
             "python subprocess_driver_scripts/print_runtime_env.py",
             runtime_env={
                 "env_vars": {
@@ -140,8 +126,7 @@ class TestRuntimeEnv:
             job_id_1
         ) == b"{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_1_VAR'}}"  # noqa: E501
 
-        job_manager.submit_job(
-            job_id_2,
+        job_id_2 = job_manager.submit_job(
             "python subprocess_driver_scripts/print_runtime_env.py",
             runtime_env={
                 "env_vars": {
@@ -159,10 +144,7 @@ class TestRuntimeEnv:
         """Ensure we got error message from worker.py and job stderr
         if user provided runtime_env in both driver script and submit()
         """
-        job_id_1 = str(uuid4())
-
-        job_manager.submit_job(
-            job_id_1,
+        job_id = job_manager.submit_job(
             "python subprocess_driver_scripts/override_env_var.py",
             runtime_env={
                 "env_vars": {
@@ -171,15 +153,18 @@ class TestRuntimeEnv:
             })
 
         wait_for_condition(
-            check_job_succeeded, job_manager=job_manager, job_id=job_id_1)
-        assert job_manager.get_job_stdout(job_id_1) == b"JOB_1_VAR"
-        stderr = job_manager.get_job_stderr(job_id_1).decode("utf-8")
+            check_job_succeeded, job_manager=job_manager, job_id=job_id)
+        assert job_manager.get_job_stdout(job_id) == b"JOB_1_VAR"
+        stderr = job_manager.get_job_stderr(job_id).decode("utf-8")
         assert stderr.startswith(
             "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) "
             "are provided")
 
 
 def test_pass_metadata(job_manager):
+    def dict_to_binary(d):
+        return str(dict(sorted(d.items()))).encode("utf-8")
+
     print_metadata_cmd = (
         "python -c\""
         "import ray;"
@@ -193,7 +178,9 @@ def test_pass_metadata(job_manager):
 
     wait_for_condition(
         check_job_succeeded, job_manager=job_manager, job_id=job_id)
-    assert job_manager.get_job_stdout(job_id) == b"{}"
+    assert job_manager.get_job_stdout(job_id) == dict_to_binary({
+        JOB_ID_METADATA_KEY: job_id
+    })
 
     # Check that we can pass custom metadata.
     job_id = job_manager.submit_job(
@@ -204,5 +191,8 @@ def test_pass_metadata(job_manager):
 
     wait_for_condition(
         check_job_succeeded, job_manager=job_manager, job_id=job_id)
-    assert job_manager.get_job_stdout(
-        job_id) == b"{'key1': 'val1', 'key2': 'val2'}"
+    assert job_manager.get_job_stdout(job_id) == dict_to_binary({
+        JOB_ID_METADATA_KEY: job_id,
+        "key1": "val1",
+        "key2": "val2"
+    })
