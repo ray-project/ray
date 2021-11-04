@@ -737,7 +737,7 @@ class Trainer(Trainable):
                 env_creator=self.env_creator,
                 validate_env=self.validate_env,
                 policy_class=self.get_default_policy_class(),
-                config=config,
+                config=self.config,
                 num_workers=self.config["num_workers"])
             self.train_exec_impl = self.execution_plan(
                 self.workers, self.config, **self._kwargs_for_execution_plan())
@@ -1587,7 +1587,7 @@ class Trainer(Trainable):
         # workers to determine their CPU/GPU resource needs.
 
         # Convenience config handles.
-        cf = dict(cls.get_default_config(), **config)
+        cf = dict(cls.get_default_config(cls), **config)
         eval_cf = cf["evaluation_config"]
 
         # TODO(ekl): add custom resources here once tune supports them
