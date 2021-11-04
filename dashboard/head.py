@@ -242,12 +242,14 @@ class DashboardHead:
         logger.info("Dashboard head http address: %s:%s", http_host, http_port)
 
         # Write the dashboard head port to gcs kv.
-        internal_kv._internal_kv_put(ray_constants.REDIS_KEY_DASHBOARD,
-                                     f"{http_host}:{http_port}",
-                                     namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
-        internal_kv._internal_kv_put(dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
-                                     f"{self.ip}:{self.grpc_port}",
-                                     namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+        internal_kv._internal_kv_put(
+            ray_constants.REDIS_KEY_DASHBOARD,
+            f"{http_host}:{http_port}",
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+        internal_kv._internal_kv_put(
+            dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
+            f"{self.ip}:{self.grpc_port}",
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
 
         # Dump registered http routes.
         dump_routes = [

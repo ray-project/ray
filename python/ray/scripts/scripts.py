@@ -160,8 +160,7 @@ def continue_debug_session(live_jobs: Set[str]):
                 active_session, namespace=ray_constants.KV_NAMESPACE_PDB)
             if json.loads(data)["job_id"] not in live_jobs:
                 ray.experimental.internal_kv._internal_kv_del(
-                    active_session,
-                    namespace=KV_NAMESPACE_PDB)
+                    active_session, namespace=KV_NAMESPACE_PDB)
                 continue
 
             print("Continuing pdb session in different process...")
@@ -173,11 +172,13 @@ def continue_debug_session(live_jobs: Set[str]):
                     session = json.loads(data)
                     if ("exit_debugger" in session
                             or session["job_id"] not in live_jobs):
-                        ray.experimental.internal_kv._internal_kv_del(key, namespace=ray_constants.KV_NAMESPACE_PDB)
+                        ray.experimental.internal_kv._internal_kv_del(
+                            key, namespace=ray_constants.KV_NAMESPACE_PDB)
                         return
                     host, port = session["pdb_address"].split(":")
                     ray.util.rpdb.connect_pdb_client(host, int(port))
-                    ray.experimental.internal_kv._internal_kv_del(key, namespace=ray_constants.KV_NAMESPACE_PDB)
+                    ray.experimental.internal_kv._internal_kv_del(
+                        key, namespace=ray_constants.KV_NAMESPACE_PDB)
                     continue_debug_session(live_jobs)
                     return
                 time.sleep(1.0)
@@ -219,12 +220,14 @@ def debug(address):
         sessions_data = []
         for active_session in active_sessions:
             data = json.loads(
-                ray.experimental.internal_kv._internal_kv_get(active_session, namespace=ray_constants.KV_NAMESPACE_PDB))
+                ray.experimental.internal_kv._internal_kv_get(
+                    active_session, namespace=ray_constants.KV_NAMESPACE_PDB))
             # Check that the relevant job is alive, else clean up the entry.
             if data["job_id"] in live_jobs:
                 sessions_data.append(data)
             else:
-                ray.experimental.internal_kv._internal_kv_del(active_session, namespace=ray_constants.KV_NAMESPACE_PDB)
+                ray.experimental.internal_kv._internal_kv_del(
+                    active_session, namespace=ray_constants.KV_NAMESPACE_PDB)
         sessions_data = sorted(
             sessions_data, key=lambda data: data["timestamp"], reverse=True)
         table = [["index", "timestamp", "Ray task", "filename:lineno"]]
@@ -248,7 +251,8 @@ def debug(address):
             index = int(inp)
             session = json.loads(
                 ray.experimental.internal_kv._internal_kv_get(
-                    active_sessions[index], namespace=ray_constants.KV_NAMESPACE_PDB))
+                    active_sessions[index],
+                    namespace=ray_constants.KV_NAMESPACE_PDB))
             host, port = session["pdb_address"].split(":")
             ray.util.rpdb.connect_pdb_client(host, int(port))
 

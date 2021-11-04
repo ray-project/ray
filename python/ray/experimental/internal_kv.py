@@ -24,6 +24,7 @@ def _initialize_internal_kv(gcs_client: GcsClient):
     global_gcs_client = gcs_client
     _initialized = True
 
+
 def __make_key(namespce: Optional[str], key: bytes) -> bytes:
     if namespace is None:
         namespace = ""
@@ -31,10 +32,12 @@ def __make_key(namespce: Optional[str], key: bytes) -> bytes:
     assert isinstance(key, bytes)
     return b':'.join(namespace.encode(), key)
 
+
 def __parse_key(key: bytes) -> Tuple[str, bytes]:
     assert isinstance(key, bytes)
     ns, key = key.split(b':', 1)
     return (ns.decode(), key)
+
 
 @client_mode_hook(auto_init=False)
 def _internal_kv_initialized():
@@ -68,12 +71,11 @@ def _internal_kv_exists(key: Union[str, bytes],
 
 
 @client_mode_hook(auto_init=False)
-def _internal_kv_put(
-        key: Union[str, bytes],
-        value: Union[str, bytes],
-        overwrite: bool = True,
-        *,
-        namespace:Optional[str] = None) -> bool:
+def _internal_kv_put(key: Union[str, bytes],
+                     value: Union[str, bytes],
+                     overwrite: bool = True,
+                     *,
+                     namespace: Optional[str] = None) -> bool:
     """Globally associates a value with a given binary key.
 
     This only has an effect if the key does not already have a value.
@@ -96,7 +98,7 @@ def _internal_kv_put(
 @client_mode_hook(auto_init=False)
 def _internal_kv_del(key: Union[str, bytes],
                      *,
-                     namespace: Optional[str]=None):
+                     namespace: Optional[str] = None):
     if isinstance(key, str):
         key = key.encode()
     key = __make_key(namespace, key)
@@ -107,10 +109,13 @@ def _internal_kv_del(key: Union[str, bytes],
 @client_mode_hook(auto_init=False)
 def _internal_kv_list(prefix: Union[str, bytes],
                       *,
-                      namespace: Optional[str]=None) -> List[bytes]:
+                      namespace: Optional[str] = None) -> List[bytes]:
     """List all keys in the internal KV store that start with the prefix.
     """
     if isinstance(prefix, str):
         prefix = prefix.encode()
     prefix = __make_key(namespace, prefix)
-    return [__parse_key(key)[1] for key in global_gcs_client.internal_kv_keys(prefix)]
+    return [
+        __parse_key(key)[1]
+        for key in global_gcs_client.internal_kv_keys(prefix)
+    ]
