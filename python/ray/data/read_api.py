@@ -16,6 +16,7 @@ import ray
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource, RangeDatasource, \
     JSONDatasource, CSVDatasource, ParquetDatasource, BinaryDatasource, \
@@ -158,8 +159,10 @@ def read_datasource(datasource: Datasource[T],
     """
 
     read_tasks = datasource.prepare_read(parallelism, **read_args)
+    context = DatasetContext.get_current()
 
     def remote_read(task: ReadTask) -> Block:
+        DatasetContext._set_current(context)
         return task()
 
     if ray_remote_args is None:
