@@ -16,7 +16,6 @@ import os
 
 # __import_tune_begin__
 from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.utilities.cloud_io import load as pl_load
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler, PopulationBasedTraining
@@ -126,6 +125,17 @@ def train_mnist(config):
 
     trainer.fit(model)
 # __lightning_end__
+
+# __no_tune_train_begin__
+def train_mnist_no_tune():
+    config = {
+        "layer_1_size": 128,
+        "layer_2_size": 256,
+        "lr": 1e-3,
+        "batch_size": 64
+    }
+    train_mnist(config)
+# __no_tune_train_end__
 
 
 # __tune_train_begin__

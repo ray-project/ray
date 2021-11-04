@@ -269,6 +269,10 @@ pygments_style = 'pastie'
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
 
+# Do not check anchors for links because it produces many false positives
+# and is slow (it needs to download the linked website).
+linkcheck_anchors = False
+
 # -- Options for HTML output ----------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for

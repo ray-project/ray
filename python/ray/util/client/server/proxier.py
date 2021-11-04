@@ -16,7 +16,6 @@ from typing import Callable, Dict, List, Optional, Tuple
 import ray
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
-from ray._raylet import connect_to_gcs
 import ray.core.generated.agent_manager_pb2 as agent_manager_pb2
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
@@ -31,6 +30,7 @@ from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.tls_utils import add_port_to_grpc_server
+from ray._private.gcs_utils import GcsClient
 from ray._private.utils import (detect_fate_sharing_support,
                                 check_dashboard_dependencies_installed)
 
@@ -771,8 +771,8 @@ def serve_proxier(connection_str: str, redis_address: str,
     # Initialize internal KV to be used to upload and download working_dir
     # before calling ray.init within the RayletServicers.
     assert redis_address is not None
-    ip, port = redis_address.split(":")
-    gcs_client = connect_to_gcs(ip, int(port), redis_password)
+    gcs_client = GcsClient.connect_to_gcs_by_redis_address(
+        redis_address, redis_password)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
 
     server = grpc.server(
