@@ -337,7 +337,6 @@ def wait_for_event(event_listener_type: EventListenerType, *args,
     return events.make_event(event_listener_type, args, kwargs)
 
 
-
 @PublicAPI
 def sleep(duration: float) -> Workflow[Event]:
     """

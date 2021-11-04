@@ -415,6 +415,7 @@ class WorkflowRunningError(Exception):
                        f"Workflow[id={workflow_id}] is still running."
         super().__init__(self.message)
 
+
 class EventsUnresolved(Exception):
     def __init__(self, events: List[Workflow[Event]]):
         self.events = events
