@@ -181,7 +181,7 @@ class GcsClient:
                                f"due to error {reply.status.message}")
 
     @staticmethod
-    def connect_to_gcs_by_redis_cli(redis_cli):
+    def create_from_redis(redis_cli):
         gcs_address = redis_cli.get("GcsServerAddress")
         if gcs_address is None:
             raise RuntimeError("Failed to look up gcs address through redis")
@@ -190,5 +190,5 @@ class GcsClient:
     @staticmethod
     def connect_to_gcs_by_redis_address(redis_address, redis_password):
         from ray._private.services import create_redis_client
-        return GcsClient.connect_to_gcs_by_redis_cli(
+        return GcsClient.create_from_redis(
             create_redis_client(redis_address, redis_password))

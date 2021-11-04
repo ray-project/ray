@@ -160,7 +160,7 @@ class Monitor:
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
         worker.redis_client = self.redis
-        gcs_client = GcsClient.connect_to_gcs_by_redis_cli(self.redis)
+        gcs_client = GcsClient.create_from_redis(self.redis)
         _initialize_internal_kv(gcs_client)
         worker.mode = 0
         head_node_ip = redis_address.split(":")[0]
