@@ -17,10 +17,8 @@ class RunExperimentTest(unittest.TestCase):
         os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
 
     def tearDown(self):
-        # shutdown should be put after _register_all where
-        # internal kv is used
-        _register_all()  # re-register the evicted objects
         ray.shutdown()
+        _register_all()  # re-register the evicted objects
 
     def testDict(self):
         def train(config, reporter):

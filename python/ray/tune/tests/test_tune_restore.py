@@ -63,10 +63,8 @@ class TuneRestoreTest(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.logdir)
-        # shutdown should be put after _register_all where
-        # internal kv is used
-        _register_all()
         ray.shutdown()
+        _register_all()
 
     def testTuneRestore(self):
         self.assertTrue(os.path.isfile(self.checkpoint_path))
@@ -445,10 +443,8 @@ class TuneExampleTest(unittest.TestCase):
         ray.init(num_cpus=2)
 
     def tearDown(self):
-        # shutdown should be put after _register_all where
-        # internal kv is used
-        _register_all()
         ray.shutdown()
+        _register_all()
 
     def testPBTKeras(self):
         from ray.tune.examples.pbt_tune_cifar10_with_keras import Cifar10Model
@@ -482,10 +478,8 @@ class AutoInitTest(unittest.TestCase):
         self.assertTrue(ray.is_initialized())
 
     def tearDown(self):
-        # shutdown should be put after _register_all where
-        # internal kv is used
-        _register_all()
         ray.shutdown()
+        _register_all()
 
 
 class AbstractWarmStartTest:
@@ -496,10 +490,8 @@ class AbstractWarmStartTest:
 
     def tearDown(self):
         shutil.rmtree(self.tmpdir)
-        # shutdown should be put after _register_all where
-        # internal kv is used
-        _register_all()
         ray.shutdown()
+        _register_all()
 
     def set_basic_conf(self):
         raise NotImplementedError()

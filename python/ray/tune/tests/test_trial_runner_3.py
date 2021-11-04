@@ -39,10 +39,8 @@ class TrialRunnerTest3(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
-        # shutdown should be put after _register_all where
-        # internal kv is used
-        _register_all()  # re-register the evicted objects
         ray.shutdown()
+        _register_all()  # re-register the evicted objects
         if "CUDA_VISIBLE_DEVICES" in os.environ:
             del os.environ["CUDA_VISIBLE_DEVICES"]
         shutil.rmtree(self.tmpdir)
@@ -811,10 +809,8 @@ class SearchAlgorithmTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        # shutdown should be put after _register_all where
-        # internal kv is used
-        _register_all()
         ray.shutdown()
+        _register_all()
 
     def testNestedSuggestion(self):
         class TestSuggestion(Searcher):

@@ -50,10 +50,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp()
 
     def tearDown(self):
-        # shutdown should be put after _register_all where
-        # internal kv is used
-        _register_all()  # re-register the evicted objects
         ray.shutdown()
+        _register_all()  # re-register the evicted objects
         shutil.rmtree(self.tmpdir)
 
     def checkAndReturnConsistentLogs(self, results, sleep_per_iter=None):
@@ -1503,10 +1501,8 @@ class ApiTestFast(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        # shutdown should be put after _register_all where
-        # internal kv is used
-        _register_all()
         ray.shutdown()
+        _register_all()
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
@@ -1703,10 +1699,8 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        # shutdown should be put after _register_all where
-        # internal kv is used
-        _register_all()
         ray.shutdown()
+        _register_all()
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()

@@ -59,7 +59,8 @@ from ray._private.ray_logging import global_worker_stdstream_dispatcher
 from ray._private.utils import check_oversized_function
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
-    _internal_kv_initialized, _initialize_internal_kv
+    _internal_kv_initialized, _initialize_internal_kv, \
+    _internal_kv_get_gcs_client, _internal_kv_reset
 from ray._private.client_mode_hook import client_mode_hook
 
 SCRIPT_MODE = 0
@@ -1005,13 +1006,18 @@ def shutdown(_exiting_interpreter: bool = False):
 
     disconnect(_exiting_interpreter)
 
+    # disconnect internal kv
+    if hasattr(global_worker, "gcs_client"):
+        if _internal_kv_get_gcs_client() == global_worker.gcs_client:
+            _internal_kv_reset()
+        del global_worker.gcs_client
+
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
     if hasattr(global_worker, "core_worker"):
         global_worker.core_worker.shutdown()
         del global_worker.core_worker
-
     # Disconnect global state from GCS.
     ray.state.state.disconnect()
 

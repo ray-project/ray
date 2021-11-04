@@ -32,10 +32,8 @@ class TestSyncFunctionality(unittest.TestCase):
         ray.init(num_cpus=2)
 
     def tearDown(self):
-        # shutdown should be put after _register_all where
-        # internal kv is used
-        _register_all()  # re-register the evicted objects
         ray.shutdown()
+        _register_all()  # re-register the evicted objects
 
     @patch("ray.tune.sync_client.S3_PREFIX", "test")
     def testNoUploadDir(self):

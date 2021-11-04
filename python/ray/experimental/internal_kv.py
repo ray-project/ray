@@ -6,6 +6,13 @@ from ray._private.gcs_utils import GcsClient
 _initialized = False
 global_gcs_client = None
 
+def _internal_kv_reset():
+    global global_gcs_client, _initialized
+    global_gcs_client = None
+    _initialized = False
+
+def _internal_kv_get_gcs_client():
+    return global_gcs_client
 
 def _initialize_internal_kv(gcs_client: GcsClient):
     """Initialize the internal KV for use in other function calls.

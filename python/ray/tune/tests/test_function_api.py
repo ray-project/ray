@@ -301,10 +301,8 @@ class FunctionApiTest(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=0, object_store_memory=150 * 1024 * 1024)
 
     def tearDown(self):
-        # shutdown should be put after _register_all where
-        # internal kv is used
-        _register_all()  # re-register the evicted objects
         ray.shutdown()
+        _register_all()  # re-register the evicted objects
 
     def testCheckpointError(self):
         def train(config, checkpoint_dir=False):
