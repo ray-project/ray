@@ -26,145 +26,145 @@ else:
 logger = logging.getLogger(__name__)
 
 
-# issue https://github.com/ray-project/ray/issues/7105
-@pytest.mark.skipif(client_test_enabled(), reason="internal api")
-def test_internal_free(shutdown_only):
-    ray.init(num_cpus=1)
+# # issue https://github.com/ray-project/ray/issues/7105
+# @pytest.mark.skipif(client_test_enabled(), reason="internal api")
+# def test_internal_free(shutdown_only):
+#     ray.init(num_cpus=1)
 
-    @ray.remote
-    class Sampler:
-        def sample(self):
-            return [1, 2, 3, 4, 5]
+#     @ray.remote
+#     class Sampler:
+#         def sample(self):
+#             return [1, 2, 3, 4, 5]
 
-        def sample_big(self):
-            return np.zeros(1024 * 1024)
+#         def sample_big(self):
+#             return np.zeros(1024 * 1024)
 
-    sampler = Sampler.remote()
+#     sampler = Sampler.remote()
 
-    # Free deletes from in-memory store.
-    obj_ref = sampler.sample.remote()
-    ray.get(obj_ref)
-    ray.internal.free(obj_ref)
-    with pytest.raises(ReferenceCountingAssertionError):
-        ray.get(obj_ref)
+#     # Free deletes from in-memory store.
+#     obj_ref = sampler.sample.remote()
+#     ray.get(obj_ref)
+#     ray.internal.free(obj_ref)
+#     with pytest.raises(ReferenceCountingAssertionError):
+#         ray.get(obj_ref)
 
-    # Free deletes big objects from plasma store.
-    big_id = sampler.sample_big.remote()
-    ray.get(big_id)
-    ray.internal.free(big_id)
-    time.sleep(1)  # wait for delete RPC to propagate
-    with pytest.raises(ReferenceCountingAssertionError):
-        ray.get(big_id)
-
-
-def test_multiple_waits_and_gets(shutdown_only):
-    # It is important to use three workers here, so that the three tasks
-    # launched in this experiment can run at the same time.
-    ray.init(num_cpus=3)
-
-    @ray.remote
-    def f(delay):
-        time.sleep(delay)
-        return 1
-
-    @ray.remote
-    def g(input_list):
-        # The argument input_list should be a list containing one object ref.
-        ray.wait([input_list[0]])
-
-    @ray.remote
-    def h(input_list):
-        # The argument input_list should be a list containing one object ref.
-        ray.get(input_list[0])
-
-    # Make sure that multiple wait requests involving the same object ref
-    # all return.
-    x = f.remote(1)
-    ray.get([g.remote([x]), g.remote([x])])
-
-    # Make sure that multiple get requests involving the same object ref all
-    # return.
-    x = f.remote(1)
-    ray.get([h.remote([x]), h.remote([x])])
+#     # Free deletes big objects from plasma store.
+#     big_id = sampler.sample_big.remote()
+#     ray.get(big_id)
+#     ray.internal.free(big_id)
+#     time.sleep(1)  # wait for delete RPC to propagate
+#     with pytest.raises(ReferenceCountingAssertionError):
+#         ray.get(big_id)
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="internal api")
-def test_caching_functions_to_run(shutdown_only):
-    # Test that we export functions to run on all workers before the driver
-    # is connected.
-    def f(worker_info):
-        sys.path.append(1)
+# def test_multiple_waits_and_gets(shutdown_only):
+#     # It is important to use three workers here, so that the three tasks
+#     # launched in this experiment can run at the same time.
+#     ray.init(num_cpus=3)
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+#     @ray.remote
+#     def f(delay):
+#         time.sleep(delay)
+#         return 1
 
-    def f(worker_info):
-        sys.path.append(2)
+#     @ray.remote
+#     def g(input_list):
+#         # The argument input_list should be a list containing one object ref.
+#         ray.wait([input_list[0]])
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+#     @ray.remote
+#     def h(input_list):
+#         # The argument input_list should be a list containing one object ref.
+#         ray.get(input_list[0])
 
-    def g(worker_info):
-        sys.path.append(3)
+#     # Make sure that multiple wait requests involving the same object ref
+#     # all return.
+#     x = f.remote(1)
+#     ray.get([g.remote([x]), g.remote([x])])
 
-    ray.worker.global_worker.run_function_on_all_workers(g)
-
-    def f(worker_info):
-        sys.path.append(4)
-
-    ray.worker.global_worker.run_function_on_all_workers(f)
-
-    ray.init(num_cpus=1)
-
-    @ray.remote
-    def get_state():
-        time.sleep(1)
-        return sys.path[-4], sys.path[-3], sys.path[-2], sys.path[-1]
-
-    res1 = get_state.remote()
-    res2 = get_state.remote()
-    assert ray.get(res1) == (1, 2, 3, 4)
-    assert ray.get(res2) == (1, 2, 3, 4)
-
-    # Clean up the path on the workers.
-    def f(worker_info):
-        sys.path.pop()
-        sys.path.pop()
-        sys.path.pop()
-        sys.path.pop()
-
-    ray.worker.global_worker.run_function_on_all_workers(f)
+#     # Make sure that multiple get requests involving the same object ref all
+#     # return.
+#     x = f.remote(1)
+#     ray.get([h.remote([x]), h.remote([x])])
 
 
-@pytest.mark.skipif(client_test_enabled(), reason="internal api")
-def test_running_function_on_all_workers(ray_start_regular):
-    def f(worker_info):
-        sys.path.append("fake_directory")
+# @pytest.mark.skipif(client_test_enabled(), reason="internal api")
+# def test_caching_functions_to_run(shutdown_only):
+#     # Test that we export functions to run on all workers before the driver
+#     # is connected.
+#     def f(worker_info):
+#         sys.path.append(1)
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+#     ray.worker.global_worker.run_function_on_all_workers(f)
 
-    @ray.remote
-    def get_path1():
-        return sys.path
+#     def f(worker_info):
+#         sys.path.append(2)
 
-    assert "fake_directory" == ray.get(get_path1.remote())[-1]
+#     ray.worker.global_worker.run_function_on_all_workers(f)
 
-    # the function should only run on the current driver once.
-    assert sys.path[-1] == "fake_directory"
-    if len(sys.path) > 1:
-        assert sys.path[-2] != "fake_directory"
+#     def g(worker_info):
+#         sys.path.append(3)
 
-    def f(worker_info):
-        sys.path.pop(-1)
+#     ray.worker.global_worker.run_function_on_all_workers(g)
 
-    ray.worker.global_worker.run_function_on_all_workers(f)
+#     def f(worker_info):
+#         sys.path.append(4)
 
-    # Create a second remote function to guarantee that when we call
-    # get_path2.remote(), the second function to run will have been run on
-    # the worker.
-    @ray.remote
-    def get_path2():
-        return sys.path
+#     ray.worker.global_worker.run_function_on_all_workers(f)
 
-    assert "fake_directory" not in ray.get(get_path2.remote())
+#     ray.init(num_cpus=1)
+
+#     @ray.remote
+#     def get_state():
+#         time.sleep(1)
+#         return sys.path[-4], sys.path[-3], sys.path[-2], sys.path[-1]
+
+#     res1 = get_state.remote()
+#     res2 = get_state.remote()
+#     assert ray.get(res1) == (1, 2, 3, 4)
+#     assert ray.get(res2) == (1, 2, 3, 4)
+
+#     # Clean up the path on the workers.
+#     def f(worker_info):
+#         sys.path.pop()
+#         sys.path.pop()
+#         sys.path.pop()
+#         sys.path.pop()
+
+#     ray.worker.global_worker.run_function_on_all_workers(f)
+
+
+# @pytest.mark.skipif(client_test_enabled(), reason="internal api")
+# def test_running_function_on_all_workers(ray_start_regular):
+#     def f(worker_info):
+#         sys.path.append("fake_directory")
+
+#     ray.worker.global_worker.run_function_on_all_workers(f)
+
+#     @ray.remote
+#     def get_path1():
+#         return sys.path
+
+#     assert "fake_directory" == ray.get(get_path1.remote())[-1]
+
+#     # the function should only run on the current driver once.
+#     assert sys.path[-1] == "fake_directory"
+#     if len(sys.path) > 1:
+#         assert sys.path[-2] != "fake_directory"
+
+#     def f(worker_info):
+#         sys.path.pop(-1)
+
+#     ray.worker.global_worker.run_function_on_all_workers(f)
+
+#     # Create a second remote function to guarantee that when we call
+#     # get_path2.remote(), the second function to run will have been run on
+#     # the worker.
+#     @ray.remote
+#     def get_path2():
+#         return sys.path
+
+#     assert "fake_directory" not in ray.get(get_path2.remote())
 
 
 @pytest.mark.skipif(
