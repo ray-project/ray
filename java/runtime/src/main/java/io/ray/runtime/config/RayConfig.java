@@ -17,6 +17,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 
 /** Configurations of Ray runtime. See `ray.default.conf` for the meaning of each field. */
@@ -121,7 +122,8 @@ public class RayConfig {
     }
 
     // Namespace of this job.
-    namespace = config.getString("ray.job.namespace");
+    String localNamespace = config.getString("ray.job.namespace");
+    namespace = StringUtils.isEmpty(localNamespace) ? UUID.randomUUID().toString() : localNamespace;
 
     // jvm options for java workers of this job.
     jvmOptionsForJavaWorker = config.getStringList("ray.job.jvm-options");
