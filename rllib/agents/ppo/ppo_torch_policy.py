@@ -15,7 +15,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
-    LearningRateSchedule
+    LearningRateSchedule, TorchPolicy
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import apply_grad_clipping, \
     explained_variance, sequence_mask
@@ -253,16 +253,35 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
     LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
 
 
+class PPOTorchPolicy(TorchPolicy):
+    def __init__(self, observation_space, action_space, config):
+        super().__init__(
+            observation_space,
+            action_space,
+            config,
+            loss=ppo_surrogate_loss,
+        )
+
+    def postprocess_trajectory(
+            self,
+            sample_batch: SampleBatch,
+            other_agent_batches: Optional[Dict[AgentID, Tuple[
+                "Policy", SampleBatch]]] = None,
+            episode: Optional["Episode"] = None) -> SampleBatch:
+        return compute_gae_for_sample_batch(
+            self, sample_batch, other_agent_batches, episode)
+
+
 # Build a child class of `TorchPolicy`, given the custom functions defined
 # above.
 PPOTorchPolicy = build_policy_class(
-    name="PPOTorchPolicy",
-    framework="torch",
+    #name="PPOTorchPolicy",
+    #framework="torch",
     get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
-    loss_fn=ppo_surrogate_loss,
+    #loss_fn=ppo_surrogate_loss,
     stats_fn=kl_and_loss_stats,
     extra_action_out_fn=vf_preds_fetches,
-    postprocess_fn=compute_gae_for_sample_batch,
+    #postprocess_fn=compute_gae_for_sample_batch,
     extra_grad_process_fn=apply_grad_clipping,
     before_init=setup_config,
     before_loss_init=setup_mixins,

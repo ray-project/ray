@@ -975,6 +975,10 @@ class Policy(metaclass=ABCMeta):
                     vr["state_out_{}".format(i)] = ViewRequirement(
                         space=space, used_for_training=True)
 
+    @DeveloperAPI
+    def __repr__(self):
+        return type(self).__name__
+
     @Deprecated(new="get_exploration_state", error=False)
     def get_exploration_info(self) -> Dict[str, TensorType]:
         return self.get_exploration_state()
