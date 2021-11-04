@@ -775,7 +775,6 @@ class Node:
             except Exception:
                 logger.info("Waiting for gcs up")
 
-
     def start_raylet(self,
                      plasma_directory,
                      object_store_memory,
