@@ -487,6 +487,39 @@ void ClusterResourceScheduler::UpdateResourceCapacity(const std::string &node_id
       local_view->custom_resources.emplace(resource_id, resource_capacity);
     }
   }
+  if (node_id == local_node_id_) {
+    UpdateLocalResourceCapacity(resource_name, resource_total); 
+  }
+}
+
+void ClusterResourceScheduler::UpdateLocalResourceCapacity(const std::string &resource_name,
+                                                      double resource_total) {
+  int idx = -1;
+  if (resource_name == ray::kCPU_ResourceLabel) {
+    idx = (int)CPU;
+  } else if (resource_name == ray::kGPU_ResourceLabel) {
+    idx = (int)GPU;
+  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+    idx = (int)OBJECT_STORE_MEM;
+  } else if (resource_name == ray::kMemory_ResourceLabel) {
+    idx = (int)MEM;
+  };
+
+  FixedPoint resource_total_fp(resource_total);
+  if (idx != -1) {
+    bool is_unit_instance = predefined_unit_instance_resources_.find(idx) !=
+                              predefined_unit_instance_resources_.end(); 
+    InitResourceInstances(resource_total_fp, is_unit_instance, &local_resources_.predefined_resources[idx]);
+  } else {
+    string_to_int_map_.Insert(resource_name);
+    int64_t resource_id = string_to_int_map_.Get(resource_name); 
+    bool is_unit_instance = custom_unit_instance_resources_.find(resource_id) !=
+                              custom_unit_instance_resources_.end();
+    ResourceInstanceCapacities instance_list;
+    InitResourceInstances(resource_total_fp, is_unit_instance, &instance_list);
+    // Re-init.
+    local_resources_.custom_resources.emplace(resource_id, instance_list); 
+  }
 }
 
 void ClusterResourceScheduler::DeleteLocalResource(const std::string &resource_name) {

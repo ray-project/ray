@@ -177,6 +177,13 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
                               const std::string &resource_name,
                               double resource_total) override;
 
+  /// Re-init the capacity of the local resources.
+  ///
+  /// \param resource_name: Resource which we want to update.
+  /// \param resource_total: New capacity of the resource.
+  void UpdateLocalResourceCapacity(const std::string &resource_name,
+                                                      double resource_total);
+
   /// Delete a given resource from the local node.
   ///
   /// \param resource_name: Resource we want to delete
