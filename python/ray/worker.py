@@ -60,7 +60,7 @@ from ray._private.utils import check_oversized_function
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
     _internal_kv_initialized, _initialize_internal_kv, \
-    _internal_kv_get_gcs_client, _internal_kv_reset
+    _internal_kv_reset
 from ray._private.client_mode_hook import client_mode_hook
 
 SCRIPT_MODE = 0
