@@ -14,7 +14,6 @@ import datetime
 from ray._private.test_utils import (client_test_enabled, wait_for_condition,
                                      wait_for_pid_to_exit)
 from ray.tests.client_test_utils import create_remote_signal_actor
-import ray.experimental.internal_kv as internal_kv
 import ray
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
@@ -273,9 +272,9 @@ def test_actor_class_name(ray_start_regular):
             pass
 
     Foo.remote()
-    assert internal_kv._internal_kv_initialized()
-    actor_keys = internal_kv._internal_kv_list("ActorClass")
+    # TODO: redis-removal kv
     r = ray.worker.global_worker.redis_client
+    actor_keys = r.keys("ActorClass*")
     assert len(actor_keys) == 1
     actor_class_info = r.hgetall(actor_keys[0])
     assert actor_class_info[b"class_name"] == b"Foo"
