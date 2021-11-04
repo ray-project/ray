@@ -12,6 +12,7 @@ from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union, \
     TYPE_CHECKING
 
 import ray
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -19,7 +20,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list, NullContextManager
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -49,11 +50,12 @@ class TorchPolicy(Policy):
             action_space: gym.spaces.Space,
             config: TrainerConfigDict,
             *,
-            model: ModelV2,
-            loss: Callable[[
+            model: Optional[TorchModelV2] = None,
+            loss: Optional[Callable[[
                 Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch
-            ], Union[TensorType, List[TensorType]]],
-            action_distribution_class: Type[TorchDistributionWrapper],
+            ], Union[TensorType, List[TensorType]]]] = None,
+            action_distribution_class: Optional[Type[
+                TorchDistributionWrapper]] = None,
             action_sampler_fn: Optional[Callable[[
                 TensorType, List[TensorType]
             ], Tuple[TensorType, TensorType]]] = None,
@@ -127,6 +129,19 @@ class TorchPolicy(Policy):
         #   updating all towers' weights from the main model.
         # - In case of just one device (1 (fake or real) GPU or 1 CPU), no
         #   parallelization will be done.
+
+        # If no Model is provided, build a default one here.
+        if model is None:
+            dist_class, logit_dim = ModelCatalog.get_action_dist(
+                action_space, self.config["model"], framework=self.framework)
+            model = ModelCatalog.get_model_v2(
+                obs_space=self.observation_space,
+                action_space=self.action_space,
+                num_outputs=logit_dim,
+                model_config=self.config["model"],
+                framework=self.framework)
+            if action_distribution_class is None:
+                action_distribution_class = dist_class
 
         # Get devices to build the graph on.
         worker_idx = self.config.get("worker_index", 0)
@@ -213,7 +228,7 @@ class TorchPolicy(Policy):
 
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
-        self._loss = loss
+        self._loss = loss.__get__(self, self.__class__) if loss else self.loss
         self._optimizers = force_list(self.optimizer())
         # Store, which params (by index within the model's list of
         # parameters) should be updated per optimizer.
@@ -978,7 +993,7 @@ class TorchPolicy(Policy):
                 with NullContextManager(
                 ) if device.type == "cpu" else torch.cuda.device(device):
                     loss_out = force_list(
-                        self._loss(self, model, self.dist_class, sample_batch))
+                        self._loss(model, self.dist_class, sample_batch))
 
                     # Call Model's custom-loss with Policy loss outputs and
                     # train_batch.

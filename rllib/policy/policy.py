@@ -88,8 +88,7 @@ class Policy(metaclass=ABCMeta):
         """Initializes a Policy instance.
 
         Args:
-            observation_space: Observation space of the
-                policy.
+            observation_space: Observation space of the policy.
             action_space: Action space of the policy.
             config: A complete Trainer/Policy config dict. For the default
                 config keys and values, see rllib/trainer/trainer.py.
@@ -811,7 +810,7 @@ class Policy(metaclass=ABCMeta):
         train_batch.count = self._dummy_batch.count
         # Call the loss function, if it exists.
         if self._loss is not None:
-            self._loss(self, self.model, self.dist_class, train_batch)
+            self._loss(self.model, self.dist_class, train_batch)
         # Call the stats fn, if given.
         if stats_fn is not None:
             stats_fn(self, train_batch)
