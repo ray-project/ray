@@ -113,7 +113,7 @@ def check_too_many_retraces(obj):
                 "tf-eager mode w/ `eager_tracing=False`). To switch off "
                 "these re-trace counting checks, set `eager_max_retraces`"
                 " in your config to None.")
-        return obj(*args, **kwargs)
+        return obj(self_, *args, **kwargs)
 
     return _func
 
