@@ -3,7 +3,7 @@
 # ray-ml Docker image installs dependencies from ray/python/requirements/ml/ directory.
 # We constrain on these requirements file so that the same versions are installed.
 -c ../../../python/requirements/ml/requirements_dl.txt
--c ../../../python/requirements/ml/requirements_tune.txt
+-c ./tune_constraints.txt
 
 torch
 torchvision
