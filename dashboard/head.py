@@ -5,10 +5,14 @@ import asyncio
 import logging
 import ipaddress
 import threading
+from concurrent.futures import Future
+from queue import Queue
 
-from grpc.experimental import aio as aiogrpc
 from distutils.version import LooseVersion
+from grpc.experimental import aio as aiogrpc
+import grpc
 
+import ray._private.utils
 import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
@@ -28,9 +32,15 @@ logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 aiogrpc.init_grpc_aio()
+GRPC_CHANNEL_OPTIONS = (
+    ("grpc.enable_http_proxy", 0),
+    ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+    ("grpc.max_receive_message_length",
+     ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
+)
 
 
-async def make_gcs_grpc_channel(redis_client):
+async def get_gcs_address_with_retry(redis_client) -> str:
     while True:
         try:
             gcs_address = await redis_client.get(
@@ -38,15 +48,7 @@ async def make_gcs_grpc_channel(redis_client):
             if not gcs_address:
                 raise Exception("GCS address not found.")
             logger.info("Connect to GCS at %s", gcs_address)
-            options = (
-                ("grpc.enable_http_proxy", 0),
-                ("grpc.max_send_message_length",
-                 ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-                ("grpc.max_receive_message_length",
-                 ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-            )
-            channel = aiogrpc.insecure_channel(gcs_address, options=options)
-            return channel
+            return gcs_address
         except Exception as ex:
             logger.error("Connect to GCS failed: %s, retry...", ex)
             await asyncio.sleep(
@@ -54,57 +56,45 @@ async def make_gcs_grpc_channel(redis_client):
 
 
 class GCSHealthCheckThread(threading.Thread):
-    def __init__(self, redis_address, redis_password):
-        self.thread_local_loop = asyncio.new_event_loop()
-        self.aiogrpc_gcs_channel = None
-        self.gcs_heartbeat_info_stub = None
-
-        async def on_startup():
-            try:
-                aiogrpc.init_grpc_aio()
-                redis_client = await dashboard_utils.get_aioredis_client(
-                    redis_address, redis_password,
-                    dashboard_consts.CONNECT_REDIS_INTERNAL_SECONDS,
-                    dashboard_consts.RETRY_REDIS_CONNECTION_TIMES)
-                self.aiogrpc_gcs_channel = await (
-                    make_gcs_grpc_channel(redis_client))
-                self.gcs_heartbeat_info_stub = (
-                    gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
-                        self.aiogrpc_gcs_channel))
-            except Exception as e:
-                logger.error('exception in on_startup: "%s"' % str(e))
-                raise
-
-        self.startup_task = self.thread_local_loop.create_task(on_startup())
+    def __init__(self, gcs_address: str):
+        self.grpc_gcs_channel = ray._private.utils.init_grpc_channel(
+            gcs_address, options=GRPC_CHANNEL_OPTIONS)
+        self.gcs_heartbeat_info_stub = (
+            gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(
+                self.grpc_gcs_channel))
+        self.work_queue = Queue()
 
         super().__init__(daemon=True)
 
-    async def _check_once(self) -> bool:
+    def run(self) -> None:
+        while True:
+            future = self.work_queue.get()
+            check_result = self._check_once_synchrounously()
+            future.set_result(check_result)
+
+    def _check_once_synchrounously(self) -> bool:
         request = gcs_service_pb2.CheckAliveRequest()
         try:
-            reply = await self.gcs_heartbeat_info_stub.CheckAlive(
+            reply = self.gcs_heartbeat_info_stub.CheckAlive(
                 request, timeout=dashboard_consts.GCS_CHECK_ALIVE_RPC_TIMEOUT)
             if reply.status.code != 0:
                 logger.exception(
                     f"Failed to CheckAlive: {reply.status.message}")
                 return False
-        except aiogrpc.AioRpcError:  # Deadline Exceeded
-            logger.exception("Got AioRpcError when checking GCS is alive")
+        except grpc.RpcError:  # Deadline Exceeded
+            logger.exception("Got RpcError when checking GCS is alive")
             return False
         return True
 
     async def check_once(self) -> bool:
-        # Make sure startup is complete
-        if not self.startup_task.done():
-            return False
-        # Make the grpc call inside the thread loop so it's not blocked by
-        # potentially busy main loop.
-        return await asyncio.wrap_future(
-            asyncio.run_coroutine_threadsafe(self._check_once(),
-                                             self.thread_local_loop))
+        """Ask the thread to perform a healthcheck."""
+        assert threading.current_thread != self, (
+            "caller shouldn't be from the same thread as GCSHealthCheckThread."
+        )
 
-    def run(self) -> None:
-        self.thread_local_loop.run_forever()
+        future = Future()
+        self.work_queue.put(future)
+        return await asyncio.wrap_future(future)
 
 
 class DashboardHead:
@@ -127,13 +117,25 @@ class DashboardHead:
         ip, port = redis_address.split(":")
         self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
-        self.grpc_port = self.server.add_insecure_port("[::]:0")
-        logger.info("Dashboard head grpc address: %s:%s", self.ip,
+        grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
+        self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
+            self.server, f"{grpc_ip}:0")
+        logger.info("Dashboard head grpc address: %s:%s", grpc_ip,
                     self.grpc_port)
 
     @async_loop_forever(dashboard_consts.GCS_CHECK_ALIVE_INTERVAL_SECONDS)
     async def _gcs_check_alive(self):
-        is_alive = await self.health_check_thread.check_once()
+        check_future = self.health_check_thread.check_once()
+
+        # NOTE(simon): making sure the check procedure doesn't timeout itself.
+        # Otherwise, the dashboard will always think that gcs is alive.
+        try:
+            is_alive = await asyncio.wait_for(
+                check_future, dashboard_consts.GCS_CHECK_ALIVE_RPC_TIMEOUT + 1)
+        except asyncio.TimeoutError:
+            logger.error("Failed to check gcs health, client timed out.")
+            is_alive = False
+
         if is_alive:
             self._gcs_rpc_error_counter = 0
         else:
@@ -188,11 +190,11 @@ class DashboardHead:
             self.http_session = aiohttp.ClientSession()
 
         # Waiting for GCS is ready.
-        self.aiogrpc_gcs_channel = await make_gcs_grpc_channel(
-            self.aioredis_client)
+        gcs_address = await get_gcs_address_with_retry(self.aioredis_client)
+        self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
+            gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True)
 
-        self.health_check_thread = GCSHealthCheckThread(
-            self.redis_address, self.redis_password)
+        self.health_check_thread = GCSHealthCheckThread(gcs_address)
         self.health_check_thread.start()
 
         # Start a grpc asyncio server.
@@ -210,7 +212,8 @@ class DashboardHead:
         modules = self._load_modules()
 
         # Http server should be initialized after all modules loaded.
-        app = aiohttp.web.Application()
+        # working_dir uploads for job submission can be up to 100MiB.
+        app = aiohttp.web.Application(client_max_size=100 * 1024**2)
         app.add_routes(routes=routes.bound_routes())
 
         runner = aiohttp.web.AppRunner(app)

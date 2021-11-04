@@ -89,8 +89,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
             checkpoint_freq=1,
             fail_fast=True,
             config={"a": tune.sample_from(lambda _: param_a())},
-            trial_executor=CustomExecutor(
-                queue_trials=False, reuse_actors=False),
+            trial_executor=CustomExecutor(reuse_actors=False),
         )
 
 

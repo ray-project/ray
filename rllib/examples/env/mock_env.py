@@ -111,7 +111,7 @@ class VectorizedMockEnv(VectorEnv):
         return obs_batch, rew_batch, done_batch, info_batch
 
     @override(VectorEnv)
-    def get_unwrapped(self):
+    def get_sub_environments(self):
         return self.envs
 
 
@@ -168,7 +168,7 @@ class MockVectorEnv(VectorEnv):
         return obs_batch, rew_batch, done_batch, info_batch
 
     @override(VectorEnv)
-    def get_unwrapped(self):
+    def get_sub_environments(self):
         # You may also leave this method as-is, in which case, it would
         # return an empty list.
         return [self.env for _ in range(self.num_envs)]

@@ -28,6 +28,13 @@ DEFAULT_CONFIG = with_common_config({
     "vtrace": True,
     "vtrace_clip_rho_threshold": 1.0,
     "vtrace_clip_pg_rho_threshold": 1.0,
+    # If True, drop the last timestep for the vtrace calculations, such that
+    # all data goes into the calculations as [B x T-1] (+ the bootstrap value).
+    # This is the default and legacy RLlib behavior, however, could potentially
+    # have a destabilizing effect on learning, especially in sparse reward
+    # or reward-at-goal environments.
+    # False for not dropping the last timestep.
+    "vtrace_drop_last_ts": True,
     # System params.
     #
     # == Overview of data flow in IMPALA ==
@@ -312,7 +319,10 @@ def gather_experiences_directly(workers, config):
     return train_batches
 
 
-def execution_plan(workers, config):
+def execution_plan(workers, config, **kwargs):
+    assert len(kwargs) == 0, (
+        "IMPALA execution_plan does NOT take any additional parameters")
+
     if config["num_aggregation_workers"] > 0:
         train_batches = gather_experiences_tree_aggregation(workers, config)
     else:

@@ -22,8 +22,8 @@ public class Router {
 
   private LongPollClient longPollClient;
 
-  public Router(BaseActorHandle controllerHandle, String backendTag) {
-    this.replicaSet = new ReplicaSet(backendTag);
+  public Router(BaseActorHandle controllerHandle, String deploymentName) {
+    this.replicaSet = new ReplicaSet(deploymentName);
 
     RayServeMetrics.execute(
         () ->
@@ -32,15 +32,15 @@ public class Router {
                     .name(RayServeMetrics.SERVE_NUM_ROUTER_REQUESTS.getName())
                     .description(RayServeMetrics.SERVE_NUM_ROUTER_REQUESTS.getDescription())
                     .unit("")
-                    .tags(ImmutableMap.of(RayServeMetrics.TAG_DEPLOYMENT, backendTag))
+                    .tags(ImmutableMap.of(RayServeMetrics.TAG_DEPLOYMENT, deploymentName))
                     .register());
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
     keyListeners.put(
-        new KeyType(LongPollNamespace.BACKEND_CONFIGS, backendTag),
-        backendConfig -> replicaSet.setMaxConcurrentQueries(backendConfig)); // cross language
+        new KeyType(LongPollNamespace.BACKEND_CONFIGS, deploymentName),
+        deploymentConfig -> replicaSet.setMaxConcurrentQueries(deploymentConfig)); // cross language
     keyListeners.put(
-        new KeyType(LongPollNamespace.REPLICA_HANDLES, backendTag),
+        new KeyType(LongPollNamespace.REPLICA_HANDLES, deploymentName),
         workerReplicas -> replicaSet.updateWorkerReplicas(workerReplicas)); // cross language
     this.longPollClient = new LongPollClient(controllerHandle, keyListeners);
     this.longPollClient.start();

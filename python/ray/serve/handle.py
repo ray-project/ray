@@ -103,6 +103,19 @@ class RayServeHandle:
             event_loop=asyncio.get_event_loop(),
         )
 
+    @property
+    def is_polling(self) -> bool:
+        """Whether this handle is actively polling for replica updates."""
+        return self.router.long_poll_client.is_running
+
+    @property
+    def is_same_loop(self) -> bool:
+        """Whether the caller's asyncio loop is the same loop for handle.
+
+        This is only useful for async handles.
+        """
+        return asyncio.get_event_loop() == self.router._event_loop
+
     def options(
             self,
             *,
@@ -114,10 +127,10 @@ class RayServeHandle:
         """Set options for this handle.
 
         Args:
-            method_name(str): The method to invoke on the backend.
+            method_name(str): The method to invoke.
             http_method(str): The HTTP method to use for the request.
             shard_key(str): A string to use to deterministically map this
-                request to a backend if there are multiple for this endpoint.
+                request to a deployment if there are multiple.
         """
         new_options_dict = self.handle_options.__dict__.copy()
         user_modified_options_dict = {
@@ -188,6 +201,12 @@ class RayServeHandle:
 
 
 class RayServeSyncHandle(RayServeHandle):
+    @property
+    def is_same_loop(self) -> bool:
+        # NOTE(simon): For sync handle, the caller doesn't have to be in the
+        # same loop as the handle's loop, so we always return True here.
+        return True
+
     def _make_router(self) -> Router:
         # Delayed import because ray.serve.api depends on handles.
         return Router(
@@ -208,7 +227,7 @@ class RayServeSyncHandle(RayServeHandle):
             request_data(dict, Any): If it's a dictionary, the data will be
                 available in ``request.json()`` or ``request.form()``.
                 If it's a Starlette Request object, it will be passed in to the
-                backend directly, unmodified. Otherwise, the data will be
+                handler directly, unmodified. Otherwise, the data will be
                 available in ``request.data``.
             ``**kwargs``: All keyword arguments will be available in
                 ``request.args``.

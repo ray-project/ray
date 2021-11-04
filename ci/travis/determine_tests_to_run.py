@@ -3,13 +3,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import argparse
 import json
 import os
+from pprint import pformat
+import py_dep_analysis as pda
 import re
 import subprocess
 import sys
-from pprint import pformat
-import argparse
 
 
 def list_changed_files(commit_range):
@@ -72,10 +73,12 @@ if __name__ == "__main__":
 
     RAY_CI_TUNE_AFFECTED = 0
     RAY_CI_SGD_AFFECTED = 0
-    RAY_CI_ONLY_RLLIB_AFFECTED = 0  # Whether only RLlib is affected.
+    RAY_CI_TRAIN_AFFECTED = 0
     RAY_CI_RLLIB_AFFECTED = 0  # Whether RLlib minimal tests should be run.
     RAY_CI_RLLIB_FULL_AFFECTED = 0  # Whether full RLlib tests should be run.
     RAY_CI_SERVE_AFFECTED = 0
+    RAY_CI_CORE_CPP_AFFECTED = 0
+    RAY_CI_CPP_AFFECTED = 0
     RAY_CI_JAVA_AFFECTED = 0
     RAY_CI_PYTHON_AFFECTED = 0
     RAY_CI_LINUX_WHEELS_AFFECTED = 0
@@ -94,6 +97,27 @@ if __name__ == "__main__":
         print(pformat(commit_range), file=sys.stderr)
         print(pformat(files), file=sys.stderr)
 
+        # Dry run py_dep_analysis.py to see which tests we would have run.
+        try:
+            graph = pda.build_dep_graph()
+            rllib_tests = pda.list_rllib_tests()
+            print(
+                "Total # of RLlib tests: ", len(rllib_tests), file=sys.stderr)
+
+            impacted = {}
+            for test in rllib_tests:
+                for file in files:
+                    if pda.test_depends_on_file(graph, test, file):
+                        impacted[test[0]] = True
+
+            print("RLlib tests impacted: ", len(impacted), file=sys.stderr)
+            for test in impacted.keys():
+                print("    ", test, file=sys.stderr)
+        except Exception as e:
+            print("Failed to dry run py_dep_analysis.py", file=sys.stderr)
+            print(e, file=sys.stderr)
+        # End of dry run.
+
         skip_prefix_list = [
             "doc/", "examples/", "dev/", "kubernetes/", "site/"
         ]
@@ -108,6 +132,10 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("python/ray/util/sgd"):
                 RAY_CI_SGD_AFFECTED = 1
+                RAY_CI_LINUX_WHEELS_AFFECTED = 1
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
+            elif changed_file.startswith("python/ray/train"):
+                RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif re.match("^(python/ray/)?rllib/", changed_file):
@@ -133,6 +161,7 @@ if __name__ == "__main__":
             elif changed_file.startswith("python/"):
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_SGD_AFFECTED = 1
+                RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
@@ -150,6 +179,8 @@ if __name__ == "__main__":
             elif changed_file.startswith("java/"):
                 RAY_CI_JAVA_AFFECTED = 1
                 RAY_CI_STREAMING_JAVA_AFFECTED = 1
+            elif changed_file.startswith("cpp/"):
+                RAY_CI_CPP_AFFECTED = 1
             elif changed_file.startswith("docker/"):
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
@@ -167,8 +198,11 @@ if __name__ == "__main__":
             elif changed_file.startswith("src/"):
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_SGD_AFFECTED = 1
+                RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
+                RAY_CI_CORE_CPP_AFFECTED = 1
+                RAY_CI_CPP_AFFECTED = 1
                 RAY_CI_JAVA_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
@@ -189,8 +223,11 @@ if __name__ == "__main__":
             else:
                 RAY_CI_TUNE_AFFECTED = 1
                 RAY_CI_SGD_AFFECTED = 1
+                RAY_CI_TRAIN_AFFECTED = 1
                 RAY_CI_RLLIB_AFFECTED = 1
                 RAY_CI_SERVE_AFFECTED = 1
+                RAY_CI_CORE_CPP_AFFECTED = 1
+                RAY_CI_CPP_AFFECTED = 1
                 RAY_CI_JAVA_AFFECTED = 1
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_DOC_AFFECTED = 1
@@ -203,9 +240,12 @@ if __name__ == "__main__":
     else:
         RAY_CI_TUNE_AFFECTED = 1
         RAY_CI_SGD_AFFECTED = 1
+        RAY_CI_TRAIN_AFFECTED = 1
         RAY_CI_RLLIB_AFFECTED = 1
         RAY_CI_RLLIB_FULL_AFFECTED = 1
         RAY_CI_SERVE_AFFECTED = 1
+        RAY_CI_CPP_AFFECTED = 1
+        RAY_CI_CORE_CPP_AFFECTED = 1
         RAY_CI_JAVA_AFFECTED = 1
         RAY_CI_PYTHON_AFFECTED = 1
         RAY_CI_DOC_AFFECTED = 1
@@ -216,24 +256,18 @@ if __name__ == "__main__":
         RAY_CI_STREAMING_JAVA_AFFECTED = 1
         RAY_CI_DASHBOARD_AFFECTED = 1
 
-    if not RAY_CI_TUNE_AFFECTED and not RAY_CI_SERVE_AFFECTED and \
-            not RAY_CI_JAVA_AFFECTED and not RAY_CI_PYTHON_AFFECTED and not \
-            RAY_CI_STREAMING_CPP_AFFECTED and \
-            not RAY_CI_STREAMING_PYTHON_AFFECTED and \
-            not RAY_CI_STREAMING_JAVA_AFFECTED and \
-            not RAY_CI_SGD_AFFECTED:
-        RAY_CI_ONLY_RLLIB_AFFECTED = 1
-
     # Log the modified environment variables visible in console.
     output_string = " ".join([
         "RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED),
         "RAY_CI_SGD_AFFECTED={}".format(RAY_CI_SGD_AFFECTED),
-        "RAY_CI_ONLY_RLLIB_AFFECTED={}".format(RAY_CI_ONLY_RLLIB_AFFECTED),
+        "RAY_CI_TRAIN_AFFECTED={}".format(RAY_CI_TRAIN_AFFECTED),
         "RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED),
         "RAY_CI_RLLIB_FULL_AFFECTED={}".format(RAY_CI_RLLIB_FULL_AFFECTED),
         "RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED),
         "RAY_CI_DASHBOARD_AFFECTED={}".format(RAY_CI_DASHBOARD_AFFECTED),
         "RAY_CI_DOC_AFFECTED={}".format(RAY_CI_DOC_AFFECTED),
+        "RAY_CI_CORE_CPP_AFFECTED={}".format(RAY_CI_CORE_CPP_AFFECTED),
+        "RAY_CI_CPP_AFFECTED={}".format(RAY_CI_CPP_AFFECTED),
         "RAY_CI_JAVA_AFFECTED={}".format(RAY_CI_JAVA_AFFECTED),
         "RAY_CI_PYTHON_AFFECTED={}".format(RAY_CI_PYTHON_AFFECTED),
         "RAY_CI_LINUX_WHEELS_AFFECTED={}".format(RAY_CI_LINUX_WHEELS_AFFECTED),

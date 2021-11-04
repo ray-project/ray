@@ -121,7 +121,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
 
     .. code-block:: shell
 
-      pip install ray[cpp]
+      pip install "ray[cpp]"
       mkdir ray-template && ray cpp --generate-bazel-project-template-to ray-template
 
     | - The project template comes with a simple example application. You can try this example out in 2 ways:
@@ -295,6 +295,7 @@ Papers
    workflows/basics.rst
    workflows/management.rst
    workflows/actors.rst
+   workflows/events.rst
    workflows/comparison.rst
    workflows/package-ref.rst
 
@@ -332,14 +333,14 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
-   :caption: Ray SGD
+   :caption: Ray Train
 
-   raysgd/v2/raysgd.rst
-   raysgd/v2/user_guide.rst
-   raysgd/v2/examples.rst
-   raysgd/v2/architecture.rst
-   raysgd/v2/api.rst
-   raysgd/v2/migration-guide.rst
+   train/train.rst
+   train/user_guide.rst
+   train/examples.rst
+   train/architecture.rst
+   train/api.rst
+   train/migration-guide.rst
    RaySGD v1: Distributed Training Wrappers <raysgd/raysgd.rst>
 
 .. toctree::

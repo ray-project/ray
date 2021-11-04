@@ -40,6 +40,12 @@ DatasetPipeline API
 .. autoclass:: ray.data.dataset_pipeline.DatasetPipeline
     :members:
 
+GroupedDataset API
+------------------
+
+.. autoclass:: ray.data.grouped_dataset.GroupedDataset
+    :members:
+
 Tensor Column Extension API
 ---------------------------
 

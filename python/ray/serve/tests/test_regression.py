@@ -9,6 +9,7 @@ import ray
 from ray.exceptions import GetTimeoutError
 from ray import serve
 from ray._private.test_utils import SignalActor
+from ray.serve.api import _get_global_client
 
 
 @pytest.fixture
@@ -138,6 +139,29 @@ def test_nested_actors(serve_instance):
 
     # The nested actor should start successfully.
     ray.get(signal.wait.remote(), timeout=10)
+
+
+def test_handle_cache_out_of_scope(serve_instance):
+    # https://github.com/ray-project/ray/issues/18980
+    initial_num_cached = len(_get_global_client().handle_cache)
+
+    @serve.deployment(name="f")
+    def f():
+        return "hi"
+
+    f.deploy()
+    handle = serve.get_deployment("f").get_handle()
+
+    handle_cache = _get_global_client().handle_cache
+    assert len(handle_cache) == initial_num_cached + 1
+
+    def sender_where_handle_goes_out_of_scope():
+        f = serve.get_deployment("f").get_handle()
+        assert f is handle
+        assert ray.get(f.remote()) == "hi"
+
+    [sender_where_handle_goes_out_of_scope() for _ in range(30)]
+    assert len(handle_cache) == initial_num_cached + 1
 
 
 if __name__ == "__main__":
