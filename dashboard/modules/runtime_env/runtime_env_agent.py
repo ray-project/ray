@@ -212,7 +212,13 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             elif plugin == "py_modules":
                 if not self._py_modules_manager.delete_uri(uri):
                     failed_uris.append(uri)
-
+            elif plugin == "conda":
+                if not self._conda_manager.delete_uri(uri):
+                    failed_uris.append(uri)
+            else:
+                raise ValueError(
+                    "RuntimeEnvAgent received DeleteURI request "
+                    f"for unsupported plugin {plugin}. URI: {uri}")
             if failed_uris:
                 return runtime_env_agent_pb2.DeleteURIsReply(
                     status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,

@@ -10,6 +10,7 @@ import yaml
 import ray
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import import_attr
+from ray._private.runtime_env import conda
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
 
     Conda can be one of three cases:
         1) A dictionary describing the env. This is passed through directly.
-        2) A string referring to a preinstalled conda env.
+        2) A string referring to the name of a preinstalled conda env.
         3) A string pointing to a local conda YAML file. This is detected
            by looking for a '.yaml' or '.yml' suffix. In this case, the file
            will be read as YAML and passed through as a dictionary.
@@ -346,7 +347,8 @@ class ParsedRuntimeEnv(dict):
 
     def get_uris(self) -> List[str]:
         # TODO(architkulkarni): this should programmatically be extended with
-        # URIs from all plugins.
+        # URIs from all plugins.  We should probably also only generate URIs
+        # once in __init__.
         plugin_uris = []
         if "working_dir" in self:
             plugin_uris.append(
@@ -354,6 +356,9 @@ class ParsedRuntimeEnv(dict):
         if "py_modules" in self:
             for uri in self["py_modules"]:
                 plugin_uris.append(_encode_plugin_uri("py_modules", uri))
+        if "conda" in self:
+            plugin_uris.append(
+                _encode_plugin_uri("conda", conda.get_uri(self)))
         return plugin_uris
 
     @classmethod

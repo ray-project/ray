@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import logging
 import yaml
 import hashlib
@@ -12,11 +13,13 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 import ray
-from ray._private.runtime_env.conda_utils import (get_conda_activate_commands,
-                                                  get_or_create_conda_env)
+from ray._private.runtime_env.conda_utils import (
+    get_conda_activate_commands, create_conda_env, delete_conda_env)
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url, try_to_create_directory)
+from ray._private.runtime_env.packaging import parse_uri
+from ray._private.runtime_env.validation import ParsedRuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 
@@ -189,12 +192,64 @@ def inject_dependencies(
     return conda_dict
 
 
+def _get_conda_env_hash(conda_dict: Dict) -> str:
+    # Set `sort_keys=True` so that different orderings yield the same hash.
+    serialized_conda_spec = json.dumps(conda_dict, sort_keys=True)
+    hash = hashlib.sha1(serialized_conda_spec.encode("utf-8")).hexdigest()
+    return hash
+
+
+def get_uri(runtime_env: ParsedRuntimeEnv) -> Optional[str]:
+    conda = runtime_env.get("conda")
+    if conda is None:
+        uri = None
+    elif isinstance(conda, str):
+        # User-preinstalled conda env.  We don't garbage collect these, so
+        # we don't track them with URIs.
+        uri = None
+    elif isinstance(conda, dict):
+        uri = "conda://" + _get_conda_env_hash(conda_dict=conda)
+    else:
+        raise TypeError("conda field received by RuntimeEnvAgent must be "
+                        f"str or dict, not {type(conda).__name__}.")
+    return uri
+
+
 class CondaManager:
     def __init__(self, resources_dir: str):
         self._resources_dir = resources_dir
+        self._conda_dir = os.path.join(self._resources_dir, "conda")
+
+    def _get_path_from_hash(self, hash: str) -> str:
+        return os.path.join(self._conda_dir, hash)
+
+    def _get_conda_env_path(self, conda_dict: Dict) -> str:
+        """Generate a path by hashing the contents of a conda spec.
+
+        The output path also functions as the name of the conda environment
+        when using the `--prefix` option to `conda create` and `conda remove`.
+
+        Example output:
+            /tmp/ray/session_2021-11-03_16-33-59_356303_41018/runtime_resources
+                /conda/ray-9a7972c3a75f55e976e620484f58410c920db091
+        """
+        hash = _get_conda_env_hash(conda_dict)
+        return self._get_path_from_hash(hash)
+
+    def delete_uri(self,
+                   uri: str,
+                   logger: Optional[logging.Logger] = default_logger) -> bool:
+        protocol, hash = parse_uri(uri)
+        if protocol != "conda":
+            raise ValueError(
+                "CondaManager can only delete URIs with protocol "
+                f"conda.  Received protocol {protocol}, URI {uri}")
+
+        conda_env_path = self._get_path_from_hash(hash)
+        return delete_conda_env(prefix=conda_env_path, logger=logger)
 
     def setup(self,
-              runtime_env: dict,
+              runtime_env: ParsedRuntimeEnv,
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
         if not runtime_env.get("conda") and not runtime_env.get("pip"):
@@ -216,27 +271,22 @@ class CondaManager:
                 extra_pip_dependencies = []
             conda_dict = inject_dependencies(conda_dict, _current_py_version(),
                                              extra_pip_dependencies)
+
             logger.info(f"Setting up conda environment with {runtime_env}")
-            # It is not safe for multiple processes to install conda envs
-            # concurrently, even if the envs are different, so use a global
-            # lock for all conda installs.
-            # See https://github.com/ray-project/ray/issues/17086
-            file_lock_name = "ray-conda-install.lock"
-            with FileLock(os.path.join(self._resources_dir, file_lock_name)):
-                conda_dir = os.path.join(self._resources_dir, "conda")
-                try_to_create_directory(conda_dir)
-                conda_yaml_path = os.path.join(conda_dir, "environment.yml")
-                with open(conda_yaml_path, "w") as file:
-                    # Sort keys because we hash based on the file contents,
-                    # and we don't want the hash to depend on the order
-                    # of the dependencies.
-                    yaml.dump(conda_dict, file, sort_keys=True)
-                conda_env_name = get_or_create_conda_env(
-                    conda_yaml_path, conda_dir, logger=logger)
+
+            try_to_create_directory(self._conda_dir)
+
+            conda_yaml_file = os.path.join(self._conda_dir, "environment.yml")
+            with open(conda_yaml_file, "w") as file:
+                yaml.dump(conda_dict, file)
+
+            conda_env_name = self._get_conda_env_path(conda_dict=conda_dict)
+            create_conda_env(
+                conda_yaml_file, prefix=conda_env_name, logger=logger)
 
             if runtime_env.get("_inject_current_ray"):
-                conda_path = os.path.join(conda_dir, conda_env_name)
-                _inject_ray_to_conda_site(conda_path, logger=logger)
+                _inject_ray_to_conda_site(
+                    conda_path=conda_env_name, logger=logger)
 
         context.py_executable = "python"
         context.command_prefix += get_conda_activate_commands(conda_env_name)
