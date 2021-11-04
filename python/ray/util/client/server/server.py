@@ -229,7 +229,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 ctx.namespace = rtc.namespace
                 ctx.capture_client_tasks = \
                     rtc.should_capture_child_tasks_in_placement_group
-                ctx.runtime_env = rtc.runtime_env
+                ctx.runtime_env = rtc.get_runtime_env_string()
             resp.runtime_context.CopyFrom(ctx)
         else:
             with disable_client_hook():

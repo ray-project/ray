@@ -4,7 +4,6 @@ if TYPE_CHECKING:
     from ray.runtime_context import RuntimeContext
     from ray import JobID
     from ray import NodeID
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
 
 
 class ClientWorkerPropertyAPI:
@@ -49,5 +48,5 @@ class ClientWorkerPropertyAPI:
         return self._fetch_runtime_context().capture_client_tasks
 
     @property
-    def runtime_env(self) -> Dict:
-        return ParsedRuntimeEnv.deserialize(self._fetch_runtime_context().runtime_env)
+    def runtime_env(self) -> str:
+        return self._fetch_runtime_context().runtime_env
