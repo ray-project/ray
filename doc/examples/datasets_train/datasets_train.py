@@ -1,6 +1,5 @@
 # TODO(matt): Reformat script.
 # flake8: noqa
-
 """
 Big Data Training
 =================
