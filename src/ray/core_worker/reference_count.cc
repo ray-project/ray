@@ -172,6 +172,8 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   // If the entry doesn't exist, we initialize the direct reference count to zero
   // because this corresponds to a submitted task whose return ObjectID will be created
   // in the frontend language, incrementing the reference count.
+  // TODO(swang): Objects that are not reconstructable should not increment
+  // their arguments' lineage ref counts.
   auto it = object_id_refs_
                 .emplace(object_id, Reference(owner_address, call_site, object_size,
                                               is_reconstructable, pinned_at_raylet_id))
