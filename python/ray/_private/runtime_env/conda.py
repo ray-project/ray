@@ -19,7 +19,6 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url, try_to_create_directory)
 from ray._private.runtime_env.packaging import parse_uri
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 
@@ -199,7 +198,7 @@ def _get_conda_env_hash(conda_dict: Dict) -> str:
     return hash
 
 
-def get_uri(runtime_env: ParsedRuntimeEnv) -> Optional[str]:
+def get_uri(runtime_env: Dict) -> Optional[str]:
     conda = runtime_env.get("conda")
     if conda is None:
         uri = None
@@ -249,7 +248,7 @@ class CondaManager:
         return delete_conda_env(prefix=conda_env_path, logger=logger)
 
     def setup(self,
-              runtime_env: ParsedRuntimeEnv,
+              runtime_env: Dict,
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
         if not runtime_env.get("conda") and not runtime_env.get("pip"):
