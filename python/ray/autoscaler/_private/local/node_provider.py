@@ -166,8 +166,8 @@ class LocalNodeProvider(NodeProvider):
 
     def __init__(self, provider_config, cluster_name):
 
-        if os.name == 'nt':
-            raise RuntimeError('cannot currently use multi-node on windows')
+        if os.name == "nt":
+            raise RuntimeError("cannot currently use multi-node on windows")
 
         NodeProvider.__init__(self, provider_config, cluster_name)
 

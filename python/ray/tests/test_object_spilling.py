@@ -18,7 +18,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.internal.internal_api import memory_summary
 
-avoid_multi_node = (sys.platform == 'win32')
+avoid_multi_node = (sys.platform == "win32")
 
 
 def run_basic_workload():

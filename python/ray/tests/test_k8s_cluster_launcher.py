@@ -13,7 +13,7 @@ from ray.autoscaler import sdk
 
 IMAGE_ENV = "KUBERNETES_CLUSTER_LAUNCHER_TEST_IMAGE"
 
-avoid_multi_node = (os.name == 'nt')
+avoid_multi_node = (os.name == "nt")
 
 
 def fill_image_field(pod_config):

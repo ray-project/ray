@@ -20,7 +20,7 @@ from ray._private.test_utils import (wait_for_condition, new_scheduler_enabled,
 
 logger = logging.getLogger(__name__)
 
-avoid_multi_node = (sys.platform == 'win32')
+avoid_multi_node = (sys.platform == "win32")
 
 
 def attempt_to_load_balance(remote_function,

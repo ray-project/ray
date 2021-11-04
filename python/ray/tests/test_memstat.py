@@ -37,7 +37,7 @@ PID = "pid"
 OBJECT_SIZE = "object size"
 REFERENCE_TYPE = "reference type"
 
-avoid_multi_node = (os.name == 'nt')
+avoid_multi_node = (os.name == "nt")
 
 
 def data_lines(memory_str):

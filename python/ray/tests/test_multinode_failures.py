@@ -15,8 +15,8 @@ SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 @pytest.fixture(params=[(1, 4), (4, 4)])
 def ray_start_workers_separate_multinode(request):
-    if os.name == 'nt':
-        pytest.skip('multi-node not supported on windows')
+    if os.name == "nt":
+        pytest.skip("multi-node not supported on windows")
     num_nodes = request.param[0]
     num_initial_workers = request.param[1]
     # Start the Ray processes.

@@ -14,7 +14,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.internal.internal_api import global_gc
 
 logger = logging.getLogger(__name__)
-avoid_multi_node = (sys.platform == 'win32')
+avoid_multi_node = (sys.platform == "win32")
 
 
 def test_auto_local_gc(shutdown_only):

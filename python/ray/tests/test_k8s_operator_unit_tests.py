@@ -35,7 +35,7 @@ file mounts.
 START = "start"
 JOIN = "join"
 
-avoid_multi_node = (sys.platform == 'win32')
+avoid_multi_node = (sys.platform == "win32")
 
 
 def mock_start(self):

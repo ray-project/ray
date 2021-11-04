@@ -14,7 +14,7 @@ if (multiprocessing.cpu_count() < 40
         or ray._private.utils.get_system_memory() < 50 * 10**9):
     warnings.warn("This test must be run on large machines.")
 
-avoid_multi_node = (os.name == 'nt')
+avoid_multi_node = (os.name == "nt")
 
 
 def create_cluster(num_nodes):

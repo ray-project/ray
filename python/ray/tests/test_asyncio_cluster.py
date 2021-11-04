@@ -8,7 +8,7 @@ import numpy as np
 import ray
 from ray.cluster_utils import Cluster
 
-avoid_multi_node = (sys.platform == 'win32')
+avoid_multi_node = (sys.platform == "win32")
 
 
 @pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")

@@ -13,7 +13,7 @@ from ray._private.test_utils import run_string_as_driver_nonblocking,\
 
 from ray.cluster_utils import Cluster
 
-avoid_multi_node = (sys.platform == 'win32')
+avoid_multi_node = (sys.platform == "win32")
 
 
 @pytest.mark.parametrize("address", [

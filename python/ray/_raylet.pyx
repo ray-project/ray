@@ -1333,6 +1333,8 @@ cdef class CoreWorker:
                         CRayObject(data, metadata, contained_object_refs),
                         contained_object_ids, c_object_id))
             else:
+                if os.name == "nt":
+                    raise RuntimeError("multi-node not supported on windows")
                 c_owner_address = move(self._convert_python_address(
                     owner_address))
                 with nogil:

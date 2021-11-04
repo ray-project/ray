@@ -81,7 +81,7 @@ boto3_list = [{
     }
 }]
 
-avoid_multi_node = (sys.platform == 'win32')
+avoid_multi_node = (sys.platform == "win32")
 
 
 @pytest.fixture

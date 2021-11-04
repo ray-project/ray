@@ -4,7 +4,7 @@ import sys
 import ray
 from ray.cluster_utils import AutoscalingCluster
 
-avoid_multi_node = (sys.platform == 'win32')
+avoid_multi_node = (sys.platform == "win32")
 
 
 @pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")

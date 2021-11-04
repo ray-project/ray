@@ -14,7 +14,7 @@ from ray._private.test_utils import (generate_system_config_map,
 
 logger = logging.getLogger(__name__)
 
-avoid_multi_node = (sys.platform == 'win32')
+avoid_multi_node = (sys.platform == "win32")
 
 
 @pytest.mark.xfail("avoid_multi_node", reason="cluster requires multi-node")
