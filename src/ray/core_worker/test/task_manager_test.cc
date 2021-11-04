@@ -28,7 +28,7 @@ namespace core {
 TaskSpecification CreateTaskHelper(uint64_t num_returns,
                                    std::vector<ObjectID> dependencies) {
   TaskSpecification task;
-  task.GetMutableMessage().set_task_id(TaskID::ForFakeTask(JobID::FromInt(1)).Binary());
+  task.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID::FromInt(1)).Binary());
   task.GetMutableMessage().set_num_returns(num_returns);
   for (const ObjectID &dep : dependencies) {
     task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(

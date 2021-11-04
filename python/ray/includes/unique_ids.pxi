@@ -172,7 +172,7 @@ cdef class TaskID(BaseID):
 
     @classmethod
     def for_fake_task(cls, job_id):
-        return cls(CTaskID.ForFakeTask(
+        return cls(CTaskID.FromRandom(
             CJobID.FromBinary(job_id.binary())).Binary())
 
     @classmethod

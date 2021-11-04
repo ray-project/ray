@@ -20,7 +20,7 @@ namespace core {
 /// per-thread context for core worker.
 struct WorkerThreadContext {
   explicit WorkerThreadContext(const JobID &job_id)
-      : current_task_id_(TaskID::ForFakeTask(job_id)), task_index_(0), put_counter_(0) {}
+      : current_task_id_(TaskID::FromRandom(job_id)), task_index_(0), put_counter_(0) {}
 
   uint64_t GetNextTaskIndex() { return ++task_index_; }
 
