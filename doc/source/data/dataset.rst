@@ -22,6 +22,8 @@ Ray Datasets are designed to load and preprocess data for distributed ML trainin
 Datasets is not intended as a replacement for more general data processing systems. Its utility is as the last-mile bridge from ETL pipeline outputs to distributed applications and libraries in Ray:
 
 .. image:: dataset-loading-1.png
+   :width: 650px
+   :align: center
 
 ..
   https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit
@@ -29,6 +31,8 @@ Datasets is not intended as a replacement for more general data processing syste
 Ray-integrated DataFrame libraries can also be seamlessly used with Datasets, to enable running a full data to ML pipeline completely within Ray without requiring data to be materialized to external storage:
 
 .. image:: dataset-loading-2.png
+   :width: 650px
+   :align: center
 
 See the following for more Dataset ML use cases and benchmarks:
 - [slides] `Talk given at PyData 2021 <https://docs.google.com/presentation/d/1zANPlmrxQkjPU62I-p92oFO3rJrmjVhs73hL4YbM4C4>`_
