@@ -74,10 +74,12 @@ if __name__ == "__main__":
     RAY_CI_TUNE_AFFECTED = 0
     RAY_CI_SGD_AFFECTED = 0
     RAY_CI_TRAIN_AFFECTED = 0
-    # Whether only the most important (high-level) RLlib tests should
-    # be run.
+    # Whether only the most important (high-level) RLlib tests should be run.
+    # Set to 1 for any changes to Ray Tune or python source files that are
+    # NOT related to Serve, Dashboard, SGD, or Train.
     RAY_CI_RLLIB_AFFECTED = 0
     # Whether all RLlib tests should be run.
+    # Set to 1 only when a source file in `ray/rllib` has been changed.
     RAY_CI_RLLIB_DIRECTLY_AFFECTED = 0
     RAY_CI_SERVE_AFFECTED = 0
     RAY_CI_CORE_CPP_AFFECTED = 0
