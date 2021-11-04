@@ -21,7 +21,6 @@
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
@@ -119,9 +118,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init gcs actor manager.
   InitGcsActorManager(gcs_init_data);
-
-  // Init object manager.
-  InitObjectManager(gcs_init_data);
 
   // Init gcs worker manager.
   InitGcsWorkerManager();
@@ -251,12 +247,13 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
 void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_node_manager_);
   std::unique_ptr<GcsActorSchedulerInterface> scheduler;
-  auto schedule_failure_handler = [this](std::shared_ptr<GcsActor> actor) {
+  auto schedule_failure_handler = [this](std::shared_ptr<GcsActor> actor,
+                                         bool destroy_actor) {
     // When there are no available nodes to schedule the actor the
     // gcs_actor_scheduler will treat it as failed and invoke this handler. In
     // this case, the actor manager should schedule the actor once an
     // eligible node is registered.
-    gcs_actor_manager_->OnActorCreationFailed(std::move(actor));
+    gcs_actor_manager_->OnActorCreationFailed(std::move(actor), destroy_actor);
   };
   auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor,
                                          const rpc::PushTaskReply &reply) {
@@ -326,18 +323,6 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   placement_group_info_service_.reset(new rpc::PlacementGroupInfoGrpcService(
       main_service_, *gcs_placement_group_manager_));
   rpc_server_.RegisterService(*placement_group_info_service_);
-}
-
-void GcsServer::InitObjectManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_node_manager_);
-  gcs_object_manager_.reset(
-      new GcsObjectManager(gcs_table_storage_, gcs_publisher_, *gcs_node_manager_));
-  // Initialize by gcs tables data.
-  gcs_object_manager_->Initialize(gcs_init_data);
-  // Register service.
-  object_info_service_.reset(
-      new rpc::ObjectInfoGrpcService(main_service_, *gcs_object_manager_));
-  rpc_server_.RegisterService(*object_info_service_);
 }
 
 void GcsServer::StoreGcsServerAddressInRedis() {
@@ -524,7 +509,6 @@ void GcsServer::PrintDebugInfo() {
   std::ostringstream stream;
   stream << gcs_node_manager_->DebugString() << "\n"
          << gcs_actor_manager_->DebugString() << "\n"
-         << gcs_object_manager_->DebugString() << "\n"
          << gcs_placement_group_manager_->DebugString() << "\n"
          << gcs_publisher_->DebugString() << "\n"
          << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();

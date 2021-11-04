@@ -13,7 +13,7 @@ from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import huber_loss, sequence_mask
+from ray.rllib.utils.torch_utils import huber_loss, sequence_mask
 from ray.rllib.utils.typing import \
     ModelInputDict, TensorType, TrainerConfigDict
 

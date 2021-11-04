@@ -1,5 +1,5 @@
 frozenlake-appo-vtrace:
-    env: FrozenLake-v0
+    env: FrozenLake-v1
     run: APPO
     stop:
         episode_reward_mean: 0.99
@@ -21,10 +21,10 @@ frozenlake-appo-vtrace:
                 - FFFFFFFG
             is_slippery: false
         horizon: 20
-        rollout_fragment_length: 20  #10
+        rollout_fragment_length: 10
         batch_mode: complete_episodes
         vtrace: true
-        vtrace_drop_last_ts: true
+        vtrace_drop_last_ts: false
 
         num_envs_per_worker: 5
         num_workers: 4

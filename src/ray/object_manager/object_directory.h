@@ -23,7 +23,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
-#include "ray/gcs/gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/object_manager/common.h"
 
 namespace ray {
@@ -44,7 +44,7 @@ struct RemoteConnectionInfo {
 /// Callback for object location notifications.
 using OnLocationsFound = std::function<void(
     const ray::ObjectID &object_id, const std::unordered_set<ray::NodeID> &,
-    const std::string &, const NodeID &, bool pending_creation, size_t object_size)>;
+    const std::string &, const NodeID &, size_t object_size)>;
 
 class IObjectDirectory {
  public:

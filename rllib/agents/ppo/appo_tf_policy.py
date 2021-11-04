@@ -28,7 +28,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
+from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
 from ray.rllib.utils.typing import AgentID, TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
@@ -145,7 +145,8 @@ def appo_surrogate_loss(
 
     if policy.config["vtrace"]:
         drop_last = policy.config["vtrace_drop_last_ts"]
-        logger.debug("Using V-Trace surrogate loss (vtrace=True)")
+        logger.debug("Using V-Trace surrogate loss (vtrace=True; "
+                     f"drop_last={drop_last})")
 
         # Prepare actions for loss.
         loss_actions = actions if is_multidiscrete else tf.expand_dims(

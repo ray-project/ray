@@ -7,7 +7,7 @@ from pathlib import Path
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition, get_error_message
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
 
@@ -150,6 +150,11 @@ def test_invalid_conda_env(shutdown_only):
     def f():
         pass
 
+    @ray.remote
+    class A:
+        def f(self):
+            pass
+
     start = time.time()
     bad_env = {"conda": {"dependencies": ["this_doesnt_exist"]}}
     with pytest.raises(RuntimeEnvSetupError):
@@ -158,6 +163,12 @@ def test_invalid_conda_env(shutdown_only):
 
     # Check that another valid task can run.
     ray.get(f.remote())
+
+    # Check actor is also broken.
+    # TODO(sang): It should raise RuntimeEnvSetupError
+    a = A.options(runtime_env=bad_env).remote()
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.f.remote())
 
     # The second time this runs it should be faster as the error is cached.
     start = time.time()
@@ -227,6 +238,69 @@ def test_no_spurious_worker_startup(shutdown_only):
             assert num_workers <= 1
         time.sleep(0.1)
     assert got_num_workers, "failed to read num workers for 10 seconds"
+
+
+@pytest.fixture
+def runtime_env_local_dev_env_var():
+    os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
+    yield
+    del os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"]
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="runtime_env unsupported on Windows.")
+def test_runtime_env_no_spurious_resource_deadlock_msg(
+        runtime_env_local_dev_env_var, ray_start_regular, error_pubsub):
+    p = error_pubsub
+
+    @ray.remote(runtime_env={"pip": ["tensorflow", "torch"]})
+    def f():
+        pass
+
+    # Check no warning printed.
+    ray.get(f.remote())
+    errors = get_error_message(p, 5, ray.ray_constants.RESOURCE_DEADLOCK_ERROR)
+    assert len(errors) == 0
+
+
+@pytest.fixture
+def set_agent_failure_env_var():
+    os.environ["_RAY_AGENT_FAILING"] = "1"
+    yield
+    del os.environ["_RAY_AGENT_FAILING"]
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "_system_config": {
+            "agent_restart_interval_ms": 10,
+            "agent_max_restart_count": 5
+        }
+    }],
+    indirect=True)
+def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
+    @ray.remote
+    class A:
+        def ready(self):
+            pass
+
+    @ray.remote
+    def f():
+        pass
+
+    runtime_env = {"env_vars": {"TF_WARNINGS": "none"}}
+    """
+    Test task raises an exception.
+    """
+    with pytest.raises(RuntimeEnvSetupError):
+        ray.get(f.options(runtime_env=runtime_env).remote())
+    """
+    Test actor task raises an exception.
+    """
+    a = A.options(runtime_env=runtime_env).remote()
+    # TODO(sang): Raise a RuntimeEnvSetupError with proper error.
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(a.ready.remote())
 
 
 if __name__ == "__main__":

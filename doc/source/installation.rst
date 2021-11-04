@@ -16,15 +16,15 @@ You can install the latest official version of Ray as follows.
   pip install -U ray  # minimal install
 
   # To install Ray with support for the dashboard + cluster launcher, run
-  # `pip install -U 'ray[default]'`
+  # `pip install -U "ray[default]"`
 
 To install Ray libraries:
 
 .. code-block:: bash
 
-  pip install -U ray[tune]  # installs Ray + dependencies for Ray Tune
-  pip install -U ray[rllib]  # installs Ray + dependencies for Ray RLlib
-  pip install -U ray[serve]  # installs Ray + dependencies for Ray Serve
+  pip install -U "ray[tune]"  # installs Ray + dependencies for Ray Tune
+  pip install -U "ray[rllib]"  # installs Ray + dependencies for Ray RLlib
+  pip install -U "ray[serve]"  # installs Ray + dependencies for Ray Serve
 
 .. _install-nightlies:
 
@@ -35,6 +35,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. code-block:: bash
 
+  pip uninstall -y ray # clean removal of previous install, otherwise version number may cause pip not to upgrade
   pip install -U LINK_TO_WHEEL.whl  # minimal install
 
   # To install Ray with support for the dashboard + cluster launcher, run
