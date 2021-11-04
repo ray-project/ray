@@ -6,7 +6,7 @@ from unittest import mock
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.autoscaling_policy import (BasicAutoscalingPolicy,
                                           calculate_desired_num_replicas)
-from ray.serve.backend_state import ReplicaState
+from ray.serve.deployment_state import ReplicaState
 from ray.serve.config import AutoscalingConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve.controller import ServeController
