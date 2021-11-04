@@ -59,7 +59,7 @@ struct TaskOptions {
   TaskOptions(std::string name, int num_returns,
               std::unordered_map<std::string, double> &resources,
               const std::string &concurrency_group_name = "",
-              const std::string &serialized_runtime_env = "")
+              const std::string &serialized_runtime_env = "{}")
       : name(name),
         num_returns(num_returns),
         resources(resources),
@@ -89,7 +89,7 @@ struct ActorCreationOptions {
       std::string &name, std::string &ray_namespace, bool is_asyncio,
       BundleID placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
       bool placement_group_capture_child_tasks = true,
-      const std::string &serialized_runtime_env = "",
+      const std::string &serialized_runtime_env = "{}",
       const std::vector<ConcurrencyGroup> &concurrency_groups = {})
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),

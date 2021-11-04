@@ -141,7 +141,7 @@ std::string TaskSpecification::SerializedRuntimeEnvString() const {
 }
 
 bool TaskSpecification::HasRuntimeEnv() const {
-  return !SerializedRuntimeEnvString().empty();
+  return !(SerializedRuntimeEnvString() == "{}" || SerializedRuntimeEnvString().empty());
 }
 
 int TaskSpecification::GetRuntimeEnvHash() const {
