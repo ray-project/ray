@@ -492,9 +492,6 @@ Data sources
    * - `Petastorm <https://github.com/uber/petastorm>`__
      - Yes
      - Yes
-   * - `Ray MLDataset <https://docs.ray.io/en/master/iter.html>`__
-     - Yes
-     - Yes
    * - `Dask dataframe <https://docs.dask.org/en/latest/dataframe.html>`__
      - Yes
      - Yes
