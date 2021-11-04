@@ -143,7 +143,7 @@ class Node:
                 "%Y-%m-%d_%H-%M-%S_%f")
             self.session_name = f"session_{date_str}_{os.getpid()}"
         else:
-            session_name = self._internal_kv_get_with_retry("session_name")
+            session_name = self._internal_kv_get_with_retry("session_name", ray_constants.KV_NAMESPACE_SESSION)
             self.session_name = ray._private.utils.decode(session_name)
 
         self._init_temp()
@@ -213,16 +213,17 @@ class Node:
             self.start_head_processes()
             self.initialize_internal_kv()
             ray.experimental.internal_kv._internal_kv_put(
-                "session_name", self.session_name)
+                "session_name", self.session_name, namespace=ray_constants.KV_NAMESPACE_SESSION)
             ray.experimental.internal_kv._internal_kv_put(
-                "session_dir", self._session_dir)
+                "session_dir", self._session_dir, namespace=ray_constants.KV_NAMESPACE_SESSION)
             ray.experimental.internal_kv._internal_kv_put(
-                "temp_dir", self._temp_dir)
+                "temp_dir", self._temp_dir, namespace=ray_constants.KV_NAMESPACE_SESSION)
             # Add tracing_startup_hook to redis / internal kv manually
             # since internal kv is not yet initialized.
             if ray_params.tracing_startup_hook:
                 ray.experimental.internal_kv._internal_kv_put(
-                    "tracing_startup_hook", ray_params.tracing_startup_hook)
+                    "tracing_startup_hook", ray_params.tracing_startup_hook,
+                    namespace=ray_constants.KV_NAMESPACE_TRACING)
 
         if not connect_only:
             self.start_ray_processes()
@@ -266,7 +267,9 @@ class Node:
         if self.head:
             self._temp_dir = self._ray_params.temp_dir
         else:
-            temp_dir = self._internal_kv_get_with_retry("temp_dir")
+            temp_dir = self._internal_kv_get_with_retry(
+                "temp_dir",
+                ray_constants.KV_NAMESPACE_SESSION)
             self._temp_dir = ray._private.utils.decode(temp_dir)
 
         try_to_create_directory(self._temp_dir)
@@ -274,7 +277,9 @@ class Node:
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self.session_name)
         else:
-            session_dir = self._internal_kv_get_with_retry("session_dir")
+            session_dir = self._internal_kv_get_with_retry(
+                "session_dir",
+                ray_constants.KV_NAMESPACE_SESSION)
             self._session_dir = ray._private.utils.decode(session_dir)
         session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
 
@@ -745,7 +750,7 @@ class Node:
             ]
             self.initialize_internal_kv()
             ray.experimental.internal_kv._internal_kv_put(
-                "webui:url", self._webui_url)
+                "webui:url", self._webui_url, namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
 
     def start_gcs_server(self):
         """Start the gcs server.
@@ -1260,12 +1265,13 @@ class Node:
 
     def _internal_kv_get_with_retry(self,
                                     key,
+                                    namespace,
                                     num_retries=NUM_REDIS_GET_RETRIES):
         result = None
         for i in range(num_retries):
             try:
                 self.initialize_internal_kv()
-                result = ray.experimental.internal_kv._internal_kv_get(key)
+                result = ray.experimental.internal_kv._internal_kv_get(key, namespace=key)
             except Exception:
                 result = None
 

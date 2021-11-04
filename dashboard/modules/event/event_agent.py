@@ -4,6 +4,7 @@ import logging
 from typing import Union
 
 import ray.experimental.internal_kv as internal_kv
+import ray.ray_constants as ray_constants
 import ray._private.utils as utils
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.consts as dashboard_consts
@@ -39,7 +40,8 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         while True:
             try:
                 dashboard_rpc_address = internal_kv._internal_kv_get(
-                    dashboard_consts.REDIS_KEY_DASHBOARD_RPC)
+                    dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
+                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
                 if dashboard_rpc_address:
                     logger.info("Report events to %s", dashboard_rpc_address)
                     options = (("grpc.enable_http_proxy", 0), )

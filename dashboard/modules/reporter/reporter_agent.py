@@ -14,6 +14,7 @@ import aioredis
 import ray
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 from ray.dashboard import k8s_utils
+import ray.ray_constants as ray_constants
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
 import ray._private.services
@@ -532,7 +533,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         while True:
             try:
                 formatted_status_string = internal_kv._internal_kv_get(
-                    DEBUG_AUTOSCALING_STATUS)
+                    DEBUG_AUTOSCALING_STATUS,
+                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
                 formatted_status = json.loads(formatted_status_string.decode(
                 )) if formatted_status_string else {}
 

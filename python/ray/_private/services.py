@@ -336,7 +336,8 @@ def get_node_to_connect_for_driver(redis_address,
 
 def get_webui_url_from_internal_kv():
     assert ray.experimental.internal_kv._internal_kv_initialized()
-    webui_url = ray.experimental.internal_kv._internal_kv_get("webui:url")
+    webui_url = ray.experimental.internal_kv._internal_kv_get(
+        "webui:url", namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
     return ray._private.utils.decode(
         webui_url) if webui_url is not None else None
 
@@ -1297,7 +1298,8 @@ def start_dashboard(require_dashboard,
         dashboard_returncode = None
         for _ in range(200):
             dashboard_url = ray.experimental.internal_kv._internal_kv_get(
-                ray_constants.REDIS_KEY_DASHBOARD)
+                ray_constants.REDIS_KEY_DASHBOARD,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
             if dashboard_url is not None:
                 dashboard_url = dashboard_url.decode("utf-8")
                 break

@@ -8,6 +8,7 @@ from aioredis.pubsub import Receiver
 import ray
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
+import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
@@ -113,12 +114,16 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         assert ray.experimental.internal_kv._internal_kv_initialized()
         legacy_status = internal_kv._internal_kv_get(
-            DEBUG_AUTOSCALING_STATUS_LEGACY)
+            DEBUG_AUTOSCALING_STATUS_LEGACY,
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
         formatted_status_string = internal_kv._internal_kv_get(
-            DEBUG_AUTOSCALING_STATUS)
+            DEBUG_AUTOSCALING_STATUS,
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
         formatted_status = json.loads(formatted_status_string.decode()
                                       ) if formatted_status_string else {}
-        error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+        error = internal_kv._internal_kv_get(
+            DEBUG_AUTOSCALING_ERROR,
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
         return dashboard_utils.rest_response(
             success=True,
             message="Got cluster status.",

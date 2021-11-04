@@ -197,7 +197,8 @@ class DashboardAgent(object):
         # Write the dashboard agent port to redis.
         internal_kv._internal_kv_put(
             f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}",
-            json.dumps([http_port, self.grpc_port]))
+            json.dumps([http_port, self.grpc_port]),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
 
         # Register agent to agent manager.
         raylet_stub = agent_manager_pb2_grpc.AgentManagerServiceStub(

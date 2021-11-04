@@ -278,3 +278,10 @@ CALL_STACK_LINE_DELIMITER = " | "
 # The default gRPC max message size is 4 MiB, we use a larger number of 100 MiB
 # NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
 GRPC_CPP_MAX_MESSAGE_SIZE = 100 * 1024 * 1024
+
+# Internal kv namespaces
+KV_NAMESPACE_DASHBOARD = "dashboard"
+KV_NAMESPACE_SESSION = "session"
+KV_NAMESPACE_TRACING = "tracing"
+KV_NAMESPACE_PDB = "ray_pdb"
+KV_NAMESPACE_AUTOSCALER = "autoscaler"
