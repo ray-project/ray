@@ -592,5 +592,23 @@ def test_snapshot_always_written_to_internal_kv(
     assert hello_deployment["status"] == "RUNNING"
 
 
+def test_standalone_actor_outside_serve():
+    # https://github.com/ray-project/ray/issues/20066
+
+    ray.init(num_cpus=8)
+
+    @ray.remote
+    class MyActor:
+        def ready(self):
+            return
+
+    a = MyActor.remote()
+    ray.get(a.ready.remote())
+
+    serve.start()
+    serve.shutdown()
+    ray.shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
