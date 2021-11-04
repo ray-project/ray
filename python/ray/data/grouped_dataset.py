@@ -58,12 +58,12 @@ class GroupedDataset(Generic[T]):
 
         Returns:
             If the input dataset is simple dataset then the output is
-            a simple dataset of (k, v) pairs where k is the groupby key
-            and v is the corresponding aggregation result.
+            a simple dataset of (k, v_1, ..., v_n) tuples where k is the
+            groupby key and v_i is the result of the ith given aggregation.
             If the input dataset is Arrow dataset then the output is
-            an Arrow dataset of two columns where first column is
-            the groupby key and the second column is the corresponding
-            aggregation result.
+            an Arrow dataset of n + 1 columns where first column is
+            the groupby key and the second through n + 1 columns are the
+            results of the aggregations.
             If groupby key is None then the key part of return is omitted.
         """
 
