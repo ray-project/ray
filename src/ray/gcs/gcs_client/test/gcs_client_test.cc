@@ -28,8 +28,9 @@ namespace ray {
 
 class GcsClientTest : public ::testing::TestWithParam<bool> {
  public:
-  GcsClientTest() {
-    RayConfig::instance().initialize(absl::Substitute(R"(
+  GcsClientTest() : use_gcs_pubsub_(GetParam()) {
+    RayConfig::instance().initialize(
+        absl::Substitute(R"(
 {
   "ping_gcs_rpc_server_max_retries": 60,
   "maximum_gcs_destroyed_actor_cached_count": 10,
@@ -37,7 +38,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   "gcs_grpc_based_pubsub": $0
 }
   )",
-                                                      GetParam() ? "true" : "false"));
+                         use_gcs_pubsub_ ? "true" : "false"));
     TestSetupUtil::StartUpRedisServers(std::vector<int>());
   }
 
@@ -55,7 +56,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     // Tests legacy code paths. The poller and broadcaster have their own dedicated unit
     // test targets.
     config_.grpc_based_resource_broadcast = false;
-    config_.grpc_pubsub_enabled = GetParam();
+    config_.grpc_pubsub_enabled = use_gcs_pubsub_;
 
     client_io_service_.reset(new instrumented_io_context());
     client_io_service_thread_.reset(new std::thread([this] {
@@ -175,14 +176,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       return gcs_client_->Actors().IsActorUnsubscribed(actor_id);
     };
     EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
-  }
-
-  bool SubscribeAllActors(
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
-    std::promise<bool> promise;
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncSubscribeAll(
-        subscribe, [&promise](Status status) { promise.set_value(status.ok()); }));
-    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool RegisterActor(const std::shared_ptr<rpc::ActorTableData> &actor_table_data,
@@ -506,6 +499,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return node_ids;
   }
 
+  // Test parameter, whether to use GCS pubsub instead of Redis pubsub.
+  const bool use_gcs_pubsub_;
+
   // GCS server.
   gcs::GcsServerConfig config_;
   std::unique_ptr<gcs::GcsServer> gcs_server_;
@@ -544,36 +540,6 @@ TEST_P(GcsClientTest, TestGetNextJobID) {
   JobID job_id1 = GetNextJobID();
   JobID job_id2 = GetNextJobID();
   ASSERT_TRUE(job_id1.ToInt() + 1 == job_id2.ToInt());
-}
-
-TEST_P(GcsClientTest, TestActorSubscribeAll) {
-  // NOTE: `TestActorSubscribeAll` will subscribe to all actor messages, so we need to
-  // execute it before `TestActorInfo`, otherwise `TestActorSubscribeAll` will receive
-  // messages from `TestActorInfo`.
-  // Create actor table data.
-  JobID job_id = JobID::FromInt(1);
-  AddJob(job_id);
-  auto actor_table_data1 = Mocker::GenActorTableData(job_id);
-  auto actor_table_data2 = Mocker::GenActorTableData(job_id);
-
-  // Subscribe to any register or update operations of actors.
-  std::atomic<int> actor_update_count(0);
-  auto on_subscribe = [&actor_update_count](const ActorID &actor_id,
-                                            const gcs::ActorTableData &data) {
-    ++actor_update_count;
-  };
-  ASSERT_TRUE(SubscribeAllActors(on_subscribe));
-
-  // Register an actor to GCS.
-  RegisterActor(actor_table_data1, false);
-  RegisterActor(actor_table_data2, false);
-
-  // NOTE: In the process of actor registration, if the callback function of
-  // `WaitForActorOutOfScope` is executed first, and then the callback function of
-  // `ActorTable().Put` is executed, GCS will publish once; otherwise, GCS will publish
-  // twice. So we assert `actor_update_count >= 2`.
-  auto condition = [&actor_update_count]() { return actor_update_count >= 2; };
-  EXPECT_TRUE(WaitForCondition(condition, timeout_ms_.count()));
 }
 
 TEST_P(GcsClientTest, TestActorInfo) {
@@ -898,6 +864,11 @@ TEST_P(GcsClientTest, TestErrorInfo) {
 }
 
 TEST_P(GcsClientTest, TestJobTableResubscribe) {
+  // TODO: Support resubscribing with GCS pubsub.
+  if (use_gcs_pubsub_) {
+    return;
+  }
+
   // Test that subscription of the job table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
   auto job_table_data = Mocker::GenJobTableData(job_id);
@@ -922,25 +893,16 @@ TEST_P(GcsClientTest, TestJobTableResubscribe) {
 }
 
 TEST_P(GcsClientTest, TestActorTableResubscribe) {
+  // TODO: Support resubscribing with GCS pubsub.
+  if (use_gcs_pubsub_) {
+    return;
+  }
+
   // Test that subscription of the actor table can still work when GCS server restarts.
   JobID job_id = JobID::FromInt(1);
   AddJob(job_id);
   auto actor_table_data = Mocker::GenActorTableData(job_id);
   auto actor_id = ActorID::FromBinary(actor_table_data->actor_id());
-
-  // Number of notifications for the following `SubscribeAllActors` operation.
-  std::atomic<int> num_subscribe_all_notifications(0);
-  // All the notifications for the following `SubscribeAllActors` operation.
-  std::vector<gcs::ActorTableData> subscribe_all_notifications;
-  auto subscribe_all = [&num_subscribe_all_notifications, &subscribe_all_notifications](
-                           const ActorID &id, const rpc::ActorTableData &data) {
-    subscribe_all_notifications.emplace_back(data);
-    ++num_subscribe_all_notifications;
-    RAY_LOG(INFO) << "The number of actors subscription messages received is "
-                  << num_subscribe_all_notifications;
-  };
-  // Subscribe to updates of all actors.
-  ASSERT_TRUE(SubscribeAllActors(subscribe_all));
 
   // Number of notifications for the following `SubscribeActor` operation.
   std::atomic<int> num_subscribe_one_notifications(0);
@@ -958,7 +920,6 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
 
   // In order to prevent receiving the message of other test case publish, we get the
   // expected number of actor subscription messages before registering actor.
-  auto expected_num_subscribe_all_notifications = num_subscribe_all_notifications + 1;
   auto expected_num_subscribe_one_notifications = num_subscribe_one_notifications + 1;
 
   // NOTE: In the process of actor registration, if the callback function of
@@ -969,12 +930,6 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
   // successfully.
   RegisterActor(actor_table_data, false);
 
-  // We should receive new notification from the subscribe channel.
-  auto condition_subscribe_all = [&num_subscribe_all_notifications,
-                                  expected_num_subscribe_all_notifications]() {
-    return num_subscribe_all_notifications >= expected_num_subscribe_all_notifications;
-  };
-  EXPECT_TRUE(WaitForCondition(condition_subscribe_all, timeout_ms_.count()));
   auto condition_subscribe_one = [&num_subscribe_one_notifications,
                                   expected_num_subscribe_one_notifications]() {
     return num_subscribe_one_notifications >= expected_num_subscribe_one_notifications;
@@ -994,27 +949,14 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
     return num_subscribe_one_notifications >= expected_num_subscribe_one_notifications;
   };
   EXPECT_TRUE(WaitForCondition(condition_subscribe_one_restart, timeout_ms_.count()));
-
-  // NOTE: GCS will not reply when actor registration fails, so when GCS restarts, gcs
-  // client will register the actor again. When an actor is registered, the status in GCS
-  // is `DEPENDENCIES_UNREADY`. When GCS finds that the owner of an actor is nil, it will
-  // destroy the actor and the status of the actor will change to `DEAD`. The GCS client
-  // fetch actor info from the GCS server, and the status of the actor may be
-  // `DEPENDENCIES_UNREADY` or `DEAD`, so we do not assert the actor status here any
-  // more.
-  // If the status of the actor is `DEPENDENCIES_UNREADY`, we will fetch two records, so
-  // `num_subscribe_all_notifications` will increase by 3. If the status of the actor is
-  // `DEAD`, we will fetch one record, so `num_subscribe_all_notifications` will increase
-  // by 2.
-  expected_num_subscribe_all_notifications += 2;
-  auto condition_subscribe_all_restart = [&num_subscribe_all_notifications,
-                                          expected_num_subscribe_all_notifications]() {
-    return num_subscribe_all_notifications >= expected_num_subscribe_all_notifications;
-  };
-  EXPECT_TRUE(WaitForCondition(condition_subscribe_all_restart, timeout_ms_.count()));
 }
 
 TEST_P(GcsClientTest, TestNodeTableResubscribe) {
+  // TODO: Support resubscribing with GCS pubsub.
+  if (use_gcs_pubsub_) {
+    return;
+  }
+
   // Test that subscription of the node table can still work when GCS server restarts.
   // Subscribe to node addition and removal events from GCS and cache those information.
   std::atomic<int> node_change_count(0);
@@ -1067,6 +1009,11 @@ TEST_P(GcsClientTest, TestNodeTableResubscribe) {
 }
 
 TEST_P(GcsClientTest, TestTaskTableResubscribe) {
+  // TODO: Support resubscribing with GCS pubsub.
+  if (use_gcs_pubsub_) {
+    return;
+  }
+
   JobID job_id = JobID::FromInt(6);
   AddJob(job_id);
   TaskID task_id = TaskID::ForDriverTask(job_id);
@@ -1098,6 +1045,11 @@ TEST_P(GcsClientTest, TestTaskTableResubscribe) {
 }
 
 TEST_P(GcsClientTest, TestWorkerTableResubscribe) {
+  // TODO: Support resubscribing with GCS pubsub.
+  if (use_gcs_pubsub_) {
+    return;
+  }
+
   // Subscribe to all unexpected failure of workers from GCS.
   std::atomic<int> worker_failure_count(0);
   auto on_subscribe = [&worker_failure_count](const rpc::WorkerDeltaData &result) {

@@ -116,9 +116,10 @@ class DashboardHead:
         self.ip = ray.util.get_node_ip_address()
         ip, port = redis_address.split(":")
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
+        grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
-            self.server, "[::]:0")
-        logger.info("Dashboard head grpc address: %s:%s", self.ip,
+            self.server, f"{grpc_ip}:0")
+        logger.info("Dashboard head grpc address: %s:%s", grpc_ip,
                     self.grpc_port)
 
     @async_loop_forever(dashboard_consts.GCS_CHECK_ALIVE_INTERVAL_SECONDS)

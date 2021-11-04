@@ -471,8 +471,8 @@ def _connect() -> Client:
     If calling from the driver program, the Serve instance on this Ray cluster
     must first have been initialized using `serve.start(detached=True)`.
 
-    If called from within a backend, this will connect to the same Serve
-    instance that the backend is running in.
+    If called from within a replica, this will connect to the same Serve
+    instance that the replica is running in.
     """
 
     # Initialize ray if needed.
@@ -480,7 +480,7 @@ def _connect() -> Client:
     if not ray.is_initialized():
         ray.init(namespace="serve")
 
-    # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
+    # When running inside of a replica, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
     if _INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
@@ -544,8 +544,9 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
     """Mark an ASGI application ingress for Serve.
 
     Args:
-        app (FastAPI,APIRouter,Starlette, etc): the app or router object serve
-            as ingress for this backend. It can be any ASGI compatible object.
+        app (FastAPI,APIRouter,Starlette,etc): the app or router object serve
+            as ingress for this deployment. It can be any ASGI compatible
+            object.
 
     Example:
     >>> app = FastAPI()

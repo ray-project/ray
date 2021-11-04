@@ -9,6 +9,9 @@ except ImportError:
 
 
 class JobStatus(str, Enum):
+    def __str__(self):
+        return f"{self.value}"
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     STOPPED = "STOPPED"

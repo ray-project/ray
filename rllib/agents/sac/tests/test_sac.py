@@ -22,7 +22,7 @@ from ray.rllib.utils.numpy import fc, huber_loss, relu
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
     check_train_results, framework_iterator
-from ray.rllib.utils.torch_ops import convert_to_torch_tensor
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray import tune
 
 tf1, tf, tfv = try_import_tf()
