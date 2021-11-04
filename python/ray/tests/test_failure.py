@@ -61,13 +61,13 @@ def test_unhandled_errors(ray_start_regular):
         del os.environ["RAY_IGNORE_UNHANDLED_ERRORS"]
 
 
-def test_push_error_to_driver_through_redis(ray_start_regular, error_pubsub):
+def test_publish_error_to_driver(ray_start_regular, error_pubsub):
     address_info = ray_start_regular
     address = address_info["redis_address"]
     redis_client = ray._private.services.create_redis_client(
         address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     error_message = "Test error message"
-    ray._private.utils.push_error_to_driver_through_redis(
+    ray._private.utils.publish_error_to_driver(
         redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, error_message)
     errors = get_error_message(error_pubsub, 1,
                                ray_constants.DASHBOARD_AGENT_DIED_ERROR)

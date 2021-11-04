@@ -401,9 +401,9 @@ class Monitor:
             _internal_kv_put(DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
         redis_client = ray._private.services.create_redis_client(
             self.redis_address, password=self.redis_password)
-        from ray._private.utils import push_error_to_driver_through_redis
-        push_error_to_driver_through_redis(
-            redis_client, ray_constants.MONITOR_DIED_ERROR, message)
+        from ray._private.utils import publish_error_to_driver
+        publish_error_to_driver(redis_client, ray_constants.MONITOR_DIED_ERROR,
+                                message)
 
     def _signal_handler(self, sig, frame):
         self._handle_failure(f"Terminated with signal {sig}\n" +

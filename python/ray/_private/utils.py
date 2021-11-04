@@ -113,10 +113,7 @@ def push_error_to_driver(worker, error_type, message, job_id=None):
     worker.core_worker.push_error(job_id, error_type, message, time.time())
 
 
-def push_error_to_driver_through_redis(redis_client,
-                                       error_type,
-                                       message,
-                                       job_id=None):
+def publish_error_to_driver(client, error_type, message, job_id=None):
     """Push an error message to the driver to be printed in the background.
 
     Normally the push_error_to_driver function should be used. However, in some
@@ -125,7 +122,7 @@ def push_error_to_driver_through_redis(redis_client,
     backend processes.
 
     Args:
-        redis_client: The redis client to use.
+        client: The redis / GCS publisher client to use.
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
@@ -135,15 +132,16 @@ def push_error_to_driver_through_redis(redis_client,
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
-    # Do everything in Python and through the Python Redis client instead
-    # of through the raylet.
     error_data = gcs_utils.construct_error_message(job_id, error_type, message,
                                                    time.time())
-    pubsub_msg = gcs_utils.PubSubMessage()
-    pubsub_msg.id = job_id.binary()
-    pubsub_msg.data = error_data
-    redis_client.publish("ERROR_INFO:" + job_id.hex(),
-                         pubsub_msg.SerializeToString())
+    if hasattr(client, "publish"):
+        pubsub_msg = gcs_utils.PubSubMessage()
+        pubsub_msg.id = job_id.binary()
+        pubsub_msg.data = error_data.SerializeToString()
+        client.publish("ERROR_INFO:" + job_id.hex(),
+                       pubsub_msg.SerializeToString())
+    else:
+        pass
 
 
 def random_string():

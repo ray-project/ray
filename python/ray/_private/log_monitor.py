@@ -440,7 +440,7 @@ if __name__ == "__main__":
             traceback.format_exc())
         message = (f"The log monitor on node {platform.node()} "
                    f"failed with the following error:\n{traceback_str}")
-        ray._private.utils.push_error_to_driver_through_redis(
+        ray._private.utils.publish_error_to_driver(
             redis_client, ray_constants.LOG_MONITOR_DIED_ERROR, message)
         logger.error(message)
         raise e

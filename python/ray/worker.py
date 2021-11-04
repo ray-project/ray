@@ -1351,7 +1351,7 @@ def connect(node,
             raise e
         elif mode == WORKER_MODE:
             traceback_str = traceback.format_exc()
-            ray._private.utils.push_error_to_driver_through_redis(
+            ray._private.utils.publish_error_to_driver(
                 worker.redis_client,
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,

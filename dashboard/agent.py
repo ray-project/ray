@@ -387,7 +387,7 @@ if __name__ == "__main__":
                 "\n  3. runtime_env APIs won't work."
                 "\nCheck out the `dashboard_agent.log` to see the "
                 "detailed failure messages.")
-            ray._private.utils.push_error_to_driver_through_redis(
+            ray._private.utils.publish_error_to_driver(
                 redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR,
                 message)
             logger.error(message)

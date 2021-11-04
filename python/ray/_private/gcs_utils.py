@@ -74,7 +74,7 @@ DRIVER = 1
 
 
 def construct_error_message(job_id, error_type, message, timestamp):
-    """Construct a serialized ErrorTableData object.
+    """Construct an ErrorTableData object.
 
     Args:
         job_id: The ID of the job that the error should go to. If this is
@@ -84,14 +84,14 @@ def construct_error_message(job_id, error_type, message, timestamp):
         timestamp: The time of the error.
 
     Returns:
-        The serialized object.
+        The ErrorTableData object.
     """
     data = ErrorTableData()
     data.job_id = job_id.binary()
     data.type = error_type
     data.error_message = message
     data.timestamp = timestamp
-    return data.SerializeToString()
+    return data
 
 
 class GcsCode(enum.IntEnum):
