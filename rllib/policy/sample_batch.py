@@ -744,12 +744,17 @@ class SampleBatch(dict):
 
     @property
     def is_training(self):
-        if self.get_interceptor is not None:
+        if self.get_interceptor is not None and \
+                isinstance(self._is_training, bool):
             if "_is_training" not in self.intercepted_values:
                 self.intercepted_values["_is_training"] = \
                     self.get_interceptor(self._is_training)
             return self.intercepted_values["_is_training"]
         return self._is_training
+
+    def set_training(self, training: Union[bool, "tf1.placeholder"] = True):
+        self._is_training = training
+        self.intercepted_values.pop("_is_training", None)
 
     @PublicAPI
     def __delitem__(self, key):

@@ -430,7 +430,8 @@ def build_eager_tf_policy(
 
             # Pass lazy (eager) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
-            input_dict.eval()
+            input_dict.set_training(False)
+
             # Pack internal state inputs into (separate) list.
             state_batches = [
                 input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
@@ -579,7 +580,7 @@ def build_eager_tf_policy(
 
             self._is_training = True
             postprocessed_batch = self._lazy_tensor_dict(postprocessed_batch)
-            postprocessed_batch.is_training = True
+            postprocessed_batch.set_training(True)
             stats = self._learn_on_batch_helper(postprocessed_batch)
             stats.update({"custom_metrics": learn_stats})
             return convert_to_numpy(stats)
@@ -598,7 +599,7 @@ def build_eager_tf_policy(
 
             self._is_training = True
             self._lazy_tensor_dict(postprocessed_batch)
-            postprocessed_batch.is_training = True
+            postprocessed_batch.set_training(True)
             grads_and_vars, grads, stats = self._compute_gradients_helper(
                 postprocessed_batch)
             return convert_to_numpy((grads, stats))
