@@ -10,6 +10,14 @@ import subprocess
 import time
 
 
+def test_basic_event(workflow_start_regular_shared):
+    class EventListener(workflow.EventListener):
+        async def poll_for_event(self):
+            return "hello"
+
+    workflow.wait_for_event(EventListener).run()
+
+
 def test_sleep(workflow_start_regular_shared):
     @workflow.step
     def sleep_helper():

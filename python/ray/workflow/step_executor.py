@@ -17,6 +17,7 @@ from ray.workflow import workflow_storage
 from ray.workflow.workflow_access import (get_or_create_management_actor,
                                           get_management_actor)
 from ray.workflow.common import (
+    EventsUnresolved,
     Workflow,
     WorkflowStatus,
     WorkflowOutputType,
@@ -146,9 +147,12 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     if workflow.executed:
         return workflow.result
     workflow_data = workflow.data
+    step_options = workflow_data.step_options
     baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
         workflow_data.inputs)
-    step_options = workflow_data.step_options
+    if step_options.step_type == StepType.EVENT:
+        raise EventsUnresolved([workflow])
+
     persisted_output, volatile_output = _workflow_step_executor.options(
         **step_options.ray_options).remote(
             workflow_data.func_body,
@@ -402,11 +406,20 @@ class _BakedWorkflowInputs:
 
     @classmethod
     def from_workflow_inputs(cls, inputs: "WorkflowInputs"):
+        unfinished_events = []
+        workflow_outputs = []
         with workflow_context.fork_workflow_step_context(
                 outer_most_step_id=None, last_step_of_workflow=False):
-            workflow_outputs = [
-                execute_workflow(w).persisted_output for w in inputs.workflows
-            ]
+            for w in inputs.workflows:
+                try:
+                    result = execute_workflow(w)
+                    workflow_outputs.append(result)
+                except EventsUnresolved as e:
+                    unfinished_events.extend(e.events)
+
+        if unfinished_events:
+            raise EventsUnresolved(unfinished_events)
+
         return cls(inputs.args, workflow_outputs, inputs.workflow_refs)
 
     def __reduce__(self):

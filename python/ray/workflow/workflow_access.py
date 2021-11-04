@@ -12,7 +12,7 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
-    from ray.workflow.common import (StepID, WorkflowExecutionResult)
+    from ray.workflow.common import (StepID, WorkflowExecutionResult, EventsUnresolved)
 
 logger = logging.getLogger(__name__)
 
@@ -177,8 +177,16 @@ class WorkflowManagementActor:
             current_output = self._workflow_outputs[workflow_id].output
         except KeyError:
             current_output = None
-        result = recovery.resume_workflow_step(
-            workflow_id, step_id, self._store.storage_url, current_output)
+        result = None
+        try:
+            result = recovery.resume_workflow_step(
+                workflow_id, step_id, self._store.storage_url, current_output)
+        except EventsUnresolved as e:
+            print("==========================================")
+            print("Got an eventsunresolved exeception")
+            print(e.events)
+            print("==========================================")
+            return None
         latest_output = LatestWorkflowOutput(result.persisted_output,
                                              workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output

@@ -77,6 +77,7 @@ class StepType(str, Enum):
     FUNCTION = "FUNCTION"
     ACTOR_METHOD = "ACTOR_METHOD"
     READONLY_ACTOR_METHOD = "READONLY_ACTOR_METHOD"
+    EVENT = "EVENT"
 
 
 @dataclass
@@ -413,3 +414,7 @@ class WorkflowRunningError(Exception):
         self.message = f"{operation} couldn't be completed becasue " \
                        f"Workflow[id={workflow_id}] is still running."
         super().__init__(self.message)
+
+class EventsUnresolved(Exception):
+    def __init__(self, events: List[Workflow[Event]]):
+        self.events = events

@@ -6,6 +6,7 @@ from typing import Dict, Set, List, Tuple, Union, Optional, Any, TYPE_CHECKING
 import time
 
 import ray
+from ray.workflow import events
 from ray.workflow import execution
 from ray.workflow.step_function import WorkflowStepFunction
 # avoid collision with arguments & APIs
@@ -333,25 +334,8 @@ def wait_for_event(event_listener_type: EventListenerType, *args,
             f"Event listener type is {event_listener_type.__name__}"
             ", which is not a subclass of workflow.EventListener")
 
-    @step
-    def get_message(event_listener_type: EventListenerType, *args,
-                    **kwargs) -> Event:
-        event_listener = event_listener_type()
-        loop = asyncio.get_event_loop()
-        return loop.run_until_complete(
-            event_listener.poll_for_event(*args, **kwargs))
+    return events.make_event(event_listener_type, args, kwargs)
 
-    @step
-    def message_committed(event_listener_type: EventListenerType,
-                          event: Event) -> Event:
-        event_listener = event_listener_type()
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(event_listener.event_checkpointed(event))
-        return event
-
-    return message_committed.step(
-        event_listener_type,
-        get_message.step(event_listener_type, *args, **kwargs))
 
 
 @PublicAPI
