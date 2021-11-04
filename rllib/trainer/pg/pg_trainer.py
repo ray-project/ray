@@ -1,12 +1,3 @@
-"""
-Policy Gradient (PG)
-====================
-
-This file defines the distributed Trainer class for policy gradients.
-See `pg_[tf|torch]_policy.py` for the definition of the policy loss.
-
-Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#pg
-"""
 from typing import Type
 
 from ray.rllib.agents.trainer import Trainer
@@ -19,11 +10,24 @@ from ray.rllib.utils.typing import TrainerConfigDict
 
 
 class PGTrainer(Trainer):
+    """Policy Gradient (PG) Trainer.
+
+    Defines the distributed Trainer class for policy gradients.
+    See `pg_[tf|torch]_policy.py` for the definition of the policy loss.
+
+    Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#pg
+
+    Only overrides the default config- and policy selectors
+    (`get_default_policy` and `get_default_config`). Utilizes
+    the default execution plan of `Trainer`.
+    """
+
     @override(Trainer)
     def get_default_policy_class(self) -> Type[Policy]:
         return PGTorchPolicy if self.config["framework"] == "torch" \
             else PGTFPolicy
 
+    @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG

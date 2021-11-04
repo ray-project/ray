@@ -1587,7 +1587,7 @@ class Trainer(Trainable):
         # workers to determine their CPU/GPU resource needs.
 
         # Convenience config handles.
-        cf = dict(cls.get_default_config(cls), **config)
+        cf = dict(cls.get_default_config(), **config)
         eval_cf = cf["evaluation_config"]
 
         # TODO(ekl): add custom resources here once tune supports them
