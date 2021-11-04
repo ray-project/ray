@@ -12,9 +12,7 @@ import numpy as np
 import ray
 
 from ray.data.impl.progress_bar import ProgressBar
-from ray._private.test_utils import (
-    monitor_memory_usage,
-    wait_for_condition)
+from ray._private.test_utils import (monitor_memory_usage, wait_for_condition)
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
 
@@ -25,9 +23,7 @@ def get_and_run_node_killer(node_kill_interval_s):
 
     @ray.remote(num_cpus=0)
     class NodeKillerActor:
-        def __init__(self,
-                     head_node_ip,
-                     node_kill_interval_s: float = 60):
+        def __init__(self, head_node_ip, node_kill_interval_s: float = 60):
             self.node_kill_interval_s = node_kill_interval_s
             self.is_running = False
             self.head_node_ip = head_node_ip
@@ -64,7 +60,7 @@ def get_and_run_node_killer(node_kill_interval_s):
             was_running = self.is_running
             self.is_running = False
             return was_running
-        
+
         async def get_total_killed_nodes(self):
             """Get the total number of killed nodes"""
             return self.num_killed_nodes
@@ -74,15 +70,15 @@ def get_and_run_node_killer(node_kill_interval_s):
             channel = grpc.insecure_channel(raylet_address)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             print(f"Sending a shutdown request to {ip}:{port}")
-            stub.ShutdownRaylet(node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+            stub.ShutdownRaylet(
+                node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
 
     head_node_ip = ray.worker.global_worker.node_ip_address
     # Schedule the actor on the current node.
     node_killer = NodeKillerActor.options(resources={
         f"node:{head_node_ip}": 0.001
     }).remote(
-        head_node_ip,
-        node_kill_interval_s=node_kill_interval_s)
+        head_node_ip, node_kill_interval_s=node_kill_interval_s)
     print("Waiting for node killer actor to be ready...")
     ray.get(node_killer.ready.remote())
     print("Node killer actor is ready now.")
@@ -93,10 +89,12 @@ def get_and_run_node_killer(node_kill_interval_s):
 def run_task_workload(total_num_cpus, smoke):
     """Run task-based workload that doesn't require object reconstruction.
     """
+
     @ray.remote(num_cpus=0.5, max_retries=-1)
     def task():
         def generate_data(size_in_kb=10):
             return np.zeros(1024 * size_in_kb, dtype=np.uint8)
+
         a = ""
         for _ in range(100000):
             a = a + random.choice(string.ascii_letters)
@@ -121,7 +119,7 @@ def run_task_workload(total_num_cpus, smoke):
     # Consistency check.
     wait_for_condition(
         lambda: (
-        ray.cluster_resources().get("CPU", 0)
+            ray.cluster_resources().get("CPU", 0)
             == ray.available_resources().get("CPU", 0)))
 
 
@@ -134,6 +132,7 @@ def run_actor_workload(total_num_cpus, smoke):
     If at least once is guaranteed upon failures, this test
     shouldn't fail.
     """
+
     @ray.remote(num_cpus=0)
     class DBActor:
         def __init__(self):
@@ -180,7 +179,7 @@ def run_actor_workload(total_num_cpus, smoke):
     # Consistency check
     wait_for_condition(
         lambda: (
-        ray.cluster_resources().get("CPU", 0)
+            ray.cluster_resources().get("CPU", 0)
             == ray.available_resources().get("CPU", 0)))
     letter_dict = ray.get((db_actor.get.remote()))
     # Make sure the DB actor didn't lose any report.
@@ -191,7 +190,7 @@ def run_actor_workload(total_num_cpus, smoke):
 
 
 def run_placement_group_workload(total_num_cpus, smoke):
-    raise NotImplemented("")
+    raise NotImplementedError
 
 
 def parse_script_args():
@@ -218,7 +217,7 @@ def main():
     Currently, the test runs 3 steps. Each steps records the
     peak memory usage to observe the memory usage while there
     are node failures.
-    
+
     Step 1: Warm up the cluster. It is needed to pre-start workers
         if necessary.
 
@@ -235,7 +234,7 @@ def main():
         if n["Alive"]:
             total_nodes += 1
     monitor_actor = monitor_memory_usage()
-    
+
     workload = None
     if args.workload == "tasks":
         workload = run_task_workload
@@ -268,9 +267,8 @@ def main():
     start = time.time()
     workload(total_num_cpus, args.smoke)
     print(f"Runtime when there are many failures: {time.time() - start}")
-    print(
-        f"Total node failures: "
-        f"{ray.get(node_killer.get_total_killed_nodes.remote())}")
+    print(f"Total node failures: "
+          f"{ray.get(node_killer.get_total_killed_nodes.remote())}")
     node_killer.stop_run.remote()
     used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
     print("Memory usage with failures.")
@@ -286,5 +284,6 @@ def main():
                 "_peak_memory": round(used_gb, 2),
                 "_peak_process_memory": usage
             }))
+
 
 main()
