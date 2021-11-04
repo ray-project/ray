@@ -42,7 +42,8 @@ class JobSubmissionClient:
                     params: Optional[dict] = None,
                     response_type: Optional[type] = None) -> Optional[object]:
         url = self._address + endpoint
-        logger.debug(f"Sending request to {url} with json: {json_data}.")
+        logger.debug(f"Sending request to {url} with "
+                     f"json: {json_data}, params: {params}.")
         r = requests.request(
             method, url, data=data, json=json_data, params=params)
 
@@ -122,8 +123,11 @@ class JobSubmissionClient:
         self._upload_working_dir_if_needed(runtime_env)
         req = JobSubmitRequest(
             entrypoint=entrypoint, runtime_env=runtime_env, metadata=metadata)
-        resp = self._do_request("POST", JOBS_API_ROUTE_SUBMIT, json_data=dataclasses.asdict(req),
-                                JobSubmitResponse)
+        resp = self._do_request(
+            "POST",
+            JOBS_API_ROUTE_SUBMIT,
+            json_data=dataclasses.asdict(req),
+            response_type=JobSubmitResponse)
         return resp.job_id
 
     def get_job_status(self, job_id: str) -> JobStatus:
