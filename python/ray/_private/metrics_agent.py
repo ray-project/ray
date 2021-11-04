@@ -59,7 +59,7 @@ Record = namedtuple("Record", ["gauge", "value", "tags"])
 
 
 class MetricsAgent:
-    def __init__(self, metrics_export_port):
+    def __init__(self, metrics_export_address, metrics_export_port):
         assert metrics_export_port is not None
         # OpenCensus classes.
         self.view_manager = stats_module.stats.view_manager
@@ -74,7 +74,9 @@ class MetricsAgent:
         self.view_manager.register_exporter(
             prometheus_exporter.new_stats_exporter(
                 prometheus_exporter.Options(
-                    namespace="ray", port=metrics_export_port)))
+                    namespace="ray",
+                    port=metrics_export_port,
+                    address=metrics_export_address)))
 
     def record_reporter_stats(self, records: List[Record]):
         with self._lock:
@@ -221,9 +223,9 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
         temp_file_name = self.get_temp_file_name()
         with open(temp_file_name, "w") as json_file:
             json_file.write(self.get_file_discovery_content())
-        # NOTE: os.rename is atomic, so we won't have race condition reading
-        # this file.
-        os.rename(temp_file_name, self.get_target_file_name())
+        # NOTE: os.replace is atomic on both Linux and Windows, so we won't
+        # have race condition reading this file.
+        os.replace(temp_file_name, self.get_target_file_name())
 
     def get_target_file_name(self):
         return os.path.join(

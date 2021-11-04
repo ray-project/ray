@@ -31,16 +31,15 @@
 #include <iostream>
 #include <sstream>
 
-#include "spdlog/sinks/basic_file_sink.h"
-#include "spdlog/sinks/rotating_file_sink.h"
-#include "spdlog/sinks/stdout_color_sinks.h"
-#include "spdlog/spdlog.h"
-
 #include "absl/debugging/failure_signal_handler.h"
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
 #include "ray/util/event_label.h"
 #include "ray/util/filesystem.h"
+#include "spdlog/sinks/basic_file_sink.h"
+#include "spdlog/sinks/rotating_file_sink.h"
+#include "spdlog/sinks/stdout_color_sinks.h"
+#include "spdlog/spdlog.h"
 
 namespace ray {
 
@@ -54,6 +53,7 @@ std::string RayLog::logger_name_ = "ray_log_sink";
 long RayLog::log_rotation_max_size_ = 1 << 29;
 long RayLog::log_rotation_file_num_ = 10;
 bool RayLog::is_failure_signal_handler_installed_ = false;
+std::atomic<bool> RayLog::initialized_ = false;
 
 std::string GetCallTrace() {
   std::vector<void *> local_stack;
@@ -268,6 +268,8 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_threshold_));
   spdlog::set_pattern(log_format_pattern_);
   spdlog::set_default_logger(logger);
+
+  initialized_ = true;
 }
 
 void RayLog::UninstallSignalAction() {
@@ -293,6 +295,11 @@ void RayLog::UninstallSignalAction() {
 }
 
 void RayLog::ShutDownRayLog() {
+  if (!initialized_) {
+    // If the log wasn't initialized, make it no-op.
+    RAY_LOG(INFO) << "The log wasn't initialized. ShutdownRayLog requests are ignored";
+    return;
+  }
   UninstallSignalAction();
   if (spdlog::default_logger()) {
     spdlog::default_logger()->flush();
@@ -322,7 +329,7 @@ bool RayLog::IsFailureSignalHandlerEnabled() {
   return is_failure_signal_handler_installed_;
 }
 
-void RayLog::InstallFailureSignalHandler() {
+void RayLog::InstallFailureSignalHandler(const char *argv0, bool call_previous_handler) {
 #ifdef _WIN32
   // If process fails to initialize, don't display an error window.
   SetErrorMode(GetErrorMode() | SEM_FAILCRITICALERRORS);
@@ -332,7 +339,9 @@ void RayLog::InstallFailureSignalHandler() {
   if (is_failure_signal_handler_installed_) {
     return;
   }
-  absl::FailureSignalHandlerOptions options{};
+  absl::InitializeSymbolizer(argv0);
+  absl::FailureSignalHandlerOptions options;
+  options.call_previous_handler = call_previous_handler;
   options.writerfn = WriteFailureMessage;
   absl::InstallFailureSignalHandler(options);
   is_failure_signal_handler_installed_ = true;

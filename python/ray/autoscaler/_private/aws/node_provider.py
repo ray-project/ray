@@ -1,4 +1,3 @@
-import random
 import copy
 import threading
 from collections import defaultdict, OrderedDict
@@ -97,9 +96,6 @@ class AWSNodeProvider(NodeProvider):
             region=provider_config["region"],
             max_retries=0,
             aws_credentials=aws_credentials)
-
-        # Try availability zones round-robin, starting from random offset
-        self.subnet_idx = random.randint(0, 100)
 
         # Tags that we believe to actually be on EC2.
         self.tag_cache = {}
@@ -378,8 +374,13 @@ class AWSNodeProvider(NodeProvider):
             "TagSpecifications": tag_specs
         })
 
+        # Try to always launch in the first listed subnet.
+        subnet_idx = 0
         cli_logger_tags = {}
-        for attempt in range(1, BOTO_CREATE_MAX_RETRIES + 1):
+        # NOTE: This ensures that we try ALL availability zones before
+        # throwing an error.
+        max_tries = max(BOTO_CREATE_MAX_RETRIES, len(subnet_ids))
+        for attempt in range(1, max_tries + 1):
             try:
                 if "NetworkInterfaces" in conf:
                     net_ifs = conf["NetworkInterfaces"]
@@ -388,8 +389,7 @@ class AWSNodeProvider(NodeProvider):
                     conf.pop("SecurityGroupIds", None)
                     cli_logger_tags["network_interfaces"] = str(net_ifs)
                 else:
-                    subnet_id = subnet_ids[self.subnet_idx % len(subnet_ids)]
-                    self.subnet_idx += 1
+                    subnet_id = subnet_ids[subnet_idx % len(subnet_ids)]
                     conf["SubnetId"] = subnet_id
                     cli_logger_tags["subnet_id"] = subnet_id
 
@@ -421,7 +421,7 @@ class AWSNodeProvider(NodeProvider):
                                 info=state_reason["Message"]))
                 break
             except botocore.exceptions.ClientError as exc:
-                if attempt == BOTO_CREATE_MAX_RETRIES:
+                if attempt == max_tries:
                     cli_logger.abort(
                         "Failed to launch instances. Max attempts exceeded.",
                         exc=exc,
@@ -430,6 +430,9 @@ class AWSNodeProvider(NodeProvider):
                     cli_logger.warning(
                         "create_instances: Attempt failed with {}, retrying.",
                         exc)
+                # Launch failure may be due to instance type availability in
+                # the given AZ
+                subnet_idx += 1
         return created_nodes_dict
 
     def terminate_node(self, node_id):

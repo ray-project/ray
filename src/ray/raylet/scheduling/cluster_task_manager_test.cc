@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// clang-format off
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 
 #include <memory>
@@ -28,12 +29,14 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/test/util.h"
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
 
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
 #include <chrono>
 
 #include "absl/container/flat_hash_map.h"
 #endif  // UNORDERED_VS_ABSL_MAPS_EVALUATION
+// clang-format on
 
 namespace ray {
 
@@ -55,6 +58,12 @@ class MockWorkerPool : public WorkerPoolInterface {
 
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     workers.push_front(worker);
+  }
+
+  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+      bool filter_dead_workers) const {
+    RAY_CHECK(false) << "Not used.";
+    return {};
   }
 
   void TriggerCallbacks() {
@@ -100,16 +109,15 @@ class MockWorkerPool : public WorkerPoolInterface {
   int num_pops;
 };
 
-std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(const std::string &id,
-                                                                    double num_cpus,
-                                                                    double num_gpus) {
+std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
+    const std::string &id, double num_cpus, double num_gpus, gcs::GcsClient &gcs_client) {
   absl::flat_hash_map<std::string, double> local_node_resources;
   local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
 
-  auto scheduler = std::make_shared<ClusterResourceScheduler>(
-      ClusterResourceScheduler(id, local_node_resources));
+  auto scheduler =
+      std::make_shared<ClusterResourceScheduler>(id, local_node_resources, gcs_client);
 
   return scheduler;
 }
@@ -155,7 +163,7 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
       const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
     RAY_CHECK(subscribed_tasks.insert(task_id).second);
     for (auto &obj_ref : required_objects) {
-      if (missing_objects_.count(ObjectRefToId(obj_ref))) {
+      if (missing_objects_.find(ObjectRefToId(obj_ref)) != missing_objects_.end()) {
         return false;
       }
     }
@@ -180,9 +188,10 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
 class ClusterTaskManagerTest : public ::testing::Test {
  public:
   ClusterTaskManagerTest(double num_cpus_at_head = 8.0, double num_gpus_at_head = 0.0)
-      : id_(NodeID::FromRandom()),
-        scheduler_(
-            CreateSingleNodeScheduler(id_.Binary(), num_cpus_at_head, num_gpus_at_head)),
+      : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
+        id_(NodeID::FromRandom()),
+        scheduler_(CreateSingleNodeScheduler(id_.Binary(), num_cpus_at_head,
+                                             num_gpus_at_head, *gcs_client_)),
         is_owner_alive_(true),
         node_info_calls_(0),
         announce_infeasible_task_calls_(0),
@@ -194,9 +203,12 @@ class ClusterTaskManagerTest : public ::testing::Test {
               return is_owner_alive_;
             },
             /* get_node_info= */
-            [this](const NodeID &node_id) {
+            [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               node_info_calls_++;
-              return node_info_[node_id];
+              if (node_info_.count(node_id) != 0) {
+                return &node_info_[node_id];
+              }
+              return nullptr;
             },
             /* announce_infeasible_task= */
             [this](const RayTask &task) { announce_infeasible_task_calls_++; }, pool_,
@@ -215,14 +227,18 @@ class ClusterTaskManagerTest : public ::testing::Test {
             },
             /*max_pinned_task_arguments_bytes=*/1000) {}
 
+  void SetUp() {
+    static rpc::GcsNodeInfo node_info;
+    ON_CALL(*gcs_client_->mock_node_accessor, Get(::testing::_, ::testing::_))
+        .WillByDefault(::testing::Return(&node_info));
+  }
+
   RayObject *MakeDummyArg() {
     std::vector<uint8_t> data;
     data.resize(default_arg_size_);
     auto buffer = std::make_shared<LocalMemoryBuffer>(data.data(), data.size());
     return new RayObject(buffer, nullptr, {});
   }
-
-  void SetUp() {}
 
   void Shutdown() {}
 
@@ -263,7 +279,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
     int count = 0;
     for (const auto &pair : task_manager_.tasks_to_dispatch_) {
       for (const auto &work : pair.second) {
-        if (work->status == WorkStatus::WAITING_FOR_WORKER) {
+        if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
           count++;
         }
       }
@@ -271,6 +287,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
     return count;
   }
 
+  std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   NodeID id_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
@@ -282,7 +299,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
 
   int node_info_calls_;
   int announce_infeasible_task_calls_;
-  absl::flat_hash_map<NodeID, absl::optional<rpc::GcsNodeInfo>> node_info_;
+  absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
 
   MockTaskDependencyManager dependency_manager_;
   ClusterTaskManager task_manager_;
@@ -1071,7 +1088,7 @@ TEST_F(ClusterTaskManagerTest, TestMultipleInfeasibleTasksWarnOnce) {
   ASSERT_EQ(announce_infeasible_task_calls_, 1);
 }
 
-TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
+TEST_F(ClusterTaskManagerTest, TestAnyPendingTasksForResourceAcquisition) {
   /*
     Check if the manager can correctly identify pending tasks.
    */
@@ -1098,8 +1115,8 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
   bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
-  ASSERT_FALSE(task_manager_.AnyPendingTasks(&exemplar, &any_pending,
-                                             &pending_actor_creations, &pending_tasks));
+  ASSERT_FALSE(task_manager_.AnyPendingTasksForResourceAcquisition(
+      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
 
   // task1: running, task2: queued.
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 6}});
@@ -1112,8 +1129,8 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
   task_manager_.QueueAndScheduleTask(task2, &reply2, callback2);
   pool_.TriggerCallbacks();
   ASSERT_FALSE(*callback_occurred2);
-  ASSERT_TRUE(task_manager_.AnyPendingTasks(&exemplar, &any_pending,
-                                            &pending_actor_creations, &pending_tasks));
+  ASSERT_TRUE(task_manager_.AnyPendingTasksForResourceAcquisition(
+      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
 }
 
 TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {

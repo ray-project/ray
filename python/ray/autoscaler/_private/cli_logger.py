@@ -751,6 +751,10 @@ class _CliLogger():
 
         return res
 
+    def flush(self):
+        sys.stdout.flush()
+        sys.stderr.flush()
+
 
 class SilentClickException(click.ClickException):
     """`ClickException` that does not print a message.

@@ -10,7 +10,7 @@ aioredis < 2
 click >= 7.0
 cloudpickle
 filelock
-gpustat
+gpustat >= 1.0.0b1
 grpcio >= 1.28.1
 jsonschema
 msgpack >= 1.0.0, < 2.0.0
@@ -27,7 +27,8 @@ requests
 ## setup.py extras
 dm_tree
 flask
-gym==0.19
+gym>=0.21.0; python_version >= '3.7'
+gym==0.19.0; python_version < '3.7'
 lz4
 scikit-image
 opencv-python-headless==4.3.0.36
@@ -51,7 +52,6 @@ cython >= 0.29.15
 dataclasses; python_version < '3.7'
 feather-format
 google-api-python-client
-gym
 gym-minigrid
 kubernetes
 lxml
@@ -68,7 +68,7 @@ opentelemetry-exporter-otlp==1.1.0
 pexpect
 Pillow; platform_system != "Windows"
 pygments
-pyspark
+pyspark==3.1.2
 pytest==5.4.3
 pytest-asyncio
 pytest-rerunfailures
@@ -86,3 +86,4 @@ smart_open[s3]
 tqdm
 async-exit-stack
 async-generator
+cryptography>=3.0.0

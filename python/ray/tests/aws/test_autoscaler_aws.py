@@ -3,8 +3,8 @@ import copy
 import pytest
 from unittest.mock import Mock, patch
 
-from ray.autoscaler._private.aws.config import _get_vpc_id_or_die, \
-    bootstrap_aws, log_to_cli, \
+from ray.autoscaler._private.aws.config import _configure_subnet, \
+    _get_vpc_id_or_die, bootstrap_aws, log_to_cli, \
     DEFAULT_AMI
 from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
 from ray.autoscaler._private.providers import _get_node_provider
@@ -692,6 +692,32 @@ def test_terminate_nodes(num_on_demand_nodes, num_spot_nodes, stop):
             nodes_included_in_call.update(call[1]["InstanceIds"])
 
         assert nodes_to_include_in_call == nodes_included_in_call
+
+
+def test_use_subnets_ordered_by_az(ec2_client_stub):
+    """
+    This test validates that when bootstrap_aws populates the SubnetIds field,
+    the subnets are ordered the same way as availability zones.
+
+    """
+    # Add a response with a twenty subnets round-robined across the 4 AZs in
+    # `us-west-2` (a,b,c,d). At the end we should only have 15 subnets, ordered
+    # first from `us-west-2c`, then `us-west-2d`, then `us-west-2a`.
+    stubs.describe_twenty_subnets_in_different_azs(ec2_client_stub)
+
+    base_config = helpers.load_aws_example_config_file("example-full.yaml")
+    base_config["provider"][
+        "availability_zone"] = "us-west-2c,us-west-2d,us-west-2a"
+    config = _configure_subnet(base_config)
+
+    # We've filtered down to only subnets in 2c, 2d & 2a
+    for node_type in config["available_node_types"].values():
+        node_config = node_type["node_config"]
+        assert len(node_config["SubnetIds"]) == 15
+        offsets = [int(s.split("-")[1]) % 4 for s in node_config["SubnetIds"]]
+        assert set(offsets[:5]) == {2}, "First 5 should be in us-west-2c"
+        assert set(offsets[5:10]) == {3}, "Next 5 should be in us-west-2d"
+        assert set(offsets[10:15]) == {0}, "Last 5 should be in us-west-2a"
 
 
 if __name__ == "__main__":

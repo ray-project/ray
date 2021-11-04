@@ -83,6 +83,9 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   int agent_port_ = 0;
   /// The number of times the agent is restarted.
   std::atomic<uint32_t> agent_restart_count_ = 0;
+  /// Whether or not we intend to start the agent.  This is false if we
+  /// are missing Ray Dashboard dependencies, for example.
+  bool should_start_agent_ = true;
   std::string agent_ip_address_;
   DelayExecutorFn delay_executor_;
   RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;

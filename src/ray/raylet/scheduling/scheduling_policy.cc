@@ -40,7 +40,9 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
                                const int64_t local_node_id,
                                const absl::flat_hash_map<int64_t, Node> &nodes,
                                float spread_threshold, bool force_spillback,
-                               bool require_available, NodeFilter node_filter) {
+                               bool require_available,
+                               std::function<bool(int64_t)> is_node_available,
+                               NodeFilter node_filter) {
   // Step 1: Generate the traversal order. We guarantee that the first node is local, to
   // encourage local scheduling. The rest of the traversal order should be globally
   // consistent, to encourage using "warm" workers.
@@ -48,12 +50,15 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
   round.reserve(nodes.size());
   const auto local_it = nodes.find(local_node_id);
   RAY_CHECK(local_it != nodes.end());
-
-  auto predicate = [node_filter](const auto &node) {
+  auto predicate = [node_filter, &is_node_available](
+                       int64_t node_id, const NodeResources &node_resources) {
+    if (!is_node_available(node_id)) {
+      return false;
+    }
     if (node_filter == NodeFilter::kAny) {
       return true;
     }
-    const bool has_gpu = DoesNodeHaveGPUs(node);
+    const bool has_gpu = DoesNodeHaveGPUs(node_resources);
     if (node_filter == NodeFilter::kGPU) {
       return has_gpu;
     }
@@ -61,18 +66,19 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
     return !has_gpu;
   };
 
-  const auto &local_node = local_it->second.GetLocalView();
+  const auto &local_node_view = local_it->second.GetLocalView();
   // If we should include local node at all, make sure it is at the front of the list
   // so that
   // 1. It's first in traversal order.
   // 2. It's easy to avoid sorting it.
-  if (predicate(local_node) && !force_spillback) {
+  if (predicate(local_node_id, local_node_view) && !force_spillback) {
     round.push_back(local_node_id);
   }
 
   const auto start_index = round.size();
   for (const auto &pair : nodes) {
-    if (pair.first != local_node_id && predicate(pair.second.GetLocalView())) {
+    if (pair.first != local_node_id &&
+        predicate(pair.first, pair.second.GetLocalView())) {
       round.push_back(pair.first);
     }
   }
@@ -143,16 +149,18 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
 int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t local_node_id,
                      const absl::flat_hash_map<int64_t, Node> &nodes,
                      float spread_threshold, bool force_spillback, bool require_available,
+                     std::function<bool(int64_t)> is_node_available,
                      bool scheduler_avoid_gpu_nodes) {
   if (!scheduler_avoid_gpu_nodes || IsGPURequest(resource_request)) {
     return HybridPolicyWithFilter(resource_request, local_node_id, nodes,
-                                  spread_threshold, force_spillback, require_available);
+                                  spread_threshold, force_spillback, require_available,
+                                  std::move(is_node_available));
   }
 
   // Try schedule on non-GPU nodes.
   auto best_node_id = HybridPolicyWithFilter(
       resource_request, local_node_id, nodes, spread_threshold, force_spillback,
-      /*require_available*/ true, NodeFilter::kNonGpu);
+      /*require_available*/ true, is_node_available, NodeFilter::kNonGpu);
   if (best_node_id != -1) {
     return best_node_id;
   }
@@ -160,7 +168,7 @@ int64_t HybridPolicy(const ResourceRequest &resource_request, const int64_t loca
   // If we cannot find any available node from non-gpu nodes, fallback to the original
   // scheduling
   return HybridPolicyWithFilter(resource_request, local_node_id, nodes, spread_threshold,
-                                force_spillback, require_available);
+                                force_spillback, require_available, is_node_available);
 }
 
 }  // namespace raylet_scheduling_policy

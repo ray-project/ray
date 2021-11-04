@@ -256,8 +256,9 @@ install_node() {
   (
     set +x # suppress set -x since it'll get very noisy here
     . "${HOME}/.nvm/nvm.sh"
-    nvm install node
-    nvm use --silent node
+    NODE_VERSION="14"
+    nvm install $NODE_VERSION
+    nvm use --silent $NODE_VERSION
     npm config set loglevel warn  # make NPM quieter
   )
 }
@@ -357,12 +358,12 @@ install_dependencies() {
     # install the following packages for testing on travis only
     pip install 'recsim>=0.2.4'
 
-    # Install Atari ROMs. Previously these have been shipped with atari_py
-    if [[ "${OSTYPE}" = linux* ]]; then
-      bash "${WORKSPACE_DIR}"/rllib/utils/install_atari_roms.sh
-    else
-      echo "Not installing Atari roms on ${OSTYPE}"
-    fi
+    # # Install Atari ROMs. Previously these have been shipped with atari_py
+    # if [[ "${OSTYPE}" = linux* ]]; then
+    #   bash "${WORKSPACE_DIR}"/rllib/utils/install_atari_roms.sh
+    # else
+    #   echo "Not installing Atari roms on ${OSTYPE}"
+    # fi
   fi
 
   # Additional Tune/SGD/Doc test dependencies.
@@ -408,7 +409,7 @@ install_dependencies() {
 
   # RLlib testing with TF 1.x.
   if [ "${RLLIB_TESTING-}" = 1 ] && { [ -n "${TF_VERSION-}" ] || [ -n "${TFP_VERSION-}" ]; }; then
-    pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}" gym==0.19
+    pip install --upgrade tensorflow-probability=="${TFP_VERSION}" tensorflow=="${TF_VERSION}"
   fi
 
   # Additional Tune dependency for Horovod.

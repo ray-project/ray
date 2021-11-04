@@ -143,13 +143,15 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             self._cpu_counts = (psutil.cpu_count(),
                                 psutil.cpu_count(logical=False))
 
-        self._ip = ray.util.get_node_ip_address()
+        self._ip = dashboard_agent.ip
         self._redis_address, _ = dashboard_agent.redis_address
         self._is_head_node = (self._ip == self._redis_address)
         self._hostname = socket.gethostname()
         self._workers = set()
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
-        self._metrics_agent = MetricsAgent(dashboard_agent.metrics_export_port)
+        self._metrics_agent = MetricsAgent(
+            "127.0.0.1" if self._ip == "127.0.0.1" else "",
+            dashboard_agent.metrics_export_port)
         self._key = f"{reporter_consts.REPORTER_PREFIX}" \
                     f"{self._dashboard_agent.node_id}"
 
@@ -240,19 +242,18 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
 
     @staticmethod
     def _get_disk_usage():
-        dirs = [
-            os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep,
-            ray._private.utils.get_user_temp_dir(),
-        ]
         if IN_KUBERNETES_POD:
             # If in a K8s pod, disable disk display by passing in dummy values.
             return {
-                x: psutil._common.sdiskusage(
+                "/": psutil._common.sdiskusage(
                     total=1, used=0, free=1, percent=0.0)
-                for x in dirs
             }
-        else:
-            return {x: psutil.disk_usage(x) for x in dirs}
+        root = os.environ["USERPROFILE"] if sys.platform == "win32" else os.sep
+        tmp = ray._private.utils.get_user_temp_dir()
+        return {
+            "/": psutil.disk_usage(root),
+            tmp: psutil.disk_usage(tmp),
+        }
 
     def _get_workers(self):
         raylet_proc = self._get_raylet_proc()

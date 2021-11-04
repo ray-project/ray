@@ -265,31 +265,24 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         register_trainable("B", B)
 
-        def f(cpus, gpus, queue_trials):
-            return run_experiments(
-                {
-                    "foo": {
-                        "run": "B",
-                        "config": {
-                            "cpu": cpus,
-                            "gpu": gpus,
-                        },
-                    }
-                },
-                queue_trials=queue_trials)[0]
+        def f(cpus, gpus):
+            return run_experiments({
+                "foo": {
+                    "run": "B",
+                    "config": {
+                        "cpu": cpus,
+                        "gpu": gpus,
+                    },
+                }
+            })[0]
 
         # Should all succeed
-        self.assertEqual(f(0, 0, False).status, Trial.TERMINATED)
-        self.assertEqual(f(1, 0, True).status, Trial.TERMINATED)
-        self.assertEqual(f(1, 0, True).status, Trial.TERMINATED)
+        self.assertEqual(f(0, 0).status, Trial.TERMINATED)
 
         # Too large resource request
-        self.assertRaises(TuneError, lambda: f(100, 100, False))
-        self.assertRaises(TuneError, lambda: f(0, 100, False))
-        self.assertRaises(TuneError, lambda: f(100, 0, False))
-
-        # TODO(ekl) how can we test this is queued (hangs)?
-        # f(100, 0, True)
+        self.assertRaises(TuneError, lambda: f(100, 100))
+        self.assertRaises(TuneError, lambda: f(0, 100))
+        self.assertRaises(TuneError, lambda: f(100, 0))
 
     def testRewriteEnv(self):
         def train(config, reporter):
@@ -1663,7 +1656,8 @@ class ApiTestFast(unittest.TestCase):
                          checkpoint_period=None,
                          trial_executor=None,
                          callbacks=None,
-                         metric=None):
+                         metric=None,
+                         driver_sync_trial_checkpoints=True):
                 # should be converted from strings at this case
                 # and not None
                 capture["search_alg"] = search_alg
@@ -1681,7 +1675,8 @@ class ApiTestFast(unittest.TestCase):
                     checkpoint_period=checkpoint_period,
                     trial_executor=trial_executor,
                     callbacks=callbacks,
-                    metric=metric)
+                    metric=metric,
+                    driver_sync_trial_checkpoints=True)
 
         with patch("ray.tune.tune.TrialRunner", MockTrialRunner):
             tune.run(
@@ -1733,7 +1728,8 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                          checkpoint_period=None,
                          trial_executor=None,
                          callbacks=None,
-                         metric=None):
+                         metric=None,
+                         driver_sync_trial_checkpoints=True):
                 capture["search_alg"] = search_alg
                 capture["scheduler"] = scheduler
                 super().__init__(
@@ -1749,7 +1745,9 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
                     checkpoint_period=checkpoint_period,
                     trial_executor=trial_executor,
                     callbacks=callbacks,
-                    metric=metric)
+                    metric=metric,
+                    driver_sync_trial_checkpoints=driver_sync_trial_checkpoints
+                )
 
         with patch("ray.tune.tune.TrialRunner", MockTrialRunner):
             tune.run(

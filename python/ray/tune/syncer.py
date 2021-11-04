@@ -1,4 +1,5 @@
-from typing import Any, Callable, Dict, List, TYPE_CHECKING, Type, Union
+from typing import (Any, Callable, Dict, List, TYPE_CHECKING, Type, Union,
+                    Optional)
 
 import distutils
 import logging
@@ -11,11 +12,11 @@ from shlex import quote
 
 import ray
 import yaml
-from ray import services
 from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.checkpoint_manager import Checkpoint
 from ray.tune.result import NODE_IP
+from ray.util import get_node_ip_address
 from ray.util.debug import log_once
 from ray.ray_constants import env_integer
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
@@ -142,27 +143,39 @@ class Syncer:
         self.last_sync_down_time = float("-inf")
         self.sync_client = sync_client
 
-    def sync_up_if_needed(self, sync_period):
+    def sync_up_if_needed(self,
+                          sync_period: int,
+                          exclude: Optional[List] = None):
         """Syncs up if time since last sync up is greather than sync_period.
 
-        Arguments:
+        Args:
             sync_period (int): Time period between subsequent syncs.
+            exclude (List[str]): Pattern of files to exclude, e.g.
+                ``["*/checkpoint_*]`` to exclude trial checkpoints.
         """
 
         if time.time() - self.last_sync_up_time > sync_period:
-            self.sync_up()
+            self.sync_up(exclude)
 
-    def sync_down_if_needed(self, sync_period):
+    def sync_down_if_needed(self,
+                            sync_period: int,
+                            exclude: Optional[List] = None):
         """Syncs down if time since last sync down is greather than sync_period.
 
-        Arguments:
+        Args:
             sync_period (int): Time period between subsequent syncs.
+            exclude (List[str]): Pattern of files to exclude, e.g.
+                ``["*/checkpoint_*]`` to exclude trial checkpoints.
         """
         if time.time() - self.last_sync_down_time > sync_period:
-            self.sync_down()
+            self.sync_down(exclude)
 
-    def sync_up(self):
+    def sync_up(self, exclude: Optional[List] = None):
         """Attempts to start the sync-up to the remote path.
+
+        Args:
+            exclude (List[str]): Pattern of files to exclude, e.g.
+                ``["*/checkpoint_*]`` to exclude trial checkpoints.
 
         Returns:
             Whether the sync (if feasible) was successfully started.
@@ -170,15 +183,19 @@ class Syncer:
         result = False
         if self.validate_hosts(self._local_dir, self._remote_path):
             try:
-                result = self.sync_client.sync_up(self._local_dir,
-                                                  self._remote_path)
+                result = self.sync_client.sync_up(
+                    self._local_dir, self._remote_path, exclude=exclude)
                 self.last_sync_up_time = time.time()
             except Exception:
                 logger.exception("Sync execution failed.")
         return result
 
-    def sync_down(self):
+    def sync_down(self, exclude: Optional[List] = None):
         """Attempts to start the sync-down from the remote path.
+
+        Args:
+            exclude (List[str]): Pattern of files to exclude, e.g.
+                ``["*/checkpoint_*]`` to exclude trial checkpoints.
 
         Returns:
              Whether the sync (if feasible) was successfully started.
@@ -186,8 +203,8 @@ class Syncer:
         result = False
         if self.validate_hosts(self._local_dir, self._remote_path):
             try:
-                result = self.sync_client.sync_down(self._remote_path,
-                                                    self._local_dir)
+                result = self.sync_client.sync_down(
+                    self._remote_path, self._local_dir, exclude=exclude)
                 self.last_sync_down_time = time.time()
             except Exception:
                 logger.exception("Sync execution failed.")
@@ -223,18 +240,20 @@ class CloudSyncer(Syncer):
     def __init__(self, local_dir, remote_dir, sync_client):
         super(CloudSyncer, self).__init__(local_dir, remote_dir, sync_client)
 
-    def sync_up_if_needed(self):
-        return super(CloudSyncer, self).sync_up_if_needed(CLOUD_SYNC_PERIOD)
+    def sync_up_if_needed(self, exclude: Optional[List] = None):
+        return super(CloudSyncer, self).sync_up_if_needed(
+            CLOUD_SYNC_PERIOD, exclude=exclude)
 
-    def sync_down_if_needed(self):
-        return super(CloudSyncer, self).sync_down_if_needed(CLOUD_SYNC_PERIOD)
+    def sync_down_if_needed(self, exclude: Optional[List] = None):
+        return super(CloudSyncer, self).sync_down_if_needed(
+            CLOUD_SYNC_PERIOD, exclude=exclude)
 
 
 class NodeSyncer(Syncer):
     """Syncer for syncing files to/from a remote dir to a local dir."""
 
     def __init__(self, local_dir, remote_dir, sync_client):
-        self.local_ip = services.get_node_ip_address()
+        self.local_ip = get_node_ip_address()
         self.worker_ip = None
         super(NodeSyncer, self).__init__(local_dir, remote_dir, sync_client)
 
@@ -254,15 +273,17 @@ class NodeSyncer(Syncer):
             return False
         return True
 
-    def sync_up_if_needed(self):
+    def sync_up_if_needed(self, exclude: Optional[List] = None):
         if not self.has_remote_target():
             return True
-        return super(NodeSyncer, self).sync_up_if_needed(NODE_SYNC_PERIOD)
+        return super(NodeSyncer, self).sync_up_if_needed(
+            NODE_SYNC_PERIOD, exclude=exclude)
 
-    def sync_down_if_needed(self):
+    def sync_down_if_needed(self, exclude: Optional[List] = None):
         if not self.has_remote_target():
             return True
-        return super(NodeSyncer, self).sync_down_if_needed(NODE_SYNC_PERIOD)
+        return super(NodeSyncer, self).sync_down_if_needed(
+            NODE_SYNC_PERIOD, exclude=exclude)
 
     def sync_up_to_new_location(self, worker_ip):
         if worker_ip != self.worker_ip:
@@ -275,17 +296,17 @@ class NodeSyncer(Syncer):
         else:
             logger.warning("Sync attempted to same IP %s.", worker_ip)
 
-    def sync_up(self):
+    def sync_up(self, exclude: Optional[List] = None):
         if not self.has_remote_target():
             return True
-        return super(NodeSyncer, self).sync_up()
+        return super(NodeSyncer, self).sync_up(exclude=exclude)
 
-    def sync_down(self):
+    def sync_down(self, exclude: Optional[List] = None):
         if not self.has_remote_target():
             return True
         logger.debug("Syncing from %s to %s", self._remote_path,
                      self._local_dir)
-        return super(NodeSyncer, self).sync_down()
+        return super(NodeSyncer, self).sync_down(exclude=exclude)
 
     @property
     def _remote_path(self):
@@ -397,7 +418,10 @@ class SyncerCallback(Callback):
         from ray.tune.durable_trainable import DurableTrainable
 
         trial_syncer = self._get_trial_syncer(trial)
-        if trial.sync_on_checkpoint:
+        # If the sync_function is False, syncing to driver is disabled.
+        # In every other case (valid values include None, True Callable,
+        # NodeSyncer) syncing to driver is enabled.
+        if trial.sync_on_checkpoint and self._sync_function is not False:
             try:
                 # Wait for any other syncs to finish. We need to sync again
                 # after this to handle checkpoints taken mid-sync.

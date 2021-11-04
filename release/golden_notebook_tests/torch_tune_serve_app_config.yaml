@@ -11,6 +11,7 @@ python:
     - fastapi
     - uvicorn
     - tblib
+    - filelock>=3.3.0
   conda_packages: [ ]
 
 post_build_cmds:

@@ -15,6 +15,7 @@
 #include "ray/raylet/node_manager.h"
 
 #include <cctype>
+#include <csignal>
 #include <fstream>
 #include <memory>
 
@@ -182,7 +183,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           config.num_workers_soft_limit, config.num_initial_python_workers_for_first_job,
           config.maximum_startup_concurrency, config.min_worker_port,
           config.max_worker_port, config.worker_ports, gcs_client_,
-          config.worker_commands,
+          config.worker_commands, config.native_library_path,
           /*starting_worker_timeout_callback=*/
           [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
           config.ray_debugger_external,
@@ -190,7 +191,13 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       client_call_manager_(io_service),
       worker_rpc_pool_(client_call_manager_),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
-          self_node_id_, RayConfig::instance().max_command_batch_size(),
+          self_node_id_,
+          /*channels=*/
+          std::vector<rpc::ChannelType>{
+              rpc::ChannelType::WORKER_OBJECT_EVICTION,
+              rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+              rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
+          RayConfig::instance().max_command_batch_size(),
           /*get_client=*/
           [this](const rpc::Address &address) {
             return worker_rpc_pool_.GetOrConnect(address);
@@ -262,7 +269,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           self_node_id_, config.node_manager_address, config.node_manager_port,
           RayConfig::instance().free_objects_batch_size(),
           RayConfig::instance().free_objects_period_milliseconds(), worker_pool_,
-          gcs_client_->Objects(), worker_rpc_pool_,
+          worker_rpc_pool_,
           /*max_io_workers*/ config.max_io_workers,
           /*min_spilling_size*/ config.min_spilling_size,
           /*is_external_storage_type_fs*/
@@ -297,7 +304,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   cluster_resource_scheduler_ =
       std::shared_ptr<ClusterResourceScheduler>(new ClusterResourceScheduler(
           self_node_id_.Binary(), local_resources.GetTotalResources().GetResourceMap(),
-          [this]() { return object_manager_.GetUsedMemory(); },
+          *gcs_client_, [this]() { return object_manager_.GetUsedMemory(); },
           [this]() { return object_manager_.PullManagerHasPullsQueued(); }));
 
   auto get_node_info_func = [this](const NodeID &node_id) {
@@ -324,7 +331,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
     return !(failed_workers_cache_.count(owner_worker_id) > 0 ||
              failed_nodes_cache_.count(owner_node_id) > 0);
   };
-  cluster_task_manager_ = std::shared_ptr<ClusterTaskManager>(new ClusterTaskManager(
+  cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
       self_node_id_,
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       dependency_manager_, is_owner_alive, get_node_info_func, announce_infeasible_task,
@@ -333,7 +340,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
              std::vector<std::unique_ptr<RayObject>> *results) {
         return GetObjectsFromPlasma(object_ids, results);
       },
-      max_task_args_memory));
+      max_task_args_memory);
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       // TODO (Alex): Ideally we could do these in a more robust way (retry
@@ -497,7 +504,7 @@ ray::Status NodeManager::RegisterGcs() {
 
 void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
 #ifdef _WIN32
-  // TODO(mehrdadn): implement graceful process termination mechanism
+// TODO(mehrdadn): implement graceful process termination mechanism
 #else
   // If we're just cleaning up a single worker, allow it some time to clean
   // up its state before force killing. The client socket will be closed
@@ -680,12 +687,12 @@ void NodeManager::HandleReleaseUnusedBundles(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-// TODO(edoakes): this function is problematic because it both sends warnings spuriously
-// under normal conditions and sometimes doesn't send a warning under actual deadlock
-// conditions. The current logic is to push a warning when: all running tasks are
-// blocked, there is at least one ready task, and a warning hasn't been pushed in
-// debug_dump_period_ milliseconds.
-// See https://github.com/ray-project/ray/issues/5790 for details.
+// This warns users that there could be the resource deadlock. It works this way;
+// - If there's no available workers for scheduling
+// - But if there are still pending tasks waiting for resource acquisition
+// It means the cluster might not have enough resources to be in progress.
+// Note that this can print the false negative messages
+// e.g., there are many actors taking up resources for a long time.
 void NodeManager::WarnResourceDeadlock() {
   ray::RayTask exemplar;
   bool any_pending = false;
@@ -695,8 +702,7 @@ void NodeManager::WarnResourceDeadlock() {
 
   // Check if any progress is being made on this raylet.
   for (const auto &worker : worker_pool_.GetAllRegisteredWorkers()) {
-    if (!worker->IsDead() && !worker->GetAssignedTaskId().IsNil() &&
-        !worker->IsBlocked() && worker->GetActorId().IsNil()) {
+    if (worker->IsAvailableForScheduling()) {
       // Progress is being made in a task, don't warn.
       resource_deadlock_warned_ = 0;
       return;
@@ -704,13 +710,12 @@ void NodeManager::WarnResourceDeadlock() {
   }
 
   // Check if any tasks are blocked on resource acquisition.
-  if (!cluster_task_manager_->AnyPendingTasks(&exemplar, &any_pending,
-                                              &pending_actor_creations, &pending_tasks)) {
+  if (!cluster_task_manager_->AnyPendingTasksForResourceAcquisition(
+          &exemplar, &any_pending, &pending_actor_creations, &pending_tasks)) {
     // No pending tasks, no need to warn.
     resource_deadlock_warned_ = 0;
     return;
   }
-  available_resources = cluster_resource_scheduler_->GetLocalResourceViewString();
 
   // Push an warning to the driver that a task is blocked trying to acquire resources.
   // To avoid spurious triggers, only take action starting with the second time.
@@ -739,12 +744,14 @@ void NodeManager::WarnResourceDeadlock() {
         << "Required resources for this actor or task: "
         << exemplar.GetTaskSpecification().GetRequiredPlacementResources().ToString()
         << "\n"
-        << "Available resources on this node: " << available_resources
-        << "In total there are " << pending_tasks << " pending tasks and "
+        << "Available resources on this node: "
+        << cluster_resource_scheduler_->GetLocalResourceViewString()
+        << " In total there are " << pending_tasks << " pending tasks and "
         << pending_actor_creations << " pending actors on this node.";
 
     std::string error_message_str = error_message.str();
     RAY_LOG(WARNING) << error_message_str;
+    RAY_LOG_EVERY_MS(WARNING, 10 * 1000) << cluster_task_manager_->DebugStr();
     if (RayConfig::instance().legacy_scheduler_warnings()) {
       auto error_data_ptr = gcs::CreateErrorTableData(
           "resource_deadlock", error_message_str, current_time_ms(),
@@ -791,12 +798,22 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   // exit immediately.
   RAY_LOG(DEBUG) << "[NodeRemoved] Received callback from node id " << node_id;
 
-  RAY_CHECK(node_id != self_node_id_)
-      << "Exiting because this node manager has mistakenly been marked dead by the "
-      << "monitor: GCS didn't receive heartbeats within timeout "
-      << RayConfig::instance().num_heartbeats_timeout() *
-             RayConfig::instance().raylet_heartbeat_period_milliseconds()
-      << " ms. This is likely since the machine or raylet became overloaded.";
+  if (node_id == self_node_id_) {
+    if (!is_node_drained_) {
+      RAY_LOG(FATAL)
+          << "[Timeout] Exiting because this node manager has mistakenly been marked as "
+             "dead by the "
+          << "GCS: GCS didn't receive heartbeats from this node for "
+          << RayConfig::instance().num_heartbeats_timeout() *
+                 RayConfig::instance().raylet_heartbeat_period_milliseconds()
+          << " ms. This is likely because the machine or raylet has become overloaded.";
+    } else {
+      // No-op since this node already starts to be drained, and GCS already knows about
+      // it.
+      RAY_LOG(INFO) << "Node is marked as dead by GCS because the node is drained.";
+      return;
+    }
+  }
 
   // Below, when we remove node_id from all of these data structures, we could
   // check that it is actually removed, or log a warning otherwise, but that may
@@ -873,7 +890,16 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                                         const ResourceSet &createUpdatedResources) {
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from node id " << node_id
                  << " with created or updated resources: "
-                 << createUpdatedResources.ToString() << ". Updating resource map.";
+                 << createUpdatedResources.ToString() << ". Updating resource map."
+                 << " skip=" << (node_id == self_node_id_);
+
+  // Skip updating local node since local node always has the latest information.
+  // Updating local node could result in a inconsistence view in cluster resource
+  // scheduler which could make task hang.
+  if (node_id == self_node_id_) {
+    cluster_task_manager_->ScheduleAndDispatchTasks();
+    return;
+  }
 
   // Update local_available_resources_ and SchedulingResources
   for (const auto &resource_pair : createUpdatedResources.GetResourceMap()) {
@@ -883,11 +909,7 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                                                         new_resource_capacity);
   }
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
-
-  if (node_id == self_node_id_) {
-    // The resource update is on the local node, check if we can reschedule tasks.
-    cluster_task_manager_->ScheduleAndDispatchTasks();
-  }
+  cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
 void NodeManager::ResourceDeleted(const NodeID &node_id,
@@ -899,7 +921,14 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
     }
     RAY_LOG(DEBUG) << "[ResourceDeleted] received callback from node id " << node_id
                    << " with deleted resources: " << oss.str()
-                   << ". Updating resource map.";
+                   << ". Updating resource map. skip=" << (node_id == self_node_id_);
+  }
+
+  // Skip updating local node since local node always has the latest information.
+  // Updating local node could result in a inconsistence view in cluster resource
+  // scheduler which could make task hang.
+  if (node_id == self_node_id_) {
+    return;
   }
 
   // Update local_available_resources_ and SchedulingResources
@@ -1010,13 +1039,6 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::PushErrorRequest: {
     ProcessPushErrorRequestMessage(message_data);
   } break;
-  case protocol::MessageType::PushProfileEventsRequest: {
-    auto fbs_message = flatbuffers::GetRoot<flatbuffers::String>(message_data);
-    auto profile_table_data = std::make_shared<rpc::ProfileTableData>();
-    RAY_CHECK(
-        profile_table_data->ParseFromArray(fbs_message->data(), fbs_message->size()));
-    RAY_CHECK_OK(gcs_client_->Stats().AsyncAddProfileData(profile_table_data, nullptr));
-  } break;
   case protocol::MessageType::FreeObjectsInObjectStoreRequest: {
     auto message = flatbuffers::GetRoot<protocol::FreeObjectsRequest>(message_data);
     std::vector<ObjectID> object_ids = from_flatbuf<ObjectID>(*message->object_ids());
@@ -1045,6 +1067,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   WorkerID worker_id = from_flatbuf<WorkerID>(*message->worker_id());
   pid_t pid = message->worker_pid();
   pid_t worker_shim_pid = message->worker_shim_pid();
+  StartupToken worker_startup_token = message->startup_token();
   std::string worker_ip_address = string_from_flatbuf(*message->ip_address());
   // TODO(suquark): Use `WorkerType` in `common.proto` without type converting.
   rpc::WorkerType worker_type = static_cast<rpc::WorkerType>(message->worker_type());
@@ -1055,9 +1078,9 @@ void NodeManager::ProcessRegisterClientRequestMessage(
   } else {
     RAY_CHECK(job_id.IsNil());
   }
-  auto worker = std::dynamic_pointer_cast<WorkerInterface>(
-      std::make_shared<Worker>(job_id, runtime_env_hash, worker_id, language, worker_type,
-                               worker_ip_address, client, client_call_manager_));
+  auto worker = std::dynamic_pointer_cast<WorkerInterface>(std::make_shared<Worker>(
+      job_id, runtime_env_hash, worker_id, language, worker_type, worker_ip_address,
+      client, client_call_manager_, worker_startup_token));
 
   auto send_reply_callback = [this, client, job_id](Status status, int assigned_port) {
     flatbuffers::FlatBufferBuilder fbb;
@@ -1083,8 +1106,8 @@ void NodeManager::ProcessRegisterClientRequestMessage(
       worker_type == rpc::WorkerType::SPILL_WORKER ||
       worker_type == rpc::WorkerType::RESTORE_WORKER) {
     // Register the new worker.
-    auto status =
-        worker_pool_.RegisterWorker(worker, pid, worker_shim_pid, send_reply_callback);
+    auto status = worker_pool_.RegisterWorker(worker, pid, worker_shim_pid,
+                                              worker_startup_token, send_reply_callback);
     if (!status.ok()) {
       // If the worker failed to register to Raylet, trigger task dispatching here to
       // allow new worker processes to be started (if capped by
@@ -1463,39 +1486,44 @@ void NodeManager::HandleUpdateResourceUsage(
     rpc::SendReplyCallback send_reply_callback) {
   rpc::ResourceUsageBroadcastData resource_usage_batch;
   resource_usage_batch.ParseFromString(request.serialized_resource_usage_batch());
-
-  if (resource_usage_batch.seq_no() != next_resource_seq_no_) {
+  // When next_resource_seq_no_ == 0 it means it just started.
+  // TODO: Fetch a snapshot from gcs for lightweight resource broadcasting
+  if (next_resource_seq_no_ != 0 &&
+      resource_usage_batch.seq_no() != next_resource_seq_no_) {
+    // TODO (Alex): Ideally we would be really robust, and potentially eagerly
+    // pull a full resource "snapshot" from gcs to make sure our state doesn't
+    // diverge from GCS.
     RAY_LOG(WARNING)
         << "Raylet may have missed a resource broadcast. This either means that GCS has "
            "restarted, the network is heavily congested and is dropping, reordering, or "
            "duplicating packets. Expected seq#: "
         << next_resource_seq_no_ << ", but got: " << resource_usage_batch.seq_no() << ".";
-    // TODO (Alex): Ideally we would be really robust, and potentially eagerly
-    // pull a full resource "snapshot" from gcs to make sure our state doesn't
-    // diverge from GCS.
+    if (resource_usage_batch.seq_no() < next_resource_seq_no_) {
+      RAY_LOG(WARNING) << "Discard the the resource update since local version is newer";
+      return;
+    }
   }
   next_resource_seq_no_ = resource_usage_batch.seq_no() + 1;
 
   for (const auto &resource_change_or_data : resource_usage_batch.batch()) {
     if (resource_change_or_data.has_data()) {
       const auto &resource_usage = resource_change_or_data.data();
-      const NodeID &node_id = NodeID::FromBinary(resource_usage.node_id());
-      if (node_id == self_node_id_) {
-        // Skip messages from self.
-        continue;
+      auto node_id = NodeID::FromBinary(resource_usage.node_id());
+      // Skip messages from self.
+      if (node_id != self_node_id_) {
+        UpdateResourceUsage(node_id, resource_usage);
       }
-      UpdateResourceUsage(node_id, resource_usage);
     } else if (resource_change_or_data.has_change()) {
       const auto &resource_notification = resource_change_or_data.change();
-      auto id = NodeID::FromBinary(resource_notification.node_id());
+      auto node_id = NodeID::FromBinary(resource_notification.node_id());
       if (resource_notification.updated_resources_size() != 0) {
         ResourceSet resource_set(
             MapFromProtobuf(resource_notification.updated_resources()));
-        ResourceCreateUpdated(id, resource_set);
+        ResourceCreateUpdated(node_id, resource_set);
       }
 
       if (resource_notification.deleted_resources_size() != 0) {
-        ResourceDeleted(id,
+        ResourceDeleted(node_id,
                         VectorFromProtobuf(resource_notification.deleted_resources()));
       }
     }
@@ -1541,13 +1569,6 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 
   if (is_actor_creation_task) {
     actor_id = task.GetTaskSpecification().ActorCreationId();
-
-    // Save the actor creation task spec to GCS, which is needed to
-    // reconstruct the actor when raylet detect it dies.
-    std::shared_ptr<rpc::TaskTableData> data = std::make_shared<rpc::TaskTableData>();
-    data->mutable_task()->mutable_task_spec()->CopyFrom(
-        task.GetTaskSpecification().GetMessage());
-    RAY_CHECK_OK(gcs_client_->Tasks().AsyncAdd(data, nullptr));
   }
 
   if (RayConfig::instance().enable_worker_prestart()) {
@@ -1691,6 +1712,41 @@ void NodeManager::HandleReturnWorker(const rpc::ReturnWorkerRequest &request,
     status = Status::Invalid("Returned worker does not exist any more");
   }
   send_reply_callback(status, nullptr, nullptr);
+}
+
+void NodeManager::HandleShutdownRaylet(const rpc::ShutdownRayletRequest &request,
+                                       rpc::ShutdownRayletReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO)
+      << "Shutdown RPC has received. Shutdown will happen after the RPC is replied.";
+  if (is_node_drained_) {
+    RAY_LOG(INFO) << "Node already has received the shutdown request. The shutdown "
+                     "request RPC is ignored.";
+    return;
+  }
+  auto graceful = request.graceful();
+  auto shutdown_after_reply = [graceful]() {
+    // Exit right away if it is not graceful.
+    if (!graceful) {
+      std::_Exit(EXIT_SUCCESS);
+    }
+    // Note that the callback is posted to the io service after the shutdown GRPC request
+    // is replied. Otherwise, the RPC might not be replied to GCS before it shutsdown
+    // itself. Implementation note: When raylet is shutdown by ray stop, the CLI sends a
+    // sigterm. Raylet knows how to gracefully shutdown when it receives a sigterm. Here,
+    // we raise a sigterm to itself so that it can re-use the same graceful shutdown code
+    // path. The sigterm is handled in the entry point (raylet/main.cc)'s signal handler.
+    auto signo = SIGTERM;
+    RAY_LOG(INFO) << "Sending a signal to itself. shutting down. graceful " << graceful
+                  << ". Signo: " << signo;
+    // raise return 0 if succeeds. If it fails to gracefully shutdown, it kills itself
+    // forcefully.
+    RAY_CHECK(std::raise(signo) == 0)
+        << "There was a failure while sending a sigterm to itself. The process will not "
+           "gracefully shutdown.";
+  };
+  is_node_drained_ = true;
+  send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);
 }
 
 void NodeManager::HandleReleaseUnusedWorkers(

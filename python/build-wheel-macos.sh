@@ -40,7 +40,7 @@ mkdir -p .whl
 # Use the latest version of Node.js in order to build the dashboard.
 source "$HOME"/.nvm/nvm.sh
 nvm install $NODE_VERSION
-nvm use node
+nvm use $NODE_VERSION
 
 # Build the dashboard so its static assets can be included in the wheel.
 pushd python/ray/dashboard/client

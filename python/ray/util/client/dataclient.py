@@ -107,7 +107,7 @@ class DataClient:
         except Exception as e:
             self._last_exception = e
         finally:
-            logger.info("Shutting down data channel")
+            logger.debug("Shutting down data channel.")
             self._shutdown()
 
     def _process_response(self, response: Any) -> None:
@@ -147,7 +147,7 @@ class DataClient:
         Returns True if the error can be recovered from, False otherwise.
         """
         if not self.client_worker._can_reconnect(e):
-            logger.info("Unrecoverable error in data channel.")
+            logger.error("Unrecoverable error in data channel.")
             logger.debug(e)
             return False
         logger.debug("Recoverable error in data channel.")
@@ -225,7 +225,7 @@ class DataClient:
             except ConnectionError:
                 logger.warning("Failed to reconnect the data channel")
                 raise
-            logger.info("Reconnection succeeded!")
+            logger.debug("Reconnection succeeded!")
 
         # Recreate the request queue, and resend outstanding requests
         with self.lock:
