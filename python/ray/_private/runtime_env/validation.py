@@ -327,10 +327,7 @@ class ParsedRuntimeEnv(dict):
             pb.working_dir = self.get("working_dir", "")
             pb.uris.extend(self.get_uris())
             env_vars = self.get("env_vars", {})
-            if env_vars:
-                # fix this
-                env_vars = sorted(env_vars.items())
-            pb.env_vars.update(env_vars)
+            pb.env_vars.update(env_vars.items())
             if "_inject_current_ray" in self:
                 pb.extensions["_inject_current_ray"] = self[
                     "_inject_current_ray"]
@@ -348,7 +345,7 @@ class ParsedRuntimeEnv(dict):
         if runtime_env.working_dir:
             initialize_dict["working_dir"] = runtime_env.working_dir
         if runtime_env.env_vars:
-            initialize_dict["env_vars"] = list(runtime_env.env_vars)
+            initialize_dict["env_vars"] = dict(runtime_env.env_vars)
         if runtime_env.extensions:
             initialize_dict.update(dict(runtime_env.extensions))
         parse_proto_pip_runtime_env(runtime_env, initialize_dict)
@@ -358,7 +355,7 @@ class ParsedRuntimeEnv(dict):
 
     def serialize(self) -> str:
         # Sort the keys we can compare the serialized string for equality.
-        return json_format.MessageToJson(self.get_proto_runtime_env(), sort_keys=True)
+        return json.dumps(json.loads(json_format.MessageToJson(self.get_proto_runtime_env())), sort_keys=True)
 
 
 def override_task_or_actor_runtime_env(

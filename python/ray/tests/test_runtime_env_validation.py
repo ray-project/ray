@@ -170,8 +170,6 @@ class TestParsedRuntimeEnv:
         sys.platform == "win32", reason="Pip option not supported on Windows.")
     def test_serialization(self):
         env1 = ParsedRuntimeEnv({
-            # fix this
-            # "pip": ["colorful", "requests"],
             "pip": ["requests"],
             "env_vars": {
                 "hi1": "hi1",
@@ -184,7 +182,6 @@ class TestParsedRuntimeEnv:
                 "hi2": "hi2",
                 "hi1": "hi1"
             },
-            # "pip": ["requests", "colorful"]
             "pip": ["requests"]
         })
 
