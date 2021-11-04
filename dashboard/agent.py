@@ -18,10 +18,10 @@ import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
+from ray._private.gcs_utils import GcsClient
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
-from ray._raylet import connect_to_gcs
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
@@ -93,8 +93,6 @@ class DashboardAgent(object):
         self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
             f"{self.ip}:{self.node_manager_port}", options, asynchronous=True)
         self.http_session = None
-        ip, port = redis_address.split(":")
-        self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
 
     def _load_modules(self):
         """Load dashboard agent modules."""
@@ -153,7 +151,10 @@ class DashboardAgent(object):
 
         # Start a grpc asyncio server.
         await self.server.start()
-
+        # TODO: use grpc address directly
+        gcs_address = await self.aioredis_client.get(
+            dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
+        self.gcs_client = GcsClient(gcs_address.decode())
         modules = self._load_modules()
 
         # Http server should be initialized after all modules loaded.
