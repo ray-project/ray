@@ -140,9 +140,9 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
                   RayObject(nullptr, meta_buffer, std::vector<rpc::ObjectReference>());
               RAY_CHECK(memory_store_->Put(data, object_id));
             }) {
-              ref_counter_->SetReleaseLineageCallback([this](const ObjectID &, std::vector<ObjectID> *args) {
-                  });
-            }
+    ref_counter_->SetReleaseLineageCallback(
+        [this](const ObjectID &, std::vector<ObjectID> *args) {});
+  }
 
   NodeID local_raylet_id_;
   std::unordered_map<ObjectID, rpc::ErrorType> failed_reconstructions_;
@@ -305,7 +305,8 @@ TEST_F(ObjectRecoveryManagerTest, TestDependencyReconstructionFails) {
   ASSERT_EQ(object_directory_->Flush(), 1);
   // Trigger callback for dep ID.
   ASSERT_EQ(object_directory_->Flush(), 1);
-  ASSERT_EQ(failed_reconstructions_[dep_id], rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED);
+  ASSERT_EQ(failed_reconstructions_[dep_id],
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED);
   ASSERT_EQ(failed_reconstructions_.count(object_id), 0);
   ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 1);
 }
@@ -318,7 +319,8 @@ TEST_F(ObjectRecoveryManagerTest, TestLineageEvicted) {
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_EQ(object_directory_->Flush(), 1);
-  ASSERT_EQ(failed_reconstructions_[object_id], rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED);
+  ASSERT_EQ(failed_reconstructions_[object_id],
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED);
 }
 
 }  // namespace core

@@ -170,7 +170,8 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
         num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
 
     if reconstruction_enabled:
-        with pytest.raises(ray.exceptions.ObjectReconstructionFailedMaxAttemptsExceededError):
+        with pytest.raises(ray.exceptions.
+                           ObjectReconstructionFailedMaxAttemptsExceededError):
             ray.get(obj)
     else:
         with pytest.raises(ray.exceptions.ObjectLostError):

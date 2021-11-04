@@ -55,8 +55,7 @@ class TaskFinisherInterface {
 
 class TaskResubmissionInterface {
  public:
-  virtual bool ResubmitTask(const TaskID &task_id,
-                              std::vector<ObjectID> *task_deps) = 0;
+  virtual bool ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) = 0;
 
   virtual ~TaskResubmissionInterface() {}
 };
@@ -264,7 +263,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// task's arguments whose lineage should also be released.
   /// \param[out] The amount of lineage in bytes that was removed.
   int64_t RemoveLineageReference(const ObjectID &object_id,
-                              std::vector<ObjectID> *ids_to_release) LOCKS_EXCLUDED(mu_);
+                                 std::vector<ObjectID> *ids_to_release)
+      LOCKS_EXCLUDED(mu_);
 
   /// Helper function to call RemoveSubmittedTaskReferences on the remaining
   /// dependencies of the given task spec after the task has finished or

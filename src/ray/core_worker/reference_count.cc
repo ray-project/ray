@@ -328,8 +328,7 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
   RemoveSubmittedTaskReferences(argument_ids, release_lineage, deleted);
 }
 
-int64_t ReferenceCounter::ReleaseLineageReferences(
-    ReferenceTable::iterator ref) {
+int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref) {
   int64_t lineage_bytes_evicted = 0;
   std::vector<ObjectID> argument_ids;
   if (on_lineage_released_ && ref->second.owned_by_us) {
@@ -338,7 +337,8 @@ int64_t ReferenceCounter::ReleaseLineageReferences(
     // The object is still in scope by the application and it was
     // reconstructable with lineage. Mark that its lineage has been evicted so
     // we can return the right error during reconstruction.
-    if (!ref->second.OutOfScope(lineage_pinning_enabled_) && ref->second.is_reconstructable) {
+    if (!ref->second.OutOfScope(lineage_pinning_enabled_) &&
+        ref->second.is_reconstructable) {
       ref->second.lineage_evicted = true;
       ref->second.is_reconstructable = false;
     }
@@ -524,7 +524,8 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
 int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
   absl::MutexLock lock(&mutex_);
   int64_t lineage_bytes_evicted = 0;
-  while (!reconstructable_owned_objects_.empty() && lineage_bytes_evicted < min_bytes_to_evict) {
+  while (!reconstructable_owned_objects_.empty() &&
+         lineage_bytes_evicted < min_bytes_to_evict) {
     ObjectID object_id = std::move(reconstructable_owned_objects_.front());
     reconstructable_owned_objects_.pop_front();
 

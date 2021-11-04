@@ -93,8 +93,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   return returned_refs;
 }
 
-bool TaskManager::ResubmitTask(const TaskID &task_id,
-                                 std::vector<ObjectID> *task_deps) {
+bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) {
   TaskSpecification spec;
   bool resubmit = false;
   {
@@ -332,7 +331,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   RemoveFinishedTaskReferences(spec, release_lineage, worker_addr, reply.borrowed_refs());
   if (evict_lineage) {
     // Evict at least half of the current lineage.
-    int64_t min_bytes_to_evict = total_lineage_footprint_bytes_ - (max_lineage_bytes_ / 2);
+    int64_t min_bytes_to_evict =
+        total_lineage_footprint_bytes_ - (max_lineage_bytes_ / 2);
     reference_counter_->EvictLineage(min_bytes_to_evict);
   }
 
@@ -486,7 +486,7 @@ void TaskManager::RemoveFinishedTaskReferences(
 }
 
 int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
-                                         std::vector<ObjectID> *released_objects) {
+                                            std::vector<ObjectID> *released_objects) {
   absl::MutexLock lock(&mu_);
   const int64_t total_lineage_footprint_bytes_prev(total_lineage_footprint_bytes_);
 

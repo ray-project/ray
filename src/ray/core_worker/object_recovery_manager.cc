@@ -165,9 +165,11 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
       }
     }
   } else {
-    RAY_LOG(INFO) << "Failed to reconstruct object " << object_id << " because lineage has already been deleted";
-    recovery_failure_callback_(object_id, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED,
-                               /*pin_object=*/true);
+    RAY_LOG(INFO) << "Failed to reconstruct object " << object_id
+                  << " because lineage has already been deleted";
+    recovery_failure_callback_(
+        object_id, rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED,
+        /*pin_object=*/true);
   }
 }
 

@@ -390,7 +390,8 @@ class ObjectReconstructionFailedMaxAttemptsExceededError(ObjectLostError):
         return self._base_str() + "\n\n" + (
             "The object cannot be reconstructed "
             "because the maximum number of task retries has been exceeded. "
-            "To prevent this error, set `@ray.remote(max_retries=<num retries>)` (default 3).")
+            "To prevent this error, set "
+            "`@ray.remote(max_retries=<num retries>)` (default 3).")
 
 
 class ObjectReconstructionFailedLineageEvictedError(ObjectLostError):
@@ -403,8 +404,10 @@ class ObjectReconstructionFailedLineageEvictedError(ObjectLostError):
 
     def __str__(self):
         return self._base_str() + "\n\n" + (
-            "The object cannot be reconstructed because its lineage has been evicted to reduce memory pressure. "
-            "To prevent this error, set the environment variable RAY_max_lineage_bytes=<bytes> (default 1GB) during `ray start`.")
+            "The object cannot be reconstructed because its lineage has been "
+            "evicted to reduce memory pressure. "
+            "To prevent this error, set the environment variable "
+            "RAY_max_lineage_bytes=<bytes> (default 1GB) during `ray start`.")
 
 
 class GetTimeoutError(RayError):

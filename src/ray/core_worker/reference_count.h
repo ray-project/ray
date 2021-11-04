@@ -627,7 +627,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// (RefCount() == 0).
     std::function<void(const ObjectID &)> on_ref_removed;
 
-    absl::optional<std::list<ObjectID>::iterator> reconstructable_owned_objects_it = absl::nullopt;
+    absl::optional<std::list<ObjectID>::iterator> reconstructable_owned_objects_it =
+        absl::nullopt;
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
@@ -746,8 +747,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Erase the Reference from the table. Assumes that the entry has no more
   /// references, normal or lineage.
-  void EraseReference(ReferenceTable::iterator entry)
-      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void EraseReference(ReferenceTable::iterator entry) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to garbage-collect all out-of-scope References in the
   /// lineage for this object.
