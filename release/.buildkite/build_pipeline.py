@@ -237,7 +237,7 @@ MANUAL_TESTS = {
 #   3. Use GPUs if applicable
 #   4. Have the `use_connect` flag set.
 USER_TESTS = {
-    "~/ray/release/ml_user_tests.yaml": [
+    "~/ray/release/ml_user_tests/ml_user_tests.yaml": [
         "train_tensorflow_mnist_test", "train_torch_linear_test",
         "ray_lightning_user_test_latest", "ray_lightning_user_test_master",
         "horovod_user_test_latest", "horovod_user_test_master",
