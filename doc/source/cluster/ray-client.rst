@@ -158,8 +158,8 @@ Ray client logs
 
 Ray client logs can be found at ``/tmp/ray/session_latest/logs`` on the head node.
    
-Uploads to the head node
-~~~~~~~~~~~~~~~~~~~~~~~~
+Uploads
+~~~~~~~
 
 If a ``working_dir`` is specified in the runtime env, when running ``ray.init()`` the Ray client will upload the ``working_dir`` on the laptop to ``/tmp/ray/session_latest/runtime_resources/_ray_pkg_<hash of directory contents>``.
 
