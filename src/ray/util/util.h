@@ -211,7 +211,7 @@ inline __suppress_ubsan__("signed-integer-overflow") int64_t GenerateSeed() {
 }  // namespace internal
 }  // namespace ray
 
-// Warning: This method reads random bytes from /dev/urandom in order to
+// Warning: This method reads random bytes from /dev/random in order to
 // provide random bytes. Therefore, one should be mindful about performance
 // when calling it too many times.
 template <typename T>
@@ -219,7 +219,7 @@ void FillRandom(T *data) {
   RAY_CHECK(data != nullptr);
   std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
   for (size_t i = 0; i < data->size(); i++) {
-    (*data)[i] = static_cast<uint8_t>(dist(std::random_device("/dev/urandom")));
+    (*data)[i] = static_cast<uint8_t>(dist(std::random_device));
   }
 }
 
