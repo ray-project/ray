@@ -768,6 +768,13 @@ class Node:
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info,
         ]
+        while True:
+            try:
+                self.initialize_internal_kv()
+                break
+            except Exception:
+                logger.info("Waiting for gcs up")
+
 
     def start_raylet(self,
                      plasma_directory,
