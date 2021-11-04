@@ -275,6 +275,7 @@ build_sphinx_docs() {
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
       sphinx-build -q -E -W -T -b html source _build/html
+      make linkcheck
     fi
   )
 }
