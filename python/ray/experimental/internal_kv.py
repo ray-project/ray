@@ -25,17 +25,17 @@ def _initialize_internal_kv(gcs_client: GcsClient):
     _initialized = True
 
 
-def __make_key(namespce: Optional[str], key: bytes) -> bytes:
+def __make_key(namespace: Optional[str], key: bytes) -> bytes:
     if namespace is None:
         namespace = ""
     assert isinstance(namespace, str)
     assert isinstance(key, bytes)
-    return b':'.join(namespace.encode(), key)
+    return b":".join(namespace.encode(), key)
 
 
 def __parse_key(key: bytes) -> Tuple[str, bytes]:
     assert isinstance(key, bytes)
-    ns, key = key.split(b':', 1)
+    ns, key = key.split(b":", 1)
     return (ns.decode(), key)
 
 
