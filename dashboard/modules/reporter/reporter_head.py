@@ -115,15 +115,15 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         assert ray.experimental.internal_kv._internal_kv_initialized()
         legacy_status = internal_kv._internal_kv_get(
             DEBUG_AUTOSCALING_STATUS_LEGACY,
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+            namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
         formatted_status_string = internal_kv._internal_kv_get(
             DEBUG_AUTOSCALING_STATUS,
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+            namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
         formatted_status = json.loads(formatted_status_string.decode()
                                       ) if formatted_status_string else {}
         error = internal_kv._internal_kv_get(
             DEBUG_AUTOSCALING_ERROR,
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+            namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
         return dashboard_utils.rest_response(
             success=True,
             message="Got cluster status.",

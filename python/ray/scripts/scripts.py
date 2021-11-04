@@ -1806,7 +1806,7 @@ def healthcheck(address, redis_password, component):
         redis_client)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     report_str = ray.experimental.internal_kv._internal_kv_get(
-        f"healthcheck:{component}")
+        component, namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK)
     if not report_str:
         # Status was never updated
         sys.exit(1)

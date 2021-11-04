@@ -534,7 +534,7 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
             try:
                 formatted_status_string = internal_kv._internal_kv_get(
                     DEBUG_AUTOSCALING_STATUS,
-                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+                    namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
                 formatted_status = json.loads(formatted_status_string.decode(
                 )) if formatted_status_string else {}
 

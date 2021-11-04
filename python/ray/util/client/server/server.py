@@ -25,6 +25,7 @@ import inspect
 import json
 from ray.util.client.common import (ClientServerHandle, GRPC_OPTIONS,
                                     CLIENT_SERVER_MAX_THREADS, ResponseCache)
+from ray import ray_constants
 from ray.util.client.server.proxier import serve_proxier
 from ray.util.client.server.server_pickler import convert_from_arg
 from ray.util.client.server.server_pickler import dumps_from_server
@@ -834,7 +835,9 @@ def main():
                     ray.experimental.internal_kv._initialize_internal_kv(
                         gcs_client)
                 ray.experimental.internal_kv._internal_kv_put(
-                    "healthcheck:ray_client_server", json.dumps(health_report))
+                    "ray_client_server",
+                    json.dumps(health_report),
+                    namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK)
             except Exception as e:
                 logger.error(f"[{args.mode}] Failed to put health check "
                              f"on {args.redis_address}")
