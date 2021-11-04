@@ -739,7 +739,8 @@ class Trainer(Trainable):
                 policy_class=self.get_default_policy_class(),
                 config=config,
                 num_workers=self.config["num_workers"])
-            self.train_exec_impl = self.execution_plan()
+            self.train_exec_impl = self.execution_plan(
+                self.workers, self.config, **self._kwargs_for_execution_plan())
 
         # Evaluation WorkerSet setup.
         self.evaluation_workers = None
@@ -1018,38 +1019,38 @@ class Trainer(Trainable):
         return {"evaluation": metrics}
 
     @DeveloperAPI
-    def execution_plan(self):
+    @staticmethod
+    def execution_plan(workers, config, **kwargs):
 
         # Collects experiences in parallel from multiple RolloutWorker actors.
-        rollouts = ParallelRollouts(self.workers, mode="bulk_sync")
+        rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
         # Combine experiences batches until we hit `train_batch_size` in size.
         # Then, train the policy on those experiences and update the workers.
         train_op = rollouts.combine(
             ConcatBatches(
-                min_batch_size=self.config["train_batch_size"],
-                count_steps_by=self.config["multiagent"]["count_steps_by"],
+                min_batch_size=config["train_batch_size"],
+                count_steps_by=config["multiagent"]["count_steps_by"],
             ))
 
-        if self.config.get("simple_optimizer") is True:
-            train_op = train_op.for_each(TrainOneStep(self.workers))
+        if config.get("simple_optimizer") is True:
+            train_op = train_op.for_each(TrainOneStep(workers))
         else:
             train_op = train_op.for_each(
                 MultiGPUTrainOneStep(
-                    workers=self.workers,
-                    sgd_minibatch_size=self.config.get(
-                        "sgd_minibatch_size", self.config["train_batch_size"]),
-                    num_sgd_iter=self.config.get("num_sgd_iter", 1),
-                    num_gpus=self.config["num_gpus"],
-                    shuffle_sequences=self.config.get("shuffle_sequences",
-                                                      False),
-                    _fake_gpus=self.config["_fake_gpus"],
-                    framework=self.config["framework"]))
+                    workers=workers,
+                    sgd_minibatch_size=config.get("sgd_minibatch_size",
+                                                  config["train_batch_size"]),
+                    num_sgd_iter=config.get("num_sgd_iter", 1),
+                    num_gpus=config["num_gpus"],
+                    shuffle_sequences=config.get("shuffle_sequences", False),
+                    _fake_gpus=config["_fake_gpus"],
+                    framework=config["framework"]))
 
         # Add on the standard episode reward, etc. metrics reporting. This
         # returns a LocalIterator[metrics_dict] representing metrics for each
         # train step.
-        return StandardMetricsReporting(train_op, self.workers, self.config)
+        return StandardMetricsReporting(train_op, workers, config)
 
     @PublicAPI
     def compute_single_action(
@@ -1689,6 +1690,7 @@ class Trainer(Trainable):
         # By default, return the class' name.
         return type(self).__name__
 
+    # TODO: Deprecate. Instead, override `Trainer.get_default_config()`.
     @property
     def _default_config(self) -> TrainerConfigDict:
         """Subclasses should override this to declare their default config."""
@@ -1943,7 +1945,8 @@ class Trainer(Trainable):
         workers.reset(healthy_workers)
         if self.train_exec_impl is not None:
             if callable(self.execution_plan):
-                self.train_exec_impl = self.execution_plan()
+                self.train_exec_impl = self.execution_plan(
+                    workers, self.config, **self._kwargs_for_execution_plan())
 
     @override(Trainable)
     def _export_model(self, export_formats: List[str],
@@ -2102,6 +2105,13 @@ class Trainer(Trainable):
             replay_burn_in=config.get("burn_in", 0),
             replay_zero_init_states=config.get("zero_init_states", True),
             **prio_args)
+
+    @DeveloperAPI
+    def _kwargs_for_execution_plan(self):
+        kwargs = {}
+        if self.local_replay_buffer:
+            kwargs["local_replay_buffer"] = self.local_replay_buffer
+        return kwargs
 
     def _register_if_needed(self, env_object: Union[str, EnvType, None],
                             config) -> Optional[str]:
