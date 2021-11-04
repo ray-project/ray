@@ -290,6 +290,8 @@ class RemoteFunction:
         if placement_group_capture_child_tasks is None:
             placement_group_capture_child_tasks = (
                 worker.should_capture_child_tasks_in_placement_group)
+        if placement_group == "default":
+            placement_group = self._placement_group
         placement_group = configure_placement_group_based_on_context(
             placement_group_capture_child_tasks,
             placement_group_bundle_index,
