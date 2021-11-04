@@ -30,13 +30,16 @@ ENV BUILDKITE_BAZEL_CACHE_URL=${REMOTE_CACHE_URL}
 
 RUN apt-get update -qq && apt-get upgrade -qq
 RUN apt-get install -y -qq \
-    curl git build-essential \
+    software-properties-common curl git build-essential \
     sudo unzip unrar apt-utils dialog tzdata wget rsync \
     language-pack-en tmux cmake gdb vim htop \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev maven \
-    openjdk-8-jre openjdk-8-jdk gcc-8 g++-8
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 80 --slave /usr/bin/g++ g++ /usr/bin/g++-8 \
-    --slave /usr/bin/gcov gcov /usr/bin/gcov-8
+    openjdk-8-jre openjdk-8-jdk
+# add-apt-repository is available after installing software-properties-common
+RUN add-apt-repository ppa:ubuntu-toolchain-r/test && apt-get update -qq && \
+    apt-get install -y -qq gcc-9 g++-9
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
+    --slave /usr/bin/gcov gcov /usr/bin/gcov-9
 RUN curl -o- https://get.docker.com | sh
 
 # System conf for tests
