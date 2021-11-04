@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 public class NamedActorTest extends BaseTest {
@@ -18,6 +19,11 @@ public class NamedActorTest extends BaseTest {
       this.value += 1;
       return this.value;
     }
+  }
+
+  @BeforeClass
+  void initNamespace() {
+    System.setProperty("ray.job.namespace", "named_actor_test");
   }
 
   @Test
@@ -66,6 +72,7 @@ public class NamedActorTest extends BaseTest {
   }
 
   public static void main(String[] args) {
+    System.setProperty("ray.job.namespace", "named_actor_test");
     Ray.init();
     String actorName = args[0];
     // Get the global actor.
