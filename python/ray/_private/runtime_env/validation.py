@@ -358,8 +358,7 @@ class ParsedRuntimeEnv(dict):
         if "conda" in self:
             uri = conda.get_uri(self)
             if uri is not None:
-                plugin_uris.append(
-                    _encode_plugin_uri("conda", uri))
+                plugin_uris.append(_encode_plugin_uri("conda", uri))
 
         return plugin_uris
 
