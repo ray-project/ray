@@ -82,7 +82,7 @@ bool ClusterTaskManager::SchedulePendingTasks() {
           placement_resources,
           /*requires_object_store_memory=*/false,
           task.GetTaskSpecification().IsActorCreationTask(),
-          /*force_spillback=*/false, &_unused, &is_infeasible);
+          /*force_spillback=*/false, work->grant_or_reject, &_unused, &is_infeasible);
 
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
@@ -412,7 +412,7 @@ bool ClusterTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &wor
   std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
       placement_resources,
       /*requires_object_store_memory=*/false, spec.IsActorCreationTask(),
-      /*force_spillback=*/false, &_unused, &is_infeasible);
+      /*force_spillback=*/false, work->grant_or_reject, &_unused, &is_infeasible);
 
   if (is_infeasible || node_id_string == self_node_id_.Binary() ||
       node_id_string.empty()) {
@@ -1088,7 +1088,7 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
         placement_resources,
         /*requires_object_store_memory=*/false,
         task.GetTaskSpecification().IsActorCreationTask(),
-        /*force_spillback=*/false, &_unused, &is_infeasible);
+        /*force_spillback=*/false, work->grant_or_reject, &_unused, &is_infeasible);
 
     // There is no node that has available resources to run the request.
     // Move on to the next shape.
@@ -1372,7 +1372,8 @@ void ClusterTaskManager::SpillWaitingTasks() {
         placement_resources,
         /*requires_object_store_memory=*/true,
         task.GetTaskSpecification().IsActorCreationTask(),
-        /*force_spillback=*/force_spillback, &_unused, &is_infeasible);
+        /*force_spillback=*/force_spillback, (*it)->grant_or_reject, &_unused,
+        &is_infeasible);
     if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);
       Spillback(node_id, *it);

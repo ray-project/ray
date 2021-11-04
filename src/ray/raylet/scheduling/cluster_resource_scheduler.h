@@ -120,7 +120,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///          return the ID of a node that can schedule the resource request.
   int64_t GetBestSchedulableNode(const ResourceRequest &resource_request,
                                  bool actor_creation, bool force_spillback,
-                                 int64_t *violations, bool *is_infeasible);
+                                 bool grant_or_reject, int64_t *violations,
+                                 bool *is_infeasible);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(const ResourceRequest &resource_request, int64_t
@@ -132,7 +133,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   std::string GetBestSchedulableNode(
       const absl::flat_hash_map<std::string, double> &resource_request,
       bool requires_object_store_memory, bool actor_creation, bool force_spillback,
-      int64_t *violations, bool *is_infeasible);
+      bool grant_or_reject, int64_t *violations, bool *is_infeasible);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.

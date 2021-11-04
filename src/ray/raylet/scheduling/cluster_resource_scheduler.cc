@@ -216,7 +216,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_
 
 int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     const ResourceRequest &resource_request, bool actor_creation, bool force_spillback,
-    int64_t *total_violations, bool *is_infeasible) {
+    bool grant_or_reject, int64_t *total_violations, bool *is_infeasible) {
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies.
   if (actor_creation && resource_request.IsEmpty()) {
@@ -248,7 +248,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
 
   auto spread_threshold = spread_threshold_;
   // If the scheduling decision is made by gcs, we ignore the spread threshold
-  if (actor_creation && RayConfig::instance().gcs_actor_scheduling_enabled()) {
+  if (grant_or_reject) {
     spread_threshold = 1.0;
   }
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
@@ -272,11 +272,12 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
     const absl::flat_hash_map<std::string, double> &task_resources,
     bool requires_object_store_memory, bool actor_creation, bool force_spillback,
-    int64_t *total_violations, bool *is_infeasible) {
+    bool grant_or_reject, int64_t *total_violations, bool *is_infeasible) {
   ResourceRequest resource_request = ResourceMapToResourceRequest(
       string_to_int_map_, task_resources, requires_object_store_memory);
-  int64_t node_id = GetBestSchedulableNode(
-      resource_request, actor_creation, force_spillback, total_violations, is_infeasible);
+  int64_t node_id =
+      GetBestSchedulableNode(resource_request, actor_creation, force_spillback,
+                             grant_or_reject, total_violations, is_infeasible);
 
   if (node_id == -1) {
     // This is not a schedulable node, so return empty string.
