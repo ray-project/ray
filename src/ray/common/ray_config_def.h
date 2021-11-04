@@ -101,10 +101,7 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// The fraction of resource utilization on a node after which the scheduler starts
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
-RAY_CONFIG(float, scheduler_spread_threshold,
-           std::getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
-               ? std::stof(std::getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
-               : 0.5)
+RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
 
 /// Whether to include function descriptors, and depth in the scheduling class.
 /// This causes tasks to be queued differently, so it may effect scheduling
@@ -179,6 +176,9 @@ RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
 /// starting_worker_timeout_callback() is called.
 RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
 
+/// The maximum number of workers to iterate whenever we analyze the resources usage.
+RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128);
+
 /// Allow up to 5 seconds for connecting to Redis.
 RAY_CONFIG(int64_t, redis_db_connect_retries, 50)
 RAY_CONFIG(int64_t, redis_db_connect_wait_milliseconds, 100)
@@ -223,6 +223,8 @@ RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
 /// Number of threads used by rpc server in gcs server.
 RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
+/// Number of threads used by rpc server in gcs server.
+RAY_CONFIG(uint32_t, gcs_server_rpc_client_thread_num, 1)
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
@@ -236,8 +238,8 @@ RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
 /// Duration to wait between retries for creating actor in gcs server.
 RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
 /// Exponential backoff params for gcs to retry creating a placement group
-RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_min_interval_ms, 200)
-RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_max_interval_ms, 5000)
+RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_min_interval_ms, 100)
+RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
 RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5);
 /// Maximum number of destroyed actors in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
@@ -251,7 +253,7 @@ RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
 RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // Feature flag to use grpc instead of redis for resource broadcast.
 // TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
-RAY_CONFIG(bool, grpc_based_resource_broadcast, false)
+RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 // Feature flag to enable grpc based pubsub in GCS.
 RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
 
@@ -426,9 +428,7 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
 
 /// Whether to enable GCS-based actor scheduling.
-RAY_CONFIG(bool, gcs_actor_scheduling_enabled,
-           std::getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") != nullptr &&
-               std::getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") == std::string("true"))
+RAY_CONFIG(bool, gcs_actor_scheduling_enabled, false);
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 

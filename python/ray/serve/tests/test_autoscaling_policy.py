@@ -1,5 +1,4 @@
 import sys
-import time
 
 import pytest
 from unittest import mock
@@ -101,8 +100,8 @@ def get_deployment_start_time(controller: ServeController,
                               deployment: Deployment):
     """ Return start time for given deployment """
     deployments = ray.get(controller.list_deployments.remote())
-    backend_info, _route_prefix = deployments[deployment.name]
-    return backend_info.start_time_ms
+    deployment_info, _route_prefix = deployments[deployment.name]
+    return deployment_info.start_time_ms
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -172,19 +171,6 @@ def test_initial_num_replicas(mock, serve_instance):
     assert get_num_running_replicas(controller, A) == 2
 
 
-class MockTimer:
-    def __init__(self, start_time=None):
-        if start_time is None:
-            start_time = time.time()
-        self._curr = start_time
-
-    def time(self):
-        return self._curr
-
-    def advance(self, by):
-        self._curr += by
-
-
 def test_upscale_downscale_delay():
     """Unit test for upscale_delay_s and downscale_delay_s."""
 
@@ -209,11 +195,12 @@ def test_upscale_downscale_delay():
     for i in range(upscale_wait_periods):
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=overload_requests,
-            curr_num_replicas=1)
+            curr_target_num_replicas=1)
         assert new_num_replicas == 1, i
 
     new_num_replicas = policy.get_decision_num_replicas(
-        current_num_ongoing_requests=overload_requests, curr_num_replicas=1)
+        current_num_ongoing_requests=overload_requests,
+        curr_target_num_replicas=1)
     assert new_num_replicas == 2
 
     no_requests = [0, 0]
@@ -221,56 +208,89 @@ def test_upscale_downscale_delay():
     # We should scale down only after enough consecutive scale-down decisions.
     for i in range(downscale_wait_periods):
         new_num_replicas = policy.get_decision_num_replicas(
-            current_num_ongoing_requests=no_requests, curr_num_replicas=2)
+            current_num_ongoing_requests=no_requests,
+            curr_target_num_replicas=2)
         assert new_num_replicas == 2, i
 
     new_num_replicas = policy.get_decision_num_replicas(
-        current_num_ongoing_requests=no_requests, curr_num_replicas=2)
+        current_num_ongoing_requests=no_requests, curr_target_num_replicas=2)
     assert new_num_replicas == 1
 
     # Get some scale-up decisions, but not enough to trigger a scale up.
     for i in range(int(upscale_wait_periods / 2)):
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=overload_requests,
-            curr_num_replicas=1)
+            curr_target_num_replicas=1)
         assert new_num_replicas == 1, i
 
     # Interrupt with a scale-down decision.
     policy.get_decision_num_replicas(
-        current_num_ongoing_requests=[0], curr_num_replicas=1)
+        current_num_ongoing_requests=[0], curr_target_num_replicas=1)
 
     # The counter should be reset, so it should require `upscale_wait_periods`
     # more periods before we actually scale up.
     for i in range(upscale_wait_periods):
         new_num_replicas = policy.get_decision_num_replicas(
             current_num_ongoing_requests=overload_requests,
-            curr_num_replicas=1)
+            curr_target_num_replicas=1)
         assert new_num_replicas == 1, i
 
     new_num_replicas = policy.get_decision_num_replicas(
-        current_num_ongoing_requests=overload_requests, curr_num_replicas=1)
+        current_num_ongoing_requests=overload_requests,
+        curr_target_num_replicas=1)
     assert new_num_replicas == 2
 
     # Get some scale-down decisions, but not enough to trigger a scale down.
     for i in range(int(downscale_wait_periods / 2)):
         new_num_replicas = policy.get_decision_num_replicas(
-            current_num_ongoing_requests=no_requests, curr_num_replicas=2)
+            current_num_ongoing_requests=no_requests,
+            curr_target_num_replicas=2)
         assert new_num_replicas == 2, i
 
     # Interrupt with a scale-up decision.
     policy.get_decision_num_replicas(
-        current_num_ongoing_requests=[100, 100], curr_num_replicas=2)
+        current_num_ongoing_requests=[100, 100], curr_target_num_replicas=2)
 
     # The counter should be reset so it should require `downscale_wait_periods`
     # more periods before we actually scale down.
     for i in range(downscale_wait_periods):
         new_num_replicas = policy.get_decision_num_replicas(
-            current_num_ongoing_requests=no_requests, curr_num_replicas=2)
+            current_num_ongoing_requests=no_requests,
+            curr_target_num_replicas=2)
         assert new_num_replicas == 2, i
 
     new_num_replicas = policy.get_decision_num_replicas(
-        current_num_ongoing_requests=no_requests, curr_num_replicas=2)
+        current_num_ongoing_requests=no_requests, curr_target_num_replicas=2)
     assert new_num_replicas == 1
+
+
+def test_replicas_delayed_startup():
+    """Unit test simulating replicas taking time to start up."""
+    config = AutoscalingConfig(
+        min_replicas=1,
+        max_replicas=200,
+        target_num_ongoing_requests_per_replica=1,
+        upscale_delay_s=0,
+        downscale_delay_s=100000)
+
+    policy = BasicAutoscalingPolicy(config)
+
+    new_num_replicas = policy.get_decision_num_replicas([100], 1)
+    assert new_num_replicas == 100
+
+    # New target is 100, but no new replicas finished spinning up during this
+    # timestep.
+    new_num_replicas = policy.get_decision_num_replicas([100], 100)
+    assert new_num_replicas == 100
+
+    # Two new replicas spun up during this timestep.
+    new_num_replicas = policy.get_decision_num_replicas([100, 20, 3], 100)
+    assert new_num_replicas == 123
+
+    # A lot of queries got drained and a lot of replicas started up, but
+    # new_num_replicas should not decrease, because of the downscale delay.
+    new_num_replicas = policy.get_decision_num_replicas([6, 2, 1, 1], 123)
+    assert new_num_replicas == 123
 
 
 if __name__ == "__main__":

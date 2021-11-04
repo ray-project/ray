@@ -19,7 +19,6 @@
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
-#include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
@@ -56,7 +55,7 @@ class GcsJobManager;
 class GcsWorkerManager;
 class GcsPlacementGroupManager;
 
-/// The GcsServer will take over all requests from ServiceBasedGcsClient and transparent
+/// The GcsServer will take over all requests from GcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
 /// In the future, GCS server's main responsibility is to manage meta data
 /// and the management of actor creation.
@@ -106,9 +105,6 @@ class GcsServer {
 
   /// Initialize gcs placement group manager.
   void InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data);
-
-  /// Initialize gcs object manager.
-  void InitObjectManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs worker manager.
   void InitGcsWorkerManager();
@@ -192,9 +188,6 @@ class GcsServer {
   std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
   /// Heartbeat info handler and service.
   std::unique_ptr<rpc::HeartbeatInfoGrpcService> heartbeat_info_service_;
-  /// Object info handler and service.
-  std::unique_ptr<gcs::GcsObjectManager> gcs_object_manager_;
-  std::unique_ptr<rpc::ObjectInfoGrpcService> object_info_service_;
   /// Task info handler and service.
   std::unique_ptr<rpc::TaskInfoHandler> task_info_handler_;
   std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;

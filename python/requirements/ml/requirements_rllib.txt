@@ -3,8 +3,9 @@
 # Environment adapters.
 # ---------------------
 # Atari
-atari_py==0.2.9
-gym[atari]==0.18.3
+autorom[accept-rom-license]
+gym[atari]>=0.21.0; python_version >= '3.7'
+gym[atari]==0.19.0; python_version < '3.7'
 # Kaggle envs.
 kaggle_environments==1.7.11
 # Unity3D testing
@@ -17,6 +18,7 @@ supersuit==2.6.6
 pybullet==3.1.7
 # For tests on RecSim and Kaggle envs.
 recsim==0.2.4
+tensorflow_estimator==2.6.0
 
 # Other.
 # ------
