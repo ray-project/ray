@@ -12,9 +12,7 @@ public final class OwnershipInfo implements Externalizable {
 
   private byte[] serializedObjectStatus;
 
-  public OwnershipInfo() {
-
-  }
+  public OwnershipInfo() {}
 
   public OwnershipInfo(byte[] serializedOwnerAddress, byte[] serializedObjectStatus) {
     this.serializedOwnerAddress = serializedOwnerAddress;

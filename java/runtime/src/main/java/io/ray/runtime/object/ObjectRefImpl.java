@@ -78,8 +78,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     runtime
         .getObjectStore()
         .registerOwnershipInfoAndResolveFuture(
-            this.id,
-            ObjectSerializer.getOuterObjectId(), ownershipInfo);
+            this.id, ObjectSerializer.getOuterObjectId(), ownershipInfo);
   }
 
   private void addLocalReference() {
