@@ -307,3 +307,5 @@ class Cluster:
 
         if self.head_node is not None:
             self.remove_node(self.head_node)
+        # need to reset internal kv since gcs is down
+        ray.experimental.internal_kv._internal_kv_reset()
