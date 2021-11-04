@@ -369,8 +369,7 @@ class JobManager:
             self._status_client.put_status(job_id, JobStatus.FAILED)
             raise RuntimeError(
                 f"Failed to start actor for job {job_id}. This could be "
-                "runtime_env configuration failure, or timed out after "
-                f"{self.START_ACTOR_TIMEOUT_S} secs. "
+                "runtime_env configuration failure or invalid runtime_env."
                 f"Exception message: {str(e)}")
 
         # Kick off the job to run in the background.
@@ -386,8 +385,8 @@ class JobManager:
                 cluster.
         Returns:
             stopped:
-                True if there's running actor job we intend to stop
-                False if no running actor for the job found
+                True if there's running job
+                False if no running job found
         """
         job_supervisor_actor = self._get_actor_for_job(job_id)
         if job_supervisor_actor is not None:
