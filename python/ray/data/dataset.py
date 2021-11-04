@@ -854,6 +854,91 @@ class Dataset(Generic[T]):
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
+    def _check_and_normalize_agg_on(self,
+                                    on: AggregateOnT,
+                                    keys: Optional[List[str]] = None
+                                    ) -> AggregateOnT:
+        """Checks whether the provided aggregation `on` arg is valid for this
+        type of dataset, and normalizes the value based on the Dataset type and
+        any provided groupby keys.
+        """
+        if (on is not None
+                and (not isinstance(on, (str, Callable, list)) or
+                     (isinstance(on, list)
+                      and not (all(isinstance(on_, str) for on_ in on)
+                               or all(isinstance(on_, Callable)
+                                      for on_ in on))))):
+            raise TypeError(
+                f"`on` must be of type {AggregateOnT}, but got {type(on)}")
+
+        if isinstance(on, list) and len(on) == 0:
+            raise ValueError(
+                "When giving a list for `on`, it must be nonempty.")
+
+        # Determine if Dataset is an Arrow Dataset.
+        is_arrow = False
+        schema = None
+        try:
+            import pyarrow as pa
+        except ModuleNotFoundError:
+            is_arrow = False
+        else:
+            # We need schema to properly validate, so synchronously
+            # fetch it if necessary.
+            schema = self.schema(fetch_if_missing=True)
+            if schema is None:
+                return on
+            if isinstance(schema, pa.Schema):
+                is_arrow = True
+            else:
+                is_arrow = False
+
+        if is_arrow:
+            if len(schema.names) == 0:
+                # Empty dataset, don't validate `on` since we generically
+                # handle empty datasets downstream.
+                return on
+
+            if on is None:
+                # If a null `on` is given for an Arrow Dataset, coerce it to
+                # all columns sans any provided groupby keys.
+                if keys is None:
+                    keys = []
+                elif not isinstance(keys, list):
+                    keys = [keys]
+                on = [col for col in schema.names if col not in keys]
+            # Check that column names refer to valid columns.
+            elif isinstance(on, str) and on not in schema.names:
+                raise ValueError(
+                    f"on={on} is not a valid column name: {schema.names}")
+            elif isinstance(on, list) and isinstance(on[0], str):
+                for on_ in on:
+                    if on_ not in schema.names:
+                        raise ValueError(
+                            f"on={on_} is not a valid column name: "
+                            f"{schema.names}")
+        else:
+            if isinstance(on, str) or (isinstance(on, list)
+                                       and isinstance(on[0], str)):
+                raise ValueError(
+                    "Can't aggregate on a column when using a simple Dataset; "
+                    "use a callable `on` argument or use an Arrow Dataset "
+                    "instead of a simple Dataset.")
+        return on
+
+    def _aggregate_on(self, agg_cls: type, on: AggregateOnT, *args, **kwargs):
+        """Helper for aggregating on a particular subset of the dataset.
+        This validates the `on` argument, and converts a list of column names
+        or lambdas to a multi-aggregation. A null `on` results in a
+        multi-aggregation on all columns for an Arrow Dataset, and a single
+        aggregation on the entire row for a simple Dataset.
+        """
+        on = self._check_and_normalize_agg_on(on)
+        if not isinstance(on, list):
+            on = [on]
+        aggs = [agg_cls(on_, *args, **kwargs) for on_ in on]
+        return self.aggregate(*aggs)
+
     def sum(self, on: AggregateOnT = None) -> U:
         """Compute sum over entire dataset.
 
@@ -868,11 +953,13 @@ class Dataset(Generic[T]):
         Returns:
             The sum result.
         """
-        ret = self.aggregate(Sum(on))
+        ret = self._aggregate_on(Sum, on)
         if ret is None:
             return 0
-        else:
+        elif len(ret) == 1:
             return ret[0]
+        else:
+            return ret
 
     def min(self, on: AggregateOnT = None) -> U:
         """Compute minimum over entire dataset.
@@ -888,11 +975,13 @@ class Dataset(Generic[T]):
         Returns:
             The min result.
         """
-        ret = self.aggregate(Min(on))
+        ret = self._aggregate_on(Min, on)
         if ret is None:
             raise ValueError("Cannot compute min on an empty dataset")
-        else:
+        elif len(ret) == 1:
             return ret[0]
+        else:
+            return ret
 
     def max(self, on: AggregateOnT = None) -> U:
         """Compute maximum over entire dataset.
@@ -908,11 +997,13 @@ class Dataset(Generic[T]):
         Returns:
             The max result.
         """
-        ret = self.aggregate(Max(on))
+        ret = self._aggregate_on(Max, on)
         if ret is None:
             raise ValueError("Cannot compute max on an empty dataset")
-        else:
+        elif len(ret) == 1:
             return ret[0]
+        else:
+            return ret
 
     def mean(self, on: AggregateOnT = None) -> U:
         """Compute mean over entire dataset.
@@ -928,11 +1019,13 @@ class Dataset(Generic[T]):
         Returns:
             The mean result.
         """
-        ret = self.aggregate(Mean(on))
+        ret = self._aggregate_on(Mean, on)
         if ret is None:
             raise ValueError("Cannot compute mean on an empty dataset")
-        else:
+        elif len(ret) == 1:
             return ret[0]
+        else:
+            return ret
 
     def std(self, on: AggregateOnT = None, ddof: int = 1) -> U:
         """Compute standard deviation over entire dataset.
@@ -958,11 +1051,13 @@ class Dataset(Generic[T]):
         Returns:
             The standard deviation result.
         """
-        ret = self.aggregate(Std(on, ddof))
+        ret = self._aggregate_on(Std, on, ddof=ddof)
         if ret is None:
             raise ValueError("Cannot compute std on an empty dataset")
-        else:
+        elif len(ret) == 1:
             return ret[0]
+        else:
+            return ret
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,
@@ -1146,7 +1241,8 @@ class Dataset(Generic[T]):
                 for block in self._blocks.iter_blocks()
             ]))
 
-    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+    def schema(self, fetch_if_missing: bool = False
+               ) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset.
 
         For datasets of Arrow records, this will return the Arrow schema.
@@ -1154,9 +1250,14 @@ class Dataset(Generic[T]):
 
         Time complexity: O(1)
 
+        Args:
+            fetch_if_missing: If True, synchronously fetch the schema if it's
+                not known. Default is False, where None is returned if the
+                schema is not known.
+
         Returns:
             The Python type or Arrow schema of the records, or None if the
-            schema is not known.
+            schema is not known and fetch_if_missing is False.
         """
         metadata = self._blocks.get_metadata()
         # Some blocks could be empty, in which case we cannot get their schema.
@@ -1164,7 +1265,10 @@ class Dataset(Generic[T]):
         for m in metadata:
             if m.schema:
                 return m.schema
-        return None
+        if not fetch_if_missing:
+            return None
+        # Need to synchronously fetch schema.
+        return self._blocks.ensure_schema_for_first_block()
 
     def num_blocks(self) -> int:
         """Return the number of blocks of this dataset.

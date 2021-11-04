@@ -3044,6 +3044,83 @@ def test_groupby_arrow_std(ray_start_regular_shared):
     assert ray.data.from_pandas(pd.DataFrame({"A": [3]})).std("A") == 0
 
 
+def test_groupby_arrow_multicolumn(ray_start_regular_shared):
+    # Test built-in mean aggregation on multiple columns
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_multicolumn with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+    df = pd.DataFrame({
+        "A": [x % 3 for x in xs],
+        "B": xs,
+        "C": [2 * x for x in xs]
+    })
+    agg_ds = ray.data.from_pandas(df).groupby("A").mean(["B", "C"])
+    assert agg_ds.count() == 3
+    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
+        [{"A": 0, "mean(B)": 49.5, "mean(C)": 99.0},
+         {"A": 1, "mean(B)": 49.0, "mean(C)": 98.0},
+         {"A": 2, "mean(B)": 50.0, "mean(C)": 100.0}]
+    # Test that unspecified agg column ==> agg on all columns except for
+    # groupby keys.
+    agg_ds = ray.data.from_pandas(df).groupby("A").mean()
+    assert agg_ds.count() == 3
+    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
+        [{"A": 0, "mean(B)": 49.5, "mean(C)": 99.0},
+         {"A": 1, "mean(B)": 49.0, "mean(C)": 98.0},
+         {"A": 2, "mean(B)": 50.0, "mean(C)": 100.0}]
+    # Test built-in global mean aggregation
+    df = pd.DataFrame({"A": xs, "B": [2 * x for x in xs]})
+    result_row = ray.data.from_pandas(df).mean(["A", "B"])
+    assert result_row["mean(A)"] == df["A"].mean()
+    assert result_row["mean(B)"] == df["B"].mean()
+
+
+def test_groupby_agg_bad_on(ray_start_regular_shared):
+    # Test bad on for groupby aggregation
+    xs = list(range(100))
+    df = pd.DataFrame({
+        "A": [x % 3 for x in xs],
+        "B": xs,
+        "C": [2 * x for x in xs]
+    })
+    # Wrong type.
+    with pytest.raises(TypeError):
+        ray.data.from_pandas(df).groupby("A").mean(5)
+    with pytest.raises(TypeError):
+        ray.data.from_pandas(df).groupby("A").mean([5])
+    # Empty list.
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(df).groupby("A").mean([])
+    # Nonexistent column.
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(df).groupby("A").mean("D")
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(df).groupby("A").mean(["B", "D"])
+    # Columns for simple Dataset.
+    with pytest.raises(ValueError):
+        ray.data.from_items(xs).groupby(lambda x: x % 3 == 0).mean("A")
+
+    # Test bad on for global aggregation
+    # Wrong type.
+    with pytest.raises(TypeError):
+        ray.data.from_pandas(df).mean(5)
+    with pytest.raises(TypeError):
+        ray.data.from_pandas(df).mean([5])
+    # Empty list.
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(df).mean([])
+    # Nonexistent column.
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(df).mean("D")
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(df).mean(["B", "D"])
+    # Columns for simple Dataset.
+    with pytest.raises(ValueError):
+        ray.data.from_items(xs).mean("A")
+
+
 def test_groupby_arrow_multi_agg(ray_start_regular_shared):
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_arrow_multi_agg with: {seed}")
@@ -3249,6 +3326,29 @@ def test_groupby_simple_std(ray_start_regular_shared):
         ray.data.from_items([]).std()
     # Test edge cases
     assert ray.data.from_items([3]).std() == 0
+
+
+def test_groupby_simple_multilambda(ray_start_regular_shared):
+    # Test built-in mean aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_multilambda with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items([[x, 2*x] for x in xs]) \
+        .groupby(lambda x: x[0] % 3) \
+        .mean([lambda x: x[0], lambda x: x[1]])
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 49.5,
+                                                        99.0), (1, 49.0, 98.0),
+                                                       (2, 50.0, 100.0)]
+    # Test built-in global mean aggregation
+    assert ray.data.from_items([[x, 2 * x] for x in xs]).mean(
+        [lambda x: x[0], lambda x: x[1]]) == (49.5, 99.0)
+    with pytest.raises(ValueError):
+        ray.data.from_items([[x, 2*x] for x in range(10)]) \
+            .filter(lambda r: r[0] > 10) \
+            .mean([lambda x: x[0], lambda x: x[1]])
 
 
 def test_groupby_simple_multi_agg(ray_start_regular_shared):

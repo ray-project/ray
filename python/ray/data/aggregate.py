@@ -4,7 +4,8 @@ from typing import Callable, Optional, Union, Any, List
 from ray.util.annotations import PublicAPI
 from ray.data.block import T, U, KeyType, AggType
 
-AggregateOnT = Union[None, Callable[[T], Any], str]
+AggregateOnTBase = Union[Callable[[T], Any], str]
+AggregateOnT = Optional[Union[AggregateOnTBase, List[AggregateOnTBase]]]
 
 
 @PublicAPI(stability="beta")

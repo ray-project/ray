@@ -1,4 +1,4 @@
-from typing import Union, Callable, Generic, Tuple, List
+from typing import Union, Callable, Generic, Tuple, List, Optional
 import numpy as np
 import ray
 from ray.util.annotations import PublicAPI
@@ -12,7 +12,8 @@ from ray.data.impl.progress_bar import ProgressBar
 from ray.data.block import Block, BlockAccessor, BlockMetadata, \
     T, U, KeyType
 
-GroupKeyT = Union[None, Callable[[T], KeyType], str, List[str]]
+GroupKeyBaseT = Union[Callable[[T], KeyType], str]
+GroupKeyT = Optional[Union[GroupKeyBaseT, List[GroupKeyBaseT]]]
 
 
 @PublicAPI(stability="beta")
@@ -111,6 +112,19 @@ class GroupedDataset(Generic[T]):
         metadata = ray.get(metadata)
         return Dataset(BlockList(blocks, metadata), self._dataset._epoch)
 
+    def _aggregate_on(self, agg_cls: type, on: AggregateOnT, *args, **kwargs):
+        """Helper for aggregating on a particular subset of the dataset.
+        This validates the `on` argument, and converts a list of column names
+        or lambdas to a multi-aggregation. A null `on` results in a
+        multi-aggregation on all columns for an Arrow Dataset, and a single
+        aggregation on the entire row for a simple Dataset.
+        """
+        on = self._dataset._check_and_normalize_agg_on(on, self._key)
+        if not isinstance(on, list):
+            on = [on]
+        aggs = [agg_cls(on_, *args, **kwargs) for on_ in on]
+        return self.aggregate(*aggs)
+
     def count(self) -> Dataset[U]:
         """Compute count aggregation.
 
@@ -153,7 +167,7 @@ class GroupedDataset(Generic[T]):
             v is the sum result.
             If groupby key is None then the key part of return is omitted.
         """
-        return self.aggregate(Sum(on))
+        return self._aggregate_on(Sum, on)
 
     def min(self, on: AggregateOnT = None) -> Dataset[U]:
         """Compute min aggregation.
@@ -177,7 +191,7 @@ class GroupedDataset(Generic[T]):
             v is the min result.
             If groupby key is None then the key part of return is omitted.
         """
-        return self.aggregate(Min(on))
+        return self._aggregate_on(Min, on)
 
     def max(self, on: AggregateOnT = None) -> Dataset[U]:
         """Compute max aggregation.
@@ -201,7 +215,7 @@ class GroupedDataset(Generic[T]):
             v is the max result.
             If groupby key is None then the key part of return is omitted.
         """
-        return self.aggregate(Max(on))
+        return self._aggregate_on(Max, on)
 
     def mean(self, on: AggregateOnT = None) -> Dataset[U]:
         """Compute mean aggregation.
@@ -225,7 +239,7 @@ class GroupedDataset(Generic[T]):
             v is the mean result.
             If groupby key is None then the key part of return is omitted.
         """
-        return self.aggregate(Mean(on))
+        return self._aggregate_on(Mean, on)
 
     def std(self, on: AggregateOnT = None, ddof: int = 1) -> Dataset[U]:
         """Compute standard deviation aggregation.
@@ -259,7 +273,7 @@ class GroupedDataset(Generic[T]):
             v is the standard deviation result.
             If groupby key is None then the key part of return is omitted.
         """
-        return self.aggregate(Std(on, ddof))
+        return self._aggregate_on(Std, on, ddof=ddof)
 
 
 def _partition_and_combine_block(block: Block[T], boundaries: List[KeyType],
