@@ -35,7 +35,7 @@ public class RayJavaLoggingTest extends BaseTest {
         Ray.actor(HeavyLoggingActor::new)
             .setJvmOptions(
                 ImmutableList.of(
-                    "-Dray.logging.max-file-size=1MB", "-Dray.logging.max-backup-files=3"))
+                    "-Dray.logging.max-file-size=1KB", "-Dray.logging.max-backup-files=3"))
             .remote();
     Assert.assertTrue(loggingActor.task(HeavyLoggingActor::log).remote().get());
     final int pid = loggingActor.task(HeavyLoggingActor::getPid).remote().get();
@@ -46,7 +46,7 @@ public class RayJavaLoggingTest extends BaseTest {
           new File(String.format("%s/java-worker-%s-%d.%d.log", currLogDir, jobId, pid, i));
       Assert.assertTrue(rotatedFile.exists());
       long fileSize = rotatedFile.length();
-      Assert.assertTrue(fileSize > 1024 * 1024 && fileSize < 1024 * (1024 + 1));
+      Assert.assertTrue(fileSize > 1024 && fileSize < 1024 * 2);
     }
   }
 }

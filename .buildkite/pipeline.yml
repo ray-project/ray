@@ -291,7 +291,8 @@
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z,-flaky
       python/ray/tests/...
-- label: ":core: Debug Test"
+- label: ":python: Debug Test"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - pip uninstall -y ray
@@ -299,7 +300,7 @@
     - bazel test --config=ci-debug $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,debug_tests,-flaky
       python/ray/tests/...
-- label: ":core: (ASAN tests)"
+- label: ":python: (ASAN tests)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -327,6 +328,46 @@
     #- docker save -o /ray-mount/containers/images.tar rayproject/ray-worker-container:nightly-py36-cpu
     #- docker run --rm --privileged -v /ray/containers:/var/lib/containers -v /ray:/ray --entrypoint /bin/bash
       #rayproject/ray-worker-container:nightly-py36-cpu /ray/ci/travis/test-worker-in-container.sh
+
+- label: ":redis: HA GCS (Small & Large)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-client_tests,-flaky,-post_wheel_build,-worker-container
+      --test_env=CONDA_EXE
+      --test_env=CONDA_PYTHON_EXE
+      --test_env=CONDA_SHLVL
+      --test_env=CONDA_PREFIX
+      --test_env=CONDA_DEFAULT_ENV
+      --test_env=Ray_gcs_grpc_based_pubsub=true
+      -- //python/ray/tests/...
+      -//python/ray/tests:test_failure_2
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,client_tests,-flaky
+      --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
+      --test_env=Ray_gcs_grpc_based_pubsub=true
+      -- //python/ray/tests/...
+- label: ":redis: HA GCS (Medium A-J)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j,-flaky
+      --test_env=Ray_gcs_grpc_based_pubsub=true
+      -- //python/ray/tests/...
+      -//python/ray/tests:test_client_multi -//python/ray/tests:test_component_failures_3
+      -//python/ray/tests:test_healthcheck -//python/ray/tests:test_gcs_fault_tolerance
+- label: ":redis: HA GCS (Medium K-Z)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z,-flaky
+      --test_env=Ray_gcs_grpc_based_pubsub=true
+      -- //python/ray/tests/...
+      -//python/ray/tests:test_multinode_failures_2 -//python/ray/tests:test_ray_debugger
+      -//python/ray/tests:test_placement_group_2 -//python/ray/tests:test_placement_group_3
 
 - label: ":brain: RLlib: Learning discr. actions TF2-static-graph (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
@@ -578,9 +619,7 @@
   conditions: ["RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
+    - TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-example,-flaky,-py37,-soft_imports,-gpu_only python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=example,-tf,-pytorch,-py37,-flaky,-soft_imports,-gpu_only python/ray/tune/...
 
@@ -588,9 +627,7 @@
   conditions: ["RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
-    # Because Python version changed, we need to re-install Ray here
-    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
+    - TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tf,-pytorch,-py37,-flaky,-soft_imports,-gpu_only python/ray/tune/...
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-tf,pytorch,-py37,-flaky,-soft_imports,-gpu_only python/ray/tune/...
 
