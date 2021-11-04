@@ -13,6 +13,10 @@ from ray.dashboard.modules.job.data_types import (
     GetPackageResponse, JobSubmitRequest, JobSubmitResponse, JobStatusResponse,
     JobLogsResponse)
 
+from ray.dashboard.modules.job.job_head import (
+    JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STATUS,
+    JOBS_API_ROUTE_PACKAGE)
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -37,8 +41,9 @@ class JobSubmissionClient:
                     json_data: Optional[dict] = None,
                     params: Optional[dict] = None,
                     response_type: Optional[type] = None) -> Optional[object]:
-        url = f"{self._address}/{endpoint}"
-        logger.info(f"Sending request to {url} with json: {json_data}.")
+        url = self._address + endpoint
+        logger.debug(f"Sending request to {url} with "
+                     f"json: {json_data}, params: {params}.")
         r = requests.request(
             method, url, data=data, json=json_data, params=params)
 
@@ -53,7 +58,7 @@ class JobSubmissionClient:
     def _package_exists(self, package_uri: str) -> bool:
         resp = self._do_request(
             "GET",
-            "package",
+            JOBS_API_ROUTE_PACKAGE,
             params={"package_uri": package_uri},
             response_type=GetPackageResponse)
         return resp.package_exists
@@ -73,7 +78,7 @@ class JobSubmissionClient:
                 excludes=excludes)
             self._do_request(
                 "PUT",
-                "package",
+                JOBS_API_ROUTE_PACKAGE,
                 data=package_file.read_bytes(),
                 params={"package_uri": package_uri})
             package_file.unlink()
@@ -120,7 +125,7 @@ class JobSubmissionClient:
             entrypoint=entrypoint, runtime_env=runtime_env, metadata=metadata)
         resp = self._do_request(
             "POST",
-            "submit",
+            JOBS_API_ROUTE_SUBMIT,
             json_data=dataclasses.asdict(req),
             response_type=JobSubmitResponse)
         return resp.job_id
@@ -128,7 +133,7 @@ class JobSubmissionClient:
     def get_job_status(self, job_id: str) -> JobStatus:
         resp = self._do_request(
             "GET",
-            "status",
+            JOBS_API_ROUTE_STATUS,
             params={"job_id": job_id},
             response_type=JobStatusResponse)
         return resp.job_status
@@ -136,7 +141,7 @@ class JobSubmissionClient:
     def get_job_logs(self, job_id: str) -> Tuple[str, str]:
         resp = self._do_request(
             "GET",
-            "logs",
+            JOBS_API_ROUTE_LOGS,
             params={"job_id": job_id},
             response_type=JobLogsResponse)
         return resp.stdout, resp.stderr
