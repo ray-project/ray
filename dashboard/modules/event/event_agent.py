@@ -3,6 +3,7 @@ import asyncio
 import logging
 from typing import Union
 
+import ray.experimental.internal_kv as internal_kv
 import ray._private.utils as utils
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.consts as dashboard_consts
@@ -37,8 +38,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         """
         while True:
             try:
-                aioredis = self._dashboard_agent.aioredis_client
-                dashboard_rpc_address = await aioredis.get(
+                dashboard_rpc_address = internal_kv._internal_kv_get(
                     dashboard_consts.REDIS_KEY_DASHBOARD_RPC)
                 if dashboard_rpc_address:
                     logger.info("Report events to %s", dashboard_rpc_address)

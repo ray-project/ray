@@ -828,8 +828,13 @@ def main():
                 if not redis_client:
                     redis_client = try_create_redis_client(
                         args.redis_address, args.redis_password)
-                redis_client.hset("healthcheck:ray_client_server", "value",
-                                  json.dumps(health_report))
+                if not ray.experimental.internal_kv._internal_kv_initialized():
+                    gcs_client = (ray._private.gcs_utils.GcsClient.
+                                  create_from_redis(redis_client))
+                    ray.experimental.internal_kv._initialize_internal_kv(
+                        gcs_client)
+                ray.experimental.internal_kv._internal_kv_put(
+                    "healthcheck:ray_client_server", json.dumps(health_report))
             except Exception as e:
                 logger.error(f"[{args.mode}] Failed to put health check "
                              f"on {args.redis_address}")

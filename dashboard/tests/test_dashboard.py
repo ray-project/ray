@@ -470,9 +470,12 @@ def test_get_cluster_status(ray_start_with_dashboard):
         host=address[0],
         port=int(address[1]),
         password=ray_constants.REDIS_DEFAULT_PASSWORD)
-
-    client.hset(DEBUG_AUTOSCALING_STATUS_LEGACY, "value", "hello")
-    client.hset(DEBUG_AUTOSCALING_ERROR, "value", "world")
+    gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    ray.experimental.internal_kv._internal_kv_put(
+        DEBUG_AUTOSCALING_STATUS_LEGACY, "hello")
+    ray.experimental.internal_kv._internal_kv_put(DEBUG_AUTOSCALING_ERROR,
+                                                  "world")
 
     response = requests.get(f"{webui_url}/api/cluster_status")
     response.raise_for_status()

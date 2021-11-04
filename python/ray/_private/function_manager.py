@@ -8,6 +8,7 @@ import sys
 import time
 import threading
 import traceback
+import cloudpickle
 from collections import (
     namedtuple,
     defaultdict,
@@ -16,6 +17,7 @@ from collections import (
 import ray
 import ray._private.profiling as profiling
 from ray import ray_constants
+import ray.experimental.internal_kv as internal_kv
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray._private.utils import (
@@ -151,31 +153,32 @@ class FunctionActorManager:
                                  "remote function", self._worker)
         key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
                + remote_function._function_descriptor.function_id.binary())
-        if self._worker.redis_client.exists(key) == 1:
+        assert internal_kv._internal_kv_initialized()
+        if internal_kv._internal_kv_exists(key):
             return
-        self._worker.redis_client.hset(
-            key,
-            mapping={
-                "job_id": self._worker.current_job_id.binary(),
-                "function_id": remote_function._function_descriptor.
-                function_id.binary(),
-                "function_name": remote_function._function_name,
-                "module": function.__module__,
-                "function": pickled_function,
-                "collision_identifier": self.compute_collision_identifier(
-                    function),
-                "max_calls": remote_function._max_calls
-            })
+        mapping = {
+            "job_id": self._worker.current_job_id.binary(),
+            "function_id": remote_function._function_descriptor.function_id.
+            binary(),
+            "function_name": remote_function._function_name,
+            "module": function.__module__,
+            "function": pickled_function,
+            "collision_identifier": self.compute_collision_identifier(
+                function),
+            "max_calls": remote_function._max_calls
+        }
+        self._internal_kv_mput(key, mapping)
         self._worker.redis_client.rpush("Exports", key)
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
-        (job_id_str, function_id_str, function_name, serialized_function,
-         module, max_calls) = self._worker.redis_client.hmget(
-             key, [
-                 "job_id", "function_id", "function_name", "function",
-                 "module", "max_calls"
-             ])
+        assert internal_kv._internal_kv_initialized()
+        job_id_str = internal_kv._internal_kv_get(f"{key}:job_id")
+        function_id_str = internal_kv._internal_kv_get(f"{key}:function_id")
+        function_name = internal_kv._internal_kv_get(f"{key}:function_name")
+        serialized_function = internal_kv._internal_kv_get(f"{key}:function")
+        module = internal_kv._internal_kv_get(f"{key}:module")
+        max_calls = internal_kv._internal_kv_get(f"{key}:max_calls")
 
         if ray_constants.ISOLATE_EXPORTS and \
                 job_id_str != self._worker.current_job_id.binary():
@@ -358,7 +361,9 @@ class FunctionActorManager:
         """
         # We set the driver ID here because it may not have been available when
         # the actor class was defined.
-        self._worker.redis_client.hset(key, mapping=actor_class_info)
+        assert internal_kv._internal_kv_initialized()
+        for (k, v) in actor_class_info.items():
+            internal_kv._internal_kv_put(f"{key}:{k}", cloudpickle.dumps(v))
         self._worker.redis_client.rpush("Exports", key)
 
     def export_actor_class(self, Class, actor_creation_function_descriptor,
@@ -533,8 +538,8 @@ class FunctionActorManager:
                 time.sleep(0.001)
 
         # Fetch raw data from GCS.
-        (job_id_str, class_name, module, pickled_class,
-         actor_method_names) = self._worker.redis_client.hmget(
+        (job_id_str, class_name, module,
+         pickled_class, actor_method_names) = self._internal_kv_mget(
              key,
              ["job_id", "class_name", "module", "class", "actor_method_names"])
 
@@ -602,3 +607,17 @@ class FunctionActorManager:
         actor_method_executor.method = method
 
         return actor_method_executor
+
+    def _internal_kv_mput(self, key, mapping):
+        assert internal_kv._internal_kv_initialized()
+        for (field, value) in mapping.items():
+            internal_kv._internal_kv_put(f"{key}:{field}",
+                                         cloudpickle.dumps(value))
+
+    def _internal_kv_mget(self, key, fields):
+        values = []
+        for field in fields:
+            value = cloudpickle.loads(
+                internal_kv._internal_kv_get(f"{key}:{field}"))
+            values.append(value)
+        return values

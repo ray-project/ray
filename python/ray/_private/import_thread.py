@@ -5,6 +5,7 @@ import traceback
 import redis
 
 import ray
+import ray.experimental.internal_kv as internal_kv
 from ray import ray_constants
 from ray import cloudpickle as pickle
 import ray._private.profiling as profiling
@@ -92,15 +93,19 @@ class ImportThread:
 
     def _get_import_info_for_collision_detection(self, key):
         """Retrieve the collision identifier, type, and name of the import."""
+        assert internal_kv._internal_kv_initialized()
         if key.startswith(b"RemoteFunction"):
-            collision_identifier, function_name = (self.redis_client.hmget(
-                key, ["collision_identifier", "function_name"]))
+            collision_identifier = internal_kv._internal_kv_get(
+                f"{key}:collision_identifier")
+            function_name = internal_kv._internal_kv_get(
+                f"{key}:function_name")
             return (collision_identifier,
                     ray._private.utils.decode(function_name),
                     "remote function")
         elif key.startswith(b"ActorClass"):
-            collision_identifier, class_name = self.redis_client.hmget(
-                key, ["collision_identifier", "class_name"])
+            collision_identifier = internal_kv._internal_kv_get(
+                f"{key}:collision_identifier")
+            class_name = internal_kv._internal_kv_get(f"{key}:class_name")
             return collision_identifier, ray._private.utils.decode(
                 class_name), "actor"
 
@@ -160,8 +165,9 @@ class ImportThread:
 
     def fetch_and_execute_function_to_run(self, key):
         """Run on arbitrary function on the worker."""
-        (job_id, serialized_function) = self.redis_client.hmget(
-            key, ["job_id", "function"])
+        assert internal_kv._internal_kv_initialized()
+        job_id = internal_kv._internal_kv_get(f"{key}:job_id")
+        serialized_function = internal_kv._internal_kv_get(f"{key}:function")
 
         if self.worker.mode == ray.SCRIPT_MODE:
             return

@@ -1516,8 +1516,13 @@ def status(address, redis_password):
         address = services.get_ray_address_to_use_or_die()
     redis_client = ray._private.services.create_redis_client(
         address, redis_password)
-    status = redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
-    error = redis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
+    gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(
+        redis_client)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    status = ray.experimental.internal_kv._internal_kv_get(
+        DEBUG_AUTOSCALING_STATUS)
+    error = ray.experimental.internal_kv._internal_kv_get(
+        DEBUG_AUTOSCALING_ERROR)
     print(debug_status(status, error))
 
 
@@ -1774,6 +1779,7 @@ def healthcheck(address, redis_password, component):
         # exit code.
         redis_client.ping()
         try:
+            # TODO: add feature to ray._private.GcsClient to share channel
             gcs_address = redis_client.get("GcsServerAddress").decode("utf-8")
             options = (("grpc.enable_http_proxy", 0), )
             channel = ray._private.utils.init_grpc_channel(
@@ -1787,8 +1793,11 @@ def healthcheck(address, redis_password, component):
         except Exception:
             pass
         sys.exit(1)
-
-    report_str = redis_client.hget(f"healthcheck:{component}", "value")
+    gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(
+        redis_client)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    report_str = ray.experimental.internal_kv._internal_kv_get(
+        f"healthcheck:{component}")
     if not report_str:
         # Status was never updated
         sys.exit(1)

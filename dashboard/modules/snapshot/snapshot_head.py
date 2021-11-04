@@ -5,8 +5,7 @@ import ray
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_pb2
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.experimental.internal_kv import (_initialize_internal_kv,
-                                          _internal_kv_initialized,
+from ray.experimental.internal_kv import (_internal_kv_initialized,
                                           _internal_kv_get, _internal_kv_list)
 from ray._private.job_manager import (JOB_ID_METADATA_KEY,
                                       JobStatusStorageClient)
@@ -25,7 +24,6 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         self._gcs_actor_info_stub = None
         self._dashboard_head = dashboard_head
 
-        _initialize_internal_kv(dashboard_head.gcs_client)
         assert _internal_kv_initialized()
         self._job_status_client = JobStatusStorageClient()
 
