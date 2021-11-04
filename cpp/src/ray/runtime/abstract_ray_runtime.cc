@@ -318,5 +318,30 @@ PlacementGroup AbstractRayRuntime::GetPlacementGroup(const std::string &name,
   return group;
 }
 
+std::string AbstractRayRuntime::GetOwnershipInfo(const std::string &object_id_str) {
+  auto object_id = ray::ObjectID::FromBinary(object_id_str);
+  rpc::Address address;
+  std::string serialized_object_status;
+  CoreWorkerProcess::GetCoreWorker().GetOwnershipInfo(object_id, &address,
+                                                      &serialized_object_status);
+  return address.SerializeAsString();
+}
+
+void AbstractRayRuntime::RegisterOwnershipInfoAndResolveFuture(
+    const std::string &object_id_str, const std::string &outer_object_id,
+    const std::string &owner_addr) {
+  ray::ObjectID object_id = ray::ObjectID::FromBinary(object_id_str);
+  auto outer_objectId = ray::ObjectID::Nil();
+  if (!outer_object_id.empty()) {
+    outer_objectId = ray::ObjectID::FromBinary(outer_object_id);
+  }
+  rpc::Address address;
+  address.ParseFromString(owner_addr);
+  rpc::GetObjectStatusReply object_status;
+  auto serialized_status = object_status.SerializeAsString();
+  CoreWorkerProcess::GetCoreWorker().RegisterOwnershipInfoAndResolveFuture(
+      object_id, outer_objectId, address, serialized_status);
+}
+
 }  // namespace internal
 }  // namespace ray

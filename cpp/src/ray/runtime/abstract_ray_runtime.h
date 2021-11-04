@@ -105,6 +105,10 @@ class AbstractRayRuntime : public RayRuntime {
   virtual std::vector<PlacementGroup> GetAllPlacementGroups();
   virtual PlacementGroup GetPlacementGroupById(const std::string &id);
   virtual PlacementGroup GetPlacementGroup(const std::string &name, bool global);
+  virtual std::string GetOwnershipInfo(const std::string &object_id);
+  virtual void RegisterOwnershipInfoAndResolveFuture(const std::string &object_id,
+                                                     const std::string &outer_object_id,
+                                                     const std::string &owner_addr);
 
  protected:
   std::unique_ptr<WorkerContext> worker_;
