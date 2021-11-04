@@ -146,6 +146,10 @@ NIGHTLY_TESTS = {
         # SmokeTest("serve"),
         # SmokeTest("serve_failure"),
     ],
+    "~/ray/release/nightly_tests/chaos_test.yaml": [
+        "chaos_dask_on_ray_large_scale_test_no_spilling",
+        "chaos_dask_on_ray_large_scale_test_spilling",
+    ],
     "~/ray/release/microbenchmark/microbenchmark.yaml": [
         "microbenchmark",
     ],
