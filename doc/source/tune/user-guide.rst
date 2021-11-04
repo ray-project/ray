@@ -295,49 +295,74 @@ When running a hyperparameter search, Tune can automatically and periodically sa
  * use pre-emptible machines (by automatically restoring from last checkpoint)
  * Pausing trials when using Trial Schedulers such as HyperBand and PBT.
 
-To use Tune's checkpointing features, you must expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir``:
+Let's cover how to configure your checkpoints storage location, checkpointing frequency, and how to resume from a previous run.
+
+A simple checkpointing example
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: python
 
-    import os
-    import time
     from ray import tune
+    from your_module import my_pytorch_training_func
 
-    def train_func(config, checkpoint_dir=None):
-        start = 0
-        if checkpoint_dir:
-            with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
-                state = json.loads(f.read())
-                start = state["step"] + 1
+    # configure how your checkpoints are sync'd to the scheduler/sampler 
+    # to enable tuning. we recommend cloud storage checkpointing as it survives the
+    # cluster when your instances are terminated
+    sync_config = tune.syncConfig(
+        upload_dir="s3://my-checkpoints-bucket/path/",  # requires AWS credentials
+        sync_to_cloud=True  # this can also be a func for custom logic!
+    )
 
-        for step in range(start, 100):
-            time.sleep(1)
+    tune.run(
+        # wrapping your function in tune.with_parameters() just ensures that 
+        # when checkpoints happen, all the trained parameters are saved alongside, 
+        # not just your model's hyperparameters! useful if you want your checkpoints 
+        # to be "inference ready" checkpoints of your models
+        tune.with_parameters(my_pytorch_training_func),
 
-            # Obtain a checkpoint directory
-            with tune.checkpoint_dir(step=step) as checkpoint_dir:
-                path = os.path.join(checkpoint_dir, "checkpoint")
-                with open(path, "w") as f:
-                    f.write(json.dumps({"step": step}))
+        # name of your experiment 
+        name="my-tune-exp",
 
-            tune.report(hello="world", ray="tune")
+        # a directory where results are stored before being
+        # sync'd to head node/cloud storage
+        local_dir="/tmp",
 
-    tune.run(train_func)
+        # see above! we will sync our checkpoints to S3 directory
+        sync_config=sync_config,
 
-In this example, checkpoints will be saved by training iteration to ``local_dir/exp_name/trial_name/checkpoint_<step>``.
+        # we'll checkpoint every 10 iterations, keep the best five
+        # checkpoints (by AUC score, descending), and always checkpoint
+        # at the end of the last run!
+        checkpoint_score_attr="max-auc",
+        keep_checkpoints_num=5,
+        checkpoint_freq=10,
+        checkpoint_at_end=True,
+    )
 
-You can restore a single trial checkpoint by using ``tune.run(restore=<checkpoint_dir>)`` By doing this, you can change whatever experiments' configuration such as the experiment's name:
+In this example, checkpoints will be saved:
+
+* Locally: ``local_dir/my-tune-exp/<trial_name>/checkpoint_<step>``
+* S3: ``s3://my-checkpoints-bucket/path/my-tune-exp/<trial_name>/checkpoint_<step>``
+* On head node: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>``
+* On workers nodes (but only for trials done on that node): ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>``
+
+Note that if want to use checkpointing with a custom training function (not a Ray integration like PyTorch or Tensorflow), you must expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir``. You can find an example of this here.
+
+If your run stopped for any reason (finished, errored, user CTRL+C), you can restart it any time with the following:
 
 .. code-block:: python
 
     # Restored previous trial from the given checkpoint
     tune.run(
-        "PG",
-        name="RestoredExp", # The name can be different.
-        stop={"training_iteration": 10}, # train 5 more iterations than previous
-        restore="~/ray_results/Original/PG_<xxx>/checkpoint_5/checkpoint-5",
-        config={"env": "CartPole-v0"},
-    )
+        # our same trainable as before
+        tune.with_parameters(my_pytorch_training_func),
 
+        # The name can be different from your original name
+        name="my-tune-exp-restart",
+
+        # our same config as above!
+        restore=sync_config,
+    )
 
 .. _tune-distributed-checkpointing:
 
