@@ -91,9 +91,13 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
   bool best_is_available = false;
 
   // Step 2: Perform the round robin.
-  auto round_it = round.begin();
-  for (; round_it != round.end(); round_it++) {
-    const auto &node_id = *round_it;
+  // The node to start round robin if it's spread scheduling.
+  // The index may be inaccurate when nodes are added or removed dynamically,
+  // but it should still be better than always scanning from 0 for spread scheduling.
+  static size_t spread_round_index_next{0};
+  size_t round_index = spread_threshold == 0 ? spread_round_index_next : 0;
+  for (size_t i = 0; i < round.size(); ++i, ++round_index) {
+    const auto &node_id = round[round_index % round.size()];
     const auto &it = nodes.find(node_id);
     RAY_CHECK(it != nodes.end());
     const auto &node = it->second;
@@ -137,6 +141,7 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
     }
 
     if (update_best_node) {
+      spread_round_index_next = (round_index % round.size()) + 1;
       best_node_id = node_id;
       best_utilization_score = critical_resource_utilization;
       best_is_available = is_available;
