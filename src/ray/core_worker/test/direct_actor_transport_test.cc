@@ -540,7 +540,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartFailInflightTasks) {
   auto worker_id = WorkerID::FromRandom();
   addr.set_worker_id(worker_id.Binary());
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
-  submitter_.AddActorQueueIfNotExists(actor_id);
+  submitter_.AddActorQueueIfNotExists(actor_id, -1);
   addr.set_port(0);
   submitter_.ConnectActor(actor_id, addr, 0);
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
