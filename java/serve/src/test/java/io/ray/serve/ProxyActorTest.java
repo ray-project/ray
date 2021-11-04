@@ -34,7 +34,7 @@ public class ProxyActorTest {
       String controllerName =
           CommonUtil.formatActorName(
               Constants.SERVE_CONTROLLER_NAME, RandomStringUtils.randomAlphabetic(6));
-      String backendTag = prefix;
+      String deploymentName = prefix;
       String replicaTag = prefix;
       String endpointName = prefix;
       String route = "/route";
@@ -60,7 +60,7 @@ public class ProxyActorTest {
       ActorHandle<RayServeWrappedReplica> replica =
           Ray.actor(
                   RayServeWrappedReplica::new,
-                  backendTag,
+                  deploymentName,
                   replicaTag,
                   deploymentInfo,
                   controllerName)

@@ -808,7 +808,7 @@ py_test(
     main = "train.py", srcs = ["train.py"],
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "Pendulum-v0",
+        "--env", "Pendulum-v1",
         "--run", "APEX_DDPG",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1, \"batch_mode\": \"complete_episodes\"}'",
@@ -819,12 +819,12 @@ py_test(
 # DQN/APEX
 
 py_test(
-    name = "test_dqn_frozenlake_v0",
+    name = "test_dqn_frozenlake_v1",
     main = "train.py", srcs = ["train.py"],
     size = "small",
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "FrozenLake-v0",
+        "--env", "FrozenLake-v1",
         "--run", "DQN",
         "--config", "'{\"framework\": \"tf\"}'",
         "--stop", "'{\"training_iteration\": 1}'"
@@ -1007,11 +1007,11 @@ py_test(
 )
 
 py_test(
-    name = "test_appo_tf_pendulum_v0_no_gpus",
+    name = "test_appo_tf_pendulum_v1_no_gpus",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "Pendulum-v0",
+        "--env", "Pendulum-v1",
         "--run", "APPO",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"num_gpus\": 0}'",
@@ -1267,6 +1267,15 @@ py_test(
     data = glob(["utils/tests/**"]),
     srcs = ["utils/tests/test_framework_agnostic_components.py"]
 )
+
+# Spaces/Space utils.
+py_test(
+    name = "test_space_utils",
+    tags = ["team:ml", "utils"],
+    size = "large",
+    srcs = ["utils/spaces/tests/test_space_utils.py"]
+)
+
 
 # TaskPool
 py_test(
@@ -2522,6 +2531,15 @@ py_test(
     size = "medium",
     srcs = ["examples/trajectory_view_api.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=100.0"]
+)
+
+py_test(
+    name = "examples/tune/framework",
+    main = "examples/tune/framework.py",
+    tags = ["team:ml", "examples", "examples_F"],
+    size = "medium",
+    srcs = ["examples/tune/framework.py"],
+    args = ["--smoke-test"]
 )
 
 py_test(
