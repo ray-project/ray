@@ -442,6 +442,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   // Specify custom resources that consists of unit-size instances.
   std::unordered_set<int64_t> custom_unit_instance_resources_{};
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
 };
 
 }  // end namespace ray
