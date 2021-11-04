@@ -182,7 +182,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// \param resource_name: Resource which we want to update.
   /// \param resource_total: New capacity of the resource.
   void UpdateLocalResourceCapacity(const std::string &resource_name,
-                                                      double resource_total);
+                                   double resource_total);
 
   /// Delete a given resource from the local node.
   ///
