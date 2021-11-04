@@ -80,21 +80,19 @@ inline grpc::Status RayStatusToGrpcStatus(const Status &ray_status) {
   if (ray_status.ok()) {
     return grpc::Status::OK;
   } else {
-    // TODO(hchen): Use more specific error code.
-    return grpc::Status(grpc::StatusCode::UNKNOWN, ray_status.message());
+    return grpc::Status(grpc::StatusCode::UNKNOWN, ray_status.CodeAsString(),
+                        ray_status.message());
   }
 }
 
 /// Helper function that converts a gRPC status to ray status.
 inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
+  << grpc_status.error_message() << " " << grpc_status.error_details();
   if (grpc_status.ok()) {
     return Status::OK();
   } else {
-    std::stringstream msg;
-    msg << grpc_status.error_code();
-    msg << ": ";
-    msg << grpc_status.error_message();
-    return Status::IOError(msg.str());
+    return Status(Status::StringToCode(grpc_status.error_message()),
+                  grpc_status.error_details());
   }
 }
 

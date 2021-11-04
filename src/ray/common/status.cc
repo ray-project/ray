@@ -59,6 +59,54 @@ namespace ray {
 #define STATUS_CODE_OBJECT_STORE_FULL "ObjectStoreFull"
 #define STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL "TransientObjectStoreFull"
 
+static std::map<StatusCode, std::string> code_to_str = {
+    {StatusCode::OK, STATUS_CODE_OK},
+    {StatusCode::OutOfMemory, STATUS_CODE_OUT_OF_MEMORY},
+    {StatusCode::KeyError, STATUS_CODE_KEY_ERROR},
+    {StatusCode::TypeError, STATUS_CODE_TYPE_ERROR},
+    {StatusCode::Invalid, STATUS_CODE_INVALID},
+    {StatusCode::IOError, STATUS_CODE_IO_ERROR},
+    {StatusCode::UnknownError, STATUS_CODE_UNKNOWN_ERROR},
+    {StatusCode::NotImplemented, STATUS_CODE_NOT_IMPLEMENTED},
+    {StatusCode::RedisError, STATUS_CODE_REDIS_ERROR},
+    {StatusCode::TimedOut, STATUS_CODE_TIMED_OUT},
+    {StatusCode::Interrupted, STATUS_CODE_INTERRUPTED},
+    {StatusCode::IntentionalSystemExit, STATUS_CODE_INTENTIONAL_SYSTEM_EXIT},
+    {StatusCode::UnexpectedSystemExit, STATUS_CODE_UNEXPECTED_SYSTEM_EXIT},
+    {StatusCode::CreationTaskError, STATUS_CODE_CREATION_TASK_ERROR},
+    {StatusCode::NotFound, STATUS_CODE_NOT_FOUND},
+    {StatusCode::Disconnected, STATUS_CODE_DISCONNECTED},
+    {StatusCode::ObjectExists, STATUS_CODE_OBJECT_EXISTS},
+    {StatusCode::ObjectNotFound, STATUS_CODE_OBJECT_NOT_FOUND},
+    {StatusCode::ObjectAlreadySealed, STATUS_CODE_OBJECT_STORE_ALREADY_SEALED},
+    {StatusCode::ObjectStoreFull, STATUS_CODE_OBJECT_STORE_FULL},
+    {StatusCode::TransientObjectStoreFull, STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL},
+};
+
+static std::map<std::string, StatusCode> str_to_code = {
+    {STATUS_CODE_OK, StatusCode::OK},
+    {STATUS_CODE_OUT_OF_MEMORY, StatusCode::OutOfMemory},
+    {STATUS_CODE_KEY_ERROR, StatusCode::KeyError},
+    {STATUS_CODE_TYPE_ERROR, StatusCode::TypeError},
+    {STATUS_CODE_INVALID, StatusCode::Invalid},
+    {STATUS_CODE_IO_ERROR, StatusCode::IOError},
+    {STATUS_CODE_UNKNOWN_ERROR, StatusCode::UnknownError},
+    {STATUS_CODE_NOT_IMPLEMENTED, StatusCode::NotImplemented},
+    {STATUS_CODE_REDIS_ERROR, StatusCode::RedisError},
+    {STATUS_CODE_TIMED_OUT, StatusCode::TimedOut},
+    {STATUS_CODE_INTERRUPTED, StatusCode::Interrupted},
+    {STATUS_CODE_INTENTIONAL_SYSTEM_EXIT, StatusCode::IntentionalSystemExit},
+    {STATUS_CODE_UNEXPECTED_SYSTEM_EXIT, StatusCode::UnexpectedSystemExit},
+    {STATUS_CODE_CREATION_TASK_ERROR, StatusCode::CreationTaskError},
+    {STATUS_CODE_NOT_FOUND, StatusCode::NotFound},
+    {STATUS_CODE_DISCONNECTED, StatusCode::Disconnected},
+    {STATUS_CODE_OBJECT_EXISTS, StatusCode::ObjectExists},
+    {STATUS_CODE_OBJECT_NOT_FOUND, StatusCode::ObjectNotFound},
+    {STATUS_CODE_OBJECT_STORE_ALREADY_SEALED, StatusCode::ObjectAlreadySealed},
+    {STATUS_CODE_OBJECT_STORE_FULL, StatusCode::ObjectStoreFull},
+    {STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL, StatusCode::TransientObjectStoreFull},
+};
+
 Status::Status(StatusCode code, const std::string &msg) {
   assert(code != StatusCode::OK);
   state_ = new State;
@@ -80,34 +128,17 @@ std::string Status::CodeAsString() const {
     return STATUS_CODE_OK;
   }
 
-  static std::map<StatusCode, std::string> code_to_str = {
-      {StatusCode::OK, STATUS_CODE_OK},
-      {StatusCode::OutOfMemory, STATUS_CODE_OUT_OF_MEMORY},
-      {StatusCode::KeyError, STATUS_CODE_KEY_ERROR},
-      {StatusCode::TypeError, STATUS_CODE_TYPE_ERROR},
-      {StatusCode::Invalid, STATUS_CODE_INVALID},
-      {StatusCode::IOError, STATUS_CODE_IO_ERROR},
-      {StatusCode::UnknownError, STATUS_CODE_UNKNOWN_ERROR},
-      {StatusCode::NotImplemented, STATUS_CODE_NOT_IMPLEMENTED},
-      {StatusCode::RedisError, STATUS_CODE_REDIS_ERROR},
-      {StatusCode::TimedOut, STATUS_CODE_TIMED_OUT},
-      {StatusCode::Interrupted, STATUS_CODE_INTERRUPTED},
-      {StatusCode::IntentionalSystemExit, STATUS_CODE_INTENTIONAL_SYSTEM_EXIT},
-      {StatusCode::UnexpectedSystemExit, STATUS_CODE_UNEXPECTED_SYSTEM_EXIT},
-      {StatusCode::CreationTaskError, STATUS_CODE_CREATION_TASK_ERROR},
-      {StatusCode::NotFound, STATUS_CODE_NOT_FOUND},
-      {StatusCode::Disconnected, STATUS_CODE_DISCONNECTED},
-      {StatusCode::ObjectExists, STATUS_CODE_OBJECT_EXISTS},
-      {StatusCode::ObjectNotFound, STATUS_CODE_OBJECT_NOT_FOUND},
-      {StatusCode::ObjectAlreadySealed, STATUS_CODE_OBJECT_STORE_ALREADY_SEALED},
-      {StatusCode::ObjectStoreFull, STATUS_CODE_OBJECT_STORE_FULL},
-      {StatusCode::TransientObjectStoreFull, STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL},
-  };
-
   if (!code_to_str.count(code())) {
     return STATUS_CODE_UNKNOWN;
   }
   return code_to_str[code()];
+}
+
+StatusCode Status::StringToCode(const std::string &str) {
+  if (!str_to_code.count(str)) {
+    return StatusCode::IOError;
+  }
+  return str_to_code[str];
 }
 
 std::string Status::ToString() const {
