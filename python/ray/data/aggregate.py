@@ -1,3 +1,4 @@
+import copy
 import math
 from typing import Callable, Optional, Union, Any, List
 
@@ -14,6 +15,7 @@ class AggregateFn(object):
                  accumulate: Callable[[AggType, T], AggType],
                  merge: Callable[[AggType, AggType], AggType],
                  finalize: Callable[[AggType], U] = lambda a: a,
+                 on: AggregateOnT = None,
                  name: Optional[str] = None):
         """Defines an aggregate function in the accumulator style.
 
@@ -33,14 +35,53 @@ class AggregateFn(object):
                 two accumulators into one.
             finalize: This is called once to compute the final aggregation
                 result from the fully merged accumulator.
+            on: The data subset on which to compute the aggregation.
+                For a simple dataset: it can be a callable.
+                For an Arrow dataset: it can be a column name or a callable.
+                The default is to compute the aggregation on the entire row.
             name: The name of the aggregation. This will be used as the output
-                column name in the case of Arrow dataset.
+                column name in the case of Arrow dataset. If not given, then
+                f"{type(self).__name__.lower()}({on})" will be used.
         """
         self.init = init
-        self.accumulate = accumulate
+        self._accumulate = accumulate
         self.merge = merge
         self.finalize = finalize
-        self.name = name
+        self.on = on
+        self._name = name
+
+    @property
+    def name(self):
+        name = self._name
+        if name is None:
+            name = type(self).__name__.lower()
+            if self.on is not None:
+                name += f"({self.on})"
+            else:
+                name += "()"
+        return name
+
+    def accumulate(self, a: AggType, r: T) -> AggType:
+        # Accumulate on data subset.
+        on_fn = _to_on_fn(self.on)
+        return self._accumulate(a, on_fn(r))
+
+    def with_on(self, on: AggregateOnT):
+        """Return a copy of this aggregation with the provided `on` data subset
+        selector.
+
+        Args:
+            on: The data subset on which to compute the aggregation.
+                For a simple dataset: it can be a callable.
+                For an Arrow dataset: it can be a column name or a callable.
+                The default is to compute the aggregation on the entire row.
+
+        Returns:
+            A copy of this aggregation with the provided `on` set.
+        """
+        new_agg = copy.copy(self)
+        new_agg.on = on
+        return new_agg
 
 
 class Count(AggregateFn):
@@ -50,59 +91,52 @@ class Count(AggregateFn):
         super().__init__(
             init=lambda k: 0,
             accumulate=lambda a, r: a + 1,
-            merge=lambda a1, a2: a1 + a2,
-            name="count()")
+            merge=lambda a1, a2: a1 + a2)
 
 
 class Sum(AggregateFn):
     """Defines sum aggregation."""
 
     def __init__(self, on: Optional[AggregateOnT] = None):
-        on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: 0,
-            accumulate=lambda a, r: a + on_fn(r),
+            accumulate=lambda a, r: a + r,
             merge=lambda a1, a2: a1 + a2,
-            name=(f"sum({str(on)})"))
+            on=on)
 
 
 class Min(AggregateFn):
     """Defines min aggregation."""
 
     def __init__(self, on: Optional[AggregateOnT] = None):
-        on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: None,
-            accumulate=(
-                lambda a, r: (on_fn(r) if a is None else min(a, on_fn(r)))),
+            accumulate=(lambda a, r: (r if a is None else min(a, r))),
             merge=lambda a1, a2: min(a1, a2),
-            name=(f"min({str(on)})"))
+            on=on)
 
 
 class Max(AggregateFn):
     """Defines max aggregation."""
 
     def __init__(self, on: Optional[AggregateOnT] = None):
-        on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: None,
-            accumulate=(
-                lambda a, r: (on_fn(r) if a is None else max(a, on_fn(r)))),
+            accumulate=(lambda a, r: (r if a is None else max(a, r))),
             merge=lambda a1, a2: max(a1, a2),
-            name=(f"max({str(on)})"))
+            on=on)
 
 
 class Mean(AggregateFn):
     """Defines mean aggregation."""
 
     def __init__(self, on: Optional[AggregateOnT] = None):
-        on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: [0, 0],
-            accumulate=lambda a, r: [a[0] + on_fn(r), a[1] + 1],
+            accumulate=lambda a, r: [a[0] + r, a[1] + 1],
             merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
             finalize=lambda a: a[0] / a[1],
-            name=(f"mean({str(on)})"))
+            on=on)
 
 
 class Std(AggregateFn):
@@ -118,20 +152,15 @@ class Std(AggregateFn):
     """
 
     def __init__(self, on: Optional[AggregateOnT] = None, ddof: int = 1):
-        on_fn = _to_on_fn(on)
-
         def accumulate(a: List[float], r: float):
             # Accumulates the current count, the current mean, and the sum of
             # squared differences from the current mean (M2).
             M2, mean, count = a
-            # Select the data on which we want to calculate the standard
-            # deviation.
-            val = on_fn(r)
 
             count += 1
-            delta = val - mean
+            delta = r - mean
             mean += delta / count
-            delta2 = val - mean
+            delta2 = r - mean
             M2 += delta * delta2
             return [M2, mean, count]
 
@@ -165,7 +194,17 @@ class Std(AggregateFn):
             accumulate=accumulate,
             merge=merge,
             finalize=finalize,
-            name=(f"std({str(on)})"))
+            on=on)
+
+
+AGGS_TABLE = {
+    "count": Count,
+    "sum": Sum,
+    "min": Min,
+    "max": Max,
+    "mean": Mean,
+    "std": Std
+}
 
 
 def _to_on_fn(on: Optional[AggregateOnT]):

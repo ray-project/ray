@@ -31,7 +31,7 @@ from ray.data.datasource import (
     Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
     ParquetDatasource, BlockWritePathProvider, DefaultBlockWritePathProvider)
 from ray.data.aggregate import AggregateFn, Sum, Max, Min, \
-    Mean, Std
+    Mean, Std, AGGS_TABLE
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
@@ -845,14 +845,115 @@ class Dataset(Generic[T]):
         from ray.data.grouped_dataset import GroupedDataset
         return GroupedDataset(self, key)
 
-    def aggregate(self, *aggs: AggregateFn) -> U:
+    def agg(self, aggs: Union[Union[str, AggregateFn], List[Union[
+            str, AggregateFn]], Dict[str, Union[str, AggregateFn]]]):
+        """Aggregate using one or more operations over the specified columns.
+
+        Examples:
+            >>> ray.data.range(100).agg("sum")
+            >>> ray.data.range(100).agg(["sum", Std(ddof=0)])
+            >>> ray.data.from_items([
+                        {"A": x, "B": x**2} for x in range(100)]) \
+                    .agg({
+                        "A": ["mean", Std(ddof=0)],
+                        "B": ["min", "max"],
+                    })
+
+        Args:
+            aggs: Aggregations to compute. This can be:
+
+                - Union[str, AggregateFn]: The (name of an) aggregation that we
+                    want to apply to all columns.
+                - List[Union[str, AggregateFn]]: A list of the (names of)
+                    aggregations that we want to apply to all columns.
+                - Dict[str, Union[str, AggregateFn]]: A map from column names
+                    to the (names of the) aggregations that we wish to apply to
+                    those specific columns. This can only be applied to Arrow
+                    Datasets.
+
+        Returns:
+            If the input dataset is a simple dataset then the output is
+            a tuple of (agg1, agg2, ...) where each tuple element is
+            the corresponding aggregation result.
+            If the input dataset is an Arrow dataset then the output is
+            an ArrowRow where each column is the corresponding
+            aggregation result.
+            When `aggs` is given as a list, the aggregation columns are ordered
+            in accordance with the aggregation list ordering (aggs, cols):
+                [agg1, agg2]
+            on a dataset with columns col1 and col2 would yield aggregation
+            columns:
+                col1_agg1, col2_agg1, col1_agg2, col2_agg2
+            When `aggs` is given as a dict, the aggregation columns are ordered
+            in accordance with the depth-first dict ordering (cols, aggs):
+                {col1: [agg1, agg2], col2: [agg2, agg1]}
+            would yield aggregation columns:
+                col1_agg1, col1_agg2, col2_agg2, col2_agg1
+            If the dataset is empty, return None.
+        """
+        aggs_ = self._build_multi_agg(aggs)
+        return self.apply_aggregations(*aggs_)
+
+    def _build_multi_agg(
+            self,
+            aggs: Union[Union[str, AggregateFn], List[Union[str, AggregateFn]],
+                        Dict[str, Union[str, AggregateFn]]],
+            skip_cols: Optional[List[str]] = None):
+        """Build set of aggregations for applying multiple aggregations to
+        one or more columns.
+        """
+        aggs_ = []
+        if isinstance(aggs, (str, AggregateFn)):
+            aggs = [aggs]
+        err_msg = (
+            "`aggs` must be an aggregation name, AggregateFn, list of "
+            "aggregation names, list of AggregateFn, or a column name --> "
+            f"list of aggregations dict; instead, we got {aggs}.")
+        if isinstance(aggs, list):
+            if len(aggs) == 0:
+                raise ValueError("List of aggregations must be nonempty.")
+            if not all(isinstance(agg, (str, AggregateFn)) for agg in aggs):
+                raise TypeError(err_msg)
+            # Add dummy null column selection; this will cause all columns
+            # to be selected.
+            aggs = ((None, aggs), )
+        elif isinstance(aggs, dict):
+            if len(aggs) == 0:
+                raise ValueError("Dict of aggregations must be nonempty.")
+            if not all(
+                    isinstance(agg, (str, AggregateFn))
+                    for aggs_ in aggs.values() for agg in aggs_):
+                raise TypeError(err_msg)
+            aggs = aggs.items()
+        else:
+            raise TypeError(err_msg)
+
+        for on, on_aggs in aggs:
+            on = self._check_and_normalize_agg_on(on, skip_cols=skip_cols)
+            if not isinstance(on, list):
+                on = [on]
+            for agg in on_aggs:
+                for on_ in on:
+                    if isinstance(agg, str):
+                        try:
+                            agg_ = AGGS_TABLE[agg](on_)
+                        except KeyError as e:
+                            raise ValueError(
+                                f"{e!s} is not a supported aggregation: "
+                                f"{list(AGGS_TABLE.keys())}")
+                    else:
+                        agg_ = agg.with_on(on_)
+                    aggs_.append(agg_)
+        return aggs_
+
+    def apply_aggregations(self, *aggs: AggregateFn) -> U:
         """Aggregate the entire dataset as one group.
 
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).aggregate(Max())
-            >>> ray.data.range_arrow(100).aggregate(
+            >>> ray.data.range(100).apply_aggregations(Max())
+            >>> ray.data.range_arrow(100).apply_aggregations(
                 Max("value"), Mean("value"))
 
         Time complexity: O(dataset size / parallelism)
@@ -869,7 +970,7 @@ class Dataset(Generic[T]):
             aggregation result.
             If the dataset is empty, return ``None``.
         """
-        ret = self.groupby(None).aggregate(*aggs).take(1)
+        ret = self.groupby(None).apply_aggregations(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
     def _check_and_normalize_agg_on(self,
@@ -881,8 +982,8 @@ class Dataset(Generic[T]):
         any provided columns to skip.
         """
         if (on is not None
-                and (not isinstance(on, (str, Callable, list)) or
-                     (isinstance(on, list)
+                and (not isinstance(on, (str, Callable, list, tuple)) or
+                     (isinstance(on, (list, tuple))
                       and not (all(isinstance(on_, str) for on_ in on)
                                or all(isinstance(on_, Callable)
                                       for on_ in on))))):
@@ -891,7 +992,7 @@ class Dataset(Generic[T]):
             raise TypeError(
                 f"`on` must be of type {AggregateOnTs}, but got {type(on)}")
 
-        if isinstance(on, list) and len(on) == 0:
+        if isinstance(on, (list, tuple)) and len(on) == 0:
             raise ValueError(
                 "When giving a list for `on`, it must be nonempty.")
 
@@ -923,14 +1024,14 @@ class Dataset(Generic[T]):
             elif isinstance(on, str) and on not in schema.names:
                 raise ValueError(
                     f"on={on} is not a valid column name: {schema.names}")
-            elif isinstance(on, list) and isinstance(on[0], str):
+            elif isinstance(on, (list, tuple)) and isinstance(on[0], str):
                 for on_ in on:
                     if on_ not in schema.names:
                         raise ValueError(
                             f"on={on_} is not a valid column name: "
                             f"{schema.names}")
         else:
-            if isinstance(on, str) or (isinstance(on, list)
+            if isinstance(on, str) or (isinstance(on, (list, tuple))
                                        and isinstance(on[0], str)):
                 raise ValueError(
                     "Can't aggregate on a column when using a simple Dataset; "
@@ -969,7 +1070,7 @@ class Dataset(Generic[T]):
         """
         aggs = self._build_multicolumn_aggs(
             agg_cls, on, *args, skip_cols=None, **kwargs)
-        return self.aggregate(*aggs)
+        return self.apply_aggregations(*aggs)
 
     def _build_multicolumn_aggs(self,
                                 agg_cls: type,
