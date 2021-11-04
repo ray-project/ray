@@ -87,7 +87,6 @@ inline grpc::Status RayStatusToGrpcStatus(const Status &ray_status) {
 
 /// Helper function that converts a gRPC status to ray status.
 inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
-  << grpc_status.error_message() << " " << grpc_status.error_details();
   if (grpc_status.ok()) {
     return Status::OK();
   } else {

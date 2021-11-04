@@ -27,11 +27,11 @@
 // Adapted from Apache Arrow, Apache Kudu, TensorFlow
 
 #include "ray/common/status.h"
+#include "absl/container/flat_hash_map.h"
 
 #include <assert.h>
 
 #include <boost/system/error_code.hpp>
-#include <map>
 
 namespace ray {
 
@@ -59,7 +59,7 @@ namespace ray {
 #define STATUS_CODE_OBJECT_STORE_FULL "ObjectStoreFull"
 #define STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL "TransientObjectStoreFull"
 
-static std::map<StatusCode, std::string> code_to_str = {
+static absl::flat_hash_map<StatusCode, std::string> code_to_str = {
     {StatusCode::OK, STATUS_CODE_OK},
     {StatusCode::OutOfMemory, STATUS_CODE_OUT_OF_MEMORY},
     {StatusCode::KeyError, STATUS_CODE_KEY_ERROR},
@@ -83,7 +83,7 @@ static std::map<StatusCode, std::string> code_to_str = {
     {StatusCode::TransientObjectStoreFull, STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL},
 };
 
-static std::map<std::string, StatusCode> str_to_code = {
+static absl::flat_hash_map<std::string, StatusCode> str_to_code = {
     {STATUS_CODE_OK, StatusCode::OK},
     {STATUS_CODE_OUT_OF_MEMORY, StatusCode::OutOfMemory},
     {STATUS_CODE_KEY_ERROR, StatusCode::KeyError},
@@ -128,17 +128,19 @@ std::string Status::CodeAsString() const {
     return STATUS_CODE_OK;
   }
 
-  if (!code_to_str.count(code())) {
+  auto it = code_to_str.find(code());
+  if (it == code_to_str.end()) {
     return STATUS_CODE_UNKNOWN;
   }
-  return code_to_str[code()];
+  return it->second;
 }
 
 StatusCode Status::StringToCode(const std::string &str) {
-  if (!str_to_code.count(str)) {
+  auto it = str_to_code.find(str);
+  if (it == str_to_code.end()) {
     return StatusCode::IOError;
   }
-  return str_to_code[str];
+  return it->second;
 }
 
 std::string Status::ToString() const {
