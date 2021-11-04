@@ -273,6 +273,15 @@ todo_include_todos = False
 # and is slow (it needs to download the linked website).
 linkcheck_anchors = False
 
+# Only check external links, i.e. the ones starting with http:// or https://.
+# Also exclude some known broken links.
+linkcheck_ignore = [
+    r"^((?!http).)*$",
+    "http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf",
+    "https://mvnrepository.com/artifact/*",
+    "https://staroid.com/settings/accesstokens",
+]
+
 # -- Options for HTML output ----------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for

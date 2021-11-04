@@ -220,7 +220,7 @@ Example loading multiple parquet files:
 Hyperparameter Tuning
 ---------------------
 
-LightGBM-Ray integrates with `Ray Tune <https://tune.io>`_ to provide distributed hyperparameter tuning for your
+LightGBM-Ray integrates with `Ray Tune <http://tune.io>`_ to provide distributed hyperparameter tuning for your
 distributed LightGBM models. You can run multiple LightGBM-Ray training runs in parallel, each with a different
 hyperparameter configuration, and each training run parallelized by itself. All you have to do is move your training
 code to a function, and pass the function to ``tune.run``. Internally, ``train`` will detect if ``tune`` is being used and will
