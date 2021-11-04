@@ -1008,9 +1008,8 @@ def shutdown(_exiting_interpreter: bool = False):
 
     # disconnect internal kv
     if hasattr(global_worker, "gcs_client"):
-        if _internal_kv_get_gcs_client() == global_worker.gcs_client:
-            _internal_kv_reset()
         del global_worker.gcs_client
+    _internal_kv_reset()
 
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background

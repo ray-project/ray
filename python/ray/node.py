@@ -773,7 +773,8 @@ class Node:
                 self.initialize_internal_kv()
                 break
             except Exception:
-                logger.info("Waiting for gcs up")
+                time.sleep(1)
+                logger.debug("Waiting for gcs up")
 
     def start_raylet(self,
                      plasma_directory,
