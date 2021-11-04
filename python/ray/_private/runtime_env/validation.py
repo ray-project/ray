@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 import sys
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union, Tuple
 import yaml
 
 import ray
@@ -12,6 +12,17 @@ from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import import_attr
 
 logger = logging.getLogger(__name__)
+
+
+def _encode_plugin_uri(plugin: str, uri: str) -> str:
+    return plugin + "|" + uri
+
+
+def _decode_plugin_uri(plugin_uri: str) -> Tuple[str, str]:
+    if "|" not in plugin_uri:
+        raise ValueError(
+            f"Plugin URI must be of the form 'plugin|uri', not {plugin_uri}")
+    return tuple(plugin_uri.split("|", 2))
 
 
 def validate_uri(uri: str):
@@ -33,7 +44,7 @@ def validate_uri(uri: str):
 
 
 def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
-    """Parses and validates a user-provided 'py_modules' option.
+    """Parses and validates a 'py_modules' option.
 
     This should be a list of URIs.
     """
@@ -48,7 +59,7 @@ def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
 
 
 def parse_and_validate_working_dir(working_dir: str) -> str:
-    """Parses and validates a user-provided 'working_dir' option.
+    """Parses and validates a 'working_dir' option.
 
     This should be a URI.
     """
@@ -334,8 +345,16 @@ class ParsedRuntimeEnv(dict):
             self.clear()
 
     def get_uris(self) -> List[str]:
-        # TODO(edoakes): this should be extended with other resource URIs.
-        return [self["working_dir"]] if "working_dir" in self else []
+        # TODO(architkulkarni): this should programmatically be extended with
+        # URIs from all plugins.
+        plugin_uris = []
+        if "working_dir" in self:
+            plugin_uris.append(
+                _encode_plugin_uri("working_dir", self["working_dir"]))
+        if "py_modules" in self:
+            for uri in self["py_modules"]:
+                plugin_uris.append(_encode_plugin_uri("py_modules", uri))
+        return plugin_uris
 
     @classmethod
     def deserialize(cls, serialized: str) -> "ParsedRuntimeEnv":
