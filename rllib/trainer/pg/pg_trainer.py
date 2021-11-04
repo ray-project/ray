@@ -15,7 +15,8 @@ class PGTrainer(Trainer):
     Defines the distributed Trainer class for policy gradients.
     See `pg_[tf|torch]_policy.py` for the definition of the policy loss.
 
-    Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#pg
+    Detailed documentation:
+    https://docs.ray.io/en/master/rllib-algorithms.html#pg
 
     Only overrides the default config- and policy selectors
     (`get_default_policy` and `get_default_config`). Utilizes
