@@ -676,10 +676,12 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
 
 
 @pytest.mark.parametrize(
-    "ray_start_regular",
-    [{
-        "_system_config": {"metrics_report_interval_ms": 1000, "complex_scheduling_class": True}
-        }],
+    "ray_start_regular", [{
+        "_system_config": {
+            "metrics_report_interval_ms": 1000,
+            "complex_scheduling_class": True
+        }
+    }],
     indirect=True)
 def test_scheduling_class_depth(ray_start_regular):
 
@@ -699,11 +701,11 @@ def test_scheduling_class_depth(ray_start_regular):
     start_infeasible.remote()
     infeasible.remote()
 
-
     # We expect the 2 calls to `infeasible` to be separate scheduling classes
     # because one has depth=1, and the other has depth=2.
 
     metric_name = "ray_internal_num_infeasible_scheduling_classes"
+
     def condition():
         _, metric_names, metric_samples = fetch_prometheus([prom_addr])
         if metric_name in metric_names:
