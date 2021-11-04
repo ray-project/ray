@@ -22,6 +22,7 @@
                  << " contained_in_borrowed: "                                           \
                  << (it)->second.contained_in_borrowed_ids.size()                        \
                  << " contains: " << it->second.contains.size()                          \
+                 << " stored_in: " << it->second.stored_in_objects.size()                \
                  << " lineage_ref_count: " << it->second.lineage_ref_count;
 
 namespace {}  // namespace
@@ -84,14 +85,17 @@ void ReferenceCounter::ReferenceTableToProto(const ReferenceTable &table,
 
 bool ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
                                          const ObjectID &outer_id,
-                                         const rpc::Address &owner_address) {
+                                         const rpc::Address &owner_address,
+                                         bool foreign_owner_already_monitoring) {
   absl::MutexLock lock(&mutex_);
-  return AddBorrowedObjectInternal(object_id, outer_id, owner_address);
+  return AddBorrowedObjectInternal(object_id, outer_id, owner_address,
+                                   foreign_owner_already_monitoring);
 }
 
 bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
                                                  const ObjectID &outer_id,
-                                                 const rpc::Address &owner_address) {
+                                                 const rpc::Address &owner_address,
+                                                 bool foreign_owner_already_monitoring) {
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     it = object_id_refs_.emplace(object_id, Reference()).first;
@@ -99,6 +103,7 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
 
   RAY_LOG(DEBUG) << "Adding borrowed object " << object_id;
   it->second.owner_address = owner_address;
+  it->second.foreign_owner_already_monitoring |= foreign_owner_already_monitoring;
 
   if (!outer_id.IsNil()) {
     auto outer_it = object_id_refs_.find(outer_id);
@@ -212,6 +217,9 @@ void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t objec
 
 void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
                                          const std::string &call_site) {
+  if (object_id.IsNil()) {
+    return;
+  }
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -241,6 +249,9 @@ void ReferenceCounter::SetNestedRefInUseRecursive(ReferenceTable::iterator inner
 
 void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
                                             std::vector<ObjectID> *deleted) {
+  if (object_id.IsNil()) {
+    return;
+  }
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -260,6 +271,7 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   if (it->second.RefCount() == 0) {
     DeleteReferenceInternal(it, deleted);
   }
+  PRINT_REF_COUNT(it);
 }
 
 void ReferenceCounter::UpdateSubmittedTaskReferences(
@@ -650,7 +662,9 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
   absl::MutexLock lock(&mutex_);
   ReferenceTable borrowed_refs;
   for (const auto &borrowed_id : borrowed_ids) {
-    RAY_CHECK(GetAndClearLocalBorrowersInternal(borrowed_id, &borrowed_refs))
+    RAY_CHECK(GetAndClearLocalBorrowersInternal(borrowed_id,
+                                                /*for_ref_removed=*/false,
+                                                &borrowed_refs))
         << borrowed_id;
     // Decrease the ref count for each of the borrowed IDs. This is because we
     // artificially increment each borrowed ID to keep it pinned during task
@@ -687,8 +701,9 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
 }
 
 bool ReferenceCounter::GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
+                                                         bool for_ref_removed,
                                                          ReferenceTable *borrowed_refs) {
-  RAY_LOG(DEBUG) << "Pop " << object_id;
+  RAY_LOG(DEBUG) << "Pop " << object_id << " for_ref_removed " << for_ref_removed;
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;
@@ -704,15 +719,20 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(const ObjectID &object_
     return true;
   }
 
-  borrowed_refs->emplace(object_id, it->second);
-  // Clear the local list of borrowers that we have accumulated. The receiver
-  // of the returned borrowed_refs must merge this list into their own list
-  // until all active borrowers are merged into the owner.
-  it->second.borrowers.clear();
-  it->second.stored_in_objects.clear();
+  if (for_ref_removed || !it->second.foreign_owner_already_monitoring) {
+    borrowed_refs->emplace(object_id, it->second);
+    // Clear the local list of borrowers that we have accumulated. The receiver
+    // of the returned borrowed_refs must merge this list into their own list
+    // until all active borrowers are merged into the owner.
+    it->second.borrowers.clear();
+    // If a foreign owner process is waiting for this ref to be removed already,
+    // then don't clear its stored metadata. Clearing this will prevent the
+    // foreign owner from learning about the parent task borrowing this value.
+    it->second.stored_in_objects.clear();
+  }
   // Attempt to pop children.
   for (const auto &contained_id : it->second.contains) {
-    GetAndClearLocalBorrowersInternal(contained_id, borrowed_refs);
+    GetAndClearLocalBorrowersInternal(contained_id, for_ref_removed, borrowed_refs);
   }
   // We've reported our nested refs.
   it->second.has_nested_refs_to_report = false;
@@ -730,10 +750,11 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
   }
   const auto &borrower_ref = borrower_it->second;
   RAY_LOG(DEBUG) << "Borrower ref " << object_id << " has "
-                 << borrower_ref.borrowers.size() << " borrowers "
-                 << ", has local: " << borrower_ref.local_ref_count
-                 << " submitted: " << borrower_ref.submitted_task_ref_count
-                 << " contained_in_owned " << borrower_ref.contained_in_owned.size();
+                 << borrower_ref.borrowers.size() << " borrowers"
+                 << ", local: " << borrower_ref.local_ref_count
+                 << ", submitted: " << borrower_ref.submitted_task_ref_count
+                 << ", contained_in_owned: " << borrower_ref.contained_in_owned.size()
+                 << ", stored_in_objects: " << borrower_ref.stored_in_objects.size();
 
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -768,7 +789,8 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
        borrower_it->second.contained_in_borrowed_ids) {
     RAY_CHECK(borrower_ref.owner_address);
     AddBorrowedObjectInternal(object_id, contained_in_borrowed_id,
-                              *borrower_ref.owner_address);
+                              *borrower_ref.owner_address,
+                              /*foreign_owner_already_monitoring=*/false);
   }
 
   // If we own this ID, then wait for all new borrowers to reach a ref count
@@ -795,6 +817,7 @@ void ReferenceCounter::MergeRemoteBorrowers(const ObjectID &object_id,
   for (const auto &inner_id : borrower_ref.contains) {
     MergeRemoteBorrowers(inner_id, worker_addr, borrowed_refs);
   }
+  PRINT_REF_COUNT(it);
 }
 
 void ReferenceCounter::CleanupBorrowersOnRefRemoved(
@@ -815,6 +838,7 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
                                          const rpc::WorkerAddress &addr,
                                          const ObjectID &contained_in_id) {
   const ObjectID &object_id = ref_it->first;
+  RAY_LOG(DEBUG) << "WaitForRefRemoved " << object_id << ", dest=" << addr.worker_id;
   auto sub_message = std::make_unique<rpc::SubMessage>();
   auto *request = sub_message->mutable_worker_ref_removed_message();
   // Only the owner should send requests to borrowers.
@@ -832,6 +856,8 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
     RAY_CHECK(msg.has_worker_ref_removed_message());
     const ReferenceTable new_borrower_refs =
         ReferenceTableFromProto(msg.worker_ref_removed_message().borrowed_refs());
+    RAY_LOG(DEBUG) << "WaitForRefRemoved returned for " << object_id
+                   << ", dest=" << addr.worker_id;
 
     CleanupBorrowersOnRefRemoved(new_borrower_refs, object_id, addr);
     // Unsubscribe the object once the message is published.
@@ -846,6 +872,8 @@ void ReferenceCounter::WaitForRefRemoved(const ReferenceTable::iterator &ref_it,
     // When the request is failed, there's no new borrowers ref published from this
     // borrower.
     const auto object_id = ObjectID::FromBinary(object_id_binary);
+    RAY_LOG(DEBUG) << "WaitForRefRemoved failed for " << object_id
+                   << ", dest=" << addr.worker_id;
     CleanupBorrowersOnRefRemoved({}, object_id, addr);
   };
 
@@ -916,16 +944,23 @@ void ReferenceCounter::AddNestedObjectIdsInternal(
         // inside this return ID.
         RAY_CHECK(inserted);
       }
+      PRINT_REF_COUNT(inner_it);
     }
   }
 }
 
 void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
+  RAY_LOG(DEBUG) << "HandleRefRemoved " << object_id;
+  auto it = object_id_refs_.find(object_id);
+  if (it != object_id_refs_.end()) {
+    PRINT_REF_COUNT(it);
+  }
   ReferenceTable borrowed_refs;
-  RAY_UNUSED(GetAndClearLocalBorrowersInternal(object_id, &borrowed_refs));
+  RAY_UNUSED(GetAndClearLocalBorrowersInternal(object_id,
+                                               /*for_ref_removed=*/true, &borrowed_refs));
   for (const auto &pair : borrowed_refs) {
     RAY_LOG(DEBUG) << pair.first << " has " << pair.second.borrowers.size()
-                   << " borrowers";
+                   << " borrowers, stored in " << pair.second.stored_in_objects.size();
   }
 
   // Send the owner information about any new borrowers.
@@ -936,8 +971,8 @@ void ReferenceCounter::HandleRefRemoved(const ObjectID &object_id) {
   ReferenceTableToProto(borrowed_refs,
                         worker_ref_removed_message->mutable_borrowed_refs());
 
-  RAY_LOG(DEBUG) << "Publishing WaitForRefRemoved message, message has "
-                 << worker_ref_removed_message->borrowed_refs().size()
+  RAY_LOG(DEBUG) << "Publishing WaitForRefRemoved message for " << object_id
+                 << ", message has " << worker_ref_removed_message->borrowed_refs().size()
                  << " borrowed references.";
   object_info_publisher_->Publish(pub_message);
 }
@@ -1100,7 +1135,8 @@ absl::optional<LocalityData> ReferenceCounter::GetLocalityData(
   const auto object_size = it->second.object_size;
   if (object_size < 0) {
     // We don't know the object size so we can't returned valid locality data.
-    RAY_LOG(DEBUG) << "Reference " << it->second.call_site << " for object " << object_id
+    RAY_LOG(DEBUG) << "Reference [" << it->second.call_site << "] for object "
+                   << object_id
                    << " has an unknown object size, locality data not available";
     return absl::nullopt;
   }
@@ -1181,9 +1217,9 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto &spilled_node_id = it->second.spilled_node_id;
   const auto &optional_primary_node_id = it->second.pinned_at_raylet_id;
   const auto &primary_node_id = optional_primary_node_id.value_or(NodeID::Nil());
-  RAY_LOG(DEBUG) << "Publish a message for " << object_id << ", " << locations.size()
-                 << " locations, spilled url: " << spilled_url
-                 << ", spilled node ID: " << spilled_node_id
+  RAY_LOG(DEBUG) << "Published message for " << object_id << ", " << locations.size()
+                 << " locations, spilled url: [" << spilled_url
+                 << "], spilled node ID: " << spilled_node_id
                  << ", and object size: " << object_size
                  << ", and primary node ID: " << primary_node_id;
   rpc::PubMessage pub_message;
