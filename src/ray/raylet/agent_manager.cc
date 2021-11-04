@@ -131,10 +131,11 @@ void AgentManager::CreateRuntimeEnv(
     const JobID &job_id, const std::string &serialized_runtime_env,
     const std::string &serialized_allocated_resource_instances,
     CreateRuntimeEnvCallback callback) {
+  // If the agent cannot be started, fail the request.
   if (!should_start_agent_) {
     RAY_LOG(ERROR) << "Not all required Ray dependencies for the runtime_env "
                       "feature were found. To install the required dependencies, "
-                   << "please run `pip install 'ray[default]'`.";
+                   << "please run `pip install \"ray[default]\"`.";
     // Execute the callback after the currently executing callback finishes.  Otherwise
     // the task may be erased from the dispatch queue during the queue iteration in
     // ClusterTaskManager::DispatchScheduledTasksToWorkers(), invalidating the iterator
@@ -146,7 +147,21 @@ void AgentManager::CreateRuntimeEnv(
         0);
     return;
   }
+
   if (runtime_env_agent_client_ == nullptr) {
+    // If the agent cannot be restarted anymore, fail the request.
+    if (agent_restart_count_ >= RayConfig::instance().agent_max_restart_count()) {
+      RAY_LOG(WARNING) << "Runtime environment " << serialized_runtime_env
+                       << " cannot be created on this node because the agent is dead.";
+      delay_executor_(
+          [callback, serialized_runtime_env] {
+            callback(/*successful=*/false,
+                     /*serialized_runtime_env_context=*/serialized_runtime_env);
+          },
+          0);
+      return;
+    }
+
     RAY_LOG(INFO)
         << "Runtime env agent is not registered yet. Will retry CreateRuntimeEnv later: "
         << serialized_runtime_env;

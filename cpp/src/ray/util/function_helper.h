@@ -16,6 +16,7 @@
 
 #include <ray/api/common_types.h>
 #include <ray/api/function_manager.h>
+
 #include <boost/dll.hpp>
 #include <memory>
 #include <msgpack.hpp>
@@ -28,7 +29,7 @@ namespace ray {
 namespace internal {
 
 using EntryFuntion = std::function<msgpack::sbuffer(
-    const std::string &, const std::vector<msgpack::sbuffer> &, msgpack::sbuffer *)>;
+    const std::string &, const ArgsBufferList &, msgpack::sbuffer *)>;
 
 class FunctionHelper {
  public:

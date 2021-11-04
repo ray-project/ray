@@ -86,10 +86,10 @@ In this case, there are two recommended setup.
 .. code-block:: bash
 
   # Head node. Set `num_cpus=0` to avoid tasks are being scheduled on a head node.
-  RAY_SCHEDULER_SPREAD_THRESHOLD=0.0 ray start --head --num-cpus=0
+  RAY_scheduler_spread_threshold=0.0 ray start --head --num-cpus=0
 
   # Worker node.
-  RAY_SCHEDULER_SPREAD_THRESHOLD=0.0 ray start --address=[head-node-address]
+  RAY_scheduler_spread_threshold=0.0 ray start --address=[head-node-address]
 
 Out-of-Core Data Processing
 ---------------------------

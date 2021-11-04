@@ -357,9 +357,6 @@ Process WorkerPool::StartWorkerProcess(
   if (language == Language::PYTHON || language == Language::JAVA) {
     if (serialized_runtime_env != "{}" && serialized_runtime_env != "") {
       worker_command_args.push_back("--serialized-runtime-env=" + serialized_runtime_env);
-      // Allocated_resource_json is only used in "shim process".
-      worker_command_args.push_back("--allocated-instances-serialized-json=" +
-                                    allocated_instances_serialized_json);
 
       worker_command_args.push_back("--language=" + Language_Name(language));
 
@@ -553,20 +550,22 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
   if (job_config.runtime_env().runtime_env_eager_install() &&
       job_config.has_runtime_env()) {
     auto const &runtime_env = job_config.runtime_env().serialized_runtime_env();
-    RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
-                  << ". The runtime environment was " << runtime_env << ".";
-    CreateRuntimeEnv(
-        runtime_env, job_id,
-        [job_id](bool successful, const std::string &serialized_runtime_env_context) {
-          if (successful) {
-            RAY_LOG(INFO) << "[Eagerly] Create runtime env successful for job " << job_id
-                          << ". The result context was " << serialized_runtime_env_context
-                          << ".";
-          } else {
-            RAY_LOG(ERROR) << "[Eagerly] Couldn't create a runtime environment for job "
-                           << job_id << ".";
-          }
-        });
+    if (runtime_env != "{}" && runtime_env != "") {
+      RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
+                    << ". The runtime environment was " << runtime_env << ".";
+      CreateRuntimeEnv(
+          runtime_env, job_id,
+          [job_id](bool successful, const std::string &serialized_runtime_env_context) {
+            if (successful) {
+              RAY_LOG(INFO) << "[Eagerly] Create runtime env successful for job "
+                            << job_id << ". The result context was "
+                            << serialized_runtime_env_context << ".";
+            } else {
+              RAY_LOG(ERROR) << "[Eagerly] Couldn't create a runtime environment for job "
+                             << job_id << ".";
+            }
+          });
+    }
   }
 }
 
