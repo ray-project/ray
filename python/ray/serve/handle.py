@@ -127,10 +127,10 @@ class RayServeHandle:
         """Set options for this handle.
 
         Args:
-            method_name(str): The method to invoke on the backend.
+            method_name(str): The method to invoke.
             http_method(str): The HTTP method to use for the request.
             shard_key(str): A string to use to deterministically map this
-                request to a backend if there are multiple for this endpoint.
+                request to a deployment if there are multiple.
         """
         new_options_dict = self.handle_options.__dict__.copy()
         user_modified_options_dict = {
@@ -227,7 +227,7 @@ class RayServeSyncHandle(RayServeHandle):
             request_data(dict, Any): If it's a dictionary, the data will be
                 available in ``request.json()`` or ``request.form()``.
                 If it's a Starlette Request object, it will be passed in to the
-                backend directly, unmodified. Otherwise, the data will be
+                handler directly, unmodified. Otherwise, the data will be
                 available in ``request.data``.
             ``**kwargs``: All keyword arguments will be available in
                 ``request.args``.

@@ -1,15 +1,8 @@
-from base64 import b64encode
+import dataclasses
 import logging
 from pathlib import Path
 import tempfile
 from typing import Any, Dict, List, Optional, Tuple
-
-try:
-    from pydantic import BaseModel
-    from pydantic.main import ModelMetaclass
-except ImportError:
-    BaseModel = object
-    ModelMetaclass = object
 
 import requests
 
@@ -17,9 +10,8 @@ from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
 from ray._private.job_manager import JobStatus
 from ray.dashboard.modules.job.data_types import (
-    GetPackageRequest, GetPackageResponse, UploadPackageRequest, JobSpec,
-    JobSubmitRequest, JobSubmitResponse, JobStatusRequest, JobStatusResponse,
-    JobLogsRequest, JobLogsResponse)
+    GetPackageResponse, JobSubmitRequest, JobSubmitResponse, JobStatusResponse,
+    JobLogsResponse)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -37,32 +29,33 @@ class JobSubmissionClient:
             raise ConnectionError(
                 f"Failed to connect to Ray at address: {self._address}.")
 
-    def _do_request(
-            self,
-            method: str,
-            endpoint: str,
-            data: BaseModel,
-            response_type: Optional[ModelMetaclass] = None) -> Dict[Any, Any]:
+    def _do_request(self,
+                    method: str,
+                    endpoint: str,
+                    *,
+                    data: Optional[bytes] = None,
+                    json_data: Optional[dict] = None,
+                    params: Optional[dict] = None,
+                    response_type: Optional[type] = None) -> Optional[object]:
         url = f"{self._address}/{endpoint}"
-        json_payload = data.dict()
-        logger.debug(f"Sending request to {url} with payload {json_payload}.")
-        r = requests.request(method, url, json=json_payload)
+        logger.info(f"Sending request to {url} with json: {json_data}.")
+        r = requests.request(
+            method, url, data=data, json=json_data, params=params)
+
         r.raise_for_status()
-
-        response_json = r.json()
-        if not response_json["result"]:  # Indicates failure.
-            raise Exception(response_json["msg"])
-
         if response_type is None:
             return None
         else:
-            # Dashboard "framework" returns double-nested "data" field...
-            return response_type(**response_json["data"]["data"])
+            response = r.json()
+            logger.info(f"Got response: {response}.")
+            return response_type(**response)
 
     def _package_exists(self, package_uri: str) -> bool:
-        req = GetPackageRequest(package_uri=package_uri)
         resp = self._do_request(
-            "GET", "package", req, response_type=GetPackageResponse)
+            "GET",
+            "package",
+            params={"package_uri": package_uri},
+            response_type=GetPackageResponse)
         return resp.package_exists
 
     def _upload_package(self,
@@ -78,10 +71,11 @@ class JobSubmissionClient:
                 package_file,
                 include_parent_dir=include_parent_dir,
                 excludes=excludes)
-            req = UploadPackageRequest(
-                package_uri=package_uri,
-                encoded_package_bytes=b64encode(package_file.read_bytes()))
-            self._do_request("PUT", "package", req)
+            self._do_request(
+                "PUT",
+                "package",
+                data=package_file.read_bytes(),
+                params={"package_uri": package_uri})
             package_file.unlink()
 
     def _upload_package_if_needed(self,
@@ -122,18 +116,27 @@ class JobSubmissionClient:
         metadata = metadata or {}
 
         self._upload_working_dir_if_needed(runtime_env)
-        job_spec = JobSpec(
+        req = JobSubmitRequest(
             entrypoint=entrypoint, runtime_env=runtime_env, metadata=metadata)
-        req = JobSubmitRequest(job_spec=job_spec)
-        resp = self._do_request("POST", "submit", req, JobSubmitResponse)
+        resp = self._do_request(
+            "POST",
+            "submit",
+            json_data=dataclasses.asdict(req),
+            response_type=JobSubmitResponse)
         return resp.job_id
 
     def get_job_status(self, job_id: str) -> JobStatus:
-        req = JobStatusRequest(job_id=job_id)
-        resp = self._do_request("GET", "status", req, JobStatusResponse)
+        resp = self._do_request(
+            "GET",
+            "status",
+            params={"job_id": job_id},
+            response_type=JobStatusResponse)
         return resp.job_status
 
     def get_job_logs(self, job_id: str) -> Tuple[str, str]:
-        req = JobLogsRequest(job_id=job_id)
-        resp = self._do_request("GET", "logs", req, JobLogsResponse)
+        resp = self._do_request(
+            "GET",
+            "logs",
+            params={"job_id": job_id},
+            response_type=JobLogsResponse)
         return resp.stdout, resp.stderr

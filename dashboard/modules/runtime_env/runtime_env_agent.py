@@ -219,6 +219,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 raise ValueError(
                     "RuntimeEnvAgent received DeleteURI request "
                     f"for unsupported plugin {plugin}. URI: {uri}")
+
             if failed_uris:
                 return runtime_env_agent_pb2.DeleteURIsReply(
                     status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,

@@ -347,8 +347,7 @@ class ParsedRuntimeEnv(dict):
 
     def get_uris(self) -> List[str]:
         # TODO(architkulkarni): this should programmatically be extended with
-        # URIs from all plugins.  We should probably also only generate URIs
-        # once in __init__.
+        # URIs from all plugins.
         plugin_uris = []
         if "working_dir" in self:
             plugin_uris.append(
@@ -359,6 +358,7 @@ class ParsedRuntimeEnv(dict):
         if "conda" in self:
             plugin_uris.append(
                 _encode_plugin_uri("conda", conda.get_uri(self)))
+
         return plugin_uris
 
     @classmethod
