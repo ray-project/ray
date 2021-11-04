@@ -365,11 +365,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         pass
 
     @abstractmethod
-    def resource_string(self) -> str:
-        """Returns a string describing the total resources available."""
-        pass
-
-    @abstractmethod
     def restore(self,
                 trial: Trial,
                 checkpoint: Optional[Checkpoint] = None,

@@ -869,25 +869,6 @@ class RayTrialExecutor(TrialExecutor):
         else:
             return "Resources requested: ?"
 
-    def resource_string(self) -> str:
-        """Returns a string describing the total resources available."""
-        if self._resources_initialized:
-            res_str = ("{} CPUs, {} GPUs, "
-                       "{} GiB heap, {} GiB objects".format(
-                           self._avail_resources.cpu,
-                           self._avail_resources.gpu,
-                           _to_gb(self._avail_resources.memory),
-                           _to_gb(self._avail_resources.object_store_memory)))
-            if self._avail_resources.custom_resources:
-                custom = ", ".join(
-                    "{} {}".format(
-                        self._avail_resources.get_res_total(name), name)
-                    for name in self._avail_resources.custom_resources)
-                res_str += " ({})".format(custom)
-            return res_str
-        else:
-            return "? CPUs, ? GPUs"
-
     def on_step_begin(self, trials: List[Trial]) -> None:
         """Before step() is called, update the available resources."""
         self._update_avail_resources()

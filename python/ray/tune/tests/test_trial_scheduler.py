@@ -262,9 +262,6 @@ class _MockTrialExecutor(TrialExecutor):
     def has_resources_for_trial(self, trial: Trial):
         return True
 
-    def resource_string(self):
-        return "This is a mock resource_string."
-
 
 class _MockTrialRunner():
     def __init__(self, scheduler):
