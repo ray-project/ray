@@ -64,11 +64,7 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
     out.writeObject(this.getType());
     RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
     OwnershipInfo info = runtime.getObjectStore().getOwnershipInfo(this.getId());
-
-    out.writeInt(info.getSerializedOwnerAddress().length);
-    out.write(info.getSerializedOwnerAddress());
-    out.writeInt(info.getSerializedObjectStatus().length);
-    out.write(info.getSerializedObjectStatus());
+    out.writeObject(info);
     ObjectSerializer.addContainedObjectId(this.getId());
   }
 
@@ -76,21 +72,14 @@ public final class ObjectRefImpl<T> implements ObjectRef<T>, Externalizable {
   public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
     this.id = (ObjectId) in.readObject();
     this.type = (Class<T>) in.readObject();
-    int ownerAddressByteslen = in.readInt();
-
-    byte[] serializedOwnerAddress = new byte[ownerAddressByteslen];
-    in.readFully(serializedOwnerAddress);
-    int objectStatusBytesLen = in.readInt();
-    byte[] serializedObjectStatus = new byte[objectStatusBytesLen];
-    in.readFully(serializedObjectStatus);
+    OwnershipInfo ownershipInfo = (OwnershipInfo) in.readObject();
     addLocalReference();
     RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
     runtime
         .getObjectStore()
         .registerOwnershipInfoAndResolveFuture(
             this.id,
-            ObjectSerializer.getOuterObjectId(),
-            new OwnershipInfo(serializedOwnerAddress, serializedObjectStatus));
+            ObjectSerializer.getOuterObjectId(), ownershipInfo);
   }
 
   private void addLocalReference() {

@@ -118,7 +118,7 @@ public class LocalModeObjectStore extends ObjectStore {
 
   @Override
   public OwnershipInfo getOwnershipInfo(ObjectId objectId) {
-    return new OwnershipInfo(new byte[0], new byte[0]);
+    return null;
   }
 
   @Override
