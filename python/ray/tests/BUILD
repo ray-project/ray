@@ -251,6 +251,16 @@ py_test_module_list(
   deps = ["//:ray_lib"],
 )
 
+py_test_module_list(
+  files = [
+    "test_runtime_env_conda.py"
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "post_wheel_build", "team:serve"],
+  deps = ["//:ray_lib"],
+)
+
 py_test(
     name = "test_actor_group",
     size = "medium",
