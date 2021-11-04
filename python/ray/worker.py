@@ -392,9 +392,8 @@ class Worker:
             # We always run the task locally.
             function({"worker": self})
             # Check if the function has already been put into redis.
-            function_exported = _internal_kv_put(
-                b"Lock:" + key, b"1", overwrite=False)
-            if function_exported:
+            function_exported = self.redis_client.setnx(b"Lock:" + key, 1)
+            if not function_exported:
                 # In this case, the function has already been exported, so
                 # we don't need to export it again.
                 return
@@ -403,14 +402,17 @@ class Worker:
                                      "function", self)
 
             # Run the function on all workers.
-            _internal_kv_put(f"{key}:job_id", self.current_job_id.binary())
-            _internal_kv_put(f"{key}:function_id", function_to_run_id)
-            _internal_kv_put(f"{key}:function", pickled_function)
-            # TODO: redis-removal pubsub
+            self.redis_client.hset(
+                key,
+                mapping={
+                    "job_id": self.current_job_id.binary(),
+                    "function_id": function_to_run_id,
+                    "function": pickled_function,
+                })
             self.redis_client.rpush("Exports", key)
-            # TODO(rkn): If the worker fails after it calls locking and before
-            # it successfully completes the put and rpush, then the program
-            # will most likely hang. This could be fixed by making these three
+            # TODO(rkn): If the worker fails after it calls setnx and before it
+            # successfully completes the hset and rpush, then the program will
+            # most likely hang. This could be fixed by making these three
             # operations into a transaction (or by implementing a custom
             # command that does all three things).
 
