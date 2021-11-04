@@ -659,6 +659,12 @@ def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
 
         cluster.add_node(num_cpus=16, object_store_memory=1e9)
         cluster.wait_for_nodes()
+        # We need to init here so that we can make sure it's connecting to
+        # the raylet where it only has cpu resources.
+        # This is a hacky way to prevent scheduling hanging which will
+        # schedule <CPU:1> job to the node with GPU and for <GPU:1, CPU:1> task
+        # there is no node has this resource.
+        ray.init(address="auto")
         cluster.add_node(num_cpus=16, num_gpus=1)
         cluster.wait_for_nodes()
         NUM_CPU_BUNDLES = 30
@@ -681,7 +687,6 @@ def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
                 time.sleep(0.2)
                 print("train ", self.i)
 
-        ray.init(address="auto")
         bundles = [{"CPU": 1, "GPU": 1}]
         bundles += [{"CPU": 1} for _ in range(NUM_CPU_BUNDLES)]
         pg = placement_group(bundles, strategy="PACK")

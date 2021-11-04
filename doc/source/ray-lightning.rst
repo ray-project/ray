@@ -66,7 +66,7 @@ Multi-node Distributed Training
 -------------------------------
 
 Using the same examples above, you can run distributed training on a multi-node cluster with just 2 simple steps.
-1) `Use Ray's cluster launcher <https://docs.ray.io/en/master/cluster/launcher.html>`__ to start a Ray cluster- ``ray up my_cluster_config.yaml``.
+1) `Use Ray's cluster launcher <https://docs.ray.io/en/master/cluster/cloud.html>`__ to start a Ray cluster- ``ray up my_cluster_config.yaml``.
 2) `Execute your Python script on the Ray cluster <https://docs.ray.io/en/master/cluster/commands.html#running-ray-scripts-on-the-cluster-ray-submit>`__\ - ``ray submit my_cluster_config.yaml train.py``. This will ``rsync`` your training script to the head node, and execute it on the Ray cluster.
 
 You no longer have to set environment variables or configurations and run your training script on every single node.
@@ -184,7 +184,7 @@ FAQ
 
 ..
 
-   RaySGD already has a `Pytorch Lightning integration <https://docs.ray.io/en/master/raysgd/raysgd_ptl.html>`__. What's the difference between this integration and that?
+   RaySGD already has a `Pytorch Lightning integration <https://docs.ray.io/en/master/raysgd/raysgd_ref.html>`__. What's the difference between this integration and that?
 
 
 The key difference is which Trainer you'll be interacting with. In this library, you will still be using Pytorch Lightning's ``Trainer``. You'll be able to leverage all the features of Pytorch Lightning, and Ray is used just as a backend to handle distributed training.

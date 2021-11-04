@@ -7,7 +7,8 @@ debian_packages:
 python:
   # These dependencies should be handled by requirements_rllib.txt and
   # requirements_ml_docker.txt
-  pip_packages: []
+  pip_packages:
+    - torch==1.9.0 # TODO(amogkam): Remove after nightly images are available.
   conda_packages: []
 
 post_build_cmds:
@@ -16,7 +17,7 @@ post_build_cmds:
   - sudo ln -s /usr/local/cuda /usr/local/nvidia
   - sudo ln -s /usr/local/cuda/lib64/libcusolver.so.11 /usr/local/cuda/lib64/libcusolver.so.10
   - pip install tensorflow==2.5.0
-  # END: TO-DO
+  # END: TODO
 
   - pip uninstall -y ray || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
