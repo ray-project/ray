@@ -610,6 +610,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// is inlined (not stored in plasma), then its lineage ref count is 0
     /// because any dependent task will already have the value of the object.
     size_t lineage_ref_count = 0;
+    /// Whether the lineage of this object was evicted due to memory pressure.
     bool lineage_evicted = false;
     /// Whether this object has been spilled to external storage.
     bool spilled = false;
@@ -626,7 +627,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Callback that is called when this process is no longer a borrower
     /// (RefCount() == 0).
     std::function<void(const ObjectID &)> on_ref_removed;
-
+    /// We keep a FIFO queue of objects in scope so that we can choose lineage
+    /// to evict under memory pressure. This is a pointer to this object's
+    /// entry in the queue.
     absl::optional<std::list<ObjectID>::iterator> reconstructable_owned_objects_it =
         absl::nullopt;
   };
