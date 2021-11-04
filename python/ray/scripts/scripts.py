@@ -160,7 +160,7 @@ def continue_debug_session(live_jobs: Set[str]):
                 active_session, namespace=ray_constants.KV_NAMESPACE_PDB)
             if json.loads(data)["job_id"] not in live_jobs:
                 ray.experimental.internal_kv._internal_kv_del(
-                    active_session, namespace=KV_NAMESPACE_PDB)
+                    active_session, namespace=ray_constants.KV_NAMESPACE_PDB)
                 continue
 
             print("Continuing pdb session in different process...")
