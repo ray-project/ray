@@ -1,4 +1,5 @@
 import math
+import json
 import time
 from collections import defaultdict, OrderedDict
 from enum import Enum
@@ -51,6 +52,26 @@ SLOW_STARTUP_WARNING_PERIOD_S = 30
 
 ALL_REPLICA_STATES = list(ReplicaState)
 USE_PLACEMENT_GROUP = os.environ.get("SERVE_USE_PLACEMENT_GROUP", "1") != "0"
+_SCALING_LOG_ENABLED = os.environ.get("SERVE_ENABLE_SCALING_LOG", "0") != "0"
+
+
+def print_verbose_scaling_log():
+    assert _SCALING_LOG_ENABLED
+
+    log_path = "/tmp/ray/session_latest/logs/monitor.log"
+    last_n_lines = 50
+    autoscaler_log_last_n_lines = []
+    if os.path.exists(log_path):
+        with open(log_path) as f:
+            autoscaler_log_last_n_lines = f.readlines()[-last_n_lines:]
+
+    debug_info = {
+        "nodes": ray.nodes(),
+        "available_resources": ray.available_resources(),
+        "total_resources": ray.cluster_resources(),
+        "autoscaler_logs": autoscaler_log_last_n_lines,
+    }
+    logger.error(f"Scaling information\n{json.dumps(debug_info, indent=2)}")
 
 
 class ActorReplicaWrapper:
@@ -1130,6 +1151,8 @@ class BackendState:
                     f"Resources required for each replica: {required}, "
                     f"resources available: {available}. "
                     f"component=serve deployment={self._name}")
+                if _SCALING_LOG_ENABLED:
+                    print_verbose_scaling_log()
 
             if len(pending_initialization) > 0:
                 logger.warning(
