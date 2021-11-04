@@ -1593,11 +1593,15 @@ TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, OneCpuInfeasibleTask) {
     const auto &resource_load_by_shape = data.resource_load_by_shape();
     ASSERT_EQ(resource_load_by_shape.resource_demands().size(), demand_types[i]);
 
-    // 1 CPU demand currently is always the 1st.
-    const auto &demand = resource_load_by_shape.resource_demands()[0];
-    EXPECT_EQ(demand.num_infeasible_requests_queued(), num_infeasible_1cpu[i]);
-    ASSERT_EQ(demand.shape().size(), 1);
-    ASSERT_EQ(demand.shape().at("CPU"), 1);
+    // Find the 1-cpu task and make sure the demand quantities are correct.
+    bool found = false;
+    for (const auto &demand : resource_load_by_shape.resource_demands()) {
+      if (demand.shape().size() == 1 && demand.shape().at("CPU") == 1) {
+        found = true;
+        EXPECT_EQ(demand.num_infeasible_requests_queued(), num_infeasible_1cpu[i]);
+      }
+    }
+    ASSERT_TRUE(found);
   }
 }
 
