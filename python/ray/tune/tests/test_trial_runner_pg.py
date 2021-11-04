@@ -244,18 +244,17 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         self.testPlacementGroupDistributedTraining(reuse_actors=True)
 
 
-# TODO(xwjiang): Clarify this test (https://github.com/ray-project/ray/issues/19983).  # noqa
-# class PlacementGroupNoAutoSetupTest(unittest.TestCase):
-#     def testPlacementGroupNoCPUDriver(self):
-#         """Bundles with only GPU:1 but no CPU should work"""
-#         ray.init(num_gpus=1, num_cpus=1)
-#         pgf = PlacementGroupFactory([{"GPU": 1, "CPU": 0}, {"CPU": 1}])
-#
-#         def train(config):
-#             time.sleep(1)
-#             return 5
-#
-#         tune.run(train, resources_per_trial=pgf)
+def test_placement_group_no_cpu_trainer():
+    """Bundles with only GPU:1 but no CPU should work"""
+    ray.init(num_gpus=1, num_cpus=1)
+    pgf = PlacementGroupFactory([{"GPU": 1, "CPU": 0}, {"CPU": 1}])
+
+    def train(config):
+        time.sleep(1)
+        return 5
+
+    tune.run(train, resources_per_trial=pgf)
+
 
 if __name__ == "__main__":
     import pytest

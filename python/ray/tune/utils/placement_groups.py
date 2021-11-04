@@ -466,7 +466,7 @@ class PlacementGroupManager:
         if not pgf.head_bundle_is_empty:
             # Pass the full resource specs of the first bundle per default
             head_bundle = pg.bundle_specs[0].copy()
-            num_cpus = head_bundle.pop("CPU", None)
+            num_cpus = head_bundle.pop("CPU", 0)
             num_gpus = head_bundle.pop("GPU", None)
 
             # Only custom resources remain in `head_bundle`
