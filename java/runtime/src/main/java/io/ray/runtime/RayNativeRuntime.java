@@ -1,7 +1,9 @@
 package io.ray.runtime;
 
 import com.google.common.base.Preconditions;
-import com.google.protobuf.ByteString;
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.protobuf.util.JsonFormat;
+import com.google.protobuf.util.JsonFormat.Printer;
 import io.ray.api.BaseActorHandle;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.JobId;
@@ -24,7 +26,6 @@ import io.ray.runtime.task.NativeTaskSubmitter;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.util.BinaryFileUtil;
 import io.ray.runtime.util.JniUtils;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -110,15 +111,21 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
                 .setNumJavaWorkersPerProcess(rayConfig.numWorkersPerProcess)
                 .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
                 .addAllCodeSearchPath(rayConfig.codeSearchPath);
-        SerializedRuntimeEnv.Builder serializedRuntimeEnvBuilder = SerializedRuntimeEnv.newBuilder();
+        SerializedRuntimeEnv.Builder serializedRuntimeEnvBuilder = 
+            SerializedRuntimeEnv.newBuilder();
         if (!rayConfig.workerEnv.isEmpty()) {
           // TODO(SongGuyang): Suppport complete runtime env interface for users.
           // Set worker env to the serialized runtime env json.
           RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
           runtimeEnvBuilder.putAllEnvVars(rayConfig.workerEnv);
-          serializedRuntimeEnvBuilder.setSerializedRuntimeEnv(runtimeEnvBuilder.build().toByteString());
+          Printer printer = JsonFormat.printer();
+          try {
+            serializedRuntimeEnvBuilder.setSerializedRuntimeEnv(printer.print(runtimeEnvBuilder));
+          } catch (InvalidProtocolBufferException e) {
+            throw new RuntimeException(e);
+          }
         } else {
-          serializedRuntimeEnvBuilder.setSerializedRuntimeEnv(ByteString.copyFrom(new byte[0]));
+          serializedRuntimeEnvBuilder.setSerializedRuntimeEnv("{}");
         }
         jobConfigBuilder.setSerializedRuntimeEnv(serializedRuntimeEnvBuilder.build());
         serializedJobConfig = jobConfigBuilder.build().toByteArray();
