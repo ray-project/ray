@@ -12,9 +12,9 @@ from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (DeploymentInfo, Duration, GoalId, ReplicaTag,
                               ReplicaName, RunningReplicaInfo)
 from ray.serve.config import DeploymentConfig
-from ray.serve.constants import (
-    CONTROLLER_STARTUP_GRACE_PERIOD_S, SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME,
-    MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT, MAX_NUM_DELETED_DEPLOYMENTS)
+from ray.serve.constants import (CONTROLLER_STARTUP_GRACE_PERIOD_S,
+                                 MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+                                 MAX_NUM_DELETED_DEPLOYMENTS)
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
@@ -1237,8 +1237,7 @@ class BackendStateManager:
         """
         all_replica_names = [
             actor_name for actor_name in all_current_actor_names
-            if (SERVE_CONTROLLER_NAME not in actor_name
-                and SERVE_PROXY_NAME not in actor_name)
+            if ReplicaName.is_replica_name(actor_name)
         ]
         deployment_to_current_replicas = defaultdict(list)
         if len(all_replica_names) > 0:

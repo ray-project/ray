@@ -595,14 +595,14 @@ def test_snapshot_always_written_to_internal_kv(
 def test_standalone_actor_outside_serve():
     # https://github.com/ray-project/ray/issues/20066
 
-    ray.init(num_cpus=8)
+    ray.init(num_cpus=8, namespace="serve")
 
     @ray.remote
     class MyActor:
         def ready(self):
             return
 
-    a = MyActor.remote()
+    a = MyActor.options(name="my_actor").remote()
     ray.get(a.ready.remote())
 
     serve.start()
