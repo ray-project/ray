@@ -341,6 +341,12 @@ const NodeResources &ClusterResourceScheduler::GetLocalNodeResources() const {
   return node_it->second.GetLocalView();
 }
 
+NodeResources *ClusterResourceScheduler::GetMutableLocalNodeResources() {
+  auto node_it = nodes_.find(local_node_id_);
+  RAY_CHECK(node_it != nodes_.end());
+  return node_it->second.GetMutableLocalView();
+}
+
 int64_t ClusterResourceScheduler::NumNodes() const { return nodes_.size(); }
 
 const StringIdMap &ClusterResourceScheduler::GetStringIdMap() const {
@@ -955,6 +961,15 @@ void ClusterResourceScheduler::UpdateLastResourceUsage(
 }
 
 void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_data) {
+  // Update local object store usage and report to other raylets.
+  if (get_used_object_store_memory_ != nullptr) {
+    auto &capacity =
+        GetMutableLocalNodeResources()->predefined_resources[OBJECT_STORE_MEM];
+    double used = get_used_object_store_memory_();
+    double total = capacity.total.Double();
+    capacity.available = FixedPoint(total >= used ? total - used : 0.0);
+  }
+
   NodeResources resources;
 
   RAY_CHECK(GetNodeResources(local_node_id_, &resources))
@@ -976,15 +991,6 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
     if (node.first != local_node_id_) {
       node.second.ResetLocalView();
     }
-  }
-
-  // Automatically report object store usage.
-  // XXX: this MUTATES the resources field, which is needed since we are storing
-  // it in last_report_resources_.
-  if (get_used_object_store_memory_ != nullptr) {
-    auto &capacity = resources.predefined_resources[OBJECT_STORE_MEM];
-    double used = get_used_object_store_memory_();
-    capacity.available = FixedPoint(capacity.total.Double() - used);
   }
 
   for (int i = 0; i < PredefinedResources_MAX; i++) {
