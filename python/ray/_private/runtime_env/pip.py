@@ -9,7 +9,7 @@ def build_proto_pip_runtime_env(runtime_env_dict: dict, runtime_env: RuntimeEnv)
     """ Construct pip runtime env protobuf from runtime env dict.
     """
     if runtime_env_dict.get("pip"):
-        runtime_env.pip_runtime_env.config.packages(runtime_env["pip"])
+        runtime_env.pip_runtime_env.config.packages.extend(runtime_env_dict["pip"])
 
 
 def parse_proto_pip_runtime_env(runtime_env: RuntimeEnv, runtime_env_dict: dict):
