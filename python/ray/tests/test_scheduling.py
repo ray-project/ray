@@ -14,6 +14,7 @@ import ray
 from ray.internal.internal_api import memory_summary
 import ray.util.accelerators
 import ray.cluster_utils
+from ray._private.test_utils import fetch_prometheus
 
 from ray._private.test_utils import (wait_for_condition, new_scheduler_enabled,
                                      Semaphore, object_memory_usage,
@@ -672,6 +673,46 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
     ray.get(
         [workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)], timeout=30)
     ray.get(trainer.train.remote(), timeout=30)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular",
+    [{
+        "_system_config": {"metrics_report_interval_ms": 1000, "complex_scheduling_class": True}
+        }],
+    indirect=True)
+def test_scheduling_class_depth(ray_start_regular):
+
+    node_info = ray.nodes()[0]
+    metrics_export_port = node_info["MetricsExportPort"]
+    addr = node_info["NodeManagerAddress"]
+    prom_addr = f"{addr}:{metrics_export_port}"
+
+    @ray.remote(num_cpus=1000)
+    def infeasible():
+        pass
+
+    @ray.remote
+    def start_infeasible():
+        ray.get(infeasible.remote())
+
+    start_infeasible.remote()
+    infeasible.remote()
+
+
+    # We expect the 2 calls to `infeasible` to be separate scheduling classes
+    # because one has depth=1, and the other has depth=2.
+
+    metric_name = "ray_internal_num_infeasible_scheduling_classes"
+    def condition():
+        _, metric_names, metric_samples = fetch_prometheus([prom_addr])
+        if metric_name in metric_names:
+            for sample in metric_samples:
+                if sample.name == metric_name and sample.value == 2.0:
+                    return True
+        return False
+
+    wait_for_condition(condition)
 
 
 if __name__ == "__main__":
