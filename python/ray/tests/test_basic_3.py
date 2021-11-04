@@ -284,8 +284,9 @@ def test_worker_startup_count(ray_start_cluster):
         return None
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
+    timeout_limit = 40 if sys.platform == "win32" else 10
     start = time.time()
-    wait_for_condition(lambda: get_num_workers() == 16)
+    wait_for_condition(lambda: get_num_workers() == 16, timeout=timeout_limit)
     time_waited = time.time() - start
     print(f"Waited {time_waited} for debug_state.txt to be updated")
 
