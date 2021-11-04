@@ -12,7 +12,7 @@ from ray.rllib.utils.test_utils import check_compute_single_action, \
 class TestAPPO(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(local_mode=True)  #TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls):
@@ -25,16 +25,16 @@ class TestAPPO(unittest.TestCase):
         num_iterations = 2
 
         for _ in framework_iterator(config):
-            #print("w/o v-trace")
-            #_config = config.copy()
-            #_config["vtrace"] = False
-            #trainer = ppo.APPOTrainer(config=_config, env="CartPole-v0")
-            #for i in range(num_iterations):
-            #    results = trainer.train()
-            #    check_train_results(results)
-            #    print(results)
-            #check_compute_single_action(trainer)
-            #trainer.stop()
+            print("w/o v-trace")
+            _config = config.copy()
+            _config["vtrace"] = False
+            trainer = ppo.APPOTrainer(config=_config, env="CartPole-v0")
+            for i in range(num_iterations):
+                results = trainer.train()
+                check_train_results(results)
+                print(results)
+            check_compute_single_action(trainer)
+            trainer.stop()
 
             print("w/ v-trace")
             _config = config.copy()

@@ -410,28 +410,17 @@ def build_eager_tf_policy(
                 )
 
             self._is_training = True
-            postprocessed_batch["is_training"] = True
-            self._lazy_tensor_dict(postprocessed_batch)
-
+            postprocessed_batch.is_training = True
             stats = self._learn_on_batch_eager(postprocessed_batch)
             stats.update({"custom_metrics": learn_stats})
             return stats
 
-            def _learn_on_batch_eager(**samples):
-                with tf.variable_creator_scope(_disallow_var_creation):
-                    grads_and_vars, stats = self._compute_gradients(samples)
-                self._apply_gradients(grads_and_vars)
-                return stats
-
-            if not hasattr(self, "_learn_on_batch_eager"):
-                if self.config["eager_tracing"]:
-                    self._learn_on_batch_eager = tf.function()(
-                        _learn_on_batch_eager)
-                else:
-                    self._learn_on_batch_eager = _learn_on_batch_eager
-
-            stats = self._learn_on_batch_eager(**postprocessed_batch)
-            stats.update({"custom_metrics": learn_stats})
+        @convert_eager_inputs
+        @convert_eager_outputs
+        def _learn_on_batch_eager(self, samples):
+            with tf.variable_creator_scope(_disallow_var_creation):
+                grads_and_vars, stats = self._compute_gradients(samples)
+            self._apply_gradients(grads_and_vars)
             return stats
 
         @override(Policy)
@@ -880,9 +869,9 @@ def build_eager_tf_policy(
             postprocessed_batch.set_get_interceptor(_convert_to_tf)
             return postprocessed_batch
 
-        #@classmethod
-        #def with_tracing(cls):
-        #    return traced_eager_policy(cls)
+        @classmethod
+        def with_tracing(cls):
+            return traced_eager_policy(cls)
 
     eager_policy_cls.__name__ = name + "_eager"
     eager_policy_cls.__qualname__ = name + "_eager"

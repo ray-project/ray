@@ -298,13 +298,12 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     Returns:
         Dict[str, TensorType]: The stats dict.
     """
-    drop_last = policy.config["vtrace"] and \
-                policy.config["vtrace_drop_last_ts"]
     values_batched = _make_time_major(
         policy,
         train_batch.get(SampleBatch.SEQ_LENS),
         policy.model.value_function(),
-        drop_last=drop_last)
+        drop_last=policy.config["vtrace"]
+        and policy.config["vtrace_drop_last_ts"])
 
     stats_dict = {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),

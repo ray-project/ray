@@ -100,6 +100,7 @@ class Policy(metaclass=ABCMeta):
         # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
         # action_space_struct = {"a": Discrete(2)}
         self.action_space_struct = get_base_struct_from_space(action_space)
+
         self.config: TrainerConfigDict = config
         self.framework = self.config.get("framework")
         # Create the callbacks object to use for handling custom callbacks.
