@@ -283,7 +283,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
   TaskSpecification spec;
   bool release_lineage = true;
-  bool evict_all_lineage = false;
+  bool evict_lineage = false;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -322,7 +322,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                       << total_lineage_footprint_bytes_ / 1e6
                       << "MB, which exceeds the limit of " << max_lineage_bytes_ / 1e6
                       << "MB";
-        evict_all_lineage = true;
+        evict_lineage = true;
       }
     } else {
       submissible_tasks_.erase(it);
@@ -330,8 +330,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   }
 
   RemoveFinishedTaskReferences(spec, release_lineage, worker_addr, reply.borrowed_refs());
-  if (evict_all_lineage) {
-    reference_counter_->EvictAllLineage();
+  if (evict_lineage) {
+    // Evict at least half of the current lineage.
+    int64_t min_bytes_to_evict = total_lineage_footprint_bytes_ - (max_lineage_bytes_ / 2);
+    reference_counter_->EvictLineage(min_bytes_to_evict);
   }
 
   ShutdownIfNeeded();
@@ -483,14 +485,16 @@ void TaskManager::RemoveFinishedTaskReferences(
   in_memory_store_->Delete(deleted);
 }
 
-void TaskManager::RemoveLineageReference(const ObjectID &object_id,
+int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
                                          std::vector<ObjectID> *released_objects) {
   absl::MutexLock lock(&mu_);
+  const int64_t total_lineage_footprint_bytes_prev(total_lineage_footprint_bytes_);
+
   const TaskID &task_id = object_id.TaskId();
   auto it = submissible_tasks_.find(task_id);
   if (it == submissible_tasks_.end()) {
     RAY_LOG(DEBUG) << "No lineage for object " << object_id;
-    return;
+    return 0;
   }
 
   RAY_LOG(DEBUG) << "Plasma object " << object_id << " out of scope";
@@ -521,6 +525,8 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
     // so it is safe to remove the task spec.
     submissible_tasks_.erase(it);
   }
+
+  return total_lineage_footprint_bytes_ - total_lineage_footprint_bytes_prev;
 }
 
 bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {

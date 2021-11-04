@@ -58,8 +58,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   using ReferenceTableProto =
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
   using ReferenceRemovedCallback = std::function<void(const ObjectID &)>;
+  // Returns the amount of lineage in bytes released.
   using LineageReleasedCallback =
-      std::function<void(const ObjectID &, std::vector<ObjectID> *)>;
+      std::function<int64_t(const ObjectID &, std::vector<ObjectID> *)>;
 
   ReferenceCounter(const rpc::WorkerAddress &rpc_address,
                    pubsub::PublisherInterface *object_info_publisher,
@@ -143,17 +144,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                     bool release_lineage, const rpc::Address &worker_addr,
                                     const ReferenceTableProto &borrowed_refs,
                                     std::vector<ObjectID> *deleted)
-      LOCKS_EXCLUDED(mutex_);
-
-  /// Release the lineage ref count for this list of object IDs. An object's
-  /// lineage ref count is the number of tasks that depend on the object that
-  /// may be retried in the future (pending execution or finished but
-  /// retryable). If the object is direct (not stored in plasma), then its
-  /// lineage ref count is 0.
-  ///
-  /// \param[in] argument_ids The list of objects whose lineage ref counts we
-  /// should decrement.
-  void ReleaseLineageReferences(const std::vector<ObjectID> &argument_ids)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we own. The object may depend on other objects.
@@ -470,7 +460,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   bool IsObjectReconstructable(const ObjectID &object_id, bool *lineage_evicted) const;
 
-  void EvictAllLineage();
+  /// Evict lineage of objects that are still in scope. This evicts lineage in
+  /// FIFO order, based on when the ObjectRef was created.
+  ///
+  /// \param[in] min_bytes_to_evict The minimum number of bytes to evict.
+  int64_t EvictLineage(int64_t min_bytes_to_evict);
 
  private:
   struct Reference {
@@ -632,6 +626,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Callback that is called when this process is no longer a borrower
     /// (RefCount() == 0).
     std::function<void(const ObjectID &)> on_ref_removed;
+
+    absl::optional<std::list<ObjectID>::iterator> reconstructable_owned_objects_it = absl::nullopt;
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
@@ -748,8 +744,14 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Helper method to decrement the lineage ref count for a list of objects.
-  void ReleaseLineageReferencesInternal(const std::vector<ObjectID> &argument_ids)
+  /// Erase the Reference from the table. Assumes that the entry has no more
+  /// references, normal or lineage.
+  void EraseReference(ReferenceTable::iterator entry)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Helper method to garbage-collect all out-of-scope References in the
+  /// lineage for this object.
+  int64_t ReleaseLineageReferences(ReferenceTable::iterator entry)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Add a new location for the given object. The owner must have the object ref in
@@ -811,6 +813,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// The callback to call once an object ID that we own is no longer in scope
   /// and it has no tasks that depend on it that may be retried in the future.
   /// The object's Reference will be erased after this callback.
+  // Returns the amount of lineage in bytes released.
   LineageReleasedCallback on_lineage_released_;
   /// Optional shutdown hook to call when all references have gone
   /// out of scope.
@@ -824,6 +827,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Object status subscriber. It is used to subscribe the ref removed information from
   /// other workers.
   pubsub::SubscriberInterface *object_info_subscriber_;
+
+  /// Objects that we own that are still in scope at the application level and
+  /// that may be reconstructed. These objects may have pinned lineage that
+  /// should be evicted on memory pressure. The queue is in FIFO order, based
+  /// on ObjectRef creation time.
+  std::list<ObjectID> reconstructable_owned_objects_ GUARDED_BY(mutex_);
 };
 
 }  // namespace core

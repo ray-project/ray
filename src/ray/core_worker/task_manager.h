@@ -88,7 +88,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         max_lineage_bytes_(max_lineage_bytes) {
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
-          RemoveLineageReference(object_id, ids_to_release);
+          return RemoveLineageReference(object_id, ids_to_release);
           ShutdownIfNeeded();
         });
   }
@@ -258,7 +258,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Remove a lineage reference to this object ID. This should be called
   /// whenever a task that depended on this object ID can no longer be retried.
-  void RemoveLineageReference(const ObjectID &object_id,
+  ///
+  /// \param[in] object_id The object ID whose lineage to delete.
+  /// \param[out] ids_to_release If a task was deleted, then these are the
+  /// task's arguments whose lineage should also be released.
+  /// \param[out] The amount of lineage in bytes that was removed.
+  int64_t RemoveLineageReference(const ObjectID &object_id,
                               std::vector<ObjectID> *ids_to_release) LOCKS_EXCLUDED(mu_);
 
   /// Helper function to call RemoveSubmittedTaskReferences on the remaining

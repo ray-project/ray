@@ -687,7 +687,6 @@ def test_lineage_evicted(ray_start_cluster):
         "raylet_heartbeat_period_milliseconds": 100,
         "object_timeout_milliseconds": 200,
         "max_lineage_bytes": 10_000,
-        "lineage_pinning_enabled": True,
     }
 
     cluster = ray_start_cluster
@@ -696,7 +695,7 @@ def test_lineage_evicted(ray_start_cluster):
         num_cpus=0,
         _system_config=config,
         object_store_memory=10**8,
-        enable_object_reconstruction=reconstruction_enabled)
+        enable_object_reconstruction=True)
     ray.init(address=cluster.address)
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
     cluster.wait_for_nodes()
@@ -720,14 +719,7 @@ def test_lineage_evicted(ray_start_cluster):
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
     node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
-
-    if reconstruction_enabled:
-        ray.get(dependent_task.remote(obj))
-    else:
-        with pytest.raises(ray.exceptions.RayTaskError):
-            ray.get(dependent_task.remote(obj))
-        with pytest.raises(ray.exceptions.ObjectLostError):
-            ray.get(obj)
+    ray.get(dependent_task.remote(obj))
 
     # Lineage now exceeds the eviction factor.
     for _ in range(100):
@@ -736,18 +728,11 @@ def test_lineage_evicted(ray_start_cluster):
 
     cluster.remove_node(node_to_kill, allow_graceful=False)
     cluster.add_node(num_cpus=1, object_store_memory=10**8)
-
-    if reconstruction_enabled:
-        try:
-            ray.get(dependent_task.remote(obj))
-            assert False
-        except ray.exceptions.RayTaskError as e:
-            assert "ObjectReconstructionFailedLineageEvictedError" in str(e)
-    else:
-        with pytest.raises(ray.exceptions.RayTaskError):
-            ray.get(dependent_task.remote(obj))
-        with pytest.raises(ray.exceptions.ObjectLostError):
-            ray.get(obj)
+    try:
+        ray.get(dependent_task.remote(obj))
+        assert False
+    except ray.exceptions.RayTaskError as e:
+        assert "ObjectReconstructionFailedLineageEvictedError" in str(e)
 
 
 if __name__ == "__main__":
