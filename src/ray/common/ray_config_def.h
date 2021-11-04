@@ -94,8 +94,8 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
 /// Maximum amount of lineage to keep in bytes. This includes the specs of all
 /// tasks that have previously already finished but that may be retried again.
-/// If we reach this limit, all current lineage will be evicted and objects
-/// that are still in scope will no longer be reconstructed if lost.
+/// If we reach this limit, 50% of the current lineage will be evicted and
+/// objects that are still in scope will no longer be reconstructed if lost.
 /// Each task spec is on the order of 1KB but can be much larger if it has many
 /// inlined args.
 RAY_CONFIG(int64_t, max_lineage_bytes, 1024 * 1024 * 1024)
