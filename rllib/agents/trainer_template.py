@@ -134,8 +134,8 @@ def build_trainer(
                 num_workers=self.config["num_workers"])
             if execution_plan is not None:
                 self.execution_plan = execution_plan
-                self.train_exec_impl = execution_plan(
-                    self.workers, config, **self._kwargs_for_execution_plan())
+            self.train_exec_impl = self.execution_plan(
+                self.workers, config, **self._kwargs_for_execution_plan())
 
             if after_init:
                 after_init(self)
