@@ -14,7 +14,7 @@ import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
     try_import_torch
 from ray.rllib.utils.typing import PartialTrainerConfigDict
-from ray.tune import run_experiments
+from ray.tune import CLIReporter, run_experiments
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -668,7 +668,21 @@ def run_learning_tests_from_yaml(
         print(f"Starting learning test iteration {i}...")
 
         # Run remaining experiments.
-        trials = run_experiments(experiments_to_run, resume=False, verbose=2)
+        trials = run_experiments(
+            experiments_to_run,
+            resume=False,
+            verbose=2,
+            progress_reporter=CLIReporter(
+                metric_columns={
+                    "training_iteration": "iter",
+                    "time_total_s": "time_total_s",
+                    "timesteps_total": "ts",
+                    "episodes_this_iter": "train_episodes",
+                    "episode_reward_mean": "reward_mean",
+                },
+                sort_by_metric=True,
+                max_report_frequency=30,
+            ))
         all_trials.extend(trials)
 
         # Check each experiment for whether it passed.
