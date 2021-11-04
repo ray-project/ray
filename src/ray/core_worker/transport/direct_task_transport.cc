@@ -529,7 +529,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   lease_client->RequestWorkerLease(
       resource_spec,
       /*grant_or_reject=*/is_spillback,
-      [this, scheduling_key, task_id, raylet_address = *raylet_address](
+      [this, scheduling_key, task_id, is_spillback, raylet_address = *raylet_address](
           const Status &status, const rpc::RequestWorkerLeaseReply &reply) {
         absl::MutexLock lock(&mu_);
 
@@ -556,6 +556,13 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           } else if (reply.canceled()) {
             RAY_LOG(DEBUG) << "Lease canceled " << task_id;
             RequestNewWorkerIfNeeded(scheduling_key);
+          } else if (reply.rejected()) {
+            RAY_LOG(DEBUG) << "Lease rejected " << task_id;
+            // It might happen when the home raylet has a stale view
+            // of the spillback raylet resources.
+            // Retry it since the resource view may be refreshed.
+            RAY_CHECK(is_spillback);
+            RequestNewWorkerIfNeeded(scheduling_key);
           } else if (!reply.worker_address().raylet_id().empty()) {
             // We got a lease for a worker. Add the lease client state and try to
             // assign work to the worker.
@@ -571,7 +578,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                          /*error=*/false, resources_copy);
           } else {
             // The raylet redirected us to a different raylet to retry at.
-
+            RAY_CHECK(!is_spillback);
             RequestNewWorkerIfNeeded(scheduling_key, &reply.retry_at_raylet_address());
           }
         } else if (lease_client != local_lease_client_) {
