@@ -694,11 +694,13 @@ def test_scheduling_class_depth(ray_start_regular):
     def infeasible():
         pass
 
-    @ray.remote
-    def start_infeasible():
-        ray.get(infeasible.remote())
+    @ray.remote(num_cpus=0)
+    def start_infeasible(n):
+        if n == 1:
+            ray.get(infeasible.remote())
+        ray.get(start_infeasible.remote(n - 1))
 
-    start_infeasible.remote()
+    start_infeasible.remote(1)
     infeasible.remote()
 
     # We expect the 2 calls to `infeasible` to be separate scheduling classes
@@ -706,15 +708,22 @@ def test_scheduling_class_depth(ray_start_regular):
 
     metric_name = "ray_internal_num_infeasible_scheduling_classes"
 
-    def condition():
-        _, metric_names, metric_samples = fetch_prometheus([prom_addr])
-        if metric_name in metric_names:
-            for sample in metric_samples:
-                if sample.name == metric_name and sample.value == 2.0:
-                    return True
-        return False
+    def make_condition(n):
+        def condition():
+            _, metric_names, metric_samples = fetch_prometheus([prom_addr])
+            if metric_name in metric_names:
+                for sample in metric_samples:
+                    if sample.name == metric_name and sample.value == n:
+                        return True
+            return False
 
-    wait_for_condition(condition)
+        return condition
+
+    wait_for_condition(make_condition(2))
+    start_infeasible.remote(2)
+    wait_for_condition(make_condition(3))
+    start_infeasible.remote(4)
+    wait_for_condition(make_condition(4))
 
 
 if __name__ == "__main__":
