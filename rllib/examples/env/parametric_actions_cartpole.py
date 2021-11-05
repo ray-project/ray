@@ -34,14 +34,17 @@ class ParametricActionsCartPole(gym.Env):
         self.action_space = Discrete(max_avail_actions)
         self.wrapped = gym.make("CartPole-v0")
         self.observation_space = Dict({
-            "action_mask": Box(0, 1, shape=(max_avail_actions, )),
+            "action_mask": Box(
+                0, 1, shape=(max_avail_actions, ), dtype=np.float32),
             "avail_actions": Box(-10, 10, shape=(max_avail_actions, 2)),
             "cart": self.wrapped.observation_space,
         })
 
     def update_avail_actions(self):
-        self.action_assignments = np.array([[0., 0.]] * self.action_space.n)
-        self.action_mask = np.array([0.] * self.action_space.n)
+        self.action_assignments = np.array(
+            [[0., 0.]] * self.action_space.n, dtype=np.float32)
+        self.action_mask = np.array(
+            [0.] * self.action_space.n, dtype=np.float32)
         self.left_idx, self.right_idx = random.sample(
             range(self.action_space.n), 2)
         self.action_assignments[self.left_idx] = self.left_action_embed
@@ -69,6 +72,7 @@ class ParametricActionsCartPole(gym.Env):
                 self.left_idx, self.right_idx)
         orig_obs, rew, done, info = self.wrapped.step(actual_action)
         self.update_avail_actions()
+        self.action_mask = self.action_mask.astype(np.float32)
         obs = {
             "action_mask": self.action_mask,
             "avail_actions": self.action_assignments,
@@ -94,7 +98,8 @@ class ParametricActionsCartPoleNoEmbeddings(gym.Env):
         # Randomly set which two actions are valid and available.
         self.left_idx, self.right_idx = random.sample(
             range(max_avail_actions), 2)
-        self.valid_avail_actions_mask = np.array([0.] * max_avail_actions)
+        self.valid_avail_actions_mask = np.array(
+            [0.] * max_avail_actions, dtype=np.float32)
         self.valid_avail_actions_mask[self.left_idx] = 1
         self.valid_avail_actions_mask[self.right_idx] = 1
         self.action_space = Discrete(max_avail_actions)

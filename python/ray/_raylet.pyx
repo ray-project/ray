@@ -347,7 +347,8 @@ cdef int prepare_actor_concurrency_groups(
 
 cdef prepare_args(
         CoreWorker core_worker,
-        Language language, args, c_vector[unique_ptr[CTaskArg]] *args_vector):
+        Language language, args,
+        c_vector[unique_ptr[CTaskArg]] *args_vector, function_descriptor):
     cdef:
         size_t size
         int64_t put_threshold
@@ -373,7 +374,17 @@ cdef prepare_args(
                     arg.call_site())))
 
         else:
-            serialized_arg = worker.get_serialization_context().serialize(arg)
+            try:
+                serialized_arg = worker.get_serialization_context(
+                ).serialize(arg)
+            except TypeError as e:
+                msg = (
+                    "Could not serialize the argument "
+                    f"{repr(arg)} for a task or actor "
+                    f"{function_descriptor.repr}. Check "
+                    "https://docs.ray.io/en/master/serialization.html#troubleshooting " # noqa
+                    "for more information.")
+                raise TypeError(msg) from e
             metadata = serialized_arg.metadata
             if language != Language.PYTHON:
                 metadata_fields = metadata.split(b",")
@@ -1429,7 +1440,8 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(self, language, args, &args_vector)
+            prepare_args(
+                self, language, args, &args_vector, function_descriptor)
 
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:
@@ -1483,7 +1495,8 @@ cdef class CoreWorker:
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(self, language, args, &args_vector)
+            prepare_args(
+                self, language, args, &args_vector, function_descriptor)
             prepare_actor_concurrency_groups(
                 concurrency_groups_dict, &c_concurrency_groups)
 
@@ -1589,7 +1602,8 @@ cdef class CoreWorker:
                 c_resources[b"CPU"] = num_method_cpus
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(self, language, args, &args_vector)
+            prepare_args(
+                self, language, args, &args_vector, function_descriptor)
 
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:
@@ -1974,6 +1988,20 @@ cdef class CoreWorker:
     def current_actor_is_asyncio(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
+
+    def get_current_runtime_env(self) -> str:
+        # This should never change, so we can safely cache it to avoid ser/de
+        if self.current_runtime_env is None:
+            if self.is_driver:
+                job_config = self.get_job_config()
+                serialized_env = job_config.runtime_env.serialized_runtime_env
+            else:
+                serialized_env = CCoreWorkerProcess.GetCoreWorker() \
+                        .GetWorkerContext().GetCurrentSerializedRuntimeEnv()
+
+            self.current_runtime_env = serialized_env
+
+        return self.current_runtime_env
 
     def is_exiting(self):
         return CCoreWorkerProcess.GetCoreWorker().IsExiting()

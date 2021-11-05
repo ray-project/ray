@@ -26,6 +26,10 @@ from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray._private.services import new_port
 import ray._private.gcs_utils as gcs_utils
 
+# Explicitly importing it here because it is a ray core tests utility (
+# not in the tree)
+from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
+
 
 @pytest.fixture
 def ray_cluster():
@@ -112,7 +116,7 @@ def test_detached_deployment(ray_cluster):
     serve.api._global_client = None
     ray.shutdown()
 
-    # Create the second job, make sure we can still create new backends.
+    # Create the second job, make sure we can still create new deployments.
     ray.init(head_node.address, namespace="serve")
     assert ray.get_runtime_context().job_id != first_job_id
 
@@ -539,6 +543,53 @@ def test_local_store_recovery():
     serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
     wait_for_condition(check)
     crash()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize(
+    "ray_start_with_dashboard", [{
+        "num_cpus": 4
+    }], indirect=True)
+def test_snapshot_always_written_to_internal_kv(
+        ray_start_with_dashboard):  # noqa: F811
+    # https://github.com/ray-project/ray/issues/19752
+    _, tmp_path = mkstemp()
+
+    @serve.deployment()
+    def hello(_):
+        return "hello"
+
+    def check():
+        try:
+            resp = requests.get("http://localhost:8000/hello")
+            assert resp.text == "hello"
+            return True
+        except Exception:
+            return False
+
+    serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
+    hello.deploy()
+    check()
+
+    webui_url = ray_start_with_dashboard["webui_url"]
+
+    def get_deployment_snapshot():
+        snapshot = requests.get(f"http://{webui_url}/api/snapshot").json()[
+            "data"]["snapshot"]
+        return snapshot["deployments"]
+
+    # Make sure /api/snapshot return non-empty deployment status.
+    def verify_snapshot():
+        return get_deployment_snapshot() != {}
+
+    wait_for_condition(verify_snapshot)
+
+    # Sanity check the snapshot is correct
+    snapshot = get_deployment_snapshot()
+    assert len(snapshot) == 1
+    hello_deployment = list(snapshot.values())[0]
+    assert hello_deployment["name"] == "hello"
+    assert hello_deployment["status"] == "RUNNING"
 
 
 if __name__ == "__main__":

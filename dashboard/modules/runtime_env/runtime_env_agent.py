@@ -6,6 +6,8 @@ import logging
 import os
 import time
 from typing import Dict, Set
+from ray._private.runtime_env.validation import (ParsedRuntimeEnv,
+                                                 _decode_plugin_uri)
 from ray._private.utils import import_attr
 
 from ray.core.generated import runtime_env_agent_pb2
@@ -21,7 +23,9 @@ from ray.experimental.internal_kv import (_initialize_internal_kv,
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaManager
 from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.py_modules import PyModulesManager
 from ray._private.runtime_env.working_dir import WorkingDirManager
+from ray._private.runtime_env.container import ContainerManager
 
 logger = logging.getLogger(__name__)
 
@@ -61,14 +65,15 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         # Keeps track of the URIs contained within each env so we can
         # invalidate the env cache when a URI is deleted.
         # This is a temporary mechanism until we have per-URI caching.
-        self._working_dir_uri_to_envs: Dict[str, Set[str]] = defaultdict(set)
-
+        self._uris_to_envs: Dict[str, Set[str]] = defaultdict(set)
         # Initialize internal KV to be used by the working_dir setup code.
         _initialize_internal_kv(self._dashboard_agent.gcs_client)
         assert _internal_kv_initialized()
 
         self._conda_manager = CondaManager(self._runtime_env_dir)
+        self._py_modules_manager = PyModulesManager(self._runtime_env_dir)
         self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
+        self._container_manager = ContainerManager(dashboard_agent.temp_dir)
 
     def get_or_create_logger(self, job_id: bytes):
         job_id = job_id.decode()
@@ -86,7 +91,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             # This function will be ran inside a thread
             def run_setup_with_logger():
                 logger.info(f"The serialized runtime env: {serialized_runtime_env}")
-                runtime_env = json_format.Parse(serialized_runtime_env, RuntimeEnv())
+                runtime_env: RuntimeEnv = json_format.Parse(serialized_runtime_env, RuntimeEnv())
                 logger.info(f"The parsed runtime env: {runtime_env}")
                 allocated_resource: dict = json.loads(
                     serialized_allocated_resource_instances or "{}")
@@ -100,14 +105,18 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 context = RuntimeEnvContext(env_vars=dict(runtime_env.env_vars))
                 self._conda_manager.setup(
                     runtime_env, context, logger=per_job_logger)
+                self._py_modules_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
                 self._working_dir_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
+                self._container_manager.setup(
                     runtime_env, context, logger=per_job_logger)
 
                 # Add the mapping of URIs -> the serialized environment to be
                 # used for cache invalidation.
-                for uri in runtime_env.uris or []:
-                    self._working_dir_uri_to_envs[uri].add(
-                        serialized_runtime_env)
+
+                for plugin_uri in runtime_env.uris:
+                    self._uris_to_envs[plugin_uri].add(serialized_runtime_env)
 
                 # Run setup function from all the plugins
                 for plugin in runtime_env.py_plugin_runtime_env.plugins:
@@ -190,25 +199,32 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 serialized_runtime_env_context=serialized_context)
 
     async def DeleteURIs(self, request, context):
-        logger.info(f"Got request to delete URIS: {request.uris}.")
+        logger.info(f"Got request to delete URIs: {request.uris}.")
 
-        # Only a single URI is currently supported.
-        assert len(request.uris) == 1
+        failed_uris = []  # URIs that we failed to delete.
 
-        uri = request.uris[0]
+        for plugin_uri in request.uris:
+            # Invalidate the env cache for any envs that contain this URI.
+            for env in self._uris_to_envs.get(plugin_uri, []):
+                if env in self._env_cache:
+                    del self._env_cache[env]
 
-        # Invalidate the env cache for any environments that contain this URI.
-        for env in self._working_dir_uri_to_envs.get(uri, []):
-            if env in self._env_cache:
-                del self._env_cache[env]
+            plugin, uri = _decode_plugin_uri(plugin_uri)
+            if plugin == "working_dir":
+                if not self._working_dir_manager.delete_uri(uri):
+                    failed_uris.append(uri)
+            elif plugin == "py_modules":
+                if not self._py_modules_manager.delete_uri(uri):
+                    failed_uris.append(uri)
 
-        if self._working_dir_manager.delete_uri(uri):
-            return runtime_env_agent_pb2.DeleteURIsReply(
-                status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
-        else:
-            return runtime_env_agent_pb2.DeleteURIsReply(
-                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
-                error_message=f"Local file for URI {uri} not found.")
+            if failed_uris:
+                return runtime_env_agent_pb2.DeleteURIsReply(
+                    status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                    error_message="Local files for URI(s) "
+                    f"{failed_uris} not found.")
+            else:
+                return runtime_env_agent_pb2.DeleteURIsReply(
+                    status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
 
     async def run(self, server):
         runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(

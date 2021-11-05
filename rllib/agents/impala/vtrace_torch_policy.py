@@ -12,7 +12,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+from ray.rllib.utils.torch_utils import apply_grad_clipping, \
     explained_variance, global_norm, sequence_mask
 
 torch, nn = try_import_torch()
@@ -113,7 +113,7 @@ class VTraceLoss:
 
 
 def build_vtrace_loss(policy, model, dist_class, train_batch):
-    model_out, _ = model.from_batch(train_batch)
+    model_out, _ = model(train_batch)
     action_dist = dist_class(model_out, model)
 
     if isinstance(policy.action_space, gym.spaces.Discrete):
@@ -158,26 +158,27 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     loss_actions = actions if is_multidiscrete else torch.unsqueeze(
         actions, dim=1)
 
-    # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
+    # Inputs are reshaped from [B * T] => [(T|T-1), B] for V-trace calc.
+    drop_last = policy.config["vtrace_drop_last_ts"]
     loss = VTraceLoss(
-        actions=_make_time_major(loss_actions, drop_last=True),
+        actions=_make_time_major(loss_actions, drop_last=drop_last),
         actions_logp=_make_time_major(
-            action_dist.logp(actions), drop_last=True),
+            action_dist.logp(actions), drop_last=drop_last),
         actions_entropy=_make_time_major(
-            action_dist.entropy(), drop_last=True),
-        dones=_make_time_major(dones, drop_last=True),
+            action_dist.entropy(), drop_last=drop_last),
+        dones=_make_time_major(dones, drop_last=drop_last),
         behaviour_action_logp=_make_time_major(
-            behaviour_action_logp, drop_last=True),
+            behaviour_action_logp, drop_last=drop_last),
         behaviour_logits=_make_time_major(
-            unpacked_behaviour_logits, drop_last=True),
-        target_logits=_make_time_major(unpacked_outputs, drop_last=True),
+            unpacked_behaviour_logits, drop_last=drop_last),
+        target_logits=_make_time_major(unpacked_outputs, drop_last=drop_last),
         discount=policy.config["gamma"],
-        rewards=_make_time_major(rewards, drop_last=True),
-        values=_make_time_major(values, drop_last=True),
+        rewards=_make_time_major(rewards, drop_last=drop_last),
+        values=_make_time_major(values, drop_last=drop_last),
         bootstrap_value=_make_time_major(values)[-1],
         dist_class=TorchCategorical if is_multidiscrete else dist_class,
         model=model,
-        valid_mask=_make_time_major(mask, drop_last=True),
+        valid_mask=_make_time_major(mask, drop_last=drop_last),
         config=policy.config,
         vf_loss_coeff=policy.config["vf_loss_coeff"],
         entropy_coeff=policy.entropy_coeff,
@@ -196,7 +197,7 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         policy,
         train_batch.get(SampleBatch.SEQ_LENS),
         values,
-        drop_last=policy.config["vtrace"])
+        drop_last=policy.config["vtrace"] and drop_last)
     model.tower_stats["vf_explained_var"] = explained_variance(
         torch.reshape(loss.value_targets, [-1]),
         torch.reshape(values_batched, [-1]))

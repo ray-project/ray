@@ -750,6 +750,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         cli_logger.newline()
         cli_logger.print("To terminate the Ray runtime, run")
         cli_logger.print(cf.bold("  ray stop"))
+        cli_logger.flush()
 
     if block:
         cli_logger.newline()
@@ -759,6 +760,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.print(
                 "Running subprocesses are monitored and a message will be "
                 "printed if any of them terminate unexpectedly.")
+            cli_logger.flush()
 
         while True:
             time.sleep(1)

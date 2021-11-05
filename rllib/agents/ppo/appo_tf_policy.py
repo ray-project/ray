@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Type, Union
 from ray.rllib.agents.impala import vtrace_tf as vtrace
 from ray.rllib.agents.impala.vtrace_tf_policy import _make_time_major, \
     clip_gradients, choose_optimizer
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
@@ -28,7 +28,7 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
+from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
 from ray.rllib.utils.typing import AgentID, TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
@@ -99,7 +99,7 @@ def appo_surrogate_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
-    model_out, _ = model.from_batch(train_batch)
+    model_out, _ = model(train_batch)
     action_dist = dist_class(model_out, model)
 
     if isinstance(policy.action_space, gym.spaces.Discrete):
@@ -123,7 +123,7 @@ def appo_surrogate_loss(
     rewards = train_batch[SampleBatch.REWARDS]
     behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
 
-    target_model_out, _ = policy.target_model.from_batch(train_batch)
+    target_model_out, _ = policy.target_model(train_batch)
     prev_action_dist = dist_class(behaviour_logits, policy.model)
     values = policy.model.value_function()
     values_time_major = make_time_major(values)
@@ -144,7 +144,9 @@ def appo_surrogate_loss(
         reduce_mean_valid = tf.reduce_mean
 
     if policy.config["vtrace"]:
-        logger.debug("Using V-Trace surrogate loss (vtrace=True)")
+        drop_last = policy.config["vtrace_drop_last_ts"]
+        logger.debug("Using V-Trace surrogate loss (vtrace=True; "
+                     f"drop_last={drop_last})")
 
         # Prepare actions for loss.
         loss_actions = actions if is_multidiscrete else tf.expand_dims(
@@ -155,7 +157,7 @@ def appo_surrogate_loss(
 
         # Prepare KL for Loss
         mean_kl = make_time_major(
-            old_policy_action_dist.multi_kl(action_dist), drop_last=True)
+            old_policy_action_dist.multi_kl(action_dist), drop_last=drop_last)
 
         unpacked_behaviour_logits = tf.split(
             behaviour_logits, output_hidden_shape, axis=1)
@@ -166,16 +168,19 @@ def appo_surrogate_loss(
         with tf.device("/cpu:0"):
             vtrace_returns = vtrace.multi_from_logits(
                 behaviour_policy_logits=make_time_major(
-                    unpacked_behaviour_logits, drop_last=True),
+                    unpacked_behaviour_logits, drop_last=drop_last),
                 target_policy_logits=make_time_major(
-                    unpacked_old_policy_behaviour_logits, drop_last=True),
+                    unpacked_old_policy_behaviour_logits, drop_last=drop_last),
                 actions=tf.unstack(
-                    make_time_major(loss_actions, drop_last=True), axis=2),
+                    make_time_major(loss_actions, drop_last=drop_last),
+                    axis=2),
                 discounts=tf.cast(
-                    ~make_time_major(tf.cast(dones, tf.bool), drop_last=True),
+                    ~make_time_major(
+                        tf.cast(dones, tf.bool), drop_last=drop_last),
                     tf.float32) * policy.config["gamma"],
-                rewards=make_time_major(rewards, drop_last=True),
-                values=values_time_major[:-1],  # drop-last=True
+                rewards=make_time_major(rewards, drop_last=drop_last),
+                values=values_time_major[:-1]
+                if drop_last else values_time_major,
                 bootstrap_value=values_time_major[-1],
                 dist_class=Categorical if is_multidiscrete else dist_class,
                 model=model,
@@ -186,11 +191,11 @@ def appo_surrogate_loss(
             )
 
         actions_logp = make_time_major(
-            action_dist.logp(actions), drop_last=True)
+            action_dist.logp(actions), drop_last=drop_last)
         prev_actions_logp = make_time_major(
-            prev_action_dist.logp(actions), drop_last=True)
+            prev_action_dist.logp(actions), drop_last=drop_last)
         old_policy_actions_logp = make_time_major(
-            old_policy_action_dist.logp(actions), drop_last=True)
+            old_policy_action_dist.logp(actions), drop_last=drop_last)
 
         is_ratio = tf.clip_by_value(
             tf.math.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0)
@@ -210,7 +215,10 @@ def appo_surrogate_loss(
         mean_policy_loss = -reduce_mean_valid(surrogate_loss)
 
         # The value function loss.
-        delta = values_time_major[:-1] - vtrace_returns.vs
+        if drop_last:
+            delta = values_time_major[:-1] - vtrace_returns.vs
+        else:
+            delta = values_time_major - vtrace_returns.vs
         value_targets = vtrace_returns.vs
         mean_vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
 
@@ -294,7 +302,8 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
         policy,
         train_batch.get(SampleBatch.SEQ_LENS),
         policy.model.value_function(),
-        drop_last=policy.config["vtrace"])
+        drop_last=policy.config["vtrace"]
+        and policy.config["vtrace_drop_last_ts"])
 
     stats_dict = {
         "cur_lr": tf.cast(policy.cur_lr, tf.float64),
@@ -306,7 +315,7 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
         "vf_explained_var": explained_variance(
             tf.reshape(policy._value_targets, [-1]),
             tf.reshape(values_batched, [-1])),
-        "entropy_coeff": policy.entropy_coeff,
+        "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
     }
 
     if policy.config["vtrace"]:
@@ -325,7 +334,7 @@ def postprocess_trajectory(
         policy: Policy,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+        episode: Optional[Episode] = None) -> SampleBatch:
     """Postprocesses a trajectory and returns the processed trajectory.
 
     The trajectory contains only data from one episode and from one agent.
@@ -343,7 +352,7 @@ def postprocess_trajectory(
         other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
             dict of AgentIDs mapping to other agents' trajectory data (from the
             same episode). NOTE: The other agents use the same policy.
-        episode (Optional[MultiAgentEpisode]): Optional multi-agent episode
+        episode (Optional[Episode]): Optional multi-agent episode
             object in which the agents operated.
 
     Returns:

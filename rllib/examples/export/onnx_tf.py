@@ -33,7 +33,7 @@ trainer = ppo.PPOTrainer(config=config, env="CartPole-v0")
 
 # Let's run inference on the tensorflow model
 policy = trainer.get_policy()
-result_tf, _ = policy.model.from_batch(test_data)
+result_tf, _ = policy.model(test_data)
 
 # Evaluate tensor to fetch numpy array
 with policy._sess.as_default():

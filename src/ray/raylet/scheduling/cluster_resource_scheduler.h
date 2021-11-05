@@ -23,8 +23,8 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/task/scheduling_resources.h"
-#include "ray/gcs/accessor.h"
-#include "ray/gcs/gcs_client.h"
+#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler_interface.h"
 #include "ray/raylet/scheduling/fixed_point.h"
@@ -83,15 +83,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// \param ID of the node to be removed.
   bool RemoveNode(int64_t node_id);
   bool RemoveNode(const std::string &node_id_string) override;
-
-  /// Check whether a resource request is feasible on a given node. A node is
-  /// feasible if it has the total resources needed to eventually execute the
-  /// task, even if those resources are currently allocated.
-  ///
-  /// \param resource_request Resource request to be scheduled.
-  /// \param resources Node's resources.
-  bool IsFeasible(const ResourceRequest &resource_request,
-                  const NodeResources &resources) const;
 
   /// Check whether a resource request can be scheduled given a node.
   ///
@@ -421,6 +412,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   bool SubtractRemoteNodeAvailableResources(int64_t node_id,
                                             const ResourceRequest &resource_request);
 
+  /// Get mutable local node resources.
+  NodeResources *GetMutableLocalNodeResources();
+
   /// The threshold at which to switch from packing to spreading.
   const float spread_threshold_;
   /// List of nodes in the clusters and their resources organized as a map.
@@ -451,6 +445,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   // Specify custom resources that consists of unit-size instances.
   std::unordered_set<int64_t> custom_unit_instance_resources_{};
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
 };
 
 }  // end namespace ray

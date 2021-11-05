@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 import sys
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union, Tuple
 import yaml
 
 import ray
@@ -19,8 +19,52 @@ from google.protobuf import json_format
 logger = logging.getLogger(__name__)
 
 
+def _encode_plugin_uri(plugin: str, uri: str) -> str:
+    return plugin + "|" + uri
+
+
+def _decode_plugin_uri(plugin_uri: str) -> Tuple[str, str]:
+    if "|" not in plugin_uri:
+        raise ValueError(
+            f"Plugin URI must be of the form 'plugin|uri', not {plugin_uri}")
+    return tuple(plugin_uri.split("|", 2))
+
+
+def validate_uri(uri: str):
+    if not isinstance(uri, str):
+        raise TypeError("URIs for working_dir and py_modules must be "
+                        f"strings, got {type(uri)}.")
+
+    try:
+        from ray._private.runtime_env.packaging import parse_uri, Protocol
+        protocol, path = parse_uri(uri)
+    except ValueError:
+        raise ValueError(
+            f"{uri} is not a valid URI. Passing directories or modules to "
+            "be dynamically uploaded is only supported at the job level "
+            "(i.e., passed to `ray.init`).")
+
+    if protocol == Protocol.S3 and not path.endswith(".zip"):
+        raise ValueError("Only .zip files supported for S3 URIs.")
+
+
+def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
+    """Parses and validates a 'py_modules' option.
+
+    This should be a list of URIs.
+    """
+    if not isinstance(py_modules, list):
+        raise TypeError("`py_modules` must be a list of strings, got "
+                        f"{type(py_modules)}.")
+
+    for uri in py_modules:
+        validate_uri(uri)
+
+    return py_modules
+
+
 def parse_and_validate_working_dir(working_dir: str) -> str:
-    """Parses and validates a user-provided 'working_dir' option.
+    """Parses and validates a 'working_dir' option.
 
     This should be a URI.
     """
@@ -30,18 +74,7 @@ def parse_and_validate_working_dir(working_dir: str) -> str:
         raise TypeError("`working_dir` must be a string, got "
                         f"{type(working_dir)}.")
 
-    try:
-        from ray._private.runtime_env.packaging import parse_uri, Protocol
-        protocol, path = parse_uri(working_dir)
-
-    except ValueError:
-        raise ValueError(
-            f"working_dir must be a valid URI, got {working_dir}. Passing "
-            "directories to be dynamically uploaded is only supported at "
-            "the job level (i.e., passed to `ray.init`).")
-
-    if protocol == Protocol.S3 and not path.endswith(".zip"):
-        raise ValueError("Only .zip files supported for S3 URIs.")
+    validate_uri(working_dir)
 
     return working_dir
 
@@ -171,6 +204,7 @@ def parse_and_validate_env_vars(
 # Dictionary mapping runtime_env options with the function to parse and
 # validate them.
 OPTION_TO_VALIDATION_FN = {
+    "py_modules": parse_and_validate_py_modules,
     "working_dir": parse_and_validate_working_dir,
     "excludes": parse_and_validate_excludes,
     "conda": parse_and_validate_conda,
@@ -189,12 +223,11 @@ class ParsedRuntimeEnv(dict):
     All options in the resulting dictionary will have non-None values.
 
     Currently supported options:
-        working_dir (Path): Specifies the working directory of the worker.
-            This can either be a local directory or a remote URI.
-            Examples:
-                "."  # Dynamically uploaded and unpacked into the directory.
-                ""s3://bucket/local_project.zip" # Downloaded and unpacked.
-
+        py_modules (List[URI]): List of URIs (either in the GCS or external
+            storage), each of which is a zip file that will be unpacked and
+            inserted into the PYTHONPATH of the workers.
+        working_dir (URI): URI (either in the GCS or external storage) of a zip
+            file that will be unpacked in the directory of each task/actor.
         pip (List[str] | str): Either a list of pip packages, or a string
             containing the path to a pip requirements.txt file.
         conda (dict | str): Either the conda YAML config, the name of a
@@ -227,10 +260,11 @@ class ParsedRuntimeEnv(dict):
     """
 
     known_fields: Set[str] = {
+        "py_modules",
         "working_dir",
         "conda",
         "pip",
-        "containers",
+        "container",
         "excludes",
         "env_vars",
         "_ray_release",
@@ -317,13 +351,22 @@ class ParsedRuntimeEnv(dict):
             self.clear()
 
     def get_uris(self) -> List[str]:
-        # TODO(edoakes): this should be extended with other resource URIs.
-        return [self["working_dir"]] if "working_dir" in self else []
+        # TODO(architkulkarni): this should programmatically be extended with
+        # URIs from all plugins.
+        plugin_uris = []
+        if "working_dir" in self:
+            plugin_uris.append(
+                _encode_plugin_uri("working_dir", self["working_dir"]))
+        if "py_modules" in self:
+            for uri in self["py_modules"]:
+                plugin_uris.append(_encode_plugin_uri("py_modules", uri))
+        return plugin_uris
 
     def get_proto_runtime_env(self):
         """Return the protobuf structure of RuntimeEnv."""
         if self._cached_pb is None:
             pb = RuntimeEnv()
+            pb.uris.extend(self.get("py_modules", []))
             pb.working_dir = self.get("working_dir", "")
             pb.uris.extend(self.get_uris())
             env_vars = self.get("env_vars", {})
@@ -343,6 +386,8 @@ class ParsedRuntimeEnv(dict):
     def deserialize(cls, serialized: str) -> "ParsedRuntimeEnv":
         runtime_env = json_format.Parse(serialized, RuntimeEnv())
         initialize_dict: Dict[str, Any] = {}
+        if runtime_env.py_modules:
+            initialize_dict["py_modules"] = list(runtime_env.py_modules)
         if runtime_env.working_dir:
             initialize_dict["working_dir"] = runtime_env.working_dir
         if runtime_env.env_vars:

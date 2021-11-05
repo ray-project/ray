@@ -504,6 +504,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
                                   rpc::ReleaseUnusedWorkersReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle a `ShutdownRaylet` request.
+  void HandleShutdownRaylet(const rpc::ShutdownRayletRequest &request,
+                            rpc::ShutdownRayletReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `ReturnWorker` request.
   void HandleCancelWorkerLease(const rpc::CancelWorkerLeaseRequest &request,
                                rpc::CancelWorkerLeaseReply *reply,
@@ -746,6 +751,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   /// Next resource broadcast seq no. Non-incrementing sequence numbers
   /// indicate network issues (dropped/duplicated/ooo packets, etc).
   int64_t next_resource_seq_no_;
+
+  /// Whether or not if the node draining process has already received.
+  bool is_node_drained_ = false;
 };
 
 }  // namespace raylet

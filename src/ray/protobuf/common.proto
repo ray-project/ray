@@ -216,35 +216,39 @@ message MavenRuntimeEnv {
 /// The runtime environment describes all the runtime packages needed to
 /// run some task or actor.
 message RuntimeEnv {
+  /// List of URIs (either in the GCS or external
+  /// storage), each of which is a zip file that will be unpacked and
+  /// inserted into the PYTHONPATH of the workers.
+  repeated string py_modules = 1;
   /// Specifies the working directory of the worker.
-  string working_dir = 1;
+  string working_dir = 2;
   /// A list of URIs that define the working_dir.
-  repeated string uris = 2;
+  repeated string uris = 3;
   /// Environment variables to set.
-  map<string, string> env_vars = 3;
+  map<string, string> env_vars = 4;
   /// The extension fields.
-  map<string, string> extensions = 4;
+  map<string, string> extensions = 5;
   /// One of typed runtime env of python
   oneof python_runtime_env {
     /// pip runtime env
-    PipRuntimeEnv pip_runtime_env = 5;
+    PipRuntimeEnv pip_runtime_env = 6;
     /// conda runtime env
-    CondaRuntimeEnv conda_runtime_env = 6;
+    CondaRuntimeEnv conda_runtime_env = 7;
     /// container runtime env
-    ContainerRuntimeEnv py_container_runtime_env = 7;
+    ContainerRuntimeEnv py_container_runtime_env = 8;
     /// plugin runtime env
-    PluginRuntimeEnv py_plugin_runtime_env = 8;
+    PluginRuntimeEnv py_plugin_runtime_env = 9;
   }
   /// One of typed runtime env of java
   oneof java_runtime_env {
     /// jars runtime env
-    JarsRuntimeEnv jars_runtime_env = 9;
+    JarsRuntimeEnv jars_runtime_env = 10;
     /// maven runtime env
-    MavenRuntimeEnv maven_runtime_env = 10;
+    MavenRuntimeEnv maven_runtime_env = 11;
     /// container runtime env
-    ContainerRuntimeEnv java_container_runtime_env = 11;
+    ContainerRuntimeEnv java_container_runtime_env = 12;
     /// plugin runtime env
-    PluginRuntimeEnv java_plugin_runtime_env = 12;
+    PluginRuntimeEnv java_plugin_runtime_env = 13;
   }
 }
 
@@ -453,9 +457,9 @@ message ActorTaskSpec {
 // `TaskSpec` is determined at submission time.
 message TaskExecutionSpec {
   // The last time this task was received for scheduling.
-  double last_timestamp = 2;
+  double last_timestamp = 1;
   // The number of times this task was spilled back by raylets.
-  uint64 num_forwards = 3;
+  uint64 num_forwards = 2;
 }
 
 // Represents a task, including task spec, and task execution spec.
