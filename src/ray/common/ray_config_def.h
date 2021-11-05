@@ -103,6 +103,13 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
 RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
 
+// TODO (Alex): Remove this feature flag once scheduling class capping is
+// implemented.
+/// Whether to include function descriptors, and depth in the
+// scheduling class. / This causes tasks to be queued differently, so it may
+// effect scheduling / behavior.
+RAY_CONFIG(bool, complex_scheduling_class, false)
+
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)

@@ -134,6 +134,10 @@ static Gauge NumInfeasibleTasks(
     "internal_num_infeasible_tasks",
     "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
 
+static Gauge NumInfeasibleSchedulingClasses(
+    "internal_num_infeasible_scheduling_classes",
+    "The number of unique scheduling classes that are infeasible.", "tasks");
+
 static Gauge SpillingBandwidthMB("object_spilling_bandwidth_mb",
                                  "Bandwidth of object spilling.", "MB");
 
