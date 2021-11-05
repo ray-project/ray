@@ -12,14 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/asio/asio_chaos.h"
-#include "ray/common/ray_config.h"
-#include "gtest/gtest.h"
 #include <string>
 
-bool EnsureBelow(const std::string& method_name, int64_t max_val) {
-  for(int i = 0; i < 1000; ++i) {
-    if(ray::asio::testing::get_delay_ms(method_name) > max_val) {
+#include "gtest/gtest.h"
+#include "ray/common/asio/asio_chaos.h"
+#include "ray/common/ray_config.h"
+
+bool EnsureBelow(const std::string &method_name, int64_t max_val) {
+  for (int i = 0; i < 1000; ++i) {
+    if (ray::asio::testing::get_delay_ms(method_name) > max_val) {
       return false;
     }
   }
