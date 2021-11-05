@@ -14,8 +14,7 @@ from ray._private.runtime_env.packaging import (package_exists,
                                                 upload_package_to_gcs)
 from ray.dashboard.modules.job.data_types import (
     GetPackageResponse, JobStatus, JobSubmitRequest, JobSubmitResponse,
-    JobStopRequest, JobStopResponse, JobStatusRequest, JobStatusResponse,
-    JobLogsRequest, JobLogsResponse)
+    JobStopResponse, JobStatusResponse, JobLogsResponse)
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
@@ -124,18 +123,12 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             status=aiohttp.web.HTTPOk.status_code,
         )
 
-    @routes.delete(JOBS_API_ROUTE_STOP)
+    @routes.post(JOBS_API_ROUTE_STOP)
     @_ensure_ray_initialized
     async def stop(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
-        result = await self._parse_and_validate_request(req, JobStopRequest)
-        # Request parsing failed, returned with Response object.
-        if isinstance(result, aiohttp.web.Response):
-            return result
-        else:
-            stop_request = result
-
+        job_id = req.query["job_id"]
         try:
-            stopped = self._job_manager.stop_job(stop_request.job_id)
+            stopped = self._job_manager.stop_job(job_id)
             resp = JobStopResponse(stopped=stopped)
         except Exception:
             return aiohttp.web.Response(
@@ -149,15 +142,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     @routes.get(JOBS_API_ROUTE_STATUS)
     @_ensure_ray_initialized
     async def status(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
-        result = await self._parse_and_validate_request(req, JobStatusRequest)
-        # Request parsing failed, returned with Response object.
-        if isinstance(result, aiohttp.web.Response):
-            return result
-        else:
-            status_request = result
-
-        status: JobStatus = self._job_manager.get_job_status(
-            status_request.job_id)
+        job_id = req.query["job_id"]
+        status: JobStatus = self._job_manager.get_job_status(job_id)
         resp = JobStatusResponse(job_status=status)
         return aiohttp.web.Response(
             text=json.dumps(dataclasses.asdict(resp)),
@@ -166,15 +152,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     @routes.get(JOBS_API_ROUTE_LOGS)
     @_ensure_ray_initialized
     async def logs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
-        result = await self._parse_and_validate_request(req, JobLogsRequest)
-        # Request parsing failed, returned with Response object.
-        if isinstance(result, aiohttp.web.Response):
-            return result
-        else:
-            logs_request = result
+        job_id = req.query["job_id"]
 
-        stdout: bytes = self._job_manager.get_job_stdout(logs_request.job_id)
-        stderr: bytes = self._job_manager.get_job_stderr(logs_request.job_id)
+        stdout: bytes = self._job_manager.get_job_stdout(job_id)
+        stderr: bytes = self._job_manager.get_job_stderr(job_id)
 
         # TODO(jiaodong): Support log streaming #19415
         resp = JobLogsResponse(

@@ -10,9 +10,8 @@ from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
 from ray._private.job_manager import JobStatus
 from ray.dashboard.modules.job.data_types import (
-    GetPackageResponse, JobSubmitRequest, JobSubmitResponse, JobStopRequest,
-    JobStopResponse, JobStatusRequest, JobStatusResponse, JobLogsRequest,
-    JobLogsResponse)
+    GetPackageResponse, JobSubmitRequest, JobSubmitResponse,
+    JobStopResponse, JobStatusResponse, JobLogsResponse)
 
 from ray.dashboard.modules.job.job_head import (
     JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP,
@@ -131,28 +130,25 @@ class JobSubmissionClient:
         return resp.job_id
 
     def stop_job(self, job_id: str) -> bool:
-        req = JobStopRequest(job_id=job_id)
         resp = self._do_request(
-            "DELETE",
+            "POST",
             JOBS_API_ROUTE_STOP,
-            json_data=dataclasses.asdict(req),
+            params={"job_id": job_id},
             response_type=JobStopResponse)
         return resp.stopped
 
     def get_job_status(self, job_id: str) -> JobStatus:
-        req = JobStatusRequest(job_id=job_id)
         resp = self._do_request(
             "GET",
             JOBS_API_ROUTE_STATUS,
-            json_data=dataclasses.asdict(req),
+            params={"job_id": job_id},
             response_type=JobStatusResponse)
         return resp.job_status
 
     def get_job_logs(self, job_id: str) -> Tuple[str, str]:
-        req = JobLogsRequest(job_id=job_id)
         resp = self._do_request(
             "GET",
             JOBS_API_ROUTE_LOGS,
-            json_data=dataclasses.asdict(req),
+            params={"job_id": job_id},
             response_type=JobLogsResponse)
         return resp.stdout, resp.stderr
