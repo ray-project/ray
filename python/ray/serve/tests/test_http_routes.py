@@ -1,3 +1,5 @@
+import time
+
 import pytest
 import requests
 from fastapi import FastAPI, Request
@@ -5,7 +7,6 @@ from starlette.responses import RedirectResponse
 
 import ray
 from ray import serve
-from ray._private.test_utils import SignalActor
 
 
 def test_path_validation(serve_instance):
@@ -222,7 +223,7 @@ def test_default_error_handling(serve_instance):
         1 / 0
 
     f.deploy()
-    r = requests.get(f"http://localhost:8000/f")
+    r = requests.get("http://localhost:8000/f")
     assert r.status_code == 500
     assert "ZeroDivisionError" in r.text, r.text
 
@@ -234,9 +235,10 @@ def test_default_error_handling(serve_instance):
     def h():
         ray.get(
             intentional_kill.remote(ray.get_runtime_context().current_actor))
+        time.sleep(100)  # Don't return here to leave time for actor exit.
 
     h.deploy()
-    r = requests.get(f"http://localhost:8000/h")
+    r = requests.get("http://localhost:8000/h")
     assert r.status_code == 500
     assert "retries" in r.text, r.text
 
