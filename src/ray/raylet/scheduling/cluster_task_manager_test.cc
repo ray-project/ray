@@ -1838,12 +1838,43 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
   ASSERT_EQ(num_callbacks, 2);
 
   // Now it should run
-  task_manager_.ScheduleAndDispatchTasks();
   current_time_ns_ += UNIT;
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
   task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(num_callbacks, 3);
+
+  // Let just one task finish.
+  for (auto it = workers.begin(); it != workers.end(); it++) {
+    if (!(*it)->IsBlocked()) {
+      RayTask buf;
+      task_manager_.TaskFinished(*it, &buf);
+      workers.erase(it);
+      break;
+    }
+  }
+
+  current_time_ns_ += UNIT;
+
+  // Now schedule another task of the same scheduling class.
+  RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
+                            /*num_args=*/0, /*args=*/{});
+  task_manager_.QueueAndScheduleTask(task, &reply, callback);
+
+  std::shared_ptr<MockWorker> new_worker =
+    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(new_worker));
+  pool_.TriggerCallbacks();
+  workers.push_back(new_worker);
+
+  // It can't run for another 2 units (doesn't increase to 4, because one of
+  // the tasks finished).
+  ASSERT_EQ(num_callbacks, 3);
+
+  current_time_ns_ += 2 * UNIT;
+  task_manager_.ScheduleAndDispatchTasks();
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 4);
 
   for (auto &worker : workers) {
     RayTask buf;
@@ -1920,6 +1951,22 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapReset) {
   pool_.TriggerCallbacks();
 
   ASSERT_EQ(num_callbacks, 4);
+
+  RAY_LOG(ERROR) << "Gets here!!!";
+
+  {
+    // Ensure a class of a differenct scheduling class can still be scheduled.
+    RayTask task5 = CreateTask({},
+                               /*num_args=*/0, /*args=*/{});
+    task_manager_.QueueAndScheduleTask(task5, &reply, callback);
+    std::shared_ptr<MockWorker> worker5 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+    pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker5));
+    task_manager_.ScheduleAndDispatchTasks();
+    pool_.TriggerCallbacks();
+    ASSERT_EQ(num_callbacks, 5);
+    task_manager_.TaskFinished(worker5, &buf);
+  }
 
   task_manager_.TaskFinished(worker3, &buf);
   task_manager_.TaskFinished(worker4, &buf);

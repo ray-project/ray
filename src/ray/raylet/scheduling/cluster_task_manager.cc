@@ -399,13 +399,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         work_it = dispatch_queue.erase(work_it);
       } else {
         sched_cls_info.running_tasks.insert(spec.TaskId());
-        if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity) {
-          int64_t current_capacity = sched_cls_info.running_tasks.size();
-          int64_t allowed_capacity = sched_cls_info.capacity;
-          int64_t exp = current_capacity - allowed_capacity;
-          int64_t wait_time = (1e6 * sched_cls_cap_interval_ms_) * (1L << exp);
-          sched_cls_info.next_update_time = get_time_() + wait_time;
-        }
+        UpdateSchedulingClassCapacity(sched_cls_info);
         // The local node has the available resources to run the task, so we should run
         // it.
         std::string allocated_instances_serialized_json = "{}";
@@ -507,8 +501,10 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
   auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
-  info_by_sched_cls_[sched_cls].running_tasks.erase(
+  auto &sched_cls_info = info_by_sched_cls_[sched_cls];
+  sched_cls_info.running_tasks.erase(
       task->GetTaskSpecification().TaskId());
+  UpdateSchedulingClassCapacity(sched_cls_info);
   if (info_by_sched_cls_[sched_cls].running_tasks.size() == 0) {
     info_by_sched_cls_.erase(sched_cls);
   }
@@ -1463,6 +1459,16 @@ uint64_t ClusterTaskManager::MaxRunningTasksPerSchedulingClass(
     return std::numeric_limits<uint64_t>::max();
   }
   return static_cast<uint64_t>(std::round(total_cpus / cpu_req));
+}
+
+void ClusterTaskManager::UpdateSchedulingClassCapacity(SchedulingClassInfo &sched_cls_info) {
+  if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity) {
+    int64_t current_capacity = sched_cls_info.running_tasks.size();
+    int64_t allowed_capacity = sched_cls_info.capacity;
+    int64_t exp = current_capacity - allowed_capacity;
+    int64_t wait_time = (1e6 * sched_cls_cap_interval_ms_) * (1L << exp);
+    sched_cls_info.next_update_time = get_time_() + wait_time;
+  }
 }
 
 }  // namespace raylet

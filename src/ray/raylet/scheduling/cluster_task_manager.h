@@ -266,6 +266,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ResourceSet CalcNormalTaskResources() const override;
 
  private:
+  struct SchedulingClassInfo;
+
   /// (Step 2) For each task in tasks_to_schedule_, pick a node in the system
   /// (local or remote) that has enough resources available to run the task, if
   /// any such node exist. Skip tasks which are not schedulable.
@@ -314,6 +316,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \returns The maximum number instances of that scheduling class that
   ///          should be running (or blocked) at once.
   uint64_t MaxRunningTasksPerSchedulingClass(SchedulingClass sched_cls_id) const;
+
+  void UpdateSchedulingClassCapacity(SchedulingClassInfo &sched_cls_info);
 
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.
