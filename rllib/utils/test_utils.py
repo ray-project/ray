@@ -628,7 +628,8 @@ def run_learning_tests_from_yaml(
                 if min_reward is not None:
                     e["stop"]["episode_reward_mean"] = min_reward
 
-            # Generate `checks` dict for all experiments (tf, tf2 and/or torch).
+            # Generate `checks` dict for all experiments
+            # (tf, tf2 and/or torch).
             for framework in frameworks:
                 k_ = k + "-" + framework
                 ec = copy.deepcopy(e)
@@ -689,11 +690,7 @@ def run_learning_tests_from_yaml(
                 sort_by_metric=True,
                 max_report_frequency=30,
             ))
-        trials = []
-        for e in experiments_to_run:
-            trials.append({
-                "status": "TERMINATED",
-            })
+
         all_trials.extend(trials)
 
         # Check each experiment for whether it passed.
@@ -749,6 +746,7 @@ def run_learning_tests_from_yaml(
                     for t in trials_for_experiment
                 ])
 
+                # TODO(jungong) : track trainer and env throughput separately.
                 throughput = timesteps_total / (total_time_s or 1.0)
                 desired_throughput = checks[experiment]["min_throughput"]
 
