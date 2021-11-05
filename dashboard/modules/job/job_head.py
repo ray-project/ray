@@ -89,9 +89,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 reason=traceback.format_exc().encode("utf-8"),
                 status=aiohttp.web.HTTPInternalServerError.status_code)
 
-        return aiohttp.web.Response(
-            status=aiohttp.web.HTTPOk.status_code,
-        )
+        return aiohttp.web.Response(status=aiohttp.web.HTTPOk.status_code, )
 
     @routes.post(JOBS_API_ROUTE_SUBMIT)
     @_ensure_ray_initialized
