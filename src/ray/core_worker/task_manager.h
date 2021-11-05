@@ -330,7 +330,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// execution.
   size_t num_pending_tasks_ = 0;
 
-  int64_t total_lineage_footprint_bytes_ = 0 GUARDED_BY(mu_);
+  int64_t total_lineage_footprint_bytes_ GUARDED_BY(mu_) = 0;
 
   /// Optional shutdown hook to call when pending tasks all finish.
   std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;

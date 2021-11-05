@@ -191,7 +191,7 @@ void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
   reconstructable_owned_objects_.emplace_back(object_id);
   auto back_it = reconstructable_owned_objects_.end();
   back_it--;
-  it->second.reconstructable_owned_objects_it = back_it;
+  RAY_CHECK(reconstructable_owned_objects_index_.emplace(object_id, back_it).second);
 }
 
 void ReferenceCounter::RemoveOwnedObject(const ObjectID &object_id) {
@@ -502,10 +502,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       deleted->push_back(id);
     }
 
-    if (it->second.reconstructable_owned_objects_it.has_value()) {
-      reconstructable_owned_objects_.erase(*it->second.reconstructable_owned_objects_it);
-      it->second.reconstructable_owned_objects_it.reset();
-    }
+    reconstructable_owned_objects_index_.erase(id);
   }
 
   if (it->second.ShouldDelete(lineage_pinning_enabled_)) {
@@ -518,6 +515,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 
 void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
   RAY_CHECK(it->second.ShouldDelete(lineage_pinning_enabled_));
+  reconstructable_owned_objects_index_.erase(it->first);
   freed_objects_.erase(it->first);
   object_id_refs_.erase(it);
   ShutdownIfNeeded();
@@ -530,10 +528,10 @@ int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
          lineage_bytes_evicted < min_bytes_to_evict) {
     ObjectID object_id = std::move(reconstructable_owned_objects_.front());
     reconstructable_owned_objects_.pop_front();
+    reconstructable_owned_objects_index_.erase(object_id);
 
     auto it = object_id_refs_.find(object_id);
     RAY_CHECK(it != object_id_refs_.end());
-    it->second.reconstructable_owned_objects_it.reset();
     lineage_bytes_evicted += ReleaseLineageReferences(it);
   }
   return lineage_bytes_evicted;

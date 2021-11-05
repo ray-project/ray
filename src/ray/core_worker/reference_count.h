@@ -555,7 +555,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     absl::flat_hash_set<NodeID> locations;
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
-    // object's lineage.
+    // object's lineage. This should be set to false if the object was created
+    // by ray.put(), a task that cannot be retried, or its lineage was evicted.
     bool is_reconstructable = false;
 
     /// The local ref count for the ObjectID in the language frontend.
@@ -627,11 +628,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Callback that is called when this process is no longer a borrower
     /// (RefCount() == 0).
     std::function<void(const ObjectID &)> on_ref_removed;
-    /// We keep a FIFO queue of objects in scope so that we can choose lineage
-    /// to evict under memory pressure. This is a pointer to this object's
-    /// entry in the queue.
-    absl::optional<std::list<ObjectID>::iterator> reconstructable_owned_objects_it =
-        absl::nullopt;
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
@@ -836,6 +832,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// should be evicted on memory pressure. The queue is in FIFO order, based
   /// on ObjectRef creation time.
   std::list<ObjectID> reconstructable_owned_objects_ GUARDED_BY(mutex_);
+
+  /// We keep a FIFO queue of objects in scope so that we can choose lineage to
+  /// evict under memory pressure. This is an index from ObjectID to the
+  /// object's place in the queue.
+  absl::flat_hash_map<ObjectID, std::list<ObjectID>::iterator>
+      reconstructable_owned_objects_index_ GUARDED_BY(mutex_);
 };
 
 }  // namespace core
