@@ -33,7 +33,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
-from ray.rllib.utils.torch_ops import convert_to_torch_tensor
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import EnvType, TrainerConfigDict
 from ray.util.iter import from_actors, LocalIterator
 
@@ -336,8 +336,8 @@ def post_process_samples(samples, config: TrainerConfigDict):
     return samples, split_lst
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
     """Execution plan of the PPO algorithm. Defines the distributed dataflow.
 
     Args:
@@ -349,6 +349,9 @@ def execution_plan(workers: WorkerSet,
         LocalIterator[dict]: The Policy class to use with PPOTrainer.
             If None, use `default_policy` provided in build_trainer().
     """
+    assert len(kwargs) == 0, (
+        "MBMPO execution_plan does NOT take any additional parameters")
+
     # Train TD Models on the driver.
     workers.local_worker().foreach_policy(fit_dynamics)
 

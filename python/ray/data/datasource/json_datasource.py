@@ -14,7 +14,7 @@ class JSONDatasource(FileBasedDatasource):
     Examples:
         >>> source = JSONDatasource()
         >>> ray.data.read_datasource(source, paths="/path/to/dir").take()
-        ... [ArrowRow({"a": 1, "b": "foo"}), ...]
+        ... [{"a": 1, "b": "foo"}, ...]
     """
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):

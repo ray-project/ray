@@ -35,7 +35,7 @@ def pg_torch_loss(
             of loss tensors.
     """
     # Pass the training data through our model to get distribution parameters.
-    dist_inputs, _ = model.from_batch(train_batch)
+    dist_inputs, _ = model(train_batch)
 
     # Create an action distribution object.
     action_dist = dist_class(dist_inputs, model)

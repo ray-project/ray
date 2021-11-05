@@ -2,11 +2,11 @@ package io.ray.test;
 
 import io.ray.api.ActorHandle;
 import io.ray.api.Ray;
-import io.ray.runtime.config.RayConfig;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 public class NamedActorTest extends BaseTest {
@@ -19,6 +19,11 @@ public class NamedActorTest extends BaseTest {
       this.value += 1;
       return this.value;
     }
+  }
+
+  @BeforeClass
+  void initNamespace() {
+    System.setProperty("ray.job.namespace", "named_actor_test");
   }
 
   @Test
@@ -54,18 +59,7 @@ public class NamedActorTest extends BaseTest {
 
     if (!TestUtils.isSingleProcessMode()) {
       // Get the global actor from another driver.
-      RayConfig rayConfig = TestUtils.getRuntime().getRayConfig();
-      ProcessBuilder builder =
-          new ProcessBuilder(
-              "java",
-              "-cp",
-              System.getProperty("java.class.path"),
-              "-Dray.address=" + rayConfig.getRedisAddress(),
-              "-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName,
-              "-Dray.raylet.socket-name=" + rayConfig.rayletSocketName,
-              "-Dray.raylet.node-manager-port=" + rayConfig.getNodeManagerPort(),
-              NamedActorTest.class.getName(),
-              name);
+      ProcessBuilder builder = TestUtils.buildDriver(NamedActorTest.class, new String[] {name});
       builder.redirectError(ProcessBuilder.Redirect.INHERIT);
       Process driver = builder.start();
       Assert.assertTrue(driver.waitFor(60, TimeUnit.SECONDS));
@@ -78,6 +72,7 @@ public class NamedActorTest extends BaseTest {
   }
 
   public static void main(String[] args) {
+    System.setProperty("ray.job.namespace", "named_actor_test");
     Ray.init();
     String actorName = args[0];
     // Get the global actor.

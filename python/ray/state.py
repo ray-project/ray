@@ -83,55 +83,6 @@ class GlobalState:
             self.redis_address, self.redis_password)
         self.global_state_accessor.connect()
 
-    def object_table(self, object_ref=None):
-        """Fetch and parse the object table info for one or more object refs.
-
-        Args:
-            object_ref: An object ref to fetch information about. If this is
-                None, then the entire object table is fetched.
-
-        Returns:
-            Information from the object table.
-        """
-        self._check_connected()
-
-        if object_ref is not None:
-            object_ref = ray.ObjectRef(hex_to_binary(object_ref))
-            object_info = self.global_state_accessor.get_object_info(
-                object_ref)
-            if object_info is None:
-                return {}
-            else:
-                object_location_info = gcs_utils.ObjectLocationInfo.FromString(
-                    object_info)
-                return self._gen_object_info(object_location_info)
-        else:
-            object_table = self.global_state_accessor.get_object_table()
-            results = {}
-            for i in range(len(object_table)):
-                object_location_info = gcs_utils.ObjectLocationInfo.FromString(
-                    object_table[i])
-                results[binary_to_hex(object_location_info.object_id)] = \
-                    self._gen_object_info(object_location_info)
-            return results
-
-    def _gen_object_info(self, object_location_info):
-        """Parse object location info.
-        Returns:
-            Information from object.
-        """
-        locations = []
-        for location in object_location_info.locations:
-            locations.append(
-                ray._private.utils.binary_to_hex(location.manager))
-
-        object_info = {
-            "ObjectRef": ray._private.utils.binary_to_hex(
-                object_location_info.object_id),
-            "Locations": locations,
-        }
-        return object_info
-
     def actor_table(self, actor_id):
         """Fetch and parse the actor table information for a single actor ID.
 

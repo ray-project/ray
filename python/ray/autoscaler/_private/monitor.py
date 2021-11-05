@@ -35,9 +35,10 @@ from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.ray_constants as ray_constants
 from ray._private.ray_logging import setup_component_logger
-from ray.experimental.internal_kv import _internal_kv_put, \
-    _internal_kv_initialized, _internal_kv_get, _internal_kv_del
-from ray._raylet import connect_to_gcs, disconnect_from_gcs
+from ray._private.gcs_utils import GcsClient
+from ray.experimental.internal_kv import _initialize_internal_kv, \
+    _internal_kv_put, _internal_kv_initialized, _internal_kv_get, \
+    _internal_kv_del
 import ray._private.utils
 
 logger = logging.getLogger(__name__)
@@ -147,19 +148,20 @@ class Monitor:
             self.redis.set("AutoscalerMetricsAddress",
                            f"{monitor_ip}:{AUTOSCALER_METRIC_PORT}")
         (ip, port) = redis_address.split(":")
-        self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         # Initialize the gcs stub for getting all node resource usage.
         gcs_address = self.redis.get("GcsServerAddress").decode("utf-8")
         options = (("grpc.enable_http_proxy", 0), )
         gcs_channel = ray._private.utils.init_grpc_channel(
             gcs_address, options)
+        # TODO: Use gcs client for this
         self.gcs_node_resources_stub = \
             gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
 
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
         worker.redis_client = self.redis
-        worker.gcs_client = self.gcs_client
+        gcs_client = GcsClient.create_from_redis(self.redis)
+        _initialize_internal_kv(gcs_client)
         worker.mode = 0
         head_node_ip = redis_address.split(":")[0]
         self.redis_address = redis_address
@@ -189,7 +191,8 @@ class Monitor:
                     "Starting autoscaler metrics server on port {}".format(
                         AUTOSCALER_METRIC_PORT))
                 prometheus_client.start_http_server(
-                    AUTOSCALER_METRIC_PORT,
+                    port=AUTOSCALER_METRIC_PORT,
+                    addr="127.0.0.1" if head_node_ip == "127.0.0.1" else "",
                     registry=self.prom_metrics.registry)
             except Exception:
                 logger.exception(
@@ -199,9 +202,6 @@ class Monitor:
                            "not be exported.")
 
         logger.info("Monitor: Started")
-
-    def __del__(self):
-        disconnect_from_gcs(self.gcs_client)
 
     def _initialize_autoscaler(self):
         if self.autoscaling_config:
