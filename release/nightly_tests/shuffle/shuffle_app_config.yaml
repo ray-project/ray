@@ -1,4 +1,5 @@
 base_image: "anyscale/ray-ml:pinned-nightly-py37"
+env_vars: {"RAY_BACKEND_LOG_LEVEL": "debug"}
 debian_packages: []
 
 python:
