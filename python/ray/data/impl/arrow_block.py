@@ -379,27 +379,35 @@ class ArrowBlockAccessor(BlockAccessor):
                             next_row = None
                             break
 
+                # Accumulate.
                 accumulators = [agg.init(next_key) for agg in aggs]
                 for r in gen():
                     for i in range(len(aggs)):
                         accumulators[i] = aggs[i].accumulate(
                             accumulators[i], r)
-                if key is None:
-                    builder.add({
-                        agg.name: accumulator
-                        for agg, accumulator in zip(aggs, accumulators)
-                    })
-                else:
-                    builder.add(
-                        dict({
-                            key: next_key
-                        }, **{
-                            agg.name: accumulator
-                            for agg, accumulator in zip(aggs, accumulators)
-                        }))
+
+                # Build the row.
+                row = {}
+                if key is not None:
+                    row[key] = next_key
+
+                count = collections.defaultdict(int)
+                for agg, accumulator in zip(aggs, accumulators):
+                    name = agg.name
+                    # Check for conflicts with existing aggregation name.
+                    if count[name] > 0:
+                        name = self._munge_conflict(name, count[name])
+                    count[name] += 1
+                    row[name] = accumulator
+
+                builder.add(row)
             except StopIteration:
                 break
         return builder.build()
+
+    @staticmethod
+    def _munge_conflict(name, count):
+        return f"{name}_{count+1}"
 
     @staticmethod
     def merge_sorted_blocks(
@@ -462,30 +470,38 @@ class ArrowBlockAccessor(BlockAccessor):
                             next_row = None
                             break
 
+                # Merge.
                 first = True
                 accumulators = [None] * len(aggs)
+                resolved_agg_names = [None] * len(aggs)
                 for r in gen():
                     if first:
+                        count = collections.defaultdict(int)
                         for i in range(len(aggs)):
-                            accumulators[i] = r[aggs[i].name]
+                            name = aggs[i].name
+                            # Check for conflicts with existing aggregation
+                            # name.
+                            if count[name] > 0:
+                                name = ArrowBlockAccessor._munge_conflict(
+                                    name, count[name])
+                            count[name] += 1
+                            resolved_agg_names[i] = name
+                            accumulators[i] = r[name]
                         first = False
                     else:
                         for i in range(len(aggs)):
                             accumulators[i] = aggs[i].merge(
-                                accumulators[i], r[aggs[i].name])
-                if key is None:
-                    builder.add({
-                        agg.name: agg.finalize(accumulator)
-                        for agg, accumulator in zip(aggs, accumulators)
-                    })
-                else:
-                    builder.add(
-                        dict({
-                            next_key_name: next_key
-                        }, **{
-                            agg.name: agg.finalize(accumulator)
-                            for agg, accumulator in zip(aggs, accumulators)
-                        }))
+                                accumulators[i], r[resolved_agg_names[i]])
+                # Build the row.
+                row = {}
+                if key is not None:
+                    row[next_key_name] = next_key
+
+                for agg, agg_name, accumulator in zip(aggs, resolved_agg_names,
+                                                      accumulators):
+                    row[agg_name] = agg.finalize(accumulator)
+
+                builder.add(row)
             except StopIteration:
                 break
 

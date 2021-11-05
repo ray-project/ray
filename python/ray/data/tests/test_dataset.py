@@ -2884,6 +2884,33 @@ def test_groupby_arrow(ray_start_regular_shared):
     assert agg_ds.count() == 0
 
 
+def test_groupby_agg_name_conflict(ray_start_regular_shared):
+    # Test aggregation name conflict.
+    xs = list(range(100))
+    grouped_ds = ray.data.from_items([{
+        "A": (x % 3),
+        "B": x
+    } for x in xs]).groupby("A")
+    agg_ds = grouped_ds.aggregate(
+        AggregateFn(
+            init=lambda k: [0, 0],
+            accumulate=lambda a, r: [a[0] + r["B"], a[1] + 1],
+            merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
+            finalize=lambda a: a[0] / a[1],
+            name="foo"),
+        AggregateFn(
+            init=lambda k: [0, 0],
+            accumulate=lambda a, r: [a[0] + r["B"], a[1] + 1],
+            merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
+            finalize=lambda a: a[0] / a[1],
+            name="foo"))
+    assert agg_ds.count() == 3
+    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
+        [{"A": 0, "foo": 49.5, "foo_2": 49.5},
+         {"A": 1, "foo": 49.0, "foo_2": 49.0},
+         {"A": 2, "foo": 50.0, "foo_2": 50.0}]
+
+
 def test_groupby_arrow_count(ray_start_regular_shared):
     # Test built-in count aggregation
     seed = int(time.time())

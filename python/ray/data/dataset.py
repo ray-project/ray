@@ -818,7 +818,7 @@ class Dataset(Generic[T]):
         from ray.data.grouped_dataset import GroupedDataset
         return GroupedDataset(self, key)
 
-    def aggregate(self, *aggs: Tuple[AggregateFn]) -> U:
+    def aggregate(self, *aggs: AggregateFn) -> U:
         """Aggregate the entire dataset as one group.
 
         This is a blocking operation.
