@@ -430,7 +430,7 @@ class StandardAutoscaler:
             # A successful response indicates that the GCS has marked the
             # desired nodes as "drained." The cloud provider can then terminate
             # the nodes without the GCS printing an error.
-            response = self.gcs_node_info_stub.DrainNode(request, timeout=30)
+            response = self.gcs_node_info_stub.DrainNode(request, timeout=5)
 
             # Check if we succeeded in draining all of the intended nodes by looking
             # at the RPC response.
