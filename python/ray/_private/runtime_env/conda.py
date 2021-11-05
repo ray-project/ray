@@ -18,7 +18,7 @@ from ray._private.runtime_env.conda_utils import (
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url, try_to_create_directory)
-from ray._private.runtime_env.packaging import parse_uri
+from ray._private.runtime_env.packaging import Protocol, parse_uri
 
 default_logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ def _current_py_version():
     return ".".join(map(str, sys.version_info[:3]))  # like 3.6.10
 
 
-def get_conda_dict(runtime_env, runtime_env_dir) -> Optional[Dict[Any, Any]]:
+def get_conda_dict(runtime_env, resources_dir) -> Optional[Dict[Any, Any]]:
     """ Construct a conda dependencies dict from a runtime env.
 
         This function does not inject Ray or Python into the conda dict.
@@ -87,9 +87,8 @@ def get_conda_dict(runtime_env, runtime_env_dir) -> Optional[Dict[Any, Any]]:
         pip_hash = hashlib.sha1(requirements_txt.encode("utf-8")).hexdigest()
         pip_hash_str = f"pip-generated-{pip_hash}"
 
-        conda_dir = os.path.join(runtime_env_dir, "conda")
         requirements_txt_path = os.path.join(
-            conda_dir, f"requirements-{pip_hash_str}.txt")
+            resources_dir, f"requirements-{pip_hash_str}.txt")
         conda_dict = {
             "name": pip_hash_str,
             "dependencies": ["pip", {
@@ -97,8 +96,8 @@ def get_conda_dict(runtime_env, runtime_env_dir) -> Optional[Dict[Any, Any]]:
             }]
         }
         file_lock_name = f"ray-{pip_hash_str}.lock"
-        with FileLock(os.path.join(runtime_env_dir, file_lock_name)):
-            try_to_create_directory(conda_dir)
+        with FileLock(os.path.join(resources_dir, file_lock_name)):
+            try_to_create_directory(resources_dir)
             with open(requirements_txt_path, "w") as file:
                 file.write(requirements_txt)
         return conda_dict
@@ -198,33 +197,46 @@ def _get_conda_env_hash(conda_dict: Dict) -> str:
     return hash
 
 
+def _get_pip_hash(pip_list: List[str]) -> str:
+    serialized_pip_spec = json.dumps(pip_list)
+    hash = hashlib.sha1(serialized_pip_spec.encode("utf-8")).hexdigest()
+    return hash
+
+
 def get_uri(runtime_env: Dict) -> Optional[str]:
+    """Return `"conda://<hashed_dependencies>"`, or None if no GC required."""
     conda = runtime_env.get("conda")
-    if conda is None:
-        uri = None
-    elif isinstance(conda, str):
-        # User-preinstalled conda env.  We don't garbage collect these, so
-        # we don't track them with URIs.
-        uri = None
-    elif isinstance(conda, dict):
-        uri = "conda://" + _get_conda_env_hash(conda_dict=conda)
+    pip = runtime_env.get("pip")
+    if conda is not None:
+        if isinstance(conda, str):
+            # User-preinstalled conda env.  We don't garbage collect these, so
+            # we don't track them with URIs.
+            uri = None
+        elif isinstance(conda, dict):
+            uri = "conda://" + _get_conda_env_hash(conda_dict=conda)
+        else:
+            raise TypeError("conda field received by RuntimeEnvAgent must be "
+                            f"str or dict, not {type(conda).__name__}.")
+    elif pip is not None:
+        if isinstance(pip, list):
+            uri = "conda://" + _get_pip_hash(pip_list=pip)
+        else:
+            raise TypeError("pip field received by RuntimeEnvAgent must be "
+                            f"list, not {type(pip).__name__}.")
     else:
-        raise TypeError("conda field received by RuntimeEnvAgent must be "
-                        f"str or dict, not {type(conda).__name__}.")
+        uri = None
     return uri
 
 
 class CondaManager:
     def __init__(self, resources_dir: str):
-        self._resources_dir = resources_dir
-        self._conda_dir = os.path.join(self._resources_dir, "conda")
+        self._resources_dir = os.path.join(resources_dir, "conda")
+        if not os.path.isdir(self._resources_dir):
+            os.makedirs(self._resources_dir)
         self._created_envs: Set[str] = set()
 
     def _get_path_from_hash(self, hash: str) -> str:
-        return os.path.join(self._conda_dir, hash)
-
-    def _get_conda_env_path(self, conda_dict: Dict) -> str:
-        """Generate a path by hashing the contents of a conda spec.
+        """Generate a path from the hash of a conda or pip spec.
 
         The output path also functions as the name of the conda environment
         when using the `--prefix` option to `conda create` and `conda remove`.
@@ -233,14 +245,14 @@ class CondaManager:
             /tmp/ray/session_2021-11-03_16-33-59_356303_41018/runtime_resources
                 /conda/ray-9a7972c3a75f55e976e620484f58410c920db091
         """
-        hash = _get_conda_env_hash(conda_dict)
-        return self._get_path_from_hash(hash)
+        return os.path.join(self._resources_dir, hash)
 
     def delete_uri(self,
                    uri: str,
                    logger: Optional[logging.Logger] = default_logger) -> bool:
+        logger.error(f"Got request to delete URI {uri}")
         protocol, hash = parse_uri(uri)
-        if protocol != "conda":
+        if protocol != Protocol.CONDA:
             raise ValueError(
                 "CondaManager can only delete URIs with protocol "
                 f"conda.  Received protocol {protocol}, URI {uri}")
@@ -248,6 +260,8 @@ class CondaManager:
         conda_env_path = self._get_path_from_hash(hash)
         self._created_envs.remove(conda_env_path)
         successful = delete_conda_env(prefix=conda_env_path, logger=logger)
+        if not successful:
+            logger.debug(f"Error when deleting conda env {conda_env_path}. ")
         return successful
 
     def setup(self,
@@ -258,11 +272,15 @@ class CondaManager:
             return
 
         logger.debug(f"Setting up conda or pip for runtime_env: {runtime_env}")
-        conda_dict = get_conda_dict(runtime_env, self._resources_dir)
+
         if isinstance(runtime_env.get("conda"), str):
             conda_env_name = runtime_env["conda"]
         else:
+            conda_dict = get_conda_dict(runtime_env, self._resources_dir)
+            protocol, hash = parse_uri(get_uri(runtime_env))
+            conda_env_name = self._get_path_from_hash(hash)
             assert conda_dict is not None
+
             ray_pip = current_ray_pip_specifier(logger=logger)
             if ray_pip:
                 extra_pip_dependencies = [ray_pip, "ray[default]"]
@@ -281,15 +299,11 @@ class CondaManager:
             # See https://github.com/ray-project/ray/issues/17086
             file_lock_name = "ray-conda-install.lock"
             with FileLock(os.path.join(self._resources_dir, file_lock_name)):
-                try_to_create_directory(self._conda_dir)
-
-                conda_yaml_file = os.path.join(self._conda_dir,
+                conda_yaml_file = os.path.join(self._resources_dir,
                                                "environment.yml")
                 with open(conda_yaml_file, "w") as file:
                     yaml.dump(conda_dict, file)
 
-                conda_env_name = self._get_conda_env_path(
-                    conda_dict=conda_dict)
                 if conda_env_name in self._created_envs:
                     logger.debug(f"Conda env {conda_env_name} already "
                                  "created, skipping creation.")

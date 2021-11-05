@@ -114,7 +114,7 @@ def delete_conda_env(prefix: str,
     logger.info(f"Deleting conda environment {prefix}")
 
     conda_path = get_conda_bin_executable("conda")
-    delete_cmd = [conda_path, "remove", "-p", prefix, "--all"]
+    delete_cmd = [conda_path, "remove", "-p", prefix, "--all", "-y"]
     exit_code, output = exec_cmd_stream_to_logger(delete_cmd, logger)
 
     if exit_code != 0:

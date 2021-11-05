@@ -355,7 +355,7 @@ class ParsedRuntimeEnv(dict):
         if "py_modules" in self:
             for uri in self["py_modules"]:
                 plugin_uris.append(_encode_plugin_uri("py_modules", uri))
-        if "conda" in self:
+        if "conda" or "pip" in self:
             uri = conda.get_uri(self)
             if uri is not None:
                 plugin_uris.append(_encode_plugin_uri("conda", uri))
