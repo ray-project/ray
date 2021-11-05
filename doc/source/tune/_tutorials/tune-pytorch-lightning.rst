@@ -129,8 +129,6 @@ TensorBoard, one time for Tune's logs, and another time for PyTorch Lightning's 
    :language: python
    :start-after: __tune_train_begin__
    :end-before: __tune_train_end__
-   :lines: 2-8
-   :dedent: 4
 
 
 Configuring the search space
