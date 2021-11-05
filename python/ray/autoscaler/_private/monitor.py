@@ -256,8 +256,9 @@ class Monitor:
                     "node_config": {},
                     "max_workers": 1,
                 }
-            if (hasattr(resource_message, "cluster_full_of_actors_detected")
-                    and resource_message.cluster_full_of_actors_detected):
+            if (hasattr(resource_message, "cluster_full_of_actors_status")
+                    and resource_message.cluster_full_of_actors_status.
+                    cluster_full_of_actors_detected):
                 # Aggregate this flag across all batches.
                 cluster_full = True
             resource_load = dict(resource_message.resource_load)
