@@ -739,9 +739,7 @@ def run_learning_tests_from_yaml(
                 ])
 
                 throughput = timesteps_total / (total_time_s or 1.0)
-                desired_throughput = None
-                # TODO(Jun): Stop checking throughput for now.
-                # desired_throughput = checks[experiment]["min_throughput"]
+                desired_throughput = checks[experiment]["min_throughput"]
 
                 print(f" ... Desired reward={desired_reward}; "
                       f"desired throughput={desired_throughput}")

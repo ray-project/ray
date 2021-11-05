@@ -1,13 +1,4 @@
 # Heavy learning tests (Atari and HalfCheetah) for major algos.
-- name: learning_tests_core
-  cluster:
-    app_config: app_config.yaml
-    compute_template: 12gpus_192cpus.yaml
-
-  run:
-    timeout: 14400
-    script: python learning_tests_core/run.py
-
 - name: learning_tests
   cluster:
     app_config: app_config.yaml
@@ -88,3 +79,17 @@
     use_connect: True
     timeout: 3000
     script: python connect_tests/run_connect_tests.py
+
+# Nightly performance regression for popular algorithms.
+# These algorithms run nightly for pre-determined amount of time without
+# passing criteria.
+# Performance metrics, such as reward achieved and throughput, are then
+# collected and tracked over time.
+- name: performance_tests
+  cluster:
+    app_config: app_config.yaml
+    compute_template: 12gpus_192cpus.yaml
+
+  run:
+    timeout: 7200
+    script: python performance_tests/run.py

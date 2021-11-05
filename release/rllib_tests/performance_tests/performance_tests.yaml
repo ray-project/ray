@@ -1,12 +1,8 @@
 apex-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: APEX
-    # Minimum reward and total ts (in given time_total_s) to pass this test.
-    pass_criteria:
-        episode_reward_mean: 20.0
-        timesteps_total: 7000000
     stop:
-        time_total_s: 7200
+        time_total_s: 3600
     config:
         double_q: false
         dueling: false
@@ -31,17 +27,10 @@ apex-breakoutnoframeskip-v4:
         target_network_update_freq: 50000
         timesteps_per_iteration: 25000
 
-# Expect roughly 1000 reward after 1h on 1GPU
 sac-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: SAC
-    # Minimum reward and total ts (in given time_total_s) to pass this test.
-    pass_criteria:
-        episode_reward_mean: 500.0
-        timesteps_total: 100000
     stop:
-        # TODO(jungong): increase time_total_s after we make sure SAC agents
-        # actually learn.
         time_total_s: 3600
     config:
         horizon: 1000
@@ -73,10 +62,6 @@ sac-halfcheetahbulletenv-v0:
 appo-pongnoframeskip-v4:
     env: PongNoFrameskip-v4
     run: APPO
-    # Minimum reward and total ts (in given time_total_s) to pass this test.
-    pass_criteria:
-        episode_reward_mean: 18.0
-        timesteps_total: 5000000
     stop:
         time_total_s: 2000
     config:
@@ -100,9 +85,6 @@ appo-pongnoframeskip-v4:
 cql-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: CQL
-    pass_criteria:
-        episode_reward_mean: 400.0
-        timesteps_total: 10000000
     stop:
         time_total_s: 1800
     config:
