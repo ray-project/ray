@@ -74,7 +74,7 @@ class DelayManager {
     }
     auto actual_delay = GenRandomDelay(it->second);
     if (actual_delay != 0) {
-      RAY_LOG_EVERY_N(DEBUG, 1000)
+      RAY_LOG_EVERY_N(ERROR, 1000)
           << "Delaying method " << name << " for " << actual_delay << "ms";
     }
     return actual_delay;
