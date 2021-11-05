@@ -34,7 +34,7 @@ def __make_key(namespace: Optional[str], key: bytes) -> bytes:
         return key
     assert isinstance(namespace, str)
     assert isinstance(key, bytes)
-    return b":".join(__NS_START_CHAR, namespace.encode(), key)
+    return b":".join([__NS_START_CHAR, namespace.encode(), key])
 
 
 def __parse_key(key: bytes) -> Tuple[Optional[str], bytes]:
