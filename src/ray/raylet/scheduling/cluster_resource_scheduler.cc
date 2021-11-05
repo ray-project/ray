@@ -246,15 +246,15 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     return best_node;
   }
 
-  auto spread_threshold = spread_threshold_;
-  // If the scheduling decision is made by gcs, we ignore the spread threshold
-  if (grant_or_reject) {
-    spread_threshold = 1.0;
+  if (grant_or_reject &&
+      IsSchedulable(resource_request, local_node_id_, GetLocalNodeResources())) {
+    return local_node_id_;
   }
+
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
-      resource_request, local_node_id_, nodes_, spread_threshold, force_spillback,
+      resource_request, local_node_id_, nodes_, spread_threshold_, force_spillback,
       force_spillback, [this](auto node_id) { return this->NodeAlive(node_id); });
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {
@@ -982,16 +982,6 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
     NodeResources node_resources =
         ResourceMapToNodeResources(string_to_int_map_, {{}}, {{}});
     last_report_resources_.reset(new NodeResources(node_resources));
-  }
-
-  // Reset all local views for remote nodes. This is needed in case tasks that
-  // we spilled back to a remote node were not actually scheduled on the
-  // node. Then, the remote node's resource availability may not change and
-  // so it may not send us another update.
-  for (auto &node : nodes_) {
-    if (node.first != local_node_id_) {
-      node.second.ResetLocalView();
-    }
   }
 
   for (int i = 0; i < PredefinedResources_MAX; i++) {
