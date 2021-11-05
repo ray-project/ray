@@ -271,6 +271,9 @@ class SampleBatch(dict):
         )
         copy_ = SampleBatch(data)
         copy_.set_get_interceptor(self.get_interceptor)
+        copy_.added_keys = self.added_keys
+        copy_.deleted_keys = self.deleted_keys
+        copy_.accessed_keys = self.accessed_keys
         return copy_
 
     @PublicAPI

@@ -146,12 +146,13 @@ def traced_eager_policy(eager_policy_cls):
             """Traced version of Policy.compute_actions_from_input_dict."""
 
             # Create a traced version of `self._compute_actions_helper`.
-            if self._traced_compute_actions_helper is False:
+            if self._traced_compute_actions_helper is False and \
+                    not self._no_tracing:
                 self._compute_actions_helper = convert_eager_inputs(
                     tf.function(
                         super(TracedEagerPolicy, self)._compute_actions_helper,
                         autograph=False,
-                        experimental_relax_shapes=False))
+                        experimental_relax_shapes=True))
                 self._traced_compute_actions_helper = True
 
             # Now that the helper method is traced, call super's
@@ -171,12 +172,13 @@ def traced_eager_policy(eager_policy_cls):
             """Traced version of Policy.learn_on_batch."""
 
             # Create a traced version of `self._learn_on_batch_helper`.
-            if self._traced_learn_on_batch_helper is False:
+            if self._traced_learn_on_batch_helper is False and \
+                    not self._no_tracing:
                 self._learn_on_batch_helper = convert_eager_inputs(
                     tf.function(
                         super(TracedEagerPolicy, self)._learn_on_batch_helper,
                         autograph=False,
-                        experimental_relax_shapes=False))
+                        experimental_relax_shapes=True))
                 self._traced_learn_on_batch_helper = True
 
             # Now that the helper method is traced, call super's
@@ -190,12 +192,14 @@ def traced_eager_policy(eager_policy_cls):
             """Traced version of Policy.compute_gradients."""
 
             # Create a traced version of `self._compute_gradients_helper`.
-            if self._traced_compute_gradients_helper is False:
+            if self._traced_compute_gradients_helper is False and \
+                    not self._no_tracing:
                 self._compute_gradients_helper = convert_eager_inputs(
                     tf.function(
-                        super()._compute_gradients_helper,
+                        super(TracedEagerPolicy,
+                              self)._compute_gradients_helper,
                         autograph=False,
-                        experimental_relax_shapes=False))
+                        experimental_relax_shapes=True))
                 self._traced_compute_gradients_helper = True
 
             # Now that the helper method is traced, call super's
@@ -208,12 +212,13 @@ def traced_eager_policy(eager_policy_cls):
             """Traced version of Policy.apply_gradients."""
 
             # Create a traced version of `self._apply_gradients_helper`.
-            if self._traced_apply_gradients_helper is False:
-                self._traced_apply_gradients = convert_eager_inputs(
+            if self._traced_apply_gradients_helper is False and \
+                    not self._no_tracing:
+                self._apply_gradients_helper = convert_eager_inputs(
                     tf.function(
-                        super()._apply_gradients_helper,
+                        super(TracedEagerPolicy, self)._apply_gradients_helper,
                         autograph=False,
-                        experimental_relax_shapes=False))
+                        experimental_relax_shapes=True))
                 self._traced_apply_gradients_helper = True
 
             # Now that the helper method is traced, call super's
