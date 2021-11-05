@@ -300,32 +300,50 @@ Let's cover how to configure your checkpoints storage location, checkpointing fr
 A simple checkpointing example
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+Prequisities to use checkpointing in Ray Tune for the example below:
+
+* Your ``my_trainable`` is either a:
+   1. Model trainer with existing Ray integration
+      * XGBoost (example)
+      * Pytorch (example)
+      * Pytorch Lightning (example)
+      * Keras (example)
+      * Tensorflow (example)
+      * LightGBM (example)
+   2. Custom training function (example)
+      * All this means is that your function has to expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir``. See the example linked, it's quite simple to do.
+
+Let's assume for this example you're running this script from your laptop, and connecting to a Ray cluster via ``ray.init(address="<cluster IP:port>")``, making your script on your laptop the "driver".
+
 .. code-block:: python
 
     from ray import tune
-    from your_module import my_pytorch_training_func
+    from your_module import my_trainable
 
     # configure how your checkpoints are sync'd to the scheduler/sampler 
-    # to enable tuning. we recommend cloud storage checkpointing as it survives the
-    # cluster when your instances are terminated
+    # we recommend cloud storage checkpointing as it survives the cluster when
+    # instances are terminated, and has low latency/high throughput
     sync_config = tune.syncConfig(
         upload_dir="s3://my-checkpoints-bucket/path/",  # requires AWS credentials
-        sync_to_cloud=True  # this can also be a func for custom logic!
+        sync_to_cloud=True,
+        sync_to_driver=False  # recommended for performance when using cloud checkpointing 
     )
 
+    # here we wrap our Ray model (or custom training func) with a couple of things:
+    # 1) with_parameters() ensures that when we checkpoint, we save the weights, not just the hyperparameters
+    # 2) durable() ensures that this trainer can be saved to cloud storage (ie: S3)
+    durable_trainer_with_params = tune.with_parameters(tune.durable(my_trainable))
+
+    # this starts the run!
     tune.run(
-        # wrapping your function in tune.with_parameters() just ensures that 
-        # when checkpoints happen, all the trained parameters are saved alongside, 
-        # not just your model's hyperparameters! useful if you want your checkpoints 
-        # to be "inference ready" checkpoints of your models
-        tune.with_parameters(my_pytorch_training_func),
+        durable_trainer_with_params,
 
         # name of your experiment 
         name="my-tune-exp",
 
         # a directory where results are stored before being
         # sync'd to head node/cloud storage
-        local_dir="/tmp",
+        local_dir="/tmp/mypath",
 
         # see above! we will sync our checkpoints to S3 directory
         sync_config=sync_config,
@@ -337,25 +355,29 @@ A simple checkpointing example
         keep_checkpoints_num=5,
         checkpoint_freq=10,
         checkpoint_at_end=True,
+
+        # a very useful trick! this will resume from the last run specified by
+        # sync_config (if one exists), otherwise it will start a new tuning run
+        resume="AUTO",
     )
 
 In this example, checkpoints will be saved:
 
-* Locally: ``local_dir/my-tune-exp/<trial_name>/checkpoint_<step>``
+* Locally: we set ``sync_to_driver=False``, so nothing will be sync'd to the driver (your laptop)
 * S3: ``s3://my-checkpoints-bucket/path/my-tune-exp/<trial_name>/checkpoint_<step>``
 * On head node: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>``
 * On workers nodes (but only for trials done on that node): ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>``
 
-Note that if want to use checkpointing with a custom training function (not a Ray integration like PyTorch or Tensorflow), you must expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir``. You can find an example of this here.
+If your run stopped for any reason (finished, errored, user CTRL+C), you can restart it any time by running the script above again -- note with ``resume="AUTO"``, it will detect the previous run so long as the ``sync_config`` points to the same location.
 
-If your run stopped for any reason (finished, errored, user CTRL+C), you can restart it any time with the following:
+If, however, you prefer not to use ``resume="AUTO"`` (or are on an older version of Ray) you can resume manaully:
 
 .. code-block:: python
 
     # Restored previous trial from the given checkpoint
     tune.run(
         # our same trainable as before
-        tune.with_parameters(my_pytorch_training_func),
+        durable_trainer_with_params,
 
         # The name can be different from your original name
         name="my-tune-exp-restart",
