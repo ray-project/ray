@@ -573,7 +573,7 @@ std::string ClusterResourceScheduler::DebugString(void) const {
   return buffer.str();
 }
 
-uint64_t ClusterResourceScheduler::GetNumCpus(void) const {
+uint64_t ClusterResourceScheduler::GetNumCpus() const {
   auto it = nodes_.find(local_node_id_);
   RAY_CHECK(it != nodes_.end());
   return static_cast<uint64_t>(

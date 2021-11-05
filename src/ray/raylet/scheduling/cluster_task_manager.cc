@@ -316,7 +316,12 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_()
                        << " next update time=" << sched_cls_info.next_update_time;
         if (get_time_() < sched_cls_info.next_update_time) {
+          UpdateSchedulingClassCapacity(sched_cls_info);
           break;
+        } else {
+          // Force us to recalculate the next update time the next time a task
+          // comes through this queue.
+          sched_cls_info.next_update_time = std::numeric_limits<int64_t>::max();
         }
       }
 
@@ -399,7 +404,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         work_it = dispatch_queue.erase(work_it);
       } else {
         sched_cls_info.running_tasks.insert(spec.TaskId());
-        UpdateSchedulingClassCapacity(sched_cls_info);
         // The local node has the available resources to run the task, so we should run
         // it.
         std::string allocated_instances_serialized_json = "{}";
@@ -503,7 +507,7 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
   auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
   auto &sched_cls_info = info_by_sched_cls_[sched_cls];
   sched_cls_info.running_tasks.erase(task->GetTaskSpecification().TaskId());
-  UpdateSchedulingClassCapacity(sched_cls_info);
+  // UpdateSchedulingClassCapacity(sched_cls_info);
   if (info_by_sched_cls_[sched_cls].running_tasks.size() == 0) {
     info_by_sched_cls_.erase(sched_cls);
   }
@@ -1467,7 +1471,7 @@ void ClusterTaskManager::UpdateSchedulingClassCapacity(
     int64_t allowed_capacity = sched_cls_info.capacity;
     int64_t exp = current_capacity - allowed_capacity;
     int64_t wait_time = (1e6 * sched_cls_cap_interval_ms_) * (1L << exp);
-    sched_cls_info.next_update_time = get_time_() + wait_time;
+    sched_cls_info.next_update_time = std::min(get_time_() + wait_time, sched_cls_info.next_update_time);
   }
 }
 

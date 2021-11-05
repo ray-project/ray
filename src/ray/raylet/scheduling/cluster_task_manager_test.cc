@@ -1885,7 +1885,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
 }
 
 /// Ensure we reset the cap after we've finished executing through the queue.
-TEST_F(ClusterTaskManagerTest, SchedulingClassCapReset) {
+TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
   int64_t UNIT = RayConfig::instance().scheduling_class_capacity_interval_ms() * 1e6;
   std::vector<RayTask> tasks;
   for (int i = 0; i < 2; i++) {
@@ -1973,6 +1973,86 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapReset) {
 
   AssertNoLeaks();
 }
+
+/// Test that scheduling classes which have reached their running cap start
+/// their timer after the new task is submitted, not before.
+TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
+  int64_t UNIT = RayConfig::instance().scheduling_class_capacity_interval_ms() * 1e6;
+  RayTask first_task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
+                            /*num_args=*/0, /*args=*/{});
+
+  rpc::RequestWorkerLeaseReply reply;
+  int num_callbacks = 0;
+  auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
+    num_callbacks++;
+  };
+  task_manager_.QueueAndScheduleTask(first_task, &reply, callback);
+
+  auto runtime_env_hash = first_task.GetTaskSpecification().GetRuntimeEnvHash();
+  std::vector<std::shared_ptr<MockWorker>> workers;
+  for (int i = 0; i < 3; i++) {
+    std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+    pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+    pool_.TriggerCallbacks();
+    workers.push_back(worker);
+  }
+  task_manager_.ScheduleAndDispatchTasks();
+
+  ASSERT_EQ(num_callbacks, 1);
+
+
+  RayTask second_task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
+                                  /*num_args=*/0, /*args=*/{});
+  task_manager_.QueueAndScheduleTask(second_task, &reply, callback);
+  pool_.TriggerCallbacks();
+
+  /// Can't schedule yet due to the cap.
+  ASSERT_EQ(num_callbacks, 1);
+  for (auto &worker : workers) {
+    if (worker->GetAllocatedInstances() && !worker->IsBlocked()) {
+      task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker);
+    }
+  }
+
+  current_time_ns_ += UNIT;
+  task_manager_.ScheduleAndDispatchTasks();
+  pool_.TriggerCallbacks();
+
+  ASSERT_EQ(num_callbacks, 2);
+  for (auto &worker : workers) {
+    if (worker->GetAllocatedInstances() && !worker->IsBlocked()) {
+      task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker);
+        }
+  }
+
+  /// A lot of time passes, definitely more than the timeout.
+  current_time_ns_ += 100000 * UNIT;
+
+  RayTask third_task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
+                                   /*num_args=*/0, /*args=*/{});
+  task_manager_.QueueAndScheduleTask(third_task, &reply, callback);
+  pool_.TriggerCallbacks();
+
+  /// We still can't schedule the third task since the timer doesn't start
+  /// until after the task is queued.
+  ASSERT_EQ(num_callbacks, 2);
+
+  current_time_ns_ += 2 * UNIT;
+  task_manager_.ScheduleAndDispatchTasks();
+  pool_.TriggerCallbacks();
+
+  ASSERT_EQ(num_callbacks, 3);
+
+  for (auto &worker : workers) {
+    RayTask buf;
+    task_manager_.TaskFinished(worker, &buf);
+  }
+
+  AssertNoLeaks();
+}
+
+
 
 // Regression test for https://github.com/ray-project/ray/issues/16935:
 // When a task requires 1 CPU and is infeasible because head node has 0 CPU,
