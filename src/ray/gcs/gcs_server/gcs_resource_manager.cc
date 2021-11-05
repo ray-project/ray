@@ -151,6 +151,7 @@ void GcsResourceManager::HandleDeleteResources(
         resources_buffer_proto_.add_batch()->mutable_change()->Swap(
             &node_resource_change);
       }
+
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     };
     RAY_CHECK_OK(
