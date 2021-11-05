@@ -602,8 +602,8 @@ def run_learning_tests_from_yaml(
         for k, e in tf_experiments.items():
             # If framework explicitly given, only test for that framework.
             # Some algos do not have both versions available.
-            if "frameworks" in e["config"]:
-                frameworks = e["config"]["frameworks"]
+            if "frameworks" in e:
+                frameworks = e["frameworks"]
             else:
                 # By default we don't run tf2, because tf2's multi-gpu support
                 # isn't complete yet.

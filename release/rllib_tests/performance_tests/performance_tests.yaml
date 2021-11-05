@@ -57,7 +57,7 @@ cql-halfcheetahbulletenv-v0:
     run: CQL
     frameworks: [ "tf", "tf2", "torch" ]
     stop:
-        time_total_s: 1800
+        time_total_s: 300  #1800
     config:
         # Use input produced by expert SAC algo.
         input: ["~/halfcheetah_expert_sac.zip"]
