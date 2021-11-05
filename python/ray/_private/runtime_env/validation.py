@@ -9,7 +9,7 @@ import yaml
 
 import ray
 from ray.core.generated.common_pb2 import RuntimeEnv
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin, build_proto_plugin_runtime_env, parse_proto_plugin_runtime_env
 from ray._private.utils import import_attr
 from ray._private.runtime_env.pip import build_proto_pip_runtime_env, parse_proto_pip_runtime_env
 from ray._private.runtime_env.conda import build_proto_conda_runtime_env, parse_proto_conda_runtime_env
@@ -334,6 +334,7 @@ class ParsedRuntimeEnv(dict):
             build_proto_pip_runtime_env(self, pb)
             build_proto_conda_runtime_env(self, pb)
             build_proto_container_runtime_env(self, pb)
+            build_proto_plugin_runtime_env(self, pb)
             self._cached_pb = pb
 
         return self._cached_pb
@@ -351,6 +352,7 @@ class ParsedRuntimeEnv(dict):
         parse_proto_pip_runtime_env(runtime_env, initialize_dict)
         parse_proto_conda_runtime_env(runtime_env, initialize_dict)
         parse_proto_container_runtime_env(runtime_env, initialize_dict)
+        parse_proto_plugin_runtime_env(runtime_env, initialize_dict)
         return cls(initialize_dict, _validate=False)
 
     def serialize(self) -> str:

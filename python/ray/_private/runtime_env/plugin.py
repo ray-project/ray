@@ -2,6 +2,26 @@ from abc import ABC, abstractstaticmethod
 
 from ray.util.annotations import DeveloperAPI
 from ray._private.runtime_env.context import RuntimeEnvContext
+from ray.core.generated.common_pb2 import RuntimeEnv, PluginRuntimeEnv
+import json
+
+
+def build_proto_plugin_runtime_env(runtime_env_dict: dict, runtime_env: RuntimeEnv):
+    """ Construct plugin runtime env protobuf from runtime env dict.
+    """
+    if runtime_env_dict.get("plugins"):
+        for class_path, plugin_field in runtime_env_dict["plugins"].items():
+            plugin = runtime_env.py_plugin_runtime_env.plugins.add()
+            plugin.class_path = class_path
+            plugin.config = json.dumps(plugin_field, sort_keys = True)
+
+
+def parse_proto_plugin_runtime_env(runtime_env: RuntimeEnv, runtime_env_dict: dict):
+    """ Parse plugin runtime env protobuf to runtime env dict.
+    """
+    if runtime_env.HasField("py_plugin_runtime_env"):
+        for plugin in runtime_env.py_plugin_runtime_env.plugins:
+            runtime_env_dict["plugins"][plugin.class_path] = dict(json.loads(plugin.config))
 
 
 @DeveloperAPI
@@ -24,7 +44,7 @@ class RuntimeEnvPlugin(ABC):
         """
         raise NotImplementedError()
 
-    def create(uri: str, runtime_env_dict: dict,
+    def create(uri: str, runtime_env: RuntimeEnv,
                ctx: RuntimeEnvContext) -> float:
         """Create and install the runtime environment.
 
@@ -33,7 +53,7 @@ class RuntimeEnvPlugin(ABC):
 
         Args:
             uri(str): a URI uniquely describing this resource.
-            runtime_env_dict(dict): the entire dictionary passed in by user.
+            runtime_env(RuntimeEnv): the runtime env protobuf.
             ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
 
         Returns:
@@ -43,7 +63,7 @@ class RuntimeEnvPlugin(ABC):
         """
         return 0
 
-    def modify_context(uri: str, runtime_env_dict: dict,
+    def modify_context(uri: str, runtime_env: RuntimeEnv,
                        ctx: RuntimeEnvContext) -> None:
         """Modify context to change worker startup behavior.
 
@@ -52,7 +72,7 @@ class RuntimeEnvPlugin(ABC):
 
         Args:
             uri(str): a URI uniquely describing this resource.
-            runtime_env_dict(dict): the entire dictionary passed in by user.
+            runtime_env(RuntimeEnv): the runtime env protobuf.
             ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
         """
         return

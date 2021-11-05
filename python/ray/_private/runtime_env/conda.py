@@ -26,8 +26,11 @@ def build_proto_conda_runtime_env(runtime_env_dict: dict, runtime_env: RuntimeEn
     """ Construct conda runtime env protobuf from runtime env dict.
     """
     if runtime_env_dict.get("conda"):
-        runtime_env.conda_runtime_env.config = json.dumps(
-            runtime_env_dict["conda"], sort_keys=True)
+        if isinstance(runtime_env_dict["conda"], str):
+            runtime_env.conda_runtime_env.conda_env_name = runtime_env_dict["conda"]
+        else:
+            runtime_env.conda_runtime_env.config = json.dumps(
+                runtime_env_dict["conda"], sort_keys=True)
 
 
 def parse_proto_conda_runtime_env(runtime_env: RuntimeEnv, runtime_env_dict: dict):
@@ -224,7 +227,7 @@ class CondaManager:
         conda_dict = get_conda_dict(runtime_env, self._resources_dir)
 
         if runtime_env.conda_runtime_env.HasField("conda_env_name"):
-            conda_env_name = runtime_env.conda_env_name
+            conda_env_name = runtime_env.conda_runtime_env.conda_env_name
         else:
             assert conda_dict is not None
             ray_pip = current_ray_pip_specifier(logger=logger)

@@ -196,7 +196,7 @@ message ContainerRuntimeEnv {
 message PluginRuntimeEnv {
   message Plugin {
     /// The python class which implements the runtime env plugin.
-    string plugin_class = 1;
+    string class_path = 1;
     /// The serialized config.
     string config = 2;
   }

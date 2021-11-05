@@ -111,12 +111,12 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
                 # Run setup function from all the plugins
                 for plugin in runtime_env.py_plugin_runtime_env.plugins:
-                    plugin_class_path = plugin.plugin_class()
-                    config = json.loads(plugin.config() or "{}")
+                    plugin_class_path = plugin.class_path
                     plugin_class = import_attr(plugin_class_path)
+                    config = plugin.config
                     # TODO(simon): implement uri support
-                    plugin_class.create("uri not implemented", config, context)
-                    plugin_class.modify_context("uri not implemented", config,
+                    plugin_class.create("uri not implemented", json.loads(config), context)
+                    plugin_class.modify_context("uri not implemented", json.loads(config),
                                                 context)
 
                 return context

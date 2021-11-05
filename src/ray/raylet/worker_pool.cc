@@ -547,7 +547,8 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
   all_jobs_[job_id] = job_config;
   if (job_config.serialized_runtime_env().runtime_env_eager_install() &&
       job_config.has_serialized_runtime_env() &&
-      !job_config.serialized_runtime_env().serialized_runtime_env().empty()) {
+      !job_config.serialized_runtime_env().serialized_runtime_env().empty() &&
+      job_config.serialized_runtime_env().serialized_runtime_env() != "{}") {
     auto const &runtime_env =
         job_config.serialized_runtime_env().serialized_runtime_env();
     RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
