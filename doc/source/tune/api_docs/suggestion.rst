@@ -286,7 +286,7 @@ Scikit-Optimize (tune.suggest.skopt.SkOptSearch)
 .. autoclass:: ray.tune.suggest.skopt.SkOptSearch
   :members: save, restore
 
-.. _`skopt Optimizer object`: https://scikit-optimize.github.io/#skopt.Optimizer
+.. _`skopt Optimizer object`: https://scikit-optimize.github.io/stable/modules/generated/skopt.Optimizer.html#skopt.Optimizer
 
 .. _zoopt:
 
