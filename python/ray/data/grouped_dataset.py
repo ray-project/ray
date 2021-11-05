@@ -17,7 +17,7 @@ GroupKeyT = Union[None, Callable[[T], KeyType], str, List[str]]
 
 @PublicAPI(stability="beta")
 class GroupedDataset(Generic[T]):
-    """Implements a lazy dataset grouped by key (Experimental).
+    """Represents a grouped dataset created by calling ``Dataset.groupby()``.
 
     The actual groupby is deferred until an aggregation is applied.
     """

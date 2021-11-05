@@ -8,11 +8,7 @@ from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
 from ray._private.client_mode_hook import client_mode_convert_function
 from ray._private.client_mode_hook import client_mode_should_convert
-from ray.util.placement_group import (
-    PlacementGroup,
-    check_placement_group_index,
-    get_current_placement_group,
-)
+from ray.util.placement_group import configure_placement_group_based_on_context
 import ray._private.signature
 from ray._private.runtime_env.validation import (
     override_task_or_actor_runtime_env, ParsedRuntimeEnv)
@@ -285,32 +281,24 @@ class RemoteFunction:
         if retry_exceptions is None:
             retry_exceptions = self._retry_exceptions
 
-        if placement_group_capture_child_tasks is None:
-            placement_group_capture_child_tasks = (
-                worker.should_capture_child_tasks_in_placement_group)
-
-        if self._placement_group != "default":
-            if self._placement_group:
-                placement_group = self._placement_group
-            else:
-                placement_group = PlacementGroup.empty()
-        elif placement_group == "default":
-            if placement_group_capture_child_tasks:
-                placement_group = get_current_placement_group()
-            else:
-                placement_group = PlacementGroup.empty()
-
-        if not placement_group:
-            placement_group = PlacementGroup.empty()
-
-        check_placement_group_index(placement_group,
-                                    placement_group_bundle_index)
-
         resources = ray._private.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
             self._object_store_memory, self._resources, self._accelerator_type,
             num_cpus, num_gpus, memory, object_store_memory, resources,
             accelerator_type)
+
+        if placement_group_capture_child_tasks is None:
+            placement_group_capture_child_tasks = (
+                worker.should_capture_child_tasks_in_placement_group)
+        if placement_group == "default":
+            placement_group = self._placement_group
+        placement_group = configure_placement_group_based_on_context(
+            placement_group_capture_child_tasks,
+            placement_group_bundle_index,
+            resources,
+            {},  # no placement_resources for tasks
+            self._function_descriptor.function_name,
+            placement_group=placement_group)
 
         if runtime_env and not isinstance(runtime_env, ParsedRuntimeEnv):
             runtime_env = ParsedRuntimeEnv(runtime_env)

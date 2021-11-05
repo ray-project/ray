@@ -713,6 +713,7 @@ void ClusterTaskManager::FillResourceUsage(
       data.mutable_resource_load_by_shape()->mutable_resource_demands();
 
   int num_reported = 0;
+  int64_t skipped_requests = 0;
 
   for (const auto &pair : tasks_to_schedule_) {
     const auto &scheduling_class = pair.first;
@@ -720,6 +721,7 @@ void ClusterTaskManager::FillResourceUsage(
         max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
       // the same resources.
+      skipped_requests++;
       break;
     }
     const auto &resources =
@@ -754,6 +756,7 @@ void ClusterTaskManager::FillResourceUsage(
         max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
       // the same resources.
+      skipped_requests++;
       break;
     }
     const auto &resources =
@@ -784,6 +787,7 @@ void ClusterTaskManager::FillResourceUsage(
         max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
       // the same resources.
+      skipped_requests++;
       break;
     }
     const auto &resources =
@@ -809,6 +813,12 @@ void ClusterTaskManager::FillResourceUsage(
     int num_infeasible = by_shape_entry->num_infeasible_requests_queued();
     by_shape_entry->set_num_infeasible_requests_queued(num_infeasible + count);
     by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
+  }
+
+  if (skipped_requests > 0) {
+    RAY_LOG(INFO) << "More than " << max_resource_shapes_per_load_report_
+                  << " scheduling classes. Some resource loads may not be reported to "
+                     "the autoscaler.";
   }
 
   if (RayConfig::instance().enable_light_weight_resource_report()) {

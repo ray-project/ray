@@ -44,6 +44,82 @@ def test_placement_ready(ray_start_regular, connect_to_client):
         placement_group_assert_no_leak([pg])
 
 
+def test_placement_group_invalid_resource_request(shutdown_only):
+    """
+    Make sure exceptions are raised if
+    requested resources don't fit any bundles.
+    """
+    ray.init(resources={"a": 1})
+    pg = ray.util.placement_group(bundles=[{"a": 1}])
+
+    #
+    # Test an actor with 0 cpu.
+    #
+    @ray.remote
+    class A:
+        def ready(self):
+            pass
+
+    # The actor cannot be scheduled with the default because
+    # it requires 1 cpu for the placement, but the pg doesn't have it.
+    with pytest.raises(ValueError):
+        a = A.options(placement_group=pg).remote()
+    # Shouldn't work with 1 CPU because pg doesn't contain CPUs.
+    with pytest.raises(ValueError):
+        a = A.options(num_cpus=1, placement_group=pg).remote()
+    # 0 CPU should work.
+    a = A.options(num_cpus=0, placement_group=pg).remote()
+    ray.get(a.ready.remote())
+    del a
+
+    #
+    # Test an actor with non-0 resources.
+    #
+    @ray.remote(resources={"a": 1})
+    class B:
+        def ready(self):
+            pass
+
+    # When resources are given to the placement group,
+    # it automatically adds 1 CPU to resources, so it should fail.
+    with pytest.raises(ValueError):
+        b = B.options(placement_group=pg).remote()
+    # If 0 cpu is given, it should work.
+    b = B.options(num_cpus=0, placement_group=pg).remote()
+    ray.get(b.ready.remote())
+    del b
+    # If resources are requested too much, it shouldn't work.
+    with pytest.raises(ValueError):
+        # The actor cannot be scheduled with no resource specified.
+        # Note that the default actor has 0 cpu.
+        B.options(num_cpus=0, resources={"a": 2}, placement_group=pg).remote()
+
+    #
+    # Test a function with 1 CPU.
+    #
+    @ray.remote
+    def f():
+        pass
+
+    # 1 CPU shouldn't work because the pg doesn't have CPU bundles.
+    with pytest.raises(ValueError):
+        f.options(placement_group=pg).remote()
+    # 0 CPU should work.
+    ray.get(f.options(placement_group=pg, num_cpus=0).remote())
+
+    #
+    # Test a function with 0 CPU.
+    #
+    @ray.remote(num_cpus=0)
+    def g():
+        pass
+
+    # 0 CPU should work.
+    ray.get(g.options(placement_group=pg).remote())
+
+    placement_group_assert_no_leak([pg])
+
+
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_placement_group_pack(ray_start_cluster, connect_to_client):
     @ray.remote(num_cpus=2)
