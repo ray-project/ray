@@ -9,7 +9,7 @@ except ImportError:
 
 import ray
 import ray.cluster_utils
-
+from ray._private.client_mode_hook import disable_client_hook
 from ray._private.test_utils import (get_other_nodes, wait_for_condition,
                                      is_placement_group_removed,
                                      placement_group_assert_no_leak)
@@ -563,9 +563,10 @@ def test_placement_group_table(ray_start_cluster, connect_to_client):
         assert result["state"] == "PENDING"
 
         # Now the placement group should be scheduled.
-        cluster.add_node(num_cpus=5, num_gpus=1)
+        with disable_client_hook():
+            cluster.add_node(num_cpus=5, num_gpus=1)
+            cluster.wait_for_nodes()
 
-        cluster.wait_for_nodes()
         actor_1 = Actor.options(
             placement_group=placement_group,
             placement_group_bundle_index=0).remote()
