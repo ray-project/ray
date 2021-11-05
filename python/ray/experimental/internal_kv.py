@@ -24,13 +24,15 @@ def _initialize_internal_kv(gcs_client: GcsClient):
     global_gcs_client = gcs_client
     _initialized = True
 
-
+# b'@:' will be the leading characters for namespace
+# If the key in storage has this, it'll contain namespace
 __NS_START_CHAR = b"@"
 
 
 def __make_key(namespace: Optional[str], key: bytes) -> bytes:
     if namespace is None:
-        assert not key.startswith(__NS_START_CHAR)
+        if key.startswith(__NS_START_CHAR + b":"):
+            raise ValueError("key is not allowed to start with '@:'")
         return key
     assert isinstance(namespace, str)
     assert isinstance(key, bytes)
