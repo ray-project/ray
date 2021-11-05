@@ -336,13 +336,16 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       tasks_to_schedule_;
 
+  /// Tracking information about the currently running tasks in a scheduling
+  /// class. This information is used to place a cap on the number of running
+  /// running tasks per scheduling class.
   struct SchedulingClassInfo {
     SchedulingClassInfo() : running_tasks(), capacity(0), next_update_time(-1) {}
     /// Track the running task ids in this scheduling class.
     absl::flat_hash_set<TaskID> running_tasks;
     /// The total number of tasks that can run from this scheduling class.
     uint64_t capacity;
-    /// The next tie to update the class's capacity.
+    /// The next time to update the class's capacity.
     int64_t next_update_time;
   };
 
