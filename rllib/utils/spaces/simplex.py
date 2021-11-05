@@ -23,21 +23,13 @@ class Simplex(gym.Space):
 
     def __init__(self, shape, concentration=None, dtype=np.float32):
         assert type(shape) in [tuple, list]
-        self.shape = shape
-        self.dtype = dtype
-        self.dim = shape[-1]
+        super().__init__(shape, dtype)
+        self.dim = self.shape[-1]
 
         if concentration is not None:
             assert concentration.shape == shape[:-1]
         else:
             self.concentration = [1] * self.dim
-
-        super().__init__(shape, dtype)
-
-    def seed(self, seed=None):
-        if self.np_random is None:
-            self.np_random = np.random.RandomState()
-        self.np_random.seed(seed)
 
     def sample(self):
         return np.random.dirichlet(

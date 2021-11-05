@@ -17,7 +17,7 @@ from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
-from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+from ray.rllib.utils.torch_utils import apply_grad_clipping, \
     concat_multi_gpu_td_errors, huber_loss, l2_loss
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
     LocalOptimizer, GradInfoDict

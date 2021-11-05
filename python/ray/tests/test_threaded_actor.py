@@ -2,6 +2,7 @@ import sys
 import threading
 import time
 
+import pytest
 import numpy as np
 import ray
 
@@ -168,6 +169,127 @@ def test_threaded_actor_creation_and_kill(ray_start_cluster):
         for actor in actors:
             actor.terminate.remote()
     ensure_cpu_returned(NUM_NODES * NUM_CPUS_PER_NODE)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize(
+    "ray_start_cluster_head", [{
+        "num_cpus": 2
+    }], indirect=True)
+def test_threaded_actor_integration_test_stress(ray_start_cluster_head,
+                                                log_pubsub, error_pubsub):
+    """This is a sanity test that checks threaded actors are
+        working with the nightly stress test.
+    """
+    cluster = ray_start_cluster_head
+    p = log_pubsub
+    e = error_pubsub
+
+    # Prepare the config
+    num_remote_nodes = 4
+    num_parents = 6
+    num_children = 6
+    death_probability = 0.95
+    max_concurrency = 10
+
+    for _ in range(num_remote_nodes):
+        cluster.add_node(num_cpus=2)
+
+    @ray.remote
+    class Child(object):
+        def __init__(self, death_probability):
+            self.death_probability = death_probability
+
+        def ping(self):
+            # Exit process with some probability.
+            exit_chance = np.random.rand()
+            if exit_chance > self.death_probability:
+                sys.exit(-1)
+
+    @ray.remote
+    class Parent(object):
+        def __init__(self, num_children, death_probability=0.95):
+            self.death_probability = death_probability
+            self.children = [
+                Child.options(
+                    max_concurrency=max_concurrency).remote(death_probability)
+                for _ in range(num_children)
+            ]
+
+        def ping(self, num_pings):
+            children_outputs = []
+            for _ in range(num_pings):
+                children_outputs += [
+                    child.ping.remote() for child in self.children
+                ]
+            try:
+                ray.get(children_outputs)
+            except Exception:
+                # Replace the children if one of them died.
+                self.__init__(len(self.children), self.death_probability)
+
+        def kill(self):
+            # Clean up children.
+            ray.get(
+                [child.__ray_terminate__.remote() for child in self.children])
+
+    parents = [
+        Parent.options(max_concurrency=max_concurrency).remote(
+            num_children, death_probability) for _ in range(num_parents)
+    ]
+
+    start = time.time()
+    loop_times = []
+    for _ in range(10):
+        loop_start = time.time()
+        ray.get([parent.ping.remote(10) for parent in parents])
+
+        # Kill a parent actor with some probability.
+        exit_chance = np.random.rand()
+        if exit_chance > death_probability:
+            parent_index = np.random.randint(len(parents))
+            parents[parent_index].kill.remote()
+            parents[parent_index] = Parent.options(
+                max_concurrency=max_concurrency).remote(
+                    num_children, death_probability)
+        loop_times.append(time.time() - loop_start)
+    result = {}
+    print("Finished in: {}s".format(time.time() - start))
+    print("Average iteration time: {}s".format(
+        sum(loop_times) / len(loop_times)))
+    print("Max iteration time: {}s".format(max(loop_times)))
+    print("Min iteration time: {}s".format(min(loop_times)))
+    result["total_time"] = time.time() - start
+    result["avg_iteration_time"] = sum(loop_times) / len(loop_times)
+    result["max_iteration_time"] = max(loop_times)
+    result["min_iteration_time"] = min(loop_times)
+    result["success"] = 1
+    print(result)
+    ensure_cpu_returned(10)
+    del parents
+
+    # Make sure parents are still scheduleable.
+    parents = [
+        Parent.options(max_concurrency=max_concurrency).remote(
+            num_children, death_probability) for _ in range(num_parents)
+    ]
+    ray.get([parent.ping.remote(10) for parent in parents])
+    """
+    Make sure there are not SIGSEGV, SIGBART, or other odd check failures.
+    """
+    # Get logs for 20 seconds.
+    logs = test_utils.get_all_log_message(p, 100000)
+    for log in logs:
+        assert "SIG" not in log, ("There's the segfault or SIGBART reported.")
+        assert "Check failed" not in log, (
+            "There's the check failure reported.")
+
+    # Get error messages for 10 seconds.
+    errors = test_utils.get_error_message(e, 10000, timeout=10)
+    for error in errors:
+        print(error)
+        assert "You can ignore this message if" not in error.error_message, (
+            "Resource deadlock warning shouldn't be printed, but it did.")
 
 
 if __name__ == "__main__":

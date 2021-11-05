@@ -513,7 +513,10 @@ directory <train-log-dir>` of each run.
 
     print(trainer.latest_checkpoint_dir)
     # /home/ray_results/train_2021-09-01_12-00-00/run_001/checkpoints
-    print(trainer.latest_checkpoint_path)
+
+    # By default, the "best" checkpoint path will refer to the most recent one.
+    # This can be configured by defining a CheckpointStrategy.
+    print(trainer.best_checkpoint_path)
     # /home/ray_results/train_2021-09-01_12-00-00/run_001/checkpoints/checkpoint_000005
 
 
@@ -526,7 +529,7 @@ For more configurability of checkpointing behavior (specifically saving
 checkpoints to disk), a :ref:`train-api-checkpoint-strategy` can be passed into
 ``Trainer.run``.
 
-As an example, to disable writing checkpoints to disk:
+As an example, to completely disable writing checkpoints to disk:
 
 .. code-block:: python
     :emphasize-lines: 8,12
@@ -545,9 +548,41 @@ As an example, to disable writing checkpoints to disk:
     trainer.run(train_func, checkpoint_strategy=checkpoint_strategy)
     trainer.shutdown()
 
-.. note:: Currently ``CheckpointStrategy`` only enables or disables disk
-   persistence altogether. Additional functionality coming soon!
 
+You may also config ``CheckpointStrategy`` to keep the "N best" checkpoints persisted to disk. The following example shows how you could keep the 2 checkpoints with the lowest "loss" value:
+
+.. code-block:: python
+
+    from ray import train
+    from ray.train import CheckpointStrategy, Trainer
+
+
+    def train_func():
+        # first checkpoint
+        train.save_checkpoint(loss=2)
+        # second checkpoint
+        train.save_checkpoint(loss=4)
+        # third checkpoint
+        train.save_checkpoint(loss=1)
+        # fourth checkpoint
+        train.save_checkpoint(loss=3)
+
+    # Keep the 2 checkpoints with the smallest "loss" value.
+    checkpoint_strategy = CheckpointStrategy(num_to_keep=2,
+                                             checkpoint_score_attribute="loss",
+                                             checkpoint_score_order="min")
+
+    trainer = Trainer(backend="torch", num_workers=2)
+    trainer.start()
+    trainer.run(train_func, checkpoint_strategy=checkpoint_strategy)
+    print(trainer.best_checkpoint_path)
+    # /home/ray_results/train_2021-09-01_12-00-00/run_001/checkpoints/checkpoint_000003
+    print(trainer.latest_checkpoint_dir)
+    # /home/ray_results/train_2021-09-01_12-00-00/run_001/checkpoints
+    print([checkpoint_path for checkpoint_path in trainer.latest_checkpoint_dir.iterdir()])
+    # [PosixPath('/home/ray_results/train_2021-09-01_12-00-00/run_001/checkpoints/checkpoint_000003'),
+    # PosixPath('/home/ray_results/train_2021-09-01_12-00-00/run_001/checkpoints/checkpoint_000001')]
+    trainer.shutdown()
 
 Loading checkpoints
 ~~~~~~~~~~~~~~~~~~~

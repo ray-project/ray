@@ -223,6 +223,11 @@ class CoreWorkerDirectActorTaskSubmitter
     /// A force-kill request that should be sent to the actor once an RPC
     /// client to the actor is available.
     absl::optional<rpc::KillActorRequest> pending_force_kill;
+
+    /// Stores all callbacks of inflight tasks. Note that this doesn't include tasks
+    /// without replies.
+    std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+        inflight_task_callbacks;
   };
 
   /// Push a task to a remote actor via the given client.
@@ -234,7 +239,7 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] skip_queue Whether to skip the task queue. This will send the
   /// task for execution immediately.
   /// \return Void.
-  void PushActorTask(const ClientQueue &queue, const TaskSpecification &task_spec,
+  void PushActorTask(ClientQueue &queue, const TaskSpecification &task_spec,
                      bool skip_queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Send all pending tasks for an actor.
@@ -252,6 +257,11 @@ class CoreWorkerDirectActorTaskSubmitter
 
   /// Disconnect the RPC client for an actor.
   void DisconnectRpcClient(ClientQueue &queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Fail all in-flight tasks.
+  void FailInflightTasks(
+      const std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
+          &inflight_task_callbacks) LOCKS_EXCLUDED(mu_);
 
   /// Whether the specified actor is alive.
   ///
@@ -346,7 +356,45 @@ class FiberStateManager final {
   std::shared_ptr<FiberState> default_fiber_ = nullptr;
 };
 
-class BoundedExecutor;
+/// Wraps a thread-pool to block posts until the pool has free slots. This is used
+/// by the SchedulingQueue to provide backpressure to clients.
+class BoundedExecutor {
+ public:
+  BoundedExecutor(int max_concurrency)
+      : num_running_(0), max_concurrency_(max_concurrency), pool_(max_concurrency){};
+
+  /// Posts work to the pool, blocking if no free threads are available.
+  void PostBlocking(std::function<void()> fn) {
+    mu_.LockWhen(absl::Condition(this, &BoundedExecutor::ThreadsAvailable));
+    num_running_ += 1;
+    mu_.Unlock();
+    boost::asio::post(pool_, [this, fn]() {
+      fn();
+      absl::MutexLock lock(&mu_);
+      num_running_ -= 1;
+    });
+  }
+
+  /// Stop the thread pool.
+  void Stop() { pool_.stop(); }
+
+  /// Join the thread pool.
+  void Join() { pool_.join(); }
+
+ private:
+  bool ThreadsAvailable() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return num_running_ < max_concurrency_;
+  }
+
+  /// Protects access to the counters below.
+  absl::Mutex mu_;
+  /// The number of currently running tasks.
+  int num_running_ GUARDED_BY(mu_);
+  /// The max number of concurrently running tasks allowed.
+  const int max_concurrency_;
+  /// The underlying thread pool for running tasks.
+  boost::asio::thread_pool pool_;
+};
 
 /// A manager that manages a set of thread pool. which will perform
 /// the methods defined in one concurrency group.
@@ -388,6 +436,26 @@ class PoolManager final {
       return functions_to_thread_pool_index_[fd->ToString()];
     }
     return default_thread_pool_;
+  }
+
+  /// Stop and join the thread pools that the pool manager owns.
+  void Stop() {
+    if (default_thread_pool_) {
+      RAY_LOG(DEBUG) << "Default pool is stopping.";
+      default_thread_pool_->Stop();
+      RAY_LOG(INFO) << "Default pool is joining. If the 'Default pool is joined.' "
+                       "message is not printed after this, the worker is probably "
+                       "hanging because the actor task is running an infinite loop.";
+      default_thread_pool_->Join();
+      RAY_LOG(INFO) << "Default pool is joined.";
+    }
+
+    for (const auto &it : name_to_thread_pool_index_) {
+      it.second->Stop();
+    }
+    for (const auto &it : name_to_thread_pool_index_) {
+      it.second->Join();
+    }
   }
 
  private:
@@ -489,40 +557,6 @@ class DependencyWaiterImpl : public DependencyWaiter {
   DependencyWaiterInterface &dependency_client_;
 };
 
-/// Wraps a thread-pool to block posts until the pool has free slots. This is used
-/// by the SchedulingQueue to provide backpressure to clients.
-class BoundedExecutor {
- public:
-  BoundedExecutor(int max_concurrency)
-      : num_running_(0), max_concurrency_(max_concurrency), pool_(max_concurrency){};
-
-  /// Posts work to the pool, blocking if no free threads are available.
-  void PostBlocking(std::function<void()> fn) {
-    mu_.LockWhen(absl::Condition(this, &BoundedExecutor::ThreadsAvailable));
-    num_running_ += 1;
-    mu_.Unlock();
-    boost::asio::post(pool_, [this, fn]() {
-      fn();
-      absl::MutexLock lock(&mu_);
-      num_running_ -= 1;
-    });
-  }
-
- private:
-  bool ThreadsAvailable() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return num_running_ < max_concurrency_;
-  }
-
-  /// Protects access to the counters below.
-  absl::Mutex mu_;
-  /// The number of currently running tasks.
-  int num_running_ GUARDED_BY(mu_);
-  /// The max number of concurrently running tasks allowed.
-  const int max_concurrency_;
-  /// The underlying thread pool for running tasks.
-  boost::asio::thread_pool pool_;
-};
-
 /// Used to implement task queueing at the worker. Abstraction to provide a common
 /// interface for actor tasks as well as normal ones.
 class SchedulingQueue {
@@ -540,6 +574,7 @@ class SchedulingQueue {
   virtual bool TaskQueueEmpty() const = 0;
   virtual size_t Size() const = 0;
   virtual size_t Steal(rpc::StealTasksReply *reply) = 0;
+  virtual void Stop() = 0;
   virtual bool CancelTaskIfFound(TaskID task_id) = 0;
   virtual ~SchedulingQueue(){};
 };
@@ -575,6 +610,12 @@ class ActorSchedulingQueue : public SchedulingQueue {
   }
 
   virtual ~ActorSchedulingQueue() = default;
+
+  void Stop() {
+    if (pool_manager_) {
+      pool_manager_->Stop();
+    }
+  }
 
   bool TaskQueueEmpty() const {
     RAY_CHECK(false) << "TaskQueueEmpty() not implemented for actor queues";
@@ -747,6 +788,10 @@ class NormalSchedulingQueue : public SchedulingQueue {
  public:
   NormalSchedulingQueue(){};
 
+  void Stop() {
+    // No-op
+  }
+
   bool TaskQueueEmpty() const {
     absl::MutexLock lock(&mu_);
     return pending_normal_tasks_.empty();
@@ -895,6 +940,8 @@ class CoreWorkerDirectTaskReceiver {
                         rpc::SendReplyCallback send_reply_callback);
 
   bool CancelQueuedNormalTask(TaskID task_id);
+
+  void Stop();
 
  protected:
   /// Cache the concurrency groups of actors.
