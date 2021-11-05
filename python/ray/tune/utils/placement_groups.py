@@ -572,8 +572,6 @@ class PlacementGroupManager:
         if not trial.uses_placement_groups:
             return
 
-        pgf = trial.placement_group_factory
-
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
 
