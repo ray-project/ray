@@ -252,9 +252,8 @@ def mapper(args: Args, mapper_id: PartId, boundaries: List[int],
     return [part[offset:offset + size] for offset, size in blocks]
 
 
-def _dummy_merge(
-        num_blocks: int, _n: int,
-        get_block: Callable[[int, int], np.ndarray]) -> Iterable[np.ndarray]:
+def _dummy_merge(num_blocks: int, get_block: Callable[[int, int], np.ndarray],
+                 _n: int) -> Iterable[np.ndarray]:
     blocks = [((i, 0), get_block(i, 0)) for i in range(num_blocks)]
     while len(blocks) > 0:
         (m, d), block = blocks.pop(random.randrange(len(blocks)))
@@ -274,17 +273,14 @@ def _merge_impl(args: Args,
     merge_fn = _dummy_merge if args.skip_sorting else sortlib.merge_partitions
     merger = merge_fn(M, get_block)
 
-    total_disk_time = 0
     if skip_output:
         for datachunk in merger:
             del datachunk
     else:
         with open(pinfo.path, "wb") as fout:
             for datachunk in merger:
-                start = time.time()
                 fout.write(datachunk)
-                total_disk_time += time.time() - start
-    return pinfo, total_disk_time
+    return pinfo
 
 
 # See worker_placement_groups() for why `num_cpus=0`.
@@ -301,9 +297,7 @@ def merge_mapper_blocks(args: Args, reducer_id: PartId, merge_id: PartId,
             return None
         return blocks[i]
 
-    _, total_disk_time = _merge_impl(args, M, pinfo, get_block)
-    tracing_utils.record_value("merge_disk_time", total_disk_time)
-    return pinfo
+    return _merge_impl(args, M, pinfo, get_block)
 
 
 # See worker_placement_groups() for why `num_cpus=0`.
@@ -331,8 +325,7 @@ def final_merge(args: Args, reducer_id: PartId,
 
     M = len(merged_parts)
     pinfo = _part_info(args, reducer_id, "output")
-    ret, _ = _merge_impl(args, M, pinfo, get_block, args.skip_output)
-    return ret
+    return _merge_impl(args, M, pinfo, get_block, args.skip_output)
 
 
 def _node_res(node: str) -> Dict[str, float]:
@@ -361,7 +354,7 @@ def worker_placement_groups(args: Args) -> List[ray.PlacementGroupID]:
             ray.util.remove_placement_group(pg)
 
 
-@tracing_utils.timeit("sort", report_time=True)
+@tracing_utils.timeit("sort")
 def sort_main(args: Args):
     parts = _load_manifest(args, constants.INPUT_MANIFEST_FILE)
     assert len(parts) == args.num_mappers
@@ -393,8 +386,9 @@ def sort_main(args: Args):
             num_extra_rounds = round - args.num_concurrent_rounds + 1
             if num_extra_rounds > 0:
                 ray.wait(
-                    [f for f in merge_results.flatten() if f is not None],
-                    num_returns=num_extra_rounds * args.num_reducers)
+                    [t for t in merge_results[:, 0] if t is not None],
+                    num_returns=num_extra_rounds * args.merge_parallelism,
+                    fetch_local=False)
 
             # Submit merge tasks.
             for j in range(args.merge_parallelism):
@@ -409,7 +403,7 @@ def sort_main(args: Args):
 
             # Wait for at least one map task from this round to finish before
             # scheduling the next round.
-            ray.wait(map_results.flatten().tolist(), num_returns=1)
+            ray.wait(map_results[:, 0].tolist(), fetch_local=False)
             map_results = None
 
         # Submit second-stage reduce tasks.
