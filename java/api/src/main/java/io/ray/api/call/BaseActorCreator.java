@@ -85,12 +85,12 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   }
 
   /**
-   * Set the max number of concurrent calls to allow for this actor.
+   * Set the maximum number of concurrent calls to allow for this actor.
    *
-   * <p>The max concurrency defaults to 1 for threaded execution. Note that the execution order is
-   * not guaranteed when {@code max_concurrency > 1}.
+   * <p>The maximum concurrency defaults to 1 for threaded execution. Note that the execution order
+   * is not guaranteed when {@code max_concurrency > 1}.
    *
-   * @param maxConcurrency The max number of concurrent calls to allow for this actor.
+   * @param maxConcurrency The maximum number of concurrent calls to allow for this actor.
    * @return self
    * @see ActorCreationOptions.Builder#setMaxConcurrency(int)
    */
@@ -100,11 +100,12 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   }
 
   /**
-   * Set the max number of pending calls for this actor.
+   * Set the maximum number of pending calls for this actor.
    *
-   * <p>The max pending calls defaults to -1 to disable back pressure.
+   * <p>The maximum pending calls is set to -1 by default, which indicates an infinite number of
+   * calls can be pending. ss
    *
-   * @param maxPendingCalls The max number of pending calls for this actor.
+   * @param maxPendingCalls The maximum number of pending calls for this actor.
    * @return self
    */
   public T setMaxPendingCalls(int maxPendingCalls) {

@@ -576,6 +576,46 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartFailInflightTasks) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 }
 
+TEST_F(DirectActorSubmitterTest, TestPendingTasks) {
+  int32_t max_pending_calls = 10;
+  rpc::Address addr;
+  auto worker_id = WorkerID::FromRandom();
+  addr.set_worker_id(worker_id.Binary());
+  ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
+  submitter_.AddActorQueueIfNotExists(actor_id, max_pending_calls);
+  addr.set_port(0);
+
+  // Submit number of `max_pending_calls` tasks would be OK.
+  for (int32_t i = 0; i < max_pending_calls; i++) {
+    ASSERT_FALSE(submitter_.FullOfPendingTasks(actor_id));
+    auto task = CreateActorTaskHelper(actor_id, worker_id, i);
+    ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+    ASSERT_EQ(1, io_context.run_one());
+  }
+
+  // Then the queue should be full.
+  ASSERT_TRUE(submitter_.FullOfPendingTasks(actor_id));
+
+  ASSERT_EQ(worker_client_->callbacks.size(), 0);
+  submitter_.ConnectActor(actor_id, addr, 0);
+  ASSERT_EQ(worker_client_->callbacks.size(), 10);
+
+  // After task 0 reply comes, the queue turn to not full.
+  ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK(), 0));
+  ASSERT_FALSE(submitter_.FullOfPendingTasks(actor_id));
+
+  // We can submit task 10, but after that the queue is full.
+  auto task = CreateActorTaskHelper(actor_id, worker_id, 10);
+  ASSERT_TRUE(submitter_.SubmitTask(task).ok());
+  ASSERT_TRUE(submitter_.FullOfPendingTasks(actor_id));
+
+  // All the replies comes, the queue shouble be empty.
+  while (!worker_client_->callbacks.empty()) {
+    ASSERT_TRUE(worker_client_->ReplyPushTask());
+  }
+  ASSERT_FALSE(submitter_.FullOfPendingTasks(actor_id));
+}
+
 class MockDependencyWaiter : public DependencyWaiter {
  public:
   MOCK_METHOD2(Wait, void(const std::vector<rpc::ObjectReference> &dependencies,
