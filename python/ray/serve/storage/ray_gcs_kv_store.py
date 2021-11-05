@@ -28,9 +28,9 @@ class RayGcsKVStore(KVStoreBase):
         self._bucket = bucket
         self._prefix = prefix + "/" if prefix else ""
         if not storage:
-            raise ImportError(
-                "You tried to use RayGcsKVStore client without google-cloud-storage installed."
-                "Please run `pip install google-cloud-storage`")
+            raise ImportError("You tried to use RayGcsKVStore client without"
+                              "google-cloud-storage installed."
+                              "Please run `pip install google-cloud-storage`")
         self._gcs = storage.Client()
         self._bucket = self._gcs.bucket(bucket)
 
@@ -75,8 +75,8 @@ class RayGcsKVStore(KVStoreBase):
             blob = self._bucket.blob(blob_name=self.get_storage_key(key))
             return blob.download_as_bytes()
         except NotFound:
-                logger.warning(f"No such key in GCS for key = {key}")
-                return None
+            logger.warning(f"No such key in GCS for key = {key}")
+            return None
 
     def delete(self, key: str):
         """Delete the value associated with the given key from the store.
@@ -89,8 +89,10 @@ class RayGcsKVStore(KVStoreBase):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
         try:
-            blob = self._bucket.blob(blob_name=self.get_storage_key(key))
+            blob_name = self.get_storage_key(key)
+            blob = self._bucket.blob(blob_name=blob_name)
             blob.delete()
         except NotFound:
             logger.error(f"Encountered ClientError while calling delete() "
-                         f"in RayExternalKVStore - Blob was not found!")
+                         f"in RayExternalKVStore - "
+                         f"Blob {blob_name} was not found!")
