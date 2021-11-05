@@ -92,7 +92,7 @@ class JobStatusStorageClient:
         _internal_kv_put(
             self.JOB_STATUS_KEY.format(job_id=job_id),
             pickle.dumps(status),
-            ray_constants.KV_NAMESPACE_JOB)
+            namespace=ray_constants.KV_NAMESPACE_JOB)
 
     def get_status(self, job_id: str) -> JobStatus:
         pickled_status = _internal_kv_get(
