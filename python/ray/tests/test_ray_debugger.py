@@ -26,7 +26,8 @@ def test_ray_debugger_breakpoint(shutdown_only):
     result = f.remote()
 
     wait_for_condition(lambda: len(
-        ray.experimental.internal_kv._internal_kv_list("RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB)) > 0)
+        ray.experimental.internal_kv._internal_kv_list(
+            "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB)) > 0)
     active_sessions = ray.experimental.internal_kv._internal_kv_list(
         "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB)
     assert len(active_sessions) == 1
@@ -266,7 +267,8 @@ def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
     worker_node_result = f.options(num_cpus=1).remote()
 
     wait_for_condition(lambda: len(
-        ray.experimental.internal_kv._internal_kv_list("RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB)) == 2)
+        ray.experimental.internal_kv._internal_kv_list(
+            "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB)) == 2)
 
     active_sessions = ray.experimental.internal_kv._internal_kv_list(
         "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB)
