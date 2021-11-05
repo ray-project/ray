@@ -241,6 +241,7 @@ class DashboardHead:
             http_host).is_unspecified else http_host
         logger.info("Dashboard head http address: %s:%s", http_host, http_port)
 
+        # TODO: Use async version if performance is an issue
         # Write the dashboard head port to gcs kv.
         internal_kv._internal_kv_put(
             ray_constants.REDIS_KEY_DASHBOARD,

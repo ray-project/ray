@@ -39,6 +39,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         """
         while True:
             try:
+                # TODO: Use async version if performance is an issue
                 dashboard_rpc_address = internal_kv._internal_kv_get(
                     dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
                     namespace=ray_constants.KV_NAMESPACE_DASHBOARD)

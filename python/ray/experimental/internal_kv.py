@@ -24,6 +24,7 @@ def _initialize_internal_kv(gcs_client: GcsClient):
     global_gcs_client = gcs_client
     _initialized = True
 
+
 # b'@:' will be the leading characters for namespace
 # If the key in storage has this, it'll contain namespace
 __NS_START_CHAR = b"@"

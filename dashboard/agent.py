@@ -195,6 +195,7 @@ class DashboardAgent(object):
         logger.info("Registered %s routes.", len(dump_routes))
 
         # Write the dashboard agent port to redis.
+        # TODO: Use async version if performance is an issue
         internal_kv._internal_kv_put(
             f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}",
             json.dumps([http_port, self.grpc_port]),
