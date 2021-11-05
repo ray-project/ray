@@ -6,13 +6,11 @@ import urllib.parse
 if TYPE_CHECKING:
     import pyarrow
 
-import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
 from ray.data.impl.arrow_block import (ArrowRow, DelegatingArrowBlockBuilder)
 from ray.data.impl.block_list import BlockMetadata
-from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult, \
-    _get_or_create_block_owner_actor
+from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -146,8 +144,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             for read_path in read_paths:
                 with fs.open_input_stream(read_path, **open_stream_args) as f:
                     data = read_file(f, read_path, **reader_args)
-                    if isinstance(data, pa.Table) or isinstance(
-                            data, np.ndarray):
+                    if isinstance(data, pa.Table):
                         builder.add_block(data)
                     else:
                         builder.add(data)
@@ -156,7 +153,6 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 block = _block_udf(block)
             return block
 
-        owner = _get_or_create_block_owner_actor()
         read_tasks = []
         for read_paths, file_sizes in zip(
                 np.array_split(paths, parallelism),
@@ -174,16 +170,15 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 schema=schema,
                 input_files=read_paths)
             read_task = ReadTask(
-                lambda read_paths=read_paths, meta=meta: [(ray.put(read_files(
-                    read_paths, filesystem), _owner=owner), meta)], meta
+                lambda read_paths=read_paths: [
+                    read_files(read_paths, filesystem)], meta
             )
             read_tasks.append(read_task)
 
         return read_tasks
 
     def _rows_per_file(self):
-        """Returns the number of rows per file, or None if unknown.
-        """
+        """Returns the number of rows per file, or None if unknown."""
         return None
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
@@ -192,7 +187,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         This method should be implemented by subclasses.
         """
         raise NotImplementedError(
-            "Subclasses of FileBasedDatasource must implement _read_files().")
+            "Subclasses of FileBasedDatasource must implement _read_file().")
 
     def do_write(self,
                  blocks: List[ObjectRef[Block]],
