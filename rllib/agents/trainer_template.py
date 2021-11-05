@@ -132,6 +132,9 @@ def build_trainer(
                 policy_class=self._policy_class,
                 config=config,
                 num_workers=self.config["num_workers"])
+            # If execution plan is not provided (None), the Trainer will use
+            # it's already existing default `execution_plan()` static method
+            # instead.
             if execution_plan is not None:
                 self.execution_plan = execution_plan
             self.train_exec_impl = self.execution_plan(
