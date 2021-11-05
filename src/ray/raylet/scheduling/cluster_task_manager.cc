@@ -502,8 +502,7 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
   *task = worker->GetAssignedTask();
   auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
   auto &sched_cls_info = info_by_sched_cls_[sched_cls];
-  sched_cls_info.running_tasks.erase(
-      task->GetTaskSpecification().TaskId());
+  sched_cls_info.running_tasks.erase(task->GetTaskSpecification().TaskId());
   UpdateSchedulingClassCapacity(sched_cls_info);
   if (info_by_sched_cls_[sched_cls].running_tasks.size() == 0) {
     info_by_sched_cls_.erase(sched_cls);
@@ -1461,7 +1460,8 @@ uint64_t ClusterTaskManager::MaxRunningTasksPerSchedulingClass(
   return static_cast<uint64_t>(std::round(total_cpus / cpu_req));
 }
 
-void ClusterTaskManager::UpdateSchedulingClassCapacity(SchedulingClassInfo &sched_cls_info) {
+void ClusterTaskManager::UpdateSchedulingClassCapacity(
+    SchedulingClassInfo &sched_cls_info) {
   if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity) {
     int64_t current_capacity = sched_cls_info.running_tasks.size();
     int64_t allowed_capacity = sched_cls_info.capacity;

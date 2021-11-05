@@ -1862,7 +1862,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
   task_manager_.QueueAndScheduleTask(task, &reply, callback);
 
   std::shared_ptr<MockWorker> new_worker =
-    std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(new_worker));
   pool_.TriggerCallbacks();
   workers.push_back(new_worker);
@@ -1960,7 +1960,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapReset) {
                                /*num_args=*/0, /*args=*/{});
     task_manager_.QueueAndScheduleTask(task5, &reply, callback);
     std::shared_ptr<MockWorker> worker5 =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker5));
     task_manager_.ScheduleAndDispatchTasks();
     pool_.TriggerCallbacks();
