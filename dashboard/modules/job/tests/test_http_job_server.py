@@ -12,6 +12,7 @@ from ray._private.job_manager import JobStatus
 from ray.dashboard.modules.job.sdk import JobSubmissionClient
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 @pytest.fixture
