@@ -90,8 +90,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPInternalServerError.status_code)
 
         return aiohttp.web.Response(
-            text={"success": True},
-            content_type="application/json",
             status=aiohttp.web.HTTPOk.status_code,
         )
 
