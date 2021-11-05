@@ -67,11 +67,10 @@ class ContainerManager:
         self._ray_tmp_dir = tmp_dir
 
     def setup(self,
-              runtime_env: dict,
+              runtime_env: RuntimeEnv,
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
-        container_option = runtime_env.get("container")
-        if not container_option or not container_option.get("image"):
+        if not runtime_env.HasField("py_container_runtime_env") or not runtime_env.py_container_runtime_env.image:
             return
 
         container_driver = "podman"
@@ -84,12 +83,12 @@ class ContainerManager:
         container_command.append("--env")
         container_command.append("RAY_RAYLET_PID=" +
                                  os.getenv("RAY_RAYLET_PID"))
-        if container_option.get("run_options"):
-            container_command.extend(container_option.get("run_options"))
+        if runtime_env.py_container_runtime_env.run_options:
+            container_command.extend(runtime_env.py_container_runtime_env.run_options)
         # TODO(chenk008): add resource limit
         container_command.append("--entrypoint")
         container_command.append("python")
-        container_command.append(container_option.get("image"))
+        container_command.append(runtime_env.py_container_runtime_env.image)
         context.py_executable = " ".join(container_command)
         logger.info("start worker in container with prefix: {}".format(
             context.py_executable))

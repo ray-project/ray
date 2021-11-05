@@ -104,11 +104,11 @@ class PyModulesManager:
               runtime_env: RuntimeEnv,
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
-        if not runtime_env.get("py_modules"):
+        if not runtime_env.py_modules:
             return
 
         module_dirs = []
-        for uri in runtime_env["py_modules"]:
+        for uri in runtime_env.py_modules:
             module_dir = download_and_unpack_package(
                 uri, self._resources_dir, logger=logger)
             module_dirs.append(module_dir)
