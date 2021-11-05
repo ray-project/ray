@@ -1498,7 +1498,8 @@ def connect(node,
             _setup_tracing = import_from_string(
                 _internal_kv_get(
                     "tracing_startup_hook",
-                    namespace=ray_constants.KV_NAMESPACE_TRACING).decode("utf-8"))
+                    namespace=ray_constants.KV_NAMESPACE_TRACING).decode(
+                        "utf-8"))
             _setup_tracing()
             ray.__traced__ = True
 
