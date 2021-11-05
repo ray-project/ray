@@ -498,4 +498,8 @@ RAY_CONFIG(std::string, TLS_SERVER_KEY, "")
 RAY_CONFIG(std::string, TLS_CA_CERT, "")
 
 /// grpc delay testing flags
+// To use this, simply do
+//     export RAY_testing_asio_delay_ms="method1=10,method2=20"
+//  The delay is a random number between 0 and the value. If method equals '*',
+//  it will apply to all methods.
 RAY_CONFIG(std::string, testing_asio_delay_ms, "")

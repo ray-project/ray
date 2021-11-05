@@ -44,7 +44,7 @@ class DelayManager {
  public:
   DelayManager() {
     // RAY_testing_asio_delay="Method1=100,Method2=200"
-    auto delay_env = RayConfig::testing_asio_delay_ms();
+    auto delay_env = RayConfig::instance().testing_asio_delay_ms();
     if (delay_env.empty()) {
       return;
     }
@@ -52,7 +52,7 @@ class DelayManager {
     std::vector<std::string_view> items = absl::StrSplit(delay_env, ",");
     for (const auto &item : items) {
       std::vector<std::string_view> delay = absl::StrSplit(item, "=");
-      size_t delay_ms = 0;
+      int64_t delay_ms = 0;
       if (delay.size() != 2 || !absl::SimpleAtoi(delay[1], &delay_ms)) {
         RAY_LOG(ERROR) << "Error in syntax: " << item << ", expected name=time";
         continue;
@@ -67,7 +67,7 @@ class DelayManager {
     }
   }
 
-  size_t GetMethodDelay(const std::string &name) {
+  int64_t GetMethodDelay(const std::string &name) {
     auto it = delay_.find(name);
     if (it == delay_.end()) {
       return GenRandomDelay(random_delay_ms_);
@@ -81,21 +81,21 @@ class DelayManager {
   }
 
  private:
-  size_t GenRandomDelay(size_t delay_ms) const {
+  int64_t GenRandomDelay(size_t delay_ms) const {
     if (delay_ms == 0) {
       return 0;
     }
     return std::rand() % delay_ms;
   }
 
-  absl::flat_hash_map<std::string, size_t> delay_;
-  size_t random_delay_ms_ = 0;
+  absl::flat_hash_map<std::string, int64_t> delay_;
+  int64_t random_delay_ms_ = 0;
 };
 
 static DelayManager _delay_manager;
 }  // namespace
 
-size_t get_delay_ms(const std::string &name) {
+int64_t get_delay_ms(const std::string &name) {
   return _delay_manager.GetMethodDelay(name);
 }
 
