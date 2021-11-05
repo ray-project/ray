@@ -569,8 +569,7 @@ class RayTrialExecutor(TrialExecutor):
                     logger.debug("Trial %s: Destroying actor.", trial)
 
                     # Try to return the placement group for other trials to use
-                    self._pg_manager.return_pg(trial,
-                                               destroy_pg_if_cannot_replace)
+                    self._pg_manager.return_pg(trial)
 
                     with self._change_working_directory(trial):
                         self._trial_cleanup.add(trial, actor=trial.runner)
