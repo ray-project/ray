@@ -276,7 +276,7 @@ linkcheck_anchors = False
 # Only check external links, i.e. the ones starting with http:// or https://.
 # Also exclude some known broken links.
 linkcheck_ignore = [
-    r"^((?!http).)*$",
+    r"^((?!http).)*$",  # exclude links not starting with http
     "http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf",  # broken
     "https://mvnrepository.com/artifact/*",  # working but somehow not with linkcheck
     "https://staroid.com/settings/accesstokens",  # broken

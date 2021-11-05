@@ -90,81 +90,81 @@ def build_policy_class(
     Args:
         name (str): name of the policy (e.g., "PPOTorchPolicy")
         framework (str): Either "jax" or "torch".
-        loss_fn (Optional[Callable[[\
-            Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch\
+        loss_fn (Optional[Callable[[ \
+            Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch \
             ], Union[TensorType, List[TensorType]]]]):
             Callable that returns a loss tensor.
         get_default_config (Optional[Callable[[None], TrainerConfigDict]]):
             Optional callable that returns the default config to merge with any
             overrides. If None, uses only(!) the user-provided
             PartialTrainerConfigDict as dict for this Policy.
-        postprocess_fn (Optional[Callable[[Policy, SampleBatch,\
-            Optional[Dict[Any, SampleBatch]], Optional["Episode"]],\
+        postprocess_fn (Optional[Callable[[Policy, SampleBatch, \
+            Optional[Dict[Any, SampleBatch]], Optional["Episode"]], \
             SampleBatch]]):
             Optional callable for post-processing experience
             batches (called after the super's `postprocess_trajectory` method).
-        stats_fn (Optional[Callable[[Policy, SampleBatch],\
+        stats_fn (Optional[Callable[[Policy, SampleBatch], \
             Dict[str, TensorType]]]):
             Optional callable that returns a dict of
             values given the policy and training batch. If None,
             will use `TorchPolicy.extra_grad_info()` instead. The stats dict is
             used for logging (e.g. in TensorBoard).
-        extra_action_out_fn (Optional[Callable[[Policy, Dict[str, TensorType],\
-            List[TensorType], ModelV2, TorchDistributionWrapper]],\
+        extra_action_out_fn (Optional[Callable[[Policy, Dict[str, TensorType], \
+            List[TensorType], ModelV2, TorchDistributionWrapper]], \
             Dict[str, TensorType]]]):
             Optional callable that returns a dict of extra
             values to include in experiences. If None, no extra computations
             will be performed.
-        extra_grad_process_fn (Optional[Callable[[Policy,\
+        extra_grad_process_fn (Optional[Callable[[Policy, \
             "torch.optim.Optimizer", TensorType], Dict[str, TensorType]]]):
             Optional callable that is called after gradients are computed and
             returns a processing info dict. If None, will call the
             `TorchPolicy.extra_grad_process()` method instead.
         # TODO: (sven) dissolve naming mismatch between "learn" and "compute.."
-        extra_learn_fetches_fn (Optional[Callable[[Policy],\
+        extra_learn_fetches_fn (Optional[Callable[[Policy], \
             Dict[str, TensorType]]]):
             Optional callable that returns a dict of
             extra tensors from the policy after loss evaluation. If None,
             will call the `TorchPolicy.extra_compute_grad_fetches()` method
             instead.
-        optimizer_fn (Optional[Callable[[Policy, TrainerConfigDict],\
+        optimizer_fn (Optional[Callable[[Policy, TrainerConfigDict], \
             "torch.optim.Optimizer"]]):
             Optional callable that returns a
             torch optimizer given the policy and config. If None, will call
             the `TorchPolicy.optimizer()` method instead (which returns a
             torch Adam optimizer).
-        validate_spaces (Optional[Callable[[Policy, gym.Space, gym.Space,\
+        validate_spaces (Optional[Callable[[Policy, gym.Space, gym.Space, \
             TrainerConfigDict], None]]):
             Optional callable that takes the
             Policy, observation_space, action_space, and config to check for
             correctness. If None, no spaces checking will be done.
-        before_init (Optional[Callable[[Policy, gym.Space, gym.Space,\
+        before_init (Optional[Callable[[Policy, gym.Space, gym.Space, \
             TrainerConfigDict], None]]):
             Optional callable to run at the
             beginning of `Policy.__init__` that takes the same arguments as
             the Policy constructor. If None, this step will be skipped.
-        before_loss_init (Optional[Callable[[Policy, gym.spaces.Space,\
+        before_loss_init (Optional[Callable[[Policy, gym.spaces.Space, \
             gym.spaces.Space, TrainerConfigDict], None]]):
             Optional callable to
             run prior to loss init. If None, this step will be skipped.
-        after_init (Optional[Callable[[Policy, gym.Space, gym.Space,\
+        after_init (Optional[Callable[[Policy, gym.Space, gym.Space, \
             TrainerConfigDict], None]]):
             DEPRECATED: Use `before_loss_init` instead.
-        _after_loss_init (Optional[Callable[[Policy, gym.spaces.Space,\
+        _after_loss_init (Optional[Callable[[Policy, gym.spaces.Space, \
             gym.spaces.Space, TrainerConfigDict], None]]):
             Optional callable to
             run after the loss init. If None, this step will be skipped.
             This will be deprecated at some point and renamed into `after_init`
             to match `build_tf_policy()` behavior.
-        action_sampler_fn (Optional[Callable[[TensorType, List[TensorType]],\
+        action_sampler_fn (Optional[Callable[[TensorType, List[TensorType]], \
             Tuple[TensorType, TensorType]]]):
             Optional callable returning a
             sampled action and its log-likelihood given some (obs and state)
             inputs. If None, will either use `action_distribution_fn` or
             compute actions by calling self.model, then sampling from the
             so parameterized action distribution.
-        action_distribution_fn (Optional[Callable[[Policy, ModelV2,\
-            TensorType, TensorType, TensorType], Tuple[TensorType,\
+        action_distribution_fn (Optional[Callable[[Policy, ModelV2, \
+            TensorType, TensorType, TensorType], Tuple[TensorType, \
             Type[TorchDistributionWrapper], List[TensorType]]]]):
             A callable
             that takes the Policy, Model, the observation batch, an
@@ -174,7 +174,7 @@ def build_policy_class(
             outputs (empty list if not applicable). If None, will either use
             `action_sampler_fn` or compute actions by calling self.model,
             then sampling from the parameterized action distribution.
-        make_model (Optional[Callable[[Policy, gym.spaces.Space,\
+        make_model (Optional[Callable[[Policy, gym.spaces.Space, \
             gym.spaces.Space, TrainerConfigDict], ModelV2]]):
             Optional callable
             that takes the same arguments as Policy.__init__ and returns a
@@ -182,8 +182,8 @@ def build_policy_class(
             automatically. Note: Only one of `make_model` or
             `make_model_and_action_dist` should be provided. If both are None,
             a default Model will be created.
-        make_model_and_action_dist (Optional[Callable[[Policy,\
-            gym.spaces.Space, gym.spaces.Space, TrainerConfigDict],\
+        make_model_and_action_dist (Optional[Callable[[Policy, \
+            gym.spaces.Space, gym.spaces.Space, TrainerConfigDict], \
             Tuple[ModelV2, Type[TorchDistributionWrapper]]]]):
             Optional
             callable that takes the same arguments as Policy.__init__ and
@@ -192,14 +192,14 @@ def build_policy_class(
             Note: Only one of `make_model` or `make_model_and_action_dist`
             should be provided. If both are None, a default Model will be
             created.
-        compute_gradients_fn (Optional[Callable[[Policy, SampleBatch],\
+        compute_gradients_fn (Optional[Callable[[Policy, SampleBatch], \
             Tuple[ModelGradients, dict]]]):
             Optional
             callable that the sampled batch an computes the gradients w.r.
             to the loss function.
             If None, will call the `TorchPolicy.compute_gradients()` method
             instead.
-        apply_gradients_fn (Optional[Callable[[Policy,\
+        apply_gradients_fn (Optional[Callable[[Policy, \
             "torch.optim.Optimizer"], None]]):
             Optional callable that
             takes a grads list and applies these to the Model's parameters.
