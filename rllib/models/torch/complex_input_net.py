@@ -14,7 +14,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import flatten_space
-from ray.rllib.utils.torch_ops import one_hot
+from ray.rllib.utils.torch_utils import one_hot
 
 torch, nn = try_import_torch()
 

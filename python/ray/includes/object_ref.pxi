@@ -36,7 +36,9 @@ def _set_future_helper(
 
 cdef class ObjectRef(BaseID):
 
-    def __init__(self, id, owner_addr="", call_site_data=""):
+    def __init__(
+            self, id, owner_addr="", call_site_data="",
+            skip_adding_local_ref=False):
         check_id(id)
         self.data = CObjectID.FromBinary(<c_string>id)
         self.owner_addr = owner_addr
@@ -48,7 +50,8 @@ cdef class ObjectRef(BaseID):
         # But there are still some dummy object refs being created outside the
         # context of a core worker.
         if hasattr(worker, "core_worker"):
-            worker.core_worker.add_object_ref_reference(self)
+            if not skip_adding_local_ref:
+                worker.core_worker.add_object_ref_reference(self)
             self.in_core_worker = True
 
     def __dealloc__(self):

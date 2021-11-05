@@ -20,18 +20,17 @@
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/gcs/gcs_client/service_based_accessor.h"
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/accessor.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 
 namespace ray {
 namespace core {
 
 using ::testing::_;
 
-class MockActorInfoAccessor : public gcs::ServiceBasedActorInfoAccessor {
+class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
  public:
-  MockActorInfoAccessor(gcs::ServiceBasedGcsClient *client)
-      : gcs::ServiceBasedActorInfoAccessor(client) {}
+  MockActorInfoAccessor(gcs::GcsClient *client) : gcs::ActorInfoAccessor(client) {}
 
   ~MockActorInfoAccessor() {}
 
@@ -61,9 +60,9 @@ class MockActorInfoAccessor : public gcs::ServiceBasedActorInfoAccessor {
       callback_map_;
 };
 
-class MockGcsClient : public gcs::ServiceBasedGcsClient {
+class MockGcsClient : public gcs::GcsClient {
  public:
-  MockGcsClient(gcs::GcsClientOptions options) : gcs::ServiceBasedGcsClient(options) {}
+  MockGcsClient(gcs::GcsClientOptions options) : gcs::GcsClient(options) {}
 
   void Init(MockActorInfoAccessor *actor_info_accessor) {
     actor_accessor_.reset(actor_info_accessor);
@@ -95,9 +94,10 @@ class MockReferenceCounter : public ReferenceCounterInterface {
   MOCK_METHOD2(AddLocalReference,
                void(const ObjectID &object_id, const std::string &call_sit));
 
-  MOCK_METHOD3(AddBorrowedObject,
+  MOCK_METHOD4(AddBorrowedObject,
                bool(const ObjectID &object_id, const ObjectID &outer_id,
-                    const rpc::Address &owner_address));
+                    const rpc::Address &owner_address,
+                    bool foreign_owner_already_monitoring));
 
   MOCK_METHOD7(AddOwnedObject,
                void(const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
@@ -229,7 +229,7 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
 
   // Sinece RegisterActor happens in a non-owner worker, we should
   // make sure it borrows an object.
-  EXPECT_CALL(*reference_counter_, AddBorrowedObject(_, _, _));
+  EXPECT_CALL(*reference_counter_, AddBorrowedObject(_, _, _, _));
   ActorID returned_actor_id = actor_manager_->RegisterActorHandle(
       std::move(actor_handle), outer_object_id, call_site, caller_address);
   ASSERT_TRUE(returned_actor_id == actor_id);

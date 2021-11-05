@@ -6,18 +6,17 @@ from pathlib import Path
 from typing import Callable, TypeVar, List, Optional, Dict, Union, Type, Tuple
 
 import ray
-from ray import cloudpickle
 from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
-from ray.train.checkpoint import CheckpointStrategy
+from ray.train.checkpoint import CheckpointManager, CheckpointStrategy, \
+    TuneCheckpointManager
 from ray.train.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
-    TUNE_INSTALLED, TUNE_CHECKPOINT_FILE_NAME, \
-    TUNE_CHECKPOINT_ID, ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
+    TUNE_INSTALLED, ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.train.session import TrainingResultType, TrainingResult
 from ray.train.session import init_session, get_session, shutdown_session
-from ray.train.utils import construct_path, check_for_failure
-from ray.train.worker_group import WorkerGroup
 from ray.train.utils import RayDataset
+from ray.train.utils import check_for_failure
+from ray.train.worker_group import WorkerGroup
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -39,159 +38,6 @@ class BackendConfig:
 
 class TrainBackendError(Exception):
     """Errors with BackendExecutor that should not be exposed to user."""
-
-
-class CheckpointManager:
-    """Manages checkpoint processing, writing, and loading.
-
-
-    - A ``checkpoints`` directory is created in the ``run_dir`` and contains
-    all the checkpoint files.
-
-    The full default path will be:
-
-    ~/ray_results/train_<datestring>/run_<run_id>/checkpoints/
-    checkpoint_<checkpoint_id>
-
-    Attributes:
-        latest_checkpoint_dir (Optional[Path]): Path to the file directory for
-            the checkpoints from the latest run. Configured through
-            ``start_training``.
-        latest_checkpoint_filename (Optional[str]): Filename for the latest
-            checkpoint.
-        latest_checkpoint_path (Optional[Path]): Path to the latest persisted
-            checkpoint from the latest run.
-        latest_checkpoint_id (Optional[int]): The id of the most recently
-            saved checkpoint.
-        latest_checkpoint (Optional[Dict]): The latest saved checkpoint. This
-            checkpoint may not be saved to disk.
-    """
-
-    def on_init(self):
-        """Checkpoint code executed during BackendExecutor init."""
-        self.latest_checkpoint = None
-
-        # Incremental unique checkpoint ID of this run.
-        self._latest_checkpoint_id = 0
-
-    def on_start_training(
-            self,
-            checkpoint_strategy: Optional[CheckpointStrategy],
-            run_dir: Path,
-            latest_checkpoint_id: Optional[int] = None,
-    ):
-        """Checkpoint code executed during BackendExecutor start_training."""
-        # Restart checkpointing.
-        self._latest_checkpoint_id = latest_checkpoint_id if \
-            latest_checkpoint_id else 0
-        self._checkpoint_strategy = CheckpointStrategy() if \
-            checkpoint_strategy is None else checkpoint_strategy
-        self.run_dir = run_dir
-
-    def _process_checkpoint(self,
-                            checkpoint_results: List[TrainingResult]) -> None:
-        """Perform all processing for a checkpoint. """
-
-        # Get checkpoint from first worker.
-        checkpoint = checkpoint_results[0].data
-
-        # Increment checkpoint id.
-        self._latest_checkpoint_id += 1
-
-        # Store checkpoint in memory.
-        self.latest_checkpoint = checkpoint
-
-        self.write_checkpoint(checkpoint)
-
-    def _load_checkpoint(self,
-                         checkpoint_to_load: Optional[Union[Dict, str, Path]]
-                         ) -> Optional[Dict]:
-        """Load the checkpoint dictionary from the input dict or path."""
-        if checkpoint_to_load is None:
-            return None
-        if isinstance(checkpoint_to_load, Dict):
-            return checkpoint_to_load
-        else:
-            # Load checkpoint from path.
-            checkpoint_path = Path(checkpoint_to_load).expanduser()
-            if not checkpoint_path.exists():
-                raise ValueError(f"Checkpoint path {checkpoint_path} "
-                                 f"does not exist.")
-            with checkpoint_path.open("rb") as f:
-                return cloudpickle.load(f)
-
-    def write_checkpoint(self, checkpoint: Dict):
-        """Writes checkpoint to disk."""
-        if self._checkpoint_strategy.num_to_keep == 0:
-            # Checkpoints should not be persisted to disk.
-            return
-
-        # TODO(matt): Implement additional checkpoint strategy functionality.
-        # Get or create checkpoint dir.
-        self.latest_checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        # Write checkpoint to disk.
-        with self.latest_checkpoint_path.open("wb") as f:
-            cloudpickle.dump(checkpoint, f)
-            logger.debug(f"Checkpoint successfully written to: "
-                         f"{self.latest_checkpoint_path}")
-
-    @property
-    def latest_checkpoint_dir(self) -> Optional[Path]:
-        """Path to the latest checkpoint directory."""
-        checkpoint_dir = Path("checkpoints")
-        return construct_path(checkpoint_dir, self.run_dir)
-
-    @property
-    def latest_checkpoint_file_name(self) -> Optional[str]:
-        """Filename to use for the latest checkpoint."""
-        if self._latest_checkpoint_id > 0:
-            return f"checkpoint_{self._latest_checkpoint_id:06d}"
-        else:
-            return None
-
-    @property
-    def latest_checkpoint_path(self) -> Optional[Path]:
-        """Path to the latest persisted checkpoint."""
-        if self._latest_checkpoint_id > 0:
-            checkpoint_file = self.latest_checkpoint_file_name
-            return self.latest_checkpoint_dir.joinpath(checkpoint_file)
-        else:
-            return None
-
-
-class TuneCheckpointManager(CheckpointManager):
-    def create_logdir(self, log_dir: Optional[Union[str, Path]]):
-        # Don't create logdir when using with Tune.
-        pass
-
-    def create_run_dir(self):
-        # Don't create run_dir when using with Tune.
-        pass
-
-    def _load_checkpoint(self,
-                         checkpoint_to_load: Optional[Union[Dict, str, Path]]
-                         ) -> Optional[Dict]:
-        loaded_checkpoint = super()._load_checkpoint(checkpoint_to_load)
-        if loaded_checkpoint is not None:
-            # If the Tune trial is restarted, a new Trainer is instantiated.
-            # However, we want the checkpoint_id to continue incrementing
-            # from the previous run.
-            self._latest_checkpoint_id = loaded_checkpoint[TUNE_CHECKPOINT_ID]
-        return loaded_checkpoint
-
-    def write_checkpoint(self, checkpoint: Dict):
-        # Store the checkpoint_id in the file so that the Tune trial can be
-        # resumed after failure or cancellation.
-        checkpoint[TUNE_CHECKPOINT_ID] = self._latest_checkpoint_id
-        # If inside a Tune Trainable, then checkpoint with Tune.
-        with tune.checkpoint_dir(step=self._latest_checkpoint_id) as \
-                checkpoint_dir:
-            path = Path(checkpoint_dir)
-            # Use a standard file name so that we know which file to load
-            # the checkpoint from.
-            file_path = path.joinpath(TUNE_CHECKPOINT_FILE_NAME)
-            with file_path.open("wb") as f:
-                cloudpickle.dump(checkpoint, f)
 
 
 class TrainingWorkerError(Exception):
@@ -221,8 +67,8 @@ class BackendExecutor:
     Attributes:
         latest_checkpoint_dir (Optional[Path]): Path to the file directory for
             the checkpoints from the latest run. Configured through
-            ``start_training``.
-        latest_checkpoint_path (Optional[Path]): Path to the latest persisted
+            ``start_training``
+        best_checkpoint_path (Optional[Path]): Path to the best persisted
             checkpoint from the latest run.
         latest_checkpoint (Optional[Dict]): The latest saved checkpoint. This
             checkpoint may not be saved to disk.
@@ -694,9 +540,9 @@ class BackendExecutor:
         return self.checkpoint_manager.latest_checkpoint_dir
 
     @property
-    def latest_checkpoint_path(self) -> Optional[Path]:
-        """Path to the latest persisted checkpoint."""
-        return self.checkpoint_manager.latest_checkpoint_path
+    def best_checkpoint_path(self) -> Optional[Path]:
+        """Path to the best persisted checkpoint."""
+        return self.checkpoint_manager.best_checkpoint_path
 
     @property
     def latest_checkpoint_id(self) -> Optional[int]:
