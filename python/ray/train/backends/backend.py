@@ -171,7 +171,7 @@ class BackendExecutor:
                 self._additional_resources_per_worker or {}
             bundle = {
                 "CPU": self._num_cpus_per_worker,
-                "GPU": int(self._num_gpus_per_worker),
+                "GPU": self._num_gpus_per_worker,
                 **additional_resources_per_worker
             }
             bundles = [bundle.copy() for _ in range(self._num_workers)]
@@ -631,6 +631,9 @@ class BackendExecutor:
             initialization_hook = self._initialization_hook
         else:
             initialization_hook = None
+        if self._placement_group:
+            remove_placement_group(self._placement_group)
+            self._placement_group = None
         self.start(initialization_hook=initialization_hook)
 
     def _increment_failures(self):
