@@ -13,19 +13,25 @@ class JobStatus(str, Enum):
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
 
+
 # ==== Get Package ====
+
 
 @dataclass
 class GetPackageResponse:
     package_exists: bool
 
+
 # ==== Upload Package ====
+
 
 @dataclass
 class UploadPackageRequest:
     package_uri: str
 
+
 # ==== Job Submit ====
+
 
 @dataclass
 class JobSubmitRequest:
@@ -36,23 +42,30 @@ class JobSubmitRequest:
     # Metadata to pass in to the JobConfig.
     metadata: Dict[str, str]
 
+
 @dataclass
 class JobSubmitResponse:
     job_id: str
 
+
 # ==== Job Stop ====
+
 
 @dataclass
 class JobStopResponse:
     stopped: bool
 
+
 # ==== Job Status ====
+
 
 @dataclass
 class JobStatusResponse:
     job_status: JobStatus
 
+
 # ==== Job Logs ====
+
 
 # TODO(jiaodong): Support log streaming #19415
 @dataclass

@@ -10,8 +10,8 @@ from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
 from ray._private.job_manager import JobStatus
 from ray.dashboard.modules.job.data_types import (
-    GetPackageResponse, JobSubmitRequest, JobSubmitResponse,
-    JobStopResponse, JobStatusResponse, JobLogsResponse)
+    GetPackageResponse, JobSubmitRequest, JobSubmitResponse, JobStopResponse,
+    JobStatusResponse, JobLogsResponse)
 
 from ray.dashboard.modules.job.job_head import (
     JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP,
