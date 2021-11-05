@@ -125,6 +125,7 @@ class BlockList:
     def ensure_schema_for_first_block(
             self) -> Optional[Union["pyarrow.Schema", type]]:
         """Ensure that the schema is set for the first block.
+
         Returns None if the block list is empty.
         """
         if not self._blocks:
