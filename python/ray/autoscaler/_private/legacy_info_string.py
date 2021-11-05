@@ -2,6 +2,8 @@ import logging
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS_LEGACY
 from ray.experimental.internal_kv import _internal_kv_put, \
     _internal_kv_initialized
+from ray import ray_constants
+
 """This file provides legacy support for the old info string in order to
 ensure the dashboard's `api/cluster_status` does not break backwards
 compatibilty.
@@ -20,7 +22,7 @@ def legacy_log_info_string(autoscaler, nodes):
         nodes, autoscaler.pending_launches.breakdown(),
         autoscaler.load_metrics.get_resource_utilization())
     if _internal_kv_initialized():
-        _internal_kv_put(DEBUG_AUTOSCALING_STATUS_LEGACY, tmp, overwrite=True)
+        _internal_kv_put(DEBUG_AUTOSCALING_STATUS_LEGACY, tmp, overwrite=True, namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
     logger.debug(tmp)
 
 
