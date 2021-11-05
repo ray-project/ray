@@ -119,10 +119,8 @@ class GroupedDataset(Generic[T]):
         multi-aggregation on all columns for an Arrow Dataset, and a single
         aggregation on the entire row for a simple Dataset.
         """
-        on = self._dataset._check_and_normalize_agg_on(on, self._key)
-        if not isinstance(on, list):
-            on = [on]
-        aggs = [agg_cls(on_, *args, **kwargs) for on_ in on]
+        aggs = self._dataset._build_multicolumn_aggs(
+            agg_cls, on, *args, skip_cols=self._key, **kwargs)
         return self.aggregate(*aggs)
 
     def count(self) -> Dataset[U]:

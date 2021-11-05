@@ -856,11 +856,11 @@ class Dataset(Generic[T]):
 
     def _check_and_normalize_agg_on(self,
                                     on: AggregateOnT,
-                                    keys: Optional[List[str]] = None
+                                    skip_cols: Optional[List[str]] = None
                                     ) -> AggregateOnT:
         """Checks whether the provided aggregation `on` arg is valid for this
         type of dataset, and normalizes the value based on the Dataset type and
-        any provided groupby keys.
+        any provided columns to skip.
         """
         if (on is not None
                 and (not isinstance(on, (str, Callable, list)) or
@@ -893,12 +893,12 @@ class Dataset(Generic[T]):
 
             if on is None:
                 # If a null `on` is given for an Arrow Dataset, coerce it to
-                # all columns sans any provided groupby keys.
-                if keys is None:
-                    keys = []
-                elif not isinstance(keys, list):
-                    keys = [keys]
-                on = [col for col in schema.names if col not in keys]
+                # all columns sans any that we want to skip.
+                if skip_cols is None:
+                    skip_cols = []
+                elif not isinstance(skip_cols, list):
+                    skip_cols = [skip_cols]
+                on = [col for col in schema.names if col not in skip_cols]
             # Check that column names refer to valid columns.
             elif isinstance(on, str) and on not in schema.names:
                 raise ValueError(
@@ -945,11 +945,23 @@ class Dataset(Generic[T]):
         multi-aggregation on all columns for an Arrow Dataset, and a single
         aggregation on the entire row for a simple Dataset.
         """
-        on = self._check_and_normalize_agg_on(on)
+        aggs = self._build_multicolumn_aggs(
+            agg_cls, on, *args, skip_cols=None, **kwargs)
+        return self.aggregate(*aggs)
+
+    def _build_multicolumn_aggs(self,
+                                agg_cls: type,
+                                on: AggregateOnT,
+                                *args,
+                                skip_cols: Optional[List[str]] = None,
+                                **kwargs):
+        """Build set of aggregations for applying a single aggregation to
+        multiple columns.
+        """
+        on = self._check_and_normalize_agg_on(on, skip_cols=skip_cols)
         if not isinstance(on, list):
             on = [on]
-        aggs = [agg_cls(on_, *args, **kwargs) for on_ in on]
-        return self.aggregate(*aggs)
+        return [agg_cls(on_, *args, **kwargs) for on_ in on]
 
     def sum(self, on: AggregateOnT = None) -> U:
         """Compute sum over entire dataset.
