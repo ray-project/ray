@@ -648,34 +648,6 @@ class PlacementGroupManager:
 
         return trial_pg
 
-    def clean_trial_placement_group(
-            self, trial: "Trial") -> Optional[PlacementGroup]:
-        """Remove reference to placement groups associated with a trial.
-
-        Returns an associated placement group. If the trial was scheduled, this
-        is the placement group it was scheduled on. If the trial was not
-        scheduled, it will first try to return a staging placement group. If
-        there is no staging placement group, it will return a ready placement
-        group that is not yet being used by another trial.
-
-        Args:
-            trial ("Trial"): :obj:`Trial` object.
-
-        Returns:
-            PlacementGroup or None.
-
-        """
-        pgf = trial.placement_group_factory
-
-        if trial in self._in_use_trials:
-            # "Trial" was in use. Just return its placement group.
-            trial_pg = self._in_use_trials.pop(trial)
-            self._in_use_pgs.pop(trial_pg)
-        else:
-            trial_pg = self._unstage_unused_pg(pgf)
-
-        return trial_pg
-
     def in_staging_grace_period(self):
         return self._staging_futures and self._grace_period and time.time(
         ) <= self._latest_staging_start_time + self._grace_period

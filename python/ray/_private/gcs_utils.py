@@ -1,4 +1,9 @@
 from ray.core.generated.common_pb2 import ErrorType
+import enum
+import logging
+from typing import List
+from ray.core.generated import gcs_service_pb2_grpc
+from ray.core.generated import gcs_service_pb2
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
     GcsNodeInfo,
@@ -23,6 +28,8 @@ from ray.core.generated.gcs_pb2 import (
     WorkerTableData,
     PlacementGroupTableData,
 )
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "ActorTableData",
@@ -102,3 +109,86 @@ def construct_error_message(job_id, error_type, message, timestamp):
     data.error_message = message
     data.timestamp = timestamp
     return data.SerializeToString()
+
+
+class GcsCode(enum.IntEnum):
+    # corresponding to ray/src/ray/common/status.h
+    OK = 0
+    NotFound = 17
+
+
+class GcsClient:
+    MAX_MESSAGE_LENGTH = 512 * 1024 * 1024  # 512MB
+
+    def __init__(self, address):
+        from ray._private.utils import init_grpc_channel
+        logger.debug(f"Connecting to gcs address: {address}")
+        options = [("grpc.enable_http_proxy",
+                    0), ("grpc.max_send_message_length",
+                         GcsClient.MAX_MESSAGE_LENGTH),
+                   ("grpc.max_receive_message_length",
+                    GcsClient.MAX_MESSAGE_LENGTH)]
+        channel = init_grpc_channel(address, options=options)
+        self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(channel)
+
+    def internal_kv_get(self, key: bytes) -> bytes:
+        req = gcs_service_pb2.InternalKVGetRequest(key=key)
+        reply = self._kv_stub.InternalKVGet(req)
+        if reply.status.code == GcsCode.OK:
+            return reply.value
+        elif reply.status.code == GcsCode.NotFound:
+            return None
+        else:
+            raise RuntimeError(f"Failed to get value for key {key} "
+                               f"due to error {reply.status.message}")
+
+    def internal_kv_put(self, key: bytes, value: bytes,
+                        overwrite: bool) -> int:
+        req = gcs_service_pb2.InternalKVPutRequest(
+            key=key, value=value, overwrite=overwrite)
+        reply = self._kv_stub.InternalKVPut(req)
+        if reply.status.code == GcsCode.OK:
+            return reply.added_num
+        else:
+            raise RuntimeError(f"Failed to put value {value} to key {key} "
+                               f"due to error {reply.status.message}")
+
+    def internal_kv_del(self, key: bytes) -> int:
+        req = gcs_service_pb2.InternalKVDelRequest(key=key)
+        reply = self._kv_stub.InternalKVDel(req)
+        if reply.status.code == GcsCode.OK:
+            return reply.deleted_num
+        else:
+            raise RuntimeError(f"Failed to delete key {key} "
+                               f"due to error {reply.status.message}")
+
+    def internal_kv_exists(self, key: bytes) -> bool:
+        req = gcs_service_pb2.InternalKVExistsRequest(key=key)
+        reply = self._kv_stub.InternalKVExists(req)
+        if reply.status.code == GcsCode.OK:
+            return reply.exists
+        else:
+            raise RuntimeError(f"Failed to check existence of key {key} "
+                               f"due to error {reply.status.message}")
+
+    def internal_kv_keys(self, prefix: bytes) -> List[bytes]:
+        req = gcs_service_pb2.InternalKVKeysRequest(prefix=prefix)
+        reply = self._kv_stub.InternalKVKeys(req)
+        if reply.status.code == GcsCode.OK:
+            return list(reply.results)
+        else:
+            raise RuntimeError(f"Failed to list prefix {prefix} "
+                               f"due to error {reply.status.message}")
+
+    @staticmethod
+    def create_from_redis(redis_cli):
+        gcs_address = redis_cli.get("GcsServerAddress")
+        if gcs_address is None:
+            raise RuntimeError("Failed to look up gcs address through redis")
+        return GcsClient(gcs_address.decode())
+
+    @staticmethod
+    def connect_to_gcs_by_redis_address(redis_address, redis_password):
+        from ray._private.services import create_redis_client
+        return GcsClient.create_from_redis(
+            create_redis_client(redis_address, redis_password))
