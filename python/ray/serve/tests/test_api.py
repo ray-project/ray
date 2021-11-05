@@ -252,7 +252,7 @@ def test_scaling_replicas(serve_instance):
     assert max(counter_result) - min(counter_result) > 6
 
 
-def test_delete_backend(serve_instance):
+def test_delete_deployment(serve_instance):
     @serve.deployment(name="delete")
     def function(_):
         return "hello"

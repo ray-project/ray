@@ -221,6 +221,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_failure_3.py",
+    "test_chaos.py",
     "test_reference_counting_2.py",
   ],
   size = "large",
