@@ -10,7 +10,7 @@ import time
 
 from ray.data.impl.progress_bar import ProgressBar
 from ray._private.test_utils import get_all_log_message
-
+from ray.util.placement_group import placement_group
 
 def assert_no_system_failure(p, total_lines, timeout):
     # Get logs for 20 seconds.
@@ -131,6 +131,27 @@ def test_chaos_actor_retry(ray_start_chaos_cluster, log_pubsub):
     # TODO(sang): Currently, there are lots of SIGBART with
     # plasma client failures. Fix it.
     # assert_no_system_failure(p, 10000, 10)
+
+
+def test_chaos_defer(monkeypatch, ray_start_cluster):
+    with monkeypatch.context() as m:
+        m.setenv("RAY_grpc_based_resource_broadcast", "true")
+        # defer for 100s
+        m.setenv("RAY_testing_asio_delay_ms", "NodeResourceInfoGcsService.grpc_client.UpdateResources=100000")
+        m.setenv("RAY_event_stats", "true")
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=16, object_store_memory=1e9)
+        cluster.wait_for_nodes()
+        ray.init(address="auto")
+        cluster.add_node(num_cpus=16, num_gpus=1)
+
+        bundle = [{"GPU": 1}, {"CPU": 1}]
+        pg = placement_group(bundle)
+        ray.get(pg.ready())
+        @ray.remote
+        def g():
+            return "g"
+        print(ray.get([g.options(placement_group=pg).remote()]))
 
 
 if __name__ == "__main__":
