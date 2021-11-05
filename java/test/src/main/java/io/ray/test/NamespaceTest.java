@@ -63,17 +63,17 @@ public class NamespaceTest {
   }
 
   public void testGetNamespace() {
-    final String THIS_NAMESPACE = "test_get_current_namespace";
-    System.setProperty("ray.job.namespace", THIS_NAMESPACE);
+    final String thisNamespace = "test_get_current_namespace";
+    System.setProperty("ray.job.namespace", thisNamespace);
     try {
       Ray.init();
       /// Test in driver.
-      Assert.assertEquals(THIS_NAMESPACE, Ray.getRuntimeContext().getNamespace());
+      Assert.assertEquals(thisNamespace, Ray.getRuntimeContext().getNamespace());
       /// Test in task.
-      Assert.assertEquals(THIS_NAMESPACE, Ray.task(NamespaceTest::getNamespace).remote().get());
+      Assert.assertEquals(thisNamespace, Ray.task(NamespaceTest::getNamespace).remote().get());
       /// Test in actor.
       ActorHandle<GetNamespaceActor> a = Ray.actor(GetNamespaceActor::new).remote();
-      Assert.assertEquals(THIS_NAMESPACE, a.task(GetNamespaceActor::getNamespace).remote().get());
+      Assert.assertEquals(thisNamespace, a.task(GetNamespaceActor::getNamespace).remote().get());
     } finally {
       Ray.shutdown();
     }
