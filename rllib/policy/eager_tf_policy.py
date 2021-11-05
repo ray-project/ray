@@ -44,9 +44,11 @@ def _convert_to_tf(x, dtype=None):
 
     if x is not None:
         d = dtype
-        x = tf.nest.map_structure(
+        return tf.nest.map_structure(
             lambda f: _convert_to_tf(f, d) if isinstance(f, RepeatedValues)
-            else tf.convert_to_tensor(f, d) if f is not None else None, x)
+            else tf.convert_to_tensor(f, d) if
+            f is not None and not tf.is_tensor(f) else f, x)
+
     return x
 
 
@@ -612,8 +614,10 @@ def build_eager_tf_policy(
         @override(Policy)
         def apply_gradients(self, gradients: ModelGradients) -> None:
             self._apply_gradients_helper(
-                zip([(tf.convert_to_tensor(g) if g is not None else None)
-                     for g in gradients], self.model.trainable_variables()))
+                list(
+                    zip([(tf.convert_to_tensor(g)
+                          if g is not None else None) for g in gradients],
+                        self.model.trainable_variables())))
 
         @override(Policy)
         def get_weights(self, as_dict=False):
