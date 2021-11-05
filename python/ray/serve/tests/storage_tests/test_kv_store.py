@@ -7,8 +7,9 @@ import pytest
 from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import (RayInternalKVStore, RayLocalKVStore,
-                                        RayS3KVStore, RayGcsKVStore)
+                                        RayS3KVStore)
 from ray.serve.storage.kv_store_base import KVStoreBase
+from ray.serve.storage.ray_gcs_kv_store import RayGcsKVStore
 
 
 def test_ray_internal_kv(serve_instance):  # noqa: F811
