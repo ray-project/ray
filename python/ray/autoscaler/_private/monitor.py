@@ -294,7 +294,8 @@ class Monitor:
         if not _internal_kv_initialized():
             return
         data = _internal_kv_get(
-            ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL, namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
+            ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
+            namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
         if data:
             try:
                 resource_request = json.loads(data)
@@ -331,7 +332,9 @@ class Monitor:
             as_json = json.dumps(status)
             if _internal_kv_initialized():
                 _internal_kv_put(
-                    DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True,
+                    DEBUG_AUTOSCALING_STATUS,
+                    as_json,
+                    overwrite=True,
                     namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
 
             # Wait for a autoscaler update interval before processing the next
@@ -422,7 +425,9 @@ class Monitor:
         try:
             if _internal_kv_initialized():
                 # Delete any previous autoscaling errors.
-                _internal_kv_del(DEBUG_AUTOSCALING_ERROR, namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
+                _internal_kv_del(
+                    DEBUG_AUTOSCALING_ERROR,
+                    namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
             self._initialize_autoscaler()
             self._run()
         except Exception:

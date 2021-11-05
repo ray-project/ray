@@ -17,8 +17,8 @@ from pdb import Pdb
 import setproctitle
 import traceback
 from typing import Callable
-
 import ray
+from ray import ray_constants
 from ray.experimental.internal_kv import _internal_kv_del, _internal_kv_put
 from ray.util.annotations import DeveloperAPI
 
@@ -187,8 +187,7 @@ class RemotePdb(Pdb):
             "job_id": ray.get_runtime_context().job_id.hex(),
         })
         _internal_kv_put("RAY_PDB_CONTINUE_{}".format(self._breakpoint_uuid),
-                         data,
-                         ray_constants.KV_NAMESPACE_PDB)
+                         data, ray_constants.KV_NAMESPACE_PDB)
         self.__restore()
         self.handle.connection.close()
         return Pdb.do_continue(self, arg)
@@ -248,9 +247,14 @@ def connect_ray_pdb(host=None,
         "job_id": ray.get_runtime_context().job_id.hex(),
     }
     _internal_kv_put(
-        "RAY_PDB_{}".format(breakpoint_uuid), json.dumps(data), overwrite=True, namespace=ray_constants.KV_NAMESPACE_PDB)
+        "RAY_PDB_{}".format(breakpoint_uuid),
+        json.dumps(data),
+        overwrite=True,
+        namespace=ray_constants.KV_NAMESPACE_PDB)
     rdb.listen()
-    _internal_kv_del("RAY_PDB_{}".format(breakpoint_uuid), namespace=ray_constants.KV_NAMESPACE_PDB)
+    _internal_kv_del(
+        "RAY_PDB_{}".format(breakpoint_uuid),
+        namespace=ray_constants.KV_NAMESPACE_PDB)
 
     return rdb
 

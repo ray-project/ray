@@ -24,7 +24,9 @@ def _initialize_internal_kv(gcs_client: GcsClient):
     global_gcs_client = gcs_client
     _initialized = True
 
+
 __NS_START_CHAR = b"@"
+
 
 def __make_key(namespace: Optional[str], key: bytes) -> bytes:
     if namespace is None:
