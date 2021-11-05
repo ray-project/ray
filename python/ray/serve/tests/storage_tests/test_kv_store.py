@@ -7,7 +7,7 @@ import pytest
 from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import (RayInternalKVStore, RayLocalKVStore,
-                                        RayS3KVStore)
+                                        RayS3KVStore, RayGcsKVStore)
 from ray.serve.storage.kv_store_base import KVStoreBase
 
 
@@ -89,6 +89,17 @@ def test_external_kv_aws_s3():
         aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", None),
         aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", None),
         aws_session_token=os.environ.get("AWS_SESSION_TOKEN", None),
+    )
+
+    _test_operations(kv_store)
+
+
+@pytest.mark.skip(reason="Need to figure out credentials for testing")
+def test_external_kv_gcs():
+    kv_store = RayGcsKVStore(
+        "namespace",
+        bucket="jiao-test",
+        prefix="/checkpoint",
     )
 
     _test_operations(kv_store)
