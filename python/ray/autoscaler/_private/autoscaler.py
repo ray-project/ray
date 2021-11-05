@@ -427,7 +427,7 @@ class StandardAutoscaler:
                 for raylet_id in raylet_ids_to_drain
             ])
 
-            # A successfuly response indicates that the GCS has marked the
+            # A successful response indicates that the GCS has marked the
             # desired nodes as "drained." The cloud provider can then terminate
             # the nodes without the GCS printing an error.
             response = self.gcs_node_info_stub.DrainNode(request, timeout=30)
