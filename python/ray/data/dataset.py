@@ -875,25 +875,17 @@ class Dataset(Generic[T]):
             raise ValueError(
                 "When giving a list for `on`, it must be nonempty.")
 
-        # Determine if Dataset is an Arrow Dataset.
-        is_arrow = False
-        schema = None
         try:
-            import pyarrow as pa
-        except ModuleNotFoundError:
-            is_arrow = False
-        else:
-            # We need schema to properly validate, so synchronously
-            # fetch it if necessary.
-            schema = self.schema(fetch_if_missing=True)
-            if schema is None:
-                return on
-            if isinstance(schema, pa.Schema):
-                is_arrow = True
-            else:
-                is_arrow = False
+            is_arrow = self._is_arrow_dataset()
+        except ValueError:
+            # Dataset is empty/cleared, let downstream ops handle this.
+            return on
 
         if is_arrow:
+            # This should be cached from the ._is_arrow_dataset() check, so we
+            # don't fetch and we assert that the schema is not None.
+            schema = self.schema(fetch_if_missing=False)
+            assert schema is not None
             if len(schema.names) == 0:
                 # Empty dataset, don't validate `on` since we generically
                 # handle empty datasets downstream.
@@ -925,6 +917,26 @@ class Dataset(Generic[T]):
                     "use a callable `on` argument or use an Arrow Dataset "
                     "instead of a simple Dataset.")
         return on
+
+    def _is_arrow_dataset(self) -> bool:
+        """Determine if Dataset is an Arrow dataset.
+
+        This may block; if the schema is unknown, this will synchronously fetch
+        the schema for the first block.
+        """
+        try:
+            import pyarrow as pa
+        except ModuleNotFoundError:
+            return False
+        else:
+            # We need schema to properly validate, so synchronously
+            # fetch it if necessary.
+            schema = self.schema(fetch_if_missing=True)
+            if schema is None:
+                raise ValueError(
+                    "Dataset is empty or cleared, can't determine whether "
+                    "it's an Arrow dataset")
+            return isinstance(schema, pa.Schema)
 
     def _aggregate_on(self, agg_cls: type, on: AggregateOnT, *args, **kwargs):
         """Helper for aggregating on a particular subset of the dataset.
@@ -1263,7 +1275,7 @@ class Dataset(Generic[T]):
         # Some blocks could be empty, in which case we cannot get their schema.
         # TODO(ekl) validate schema is the same across different blocks.
         for m in metadata:
-            if m.schema:
+            if m.schema is not None:
                 return m.schema
         if not fetch_if_missing:
             return None
@@ -1998,13 +2010,11 @@ class Dataset(Generic[T]):
         Returns:
             A list of remote Arrow tables created from this dataset.
         """
-
-        check_is_arrow = cached_remote_fn(_check_is_arrow)
         blocks: List[ObjectRef[Block]] = list(self._blocks.iter_blocks())
-        is_arrow = ray.get(check_is_arrow.remote(blocks[0]))
 
-        if is_arrow:
-            return blocks  # Zero-copy path.
+        if self._is_arrow_dataset():
+            # Zero-copy path.
+            return blocks
 
         block_to_arrow = cached_remote_fn(_block_to_arrow)
         return [block_to_arrow.remote(block) for block in blocks]
@@ -2273,11 +2283,6 @@ def _block_to_ndarray(block: Block, column: Optional[str]):
 def _block_to_arrow(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_arrow()
-
-
-def _check_is_arrow(block: Block) -> bool:
-    import pyarrow
-    return isinstance(block, pyarrow.Table)
 
 
 def _split_block(
