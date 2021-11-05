@@ -1,12 +1,11 @@
-from fastapi import FastAPI, Request
-
 import pytest
-
 import requests
-
+from fastapi import FastAPI, Request
 from starlette.responses import RedirectResponse
 
+import ray
 from ray import serve
+from ray._private.test_utils import SignalActor
 
 
 def test_path_validation(serve_instance):
@@ -215,6 +214,31 @@ def test_redirect(serve_instance, base_path):
     assert r.status_code == 200
     assert len(r.history) == 2
     assert r.json() == "hello from /"
+
+
+def test_default_error_handling(serve_instance):
+    @serve.deployment
+    def f():
+        1 / 0
+
+    f.deploy()
+    r = requests.get(f"http://localhost:8000/f")
+    assert r.status_code == 500
+    assert "ZeroDivisionError" in r.text, r.text
+
+    @ray.remote(num_cpus=0)
+    def intentional_kill(actor_handle):
+        ray.kill(actor_handle, no_restart=False)
+
+    @serve.deployment
+    def h():
+        ray.get(
+            intentional_kill.remote(ray.get_runtime_context().current_actor))
+
+    h.deploy()
+    r = requests.get(f"http://localhost:8000/h")
+    assert r.status_code == 500
+    assert "retries" in r.text, r.text
 
 
 if __name__ == "__main__":
