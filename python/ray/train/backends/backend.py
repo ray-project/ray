@@ -167,10 +167,12 @@ class BackendExecutor:
             not should_capture_child_tasks_in_placement_group
 
         if should_create_placement_group:
+            additional_resources_per_worker = \
+                self._additional_resources_per_worker or {}
             bundle = {
                 "CPU": self._num_cpus_per_worker,
                 "GPU": int(self._num_gpus_per_worker),
-                **self._additional_resources_per_worker
+                **additional_resources_per_worker
             }
             bundles = [bundle.copy() for _ in range(self._num_workers)]
 
