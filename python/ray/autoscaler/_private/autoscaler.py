@@ -390,7 +390,7 @@ class StandardAutoscaler:
         """Terminate scheduled nodes and clean associated autoscaler state."""
         if not self.nodes_to_terminate:
             return
-        self.drain_nodes_via_gcs()
+        self.drain_nodes_via_gcs(self.nodes_to_terminate)
         self.provider.terminate_nodes(self.nodes_to_terminate)
         for node in self.nodes_to_terminate:
             self.node_tracker.untrack(node)
@@ -399,23 +399,41 @@ class StandardAutoscaler:
         self.nodes_to_terminate = []
         self.update_worker_list()
 
-    def drain_nodes_via_gcs(self):
+    def drain_nodes_via_gcs(self, provider_node_ids_to_drain: List[NodeID]):
+        """Send an RPC request to the GCS to drain (gracefully shutdown) the
+        nodes with the given node provider ids.
+        """
+        # The GCS expects Raylet ids in the request, rather than NodeProvider
+        # ids. To get the Raylet ids of the nodes to we're draining, we make
+        # the following translations of identifiers:
+        # node provider node id -> ip -> raylet id
+
+        # Convert node provider node ids to ips.
         node_ips = [
-            self.provider.internal_ip(node_id)
-            for node_id in self.nodes_to_terminate
+            self.provider.internal_ip(provider_node_id)
+            for provider_node_id in provider_node_ids_to_drain
         ]
+
+        # Convert ips to Raylet ids.
         raylet_ids_to_drain = {
             self.load_metrics.raylet_id_by_ip[ip]
             for ip in node_ips
         }
 
         logger.info(f"Draining raylets with ids {raylet_ids_to_drain}.")
-        request = gcs_service_pb2.DrainNodeRequest(drain_node_data=[
-            gcs_service_pb2.DrainNodeData(node_id=raylet_id)
-            for raylet_id in raylet_ids_to_drain
-        ])
         try:
-            response = self.gcs_node_info_stub.DrainNode(request)
+            request = gcs_service_pb2.DrainNodeRequest(drain_node_data=[
+                gcs_service_pb2.DrainNodeData(node_id=raylet_id)
+                for raylet_id in raylet_ids_to_drain
+            ])
+
+            # A successfuly response indicates that the GCS has marked the
+            # desired nodes as "drained." The cloud provider can then terminate
+            # the nodes without the GCS printing an error.
+            response = self.gcs_node_info_stub.DrainNode(request, timeout=30)
+
+            # Check if we succeeded in draining all of the intended nodes by looking
+            # at the RPC response.
             drained_raylet_ids = {
                 status_item.node_id
                 for status_item in response.drain_node_status
@@ -424,8 +442,9 @@ class StandardAutoscaler:
             if failed_to_drain:
                 logger.error(
                     f"Failed to drain raylets with ids {failed_to_drain}.")
+
         except grpc._channel._InactiveRpcError as e:
-            if e.code().name == "UNIMPLEMENTED":
+            if e.code() == grpc.StatusCode.UNIMPLEMENTED:
                 # If we're here, it means the GCS is using Ray version < 1.8.0,
                 # for which DrainNode is not implemented. Fail silently.
                 pass
