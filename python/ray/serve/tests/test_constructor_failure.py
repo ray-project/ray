@@ -22,11 +22,11 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
     with pytest.raises(RuntimeError):
         ConstructorFailureDeploymentOneReplica.deploy()
 
-    # Assert no replicas are running in deployment backend after failed
+    # Assert no replicas are running in deployment deployment after failed
     # deploy() call
-    backend_dict = ray.get(
+    deployment_dict = ray.get(
         serve_instance._controller._all_running_replicas.remote())
-    assert backend_dict["ConstructorFailureDeploymentOneReplica"] == []
+    assert deployment_dict["ConstructorFailureDeploymentOneReplica"] == []
 
     # # Test failed to deploy with total of 2 replicas
     @serve.deployment(num_replicas=2)
@@ -40,11 +40,11 @@ def test_deploy_with_consistent_constructor_failure(serve_instance):
     with pytest.raises(RuntimeError):
         ConstructorFailureDeploymentTwoReplicas.deploy()
 
-    # Assert no replicas are running in deployment backend after failed
+    # Assert no replicas are running in deployment deployment after failed
     # deploy() call
-    backend_dict = ray.get(
+    deployment_dict = ray.get(
         serve_instance._controller._all_running_replicas.remote())
-    assert backend_dict["ConstructorFailureDeploymentTwoReplicas"] == []
+    assert deployment_dict["ConstructorFailureDeploymentTwoReplicas"] == []
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -78,11 +78,11 @@ def test_deploy_with_partial_constructor_failure(serve_instance):
 
         PartialConstructorFailureDeployment.deploy()
 
-    # Assert 2 replicas are running in deployment backend after partially
+    # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy() call
-    backend_dict = ray.get(
+    deployment_dict = ray.get(
         serve_instance._controller._all_running_replicas.remote())
-    assert len(backend_dict["PartialConstructorFailureDeployment"]) == 2
+    assert len(deployment_dict["PartialConstructorFailureDeployment"]) == 2
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -106,11 +106,11 @@ def test_deploy_with_transient_constructor_failure(serve_instance):
                 return "hi"
 
         TransientConstructorFailureDeployment.deploy()
-    # Assert 2 replicas are running in deployment backend after partially
+    # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy() call with transient error
-    backend_dict = ray.get(
+    deployment_dict = ray.get(
         serve_instance._controller._all_running_replicas.remote())
-    assert len(backend_dict["TransientConstructorFailureDeployment"]) == 2
+    assert len(deployment_dict["TransientConstructorFailureDeployment"]) == 2
 
 
 if __name__ == "__main__":
