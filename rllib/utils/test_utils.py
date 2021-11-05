@@ -593,10 +593,6 @@ def run_learning_tests_from_yaml(
 
     start_time = time.monotonic()
 
-    # Keep track of those experiments we still have to run.
-    # If an experiment passes, we'll remove it from this dict.
-    experiments_to_run = experiments.copy()
-
     # Loop through all collected files and gather experiments.
     # Augment all by `torch` framework.
     for yaml_file in yaml_files:
@@ -650,11 +646,15 @@ def run_learning_tests_from_yaml(
                 ec.pop("pass_criteria", None)
 
                 # One experiment to run.
-                experiments_to_run[k_] = ec
+                experiments[k_] = ec
 
     # Print out the actual config.
     print("== Test config ==")
     print(yaml.dump(experiments))
+
+    # Keep track of those experiments we still have to run.
+    # If an experiment passes, we'll remove it from this dict.
+    experiments_to_run = experiments.copy()
 
     try:
         ray.init(address="auto")
@@ -685,6 +685,11 @@ def run_learning_tests_from_yaml(
                 sort_by_metric=True,
                 max_report_frequency=30,
             ))
+        trials = []
+        for e in experiments_to_run:
+            trials.append({
+                "status": "TERMINATED",
+            })
         all_trials.extend(trials)
 
         # Check each experiment for whether it passed.
