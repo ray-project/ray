@@ -15,6 +15,7 @@ from ray._private.runtime_env.pip import build_proto_pip_runtime_env, parse_prot
 from ray._private.runtime_env.conda import build_proto_conda_runtime_env, parse_proto_conda_runtime_env
 from ray._private.runtime_env.container import build_proto_container_runtime_env, parse_proto_container_runtime_env
 from google.protobuf import json_format
+from ray._private.runtime_env import conda
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,7 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
 
     Conda can be one of three cases:
         1) A dictionary describing the env. This is passed through directly.
-        2) A string referring to a preinstalled conda env.
+        2) A string referring to the name of a preinstalled conda env.
         3) A string pointing to a local conda YAML file. This is detected
            by looking for a '.yaml' or '.yml' suffix. In this case, the file
            will be read as YAML and passed through as a dictionary.
@@ -360,6 +361,11 @@ class ParsedRuntimeEnv(dict):
         if "py_modules" in self:
             for uri in self["py_modules"]:
                 plugin_uris.append(_encode_plugin_uri("py_modules", uri))
+        if "conda" or "pip" in self:
+            uri = conda.get_uri(self)
+            if uri is not None:
+                plugin_uris.append(_encode_plugin_uri("conda", uri))
+
         return plugin_uris
 
     def get_proto_runtime_env(self):

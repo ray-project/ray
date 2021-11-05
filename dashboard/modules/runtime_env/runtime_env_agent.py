@@ -90,9 +90,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                                      serialized_allocated_resource_instances):
             # This function will be ran inside a thread
             def run_setup_with_logger():
-                logger.info(f"The serialized runtime env: {serialized_runtime_env}")
+                logger.info(f"Setting up runtime_env: {serialized_runtime_env}")
                 runtime_env: RuntimeEnv = json_format.Parse(serialized_runtime_env, RuntimeEnv())
-                logger.info(f"The parsed runtime env: {runtime_env}")
                 allocated_resource: dict = json.loads(
                     serialized_allocated_resource_instances or "{}")
 
@@ -104,7 +103,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                                      f"{allocated_resource}")
                 context = RuntimeEnvContext(env_vars=dict(runtime_env.env_vars))
                 self._conda_manager.setup(
-                    runtime_env, context, logger=per_job_logger)
+                    runtime_env, serialized_runtime_env, context, logger=per_job_logger)
                 self._py_modules_manager.setup(
                     runtime_env, context, logger=per_job_logger)
                 self._working_dir_manager.setup(
@@ -216,6 +215,13 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             elif plugin == "py_modules":
                 if not self._py_modules_manager.delete_uri(uri):
                     failed_uris.append(uri)
+            elif plugin == "conda":
+                if not self._conda_manager.delete_uri(uri):
+                    failed_uris.append(uri)
+            else:
+                raise ValueError(
+                    "RuntimeEnvAgent received DeleteURI request "
+                    f"for unsupported plugin {plugin}. URI: {uri}")
 
             if failed_uris:
                 return runtime_env_agent_pb2.DeleteURIsReply(
