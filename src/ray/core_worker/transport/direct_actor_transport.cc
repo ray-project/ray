@@ -644,7 +644,8 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
           task_spec.CallerWorkerId(),
           std::unique_ptr<SchedulingQueue>(new ActorSchedulingQueue(
               task_main_io_service_, *waiter_, pool_manager_, is_asyncio_,
-              fiber_max_concurrency_, cg_it->second)));
+              fiber_max_concurrency_, cg_it->second, kMaxReorderWaitSeconds,
+              task_spec.ExecuteOutofOrder())));
       it = result.first;
     }
 

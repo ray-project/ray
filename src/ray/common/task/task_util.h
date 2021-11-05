@@ -206,6 +206,7 @@ class TaskSpecBuilder {
         *fd = item->GetMessage();
       }
     }
+    actor_creation_spec->set_execute_out_of_order(is_asyncio || max_concurrency > 1);
     return *this;
   }
 

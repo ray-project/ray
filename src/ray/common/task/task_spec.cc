@@ -329,6 +329,11 @@ std::string TaskSpecification::ConcurrencyGroupName() const {
   return message_->concurrency_group_name();
 }
 
+bool TaskSpecification::ExecuteOutofOrder() const {
+  RAY_CHECK(IsActorTask());
+  return message_->actor_creation_task_spec().execute_out_of_order();
+}
+
 bool TaskSpecification::IsAsyncioActor() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().is_asyncio();

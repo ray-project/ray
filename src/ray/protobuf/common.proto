@@ -340,6 +340,8 @@ message ActorCreationTaskSpec {
   bytes serialized_actor_handle = 12;
   // The concurrency groups of this actor.
   repeated ConcurrencyGroup concurrency_groups = 13;
+  // Support out of order execution.
+  bool execute_out_of_order= 14;
 }
 
 // Task spec of an actor task.
