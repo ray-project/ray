@@ -70,7 +70,7 @@ public class RayConfig {
 
   public final int numWorkersPerProcess;
 
-  public String namespace;
+  public final String namespace;
 
   public final List<String> jvmOptionsForJavaWorker;
   public final Map<String, String> workerEnv;
@@ -126,6 +126,9 @@ public class RayConfig {
     if (workerMode == WorkerType.DRIVER) {
       namespace =
           StringUtils.isEmpty(localNamespace) ? UUID.randomUUID().toString() : localNamespace;
+    } else {
+      /// We shouldn't set it for worker.
+      namespace = null;
     }
 
     // jvm options for java workers of this job.
