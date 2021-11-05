@@ -588,6 +588,8 @@ def run_learning_tests_from_yaml(
     experiments = {}
     # The results per experiment.
     checks = {}
+    # Metrics per experiment.
+    stats = {}
 
     start_time = time.monotonic()
 
@@ -609,8 +611,8 @@ def run_learning_tests_from_yaml(
             else:
                 frameworks = ["tf", "tf2", "torch"]
 
-            e["stop"] = e["stop"] or {}
-            e["pass_criteria"] = e["pass_criteria"] or {}
+            e["stop"] = e["stop"] if "stop" in e else {}
+            e["pass_criteria"] = e["pass_criteria"] if "pass_criteria" in e else {}
 
             # For smoke-tests, we just run for n min.
             if smoke_test:
@@ -636,7 +638,7 @@ def run_learning_tests_from_yaml(
 
                 checks[k_] = {
                     "min_reward": ec["pass_criteria"].get(
-                        "episode_reward_mean"),
+                        "episode_reward_mean", 0.0),
                     "min_throughput": ec["pass_criteria"].get(
                         "timesteps_total", 0.0) /
                     (ec["stop"].get("time_total_s", 1.0) or 1.0),
@@ -741,6 +743,12 @@ def run_learning_tests_from_yaml(
                 throughput = timesteps_total / (total_time_s or 1.0)
                 desired_throughput = checks[experiment]["min_throughput"]
 
+                # Record performance.
+                stats[experiment] = {
+                    "episode_reward_mean": episode_reward_mean,
+                    "throughput": throughput,
+                }
+
                 print(f" ... Desired reward={desired_reward}; "
                       f"desired throughput={desired_throughput}")
 
@@ -768,6 +776,7 @@ def run_learning_tests_from_yaml(
         "time_taken": time_taken,
         "trial_states": dict(Counter([trial.status for trial in all_trials])),
         "last_update": time.time(),
+        "stats": stats,
         "passed": [k for k, exp in checks.items() if exp["passed"]],
         "failures": {
             k: exp["failures"]

@@ -2,7 +2,7 @@ apex-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: APEX
     stop:
-        time_total_s: 3600
+        time_total_s: 300  #3600
     config:
         double_q: false
         dueling: false
@@ -31,7 +31,7 @@ sac-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: SAC
     stop:
-        time_total_s: 3600
+        time_total_s: 300  #3600
     config:
         horizon: 1000
         soft_horizon: false
@@ -63,7 +63,7 @@ appo-pongnoframeskip-v4:
     env: PongNoFrameskip-v4
     run: APPO
     stop:
-        time_total_s: 2000
+        time_total_s: 300  # 2000
     config:
         vtrace: True
         use_kl_loss: False
