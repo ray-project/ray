@@ -1,6 +1,7 @@
 apex-breakoutnoframeskip-v4:
     env: BreakoutNoFrameskip-v4
     run: APEX
+    frameworks: [ "tf", "tf2", "torch" ]
     stop:
         time_total_s: 300  #3600
     config:
@@ -30,6 +31,7 @@ apex-breakoutnoframeskip-v4:
 appo-pongnoframeskip-v4:
     env: PongNoFrameskip-v4
     run: APPO
+    frameworks: [ "tf", "tf2", "torch" ]
     stop:
         time_total_s: 300  # 2000
     config:
@@ -53,6 +55,7 @@ appo-pongnoframeskip-v4:
 cql-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: CQL
+    frameworks: [ "tf", "tf2", "torch" ]
     stop:
         time_total_s: 1800
     config:
@@ -101,6 +104,7 @@ cql-halfcheetahbulletenv-v0:
 sac-halfcheetahbulletenv-v0:
     env: HalfCheetahBulletEnv-v0
     run: SAC
+    frameworks: [ "tf", "tf2", "torch" ]
     stop:
         time_total_s: 300  #3600
     config:

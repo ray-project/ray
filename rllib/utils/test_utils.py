@@ -602,10 +602,14 @@ def run_learning_tests_from_yaml(
         for k, e in tf_experiments.items():
             # If framework explicitly given, only test for that framework.
             # Some algos do not have both versions available.
-            if "framework" in e["config"]:
-                frameworks = [e["config"]["framework"]]
+            if "frameworks" in e["config"]:
+                frameworks = e["config"]["frameworks"]
             else:
-                frameworks = ["tf", "tf2", "torch"]
+                # By default we don't run tf2, because tf2's multi-gpu support
+                # isn't complete yet.
+                frameworks = ["tf", "torch"]
+            # Pop frameworks key to not confuse Tune.
+            e.pop("frameworks", None)
 
             e["stop"] = e["stop"] if "stop" in e else {}
             e["pass_criteria"] = e["pass_criteria"] if "pass_criteria" in e else {}
