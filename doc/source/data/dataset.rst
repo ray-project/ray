@@ -17,7 +17,7 @@ Ray Datasets are the standard way to load and exchange data in Ray libraries and
 Data Loading for ML Training
 ----------------------------
 
-Ray Datasets are designed to load and preprocess data for distributed ML training pipelines. Compared to other loading solutions, Datasets is more flexible (e.g., can express higher-quality `per-epoch global shuffles <examples/big_data_ingestion.html>`__) and provides `higher overall performance <https://www.anyscale.com/blog/why-third-generation-ml-platforms-are-more-performant>`__.
+Ray Datasets are designed to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>`. Compared to other loading solutions, Datasets is more flexible (e.g., can express higher-quality `per-epoch global shuffles <examples/big_data_ingestion.html>`__) and provides `higher overall performance <https://www.anyscale.com/blog/why-third-generation-ml-platforms-are-more-performant>`__.
 
 Datasets is not intended as a replacement for more general data processing systems. Its utility is as the last-mile bridge from ETL pipeline outputs to distributed applications and libraries in Ray:
 
@@ -35,6 +35,7 @@ Ray-integrated DataFrame libraries can also be seamlessly used with Datasets, to
    :align: center
 
 See the following for more Dataset ML use cases and benchmarks:
+
 - [slides] `Talk given at PyData 2021 <https://docs.google.com/presentation/d/1zANPlmrxQkjPU62I-p92oFO3rJrmjVhs73hL4YbM4C4>`_
 
 General Parallel Compute
