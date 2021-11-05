@@ -305,9 +305,6 @@ def merge_mapper_blocks(args: Args, reducer_id: PartId, merge_id: PartId,
 @tracing_utils.timeit("reduce")
 def final_merge(args: Args, reducer_id: PartId,
                 *merged_parts: List[PartInfo]) -> PartInfo:
-    if args.skip_final_merge:
-        return
-
     def _load_block_chunk(pinfo: PartInfo, d: int) -> np.ndarray:
         if pinfo is None:
             return None
@@ -406,6 +403,11 @@ def sort_main(args: Args):
             ray.wait(map_results[:, 0].tolist(), fetch_local=False)
             map_results = None
 
+        if args.skip_final_merge:
+            tasks = [t for t in merge_results.flatten() if t is not None]
+            ray.wait(tasks, num_returns=len(tasks), fetch_local=False)
+            return
+
         # Submit second-stage reduce tasks.
         reducer_results = [
             final_merge.options(placement_group=pgs[r]).remote(
@@ -414,12 +416,10 @@ def sort_main(args: Args):
         ]
         reducer_results = ray.get(reducer_results)
 
-    if not args.skip_output and not args.skip_final_merge:
-        with open(constants.OUTPUT_MANIFEST_FILE, "w") as fout:
-            writer = csv.writer(fout)
-            writer.writerows(reducer_results)
-
-    logging.info(ray.internal.internal_api.memory_summary(stats_only=True))
+        if not args.skip_output:
+            with open(constants.OUTPUT_MANIFEST_FILE, "w") as fout:
+                writer = csv.writer(fout)
+                writer.writerows(reducer_results)
 
 
 # ------------------------------------------------------------
