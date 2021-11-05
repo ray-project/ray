@@ -607,6 +607,9 @@ class Trainer(Trainable):
         # Trainers allow env ids to be passed directly to the constructor.
         self._env_id = self._register_if_needed(
             env or config.get("env"), config)
+        # The env creator callable, taking an EnvContext (config dict)
+        # as arg and returning an RLlib supported Env type (e.g. a gym.Env).
+        self.env_creator: Callable[[EnvContext], EnvType] = None
 
         # Placeholder for a local replay buffer instance.
         self.local_replay_buffer = None
@@ -650,50 +653,65 @@ class Trainer(Trainable):
 
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
-        env = self._env_id
-        if env:
-            config["env"] = env
+
+        # Setup our config: Merge the user-supplied config (which could
+        # be a partial config dict with the class' default).
+        self.config = self.merge_trainer_configs(
+            self.get_default_config(), config, self._allow_unknown_configs)
+
+        # Setup the "env creator" callable.
+        if self._env_id:
+            self.config["env"] = self._env_id
+
             # An already registered env.
-            if _global_registry.contains(ENV_CREATOR, env):
-                self.env_creator = _global_registry.get(ENV_CREATOR, env)
-            # A class specifier.
-            elif "." in env:
+            if _global_registry.contains(ENV_CREATOR, self._env_id):
+                self.env_creator = _global_registry.get(
+                    ENV_CREATOR, self._env_id)
+
+            # A class path specifier.
+            elif "." in self._env_id:
 
                 def env_creator_from_classpath(env_context):
                     try:
-                        env_obj = from_config(env, env_context)
+                        env_obj = from_config(self._env_id, env_context)
                     except ValueError:
                         raise EnvError(
-                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env))
+                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(
+                                self._env_id))
                     return env_obj
 
                 self.env_creator = env_creator_from_classpath
             # Try gym/PyBullet/Vizdoom.
             else:
                 self.env_creator = functools.partial(
-                    gym_env_creator, env_descriptor=env)
+                    gym_env_creator, env_descriptor=self._env_id)
+        # No env -> Env creator always returns None.
         else:
             self.env_creator = lambda env_config: None
 
-        # Merge the supplied config with the class default, but store the
-        # user-provided one.
-        self.raw_user_config = config
-        self.config = self.merge_trainer_configs(
-            self.get_default_config(), config, self._allow_unknown_configs)
-
         # Check and resolve DL framework settings.
-        # Enable eager/tracing support.
+        # Tf-eager (tf2|tfe), possibly with tracing set to True. Recommend
+        # setting tracing to True for speedups.
         if tf1 and self.config["framework"] in ["tf2", "tfe"]:
             if self.config["framework"] == "tf2" and tfv < 2:
                 raise ValueError("`framework`=tf2, but tf-version is < 2.0!")
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
-            logger.info("Executing eagerly, with eager_tracing={}".format(
-                self.config["eager_tracing"]))
-        if tf1 and not tf1.executing_eagerly() and \
-                self.config["framework"] != "torch":
-            logger.info("Tip: set framework=tfe or the --eager flag to enable "
-                        "TensorFlow eager execution")
+            logger.info(
+                f"Executing eagerly (framework='{self.config['framework']}'),"
+                f" with eager_tracing={self.config['eager_tracing']}. For "
+                "production workloads, make sure to set eager_tracing=True in"
+                " order to match the speed of tf-static-graph "
+                "(framework='tf')")
+        # Tf-static-graph (framework=tf): Recommend upgrading to tf2 and
+        # enabling eager tracing for similar speed.
+        elif tf1 and self.config["framework"] == "tf":
+            logger.info(
+                "Your framework setting is 'tf', meaning you are using static"
+                "-graph mode. Set framework='tf2' to enable eager execution "
+                "with tf2.x. You may also want to then set eager_tracing=True"
+                " in order to reach similar execution speed as with "
+                "static-graph mode.")
 
         # Set Trainer's seed after we have - if necessary - enabled
         # tf eager-execution.
@@ -726,17 +744,19 @@ class Trainer(Trainable):
         # point.
         self.workers = None
         self.train_exec_impl = None
-        self._init(self.config, self.env_creator)
-
-        # If _init was not used (did not create any workers):
-        # - Create rollout workers here automatically.
-        # - Run the execution plan to create the local iterator to `next()`
-        #   in each training iteration.
-        if self.workers is None and not hasattr(self, "_workers"):
+        # Old design: Override `_init`
+        try:
+            self._init(self.config, self.env_creator)
+        # New design: Override `setup` (as indented by Trainable)
+        # and do or don't call super().setup() from within your override.
+        except NotImplementedError:
+            # - Create rollout workers here automatically.
+            # - Run the execution plan to create the local iterator to `next()`
+            #   in each training iteration.
             self.workers = self._make_workers(
                 env_creator=self.env_creator,
                 validate_env=self.validate_env,
-                policy_class=self.get_default_policy_class(),
+                policy_class=self.get_default_policy_class(self.config),
                 config=self.config,
                 num_workers=self.config["num_workers"])
             self.train_exec_impl = self.execution_plan(
@@ -779,10 +799,12 @@ class Trainer(Trainable):
 
     # TODO: Deprecated: In your sub-classes of Trainer, override `setup()`
     #  directly and call super().setup() from within it if you would like the
-    #  default setup behavior.
+    #  default setup behavior plus some own setup logic.
+    #  If you don't need the env/workers/config/etc.. setup for you by super,
+    #  simply do not call super().setup() from your overridden setup.
     def _init(self, config: TrainerConfigDict,
               env_creator: Callable[[EnvContext], EnvType]) -> None:
-        pass
+        raise NotImplementedError
 
     @ExperimentalAPI
     def get_default_policy_class(self, config: PartialTrainerConfigDict):
@@ -797,7 +819,7 @@ class Trainer(Trainable):
         the Trainer sub-class does not override `_init()` and create it's
         own WorkerSet in `_init()`.
         """
-        raise NotImplementedError
+        pass
 
     @override(Trainable)
     def step(self):

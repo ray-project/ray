@@ -24,8 +24,8 @@ class PGTrainer(Trainer):
     """
 
     @override(Trainer)
-    def get_default_policy_class(self) -> Type[Policy]:
-        return PGTorchPolicy if self.config["framework"] == "torch" \
+    def get_default_policy_class(self, config) -> Type[Policy]:
+        return PGTorchPolicy if config["framework"] == "torch" \
             else PGTFPolicy
 
     @classmethod
