@@ -62,7 +62,7 @@ class MockWorkerPool : public WorkerPoolInterface {
 
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers) const {
-    RAY_CHECK(false) << "Not used.";
+    // RAY_CHECK(false) << "Not used.";
     return {};
   }
 
@@ -263,6 +263,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
     ASSERT_TRUE(task_manager_.infeasible_tasks_.empty());
     ASSERT_TRUE(task_manager_.executing_task_args_.empty());
     ASSERT_TRUE(task_manager_.pinned_task_arguments_.empty());
+    ASSERT_TRUE(task_manager_.info_by_sched_cls_.empty());
     ASSERT_EQ(task_manager_.pinned_task_arguments_bytes_, 0);
     ASSERT_TRUE(task_manager_.info_by_sched_cls_.empty());
     ASSERT_TRUE(dependency_manager_.subscribed_tasks.empty());
@@ -357,6 +358,59 @@ TEST_F(ClusterTaskManagerTest, BasicTest) {
   task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
   ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
             task.GetTaskSpecification().TaskId());
+  AssertNoLeaks();
+}
+
+TEST_F(ClusterTaskManagerTest, IdempotencyTest) {
+  /*
+    A few task manager methods are meant to be idempotent.
+    * `TaskFinished`
+    * `ReleaseCpuResourcesFromUnblockedWorker`
+    * `ReturnCpuResourcesToBlockedWorker`
+   */
+  RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 4}});
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr](Status, std::function<void()>,
+                                          std::function<void()>) {
+    *callback_occurred_ptr = true;
+  };
+
+  task_manager_.QueueAndScheduleTask(task, &reply, callback);
+  pool_.TriggerCallbacks();
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+  pool_.TriggerCallbacks();
+
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 0);
+  ASSERT_EQ(node_info_calls_, 0);
+
+  ASSERT_EQ(scheduler_->GetLocalAvailableCpus(), 4.0);
+
+  task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker);
+  task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker);
+
+  ASSERT_EQ(scheduler_->GetLocalAvailableCpus(), 8.0);
+
+  task_manager_.ReturnCpuResourcesToBlockedWorker(worker);
+  task_manager_.ReturnCpuResourcesToBlockedWorker(worker);
+
+  ASSERT_EQ(scheduler_->GetLocalAvailableCpus(), 4.0);
+
+  RayTask finished_task;
+  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+  task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+  ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
+            task.GetTaskSpecification().TaskId());
+  ASSERT_EQ(scheduler_->GetLocalAvailableCpus(), 8.0);
   AssertNoLeaks();
 }
 
@@ -1605,6 +1659,11 @@ TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 3);
+
+  task_manager_.TaskFinished(workers[0], &buf);
+  task_manager_.TaskFinished(workers[2], &buf);
+
+  AssertNoLeaks();
 }
 
 TEST_F(ClusterTaskManagerTest, ZeroCPUTasks) {
@@ -1634,6 +1693,13 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUTasks) {
   // We shouldn't cap anything for zero cpu tasks (and shouldn't crash before
   // this point).
   ASSERT_EQ(num_callbacks, 3);
+
+  for (auto &worker : workers) {
+    RayTask buf;
+    task_manager_.TaskFinished(worker, &buf);
+  }
+
+  AssertNoLeaks();
 }
 
 TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
@@ -1701,6 +1767,13 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
   // We shouldn't cap anything for zero cpu tasks (and shouldn't crash before
   // this point).
   ASSERT_EQ(num_callbacks, 3);
+
+  for (auto &worker : workers) {
+    RayTask buf;
+    task_manager_.TaskFinished(worker, &buf);
+  }
+
+  AssertNoLeaks();
 }
 
 /// Test that we exponentially increase the amount of time it takes to increase
@@ -1718,7 +1791,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
 
   int64_t UNIT = RayConfig::instance().scheduling_class_capacity_interval_ms() * 1e6;
   std::vector<RayTask> tasks;
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 3; i++) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
                               /*num_args=*/0, /*args=*/{});
     tasks.emplace_back(task);
@@ -1735,7 +1808,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
 
   auto runtime_env_hash = tasks[0].GetTaskSpecification().GetRuntimeEnvHash();
   std::vector<std::shared_ptr<MockWorker>> workers;
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 3; i++) {
     std::shared_ptr<MockWorker> worker =
         std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
@@ -1771,6 +1844,13 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
   pool_.TriggerCallbacks();
   task_manager_.ScheduleAndDispatchTasks();
   ASSERT_EQ(num_callbacks, 3);
+
+  for (auto &worker : workers) {
+    RayTask buf;
+    task_manager_.TaskFinished(worker, &buf);
+  }
+
+  AssertNoLeaks();
 }
 
 /// Ensure we reset the cap after we've finished executing through the queue.
@@ -1840,6 +1920,11 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapReset) {
   pool_.TriggerCallbacks();
 
   ASSERT_EQ(num_callbacks, 4);
+
+  task_manager_.TaskFinished(worker3, &buf);
+  task_manager_.TaskFinished(worker4, &buf);
+
+  AssertNoLeaks();
 }
 
 // Regression test for https://github.com/ray-project/ray/issues/16935:
