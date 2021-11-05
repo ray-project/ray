@@ -91,7 +91,7 @@ class SampleBatch(dict):
         # Is alredy right-zero-padded?
         self.zero_padded = kwargs.pop("_zero_padded", False)
         # Whether this batch is used for training (vs inference).
-        self.is_training = kwargs.pop("_is_training", None)
+        self._is_training = kwargs.pop("_is_training", None)
 
         # Call super constructor. This will make the actual data accessible
         # by column name (str) via e.g. self["some-col"].
@@ -118,8 +118,8 @@ class SampleBatch(dict):
                 len(seq_lens_) > 0:
             self.max_seq_len = max(seq_lens_)
 
-        if self.is_training is None:
-            self.is_training = self.pop("is_training", False)
+        if self._is_training is None:
+            self._is_training = self.pop("is_training", False)
 
         lengths = []
         copy_ = {k: v for k, v in self.items() if k != SampleBatch.SEQ_LENS}
@@ -271,6 +271,9 @@ class SampleBatch(dict):
         )
         copy_ = SampleBatch(data)
         copy_.set_get_interceptor(self.get_interceptor)
+        copy_.added_keys = self.added_keys
+        copy_.deleted_keys = self.deleted_keys
+        copy_.accessed_keys = self.accessed_keys
         return copy_
 
     @PublicAPI
@@ -501,6 +504,7 @@ class SampleBatch(dict):
             return SampleBatch(
                 data,
                 seq_lens=seq_lens,
+                _is_training=self.is_training,
                 _time_major=self.time_major,
             )
         else:
@@ -731,7 +735,7 @@ class SampleBatch(dict):
                     old="SampleBatch['is_training']",
                     new="SampleBatch.is_training",
                     error=False)
-            self.is_training = item
+            self._is_training = item
             return
 
         if key not in self:
@@ -740,6 +744,20 @@ class SampleBatch(dict):
         dict.__setitem__(self, key, item)
         if key in self.intercepted_values:
             self.intercepted_values[key] = item
+
+    @property
+    def is_training(self):
+        if self.get_interceptor is not None and \
+                isinstance(self._is_training, bool):
+            if "_is_training" not in self.intercepted_values:
+                self.intercepted_values["_is_training"] = \
+                    self.get_interceptor(self._is_training)
+            return self.intercepted_values["_is_training"]
+        return self._is_training
+
+    def set_training(self, training: Union[bool, "tf1.placeholder"] = True):
+        self._is_training = training
+        self.intercepted_values.pop("_is_training", None)
 
     @PublicAPI
     def __delitem__(self, key):
