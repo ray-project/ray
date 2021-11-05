@@ -34,7 +34,7 @@ class TestSimpleQ(unittest.TestCase):
 
         num_iterations = 2
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, with_eager_tracing=True):
             trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
             rw = trainer.workers.local_worker()
             for i in range(num_iterations):

@@ -28,9 +28,9 @@ def upload_py_modules_if_needed(
         runtime_env: Dict[str, Any],
         scratch_dir: str,
         logger: Optional[logging.Logger] = default_logger) -> Dict[str, Any]:
-    """Uploads the entries in py_modules and replaces them with a URI.
+    """Uploads the entries in py_modules and replaces them with a list of URIs.
 
-    If an entry is already a URI, this is a no-op.
+    For each entry that is already a URI, this is a no-op.
     """
     py_modules = runtime_env.get("py_modules")
     if py_modules is None:
@@ -44,6 +44,7 @@ def upload_py_modules_if_needed(
     py_modules_uris = []
     for module in py_modules:
         if isinstance(module, str):
+            # module_path is a local path or a URI.
             module_path = module
         elif isinstance(module, ModuleType):
             # NOTE(edoakes): Python allows some installed Python packages to
@@ -61,6 +62,7 @@ def upload_py_modules_if_needed(
         if _check_is_uri(module_path):
             module_uri = module_path
         else:
+            # module_path is a local path.
             excludes = runtime_env.get("excludes", None)
             module_uri = get_uri_for_directory(module_path, excludes=excludes)
             upload_package_if_needed(
@@ -72,6 +74,9 @@ def upload_py_modules_if_needed(
                 logger=logger)
 
         py_modules_uris.append(module_uri)
+
+    # TODO(architkulkarni): Expose a single URI for py_modules.  This plugin
+    # should internally handle the "sub-URIs", the individual modules.
 
     runtime_env["py_modules"] = py_modules_uris
     return runtime_env

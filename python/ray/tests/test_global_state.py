@@ -198,14 +198,6 @@ def test_load_report(shutdown_only, max_shapes):
     print(checker.report)
 
     if max_shapes > 0:
-        # Check that we always include the 1-CPU resource shape.
-        one_cpu_shape = {"CPU": 1}
-        one_cpu_found = False
-        for demand in checker.report:
-            if demand.shape == one_cpu_shape:
-                one_cpu_found = True
-        assert one_cpu_found
-
         # Check that we differentiate between infeasible and ready tasks.
         for demand in checker.report:
             if resource2 in demand.shape:

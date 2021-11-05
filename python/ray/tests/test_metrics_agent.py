@@ -54,7 +54,6 @@ _METRICS = [
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
     "ray_pending_actors",
-    "ray_pending_placement_groups",
     "ray_outbound_heartbeat_size_kb_sum",
     "ray_operation_count",
     "ray_operation_run_time_ms",

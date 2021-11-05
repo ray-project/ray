@@ -7,13 +7,18 @@ import pytest
 import subprocess
 import json
 import time
+import threading
+
+import grpc
 
 import ray
-from ray.cluster_utils import Cluster
+from ray.cluster_utils import Cluster, AutoscalingCluster
 from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
 from ray._private.test_utils import init_error_pubsub, setup_tls, teardown_tls
 import ray.util.client.server.server as ray_client_server
 import ray._private.gcs_utils as gcs_utils
+from ray.core.generated import node_manager_pb2
+from ray.core.generated import node_manager_pb2_grpc
 
 
 @pytest.fixture
@@ -397,3 +402,72 @@ def unstable_spilling_config(request, tmp_path):
     ])
 def slow_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
+
+
+@pytest.fixture
+def ray_start_chaos_cluster(request):
+    """Returns the cluster and chaos thread.
+
+    Run chaos_thread.start() to start the chaos testing.
+    NOTE: `cluster` is not thread-safe. `cluster`
+    shouldn't be modified by other thread once
+    chaos_thread.start() is called.
+    """
+    os.environ["RAY_num_heartbeats_timeout"] = "5"
+    os.environ["RAY_raylet_heartbeat_period_milliseconds"] = "100"
+    param = getattr(request, "param", {})
+    kill_interval = param.get("kill_interval", 2)
+    # Config of workers that are re-started.
+    head_resources = param["head_resources"]
+    worker_node_types = param["worker_node_types"]
+    timeout = param["timeout"]
+
+    # Use the shutdown RPC instead of signals because we can't
+    # raise a signal in a non-main thread.
+    def kill_raylet(ip, port, graceful=False):
+        raylet_address = f"{ip}:{port}"
+        channel = grpc.insecure_channel(raylet_address)
+        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+        print(f"Sending a shutdown request to {ip}:{port}")
+        stub.ShutdownRaylet(
+            node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+
+    cluster = AutoscalingCluster(head_resources, worker_node_types)
+    cluster.start()
+    ray.init("auto")
+    nodes = ray.nodes()
+    assert len(nodes) == 1
+    head_node_port = nodes[0]["NodeManagerPort"]
+    killed_port = set()
+
+    def run_chaos_cluster():
+        start = time.time()
+        while True:
+            node_to_kill_ip = None
+            node_to_kill_port = None
+            for node in ray.nodes():
+                addr = node["NodeManagerAddress"]
+                port = node["NodeManagerPort"]
+                if (node["Alive"] and port != head_node_port
+                        and port not in killed_port):
+                    node_to_kill_ip = addr
+                    node_to_kill_port = port
+                    break
+
+            if node_to_kill_port is not None:
+                kill_raylet(node_to_kill_ip, node_to_kill_port, graceful=False)
+                killed_port.add(node_to_kill_port)
+            time.sleep(kill_interval)
+            print(len(ray.nodes()))
+            if time.time() - start > timeout:
+                break
+        assert len(killed_port) > 0, (
+            "None of nodes are killed by the conftest. It is a bug.")
+
+    chaos_thread = threading.Thread(target=run_chaos_cluster)
+    yield chaos_thread
+    chaos_thread.join()
+    ray.shutdown()
+    cluster.shutdown()
+    del os.environ["RAY_num_heartbeats_timeout"]
+    del os.environ["RAY_raylet_heartbeat_period_milliseconds"]
