@@ -1490,11 +1490,15 @@ def connect(node,
     worker.cached_functions_to_run = None
 
     # Setup tracing here
-    if _internal_kv_get("tracing_startup_hook", namespace=ray_constants.KV_NAMESPACE_TRACING):
+    if _internal_kv_get(
+            "tracing_startup_hook",
+            namespace=ray_constants.KV_NAMESPACE_TRACING):
         ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
         if not getattr(ray, "__traced__", False):
             _setup_tracing = import_from_string(
-                _internal_kv_get("tracing_startup_hook").decode("utf-8"))
+                _internal_kv_get(
+                    "tracing_startup_hook",
+                    namespace=ray_constants.KV_NAMESPACE_TRACING).decode("utf-8"))
             _setup_tracing()
             ray.__traced__ = True
 
