@@ -537,6 +537,7 @@ Status GcsSubscriber::SubscribeAllWorkerFailures(
     if (!subscriber_->SubscribeChannel(
             std::make_unique<rpc::SubMessage>(),
             rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL, gcs_address_,
+            /*subscribe_done_callback=*/
             [done](Status status) {
               if (done != nullptr) {
                 done(status);
