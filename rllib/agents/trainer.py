@@ -1391,7 +1391,7 @@ class Trainer(Trainable):
         """
         self.get_policy(policy_id).import_model_from_h5(import_file)
         # Sync new weights to remote workers.
-        self._sync_weights_to_workers()
+        self._sync_weights_to_workers(worker_set=self.workers)
 
     @DeveloperAPI
     def collect_metrics(self,

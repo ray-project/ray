@@ -25,10 +25,12 @@ from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, \
     BlockPartition, BlockPartitionMetadata
+from ray.data.context import DatasetContext
 from ray.data.datasource import (
     Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
     ParquetDatasource, BlockWritePathProvider, DefaultBlockWritePathProvider)
-from ray.data.aggregate import AggregateOnT, AggregateFn, Sum, Max, Min, Mean
+from ray.data.aggregate import AggregateOnT, AggregateFn, Sum, Max, Min, \
+    Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
@@ -120,8 +122,10 @@ class Dataset(Generic[T]):
         """
 
         fn = cache_wrapper(fn)
+        context = DatasetContext.get_current()
 
         def transform(block: Block) -> Block:
+            DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
@@ -185,8 +189,10 @@ class Dataset(Generic[T]):
         import pandas as pd
 
         fn = cache_wrapper(fn)
+        context = DatasetContext.get_current()
 
         def transform(block: Block) -> Block:
+            DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
             total_rows = block.num_rows()
             max_batch_size = batch_size
@@ -255,8 +261,10 @@ class Dataset(Generic[T]):
         """
 
         fn = cache_wrapper(fn)
+        context = DatasetContext.get_current()
 
         def transform(block: Block) -> Block:
+            DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
@@ -295,8 +303,10 @@ class Dataset(Generic[T]):
         """
 
         fn = cache_wrapper(fn)
+        context = DatasetContext.get_current()
 
         def transform(block: Block) -> Block:
+            DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
             builder = block.builder()
             for row in block.iter_rows():
@@ -921,6 +931,36 @@ class Dataset(Generic[T]):
         ret = self.aggregate(Mean(on))
         if ret is None:
             raise ValueError("Cannot compute mean on an empty dataset")
+        else:
+            return ret[0]
+
+    def std(self, on: AggregateOnT = None, ddof: int = 1) -> U:
+        """Compute standard deviation over entire dataset.
+
+        Examples:
+            >>> ray.data.range(100).std()
+            >>> ray.data.range_arrow(100).std("value")
+
+        NOTE: This uses Welford's online method for an accumulator-style
+        computation of the standard deviation. This method was chosen due to
+        it's numerical stability, and it being computable in a single pass.
+        This may give different (but more accurate) results than NumPy, Pandas,
+        and sklearn, which use a less numerically stable two-pass algorithm.
+        See
+        https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+
+        Args:
+            on: The data on which to compute the standard deviation.
+                It can be the column name for Arrow dataset.
+            ddof: Delta Degrees of Freedom. The divisor used in calculations
+                is N - ddof, where N represents the number of elements.
+
+        Returns:
+            The standard deviation result.
+        """
+        ret = self.aggregate(Std(on, ddof))
+        if ret is None:
+            raise ValueError("Cannot compute std on an empty dataset")
         else:
             return ret[0]
 

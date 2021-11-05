@@ -5,7 +5,7 @@ from ray.util.annotations import PublicAPI
 from ray.data.dataset import Dataset
 from ray.data.impl import sort
 from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, \
-    Mean, AggregateOnT
+    Mean, Std, AggregateOnT
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.progress_bar import ProgressBar
@@ -17,7 +17,7 @@ GroupKeyT = Union[None, Callable[[T], KeyType], str, List[str]]
 
 @PublicAPI(stability="beta")
 class GroupedDataset(Generic[T]):
-    """Implements a lazy dataset grouped by key (Experimental).
+    """Represents a grouped dataset created by calling ``Dataset.groupby()``.
 
     The actual groupby is deferred until an aggregation is applied.
     """
@@ -231,6 +231,40 @@ class GroupedDataset(Generic[T]):
             If groupby key is None then the key part of return is omitted.
         """
         return self.aggregate(Mean(on))
+
+    def std(self, on: AggregateOnT = None, ddof: int = 1) -> Dataset[U]:
+        """Compute standard deviation aggregation.
+
+        This is a blocking operation.
+
+        Examples:
+            >>> ray.data.range(100).groupby(lambda x: x % 3).std()
+            >>> ray.data.from_items([
+            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
+            ...     "A").std("B")
+
+        NOTE: This uses Welford's online method for an accumulator-style
+        computation of the standard deviation. This method was chosen due to
+        it's numerical stability, and it being computable in a single pass.
+        This may give different (but more accurate) results than NumPy, Pandas,
+        and sklearn, which use a less numerically stable two-pass algorithm.
+        See
+        https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+
+        Args:
+            on: The data on which to compute the standard deviation.
+                It can be the column name for Arrow dataset.
+            ddof: Delta Degrees of Freedom. The divisor used in calculations
+                is N - ddof, where N represents the number of elements.
+
+        Returns:
+            A simple dataset of (k, v) pairs or
+            an Arrow dataset of [k, v] columns
+            where k is the groupby key and
+            v is the standard deviation result.
+            If groupby key is None then the key part of return is omitted.
+        """
+        return self.aggregate(Std(on, ddof))
 
 
 def _partition_and_combine_block(block: Block[T], boundaries: List[KeyType],

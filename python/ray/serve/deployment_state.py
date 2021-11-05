@@ -1,4 +1,5 @@
 import math
+import json
 import time
 from collections import defaultdict, OrderedDict
 from enum import Enum
@@ -9,8 +10,8 @@ import ray
 from ray import cloudpickle, ObjectRef
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
-from ray.serve.common import (BackendInfo, BackendTag, Duration, GoalId,
-                              ReplicaTag, ReplicaName, RunningReplicaInfo)
+from ray.serve.common import (DeploymentInfo, Duration, GoalId, ReplicaTag,
+                              ReplicaName, RunningReplicaInfo)
 from ray.serve.config import DeploymentConfig
 from ray.serve.constants import (
     CONTROLLER_STARTUP_GRACE_PERIOD_S, SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME,
@@ -31,8 +32,8 @@ class ReplicaState(Enum):
 
 
 class ReplicaStartupStatus(Enum):
-    PENDING = 1
-    PENDING_SLOW_START = 2
+    PENDING_ALLOCATION = 1
+    PENDING_INITIALIZATION = 2
     SUCCEEDED = 3
     FAILED = 4
 
@@ -45,25 +46,45 @@ class GoalStatus(Enum):
     FAILED = 5
 
 
-CHECKPOINT_KEY = "serve-backend-state-checkpoint"
+CHECKPOINT_KEY = "serve-deployment-state-checkpoint"
 SLOW_STARTUP_WARNING_S = 30
 SLOW_STARTUP_WARNING_PERIOD_S = 30
 
 ALL_REPLICA_STATES = list(ReplicaState)
 USE_PLACEMENT_GROUP = os.environ.get("SERVE_USE_PLACEMENT_GROUP", "1") != "0"
+_SCALING_LOG_ENABLED = os.environ.get("SERVE_ENABLE_SCALING_LOG", "0") != "0"
+
+
+def print_verbose_scaling_log():
+    assert _SCALING_LOG_ENABLED
+
+    log_path = "/tmp/ray/session_latest/logs/monitor.log"
+    last_n_lines = 50
+    autoscaler_log_last_n_lines = []
+    if os.path.exists(log_path):
+        with open(log_path) as f:
+            autoscaler_log_last_n_lines = f.readlines()[-last_n_lines:]
+
+    debug_info = {
+        "nodes": ray.nodes(),
+        "available_resources": ray.available_resources(),
+        "total_resources": ray.cluster_resources(),
+        "autoscaler_logs": autoscaler_log_last_n_lines,
+    }
+    logger.error(f"Scaling information\n{json.dumps(debug_info, indent=2)}")
 
 
 class ActorReplicaWrapper:
-    """Wraps a Ray actor for a backend replica.
+    """Wraps a Ray actor for a deployment replica.
 
     This is primarily defined so that we can mock out actual Ray operations
     for unit testing.
 
-    *All Ray API calls should be made here, not in BackendState.*
+    *All Ray API calls should be made here, not in DeploymentState.*
     """
 
     def __init__(self, actor_name: str, detached: bool, controller_name: str,
-                 replica_tag: ReplicaTag, backend_tag: BackendTag):
+                 replica_tag: ReplicaTag, deployment_name: str):
         self._actor_name = actor_name
         self._placement_group_name = self._actor_name + "_placement_group"
         self._detached = detached
@@ -72,10 +93,12 @@ class ActorReplicaWrapper:
             detached)
 
         self._replica_tag = replica_tag
-        self._backend_tag = backend_tag
+        self._deployment_name = deployment_name
 
-        # Populated in self.start().
+        # Populated in either self.start() or self.recover()
+        self._allocated_obj_ref: ObjectRef = None
         self._ready_obj_ref: ObjectRef = None
+
         self._actor_resources: Dict[str, float] = None
         self._max_concurrent_queries: int = None
         self._graceful_shutdown_timeout_s: float = 0.0
@@ -104,8 +127,8 @@ class ActorReplicaWrapper:
         return self._replica_tag
 
     @property
-    def backend_tag(self) -> str:
-        return self._backend_tag
+    def deployment_name(self) -> str:
+        return self._deployment_name
 
     @property
     def actor_handle(self) -> Optional[ActorHandle]:
@@ -129,8 +152,8 @@ class ActorReplicaWrapper:
             return self._placement_group
 
         logger.debug("Creating placement group '{}' for deployment '{}'".
-                     format(placement_group_name, self.backend_tag) +
-                     f" component=serve deployment={self.backend_tag}")
+                     format(placement_group_name, self.deployment_name) +
+                     f" component=serve deployment={self.deployment_name}")
 
         self._placement_group = ray.util.placement_group(
             [actor_resources],
@@ -150,47 +173,49 @@ class ActorReplicaWrapper:
 
         return self._placement_group
 
-    def start(self, backend_info: BackendInfo, version: DeploymentVersion):
+    def start(self, deployment_info: DeploymentInfo,
+              version: DeploymentVersion):
         """
-        Start a new actor for current BackendReplica instance.
+        Start a new actor for current DeploymentReplica instance.
         """
-        self._actor_resources = backend_info.replica_config.resource_dict
+        self._actor_resources = deployment_info.replica_config.resource_dict
         self._max_concurrent_queries = (
-            backend_info.deployment_config.max_concurrent_queries)
+            deployment_info.deployment_config.max_concurrent_queries)
         self._graceful_shutdown_timeout_s = (
-            backend_info.deployment_config.graceful_shutdown_timeout_s)
+            deployment_info.deployment_config.graceful_shutdown_timeout_s)
         if USE_PLACEMENT_GROUP:
             self._placement_group = self.create_placement_group(
                 self._placement_group_name, self._actor_resources)
 
         logger.debug(f"Starting replica {self.replica_tag} for deployment "
-                     f"{self.backend_tag} component=serve deployment="
-                     f"{self.backend_tag} replica={self.replica_tag}")
+                     f"{self.deployment_name} component=serve deployment="
+                     f"{self.deployment_name} replica={self.replica_tag}")
 
-        self._actor_handle = backend_info.actor_def.options(
+        self._actor_handle = deployment_info.actor_def.options(
             name=self._actor_name,
             namespace=self._controller_namespace,
             lifetime="detached" if self._detached else None,
             placement_group=self._placement_group,
             placement_group_capture_child_tasks=False,
-            **backend_info.replica_config.ray_actor_options).remote(
-                self.backend_tag, self.replica_tag,
-                backend_info.replica_config.init_args,
-                backend_info.replica_config.init_kwargs,
-                backend_info.deployment_config.to_proto_bytes(), version,
+            **deployment_info.replica_config.ray_actor_options).remote(
+                self.deployment_name, self.replica_tag,
+                deployment_info.replica_config.init_args,
+                deployment_info.replica_config.init_kwargs,
+                deployment_info.deployment_config.to_proto_bytes(), version,
                 self._controller_name, self._detached)
 
+        self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
-            backend_info.deployment_config.user_config)
+            deployment_info.deployment_config.user_config)
 
     def update_user_config(self, user_config: Any):
         """
         Update user config of existing actor behind current
-        BackendReplica instance.
+        DeploymentReplica instance.
         """
         logger.debug(f"Updating replica {self.replica_tag} for deployment "
-                     f"{self.backend_tag} component=serve deployment="
-                     f"{self.backend_tag} replica={self.replica_tag} "
+                     f"{self.deployment_name} component=serve deployment="
+                     f"{self.deployment_name} replica={self.replica_tag} "
                      f"with user_config {user_config}")
 
         self._ready_obj_ref = self._actor_handle.reconfigure.remote(
@@ -198,17 +223,20 @@ class ActorReplicaWrapper:
 
     def recover(self):
         """
-        Recover states in BackendReplica instance by fetching running actor
+        Recover states in DeploymentReplica instance by fetching running actor
         status
         """
         logger.debug(f"Recovering replica {self.replica_tag} for deployment "
-                     f"{self.backend_tag} component=serve deployment="
-                     f"{self.backend_tag} replica={self.replica_tag}")
+                     f"{self.deployment_name} component=serve deployment="
+                     f"{self.deployment_name} replica={self.replica_tag}")
 
         self._actor_handle = self.actor_handle
         if USE_PLACEMENT_GROUP:
             self._placement_group = self.get_placement_group(
                 self._placement_group_name)
+
+        # Re-fetch initialization proof
+        self._allocated_obj_ref = self._actor_handle.is_allocated.remote()
 
         # Running actor handle already has all info needed, thus successful
         # starting simply means retrieving replica version hash from actor
@@ -222,7 +250,9 @@ class ActorReplicaWrapper:
 
         Returns:
             state (ReplicaStartupStatus):
-                PENDING:
+                PENDING_ALLOCATION:
+                    - replica is waiting for a worker to start
+                PENDING_INITIALIZATION
                     - replica reconfigure() haven't returned.
                 FAILED:
                     - replica __init__() failed.
@@ -235,11 +265,18 @@ class ActorReplicaWrapper:
                 version:
                     - replica __init__() and reconfigure() succeeded.
         """
+
+        # check whether the replica has been allocated
+        ready, _ = ray.wait([self._allocated_obj_ref], timeout=0)
+        if len(ready) == 0:
+            return ReplicaStartupStatus.PENDING_ALLOCATION, None
+
+        # check whether relica initialization has completed
         ready, _ = ray.wait([self._ready_obj_ref], timeout=0)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
         if len(ready) == 0:
-            return ReplicaStartupStatus.PENDING, None
+            return ReplicaStartupStatus.PENDING_INITIALIZATION, None
         elif len(ready) > 0:
             try:
                 deployment_config, version = ray.get(ready)[0]
@@ -317,20 +354,20 @@ class ActorReplicaWrapper:
             pass
 
 
-class BackendReplica(VersionedReplica):
-    """Manages state transitions for backend replicas.
+class DeploymentReplica(VersionedReplica):
+    """Manages state transitions for deployment replicas.
 
     This is basically a checkpointable lightweight state machine.
     """
 
     def __init__(self, controller_name: str, detached: bool,
-                 replica_tag: ReplicaTag, backend_tag: BackendTag,
+                 replica_tag: ReplicaTag, deployment_name: str,
                  version: DeploymentVersion):
         self._actor = ActorReplicaWrapper(
             format_actor_name(replica_tag), detached, controller_name,
-            replica_tag, backend_tag)
+            replica_tag, deployment_name)
         self._controller_name = controller_name
-        self._backend_tag = backend_tag
+        self._deployment_name = deployment_name
         self._replica_tag = replica_tag
         self._version = version
         self._start_time = None
@@ -344,7 +381,7 @@ class BackendReplica(VersionedReplica):
 
     def get_running_replica_info(self) -> RunningReplicaInfo:
         return RunningReplicaInfo(
-            backend_tag=self._backend_tag,
+            deployment_name=self._deployment_name,
             replica_tag=self._replica_tag,
             actor_handle=self._actor.actor_handle,
             max_concurrent_queries=self._actor.max_concurrent_queries,
@@ -356,8 +393,8 @@ class BackendReplica(VersionedReplica):
         return self._replica_tag
 
     @property
-    def backend_tag(self) -> BackendTag:
-        return self._backend_tag
+    def deployment_name(self) -> str:
+        return self._deployment_name
 
     @property
     def version(self):
@@ -367,11 +404,12 @@ class BackendReplica(VersionedReplica):
     def actor_handle(self) -> ActorHandle:
         return self._actor.actor_handle
 
-    def start(self, backend_info: BackendInfo, version: DeploymentVersion):
+    def start(self, deployment_info: DeploymentInfo,
+              version: DeploymentVersion):
         """
-        Start a new actor for current BackendReplica instance.
+        Start a new actor for current DeploymentReplica instance.
         """
-        self._actor.start(backend_info, version)
+        self._actor.start(deployment_info, version)
         self._start_time = time.time()
         self._prev_slow_startup_warning_time = time.time()
         self._version = version
@@ -379,7 +417,7 @@ class BackendReplica(VersionedReplica):
     def update_user_config(self, user_config: Any):
         """
         Update user config of existing actor behind current
-        BackendReplica instance.
+        DeploymentReplica instance.
         """
         self._actor.update_user_config(user_config)
         self._version = DeploymentVersion(
@@ -387,7 +425,7 @@ class BackendReplica(VersionedReplica):
 
     def recover(self):
         """
-        Recover states in BackendReplica instance by fetching running actor
+        Recover states in DeploymentReplica instance by fetching running actor
         status
         """
         self._actor.recover()
@@ -406,10 +444,7 @@ class BackendReplica(VersionedReplica):
         """
         status, version = self._actor.check_ready()
 
-        if status == ReplicaStartupStatus.PENDING:
-            if time.time() - self._start_time > SLOW_STARTUP_WARNING_S:
-                status = ReplicaStartupStatus.PENDING_SLOW_START
-        elif status == ReplicaStartupStatus.SUCCEEDED:
+        if status == ReplicaStartupStatus.SUCCEEDED:
             # Re-assign DeploymentVersion if start / update / recover succeeded
             # by reading re-computed version in RayServeReplica
             if version is not None:
@@ -441,7 +476,7 @@ class BackendReplica(VersionedReplica):
             logger.debug(
                 f"Replica {self.replica_tag} did not shut down after grace "
                 "period, force-killing it. "
-                f"component=serve deployment={self.backend_tag} "
+                f"component=serve deployment={self.deployment_name} "
                 f"replica={self.replica_tag}")
 
             self._actor.force_stop()
@@ -475,11 +510,11 @@ class BackendReplica(VersionedReplica):
 
 
 class ReplicaStateContainer:
-    """Container for mapping ReplicaStates to lists of BackendReplicas."""
+    """Container for mapping ReplicaStates to lists of DeploymentReplicas."""
 
     def __init__(self):
-        self._replicas: Dict[ReplicaState, List[BackendReplica]] = defaultdict(
-            list)
+        self._replicas: Dict[ReplicaState, List[
+            DeploymentReplica]] = defaultdict(list)
 
     def add(self, state: ReplicaState, replica: VersionedReplica):
         """Add the provided replica under the provided state.
@@ -493,7 +528,7 @@ class ReplicaStateContainer:
         self._replicas[state].append(replica)
 
     def get(self, states: Optional[List[ReplicaState]] = None
-            ) -> List[BackendReplica]:
+            ) -> List[DeploymentReplica]:
         """Get all replicas of the given states.
 
         This does not remove them from the container. Replicas are returned
@@ -596,8 +631,8 @@ class ReplicaStateContainer:
         return repr(self._replicas)
 
 
-class BackendState:
-    """Manages the target state and replicas for a single backend."""
+class DeploymentState:
+    """Manages the target state and replicas for a single deployment."""
 
     def __init__(self, name: str, controller_name: str, detached: bool,
                  long_poll_host: LongPollHost, goal_manager: AsyncGoalManager,
@@ -610,12 +645,12 @@ class BackendState:
         self._goal_manager: AsyncGoalManager = goal_manager
         self._save_checkpoint_func = _save_checkpoint_func
 
-        # Each time we set a new backend goal, we're trying to save new
-        # BackendInfo and bring current deployment to meet new status.
-        # In case the new backend goal failed to complete, we keep track of
-        # previous BackendInfo and rollback to it.
-        self._target_info: BackendInfo = None
-        self._rollback_info: BackendInfo = None
+        # Each time we set a new deployment goal, we're trying to save new
+        # DeploymentInfo and bring current deployment to meet new status.
+        # In case the new deployment goal failed to complete, we keep track of
+        # previous DeploymentInfo and rollback to it.
+        self._target_info: DeploymentInfo = None
+        self._rollback_info: DeploymentInfo = None
         self._target_replicas: int = -1
         self._curr_goal: Optional[GoalId] = None
         self._target_version: DeploymentVersion = None
@@ -676,15 +711,14 @@ class BackendState:
         for replica_actor_name in replica_actor_names:
             replica_name: ReplicaName = ReplicaName.from_str(
                 replica_actor_name)
-            new_backend_replica = BackendReplica(
+            new_deployment_replica = DeploymentReplica(
                 self._controller_name, self._detached,
                 replica_name.replica_tag, replica_name.deployment_tag, None)
-            new_backend_replica.recover()
-            self._replicas.add(ReplicaState.RECOVERING, new_backend_replica)
+            new_deployment_replica.recover()
+            self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
             logger.debug(
-                "Adding RECOVERING to replica_tag: "
-                f"{new_backend_replica.replica_tag}, backend_tag: {self._name}"
-            )
+                f"RECOVERING replica: {new_deployment_replica.replica_tag}, "
+                f"deployment: {self._name}.")
 
         # Blocking grace period to avoid controller thrashing when cover
         # from replica actor names
@@ -693,7 +727,7 @@ class BackendState:
         self._notify_running_replicas_changed()
 
     @property
-    def target_info(self) -> BackendInfo:
+    def target_info(self) -> DeploymentInfo:
         return self._target_info
 
     @property
@@ -712,68 +746,71 @@ class BackendState:
             self.get_running_replica_infos(),
         )
 
-    def _set_backend_goal(self, backend_info: Optional[BackendInfo]) -> None:
+    def _set_deployment_goal(
+            self, deployment_info: Optional[DeploymentInfo]) -> None:
         """
-        Set desirable state for a given backend, identified by tag.
+        Set desirable state for a given deployment, identified by tag.
 
         Args:
-            backend_info (Optional[BackendInfo]): Contains backend and
+            deployment_info (Optional[DeploymentInfo]): Contains deployment and
                 replica config, if passed in as None, we're marking
-                target backend as shutting down.
+                target deployment as shutting down.
         """
         existing_goal_id = self._curr_goal
         new_goal_id = self._goal_manager.create_goal()
 
-        if backend_info is not None:
-            self._target_info = backend_info
-            self._target_replicas = backend_info.deployment_config.num_replicas
+        if deployment_info is not None:
+            self._target_info = deployment_info
+            self._target_replicas = (
+                deployment_info.deployment_config.num_replicas)
 
             self._target_version = DeploymentVersion(
-                backend_info.version,
-                user_config=backend_info.deployment_config.user_config)
+                deployment_info.version,
+                user_config=deployment_info.deployment_config.user_config)
 
         else:
             self._target_replicas = 0
 
         self._curr_goal = new_goal_id
+        version_str = (deployment_info
+                       if deployment_info is None else deployment_info.version)
         logger.debug(
-            f"Set backend goal for {self._name} with version "
-            f"{backend_info if backend_info is None else backend_info.version}"
-        )
+            f"Set deployment goal for {self._name} with version {version_str}")
         return new_goal_id, existing_goal_id
 
-    def deploy(self,
-               backend_info: BackendInfo) -> Tuple[Optional[GoalId], bool]:
-        """Deploy the backend.
+    def deploy(self, deployment_info: DeploymentInfo
+               ) -> Tuple[Optional[GoalId], bool]:
+        """Deploy the deployment.
 
-        If the backend already exists with the same version and config,
+        If the deployment already exists with the same version and config,
         this is a no-op and returns the GoalId corresponding to the existing
         update if there is one.
 
         Returns:
             GoalId, bool: The GoalId for the client to wait for and whether or
-            not the backend is being updated.
+            not the deployment is being updated.
         """
         # Ensures this method is idempotent.
         existing_info = self._target_info
         if existing_info is not None:
             # Redeploying should not reset the deployment's start time.
-            backend_info.start_time_ms = existing_info.start_time_ms
+            deployment_info.start_time_ms = existing_info.start_time_ms
 
             if (existing_info.deployment_config ==
-                    backend_info.deployment_config
-                    and backend_info.version is not None
-                    and existing_info.version == backend_info.version):
+                    deployment_info.deployment_config
+                    and deployment_info.version is not None
+                    and existing_info.version == deployment_info.version):
                 return self._curr_goal, False
 
-        # Keep a copy of previous backend info in case goal failed to
+        # Keep a copy of previous deployment info in case goal failed to
         # complete to initiate rollback.
         self._rollback_info = self._target_info
 
         # Reset constructor retry counter.
         self._replica_constructor_retry_counter = 0
 
-        new_goal_id, existing_goal_id = self._set_backend_goal(backend_info)
+        new_goal_id, existing_goal_id = self._set_deployment_goal(
+            deployment_info)
 
         # NOTE(edoakes): we must write a checkpoint before starting new
         # or pushing the updated config to avoid inconsistent state if we
@@ -785,7 +822,7 @@ class BackendState:
         return new_goal_id, True
 
     def delete(self) -> Optional[GoalId]:
-        new_goal_id, existing_goal_id = self._set_backend_goal(None)
+        new_goal_id, existing_goal_id = self._set_deployment_goal(None)
 
         self._save_checkpoint_func()
         if existing_goal_id is not None:
@@ -800,8 +837,8 @@ class BackendState:
 
         Returns whether any replicas were stopped.
         """
-        # Short circuit if target replicas is 0 (the backend is being deleted)
-        # because this will be handled in the main loop.
+        # Short circuit if target replicas is 0 (the deployment is being
+        # deleted) because this will be handled in the main loop.
         if self._target_replicas == 0:
             return False
 
@@ -820,7 +857,7 @@ class BackendState:
         new_running_replicas = self._replicas.count(
             version=self._target_version, states=[ReplicaState.RUNNING])
 
-        # If the backend is currently scaling down, let the scale down
+        # If the deployment is currently scaling down, let the scale down
         # complete before doing a rolling update.
         if (self._target_replicas <
                 old_running_replicas + old_stopping_replicas):
@@ -866,7 +903,7 @@ class BackendState:
                 self._replicas.add(ReplicaState.UPDATING, replica)
                 logger.debug(
                     "Adding UPDATING to replica_tag: "
-                    f"{replica.replica_tag}, backend_tag: {self._name}")
+                    f"{replica.replica_tag}, deployment_name: {self._name}")
             else:
                 assert False, "Update must be code version or user config."
 
@@ -883,8 +920,8 @@ class BackendState:
 
         return replicas_stopped
 
-    def _scale_backend_replicas(self) -> bool:
-        """Scale the given backend to the number of replicas."""
+    def _scale_deployment_replicas(self) -> bool:
+        """Scale the given deployment to the number of replicas."""
 
         assert self._target_replicas >= 0, ("Number of replicas must be"
                                             " greater than or equal to 0.")
@@ -914,16 +951,17 @@ class BackendState:
                             f"deployment={self._name}")
             for _ in range(to_add):
                 replica_name = ReplicaName(self._name, get_random_letters())
-                new_backend_replica = BackendReplica(
+                new_deployment_replica = DeploymentReplica(
                     self._controller_name, self._detached,
                     replica_name.replica_tag, replica_name.deployment_tag,
                     self._target_version)
-                new_backend_replica.start(self._target_info,
-                                          self._target_version)
+                new_deployment_replica.start(self._target_info,
+                                             self._target_version)
 
-                self._replicas.add(ReplicaState.STARTING, new_backend_replica)
+                self._replicas.add(ReplicaState.STARTING,
+                                   new_deployment_replica)
                 logger.debug("Adding STARTING to replica_tag: "
-                             f"{replica_name}, backend_tag: {self._name}")
+                             f"{replica_name}, deployment_name: {self._name}")
 
         elif delta_replicas < 0:
             replicas_stopped = True
@@ -940,7 +978,7 @@ class BackendState:
 
             for replica in replicas_to_stop:
                 logger.debug(f"Adding STOPPING to replica_tag: {replica}, "
-                             f"backend_tag: {self._name}")
+                             f"deployment_name: {self._name}")
                 replica.stop()
                 self._replicas.add(ReplicaState.STOPPING, replica)
 
@@ -948,9 +986,9 @@ class BackendState:
 
     def _check_curr_goal_status(self) -> GoalStatus:
         """
-        In each update() cycle, upon finished calling _scale_all_backends(),
+        In each update() cycle, upon finished calling _scale_all_deployments(),
         check difference between target vs. running relica count for each
-        backend and return whether or not the current goal is complete.
+        deployment and return whether or not the current goal is complete.
 
         Returns:
             AsyncGoalStatus
@@ -997,16 +1035,15 @@ class BackendState:
             if target_replica_count == 0 and all_running_replica_cnt == 0:
                 return GoalStatus.SUCCESSFULLY_DELETED
 
-            # Check for a non-zero number of backends.
+            # Check for a non-zero number of deployments.
             elif target_replica_count == running_at_target_version_replica_cnt:
                 return GoalStatus.SUCCEEDED
 
         return GoalStatus.PENDING
 
-    def _check_startup_replicas(self,
-                                original_state: ReplicaState,
-                                stop_on_slow=False
-                                ) -> Tuple[List[BackendReplica], bool]:
+    def _check_startup_replicas(
+            self, original_state: ReplicaState, stop_on_slow=False
+    ) -> Tuple[List[Tuple[DeploymentReplica, ReplicaStartupStatus]], bool]:
         """
         Common helper function for startup actions tracking and status
         transition: STARTING, UPDATING and RECOVERING.
@@ -1032,24 +1069,30 @@ class BackendState:
 
                 replica.stop(graceful=False)
                 self._replicas.add(ReplicaState.STOPPING, replica)
-            elif start_status == ReplicaStartupStatus.PENDING:
-                # Not done yet, remain at same state
-                self._replicas.add(original_state, replica)
-            else:
-                # Slow start, remain at same state but also add to
-                # slow start replicas.
-                if not stop_on_slow:
-                    self._replicas.add(original_state, replica)
-                else:
+            elif start_status in [
+                    ReplicaStartupStatus.PENDING_ALLOCATION,
+                    ReplicaStartupStatus.PENDING_INITIALIZATION,
+            ]:
+
+                is_slow = time.time(
+                ) - replica._start_time > SLOW_STARTUP_WARNING_S
+
+                if is_slow:
+                    slow_replicas.append((replica, start_status))
+
+                # Does it make sense to stop replicas in PENDING_ALLOCATION
+                # state?
+                if is_slow and stop_on_slow:
                     replica.stop(graceful=False)
                     self._replicas.add(ReplicaState.STOPPING, replica)
-                slow_replicas.append(replica)
+                else:
+                    self._replicas.add(original_state, replica)
 
         return slow_replicas, transitioned_to_running
 
     def _check_and_update_replicas(self) -> bool:
         """
-        Check current state of all BackendReplica being tracked, and compare
+        Check current state of all DeploymentReplica being tracked, and compare
         with state container from previous update() cycle to see if any state
         transition happened.
 
@@ -1086,17 +1129,40 @@ class BackendState:
         if (len(slow_start_replicas)
                 and time.time() - self._prev_startup_warning >
                 SLOW_STARTUP_WARNING_PERIOD_S):
-            required, available = slow_start_replicas[
-                0].resource_requirements()
-            logger.warning(
-                f"Deployment '{self._name}' has "
-                f"{len(slow_start_replicas)} replicas that have taken "
-                f"more than {SLOW_STARTUP_WARNING_S}s to start up. This "
-                "may be caused by waiting for the cluster to auto-scale, "
-                "waiting for a runtime environment to install, or a slow "
-                "constructor. Resources required "
-                f"for each replica: {required}, resources available: "
-                f"{available}. component=serve deployment={self._name}")
+
+            pending_allocation = []
+            pending_initialization = []
+
+            for replica, startup_status in slow_start_replicas:
+                if startup_status == ReplicaStartupStatus.PENDING_ALLOCATION:
+                    pending_allocation.append(replica)
+                if startup_status \
+                        == ReplicaStartupStatus.PENDING_INITIALIZATION:
+                    pending_initialization.append(replica)
+
+            if len(pending_allocation) > 0:
+                required, available = slow_start_replicas[0][
+                    0].resource_requirements()
+                logger.warning(
+                    f"Deployment '{self._name}' has "
+                    f"{len(pending_allocation)} replicas that have taken "
+                    f"more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
+                    f"This may be caused by waiting for the cluster to "
+                    f"auto-scale, or waiting for a runtime environment "
+                    f"to install. "
+                    f"Resources required for each replica: {required}, "
+                    f"resources available: {available}. "
+                    f"component=serve deployment={self._name}")
+                if _SCALING_LOG_ENABLED:
+                    print_verbose_scaling_log()
+
+            if len(pending_initialization) > 0:
+                logger.warning(
+                    f"Deployment '{self._name}' has "
+                    f"{len(pending_initialization)} replicas that have taken "
+                    f"more than {SLOW_STARTUP_WARNING_S}s to initialize. This "
+                    f"may be caused by a slow __init__ or reconfigure method."
+                    f"component=serve deployment={self._name}")
 
             self._prev_startup_warning = time.time()
 
@@ -1108,11 +1174,11 @@ class BackendState:
         return running_replicas_changed
 
     def update(self) -> bool:
-        """Updates the state of all backends to match their goal state."""
-        # Add or remove BackendReplica instances in self._replicas.
+        """Updates the state of all deployments to match their goal state."""
+        # Add or remove DeploymentReplica instances in self._replicas.
         # This should be the only place we adjust total number of replicas
         # we manage.
-        running_replicas_changed = self._scale_backend_replicas()
+        running_replicas_changed = self._scale_deployment_replicas()
 
         # Check the state of existing replicas and transition if necessary.
         running_replicas_changed |= self._check_and_update_replicas()
@@ -1123,7 +1189,7 @@ class BackendState:
         status = self._check_curr_goal_status()
         if status == GoalStatus.SUCCEEDED:
             # Deployment successul, complete the goal and clear the
-            # backup backend_info.
+            # backup deployment_info.
             self._goal_manager.complete_goal(self._curr_goal)
             self._rollback_info = None
         elif status == GoalStatus.FAILED:
@@ -1153,8 +1219,8 @@ class BackendState:
         return status == GoalStatus.SUCCESSFULLY_DELETED
 
 
-class BackendStateManager:
-    """Manages all state for backends in the system.
+class DeploymentStateManager:
+    """Manages all state for deployments in the system.
 
     This class is *not* thread safe, so any state-modifying methods should be
     called with a lock held.
@@ -1170,17 +1236,17 @@ class BackendStateManager:
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
         self._goal_manager = goal_manager
-        self._create_backend_state: Callable = lambda name: BackendState(
+        self._create_deployment_state: Callable = lambda name: DeploymentState(
             name, controller_name, detached,
             long_poll_host, goal_manager, self._save_checkpoint_func)
-        self._backend_states: Dict[BackendTag, BackendState] = dict()
-        self._deleted_backend_metadata: Dict[BackendTag,
-                                             BackendInfo] = OrderedDict()
+        self._deployment_states: Dict[str, DeploymentState] = dict()
+        self._deleted_deployment_metadata: Dict[
+            str, DeploymentInfo] = OrderedDict()
 
         self._recover_from_checkpoint(all_current_actor_names)
 
-    def _map_actor_names_to_deployment(self, all_current_actor_names: List[str]
-                                       ) -> Dict[BackendTag, List[str]]:
+    def _map_actor_names_to_deployment(
+            self, all_current_actor_names: List[str]) -> Dict[str, List[str]]:
         """
         Given a list of all actor names queried from current ray cluster,
         map them to corresponding deployments.
@@ -1201,7 +1267,7 @@ class BackendStateManager:
         ]
         deployment_to_current_replicas = defaultdict(list)
         if len(all_replica_names) > 0:
-            # Each replica tag is formatted as "backend_tag#random_letter"
+            # Each replica tag is formatted as "deployment_name#random_letter"
             for replica_name in all_replica_names:
                 replica_tag = ReplicaName.from_str(replica_name)
                 deployment_to_current_replicas[
@@ -1224,24 +1290,25 @@ class BackendStateManager:
             all_current_actor_names)
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
-            (backend_state_info,
-             self._deleted_backend_metadata) = cloudpickle.loads(checkpoint)
+            (deployment_state_info,
+             self._deleted_deployment_metadata) = cloudpickle.loads(checkpoint)
 
-            for deployment_tag, checkpoint_data in backend_state_info.items():
-                backend_state: BackendState = self._create_backend_state(
+            for deployment_tag, checkpoint_data in deployment_state_info.items(
+            ):
+                deployment_state = self._create_deployment_state(
                     deployment_tag)
                 (target_state_checkpoint,
                  current_state_checkpoint) = checkpoint_data
 
-                backend_state.recover_target_state_from_checkpoint(
+                deployment_state.recover_target_state_from_checkpoint(
                     target_state_checkpoint)
                 if len(deployment_to_current_replicas[deployment_tag]) > 0:
-                    backend_state.recover_current_state_from_replica_actor_names(  # noqa: E501
+                    deployment_state.recover_current_state_from_replica_actor_names(  # noqa: E501
                         deployment_to_current_replicas[deployment_tag])
                 else:
-                    backend_state.recover_current_state_from_checkpoint(
+                    deployment_state.recover_current_state_from_checkpoint(
                         current_state_checkpoint)
-                self._backend_states[deployment_tag] = backend_state
+                self._deployment_states[deployment_tag] = deployment_state
 
     def shutdown(self) -> List[GoalId]:
         """
@@ -1256,8 +1323,8 @@ class BackendStateManager:
         """
 
         shutdown_goals = []
-        for backend_state in self._backend_states.values():
-            goal = backend_state.delete()
+        for deployment_state in self._deployment_states.values():
+            goal = deployment_state.delete()
             if goal is not None:
                 shutdown_goals.append(goal)
 
@@ -1271,98 +1338,105 @@ class BackendStateManager:
         return shutdown_goals
 
     def _save_checkpoint_func(self) -> None:
-        backend_state_info = {
-            backend_tag: backend_state.get_checkpoint_data()
-            for backend_tag, backend_state in self._backend_states.items()
+        deployment_state_info = {
+            deployment_name: deployment_state.get_checkpoint_data()
+            for deployment_name, deployment_state in
+            self._deployment_states.items()
         }
         self._kv_store.put(
             CHECKPOINT_KEY,
-            cloudpickle.dumps((backend_state_info,
-                               self._deleted_backend_metadata)))
+            cloudpickle.dumps((deployment_state_info,
+                               self._deleted_deployment_metadata)))
 
     def get_running_replica_infos(
             self,
-            filter_tag: Optional[BackendTag] = None,
-    ) -> Dict[BackendTag, List[RunningReplicaInfo]]:
+            filter_tag: Optional[str] = None,
+    ) -> Dict[str, List[RunningReplicaInfo]]:
         replicas = {}
-        for backend_tag, backend_state in self._backend_states.items():
-            if filter_tag is None or backend_tag == filter_tag:
-                replicas[
-                    backend_tag] = backend_state.get_running_replica_infos()
+        for deployment_name, deployment_state in self._deployment_states.items(
+        ):
+            if filter_tag is None or deployment_name == filter_tag:
+                replicas[deployment_name] = (
+                    deployment_state.get_running_replica_infos())
 
         return replicas
 
     def get_deployment_configs(self,
-                               filter_tag: Optional[BackendTag] = None,
+                               filter_tag: Optional[str] = None,
                                include_deleted: Optional[bool] = False
-                               ) -> Dict[BackendTag, DeploymentConfig]:
-        configs: Dict[BackendTag, DeploymentConfig] = {}
-        for backend_tag, backend_state in self._backend_states.items():
-            if filter_tag is None or backend_tag == filter_tag:
-                configs[
-                    backend_tag] = backend_state.target_info.deployment_config
+                               ) -> Dict[str, DeploymentConfig]:
+        configs: Dict[str, DeploymentConfig] = {}
+        for deployment_name, deployment_state in self._deployment_states.items(
+        ):
+            if filter_tag is None or deployment_name == filter_tag:
+                configs[deployment_name] = (
+                    deployment_state.target_info.deployment_config)
 
         if include_deleted:
-            for backend_tag, info in self._deleted_backend_metadata.items():
-                if filter_tag is None or backend_tag == filter_tag:
-                    configs[backend_tag] = info.deployment_config
+            for name, info in self._deleted_deployment_metadata.items():
+                if filter_tag is None or name == filter_tag:
+                    configs[name] = info.deployment_config
 
         return configs
 
-    def get_backend(self,
-                    backend_tag: BackendTag,
-                    include_deleted: Optional[bool] = False
-                    ) -> Optional[BackendInfo]:
-        if backend_tag in self._backend_states:
-            return self._backend_states[backend_tag].target_info
-        elif include_deleted and backend_tag in self._deleted_backend_metadata:
-            return self._deleted_backend_metadata[backend_tag]
+    def get_deployment(self,
+                       deployment_name: str,
+                       include_deleted: Optional[bool] = False
+                       ) -> Optional[DeploymentInfo]:
+        if deployment_name in self._deployment_states:
+            return self._deployment_states[deployment_name].target_info
+        elif (include_deleted
+              and deployment_name in self._deleted_deployment_metadata):
+            return self._deleted_deployment_metadata[deployment_name]
         else:
             return None
 
-    def deploy_backend(self, backend_tag: BackendTag, backend_info: BackendInfo
-                       ) -> Tuple[Optional[GoalId], bool]:
-        """Deploy the backend.
+    def deploy(self, deployment_name: str, deployment_info: DeploymentInfo
+               ) -> Tuple[Optional[GoalId], bool]:
+        """Deploy the deployment.
 
-        If the backend already exists with the same version and config,
+        If the deployment already exists with the same version and config,
         this is a no-op and returns the GoalId corresponding to the existing
         update if there is one.
 
         Returns:
             GoalId, bool: The GoalId for the client to wait for and whether or
-            not the backend is being updated.
+            not the deployment is being updated.
         """
-        if backend_tag in self._deleted_backend_metadata:
-            del self._deleted_backend_metadata[backend_tag]
+        if deployment_name in self._deleted_deployment_metadata:
+            del self._deleted_deployment_metadata[deployment_name]
 
-        if backend_tag not in self._backend_states:
-            self._backend_states[backend_tag] = self._create_backend_state(
-                backend_tag)
+        if deployment_name not in self._deployment_states:
+            self._deployment_states[
+                deployment_name] = self._create_deployment_state(
+                    deployment_name)
 
-        return self._backend_states[backend_tag].deploy(backend_info)
+        return self._deployment_states[deployment_name].deploy(deployment_info)
 
-    def delete_backend(self, backend_tag: BackendTag) -> Optional[GoalId]:
+    def delete_deployment(self, deployment_name: str) -> Optional[GoalId]:
         # This method must be idempotent. We should validate that the
-        # specified backend exists on the client.
-        if backend_tag not in self._backend_states:
+        # specified deployment exists on the client.
+        if deployment_name not in self._deployment_states:
             return None
 
-        backend_state = self._backend_states[backend_tag]
-        return backend_state.delete()
+        deployment_state = self._deployment_states[deployment_name]
+        return deployment_state.delete()
 
     def update(self) -> bool:
-        """Updates the state of all backends to match their goal state."""
+        """Updates the state of all deployments to match their goal state."""
         deleted_tags = []
-        for backend_tag, backend_state in self._backend_states.items():
-            deleted = backend_state.update()
+        for deployment_name, deployment_state in self._deployment_states.items(
+        ):
+            deleted = deployment_state.update()
             if deleted:
-                deleted_tags.append(backend_tag)
-                backend_info = backend_state.target_info
-                backend_info.end_time_ms = int(time.time() * 1000)
-                if (len(self._deleted_backend_metadata) >
+                deleted_tags.append(deployment_name)
+                deployment_info = deployment_state.target_info
+                deployment_info.end_time_ms = int(time.time() * 1000)
+                if (len(self._deleted_deployment_metadata) >
                         MAX_NUM_DELETED_DEPLOYMENTS):
-                    self._deleted_backend_metadata.popitem(last=False)
-                self._deleted_backend_metadata[backend_tag] = backend_info
+                    self._deleted_deployment_metadata.popitem(last=False)
+                self._deleted_deployment_metadata[
+                    deployment_name] = deployment_info
 
         for tag in deleted_tags:
-            del self._backend_states[tag]
+            del self._deployment_states[tag]

@@ -22,9 +22,9 @@ public class RouterTest {
     Ray.init();
 
     try {
-      String backendTag = "RouterTest";
-      String controllerName = backendTag + "_controller";
-      String replicaTag = backendTag + "_replica";
+      String deploymentName = "RouterTest";
+      String controllerName = deploymentName + "_controller";
+      String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
 
@@ -37,7 +37,7 @@ public class RouterTest {
       deploymentConfigBuilder.setDeploymentLanguage(DeploymentLanguage.JAVA);
       byte[] deploymentConfigBytes = deploymentConfigBuilder.build().toByteArray();
 
-      Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
+      Object[] initArgs = new Object[] {deploymentName, replicaTag, controllerName, new Object()};
       byte[] initArgsBytes = MessagePackSerializer.encode(initArgs).getLeft();
 
       DeploymentInfo deploymentInfo = new DeploymentInfo();
@@ -50,7 +50,7 @@ public class RouterTest {
       ActorHandle<RayServeWrappedReplica> replicaHandle =
           Ray.actor(
                   RayServeWrappedReplica::new,
-                  backendTag,
+                  deploymentName,
                   replicaTag,
                   deploymentInfo,
                   controllerName)
@@ -59,7 +59,7 @@ public class RouterTest {
       replicaHandle.task(RayServeWrappedReplica::ready).remote();
 
       // Router
-      Router router = new Router(controllerHandle, backendTag);
+      Router router = new Router(controllerHandle, deploymentName);
       ActorSet.Builder builder = ActorSet.newBuilder();
       builder.addNames(actorName);
       router.getReplicaSet().updateWorkerReplicas(builder.build());
@@ -67,10 +67,10 @@ public class RouterTest {
       // assign
       RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
       requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
-      requestMetadata.setCallMethod("getBackendTag");
+      requestMetadata.setCallMethod("getDeploymentName");
 
       ObjectRef<Object> resultRef = router.assignRequest(requestMetadata.build(), null);
-      Assert.assertEquals((String) resultRef.get(), backendTag);
+      Assert.assertEquals((String) resultRef.get(), deploymentName);
     } finally {
       if (!inited) {
         Ray.shutdown();

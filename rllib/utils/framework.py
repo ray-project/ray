@@ -280,7 +280,7 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
         if name in ["linear", None]:
             return None
         if name in ["swish", "silu"]:
-            from ray.rllib.utils.torch_ops import Swish
+            from ray.rllib.utils.torch_utils import Swish
             return Swish
         _, nn = try_import_torch()
         if name == "relu":
