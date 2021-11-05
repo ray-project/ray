@@ -115,6 +115,10 @@ CORE_NIGHTLY_TESTS = {
         "pipelined_training_50_gb",
         "pipelined_ingestion_1500_gb_15_windows",
     ],
+    "~/ray/release/nightly_tests/chaos_test.yaml": [
+        "chaos_many_actors",
+        "chaos_many_tasks_no_object_store",
+    ],
 }
 
 NIGHTLY_TESTS = {

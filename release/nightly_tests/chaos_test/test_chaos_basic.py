@@ -6,84 +6,13 @@ import string
 import time
 import json
 import logging
-import grpc
 
 import numpy as np
 import ray
 
 from ray.data.impl.progress_bar import ProgressBar
-from ray._private.test_utils import (monitor_memory_usage, wait_for_condition)
-from ray.core.generated import node_manager_pb2
-from ray.core.generated import node_manager_pb2_grpc
-
-
-def get_and_run_node_killer(node_kill_interval_s):
-    assert ray.is_initialized(), (
-        "The API is only available when Ray is initialized.")
-
-    @ray.remote(num_cpus=0)
-    class NodeKillerActor:
-        def __init__(self, head_node_ip, node_kill_interval_s: float = 60):
-            self.node_kill_interval_s = node_kill_interval_s
-            self.is_running = False
-            self.head_node_ip = head_node_ip
-            self.num_killed_nodes = 0
-            # -- logger. --
-            logging.basicConfig(level=logging.INFO)
-
-        def ready(self):
-            pass
-
-        async def run(self):
-            self.is_running = True
-            while self.is_running:
-                node_to_kill_ip = None
-                node_to_kill_port = None
-                for node in ray.nodes():
-                    addr = node["NodeManagerAddress"]
-                    port = node["NodeManagerPort"]
-                    if (node["Alive"] and addr != head_node_ip):
-                        node_to_kill_ip = addr
-                        node_to_kill_port = port
-                        break
-
-                if node_to_kill_port is not None:
-                    self.kill_raylet(
-                        node_to_kill_ip, node_to_kill_port, graceful=False)
-                    logging.info(
-                        "Killing a node of address: "
-                        f"{node_to_kill_ip}, port: {node_to_kill_port}")
-                    self.num_killed_nodes += 1
-                await asyncio.sleep(self.node_kill_interval_s)
-
-        async def stop_run(self):
-            was_running = self.is_running
-            self.is_running = False
-            return was_running
-
-        async def get_total_killed_nodes(self):
-            """Get the total number of killed nodes"""
-            return self.num_killed_nodes
-
-        def kill_raylet(self, ip, port, graceful=False):
-            raylet_address = f"{ip}:{port}"
-            channel = grpc.insecure_channel(raylet_address)
-            stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-            print(f"Sending a shutdown request to {ip}:{port}")
-            stub.ShutdownRaylet(
-                node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
-
-    head_node_ip = ray.worker.global_worker.node_ip_address
-    # Schedule the actor on the current node.
-    node_killer = NodeKillerActor.options(resources={
-        f"node:{head_node_ip}": 0.001
-    }).remote(
-        head_node_ip, node_kill_interval_s=node_kill_interval_s)
-    print("Waiting for node killer actor to be ready...")
-    ray.get(node_killer.ready.remote())
-    print("Node killer actor is ready now.")
-    node_killer.run.remote()
-    return node_killer
+from ray._private.test_utils import (monitor_memory_usage, wait_for_condition,
+                                     get_and_run_node_killer)
 
 
 def run_task_workload(total_num_cpus, smoke):
@@ -153,15 +82,17 @@ def run_actor_workload(total_num_cpus, smoke):
             ray.get(self.db_actor.add.remote(letter))
 
     NUM_CPUS = int(total_num_cpus)
-    multiplier = 10
+    multiplier = 2
     # For smoke mode, run less number of tasks
     if smoke:
         multiplier = 1
     TOTAL_TASKS = int(300 * multiplier)
     current_node_ip = ray.worker.global_worker.node_ip_address
-    db_actors = [DBActor.options(resources={
-        f"node:{current_node_ip}": 0.001
-    }).remote() for _ in range(NUM_CPUS)]
+    db_actors = [
+        DBActor.options(resources={
+            f"node:{current_node_ip}": 0.001
+        }).remote() for _ in range(NUM_CPUS)
+    ]
 
     pb = ProgressBar("Chaos test", TOTAL_TASKS * NUM_CPUS)
     actors = []
@@ -183,13 +114,15 @@ def run_actor_workload(total_num_cpus, smoke):
         lambda: (
             ray.cluster_resources().get("CPU", 0)
             == ray.available_resources().get("CPU", 0)))
-    letter_dict = ray.get(
-        [db_actor.get.remote() for db_actor in db_actors])
+    letter_set = set()
+    for db_actor in db_actors:
+        letter_set.update(ray.get(db_actor.get.remote()))
     # Make sure the DB actor didn't lose any report.
     # If this assert fails, that means at least once actor task semantic
     # wasn't guaranteed.
+    print(sorted(list(letter_set)))
     for i in range(highest_reported_num):
-        assert str(i) in letter_dict, i
+        assert str(i) in letter_set, i
 
 
 def run_placement_group_workload(total_num_cpus, smoke):
