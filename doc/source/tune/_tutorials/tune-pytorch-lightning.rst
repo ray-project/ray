@@ -190,8 +190,8 @@ specification, we can use ``tune.with_parameters`` to wrap around the training f
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 18-23
-   :dedent: 8
+   :lines: 18-21
+   :dedent: 4
 
 Training with GPUs
 ~~~~~~~~~~~~~~~~~~
@@ -207,7 +207,7 @@ we would like to use:
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 24-27
+   :lines: 22
    :dedent: 4
 
 You can also specify :doc:`fractional GPUs for Tune </using-ray-with-gpus>`, allowing multiple trials to share GPUs
