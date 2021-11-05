@@ -18,8 +18,21 @@ class JobStatus(str, Enum):
 
 
 @dataclass
+class GetPackageRequest:
+    package_uri: str
+
+
+@dataclass
 class GetPackageResponse:
     package_exists: bool
+
+
+# ==== Upload Package ====
+
+
+@dataclass
+class UploadPackageRequest:
+    package_uri: str
 
 
 # ==== Job Submit ====
@@ -40,7 +53,25 @@ class JobSubmitResponse:
     job_id: str
 
 
+# ==== Job Stop ====
+
+
+@dataclass
+class JobStopRequest:
+    job_id: str
+
+
+@dataclass
+class JobStopResponse:
+    stopped: bool
+
+
 # ==== Job Status ====
+
+
+@dataclass
+class JobStatusRequest:
+    job_id: str
 
 
 @dataclass
@@ -49,6 +80,11 @@ class JobStatusResponse:
 
 
 # ==== Job Logs ====
+
+
+@dataclass
+class JobLogsRequest:
+    job_id: str
 
 
 # TODO(jiaodong): Support log streaming #19415

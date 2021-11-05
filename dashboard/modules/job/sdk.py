@@ -10,12 +10,13 @@ from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
 from ray._private.job_manager import JobStatus
 from ray.dashboard.modules.job.data_types import (
-    GetPackageResponse, JobSubmitRequest, JobSubmitResponse, JobStatusResponse,
+    GetPackageResponse, JobSubmitRequest, JobSubmitResponse, JobStopRequest,
+    JobStopResponse, JobStatusRequest, JobStatusResponse, JobLogsRequest,
     JobLogsResponse)
 
 from ray.dashboard.modules.job.job_head import (
-    JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STATUS,
-    JOBS_API_ROUTE_PACKAGE)
+    JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP,
+    JOBS_API_ROUTE_STATUS, JOBS_API_ROUTE_PACKAGE)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -46,7 +47,6 @@ class JobSubmissionClient:
                      f"json: {json_data}, params: {params}.")
         r = requests.request(
             method, url, data=data, json=json_data, params=params)
-
         r.raise_for_status()
         if response_type is None:
             return None
@@ -130,18 +130,29 @@ class JobSubmissionClient:
             response_type=JobSubmitResponse)
         return resp.job_id
 
+    def stop_job(self, job_id: str) -> bool:
+        req = JobStopRequest(job_id=job_id)
+        resp = self._do_request(
+            "DELETE",
+            JOBS_API_ROUTE_STOP,
+            json_data=dataclasses.asdict(req),
+            response_type=JobStopResponse)
+        return resp.stopped
+
     def get_job_status(self, job_id: str) -> JobStatus:
+        req = JobStatusRequest(job_id=job_id)
         resp = self._do_request(
             "GET",
             JOBS_API_ROUTE_STATUS,
-            params={"job_id": job_id},
+            json_data=dataclasses.asdict(req),
             response_type=JobStatusResponse)
         return resp.job_status
 
     def get_job_logs(self, job_id: str) -> Tuple[str, str]:
+        req = JobLogsRequest(job_id=job_id)
         resp = self._do_request(
             "GET",
             JOBS_API_ROUTE_LOGS,
-            params={"job_id": job_id},
+            json_data=dataclasses.asdict(req),
             response_type=JobLogsResponse)
         return resp.stdout, resp.stderr
