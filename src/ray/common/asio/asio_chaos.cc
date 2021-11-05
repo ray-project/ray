@@ -20,8 +20,8 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
-#include "ray/util/logging.h"
 #include "ray/common/ray_config.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 namespace asio {
