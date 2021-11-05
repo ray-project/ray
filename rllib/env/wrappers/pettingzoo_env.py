@@ -134,13 +134,15 @@ class ParallelPettingZooEnv(MultiAgentEnv):
         self.par_env.reset()
 
         # Get first observation space, assuming all agents have equal space
-        self.observation_space = self.par_env.observation_space(self.par_env.agents[0])
+        self.observation_space = self.par_env.observation_space(
+            self.par_env.agents[0])
 
         # Get first action space, assuming all agents have equal space
         self.action_space = self.par_env.action_space(self.par_env.agents[0])
 
-        assert all(self.par_env.observation_space(agent) == self.observation_space
-                   for agent in self.par_env.agents), \
+        assert all(
+            self.par_env.observation_space(agent) == self.observation_space
+            for agent in self.par_env.agents), \
             "Observation spaces for all agents must be identical. Perhaps " \
             "SuperSuit's pad_observations wrapper can help (useage: " \
             "`supersuit.aec_wrappers.pad_observations(env)`"
