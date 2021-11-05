@@ -827,20 +827,20 @@ class Dataset(Generic[T]):
         from ray.data.grouped_dataset import GroupedDataset
         return GroupedDataset(self, key)
 
-    def aggregate(self, *aggs: Tuple[AggregateFn]) -> U:
+    def aggregate(self, *aggs: AggregateFn) -> U:
         """Aggregate the entire dataset as one group.
 
         This is a blocking operation.
 
         Examples:
             >>> ray.data.range(100).aggregate(Max())
-            >>> ray.data.range_arrow(100).aggregate(Max("value"))
+            >>> ray.data.range_arrow(100).aggregate(
+                Max("value"), Mean("value"))
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             aggs: Aggregations to do.
-                Currently only single aggregation is supported.
 
         Returns:
             If the input dataset is a simple dataset then the output is
