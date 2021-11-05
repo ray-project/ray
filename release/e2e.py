@@ -811,8 +811,7 @@ def run_bash_script(local_dir: str, bash_script: str):
     full_local_dir = os.path.join(local_dir, bash_script_local_dir)
     os.chdir(full_local_dir)
 
-    os.chmod(file_name, 0o755)
-    subprocess.run("sudo ./" + file_name, shell=True, check=True)
+    subprocess.run("./" + file_name, shell=True, check=True)
 
     os.chdir(previous_dir)
 

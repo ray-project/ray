@@ -1,7 +1,7 @@
 #!/bin/bash
 
-apt update
-apt -y install build-essential
+sudo apt update
+sudo apt -y install build-essential
 pip install cmake
 
 pip install -U -r ./driver_requirements.txt
