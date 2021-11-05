@@ -1280,7 +1280,7 @@ class Node:
             try:
                 self.initialize_internal_kv()
                 result = ray.experimental.internal_kv._internal_kv_get(
-                    key, namespace=key)
+                    key, namespace=namespace)
             except Exception:
                 result = None
 
