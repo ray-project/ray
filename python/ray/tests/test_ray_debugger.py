@@ -33,7 +33,8 @@ def test_ray_debugger_breakpoint(shutdown_only):
 
     # Now continue execution:
     session = json.loads(
-        ray.experimental.internal_kv._internal_kv_get(active_sessions[0], namespace=ray_constants.KV_NAMESPACE_PDB))
+        ray.experimental.internal_kv._internal_kv_get(
+            active_sessions[0], namespace=ray_constants.KV_NAMESPACE_PDB))
     host, port = session["pdb_address"].split(":")
     assert host == "localhost"  # Should be private by default.
 
@@ -161,13 +162,16 @@ f.remote()
 time.sleep(5)
 """.format(address)
 
-    assert not len(ray.experimental.internal_kv._internal_kv_list(
-        "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB))
+    assert not len(
+        ray.experimental.internal_kv._internal_kv_list(
+            "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB))
 
     run_string_as_driver(driver_script)
 
     def one_active_session():
-        return len(ray.experimental.internal_kv._internal_kv_list("RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB))
+        return len(
+            ray.experimental.internal_kv._internal_kv_list(
+                "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB))
 
     wait_for_condition(one_active_session)
 
@@ -177,7 +181,8 @@ time.sleep(5)
 
     def no_active_sessions():
         return not len(
-            ray.experimental.internal_kv._internal_kv_list("RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB))
+            ray.experimental.internal_kv._internal_kv_list(
+                "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB))
 
     wait_for_condition(no_active_sessions)
 
@@ -210,13 +215,16 @@ def test_ray_debugger_public(shutdown_only, call_ray_stop_only,
     result = f.remote()
 
     wait_for_condition(lambda: len(
-        ray.experimental.internal_kv._internal_kv_list("RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB)) > 0)
+        ray.experimental.internal_kv._internal_kv_list(
+            "RAY_PDB_",
+            namespace=ray_constants.KV_NAMESPACE_PDB)) > 0)
 
     active_sessions = ray.experimental.internal_kv._internal_kv_list(
         "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB)
     assert len(active_sessions) == 1
     session = json.loads(
-        ray.experimental.internal_kv._internal_kv_get(active_sessions[0], namespace=ray_constants.KV_NAMESPACE_PDB))
+        ray.experimental.internal_kv._internal_kv_get(
+            active_sessions[0], namespace=ray_constants.KV_NAMESPACE_PDB))
 
     host, port = session["pdb_address"].split(":")
     if ray_debugger_external:
@@ -264,9 +272,11 @@ def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
         "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB)
     assert len(active_sessions) == 2
     session1 = json.loads(
-        ray.experimental.internal_kv._internal_kv_get(active_sessions[0], namespace=ray_constants.KV_NAMESPACE_PDB))
+        ray.experimental.internal_kv._internal_kv_get(
+            active_sessions[0], namespace=ray_constants.KV_NAMESPACE_PDB))
     session2 = json.loads(
-        ray.experimental.internal_kv._internal_kv_get(active_sessions[1], namespace=ray_constants.KV_NAMESPACE_PDB))
+        ray.experimental.internal_kv._internal_kv_get(
+            active_sessions[1], namespace=ray_constants.KV_NAMESPACE_PDB))
 
     host1, port1 = session1["pdb_address"].split(":")
     if ray_debugger_external:
