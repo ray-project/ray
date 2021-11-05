@@ -284,7 +284,9 @@ KV_NAMESPACE_DASHBOARD = "dashboard"
 KV_NAMESPACE_SESSION = "session"
 KV_NAMESPACE_TRACING = "tracing"
 KV_NAMESPACE_PDB = "ray_pdb"
-# TODO(set autoscaler ns)
+# TODO: Set namespace for autoscaler
+# This will break backward compatibility if autoscaler is running as an
+# independent service.
 KV_NAMESPACE_AUTOSCALER = None
 KV_NAMESPACE_HEALTHCHECK = "healthcheck"
 KV_NAMESPACE_JOB = "job"
