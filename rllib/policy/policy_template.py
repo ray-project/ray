@@ -14,12 +14,12 @@ from ray.rllib.utils import add_mixins, force_list, NullContextManager
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, try_import_jax
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.torch_ops import convert_to_non_torch_type
+from ray.rllib.utils.torch_utils import convert_to_non_torch_type
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation import MultiAgentEpisode  # noqa
+    from ray.rllib.evaluation.episode import Episode  # noqa
 
 jax, _ = try_import_jax()
 torch, _ = try_import_torch()
@@ -39,7 +39,7 @@ def build_policy_class(
             str, TensorType]]] = None,
         postprocess_fn: Optional[Callable[[
             Policy, SampleBatch, Optional[Dict[Any, SampleBatch]], Optional[
-                "MultiAgentEpisode"]
+                "Episode"]
         ], SampleBatch]] = None,
         extra_action_out_fn: Optional[Callable[[
             Policy, Dict[str, TensorType], List[TensorType], ModelV2,
@@ -98,7 +98,7 @@ def build_policy_class(
             overrides. If None, uses only(!) the user-provided
             PartialTrainerConfigDict as dict for this Policy.
         postprocess_fn (Optional[Callable[[Policy, SampleBatch,
-            Optional[Dict[Any, SampleBatch]], Optional["MultiAgentEpisode"]],
+            Optional[Dict[Any, SampleBatch]], Optional["Episode"]],
             SampleBatch]]): Optional callable for post-processing experience
             batches (called after the super's `postprocess_trajectory` method).
         stats_fn (Optional[Callable[[Policy, SampleBatch],

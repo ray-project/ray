@@ -98,7 +98,7 @@ There are two ways to scale experience collection with Gym environments:
 
 .. image:: throughput.png
 
-You can also combine vectorization and distributed execution, as shown in the above figure. Here we plot just the throughput of RLlib policy evaluation from 1 to 128 CPUs. PongNoFrameskip-v4 on GPU scales from 2.4k to ∼200k actions/s, and Pendulum-v0 on CPU from 15k to 1.5M actions/s. One machine was used for 1-16 workers, and a Ray cluster of four machines for 32-128 workers. Each worker was configured with ``num_envs_per_worker=64``.
+You can also combine vectorization and distributed execution, as shown in the above figure. Here we plot just the throughput of RLlib policy evaluation from 1 to 128 CPUs. PongNoFrameskip-v4 on GPU scales from 2.4k to ∼200k actions/s, and Pendulum-v1 on CPU from 15k to 1.5M actions/s. One machine was used for 1-16 workers, and a Ray cluster of four machines for 32-128 workers. Each worker was configured with ``num_envs_per_worker=64``.
 
 Expensive Environments
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -228,7 +228,7 @@ PettingZoo Multi-Agent Environments
     # you can pass arguments to the environment creator with the env_config option in the config
     config['env_config'] = {"num_floors": 5}
 
-A more complete example is here: `pettingzoo_env.py <https://github.com/ray-project/ray/blob/master/rllib/examples/pettingzoo_env.py>`__
+A more complete example is here: `rllib_pistonball.py <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/rllib_pistonball.py>`__
 
 
 Rock Paper Scissors Example

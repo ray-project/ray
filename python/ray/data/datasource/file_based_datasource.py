@@ -144,8 +144,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             for read_path in read_paths:
                 with fs.open_input_stream(read_path, **open_stream_args) as f:
                     data = read_file(f, read_path, **reader_args)
-                    if isinstance(data, pa.Table) or isinstance(
-                            data, np.ndarray):
+                    if isinstance(data, pa.Table):
                         builder.add_block(data)
                     else:
                         builder.add(data)
@@ -165,22 +164,21 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 num_rows = None
             else:
                 num_rows = len(read_paths) * self._rows_per_file()
+            meta = BlockMetadata(
+                num_rows=num_rows,
+                size_bytes=sum(file_sizes),
+                schema=schema,
+                input_files=read_paths)
             read_task = ReadTask(
-                lambda read_paths=read_paths: read_files(
-                    read_paths, filesystem),
-                BlockMetadata(
-                    num_rows=num_rows,
-                    size_bytes=sum(file_sizes),
-                    schema=schema,
-                    input_files=read_paths)
+                lambda read_paths=read_paths: [
+                    read_files(read_paths, filesystem)], meta
             )
             read_tasks.append(read_task)
 
         return read_tasks
 
     def _rows_per_file(self):
-        """Returns the number of rows per file, or None if unknown.
-        """
+        """Returns the number of rows per file, or None if unknown."""
         return None
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
@@ -189,7 +187,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         This method should be implemented by subclasses.
         """
         raise NotImplementedError(
-            "Subclasses of FileBasedDatasource must implement _read_files().")
+            "Subclasses of FileBasedDatasource must implement _read_file().")
 
     def do_write(self,
                  blocks: List[ObjectRef[Block]],

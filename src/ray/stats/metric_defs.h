@@ -156,10 +156,6 @@ static Count NodeFailureTotal(
 static Gauge PendingActors("pending_actors", "Number of pending actors in GCS server.",
                            "actors");
 
-static Gauge PendingPlacementGroups(
-    "pending_placement_groups", "Number of pending placement groups in the GCS server.",
-    "placement_groups");
-
 static Histogram OutboundHeartbeatSizeKB("outbound_heartbeat_size_kb",
                                          "Outbound heartbeat payload size", "kb",
                                          {10, 50, 100, 1000, 10000, 100000});

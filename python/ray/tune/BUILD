@@ -2,6 +2,16 @@
 # Tests from the python/ray/tune/tests directory.
 # Covers all tests starting with `test_`.
 # Please keep these sorted alphabetically.
+#
+# Tags:
+# "team:ml": Tag indicating this test is owned by the ML team.
+# "client": Test uses the ray client.
+# "example": Test runs a tune example script.
+# "exclusive": ???
+# "py37": Test requires py3.7 or later.
+# "soft_imports": Tests checking whether Tune runs without any of its soft dependencies.
+# "pytorch": Test uses PyTorch.
+# "tensorflow": Test uses TensorFlow.
 # --------------------------------------------------------------------
 py_test(
     name = "test_actor_reuse",
@@ -16,7 +26,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_api.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "rllib"],
 )
 
 py_test(
@@ -48,7 +58,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_cluster.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "rllib"],
 )
 
 py_test(
@@ -304,7 +314,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_tune_restore.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "rllib"],
 )
 
 py_test(

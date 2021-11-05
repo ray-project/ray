@@ -52,6 +52,10 @@
 # RLlib.
 #/python/ray/rllib/ @ray-project/rllib
 
+# ML Docker Dependencies
+/python/requirements/ml/requirements_dl.txt @amogkam @sven1977 @richardliaw @matthewdeng
+/python/requirements_ml_docker.txt @amogkam @sven1977 @richardliaw @matthewdeng
+
 # ==== Build and CI ====
 
 # Bazel.

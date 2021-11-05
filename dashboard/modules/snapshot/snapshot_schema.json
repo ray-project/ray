@@ -27,6 +27,9 @@
                 "[0-9a-f]*": {
                   "type": "object",
                   "properties": {
+                    "status": {
+                      "type": ["string", "null"]
+                    },
                     "isDead": {
                       "type": "boolean"
                     },

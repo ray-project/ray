@@ -26,6 +26,7 @@
 
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
+#include "ray/util/process.h"
 
 #ifdef _WIN32
 #include <process.h>  // to ensure getpid() on Windows
@@ -342,6 +343,8 @@ class ExponentialBackOff {
     return ret;
   }
 
+  uint64_t Current() { return curr_value_; }
+
   void Reset() { curr_value_ = initial_value_; }
 
  private:
@@ -350,5 +353,12 @@ class ExponentialBackOff {
   uint64_t max_value_;
   double multiplier_;
 };
+
+/// Return true if the raylet is failed. This util function is only meant to be used by
+/// core worker modules.
+bool IsRayletFailed(const std::string &raylet_pid);
+
+/// Teriminate the process without cleaning up the resources.
+void QuickExit();
 
 }  // namespace ray

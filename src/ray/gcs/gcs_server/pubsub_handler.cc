@@ -25,8 +25,9 @@ void InternalPubSubHandler::HandleGcsSubscriberPoll(
     rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
   auto pubsub_reply = std::make_shared<rpc::PubsubLongPollingReply>();
+  auto pubsub_reply_ptr = pubsub_reply.get();
   gcs_publisher_->GetPublisher()->ConnectToSubscriber(
-      subscriber_id, pubsub_reply.get(),
+      subscriber_id, pubsub_reply_ptr,
       [reply, reply_cb = std::move(send_reply_callback),
        pubsub_reply = std::move(pubsub_reply)](ray::Status status,
                                                std::function<void()> success_cb,
@@ -47,15 +48,16 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
   for (const auto &command : request.commands()) {
     if (command.has_unsubscribe_message()) {
       gcs_publisher_->GetPublisher()->UnregisterSubscription(
-          command.channel_type(), subscriber_id, command.key_id());
+          command.channel_type(), subscriber_id,
+          command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
     } else if (command.has_subscribe_message()) {
       gcs_publisher_->GetPublisher()->RegisterSubscription(
-          command.channel_type(), subscriber_id, command.key_id());
+          command.channel_type(), subscriber_id,
+          command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
     } else {
       RAY_LOG(FATAL) << "Invalid command has received, "
                      << static_cast<int>(command.command_message_one_of_case())
-                     << ". If you see this message, please "
-                        "report to Ray Github.";
+                     << ". If you see this message, please file an issue to Ray Github.";
     }
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);

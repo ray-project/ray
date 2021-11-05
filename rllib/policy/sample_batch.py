@@ -6,12 +6,12 @@ import tree  # pip install dm_tree
 from typing import Dict, Iterator, List, Optional, Set, Union
 
 from ray.util import log_once
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, \
+from ray.rllib.utils.annotations import DeveloperAPI, \
     PublicAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.memory import concat_aligned
+from ray.rllib.utils.numpy import concat_aligned
 from ray.rllib.utils.typing import PolicyID, TensorType
 
 tf1, tf, tfv = try_import_tf()
@@ -575,9 +575,9 @@ class SampleBatch(dict):
         `self.max_seq_len` to the given `max_seq_len` value.
 
         Args:
-            max_len (int): The max (total) length to zero pad to.
-            exclude_states (bool): If True, also right-zero-pad all
-                `state_in_x` data. If False, leave `state_in_x` keys
+            max_seq_len: The max (total) length to zero pad to.
+            exclude_states: If False, also right-zero-pad all
+                `state_in_x` data. If True, leave `state_in_x` keys
                 as-is.
 
         Returns:
