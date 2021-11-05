@@ -1119,14 +1119,12 @@ def test_from_pandas_refs(ray_start_regular_shared):
 
 
 def test_from_numpy(ray_start_regular_shared):
-    arr1 = np.expand_dims(np.arange(0, 4), 1)
-    arr2 = np.expand_dims(np.arange(4, 8), 1)
+    arr1 = np.expand_dims(np.arange(0, 4), axis=1)
+    arr2 = np.expand_dims(np.arange(4, 8), axis=1)
     ds = ray.data.from_numpy([ray.put(arr1), ray.put(arr2)])
     values = np.array(ds.take(8))
-    for i in range(4):
-        assert values[i]["value"] == arr1[i]
-    for i in range(4, 8):
-        assert values[i]["value"] == arr2[i - 4]
+    np.testing.assert_array_equal(
+        values, np.expand_dims(np.concatenate((arr1, arr2)), axis=1))
 
 
 def test_from_arrow(ray_start_regular_shared):
