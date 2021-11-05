@@ -22,7 +22,7 @@
     "axios": "^0.21.1",
     "classnames": "^2.2.6",
     "dayjs": "^1.9.4",
-    "lodash": "^4.17.20",
+    "lodash": "^4.17.21",
     "lowlight": "^1.14.0",
     "numeral": "^2.0.6",
     "react": "^16.13.1",
