@@ -69,7 +69,7 @@ class ParquetDatasource(FileBasedDatasource):
             schema = pa.schema([schema.field(column) for column in columns],
                                schema.metadata)
 
-        def read_pieces(serialized_pieces: List[str]) -> pa.Table:
+        def read_pieces(serialized_pieces: List[str]) -> Iterator[pa.Table]:
             # Implicitly trigger S3 subsystem initialization by importing
             # pyarrow.fs.
             import pyarrow.fs  # noqa: F401
@@ -84,9 +84,10 @@ class ParquetDatasource(FileBasedDatasource):
 
             from pyarrow.dataset import _get_partition_keys
 
+            stream = BlockStreamBuilder(_block_udf)
+
             logger.debug(f"Reading {len(pieces)} parquet pieces")
             use_threads = reader_args.pop("use_threads", False)
-            tables = []
             for piece in pieces:
                 table = piece.to_table(
                     use_threads=use_threads,
@@ -101,16 +102,8 @@ class ParquetDatasource(FileBasedDatasource):
                             pa.array([value] * len(table)))
                 # If the table is empty, drop it.
                 if table.num_rows > 0:
-                    tables.append(table)
-            if len(tables) > 1:
-                table = pa.concat_tables(tables, promote=True)
-            elif len(tables) == 1:
-                table = tables[0]
-            if _block_udf is not None:
-                table = _block_udf(table)
-            # If len(tables) == 0, all fragments were empty, and we return the
-            # empty table from the last fragment.
-            return table
+                    stream.add_block(table)
+            return stream.iterator()
 
         if _block_udf is not None:
             # Try to infer dataset schema by passing dummy table through UDF.
@@ -142,7 +135,7 @@ class ParquetDatasource(FileBasedDatasource):
             meta = _build_block_metadata(pieces, metadata, inferred_schema)
             read_tasks.append(
                 ReadTask(
-                    lambda pieces_=serialized_pieces: [read_pieces(pieces_)],
+                    lambda pieces_=serialized_pieces: read_pieces(pieces_),
                     meta))
 
         return read_tasks

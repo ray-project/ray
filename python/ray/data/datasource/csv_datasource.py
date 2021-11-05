@@ -17,12 +17,22 @@ class CSVDatasource(FileBasedDatasource):
         ... [{"a": 1, "b": "foo"}, ...]
     """
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Iterator[Block]:
         from pyarrow import csv
 
         read_options = reader_args.pop(
             "read_options", csv.ReadOptions(use_threads=False))
-        return csv.read_csv(f, read_options=read_options, **reader_args)
+        reader = csv.open(f, read_options=read_options, **reader_args)
+        schema = None
+        while True:
+            try:
+                batch = reader.read_next_batch()
+                table = pyarrow.Table.from_batches([batch], schema=schema)
+                if schema is None:
+                    schema = table.schema
+                yield table
+            except StopIteration:
+                pass
 
     def _write_block(self,
                      f: "pyarrow.NativeFile",

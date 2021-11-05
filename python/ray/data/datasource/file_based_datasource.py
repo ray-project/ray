@@ -127,7 +127,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         paths, file_infos = _expand_paths(paths, filesystem)
         file_sizes = [file_info.size for file_info in file_infos]
 
-        read_file = self._read_file
+        read_stream = self._read_stream
 
         filesystem = _wrap_s3_serialization_workaround(filesystem)
 
@@ -136,22 +136,20 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         def read_files(
                 read_paths: List[str],
-                fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper]):
+                fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper]
+                ) -> Iterable[Block]:
             logger.debug(f"Reading {len(read_paths)} files.")
             if isinstance(fs, _S3FileSystemWrapper):
                 fs = fs.unwrap()
-            builder = DelegatingArrowBlockBuilder()
+            stream = BlockStreamBuilder(_block_udf)
             for read_path in read_paths:
                 with fs.open_input_stream(read_path, **open_stream_args) as f:
-                    data = read_file(f, read_path, **reader_args)
-                    if isinstance(data, pa.Table):
-                        builder.add_block(data)
-                    else:
-                        builder.add(data)
-            block = builder.build()
-            if _block_udf is not None:
-                block = _block_udf(block)
-            return block
+                    for data in read_stream(f, read_path, **reader_args):
+                        if isinstance(data, pa.Table):
+                            stream.add_block(data)
+                        else:
+                            stream.add(data)
+            return stream.iterator()
 
         read_tasks = []
         for read_paths, file_sizes in zip(
@@ -170,8 +168,8 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
                 schema=schema,
                 input_files=read_paths)
             read_task = ReadTask(
-                lambda read_paths=read_paths: [
-                    read_files(read_paths, filesystem)], meta
+                lambda read_paths=read_paths: read_files(
+                    read_paths, filesystem), meta
             )
             read_tasks.append(read_task)
 
@@ -181,7 +179,14 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         """Returns the number of rows per file, or None if unknown."""
         return None
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Iterator[Block]:
+        """Streaming read a single file, passing all kwargs to the reader.
+
+        By default, delegates to self._read_file().
+        """
+        yield self._read_file()
+
+    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Block:
         """Reads a single file, passing all kwargs to the reader.
 
         This method should be implemented by subclasses.
