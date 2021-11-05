@@ -127,6 +127,10 @@ class PettingZooEnv(MultiAgentEnv):
     def render(self, mode="human"):
         return self.env.render(mode)
 
+    @property
+    def unwrapped(self):
+        return self.env.unwrapped
+
 
 class ParallelPettingZooEnv(MultiAgentEnv):
     def __init__(self, env):
@@ -169,3 +173,7 @@ class ParallelPettingZooEnv(MultiAgentEnv):
 
     def render(self, mode="human"):
         return self.par_env.render(mode)
+
+    @property
+    def unwrapped(self):
+        return self.par_env.unwrapped
