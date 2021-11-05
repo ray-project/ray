@@ -230,14 +230,23 @@ COMMON_CONFIG: TrainerConfigDict = {
 
     # === Deep Learning Framework Settings ===
     # tf: TensorFlow (static-graph)
-    # tf2: TensorFlow 2.x (eager)
-    # tfe: TensorFlow eager
+    # tf2: TensorFlow 2.x (eager or traced, if eager_tracing=True)
+    # tfe: TensorFlow eager (or traced, if eager_tracing=True)
     # torch: PyTorch
     "framework": "tf",
-    # Enable tracing in eager mode. This greatly improves performance, but
-    # makes it slightly harder to debug since Python code won't be evaluated
-    # after the initial eager pass. Only possible if framework=tfe.
+    # Enable tracing in eager mode. This greatly improves performance
+    # (speedup ~2x), but makes it slightly harder to debug since Python
+    # code won't be evaluated after the initial eager pass.
+    # Only possible if framework=[tf2|tfe].
     "eager_tracing": False,
+    # Maximum number of tf.function re-traces before a runtime error is raised.
+    # This is to prevent unnoticed retraces of methods inside the
+    # `..._eager_traced` Policy, which could slow down execution by a
+    # factor of 4, without the user noticing what the root cause for this
+    # slowdown could be.
+    # Only necessary for framework=[tf2|tfe].
+    # Set to None to ignore the re-trace count and never throw an error.
+    "eager_max_retraces": 20,
 
     # === Exploration Settings ===
     # Default exploration behavior, iff `explore`=None is passed into

@@ -16,7 +16,7 @@ public class LongPollClientTest {
     String[] a = new String[] {"test"};
 
     // Construct a listener map.
-    KeyType keyType = new KeyType(LongPollNamespace.BACKEND_CONFIGS, "backendTag");
+    KeyType keyType = new KeyType(LongPollNamespace.BACKEND_CONFIGS, "deploymentName");
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
     keyListeners.put(
         keyType, (object) -> a[0] = String.valueOf(((DeploymentConfig) object).getNumReplicas()));

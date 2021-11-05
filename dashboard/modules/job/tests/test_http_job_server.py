@@ -12,6 +12,7 @@ from ray._private.job_manager import JobStatus
 from ray.dashboard.modules.job.sdk import JobSubmissionClient
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 @pytest.fixture
@@ -118,7 +119,11 @@ def test_job_metadata(job_sdk_client):
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
     stdout, stderr = client.get_job_logs(job_id)
-    assert stdout == "{'key1': 'val1', 'key2': 'val2'}"
+    assert stdout == str({
+        "job_submission_id": job_id,
+        "key1": "val1",
+        "key2": "val2"
+    })
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ from ray.actor import ActorClass, ActorHandle
 from ray.serve.config import DeploymentConfig, ReplicaConfig
 from ray.serve.autoscaling_policy import AutoscalingPolicy
 
-BackendTag = str
+str = str
 EndpointTag = str
 ReplicaTag = str
 NodeId = str
@@ -45,7 +45,7 @@ class DeploymentInfo:
 
 @dataclass
 class ReplicaName:
-    deployment_tag: BackendTag
+    deployment_tag: str
     replica_suffix: str
     replica_tag: ReplicaTag = ""
     delimiter: str = "#"
@@ -74,7 +74,7 @@ class ReplicaName:
 
 @dataclass(frozen=True)
 class RunningReplicaInfo:
-    backend_tag: BackendTag
+    deployment_name: str
     replica_tag: ReplicaTag
     actor_handle: ActorHandle
     max_concurrent_queries: int
