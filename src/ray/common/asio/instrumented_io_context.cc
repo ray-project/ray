@@ -84,7 +84,7 @@ void instrumented_io_context::post(std::function<void()> handler,
   if (defer_ms == 0) {
     boost::asio::io_context::post(std::move(handler));
   } else {
-    RAY_LOG(ERROR) << "Defer " << name << " by " << defer_ms << "ms";
+    RAY_LOG(DEBUG) << "Deferring " << name << " by " << defer_ms << "ms";
     execute_after(*this, std::move(handler), defer_ms);
   }
 }

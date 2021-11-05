@@ -21,6 +21,7 @@
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "ray/util/logging.h"
+#include "ray/common/ray_config.h"
 
 namespace ray {
 namespace asio {
@@ -32,7 +33,7 @@ namespace {
   should set up os environment to use this feature for testing purposes.
 
   To use this, simply do
-      export RAY_TESTING_ASIO_DELAY_MS="method1=10,method2=20"
+      export RAY_testing_asio_delay_ms="method1=10,method2=20"
 
    The delay is a random number between 0 and the value. If method equals '*',
    it will apply to all methods.
@@ -42,18 +43,18 @@ namespace {
 class DelayManager {
  public:
   DelayManager() {
-    auto delay_env = std::getenv("RAY_TESTING_ASIO_DELAY_MS");
-    // RAY_TESTING_ASIO_DELAY="Method1=100,Method2=200"
-    if (delay_env == nullptr) {
+    // RAY_testing_asio_delay="Method1=100,Method2=200"
+    auto delay_env = RayConfig::testing_asio_delay_ms();
+    if (delay_env.empty()) {
       return;
     }
-    RAY_LOG(WARNING) << "RAY_TESTING_ASIO_DELAY_MS is set to be " << delay_env;
+    RAY_LOG(ERROR) << "RAY_testing_asio_delay_ms is set to " << delay_env;
     std::vector<std::string_view> items = absl::StrSplit(delay_env, ",");
     for (const auto &item : items) {
       std::vector<std::string_view> delay = absl::StrSplit(item, "=");
       size_t delay_ms = 0;
       if (delay.size() != 2 || !absl::SimpleAtoi(delay[1], &delay_ms)) {
-        RAY_LOG(ERROR) << "Error syntax: " << item << ", it has to be name=time";
+        RAY_LOG(ERROR) << "Error in syntax: " << item << ", expected name=time";
         continue;
       }
       RAY_LOG(WARNING) << "Inject asio delay on method = " << delay[0] << " for "
@@ -74,7 +75,7 @@ class DelayManager {
     auto actual_delay = GenRandomDelay(it->second);
     if (actual_delay != 0) {
       RAY_LOG_EVERY_N(DEBUG, 1000)
-          << "Delay method " << name << " for " << actual_delay << "ms";
+          << "Delaying method " << name << " for " << actual_delay << "ms";
     }
     return actual_delay;
   }
