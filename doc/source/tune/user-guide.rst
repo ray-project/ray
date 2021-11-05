@@ -313,12 +313,15 @@ Prequisities to use checkpointing in Ray Tune for the example below:
    2. Custom training function (example)
       * All this means is that your function has to expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir``. See the example linked, it's quite simple to do.
 
-Let's assume for this example you're running this script from your laptop, and connecting to a Ray cluster via ``ray.init(address="<cluster IP:port>")``, making your script on your laptop the "driver".
+Let's assume for this example you're running this script from your laptop, and connecting to your remote Ray cluster via ``ray.init()``, making your script on your laptop the "driver".
 
 .. code-block:: python
 
+    import ray
     from ray import tune
     from your_module import my_trainable
+
+    ray.init(address="<cluster-IP>:<port>")
 
     # configure how your checkpoints are sync'd to the scheduler/sampler 
     # we recommend cloud storage checkpointing as it survives the cluster when
@@ -388,7 +391,7 @@ If, however, you prefer not to use ``resume="AUTO"`` (or are on an older version
 
 .. _tune-distributed-checkpointing:
 
-Distributed Checkpointing
+Cloud Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node. This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also requires rsync to be installed.
