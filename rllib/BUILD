@@ -148,7 +148,7 @@ py_test(
 )
 
 py_test(
-    name = "run_regression_tests_frozenlake_appo",
+    name = "learning_frozenlake_appo",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_discrete"],
     size = "large",
@@ -819,7 +819,7 @@ py_test(
 # DQN/APEX
 
 py_test(
-    name = "test_dqn_frozenlake_v0",
+    name = "test_dqn_frozenlake_v1",
     main = "train.py", srcs = ["train.py"],
     size = "small",
     tags = ["team:ml", "quick_train"],
@@ -1007,7 +1007,7 @@ py_test(
 )
 
 py_test(
-    name = "test_appo_tf_pendulum_v0_no_gpus",
+    name = "test_appo_tf_pendulum_v1_no_gpus",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:ml", "quick_train"],
     args = [

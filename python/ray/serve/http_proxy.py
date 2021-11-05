@@ -59,19 +59,29 @@ async def _send_request_to_handle(handle, scope, receive, send):
         try:
             result = await object_ref
             break
+        except RayTaskError as error:
+            error_message = "Task Error. Traceback: {}.".format(error)
+            await Response(
+                error_message, status_code=500).send(scope, receive, send)
+            return
         except RayActorError:
             logger.warning("Request failed due to replica failure. There are "
                            f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
                            "remaining.")
             await asyncio.sleep(backoff_time_s)
-            backoff_time_s *= 2
+            # Be careful about the expotential backoff scaling here.
+            # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
+            # initial backoff time, while 2x scaling means 512x the initial.
+            backoff_time_s *= 1.5
             retries += 1
-
-    if isinstance(result, RayTaskError):
-        error_message = "Task Error. Traceback: {}.".format(result)
+    else:
+        error_message = ("Task failed with "
+                         f"{MAX_REPLICA_FAILURE_RETRIES} retries.")
         await Response(
             error_message, status_code=500).send(scope, receive, send)
-    elif isinstance(result, starlette.responses.Response):
+        return
+
+    if isinstance(result, starlette.responses.Response):
         await result(scope, receive, send)
     else:
         await Response(result).send(scope, receive, send)

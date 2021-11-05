@@ -34,14 +34,14 @@ def test_recover_start_from_replica_actor_names(serve_instance):
         response = request_with_retries(
             "/recover_start_from_replica_actor_names/", timeout=30)
         assert response.text == "hii"
-    # Assert 2 replicas are running in deployment backend after partially
+    # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy() call with transient error
-    backend_dict = ray.get(
+    deployment_dict = ray.get(
         serve_instance._controller._all_running_replicas.remote())
-    assert len(backend_dict["recover_start_from_replica_actor_names"]) == 2
+    assert len(deployment_dict["recover_start_from_replica_actor_names"]) == 2
 
     replica_version_hash = None
-    for replica in backend_dict["recover_start_from_replica_actor_names"]:
+    for replica in deployment_dict["recover_start_from_replica_actor_names"]:
         ref = replica.actor_handle.get_metadata.remote()
         _, version = ray.get(ref)
         if replica_version_hash is None:
