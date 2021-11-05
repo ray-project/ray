@@ -90,11 +90,12 @@ class JobStatusStorageClient:
     def put_status(self, job_id: str, status: JobStatus):
         assert isinstance(status, JobStatus)
         _internal_kv_put(
-            self.JOB_STATUS_KEY.format(job_id=job_id), pickle.dumps(status))
+            self.JOB_STATUS_KEY.format(job_id=job_id), pickle.dumps(status), ray_constants.KV_NAMESPACE_JOB)
 
     def get_status(self, job_id: str) -> JobStatus:
         pickled_status = _internal_kv_get(
-            self.JOB_STATUS_KEY.format(job_id=job_id))
+            self.JOB_STATUS_KEY.format(job_id=job_id),
+            namespace=ray_constants.KV_NAMESPACE_JOB)
         assert pickled_status is not None, f"Status not found for {job_id}"
         return pickle.loads(pickled_status)
 

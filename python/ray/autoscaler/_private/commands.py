@@ -141,7 +141,8 @@ def request_resources(num_cpus: Optional[int] = None,
     _internal_kv_put(
         AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
         json.dumps(to_request),
-        overwrite=True)
+        overwrite=True,
+        namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
 
 
 def create_or_update_cluster(

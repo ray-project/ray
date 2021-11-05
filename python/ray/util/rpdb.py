@@ -187,7 +187,8 @@ class RemotePdb(Pdb):
             "job_id": ray.get_runtime_context().job_id.hex(),
         })
         _internal_kv_put("RAY_PDB_CONTINUE_{}".format(self._breakpoint_uuid),
-                         data)
+                         data,
+                         ray_constants.KV_NAMESPACE_PDB)
         self.__restore()
         self.handle.connection.close()
         return Pdb.do_continue(self, arg)
@@ -247,9 +248,9 @@ def connect_ray_pdb(host=None,
         "job_id": ray.get_runtime_context().job_id.hex(),
     }
     _internal_kv_put(
-        "RAY_PDB_{}".format(breakpoint_uuid), json.dumps(data), overwrite=True)
+        "RAY_PDB_{}".format(breakpoint_uuid), json.dumps(data), overwrite=True, namespace=ray_constants.KV_NAMESPACE_PDB)
     rdb.listen()
-    _internal_kv_del("RAY_PDB_{}".format(breakpoint_uuid))
+    _internal_kv_del("RAY_PDB_{}".format(breakpoint_uuid), namespace=ray_constants.KV_NAMESPACE_PDB)
 
     return rdb
 
