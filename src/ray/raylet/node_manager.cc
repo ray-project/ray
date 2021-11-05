@@ -291,12 +291,13 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_ms_(config.record_metrics_period_ms),
-      runtime_env_manager_([this](const std::string &uri, std::function<void(bool)> cb) {
-        if (RayConfig::instance().runtime_env_skip_local_gc()) {
-          return cb(true);
-        }
-        return agent_manager_->DeleteURIs({uri}, cb);
-      }),
+      runtime_env_manager_(
+          /*deleter=*/[this](const std::string &uri, std::function<void(bool)> cb) {
+            if (RayConfig::instance().runtime_env_skip_local_gc()) {
+              return cb(true);
+            }
+            return agent_manager_->DeleteURIs({uri}, cb);
+          }),
       next_resource_seq_no_(0) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
@@ -901,6 +902,7 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
   // Updating local node could result in a inconsistence view in cluster resource
   // scheduler which could make task hang.
   if (node_id == self_node_id_) {
+    cluster_task_manager_->ScheduleAndDispatchTasks();
     return;
   }
 

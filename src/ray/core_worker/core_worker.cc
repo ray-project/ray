@@ -188,8 +188,8 @@ void CoreWorkerProcess::EnsureInitialized(bool quick_exit) {
   }
 
   if (quick_exit) {
-    RAY_LOG(ERROR) << "The core worker process is not initialized yet or already "
-                   << "shutdown.";
+    RAY_LOG(WARNING) << "The core worker process is not initialized yet or already "
+                     << "shutdown.";
     QuickExit();
   } else {
     RAY_CHECK(core_worker_process)
