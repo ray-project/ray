@@ -124,6 +124,17 @@ inline std::shared_ptr<ray::rpc::ObjectLocationChange> CreateObjectLocationChang
   return object_location_change;
 }
 
+inline bool IsActorDiedDueToCreationTaskFailure(const rpc::ActorDeathCause &death_cause) {
+  return death_cause.context_case() ==
+         rpc::ActorDeathCause::ContextCase::kCreationTaskFailureContext;
+}
+
+inline bool IsActorDiedDueToRuntimeEnvSetupFailure(
+    const rpc::ActorDeathCause &death_cause) {
+  return death_cause.context_case() ==
+         rpc::ActorDeathCause::ContextCase::kRuntimeEnvSetupFailureContext;
+}
+
 }  // namespace gcs
 
 }  // namespace ray

@@ -219,9 +219,8 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                 << WorkerID::FromBinary(actor_data.address().worker_id())
                 << ", raylet_id: " << NodeID::FromBinary(actor_data.address().raylet_id())
                 << ", num_restarts: " << actor_data.num_restarts()
-                << ", runtime_env_setup_failed=" << actor_data.runtime_env_setup_failed()
-                << ", has creation_task_exception="
-                << actor_data.has_creation_task_exception();
+                << ", death context type="
+                << static_cast<int>(actor_data.death_cause().context_case());
   if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(),
                                              /*is_dead=*/false);
@@ -231,17 +230,8 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
       cached_actor_name_to_ids_.erase(
           GenerateCachedActorName(actor_data.ray_namespace(), actor_data.name()));
     }
-    std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
-    if (actor_data.has_creation_task_exception()) {
-      RAY_LOG(INFO) << "Creation task formatted exception: "
-                    << actor_data.creation_task_exception().formatted_exception_string()
-                    << ", actor_id: " << actor_id;
-      creation_task_exception =
-          std::make_shared<rpc::RayException>(actor_data.creation_task_exception());
-    }
-    direct_actor_submitter_->DisconnectActor(
-        actor_id, actor_data.num_restarts(), /*is_dead=*/true,
-        actor_data.runtime_env_setup_failed(), creation_task_exception);
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(),
+                                             /*is_dead=*/true, &actor_data.death_cause());
     // We cannot erase the actor handle here because clients can still
     // submit tasks to dead actors. This also means we defer unsubscription,
     // otherwise we crash when bulk unsubscribing all actor handles.

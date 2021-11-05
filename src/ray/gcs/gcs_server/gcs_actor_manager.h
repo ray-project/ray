@@ -393,15 +393,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param need_reschedule Whether to reschedule the actor creation task, sometimes
   /// users want to kill an actor intentionally and don't want it to be reconstructed
   /// again.
-  /// \param runtime_env_setup_failed Only applies when need_reschedule=false. Whether
-  /// this actor died because of runtime env setup failure.
-  /// \param creation_task_exception Only applies when need_reschedule=false, decribing
-  /// why this actor failed. If this arg is set, it means this actor died because of an
-  /// exception thrown in creation task.
-  void ReconstructActor(
-      const ActorID &actor_id, bool need_reschedule,
-      bool runtime_env_setup_failed = false,
-      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
+  /// \param death_cause Context about why this actor is dead. Should only be set when
+  /// need_reschedule=false.
+  void ReconstructActor(const ActorID &actor_id, bool need_reschedule,
+                        const rpc::ActorDeathCause *death_cause = nullptr);
 
   /// Reconstruct the specified actor and reschedule it.
   void ReconstructActor(const ActorID &actor_id);
@@ -441,11 +436,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       const rpc::ActorTableData &actor) {
     auto actor_delta = std::make_shared<rpc::ActorTableData>();
     actor_delta->set_state(actor.state());
-    if (actor.has_creation_task_exception()) {
-      actor_delta->set_allocated_creation_task_exception(
-          new rpc::RayException(actor.creation_task_exception()));
-    }
-    actor_delta->set_runtime_env_setup_failed(actor.runtime_env_setup_failed());
+    actor_delta->mutable_death_cause()->CopyFrom(actor.death_cause());
     actor_delta->mutable_address()->CopyFrom(actor.address());
     actor_delta->set_num_restarts(actor.num_restarts());
     actor_delta->set_timestamp(actor.timestamp());

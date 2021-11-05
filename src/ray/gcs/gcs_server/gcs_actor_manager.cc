@@ -769,8 +769,7 @@ void GcsActorManager::OnWorkerDead(
 
   // Otherwise, try to reconstruct the actor that was already created or in the creation
   // process.
-  ReconstructActor(actor_id, /*need_reschedule=*/need_reconstruct,
-                   /*runtime_env_setup_failed=*/false, creation_task_exception);
+  ReconstructActor(actor_id, /*need_reschedule=*/need_reconstruct);
 }
 
 void GcsActorManager::OnNodeDead(const NodeID &node_id) {
@@ -823,9 +822,8 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id) {
   ReconstructActor(actor_id, /*need_reschedule=*/true);
 }
 
-void GcsActorManager::ReconstructActor(
-    const ActorID &actor_id, bool need_reschedule, bool runtime_env_setup_failed,
-    const std::shared_ptr<rpc::RayException> &creation_task_exception) {
+void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_reschedule,
+                                       const rpc::ActorDeathCause *death_cause) {
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before reconstruction.
   auto iter = registered_actors_.find(actor_id);
@@ -853,11 +851,14 @@ void GcsActorManager::ReconstructActor(
     int64_t remaining = max_restarts - num_restarts;
     remaining_restarts = std::max(remaining, static_cast<int64_t>(0));
   }
+
+  int death_cause_case = rpc::ActorDeathCause::ContextCase::CONTEXT_NOT_SET;
+  if (death_cause != nullptr) {
+    death_cause_case = death_cause->context_case();
+  }
   RAY_LOG(INFO) << "Actor " << actor_id << " is failed on worker " << worker_id
                 << " at node " << node_id << ", need_reschedule = " << need_reschedule
-                << ", runtime_env_setup_failed = " << runtime_env_setup_failed
-                << ", has_creation_task_exception = "
-                << (creation_task_exception != nullptr)
+                << ", death context type = " << static_cast<int>(death_cause_case)
                 << ", remaining_restarts = " << remaining_restarts
                 << ", job id = " << actor_id.JobId();
   if (remaining_restarts != 0) {
@@ -894,10 +895,8 @@ void GcsActorManager::ReconstructActor(
     }
 
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
-    mutable_actor_table_data->set_runtime_env_setup_failed(runtime_env_setup_failed);
-    if (creation_task_exception != nullptr) {
-      mutable_actor_table_data->set_allocated_creation_task_exception(
-          new rpc::RayException(*creation_task_exception));
+    if (death_cause != nullptr) {
+      mutable_actor_table_data->mutable_death_cause()->CopyFrom(*death_cause);
     }
     auto time = current_sys_time_ms();
     mutable_actor_table_data->set_end_time(time);
@@ -931,9 +930,13 @@ void GcsActorManager::OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
     return;
   }
 
+  rpc::ActorDeathCause death_cause;
+  // TODO(sang, lixin) 1. Make this message more friendly 2. Show this message in
+  // object.get()'s error.
+  death_cause.mutable_runtime_env_setup_failure_context()->set_error_message(
+      "RuntimeEnv setup failed!");
   // If there is runtime env failure, mark this actor as dead immediately.
-  ReconstructActor(actor->GetActorID(), /*need_reschedule=*/false,
-                   runtime_env_setup_failed);
+  ReconstructActor(actor->GetActorID(), /*need_reschedule=*/false, death_cause);
 }
 
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
