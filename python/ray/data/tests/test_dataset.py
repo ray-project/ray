@@ -1210,26 +1210,6 @@ def test_to_numpy(ray_start_regular_shared):
     np.testing.assert_equal(arr, np.arange(0, 10))
 
 
-def test_to_arrow(ray_start_regular_shared):
-    n = 5
-
-    # Zero-copy.
-    df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_arrow(n)
-    dfds = pd.concat(
-        [t.to_pandas() for t in ray.get(ds.to_arrow_refs())],
-        ignore_index=True)
-    assert df.equals(dfds)
-
-    # Conversion.
-    df = pd.DataFrame({0: list(range(n))})
-    ds = ray.data.range(n)
-    dfds = pd.concat(
-        [t.to_pandas() for t in ray.get(ds.to_arrow_refs())],
-        ignore_index=True)
-    assert df.equals(dfds)
-
-
 def test_to_arrow_refs(ray_start_regular_shared):
     n = 5
 
