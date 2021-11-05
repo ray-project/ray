@@ -124,7 +124,9 @@ def pad_batch_to_sequences_of_same_size(
             max_seq_len=max_seq_len,
             dynamic_max=dynamic_max,
             states_already_reduced_to_init=states_already_reduced_to_init,
-            shuffle=shuffle)
+            shuffle=shuffle,
+            handle_nested_data=True,
+        )
 
     for i, k in enumerate(feature_keys_):
         batch[k] = tree.unflatten_as(batch[k], feature_sequences[i])
@@ -188,18 +190,21 @@ def add_time_dimension(padded_inputs: TensorType,
 
 
 @DeveloperAPI
-def chop_into_sequences(*,
-                        feature_columns,
-                        state_columns,
-                        max_seq_len,
-                        episode_ids=None,
-                        unroll_ids=None,
-                        agent_indices=None,
-                        dynamic_max=True,
-                        shuffle=False,
-                        seq_lens=None,
-                        states_already_reduced_to_init=False,
-                        _extra_padding=0):
+def chop_into_sequences(
+        *,
+        feature_columns,
+        state_columns,
+        max_seq_len,
+        episode_ids=None,
+        unroll_ids=None,
+        agent_indices=None,
+        dynamic_max=True,
+        shuffle=False,
+        seq_lens=None,
+        states_already_reduced_to_init=False,
+        handle_nested_data=False,
+        _extra_padding=0,
+):
     """Truncate and pad experiences into fixed-length sequences.
 
     Args:
@@ -215,6 +220,10 @@ def chop_into_sequences(*,
             For example, if max len is 20 and the actual max seq len in the
             data is 7, it will be shrunk to 7.
         shuffle (bool): Whether to shuffle the sequence outputs.
+        handle_nested_data: If True, assume that the data in
+            `feature_columns` could be nested structures (of data).
+            If False, assumes that all items in `feature_columns` are
+            only np.ndarrays (no nested structured of np.ndarrays).
         _extra_padding (int): Add extra padding to the end of sequences.
 
     Returns:
@@ -266,6 +275,8 @@ def chop_into_sequences(*,
 
     feature_sequences = []
     for col in feature_columns:
+        if isinstance(col, list):
+            col = np.array(col)
         feature_sequences.append([])
 
         for f in tree.flatten(col):
@@ -316,6 +327,11 @@ def chop_into_sequences(*,
             s = s[permutation]
             initial_states[i] = s
         seq_lens = seq_lens[permutation]
+
+    # Classic behavior: Don't assume data in feature_columns are nested
+    # structs. Don't return them as flattened lists, but as is (index 0).
+    if not handle_nested_data:
+        feature_sequences = [f[0] for f in feature_sequences]
 
     return feature_sequences, initial_states, seq_lens
 
