@@ -62,7 +62,7 @@ class MockWorkerPool : public WorkerPoolInterface {
 
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers) const {
-    // RAY_CHECK(false) << "Not used.";
+    RAY_CHECK(false) << "Not used.";
     return {};
   }
 
@@ -1952,8 +1952,6 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
 
   ASSERT_EQ(num_callbacks, 4);
 
-  RAY_LOG(ERROR) << "Gets here!!!";
-
   {
     // Ensure a class of a differenct scheduling class can still be scheduled.
     RayTask task5 = CreateTask({},
@@ -1979,7 +1977,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
 TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
   int64_t UNIT = RayConfig::instance().scheduling_class_capacity_interval_ms() * 1e6;
   RayTask first_task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
-                            /*num_args=*/0, /*args=*/{});
+                                  /*num_args=*/0, /*args=*/{});
 
   rpc::RequestWorkerLeaseReply reply;
   int num_callbacks = 0;
@@ -1992,7 +1990,7 @@ TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
   std::vector<std::shared_ptr<MockWorker>> workers;
   for (int i = 0; i < 3; i++) {
     std::shared_ptr<MockWorker> worker =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
+        std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
     pool_.TriggerCallbacks();
     workers.push_back(worker);
@@ -2001,9 +1999,8 @@ TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
 
   ASSERT_EQ(num_callbacks, 1);
 
-
   RayTask second_task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
-                                  /*num_args=*/0, /*args=*/{});
+                                   /*num_args=*/0, /*args=*/{});
   task_manager_.QueueAndScheduleTask(second_task, &reply, callback);
   pool_.TriggerCallbacks();
 
@@ -2023,14 +2020,14 @@ TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
   for (auto &worker : workers) {
     if (worker->GetAllocatedInstances() && !worker->IsBlocked()) {
       task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker);
-        }
+    }
   }
 
   /// A lot of time passes, definitely more than the timeout.
   current_time_ns_ += 100000 * UNIT;
 
   RayTask third_task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
-                                   /*num_args=*/0, /*args=*/{});
+                                  /*num_args=*/0, /*args=*/{});
   task_manager_.QueueAndScheduleTask(third_task, &reply, callback);
   pool_.TriggerCallbacks();
 
@@ -2051,8 +2048,6 @@ TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
 
   AssertNoLeaks();
 }
-
-
 
 // Regression test for https://github.com/ray-project/ray/issues/16935:
 // When a task requires 1 CPU and is infeasible because head node has 0 CPU,
