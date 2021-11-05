@@ -588,8 +588,10 @@ class ActorSchedulingQueue : public SchedulingQueue {
       std::shared_ptr<PoolManager> pool_manager = std::make_shared<PoolManager>(),
       bool is_asyncio = false, int fiber_max_concurrency = 1,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
-      : reorder_wait_seconds_(reorder_wait_seconds),
+      int64_t reorder_wait_seconds = kMaxReorderWaitSeconds,
+      bool execute_out_of_order = false)
+      : kExecuteOutOfOrder(execute_out_of_order),
+        kReorderWaitSeconds(reorder_wait_seconds),
         wait_timer_(main_io_service),
         main_thread_id_(boost::this_thread::get_id()),
         waiter_(waiter),
@@ -641,33 +643,47 @@ class ActorSchedulingQueue : public SchedulingQueue {
            std::function<void(rpc::SendReplyCallback)> steal_request = nullptr,
            TaskID task_id = TaskID::Nil(),
            const std::vector<rpc::ObjectReference> &dependencies = {}) {
-    // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
-    RAY_CHECK(seq_no != -1);
-
     RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
-    if (client_processed_up_to >= next_seq_no_) {
-      RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "
-                     << client_processed_up_to;
-      next_seq_no_ = client_processed_up_to + 1;
-    }
-    RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
 
-    pending_actor_tasks_[seq_no] = InboundRequest(
+    auto request = InboundRequest(
         std::move(accept_request), std::move(reject_request), std::move(steal_request),
         std::move(send_reply_callback), task_id, dependencies.size() > 0,
         concurrency_group_name, function_descriptor);
 
-    if (dependencies.size() > 0) {
-      waiter_.Wait(dependencies, [seq_no, this]() {
-        RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
-        auto it = pending_actor_tasks_.find(seq_no);
-        if (it != pending_actor_tasks_.end()) {
-          it->second.MarkDependenciesSatisfied();
-          ScheduleRequests();
-        }
-      });
+    if (kExecuteOutOfOrder) {
+      if (dependencies.size() > 0) {
+        waiter_.Wait(dependencies, [this, request = std::move(request)]() mutable {
+          RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+          request.MarkDependenciesSatisfied();
+          pending_actor_tasks_[sequence_no++] = std::move(request);
+        });
+      } else {
+        pending_actor_tasks_[sequence_no++] = std::move(request);
+      }
+    } else {
+      // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in
+      // order.
+      RAY_CHECK(seq_no != -1);
+      if (client_processed_up_to >= next_seq_no_) {
+        RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "
+                       << client_processed_up_to;
+        next_seq_no_ = client_processed_up_to + 1;
+      }
+      RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
+
+      pending_actor_tasks_[seq_no] = std::move(request);
+      if (dependencies.size() > 0) {
+        waiter_.Wait(dependencies, [seq_no, this]() {
+          RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+          auto it = pending_actor_tasks_.find(seq_no);
+          if (it != pending_actor_tasks_.end()) {
+            it->second.MarkDependenciesSatisfied();
+            ScheduleRequests();
+          }
+        });
+      }
+      ScheduleRequests();
     }
-    ScheduleRequests();
   }
 
   size_t Steal(rpc::StealTasksReply *reply) {
@@ -688,14 +704,16 @@ class ActorSchedulingQueue : public SchedulingQueue {
 
   /// Schedules as many requests as possible in sequence.
   void ScheduleRequests() {
-    // Cancel any stale requests that the client doesn't need any longer.
-    while (!pending_actor_tasks_.empty() &&
-           pending_actor_tasks_.begin()->first < next_seq_no_) {
-      auto head = pending_actor_tasks_.begin();
-      RAY_LOG(ERROR) << "Cancelling stale RPC with seqno "
-                     << pending_actor_tasks_.begin()->first << " < " << next_seq_no_;
-      head->second.Cancel();
-      pending_actor_tasks_.erase(head);
+    if (!kExecuteOutOfOrder) {
+      // Cancel any stale requests that the client doesn't need any longer.
+      while (!pending_actor_tasks_.empty() &&
+             pending_actor_tasks_.begin()->first < next_seq_no_) {
+        auto head = pending_actor_tasks_.begin();
+        RAY_LOG(ERROR) << "Cancelling stale RPC with seqno "
+                       << pending_actor_tasks_.begin()->first << " < " << next_seq_no_;
+        head->second.Cancel();
+        pending_actor_tasks_.erase(head);
+      }
     }
 
     // Process as many in-order requests as we can.
@@ -725,21 +743,23 @@ class ActorSchedulingQueue : public SchedulingQueue {
       next_seq_no_++;
     }
 
-    if (pending_actor_tasks_.empty() ||
-        !pending_actor_tasks_.begin()->second.CanExecute()) {
-      // No timeout for object dependency waits.
-      wait_timer_.cancel();
-    } else {
-      // Set a timeout on the queued tasks to avoid an infinite wait on failure.
-      wait_timer_.expires_from_now(boost::posix_time::seconds(reorder_wait_seconds_));
-      RAY_LOG(DEBUG) << "waiting for " << next_seq_no_ << " queue size "
-                     << pending_actor_tasks_.size();
-      wait_timer_.async_wait([this](const boost::system::error_code &error) {
-        if (error == boost::asio::error::operation_aborted) {
-          return;  // time deadline was adjusted
-        }
-        OnSequencingWaitTimeout();
-      });
+    if (!kExecuteOutOfOrder) {
+      if (pending_actor_tasks_.empty() ||
+          !pending_actor_tasks_.begin()->second.CanExecute()) {
+        // No timeout for object dependency waits.
+        wait_timer_.cancel();
+      } else {
+        // Set a timeout on the queued tasks to avoid an infinite wait on failure.
+        wait_timer_.expires_from_now(boost::posix_time::seconds(kReorderWaitSeconds));
+        RAY_LOG(DEBUG) << "waiting for " << next_seq_no_ << " queue size "
+                       << pending_actor_tasks_.size();
+        wait_timer_.async_wait([this](const boost::system::error_code &error) {
+          if (error == boost::asio::error::operation_aborted) {
+            return;  // time deadline was adjusted
+          }
+          OnSequencingWaitTimeout();
+        });
+      }
     }
   }
 
@@ -757,8 +777,12 @@ class ActorSchedulingQueue : public SchedulingQueue {
     }
   }
 
+  /// Execute task out of order, mainly used for threaded actors and async actors.
+  const bool kExecuteOutOfOrder = false;
+  /// TODO
+  int64_t sequence_no = 0;
   /// Max time in seconds to wait for dependencies to show up.
-  const int64_t reorder_wait_seconds_ = 0;
+  const int64_t kReorderWaitSeconds = 0;
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.
   std::map<int64_t, InboundRequest> pending_actor_tasks_;
   /// The next sequence number we are waiting for to arrive.
