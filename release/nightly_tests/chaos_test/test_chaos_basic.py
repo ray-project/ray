@@ -90,7 +90,7 @@ def run_task_workload(total_num_cpus, smoke):
     """Run task-based workload that doesn't require object reconstruction.
     """
 
-    @ray.remote(num_cpus=0.5, max_retries=-1)
+    @ray.remote(num_cpus=1, max_retries=-1)
     def task():
         def generate_data(size_in_kb=10):
             return np.zeros(1024 * size_in_kb, dtype=np.uint8)
@@ -100,12 +100,12 @@ def run_task_workload(total_num_cpus, smoke):
             a = a + random.choice(string.ascii_letters)
         return generate_data(size_in_kb=50)
 
-    @ray.remote(num_cpus=0.5, max_retries=-1)
+    @ray.remote(num_cpus=1, max_retries=-1)
     def invoke_nested_task():
         time.sleep(0.8)
         return ray.get(task.remote())
 
-    multiplier = 50
+    multiplier = 25
     # For smoke mode, run less number of tasks
     if smoke:
         multiplier = 1
@@ -153,18 +153,20 @@ def run_actor_workload(total_num_cpus, smoke):
             ray.get(self.db_actor.add.remote(letter))
 
     NUM_CPUS = int(total_num_cpus)
-    multiplier = 50
+    multiplier = 10
     # For smoke mode, run less number of tasks
     if smoke:
         multiplier = 1
     TOTAL_TASKS = int(300 * multiplier)
     current_node_ip = ray.worker.global_worker.node_ip_address
-    db_actor = DBActor.options(resources={
+    db_actors = [DBActor.options(resources={
         f"node:{current_node_ip}": 0.001
-    }).remote()
+    }).remote() for _ in range(NUM_CPUS)]
 
     pb = ProgressBar("Chaos test", TOTAL_TASKS * NUM_CPUS)
-    actors = [ReportActor.remote(db_actor) for _ in range(NUM_CPUS)]
+    actors = []
+    for db_actor in db_actors:
+        actors.append(ReportActor.remote(db_actor))
     results = []
     highest_reported_num = 0
     for a in actors:
@@ -181,7 +183,8 @@ def run_actor_workload(total_num_cpus, smoke):
         lambda: (
             ray.cluster_resources().get("CPU", 0)
             == ray.available_resources().get("CPU", 0)))
-    letter_dict = ray.get((db_actor.get.remote()))
+    letter_dict = ray.get(
+        [db_actor.get.remote() for db_actor in db_actors])
     # Make sure the DB actor didn't lose any report.
     # If this assert fails, that means at least once actor task semantic
     # wasn't guaranteed.
