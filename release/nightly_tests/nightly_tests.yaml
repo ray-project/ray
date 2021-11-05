@@ -242,6 +242,27 @@
     timeout: 7200
     script: python stress_tests/test_placement_group.py
 
+# Stress tests with many threaded actors.
+- name: threaded_actors_stress_test
+  cluster:
+    app_config: stress_tests/stress_tests_app_config.yaml
+    compute_template: stress_tests/stress_test_threaded_actor_compute.yaml
+
+  run:
+    timeout: 7200
+    prepare: python wait_cluster.py 201 600
+    script: python stress_tests/test_threaded_actors.py --test-runtime 3600 --kill-interval_s 60
+
+  smoke_test:
+    cluster:
+      app_config: stress_tests/stress_tests_app_config.yaml
+      compute_template: stress_tests/smoke_test_compute.yaml
+
+    run:
+      timeout: 3600
+      prepare: python wait_cluster.py 5 600
+      script: python stress_tests/test_threaded_actors.py --test-runtime 1800 --kill-interval_s 30
+  stable: false
 
 - name: grpc_stress_test_placement_group
   cluster:
