@@ -187,7 +187,7 @@ class RemotePdb(Pdb):
             "job_id": ray.get_runtime_context().job_id.hex(),
         })
         _internal_kv_put("RAY_PDB_CONTINUE_{}".format(self._breakpoint_uuid),
-                         data, ray_constants.KV_NAMESPACE_PDB)
+                         data, namespace=ray_constants.KV_NAMESPACE_PDB)
         self.__restore()
         self.handle.connection.close()
         return Pdb.do_continue(self, arg)

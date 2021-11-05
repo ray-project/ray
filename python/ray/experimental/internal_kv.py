@@ -39,7 +39,7 @@ def __make_key(namespace: Optional[str], key: bytes) -> bytes:
 
 def __parse_key(key: bytes) -> Tuple[Optional[str], bytes]:
     assert isinstance(key, bytes)
-    if not key.startswith(__NS_START_CHAR + ":"):
+    if not key.startswith(__NS_START_CHAR + b":"):
         return (None, key)
 
     _, ns, key = key.split(b":", 2)

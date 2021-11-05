@@ -81,7 +81,8 @@ class RayInternalKVStore(KVStoreBase):
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
         return ray_kv._internal_kv_del(
-            self.get_storage_key(key), ray_constants.KV_NAMESPACE_SERVE)
+            self.get_storage_key(key),
+            namespace=ray_constants.KV_NAMESPACE_SERVE)
 
 
 class RayLocalKVStore(KVStoreBase):
