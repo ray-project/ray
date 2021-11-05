@@ -1,6 +1,7 @@
 import os
 import signal
 import sys
+import time
 
 import numpy as np
 import pytest
@@ -679,6 +680,47 @@ def test_nondeterministic_output(ray_start_cluster, reconstruction_enabled):
             node_to_kill = cluster.add_node(
                 num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
             ray.get(x)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_reconstruction_hangs(ray_start_cluster):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "max_direct_call_object_size": 100,
+        "task_retry_delay_ms": 100,
+        "object_timeout_milliseconds": 200,
+        "fetch_warn_timeout_milliseconds": 1000,
+    }
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0, _system_config=config, enable_object_reconstruction=True)
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+    cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def sleep():
+        # Task takes longer than the reconstruction timeout.
+        time.sleep(3)
+        return np.zeros(10**5, dtype=np.uint8)
+
+    @ray.remote
+    def dependent_task(x):
+        return
+
+    obj = sleep.options(resources={"node1": 1}).remote()
+    for _ in range(3):
+        ray.get(dependent_task.remote(obj))
+        x = dependent_task.remote(obj)
+        cluster.remove_node(node_to_kill, allow_graceful=False)
+        node_to_kill = cluster.add_node(
+            num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+        ray.get(x)
 
 
 if __name__ == "__main__":
