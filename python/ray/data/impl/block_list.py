@@ -128,10 +128,13 @@ class BlockList:
 
         Returns None if the block list is empty.
         """
-        if not self._blocks:
-            return None
         get_schema = cached_remote_fn(_get_schema)
-        schema = ray.get(get_schema.remote(next(self.iter_blocks())))
+        try:
+            block = next(self.iter_blocks())
+        except (StopIteration, ValueError):
+            # Dataset is empty (no blocks) or was manually cleared.
+            return None
+        schema = ray.get(get_schema.remote(block))
         # Set the schema.
         self._metadata[0].schema = schema
         return schema
