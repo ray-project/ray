@@ -653,65 +653,50 @@ class Trainer(Trainable):
 
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
-
-        # Setup our config: Merge the user-supplied config (which could
-        # be a partial config dict with the class' default).
-        self.config = self.merge_trainer_configs(
-            self.get_default_config(), config, self._allow_unknown_configs)
-
-        # Setup the "env creator" callable.
-        if self._env_id:
-            self.config["env"] = self._env_id
-
+        env = self._env_id
+        if env:
+            config["env"] = env
             # An already registered env.
-            if _global_registry.contains(ENV_CREATOR, self._env_id):
-                self.env_creator = _global_registry.get(
-                    ENV_CREATOR, self._env_id)
-
-            # A class path specifier.
-            elif "." in self._env_id:
+            if _global_registry.contains(ENV_CREATOR, env):
+                self.env_creator = _global_registry.get(ENV_CREATOR, env)
+            # A class specifier.
+            elif "." in env:
 
                 def env_creator_from_classpath(env_context):
                     try:
-                        env_obj = from_config(self._env_id, env_context)
+                        env_obj = from_config(env, env_context)
                     except ValueError:
                         raise EnvError(
-                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(
-                                self._env_id))
+                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env))
                     return env_obj
 
                 self.env_creator = env_creator_from_classpath
             # Try gym/PyBullet/Vizdoom.
             else:
                 self.env_creator = functools.partial(
-                    gym_env_creator, env_descriptor=self._env_id)
-        # No env -> Env creator always returns None.
+                    gym_env_creator, env_descriptor=env)
         else:
             self.env_creator = lambda env_config: None
 
+        # Merge the supplied config with the class default, but store the
+        # user-provided one.
+        self.raw_user_config = config
+        self.config = self.merge_trainer_configs(self._default_config, config,
+                                                 self._allow_unknown_configs)
+
         # Check and resolve DL framework settings.
-        # Tf-eager (tf2|tfe), possibly with tracing set to True. Recommend
-        # setting tracing to True for speedups.
+        # Enable eager/tracing support.
         if tf1 and self.config["framework"] in ["tf2", "tfe"]:
             if self.config["framework"] == "tf2" and tfv < 2:
                 raise ValueError("`framework`=tf2, but tf-version is < 2.0!")
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
-            logger.info(
-                f"Executing eagerly (framework='{self.config['framework']}'),"
-                f" with eager_tracing={self.config['eager_tracing']}. For "
-                "production workloads, make sure to set eager_tracing=True in"
-                " order to match the speed of tf-static-graph "
-                "(framework='tf')")
-        # Tf-static-graph (framework=tf): Recommend upgrading to tf2 and
-        # enabling eager tracing for similar speed.
-        elif tf1 and self.config["framework"] == "tf":
-            logger.info(
-                "Your framework setting is 'tf', meaning you are using static"
-                "-graph mode. Set framework='tf2' to enable eager execution "
-                "with tf2.x. You may also want to then set eager_tracing=True"
-                " in order to reach similar execution speed as with "
-                "static-graph mode.")
+            logger.info("Executing eagerly, with eager_tracing={}".format(
+                self.config["eager_tracing"]))
+        if tf1 and not tf1.executing_eagerly() and \
+                self.config["framework"] != "torch":
+            logger.info("Tip: set framework=tfe or the --eager flag to enable "
+                        "TensorFlow eager execution")
 
         # Set Trainer's seed after we have - if necessary - enabled
         # tf eager-execution.
