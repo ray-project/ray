@@ -118,8 +118,8 @@ class StandardAutoscaler:
             prefix_cluster_info: Whether to add the cluster name to info strs.
             event_summarizer: Utility to consolidate duplicated messages.
             prom_metrics: Prometheus metrics for autoscaler-related operations.
-            gcs_node_info_stub: Stub for interactions with Ray nodes via GCS.
-                Used to drain nodes before termination.
+            gcs_node_info_stub: Stub for interactions with Ray nodes via gRPC
+                request to the GCS. Used to drain nodes before termination.
         """
 
         if isinstance(config_reader, str):
