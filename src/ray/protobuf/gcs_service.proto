@@ -602,7 +602,7 @@ message GcsSubscriberCommandBatchReply {
 service InternalPubSubGcsService {
   /// The request to sent to GCS to publish messages.
   /// Currently only supporting error info, logs and Python function messages.
-  rpc GcPublish(GcsPublishRequest) returns (GcsPublishReply);
+  rpc GcsPublish(GcsPublishRequest) returns (GcsPublishReply);
   /// The long polling request sent to GCS for pubsub operations.
   /// The long poll request will be replied once there are a batch of messages that
   /// need to be published to the caller (subscriber).
