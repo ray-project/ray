@@ -129,7 +129,7 @@ The following links were correct during the writing of this section. In case the
 
 - bazel 4.2 (https://github.com/bazelbuild/bazel/releases/tag/4.2.1)
 - Microsoft Visual Studio 2019 (or Microsoft Build Tools 2019 - https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019)
-- JDK 15 (https://www.oracle.com/java/technologies/javase-jdk15-downloads.html)
+- JDK 15 (https://www.oracle.com/java/technologies/downloads/)
 - Miniconda 3 (https://docs.conda.io/en/latest/miniconda.html)
 - git for Windows, version 2.31.1 or later (https://git-scm.com/download/win)
 

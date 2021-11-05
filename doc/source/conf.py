@@ -277,9 +277,10 @@ linkcheck_anchors = False
 # Also exclude some known broken links.
 linkcheck_ignore = [
     r"^((?!http).)*$",
-    "http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf",
-    "https://mvnrepository.com/artifact/*",
-    "https://staroid.com/settings/accesstokens",
+    "http://ala2017.it.nuigalway.ie/papers/ALA2017_Gupta.pdf", # broken
+    "https://mvnrepository.com/artifact/*", # working but somehow not with linkcheck
+    "https://staroid.com/settings/accesstokens", # broken
+    "https://scikit-optimize.github.io/stable/modules/", # working but somehow not with linkcheck
 ]
 
 # -- Options for HTML output ----------------------------------------------
