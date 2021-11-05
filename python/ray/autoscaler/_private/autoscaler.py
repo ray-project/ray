@@ -443,14 +443,14 @@ class StandardAutoscaler:
                 logger.error(
                     f"Failed to drain raylets with ids {failed_to_drain}.")
 
-        # If we get a grpc error with an UNIMPLEMENTED code, fail silently.
+        # If we get a gRPC error with an UNIMPLEMENTED code, fail silently.
         # This error indicates that the GCS is using Ray version < 1.8.0,
         # for which DrainNode is not implemented.
         except grpc._channel._InactiveRpcError as e:
             # If the code is unimplemented, pass.
             if e.code() == grpc.StatusCode.UNIMPLEMENTED:
                 pass
-            # Otherwise, it's a plane old RPC error and we should log it in the
+            # Otherwise, it's a plane old gRPC error and we should log it in the
             # next `except` clause.
             else:
                 raise e
