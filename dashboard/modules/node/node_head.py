@@ -117,7 +117,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 for node_id in alive_node_ids:
                     key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}" \
                           f"{node_id}"
-                    agent_port = await aioredis_client.get(key)
+                    # TODO: Use async version if performance is an issue
+                    agent_port = ray.experimental.internal_kv._internal_kv_get(
+                        key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
                     if agent_port:
                         agents[node_id] = json.loads(agent_port)
                 for node_id in agents.keys() - set(alive_node_ids):
