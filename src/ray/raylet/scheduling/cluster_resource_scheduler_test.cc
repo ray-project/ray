@@ -1174,15 +1174,13 @@ TEST_F(ClusterResourceSchedulerTest, DirtyLocalViewTest) {
   ASSERT_FALSE(resource_scheduler.AllocateLocalTaskResources(task_spec, task_allocation));
 
   for (int num_slots_available = 0; num_slots_available <= 2; num_slots_available++) {
-    // Remote node reports updated resource availability.
-    resource_scheduler.AddOrUpdateNode(remote, {{"CPU", 2.}},
-                                       {{"CPU", num_slots_available}});
     rpc::ResourcesData data;
     int64_t t;
     bool is_infeasible;
     for (int i = 0; i < 3; i++) {
-      // Resource usage report tick should reset the remote node's resources.
-      resource_scheduler.FillResourceUsage(data);
+      // Remote node reports update local view.
+      resource_scheduler.AddOrUpdateNode(remote, {{"CPU", 2.}},
+                                         {{"CPU", num_slots_available}});
       for (int j = 0; j < num_slots_available; j++) {
         ASSERT_EQ(remote, resource_scheduler.GetBestSchedulableNode(
                               task_spec, false, false, true, false, &t, &is_infeasible));

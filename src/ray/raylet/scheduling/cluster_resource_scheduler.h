@@ -94,12 +94,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///     are available when we call this function, and this way we avoid
   ///     a map find call which could be expensive.)
   ///
-  ///  \return: -1, if the request cannot be scheduled. This happens when at
-  ///           least a hard constraints is violated.
-  ///           >= 0, the number soft constraint violations. If 0, no
-  ///           constraint is violated.
-  int64_t IsSchedulable(const ResourceRequest &resource_request, int64_t node_id,
-                        const NodeResources &resources) const;
+  ///  \return: Whether the request can be scheduled.
+  bool IsSchedulable(const ResourceRequest &resource_request, int64_t node_id,
+                     const NodeResources &resources) const;
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.

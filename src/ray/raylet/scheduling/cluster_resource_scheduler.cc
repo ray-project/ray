@@ -172,17 +172,15 @@ bool ClusterResourceScheduler::RemoveNode(const std::string &node_id_string) {
   return RemoveNode(node_id);
 }
 
-int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
-                                                int64_t node_id,
-                                                const NodeResources &resources) const {
-  int violations = 0;
-
+bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
+                                             int64_t node_id,
+                                             const NodeResources &resources) const {
   if (resource_request.requires_object_store_memory && resources.object_pulls_queued &&
       node_id != local_node_id_) {
     // It's okay if the local node's pull manager is at capacity because we
     // will eventually spill the task back from the waiting queue if its args
     // cannot be pulled.
-    return -1;
+    return false;
   }
 
   // First, check predefined resources.
@@ -191,7 +189,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_
         resources.predefined_resources[i].available) {
       // A hard constraint has been violated, so we cannot schedule
       // this resource request.
-      return -1;
+      return false;
     }
   }
 
@@ -202,16 +200,16 @@ int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_
     if (it == resources.custom_resources.end()) {
       // Requested resource doesn't exist at this node.
       // This is a hard constraint so cannot schedule this resource request.
-      return -1;
+      return false;
     } else {
       if (task_req_custom_resource.second > it->second.available) {
         // Resource constraint is violated.
-        return -1;
+        return false;
       }
     }
   }
 
-  return violations;
+  return true;
 }
 
 int64_t ClusterResourceScheduler::GetBestSchedulableNode(
@@ -298,7 +296,7 @@ bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
   NodeResources *resources = it->second.GetMutableLocalView();
 
   // Just double check this node can still schedule the resource request.
-  if (IsSchedulable(resource_request, node_id, *resources) == -1) {
+  if (!IsSchedulable(resource_request, node_id, *resources)) {
     return false;
   }
 
@@ -1079,7 +1077,7 @@ bool ClusterResourceScheduler::IsLocallySchedulable(
     const absl::flat_hash_map<std::string, double> &shape) {
   auto resource_request = ResourceMapToResourceRequest(
       string_to_int_map_, shape, /*requires_object_store_memory=*/false);
-  return IsSchedulable(resource_request, local_node_id_, GetLocalNodeResources()) == 0;
+  return IsSchedulable(resource_request, local_node_id_, GetLocalNodeResources());
 }
 
 }  // namespace ray
