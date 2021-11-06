@@ -202,8 +202,8 @@ def test_checkpoint(ray_start_2_cpus, tmp_path):
     e.start_training(train_func, run_dir=tmp_path)
     e.finish_training()
 
-    assert e.latest_checkpoint is not None
-    assert e.latest_checkpoint["epoch"] == 1
+    assert e.latest_checkpoint() is not None
+    assert e.latest_checkpoint()["epoch"] == 1
 
 
 def test_persisted_checkpoint(ray_start_2_cpus, tmp_path):
@@ -218,12 +218,12 @@ def test_persisted_checkpoint(ray_start_2_cpus, tmp_path):
     e.start_training(train_func, run_dir=tmp_path)
     e.finish_training()
 
-    assert e.latest_checkpoint_id == 2
-    assert e.latest_checkpoint is not None
-    assert e.latest_checkpoint["epoch"] == 1
-    assert e.best_checkpoint_path is not None
+    assert e.latest_checkpoint_id() == 2
+    assert e.latest_checkpoint() is not None
+    assert e.latest_checkpoint()["epoch"] == 1
+    assert e.best_checkpoint_path() is not None
 
-    assert os.path.exists(e.best_checkpoint_path)
+    assert os.path.exists(e.best_checkpoint_path())
 
     def validate():
         checkpoint = train.load_checkpoint()
@@ -233,7 +233,7 @@ def test_persisted_checkpoint(ray_start_2_cpus, tmp_path):
     e2 = BackendExecutor(config)
     e2.start()
     e2.start_training(
-        validate, checkpoint=e.best_checkpoint_path, run_dir=tmp_path)
+        validate, checkpoint=e.best_checkpoint_path(), run_dir=tmp_path)
     e2.finish_training()
 
 
@@ -249,12 +249,12 @@ def test_persisted_checkpoint_id(ray_start_2_cpus, tmp_path):
     e.start_training(train_func, run_dir=tmp_path, latest_checkpoint_id=100)
     e.finish_training()
 
-    assert e.latest_checkpoint_id == 102
-    assert e.latest_checkpoint is not None
-    assert e.latest_checkpoint["epoch"] == 1
-    assert e.best_checkpoint_path is not None
+    assert e.latest_checkpoint_id() == 102
+    assert e.latest_checkpoint() is not None
+    assert e.latest_checkpoint()["epoch"] == 1
+    assert e.best_checkpoint_path() is not None
 
-    assert os.path.exists(e.best_checkpoint_path)
+    assert os.path.exists(e.best_checkpoint_path())
 
 
 def test_mismatch_checkpoint_report(ray_start_2_cpus, tmp_path):

@@ -838,7 +838,7 @@ def test_max_failures(ray_start_2_cpus):
     iterator = trainer.run_iterator(train_func)
     with pytest.raises(RuntimeError):
         iterator.get_final_results(force=True)
-    assert iterator._executor._num_failures == 3
+    assert ray.get(iterator._executor._get_num_failures.remote()) == 3
 
 
 def test_start_max_failures(ray_start_2_cpus):
@@ -873,7 +873,8 @@ def test_worker_kill(ray_start_2_cpus, backend):
 
     trainer.start()
     kill_callback = KillCallback(
-        fail_on=0, worker_group=trainer._executor.worker_group)
+        fail_on=0,
+        worker_group=ray.get(trainer._executor.get_worker_group.remote()))
     trainer.run(train_func, callbacks=[kill_callback])
     # Run 1: iter=0, counter=1, Successful
     # Run 2: iter=1, counter=1, Unsuccessful, starts training from beginning
@@ -885,7 +886,8 @@ def test_worker_kill(ray_start_2_cpus, backend):
     trainer.start()
 
     kill_callback = KillCallback(
-        fail_on=1, worker_group=trainer._executor.worker_group)
+        fail_on=1,
+        worker_group=ray.get(trainer._executor.get_worker_group.remote()))
     trainer.run(train_func, callbacks=[kill_callback])
     # Run 1: iter=0, counter=1, Successful
     # Run 2: iter=1, counter=2, Successful
@@ -918,7 +920,8 @@ def test_worker_kill_checkpoint(ray_start_2_cpus):
     trainer = Trainer(test_config, num_workers=2)
     trainer.start()
     kill_callback = KillCallback(
-        fail_on=0, worker_group=trainer._executor.worker_group)
+        fail_on=0,
+        worker_group=ray.get(trainer._executor.get_worker_group.remote()))
 
     trainer.run(train_func, callbacks=[kill_callback])
 
@@ -935,7 +938,8 @@ def test_worker_kill_checkpoint(ray_start_2_cpus):
     trainer.start()
 
     kill_callback = KillCallback(
-        fail_on=1, worker_group=trainer._executor.worker_group)
+        fail_on=1,
+        worker_group=ray.get(trainer._executor.get_worker_group.remote()))
     trainer.run(train_func, callbacks=[kill_callback])
     # Run 1: epoch=0, counter=1, Successful
     # *Checkpoint saved*
@@ -1197,6 +1201,7 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     def get_resources():
         return os.environ["CUDA_VISIBLE_DEVICES"]
 
+    # TODO(matt): This needs to be set on the BackendExecutor
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
 
     # 0 GPUs will be requested and should not raise an error.

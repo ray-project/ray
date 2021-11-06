@@ -63,15 +63,6 @@ class BackendExecutor:
             and ``num_gpus_per_worker``.
         max_retries (int): Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
-
-    Attributes:
-        latest_checkpoint_dir (Optional[Path]): Path to the file directory for
-            the checkpoints from the latest run. Configured through
-            ``start_training``
-        best_checkpoint_path (Optional[Path]): Path to the best persisted
-            checkpoint from the latest run.
-        latest_checkpoint (Optional[Dict]): The latest saved checkpoint. This
-            checkpoint may not be saved to disk.
     """
 
     def __init__(
@@ -530,21 +521,17 @@ class BackendExecutor:
         self.worker_group = InactiveWorkerGroup()
         self.dataset_shards = None
 
-    @property
     def is_started(self):
         return not isinstance(self.worker_group, InactiveWorkerGroup)
 
-    @property
     def latest_checkpoint_dir(self) -> Optional[Path]:
         """Path to the latest checkpoint directory."""
         return self.checkpoint_manager.latest_checkpoint_dir
 
-    @property
     def best_checkpoint_path(self) -> Optional[Path]:
         """Path to the best persisted checkpoint."""
         return self.checkpoint_manager.best_checkpoint_path
 
-    @property
     def latest_checkpoint_id(self) -> Optional[int]:
         """The checkpoint id of most recently saved checkpoint.
 
@@ -556,7 +543,6 @@ class BackendExecutor:
         else:
             return checkpoint_id
 
-    @property
     def latest_checkpoint(self) -> Optional[Dict]:
         """Latest checkpoint object."""
         return self.checkpoint_manager.latest_checkpoint
@@ -578,6 +564,12 @@ class BackendExecutor:
                                "failure attempts by setting the "
                                "`max_retries` arg in your `Trainer`.") \
                 from None
+
+    def get_worker_group(self):
+        return self.worker_group
+
+    def _get_num_failures(self):
+        return self._num_failures
 
 
 class Backend(metaclass=abc.ABCMeta):

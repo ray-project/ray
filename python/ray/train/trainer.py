@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, \
     Type
 
+import ray
 from ray.actor import ActorHandle
 from ray.train.backends.backend import BackendConfig, BackendExecutor, \
     InactiveWorkerGroupError, TrainBackendError, TrainingWorkerError
@@ -124,7 +125,8 @@ class Trainer:
                     "request a positive number of `GPU` in "
                     "`resources_per_worker.")
 
-        self._executor = BackendExecutor(
+        remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
+        self._executor = remote_executor.remote(
             backend_config=backend_config,
             num_workers=num_workers,
             num_cpus_per_worker=num_cpus,
@@ -184,7 +186,7 @@ class Trainer:
             initialization_hook (Optional[Callable]): The function to call on
                 each worker when it is instantiated.
         """
-        self._executor.start(initialization_hook)
+        ray.get(self._executor.start.remote(initialization_hook))
 
     def run(self,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
@@ -372,7 +374,7 @@ class Trainer:
         ``train.checkpoint()`` has not been called from ``train_func``within
         the most recent call to ``run``.
         """
-        return self._executor.latest_checkpoint_dir
+        return ray.get(self._executor.latest_checkpoint_dir.remote())
 
     @property
     def best_checkpoint_path(self) -> Optional[Path]:
@@ -385,7 +387,7 @@ class Trainer:
         ``train.checkpoint()`` has not been called from ``train_func`` within
         the most recent call to ``run``.
         """
-        return self._executor.best_checkpoint_path
+        return ray.get(self._executor.best_checkpoint_path.remote())
 
     @property
     def latest_checkpoint(self) -> Optional[Dict]:
@@ -396,11 +398,11 @@ class Trainer:
         Returns ``None`` if ``run()`` has not been called or if
         ``train.checkpoint()`` has not been called from ``train_func``.
         """
-        return self._executor.latest_checkpoint
+        return ray.get(self._executor.latest_checkpoint.remote())
 
     def shutdown(self):
         """Shuts down the training execution service."""
-        self._executor.shutdown()
+        ray.get(self._executor.shutdown.remote())
 
     def to_tune_trainable(
             self,
@@ -430,7 +432,7 @@ class Trainer:
             raise ValueError("Tune is not installed. Please install ray["
                              "tune] to use the Tune integration.")
 
-        if self._executor.is_started:
+        if ray.get(self._executor.is_started.remote()):
             raise RuntimeError("The Trainer must not be active to use "
                                "`to_tune_trainable`. Either shutdown the "
                                "Trainer or don't start it in the first place.")
@@ -471,13 +473,17 @@ class Trainer:
             args, kwargs: Arguments to pass into the ``__init__`` of the
                 provided ``train_cls``.
         """
-        if self._executor.is_started:
+        if ray.get(self._executor.is_started.remote()):
             raise RuntimeError("The Trainer must not be active to use "
                                "`to_worker_group`. Either shutdown the "
                                "Trainer or don't start it in the first place.")
-        self._executor.start(
-            train_cls=train_cls, train_cls_args=args, train_cls_kwargs=kwargs)
-        return TrainWorkerGroup(self._executor.worker_group)
+        ray.get(
+            self._executor.start.remote(
+                train_cls=train_cls,
+                train_cls_args=args,
+                train_cls_kwargs=kwargs))
+        worker_group = ray.get(self._executor.get_worker_group.remote())
+        return TrainWorkerGroup(worker_group)
 
 
 class TrainWorkerGroup:
@@ -561,14 +567,14 @@ class TrainingIterator:
                         checkpoint_strategy,
                         latest_checkpoint_id=None):
         self._run_with_error_handling(
-            lambda: self._executor.start_training(
+            lambda: ray.get(self._executor.start_training.remote(
                 train_func=train_func,
                 run_dir=run_dir,
                 dataset=dataset,
                 checkpoint=checkpoint,
                 checkpoint_strategy=checkpoint_strategy,
                 latest_checkpoint_id=latest_checkpoint_id
-            )
+            ))
         )
 
     def _run_with_error_handling(self, func: Callable):
@@ -580,9 +586,10 @@ class TrainingIterator:
                 self._train_func,
                 self._run_dir,
                 self._dataset,
-                self._executor.latest_checkpoint,
+                ray.get(self._executor.latest_checkpoint.remote()),
                 self._checkpoint_strategy,
-                latest_checkpoint_id=self._executor.latest_checkpoint_id)
+                latest_checkpoint_id=ray.get(
+                    self._executor.latest_checkpoint_id.remote()))
             return self._run_with_error_handling(func)
         except InactiveWorkerGroupError:
             raise RuntimeError(
@@ -600,12 +607,11 @@ class TrainingIterator:
         if self.is_finished():
             raise StopIteration
         next_results = self._run_with_error_handling(
-            self._executor.fetch_next_result)
+            lambda: ray.get(self._executor.fetch_next_result.remote()))
         if next_results is None:
             try:
-                self._final_results = \
-                    self._run_with_error_handling(
-                        self._executor.finish_training)
+                self._final_results = self._run_with_error_handling(
+                    lambda: ray.get(self._executor.finish_training.remote()))
             finally:
                 self._finished_training = True
             raise StopIteration
@@ -628,9 +634,9 @@ class TrainingIterator:
             assert self._final_results is None
             if force:
                 try:
-                    self._final_results = \
-                        self._run_with_error_handling(
-                            self._executor.finish_training)
+                    self._final_results = self._run_with_error_handling(
+                        lambda: ray.get(
+                            self._executor.finish_training.remote()))
                 finally:
                     self._finished_training = True
             else:
