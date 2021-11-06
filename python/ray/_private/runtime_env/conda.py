@@ -301,16 +301,18 @@ class CondaManager:
             with FileLock(os.path.join(self._resources_dir, file_lock_name)):
                 try:
                     conda_yaml_file = os.path.join(self._resources_dir,
-                                                "environment.yml")
+                                                   "environment.yml")
                     with open(conda_yaml_file, "w") as file:
                         yaml.dump(conda_dict, file)
 
                     if conda_env_name in self._created_envs:
                         logger.debug(f"Conda env {conda_env_name} already "
-                                    "created, skipping creation.")
+                                     "created, skipping creation.")
                     else:
                         create_conda_env(
-                            conda_yaml_file, prefix=conda_env_name, logger=logger)
+                            conda_yaml_file,
+                            prefix=conda_env_name,
+                            logger=logger)
                         self._created_envs.add(conda_env_name)
                 finally:
                     os.remove(conda_yaml_file)
