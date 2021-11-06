@@ -103,6 +103,13 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
 RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
 
+// TODO (Alex): Remove this feature flag once scheduling class capping is
+// implemented.
+/// Whether to include function descriptors, and depth in the
+// scheduling class. / This causes tasks to be queued differently, so it may
+// effect scheduling / behavior.
+RAY_CONFIG(bool, complex_scheduling_class, false)
+
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
@@ -305,7 +312,7 @@ RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 
 /// Maximum number of pending lease requests per scheduling category
-RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 1)
+RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 10)
 
 /// Interval to restart dashboard agent after the process exit.
 RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
