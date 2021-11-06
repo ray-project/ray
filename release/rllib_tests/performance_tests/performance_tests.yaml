@@ -3,7 +3,7 @@ apex-breakoutnoframeskip-v4:
     run: APEX
     frameworks: [ "tf", "tf2", "torch" ]
     stop:
-        time_total_s: 300  #3600
+        time_total_s: 3600
     config:
         double_q: false
         dueling: false
@@ -33,7 +33,7 @@ appo-pongnoframeskip-v4:
     run: APPO
     frameworks: [ "tf", "tf2", "torch" ]
     stop:
-        time_total_s: 300  # 2000
+        time_total_s: 2000
     config:
         vtrace: True
         use_kl_loss: False
@@ -57,7 +57,7 @@ cql-halfcheetahbulletenv-v0:
     run: CQL
     frameworks: [ "tf", "tf2", "torch" ]
     stop:
-        time_total_s: 300  #1800
+        time_total_s: 1800
     config:
         # Use input produced by expert SAC algo.
         input: ["~/halfcheetah_expert_sac.zip"]
@@ -106,7 +106,7 @@ sac-halfcheetahbulletenv-v0:
     run: SAC
     frameworks: [ "tf", "tf2", "torch" ]
     stop:
-        time_total_s: 300  #3600
+        time_total_s: 3600
     config:
         horizon: 1000
         soft_horizon: false
