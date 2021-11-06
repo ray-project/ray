@@ -8,7 +8,6 @@ import shutil
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
 from zipfile import ZipFile
-from ray import ray_constants
 from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists)
 from ray._private.thirdparty.pathspec import PathSpec
@@ -180,8 +179,7 @@ def _store_package_in_gcs(
 
     logger.info(f"Pushing file package '{pkg_uri}' ({size_str}) to "
                 "Ray cluster...")
-    _internal_kv_put(
-        pkg_uri, data, namespace=ray_constants.KV_NAMESPACE_PACKAGE)
+    _internal_kv_put(pkg_uri, data)
     logger.info(f"Successfully pushed file package '{pkg_uri}'.")
     return len(data)
 
@@ -241,8 +239,7 @@ def package_exists(pkg_uri: str) -> bool:
     """
     protocol, pkg_name = parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
-        return _internal_kv_exists(
-            pkg_uri, namespace=ray_constants.KV_NAMESPACE_PACKAGE)
+        return _internal_kv_exists(pkg_uri)
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -390,8 +387,7 @@ def download_and_unpack_package(
             protocol, pkg_name = parse_uri(pkg_uri)
             if protocol == Protocol.GCS:
                 # Download package from the GCS.
-                code = _internal_kv_get(
-                    pkg_uri, namespace=ray_constants.KV_NAMESPACE_PACKAGE)
+                code = _internal_kv_get(pkg_uri)
                 if code is None:
                     raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
                 code = code or b""
