@@ -20,7 +20,7 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
         password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     gcs_server_addr = redis_cli.get("GcsServerAddress").decode("utf-8")
 
-    gcs_utils.init_gcs_address(gcs_server_addr)
+    gcs_utils.init_gcs_address(gcs_server_addr, update=True)
     assert gcs_utils.get_gcs_address() == gcs_server_addr
 
     subscriber = gcs_utils.GcsSubscriber()
@@ -36,6 +36,41 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
     assert len(errors) == 2
     assert errors[0] == (b"aaa_id", err1)
     assert errors[1] == (b"bbb_id", err2)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "_system_config": {
+            "gcs_grpc_based_pubsub": True
+        }
+    }],
+    indirect=True)
+async def test_aio_publish_and_subscribe_error_info(ray_start_regular):
+    address_info = ray_start_regular
+    redis_cli = ray._private.services.create_redis_client(
+        address_info["redis_address"],
+        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    gcs_server_addr = redis_cli.get("GcsServerAddress").decode("utf-8")
+
+    gcs_utils.init_gcs_address(gcs_server_addr, update=True)
+    assert gcs_utils.get_gcs_address() == gcs_server_addr
+
+    subscriber = gcs_utils.GcsAioSubscriber()
+    await subscriber.subscribe_error()
+
+    publisher = gcs_utils.GcsAioPublisher()
+    err1 = ErrorTableData(error_message="test error message 1")
+    err2 = ErrorTableData(error_message="test error message 2")
+    await publisher.publish_error(b"aaa_id", err1)
+    await publisher.publish_error(b"bbb_id", err2)
+
+    errors = await subscriber.poll_error()
+    assert len(errors) == 2
+    assert errors[0] == (b"aaa_id", err1)
+    assert errors[1] == (b"bbb_id", err2)
+
+    gcs_utils.get_gcs_aio_channel().close()
 
 
 if __name__ == "__main__":
