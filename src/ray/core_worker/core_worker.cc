@@ -1856,7 +1856,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       // For named actor, we still go through the sync way because for
       // functions like list actors these actors need to be there, especially
       // for local driver. But the current code all go through the gcs right now.
-      const auto status = actor_creator_->RegisterActor(task_spec);
+      auto status = actor_creator_->RegisterActor(task_spec);
       if (!status.ok()) {
         return status;
       }
