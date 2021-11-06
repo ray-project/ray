@@ -13,7 +13,6 @@ import sys
 import tempfile
 import threading
 import time
-import grpc
 
 from typing import Optional, Dict
 from collections import defaultdict
