@@ -169,8 +169,8 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         deployments_per_controller: List[Dict[str, Any]] = []
         for key in serve_snapshot_keys:
             val_bytes = _internal_kv_get(
-                key,
-                namespace=ray_constants.KV_NAMESPACE_SERVE) or "{}".encode("utf-8")
+                key, namespace=ray_constants.KV_NAMESPACE_SERVE
+            ) or "{}".encode("utf-8")
             deployments_per_controller.append(
                 json.loads(val_bytes.decode("utf-8")))
         # Merge the deployments dicts of all controllers.
@@ -190,9 +190,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
     async def get_session_name(self):
         # TODO: Use async version if performance is an issue
         encoded_name = ray.experimental.internal_kv._internal_kv_get(
-            "session_name",
-            namespace=ray_constants.KV_NAMESPACE_SESSION
-        )
+            "session_name", namespace=ray_constants.KV_NAMESPACE_SESSION)
         return encoded_name.decode()
 
     async def run(self, server):

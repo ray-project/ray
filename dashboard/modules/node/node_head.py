@@ -7,6 +7,7 @@ from aioredis.pubsub import Receiver
 
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
+from ray import ray_constants
 from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node.node_consts import (MAX_LOGS_TO_CACHE,
                                                     LOG_PRUNE_THREASHOLD)
@@ -93,7 +94,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
     async def _update_nodes(self):
         # TODO(fyrestone): Refactor code for updating actor / node / job.
         # Subscribe actor channel.
-        aioredis_client = self._dashboard_head.aioredis_client
         while True:
             try:
                 nodes = await self._get_nodes()
