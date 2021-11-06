@@ -158,8 +158,8 @@ void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &reque
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       });
   if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to register actor: " << status.ToString()
-                   << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
+    RAY_LOG(WARNING) << "Failed to register actor: " << status.ToString()
+                     << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   }
   ++counts_[CountType::REGISTER_ACTOR_REQUEST];
@@ -381,7 +381,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
     } else {
       std::stringstream stream;
       stream << "Actor with name '" << actor->GetName() << "' already exists.";
-      return Status::Invalid(stream.str());
+      return Status::NotFound(stream.str());
     }
   }
 
@@ -451,6 +451,12 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
     RAY_LOG(DEBUG) << "Actor " << actor_id
                    << " may be already destroyed, job id = " << actor_id.JobId();
     return Status::Invalid("Actor may be already destroyed.");
+  }
+
+  const auto &actor_name = iter->second->GetName();
+  // If the actor has the name, the name metadata should be stored already.
+  if (!actor_name.empty()) {
+    RAY_CHECK(!GetActorIDByName(actor_name, iter->second->GetRayNamespace()).IsNil());
   }
 
   if (iter->second->GetState() == rpc::ActorTableData::ALIVE) {
