@@ -282,7 +282,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
   TaskSpecification spec;
   bool release_lineage = true;
-  bool evict_lineage = false;
+  int64_t min_lineage_bytes_to_evict = 0;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -317,11 +317,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       it->second.lineage_footprint_bytes = it->second.spec.GetMessage().ByteSizeLong();
       total_lineage_footprint_bytes_ += it->second.lineage_footprint_bytes;
       if (total_lineage_footprint_bytes_ > max_lineage_bytes_) {
-        RAY_LOG(INFO) << "Evicting task lineage. Total lineage size is "
-                      << total_lineage_footprint_bytes_ / 1e6
+        RAY_LOG(INFO) << "Total lineage size is " << total_lineage_footprint_bytes_ / 1e6
                       << "MB, which exceeds the limit of " << max_lineage_bytes_ / 1e6
                       << "MB";
-        evict_lineage = true;
+        min_lineage_bytes_to_evict =
+            total_lineage_footprint_bytes_ - (max_lineage_bytes_ / 2);
       }
     } else {
       submissible_tasks_.erase(it);
@@ -329,11 +329,10 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   }
 
   RemoveFinishedTaskReferences(spec, release_lineage, worker_addr, reply.borrowed_refs());
-  if (evict_lineage) {
+  if (min_lineage_bytes_to_evict > 0) {
     // Evict at least half of the current lineage.
-    int64_t min_bytes_to_evict =
-        total_lineage_footprint_bytes_ - (max_lineage_bytes_ / 2);
-    reference_counter_->EvictLineage(min_bytes_to_evict);
+    auto bytes_evicted = reference_counter_->EvictLineage(min_lineage_bytes_to_evict);
+    RAY_LOG(INFO) << "Evicted " << bytes_evicted / 1e6 << "MB of task lineage.";
   }
 
   ShutdownIfNeeded();
