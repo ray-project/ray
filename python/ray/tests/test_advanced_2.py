@@ -12,7 +12,7 @@ import signal
 import ray
 import ray.cluster_utils
 
-from ray._private.test_utils import (run_string_as_driver, run_string_as_driver_nonblocking, RayTestTimeoutException,
+from ray._private.test_utils import (run_string_as_driver_nonblocking, RayTestTimeoutException,
                                      wait_for_pid_to_exit, wait_for_condition)
 
 logger = logging.getLogger(__name__)
@@ -768,11 +768,11 @@ ray.init(address="{address}", namespace="test")
 class KvStore:
     def __init__(self):
         self.__data = dict()
-        
+
     def put(self, k, v):
         self.__data[k] = v
         return True
-        
+
     def get(self, k):
         return self.__data[k]
 

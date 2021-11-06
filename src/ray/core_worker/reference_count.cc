@@ -30,24 +30,6 @@ namespace {}  // namespace
 namespace ray {
 namespace core {
 
-inline void InternalUpdateLocalRefCountIndexHelper(
-    const ObjectID &object_id, bool increase,
-    absl::flat_hash_map<ObjectID, int32_t> *local_ref_counts) {
-  auto it = local_ref_counts->find(object_id);
-  if (it == local_ref_counts->end()) {
-    local_ref_counts->emplace(object_id, 0);
-  }
-
-  if (increase) {
-    ++(*local_ref_counts)[object_id];
-  } else {
-    if ((*local_ref_counts)[object_id] == 0) {
-      return;
-    }
-    --(*local_ref_counts)[object_id];
-  }
-}
-
 bool ReferenceCounter::OwnObjects() const {
   absl::MutexLock lock(&mutex_);
   return !object_id_refs_.empty();
@@ -246,9 +228,6 @@ void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
   }
   bool was_in_use = it->second.RefCount() > 0;
   it->second.local_ref_count++;
-
-  InternalUpdateLocalRefCountIndexHelper(object_id, /*increase=*/true,
-                                         &local_ref_counts_);
   RAY_LOG(DEBUG) << "Add local reference " << object_id;
   PRINT_REF_COUNT(it);
   if (!was_in_use && it->second.RefCount() > 0) {
@@ -269,11 +248,12 @@ void ReferenceCounter::SetNestedRefInUseRecursive(ReferenceTable::iterator inner
 }
 
 void ReferenceCounter::ReleaseAllLocalReferences() {
-  absl::flat_hash_map<ObjectID, int32_t> all_local_refs;
+  ReferenceTable all_local_refs;
   {
     absl::MutexLock lock(&mutex_);
-    /// A copy to avoid iter invalidation.
-    all_local_refs = local_ref_counts_;
+    /// A copy of object_id_refs_ to avoid iter invalidation
+    /// and mutex lock reentred.
+    all_local_refs = object_id_refs_;
   }
   for (auto &ref : all_local_refs) {
     RemoveLocalReference(ref.first, nullptr);
@@ -299,8 +279,6 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
     return;
   }
   it->second.local_ref_count--;
-  InternalUpdateLocalRefCountIndexHelper(object_id, /*increase=*/false,
-                                         &local_ref_counts_);
   RAY_LOG(DEBUG) << "Remove local reference " << object_id;
   PRINT_REF_COUNT(it);
   if (it->second.RefCount() == 0) {

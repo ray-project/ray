@@ -823,10 +823,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// locally.
   absl::flat_hash_set<ObjectID> freed_objects_ GUARDED_BY(mutex_);
 
-  /// Index that all local reference counts to speed up the process of releasing
-  /// all local references when shutdown.
-  absl::flat_hash_map<ObjectID, int32_t> local_ref_counts_ GUARDED_BY(mutex_);
-
   /// The callback to call once an object ID that we own is no longer in scope
   /// and it has no tasks that depend on it that may be retried in the future.
   /// The object's Reference will be erased after this callback.
