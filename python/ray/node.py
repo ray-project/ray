@@ -212,7 +212,6 @@ class Node:
         # Start processes.
         if head:
             self.start_head_processes()
-            print("start head: put now")
             ray.experimental.internal_kv._internal_kv_put(
                 "session_name",
                 self.session_name,
