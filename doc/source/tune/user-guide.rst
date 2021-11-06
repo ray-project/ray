@@ -297,21 +297,27 @@ When running a hyperparameter search, Tune can automatically and periodically sa
 
 Let's cover how to configure your checkpoints storage location, checkpointing frequency, and how to resume from a previous run.
 
-A simple checkpointing example
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+A simple (cloud) checkpointing example
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Prequisities to use checkpointing in Ray Tune for the example below:
+Cloud storage-backed Tune checkpointing is the recommended best practice for both performance and reliability reasons. rsync-based checkpointing is also incompatible with Ray on Kubernetes. If you'd rather checkpoint locally or use rsync based checkpointing, see here.
 
-* Your ``my_trainable`` is either a:
-   1. Model trainer with existing Ray integration
-      * XGBoost (example)
-      * Pytorch (example)
-      * Pytorch Lightning (example)
-      * Keras (example)
-      * Tensorflow (example)
-      * LightGBM (example)
-   2. Custom training function (example)
-      * All this means is that your function has to expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir``. See the example linked, it's quite simple to do.
+Prequisities to use cloud checkpointing in Ray Tune for the example below:
+
+Your ``my_trainable`` is either a:
+
+   1. **Model with an existing Ray integration**
+   
+      * XGBoost (`example <https://github.com/ray-project/xgboost_ray#hyperparameter-tuning>`_)
+      * Pytorch (`example <https://docs.ray.io/en/latest/tune/tutorials/tune-pytorch-lightning.html#putting-it-together>`_)
+      * Pytorch Lightning (`example <https://github.com/ray-project/ray_lightning#hyperparameter-tuning-with-ray-tune>`_)
+      * Keras (`example <https://docs.ray.io/en/latest/tune/examples/tune_mnist_keras.html>`_)
+      * Tensorflow (`example <https://docs.ray.io/en/latest/raysgd/raysgd_tensorflow.html#tftrainer-example>`_)
+      * LightGBM (`example <https://docs.ray.io/en/latest/lightgbm-ray.html#hyperparameter-tuning>`_)
+  
+   2. **Custom training function**
+   
+      * All this means is that your function has to expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir``. See this example, it's quite simple to do.
 
 Let's assume for this example you're running this script from your laptop, and connecting to your remote Ray cluster via ``ray.init()``, making your script on your laptop the "driver".
 
@@ -321,11 +327,11 @@ Let's assume for this example you're running this script from your laptop, and c
     from ray import tune
     from your_module import my_trainable
 
-    ray.init(address="<cluster-IP>:<port>")
+    ray.init(address="<cluster-IP>:<port>")  # set `address=None` to train on laptop
 
-    # configure how your checkpoints are sync'd to the scheduler/sampler 
+    # configure how checkpoints are sync'd to the scheduler/sampler 
     # we recommend cloud storage checkpointing as it survives the cluster when
-    # instances are terminated, and has low latency/high throughput
+    # instances are terminated, and has better performance
     sync_config = tune.syncConfig(
         upload_dir="s3://my-checkpoints-bucket/path/",  # requires AWS credentials
         sync_to_cloud=True,
@@ -333,7 +339,7 @@ Let's assume for this example you're running this script from your laptop, and c
     )
 
     # here we wrap our Ray model (or custom training func) with a couple of things:
-    # 1) with_parameters() ensures that when we checkpoint, we save the weights, not just the hyperparameters
+    # 1) with_parameters() ensures when we checkpoint, weights are saved (not just hyperparameters)
     # 2) durable() ensures that this trainer can be saved to cloud storage (ie: S3)
     durable_trainer_with_params = tune.with_parameters(tune.durable(my_trainable))
 
@@ -366,10 +372,10 @@ Let's assume for this example you're running this script from your laptop, and c
 
 In this example, checkpoints will be saved:
 
-* Locally: we set ``sync_to_driver=False``, so nothing will be sync'd to the driver (your laptop)
-* S3: ``s3://my-checkpoints-bucket/path/my-tune-exp/<trial_name>/checkpoint_<step>``
-* On head node: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>``
-* On workers nodes (but only for trials done on that node): ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>``
+* **Locally**: not saved! we set ``sync_to_driver=False``, so nothing will be sync'd to the driver (your laptop)
+* **S3**: ``s3://my-checkpoints-bucket/path/my-tune-exp/<trial_name>/checkpoint_<step>``
+* **On head node**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>``
+* **On workers nodes**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node)
 
 If your run stopped for any reason (finished, errored, user CTRL+C), you can restart it any time by running the script above again -- note with ``resume="AUTO"``, it will detect the previous run so long as the ``sync_config`` points to the same location.
 
@@ -389,14 +395,66 @@ If, however, you prefer not to use ``resume="AUTO"`` (or are on an older version
         restore=sync_config,
     )
 
+A simple local/rsync checkpointing example
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Local or rsync checkpointing can be a good option if:
+
+1. You want to tune on a single laptop Ray cluster
+2. You aren't using Ray on Kubernetes (rsync doesn't work with Ray on Kubernetes)
+3. You don't want to use S3
+
+Let's take a look at an example:
+
+.. code-block:: python
+
+    import ray
+    from ray import tune
+    from your_module import my_trainable
+
+    ray.init(address="<cluster-IP>:<port>")  # set `address=None` to train on laptop
+
+    # configure how checkpoints are sync'd to the scheduler/sampler 
+    sync_config = tune.syncConfig(sync_to_driver=True)
+
+    # with_parameters() ensures when we checkpoint, weights are saved (not just hyperparameters)
+    durable_trainer_with_params = tune.with_parameters(my_trainable)
+
+    # this starts the run!
+    tune.run(
+        durable_trainer_with_params,
+
+        # name of your experiment 
+        name="my-tune-exp",
+
+        # a directory where results are stored before being
+        # sync'd to head node/cloud storage
+        local_dir="/tmp/mypath",
+
+        # sync our checkpoints via rsync
+        sync_config=sync_config,
+
+        # we'll checkpoint every 10 iterations, keep the best five
+        # checkpoints (by AUC score, descending), and always checkpoint
+        # at the end of the last run!
+        checkpoint_score_attr="max-auc",
+        keep_checkpoints_num=5,
+        checkpoint_freq=10,
+        checkpoint_at_end=True,
+
+        # a very useful trick! this will resume from the last run specified by
+        # sync_config (if one exists), otherwise it will start a new tuning run
+        resume="AUTO",
+    )
+
 .. _tune-distributed-checkpointing:
 
-Cloud Checkpointing
+Distributed Checkpointing
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node. This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also requires rsync to be installed.
 
-Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing.
+Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing (or use a Ray built-in model type described here).
 
 If you are running Ray Tune on Kubernetes, you should usually use a
 :func:`DurableTrainable <ray.tune.durable>` or a shared filesystem for checkpoint sharing.
@@ -515,7 +573,6 @@ In the example below, each trial will be stopped either when it completes 10 ite
 For more flexibility, you can pass in a function instead. If a function is passed in, it must take ``(trial_id, result)`` as arguments and return a boolean (``True`` if trial should be stopped and ``False`` otherwise).
 
 .. code-block:: python
-
 
     def stopper(trial_id, result):
         return result["mean_accuracy"] / result["training_iteration"] > 5
