@@ -1032,7 +1032,7 @@ sh_test(
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["local", "cartpole"],
-    data = glob(["examples/serving/*.py"]),
+    data = glob(["examples/external_simulators/*.py"]),
 )
 
 sh_test(
@@ -1041,7 +1041,7 @@ sh_test(
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "cartpole"],
-    data = glob(["examples/serving/*.py"]),
+    data = glob(["examples/external_simulators/*.py"]),
 )
 
 sh_test(
@@ -1050,7 +1050,7 @@ sh_test(
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["local", "unity3d"],
-    data = glob(["examples/serving/*.py"]),
+    data = glob(["examples/external_simulators/*.py"]),
 )
 
 sh_test(
@@ -1059,7 +1059,7 @@ sh_test(
     size = "medium",
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
     args = ["remote", "unity3d"],
-    data = glob(["examples/serving/*.py"]),
+    data = glob(["examples/external_simulators/*.py"]),
 )
 
 py_test(
