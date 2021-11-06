@@ -372,7 +372,7 @@ class ParsedRuntimeEnv(dict):
         """Return the protobuf structure of RuntimeEnv."""
         if self._cached_pb is None:
             pb = RuntimeEnv()
-            pb.uris.extend(self.get("py_modules", []))
+            pb.py_modules.extend(self.get("py_modules", []))
             pb.working_dir = self.get("working_dir", "")
             pb.uris.extend(self.get_uris())
             env_vars = self.get("env_vars", {})
