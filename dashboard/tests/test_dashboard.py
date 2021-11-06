@@ -76,6 +76,8 @@ def test_basic(ray_start_with_dashboard):
         host=address[0],
         port=int(address[1]),
         password=ray_constants.REDIS_DEFAULT_PASSWORD)
+    gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
 
     all_processes = ray.worker._global_node.all_processes
     assert ray_constants.PROCESS_TYPE_DASHBOARD in all_processes
@@ -158,8 +160,7 @@ def test_basic(ray_start_with_dashboard):
     assert dashboard_rpc_address is not None
     key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
     agent_ports = ray.experimental.internal_kv._internal_kv_get(
-        key,
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+        key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
     assert agent_ports is not None
 
 
@@ -221,7 +222,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
             assert dump_info["result"] is True
             break
         except (AssertionError, requests.exceptions.ConnectionError) as e:
-            logger.info("Retry because of %s", e)
+            print("Retry because of %s", e)
         finally:
             if time.time() > start_time + timeout_seconds:
                 raise Exception("Timed out while testing.")
@@ -618,6 +619,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         port=int(address[1]),
         password=ray_constants.REDIS_DEFAULT_PASSWORD)
     gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     host, port = address_info["webui_url"].split(":")
     temp_dir = "/tmp/ray"
     log_dir = "/tmp/ray/session_latest/logs"

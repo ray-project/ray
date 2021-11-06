@@ -1211,7 +1211,9 @@ def listen_error_messages_raylet(worker, threads_stopped):
         if _internal_kv_initialized():
             # Get any autoscaler errors that occurred before the call to
             # subscribe.
-            error_message = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+            error_message = _internal_kv_get(
+                DEBUG_AUTOSCALING_ERROR,
+                namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
             if error_message is not None:
                 logger.warning(error_message.decode())
 

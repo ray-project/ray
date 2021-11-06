@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional
 import hashlib
 
 import ray
+from ray import ray_constants
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_pb2
 from ray.core.generated import gcs_service_pb2_grpc
@@ -159,7 +160,8 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         # These are the keys we are interested in:
         # SERVE_CONTROLLER_NAME(+ optional random letters):SERVE_SNAPSHOT_KEY
 
-        serve_keys = _internal_kv_list(SERVE_CONTROLLER_NAME)
+        serve_keys = _internal_kv_list(
+            SERVE_CONTROLLER_NAME, namespace=ray_constants.KV_NAMESPACE_SERVE)
         serve_snapshot_keys = filter(lambda k: SERVE_SNAPSHOT_KEY in str(k),
                                      serve_keys)
 
