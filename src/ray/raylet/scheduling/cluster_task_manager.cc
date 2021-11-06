@@ -726,7 +726,7 @@ void ClusterTaskManager::FillResourceUsage(
     }
     const auto &resources =
         TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
-            .GetResourceMap();
+            .resource_set.GetResourceMap();
     const auto &queue = pair.second;
     const auto &count = queue.size();
 
@@ -761,7 +761,7 @@ void ClusterTaskManager::FillResourceUsage(
     }
     const auto &resources =
         TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
-            .GetResourceMap();
+            .resource_set.GetResourceMap();
     const auto &queue = pair.second;
     const auto &count = queue.size();
 
@@ -792,7 +792,7 @@ void ClusterTaskManager::FillResourceUsage(
     }
     const auto &resources =
         TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
-            .GetResourceMap();
+            .resource_set.GetResourceMap();
     const auto &queue = pair.second;
     const auto &count = queue.size();
 
@@ -1017,6 +1017,7 @@ void ClusterTaskManager::RecordMetrics() {
   stats::NumReceivedTasks.Record(metric_tasks_queued_);
   stats::NumDispatchedTasks.Record(metric_tasks_dispatched_);
   stats::NumSpilledTasks.Record(metric_tasks_spilled_);
+  stats::NumInfeasibleSchedulingClasses.Record(infeasible_tasks_.size());
 
   metric_tasks_queued_ = 0;
   metric_tasks_dispatched_ = 0;

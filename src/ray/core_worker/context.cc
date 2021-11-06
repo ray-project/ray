@@ -144,6 +144,14 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();
 }
 
+int64_t WorkerContext::GetTaskDepth() const {
+  auto task_spec = GetCurrentTask();
+  if (task_spec) {
+    return task_spec->GetDepth();
+  }
+  return 0;
+}
+
 const JobID &WorkerContext::GetCurrentJobID() const { return current_job_id_; }
 
 const TaskID &WorkerContext::GetCurrentTaskID() const {

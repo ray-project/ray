@@ -148,7 +148,7 @@ py_test(
 )
 
 py_test(
-    name = "run_regression_tests_frozenlake_appo",
+    name = "learning_frozenlake_appo",
     main = "tests/run_regression_tests.py",
     tags = ["team:ml", "learning_tests", "learning_tests_discrete"],
     size = "large",

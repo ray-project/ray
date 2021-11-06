@@ -403,7 +403,7 @@ class TFPolicy(Policy):
         assert self.loss_initialized()
 
         # Switch on is_training flag in our batch.
-        postprocessed_batch.is_training = True
+        postprocessed_batch.set_training(True)
 
         builder = TFRunBuilder(self.get_session(), "learn_on_batch")
 
@@ -425,7 +425,7 @@ class TFPolicy(Policy):
             Tuple[ModelGradients, Dict[str, TensorType]]:
         assert self.loss_initialized()
         # Switch on is_training flag in our batch.
-        postprocessed_batch.is_training = True
+        postprocessed_batch.set_training(True)
         builder = TFRunBuilder(self.get_session(), "compute_gradients")
         fetches = self._build_compute_gradients(builder, postprocessed_batch)
         return builder.get(fetches)
@@ -1124,7 +1124,7 @@ class TFPolicy(Policy):
 
         # Mark the batch as "is_training" so the Model can use this
         # information.
-        train_batch.is_training = True
+        train_batch.set_training(True)
 
         # Build the feed dict from the batch.
         feed_dict = {}
