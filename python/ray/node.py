@@ -13,6 +13,7 @@ import sys
 import tempfile
 import threading
 import time
+import grpc
 
 from typing import Optional, Dict
 from collections import defaultdict
@@ -212,7 +213,7 @@ class Node:
         # Start processes.
         if head:
             self.start_head_processes()
-            self.initialize_internal_kv()
+            print("start head: put now")
             ray.experimental.internal_kv._internal_kv_put(
                 "session_name",
                 self.session_name,
@@ -781,6 +782,7 @@ class Node:
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info,
         ]
+        ray.experimental.internal_kv._internal_kv_reset()
         while True:
             try:
                 self.initialize_internal_kv()
@@ -1282,6 +1284,8 @@ class Node:
                 result = ray.experimental.internal_kv._internal_kv_get(
                     key, namespace=namespace)
             except Exception:
+                ray.experimental.internal_kv._internal_kv_reset()
+                self.initialize_internal_kv()
                 result = None
 
             if result is not None:

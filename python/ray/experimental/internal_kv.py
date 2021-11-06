@@ -96,7 +96,6 @@ def _internal_kv_put(key: Union[str, bytes],
 
     if isinstance(key, str):
         key = key.encode()
-
     if isinstance(value, str):
         value = value.encode()
     key = __make_key(namespace, key)

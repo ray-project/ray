@@ -132,6 +132,7 @@ class GcsClient:
         self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(channel)
 
     def internal_kv_get(self, key: bytes) -> bytes:
+        logger.debug(f"internal_kv_get {key}")
         req = gcs_service_pb2.InternalKVGetRequest(key=key)
         reply = self._kv_stub.InternalKVGet(req)
         if reply.status.code == GcsCode.OK:
@@ -144,6 +145,7 @@ class GcsClient:
 
     def internal_kv_put(self, key: bytes, value: bytes,
                         overwrite: bool) -> int:
+        logger.debug(f"internal_kv_put {key} {value} {overwrite}")
         req = gcs_service_pb2.InternalKVPutRequest(
             key=key, value=value, overwrite=overwrite)
         reply = self._kv_stub.InternalKVPut(req)
@@ -154,6 +156,7 @@ class GcsClient:
                                f"due to error {reply.status.message}")
 
     def internal_kv_del(self, key: bytes) -> int:
+        logger.debug(f"internal_kv_del {key}")
         req = gcs_service_pb2.InternalKVDelRequest(key=key)
         reply = self._kv_stub.InternalKVDel(req)
         if reply.status.code == GcsCode.OK:
@@ -163,6 +166,7 @@ class GcsClient:
                                f"due to error {reply.status.message}")
 
     def internal_kv_exists(self, key: bytes) -> bool:
+        logger.debug(f"internal_kv_exists {key}")
         req = gcs_service_pb2.InternalKVExistsRequest(key=key)
         reply = self._kv_stub.InternalKVExists(req)
         if reply.status.code == GcsCode.OK:
@@ -172,6 +176,7 @@ class GcsClient:
                                f"due to error {reply.status.message}")
 
     def internal_kv_keys(self, prefix: bytes) -> List[bytes]:
+        logger.debug(f"internal_kv_keys {prefix}")
         req = gcs_service_pb2.InternalKVKeysRequest(prefix=prefix)
         reply = self._kv_stub.InternalKVKeys(req)
         if reply.status.code == GcsCode.OK:

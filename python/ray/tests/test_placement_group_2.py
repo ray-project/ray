@@ -10,6 +10,7 @@ except ImportError:
 import ray
 import ray.cluster_utils
 import ray._private.gcs_utils as gcs_utils
+from ray._private.client_mode_hook import disable_client_hook
 
 from ray._private.test_utils import (
     get_other_nodes, generate_system_config_map,
@@ -141,8 +142,9 @@ def test_schedule_placement_group_when_node_add(ray_start_cluster,
                 return False
             return table["state"] == "CREATED"
 
-        # Add a node that has GPU.
-        cluster.add_node(num_cpus=4, num_gpus=4)
+        with disable_client_hook():
+            # Add a node that has GPU.
+            cluster.add_node(num_cpus=4, num_gpus=4)
 
         # Make sure the placement group is created.
         wait_for_condition(is_placement_group_created)
