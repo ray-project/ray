@@ -2,7 +2,6 @@ import copy
 import logging
 import os
 import sys
-from typing import Optional, List
 
 import yaml
 
@@ -50,24 +49,6 @@ class SmokeTest(ReleaseTest):
     def __init__(self, name: str, retry: int = 0):
         super(SmokeTest, self).__init__(
             name=name, smoke_test=True, retry=retry)
-
-
-class ConnectTest(ReleaseTest):
-    """Release Test that requires extra setup on the driver."""
-
-    def __init__(self,
-                 *args,
-                 setup_commands: Optional[List[str]] = None,
-                 requirements_file: Optional[str] = None,
-                 **kwargs):
-
-        # Commands to run on the driver before kicking off the test.
-        self.setup_commands = setup_commands if setup_commands else []
-
-        # Requirements to install on the driver before kicking off the test.
-        self.requirements_file = requirements_file
-
-        super().__init__(*args, **kwargs)
 
 
 CORE_NIGHTLY_TESTS = {
@@ -256,19 +237,6 @@ MANUAL_TESTS = {
     ],
 }
 
-HOROVOD_INSTALL_ENV_VARS = [
-    "HOROVOD_WITH_GLOO", "HOROVOD_WITHOUT_MPI", "HOROVOD_WITHOUT_TENSORFLOW",
-    "HOROVOD_WITHOUT_MXNET", "HOROVOD_WITH_PYTORCH"
-]
-
-HOROVOD_SETUP_COMMANDS = [
-    "sudo apt update", "sudo apt -y install build-essential",
-    "pip install cmake"
-] + [
-    f"export {horovod_env_var}=1"
-    for horovod_env_var in HOROVOD_INSTALL_ENV_VARS
-]
-
 # This test suite holds "user" tests to test important user workflows
 # in a particular environment.
 # All workloads in this test suite should:
@@ -277,46 +245,12 @@ HOROVOD_SETUP_COMMANDS = [
 #   3. Use GPUs if applicable
 #   4. Have the `use_connect` flag set.
 USER_TESTS = {
-    "~/ray/release/rllib_tests/rllib_tests.yaml": [
-        ConnectTest(
-            "connect_tests",
-            requirements_file="release/rllib_tests"
-            "/connect_driver_requirements.txt")
-    ],
-    "~/ray/release/ray_lightning_tests/ray_lightning_tests.yaml": [
-        ConnectTest(
-            "ray_lightning_user_test_latest",
-            requirements_file="release/ray_lightning_tests"
-            "/driver_requirements.txt"),
-        ConnectTest(
-            "ray_lightning_user_test_master",
-            requirements_file="release/ray_lightning_tests"
-            "/driver_requirements.txt")
-    ],
-    "~/ray/release/horovod_tests/horovod_tests.yaml": [
-        ConnectTest(
-            "horovod_user_test_latest",
-            setup_commands=HOROVOD_SETUP_COMMANDS,
-            requirements_file="release/horovod_tests/driver_requirements.txt"),
-        ConnectTest(
-            "horovod_user_test_master",
-            setup_commands=HOROVOD_SETUP_COMMANDS,
-            requirements_file="release/horovod_tests"
-            "/driver_requirements_master.txt")
-    ],
-    "~/ray/release/train_tests/train_tests.yaml": [
-        ConnectTest(
-            "train_tensorflow_mnist_test",
-            requirements_file="release/train_tests"
-            "/driver_requirements.txt"),
-        ConnectTest(
-            "train_torch_linear_test",
-            requirements_file="release/train_tests"
-            "/driver_requirements.txt")
-    ],
-    "~/ray/release/xgboost_tests/xgboost_tests.yaml": [
-        "train_gpu_connect_latest",
-        "train_gpu_connect_master",
+    "~/ray/release/ml_user_tests/ml_user_tests.yaml": [
+        "train_tensorflow_mnist_test", "train_torch_linear_test",
+        "ray_lightning_user_test_latest", "ray_lightning_user_test_master",
+        "horovod_user_test_latest", "horovod_user_test_master",
+        "xgboost_gpu_connect_latest", "xgboost_gpu_connect_master",
+        "tune_rllib_connect_test"
     ]
 }
 
@@ -540,14 +474,6 @@ def create_test_step(
                 "limit": test_name.retry
             }]
         }
-
-    if isinstance(test_name, ConnectTest):
-        # Add driver side setup commands to the step.
-        pip_requirements_command = [f"pip install -U -r "
-                                    f"{test_name.requirements_file}"] if \
-            test_name.requirements_file else []
-        step_conf["commands"] = test_name.setup_commands \
-            + pip_requirements_command
 
     step_conf["commands"] += [
         "pip install -q -r release/requirements.txt",
