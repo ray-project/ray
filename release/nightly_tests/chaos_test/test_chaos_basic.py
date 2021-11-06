@@ -1,5 +1,4 @@
 import argparse
-import asyncio
 import os
 import random
 import string
@@ -120,7 +119,6 @@ def run_actor_workload(total_num_cpus, smoke):
     # Make sure the DB actor didn't lose any report.
     # If this assert fails, that means at least once actor task semantic
     # wasn't guaranteed.
-    print(sorted(list(letter_set)))
     for i in range(highest_reported_num):
         assert str(i) in letter_set, i
 
