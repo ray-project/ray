@@ -150,8 +150,7 @@ def test_workflow_storage(workflow_start_regular):
         "output_step_id": "a12423",
         "dynamic_output_step_id": "b1234"
     }
-    root_output_metadata = {
-        "output_step_id": "c123"}
+    root_output_metadata = {"output_step_id": "c123"}
     flattened_args = [
         signature.DUMMY_TYPE, 1, signature.DUMMY_TYPE, "2", "k", b"543"
     ]
