@@ -197,87 +197,87 @@ def test_workflow_storage(workflow_start_regular):
                 "workflow/test_workflow_storage/steps/outputs.json",
                 True)) == root_output_metadata
 
-    # # test "inspect_step"
-    # inspect_result = wf_storage.inspect_step(step_id)
-    # assert inspect_result == workflow_storage.StepInspectResult(
-    #     output_object_valid=True)
-    # assert inspect_result.is_recoverable()
-    #
-    # step_id = "some_step2"
-    # asyncio_run(
-    #     wf_storage._put(
-    #         wf_storage._key_step_input_metadata(step_id), input_metadata,
-    #         True))
-    # asyncio_run(
-    #     wf_storage._put(
-    #         wf_storage._key_step_function_body(step_id), some_func))
-    # asyncio_run(wf_storage._put(wf_storage._key_step_args(step_id), args))
-    # asyncio_run(
-    #     wf_storage._put(
-    #         wf_storage._key_step_output_metadata(step_id), output_metadata,
-    #         True))
-    #
-    # inspect_result = wf_storage.inspect_step(step_id)
-    # assert inspect_result == workflow_storage.StepInspectResult(
-    #     output_step_id=output_metadata["dynamic_output_step_id"])
-    # assert inspect_result.is_recoverable()
-    #
-    # step_id = "some_step3"
-    # asyncio_run(
-    #     wf_storage._put(
-    #         wf_storage._key_step_input_metadata(step_id), input_metadata,
-    #         True))
-    # asyncio_run(
-    #     wf_storage._put(
-    #         wf_storage._key_step_function_body(step_id), some_func))
-    # asyncio_run(wf_storage._put(wf_storage._key_step_args(step_id), args))
-    # inspect_result = wf_storage.inspect_step(step_id)
-    # step_options = WorkflowStepRuntimeOptions(
-    #     step_type=StepType.FUNCTION,
-    #     catch_exceptions=False,
-    #     max_retries=1,
-    #     ray_options={})
-    # assert inspect_result == workflow_storage.StepInspectResult(
-    #     args_valid=True,
-    #     func_body_valid=True,
-    #     workflows=input_metadata["workflows"],
-    #     workflow_refs=input_metadata["workflow_refs"],
-    #     step_options=step_options)
-    # assert inspect_result.is_recoverable()
-    #
-    # step_id = "some_step4"
-    # asyncio_run(
-    #     wf_storage._put(
-    #         wf_storage._key_step_input_metadata(step_id), input_metadata,
-    #         True))
-    # asyncio_run(
-    #     wf_storage._put(
-    #         wf_storage._key_step_function_body(step_id), some_func))
-    # inspect_result = wf_storage.inspect_step(step_id)
-    # assert inspect_result == workflow_storage.StepInspectResult(
-    #     func_body_valid=True,
-    #     workflows=input_metadata["workflows"],
-    #     workflow_refs=input_metadata["workflow_refs"],
-    #     step_options=step_options)
-    # assert not inspect_result.is_recoverable()
-    #
-    # step_id = "some_step5"
-    # asyncio_run(
-    #     wf_storage._put(
-    #         wf_storage._key_step_input_metadata(step_id), input_metadata,
-    #         True))
-    # inspect_result = wf_storage.inspect_step(step_id)
-    # assert inspect_result == workflow_storage.StepInspectResult(
-    #     workflows=input_metadata["workflows"],
-    #     workflow_refs=input_metadata["workflow_refs"],
-    #     step_options=step_options)
-    # assert not inspect_result.is_recoverable()
-    #
-    # step_id = "some_step6"
-    # inspect_result = wf_storage.inspect_step(step_id)
-    # print(inspect_result)
-    # assert inspect_result == workflow_storage.StepInspectResult()
-    # assert not inspect_result.is_recoverable()
+    # test "inspect_step"
+    inspect_result = wf_storage.inspect_step(step_id)
+    assert inspect_result == workflow_storage.StepInspectResult(
+        output_object_valid=True)
+    assert inspect_result.is_recoverable()
+
+    step_id = "some_step2"
+    asyncio_run(
+        wf_storage._put(
+            wf_storage._key_step_input_metadata(step_id), input_metadata,
+            True))
+    asyncio_run(
+        wf_storage._put(
+            wf_storage._key_step_function_body(step_id), some_func))
+    asyncio_run(wf_storage._put(wf_storage._key_step_args(step_id), args))
+    asyncio_run(
+        wf_storage._put(
+            wf_storage._key_step_output_metadata(step_id), output_metadata,
+            True))
+
+    inspect_result = wf_storage.inspect_step(step_id)
+    assert inspect_result == workflow_storage.StepInspectResult(
+        output_step_id=output_metadata["dynamic_output_step_id"])
+    assert inspect_result.is_recoverable()
+
+    step_id = "some_step3"
+    asyncio_run(
+        wf_storage._put(
+            wf_storage._key_step_input_metadata(step_id), input_metadata,
+            True))
+    asyncio_run(
+        wf_storage._put(
+            wf_storage._key_step_function_body(step_id), some_func))
+    asyncio_run(wf_storage._put(wf_storage._key_step_args(step_id), args))
+    inspect_result = wf_storage.inspect_step(step_id)
+    step_options = WorkflowStepRuntimeOptions(
+        step_type=StepType.FUNCTION,
+        catch_exceptions=False,
+        max_retries=1,
+        ray_options={})
+    assert inspect_result == workflow_storage.StepInspectResult(
+        args_valid=True,
+        func_body_valid=True,
+        workflows=input_metadata["workflows"],
+        workflow_refs=input_metadata["workflow_refs"],
+        step_options=step_options)
+    assert inspect_result.is_recoverable()
+
+    step_id = "some_step4"
+    asyncio_run(
+        wf_storage._put(
+            wf_storage._key_step_input_metadata(step_id), input_metadata,
+            True))
+    asyncio_run(
+        wf_storage._put(
+            wf_storage._key_step_function_body(step_id), some_func))
+    inspect_result = wf_storage.inspect_step(step_id)
+    assert inspect_result == workflow_storage.StepInspectResult(
+        func_body_valid=True,
+        workflows=input_metadata["workflows"],
+        workflow_refs=input_metadata["workflow_refs"],
+        step_options=step_options)
+    assert not inspect_result.is_recoverable()
+
+    step_id = "some_step5"
+    asyncio_run(
+        wf_storage._put(
+            wf_storage._key_step_input_metadata(step_id), input_metadata,
+            True))
+    inspect_result = wf_storage.inspect_step(step_id)
+    assert inspect_result == workflow_storage.StepInspectResult(
+        workflows=input_metadata["workflows"],
+        workflow_refs=input_metadata["workflow_refs"],
+        step_options=step_options)
+    assert not inspect_result.is_recoverable()
+
+    step_id = "some_step6"
+    inspect_result = wf_storage.inspect_step(step_id)
+    print(inspect_result)
+    assert inspect_result == workflow_storage.StepInspectResult()
+    assert not inspect_result.is_recoverable()
 
 
 if __name__ == "__main__":
