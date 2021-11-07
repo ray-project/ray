@@ -28,8 +28,7 @@ void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
   absl::MutexLock lock(&mu_);
   // No need to check whether the insert was successful, since it is possible
   // for this worker to have multiple references to the same actor.
-  client_queues_.emplace(actor_id, ClientQueue());
-  client_queues_[actor_id].requests.actor_id = actor_id;
+  client_queues_.emplace(actor_id, ClientQueue(actor_id));
 }
 
 void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
@@ -78,7 +77,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       // backpressure. The receiving actor will execute the tasks according to
       // this sequence number.
       send_pos = task_spec.ActorCounter();
-      RAY_CHECK(queue->second.requests.Emplace(send_pos, task_spec));
+      RAY_CHECK(queue->second.requests->Emplace(send_pos, task_spec));
       task_queued = true;
     }
   }
@@ -93,13 +92,13 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       auto &requests = queue->second.requests;
       // Only dispatch tasks if the submitted task is still queued. The task
       // may have been dequeued if the actor has since failed.
-      if (requests.Contains(send_pos)) {
+      if (requests->Contains(send_pos)) {
         if (status.ok()) {
-          requests.MarkDependencyResolved(send_pos);
+          requests->MarkDependencyResolved(send_pos);
           SendPendingTasks(actor_id);
         } else {
-          auto task_id = requests.Get(send_pos).first.TaskId();
-          requests.MarkDependencyFailed(send_pos);
+          auto task_id = requests->Get(send_pos).first.TaskId();
+          requests->MarkDependencyFailed(send_pos);
           task_finisher_.PendingTaskFailed(
               task_id, rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status);
         }
@@ -195,7 +194,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
     queue->second.worker_id = address.worker_id();
     // Create a new connection to the actor.
     queue->second.rpc_client = core_worker_client_pool_.GetOrConnect(address);
-    queue->second.requests.OnClientConnected();
+    queue->second.requests->OnClientConnected();
 
     RAY_LOG(INFO) << "Connecting to actor " << actor_id << " at worker "
                   << WorkerID::FromBinary(address.worker_id());
@@ -246,7 +245,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
                     << " because the actor is already dead.";
 
       auto status = Status::IOError("cancelling all pending tasks of dead actor");
-      auto task_ids = queue->second.requests.ClearAllTasks();
+      auto task_ids = queue->second.requests->ClearAllTasks();
 
       for (auto &task_id : task_ids) {
         task_finisher_.MarkTaskCanceled(task_id);
@@ -312,11 +311,11 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
     client_queue.pending_force_kill.reset();
   }
 
-  // Submit all pending requests.
+  // Submit all pending requests->
   auto &requests = client_queue.requests;
 
   while (true) {
-    auto task = requests.PopNextTaskToSend();
+    auto task = requests->PopNextTaskToSend();
     if (!task.has_value()) {
       break;
     }
@@ -334,7 +333,7 @@ void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderTasks(const ActorID &ac
   auto &client_queue = it->second;
   RAY_CHECK(!client_queue.worker_id.empty());
   auto out_of_order_completed_tasks =
-      client_queue.requests.PopAllOutOfOrderCompletedTasks();
+      client_queue.requests->PopAllOutOfOrderCompletedTasks();
   for (const auto &completed_task : out_of_order_completed_tasks) {
     // Making a copy here because we are flipping a flag and the original value is
     // const.
@@ -354,7 +353,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
   request->set_intended_worker_id(queue.worker_id);
-  request->set_sequence_number(queue.requests.GetSequenceNumber(task_spec));
+  request->set_sequence_number(queue.requests->GetSequenceNumber(task_spec));
 
   const auto task_id = task_spec.TaskId();
   const auto actor_id = task_spec.ActorId();
@@ -418,7 +417,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
           auto queue_pair = client_queues_.find(actor_id);
           RAY_CHECK(queue_pair != client_queues_.end());
           auto &queue = queue_pair->second;
-          queue.requests.MarkTaskCompleted(actor_counter, task_spec);
+          queue.requests->MarkTaskCompleted(actor_counter, task_spec);
         }
       };
 

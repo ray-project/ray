@@ -133,30 +133,51 @@ class CoreWorkerDirectActorTaskSubmitter
   void CheckTimeoutTasks();
 
  private:
-  struct RequestQueue {
-    bool Emplace(uint64_t position, TaskSpecification spec) {
+  class IActorRequestQueue {
+   public:
+    virtual ~IActorRequestQueue() = default;
+    virtual bool Emplace(uint64_t position, TaskSpecification spec) = 0;
+    virtual bool Contains(uint64_t position) const = 0;
+    virtual const std::pair<TaskSpecification, bool> &Get(uint64_t position) const = 0;
+    virtual void MarkDependencyFailed(uint64_t position) = 0;
+    virtual void MarkDependencyResolved(uint64_t position) = 0;
+    virtual std::vector<TaskID> ClearAllTasks() = 0;
+    virtual absl::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() = 0;
+    virtual std::map<uint64_t, TaskSpecification> PopAllOutOfOrderCompletedTasks() = 0;
+    virtual void OnClientConnected() = 0;
+    virtual uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const = 0;
+    virtual void MarkTaskCompleted(uint64_t position, TaskSpecification task_spec) = 0;
+  };
+
+  class SequentialRequestQueue : public IActorRequestQueue {
+   public:
+    SequentialRequestQueue(ActorID actor_id) : actor_id(actor_id) {}
+
+    bool Emplace(uint64_t position, TaskSpecification spec) override {
       return requests
           .emplace(position, std::make_pair(spec, /*dependency_resolved*/ false))
           .second;
     }
 
-    bool Contains(uint64_t position) { return requests.find(position) != requests.end(); }
+    bool Contains(uint64_t position) const override {
+      return requests.find(position) != requests.end();
+    }
 
-    const std::pair<TaskSpecification, bool> &Get(uint64_t position) {
+    const std::pair<TaskSpecification, bool> &Get(uint64_t position) const override {
       auto it = requests.find(position);
       RAY_CHECK(it != requests.end());
       return it->second;
     }
 
-    void MarkDependencyFailed(uint64_t position) { requests.erase(position); }
+    void MarkDependencyFailed(uint64_t position) override { requests.erase(position); }
 
-    void MarkDependencyResolved(uint64_t position) {
+    void MarkDependencyResolved(uint64_t position) override {
       auto it = requests.find(position);
       RAY_CHECK(it != requests.end());
       it->second.second = true;
     }
 
-    std::vector<TaskID> ClearAllTasks() {
+    std::vector<TaskID> ClearAllTasks() override {
       std::vector<TaskID> task_ids;
       for (auto &[pos, spec] : requests) {
         task_ids.push_back(spec.first.TaskId());
@@ -165,7 +186,7 @@ class CoreWorkerDirectActorTaskSubmitter
       return task_ids;
     }
 
-    absl::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() {
+    absl::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() override {
       auto head = requests.begin();
       if (head != requests.end() && (/*seqno*/ head->first <= next_send_position) &&
           (/*dependencies_resolved*/ head->second.second)) {
@@ -180,13 +201,13 @@ class CoreWorkerDirectActorTaskSubmitter
       return absl::nullopt;
     }
 
-    std::map<uint64_t, TaskSpecification> PopAllOutOfOrderCompletedTasks() {
+    std::map<uint64_t, TaskSpecification> PopAllOutOfOrderCompletedTasks() override {
       auto result = std::move(out_of_order_completed_tasks);
       out_of_order_completed_tasks.clear();
       return result;
     }
 
-    void OnClientConnected() {
+    void OnClientConnected() override {
       // This assumes that all replies from the previous incarnation
       // of the actor have been received. This assumption should be OK
       // because we fail all inflight tasks in `DisconnectRpcClient`.
@@ -195,13 +216,13 @@ class CoreWorkerDirectActorTaskSubmitter
       caller_starts_at = next_task_reply_position;
     }
 
-    uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const {
+    uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const override {
       RAY_CHECK(task_spec.ActorCounter() >= caller_starts_at)
           << "actor counter " << task_spec.ActorCounter() << " " << caller_starts_at;
       return task_spec.ActorCounter() - caller_starts_at;
     }
 
-    void MarkTaskCompleted(uint64_t position, TaskSpecification task_spec) {
+    void MarkTaskCompleted(uint64_t position, TaskSpecification task_spec) override {
       // Try to increment queue.next_task_reply_position consecutively until we
       // cannot. In the case of tasks not received in order, the following block
       // ensure queue.next_task_reply_position are incremented to the max possible
@@ -226,6 +247,7 @@ class CoreWorkerDirectActorTaskSubmitter
                      << out_of_order_completed_tasks.size();
     }
 
+   private:
     ActorID actor_id;
 
     /// The actor's pending requests, ordered by the task number (see below
@@ -290,7 +312,75 @@ class CoreWorkerDirectActorTaskSubmitter
     std::map<uint64_t, TaskSpecification> out_of_order_completed_tasks;
   };
 
+  class OutofOrderRequestQueue : public IActorRequestQueue {
+   public:
+    OutofOrderRequestQueue(ActorID actor_id) : actor_id(actor_id) {}
+
+    bool Emplace(uint64_t position, TaskSpecification spec) override {
+      return requests
+          .emplace(position, std::make_pair(spec, /*dependency_resolved*/ false))
+          .second;
+    }
+
+    bool Contains(uint64_t position) const override {
+      return requests.find(position) != requests.end();
+    }
+
+    const std::pair<TaskSpecification, bool> &Get(uint64_t position) const override {
+      auto it = requests.find(position);
+      RAY_CHECK(it != requests.end());
+      return it->second;
+    }
+
+    void MarkDependencyFailed(uint64_t position) override { requests.erase(position); }
+
+    void MarkDependencyResolved(uint64_t position) override {
+      auto it = requests.find(position);
+      RAY_CHECK(it != requests.end());
+      it->second.second = true;
+    }
+
+    std::vector<TaskID> ClearAllTasks() override {
+      std::vector<TaskID> task_ids;
+      for (auto &[pos, spec] : requests) {
+        task_ids.push_back(spec.first.TaskId());
+      }
+      requests.clear();
+      return task_ids;
+    }
+
+    absl::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() override {
+      for (auto it = requests.begin(); it != requests.end(); it++) {
+        if (/*dependencies_resolved*/ it->second.second) {
+          auto task_spec = std::move(it->second.first);
+          requests.erase(it);
+          return std::make_pair(std::move(task_spec), /*skip_queue*/ true);
+        }
+      }
+      return absl::nullopt;
+    }
+
+    std::map<uint64_t, TaskSpecification> PopAllOutOfOrderCompletedTasks() override {
+      return {};
+    }
+
+    void OnClientConnected() override {}
+
+    uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const override {
+      return task_spec.ActorCounter();
+    }
+
+    void MarkTaskCompleted(uint64_t position, TaskSpecification task_spec) override {}
+
+   private:
+    ActorID actor_id;
+    std::map<uint64_t, std::pair<TaskSpecification, bool>> requests;
+  };
+
   struct ClientQueue {
+    ClientQueue(ActorID actor_id)
+        : requests(std::make_unique<OutofOrderRequestQueue>(actor_id)) {}
+
     /// The current state of the actor. If this is ALIVE, then we should have
     /// an RPC client to the actor. If this is DEAD, then all tasks in the
     /// queue will be marked failed and all other ClientQueue state is ignored.
@@ -307,7 +397,7 @@ class CoreWorkerDirectActorTaskSubmitter
     /// The intended worker ID of the actor.
     std::string worker_id = "";
 
-    RequestQueue requests;
+    std::unique_ptr<IActorRequestQueue> requests;
 
     /// Tasks that can't be sent because 1) the callee actor is dead. 2) network error.
     /// For 1) the task will wait for the DEAD state notification, then mark task as

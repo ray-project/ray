@@ -1346,7 +1346,6 @@ def test_execute_out_of_order(shutdown_only):
         time.sleep(10000)
 
     inp_ref_1 = never_return.remote()
-    #    inp_ref_1 = ray.put(2)
     inp_ref_2 = ray.put(2)
 
     assert ray.get(inp_ref_2) == 2
