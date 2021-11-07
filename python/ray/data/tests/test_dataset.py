@@ -3147,7 +3147,10 @@ def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
     for agg in ["sum", "min", "max", "mean", "std"]:
         result = agg_df[f"{agg}(B)"].to_numpy()
         expected = getattr(expected_grouped, agg)().to_numpy()
-        np.testing.assert_array_equal(result, expected)
+        if agg == "std":
+            np.testing.assert_array_almost_equal(result, expected)
+        else:
+            np.testing.assert_array_equal(result, expected)
     # Test built-in global std aggregation
     df = pd.DataFrame({"A": xs})
     result_row = ray.data.from_pandas(df).repartition(num_parts).aggregate(
@@ -3410,7 +3413,10 @@ def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
     for agg in ["sum", "min", "max", "mean", "std"]:
         result = agg_df[agg].to_numpy()
         expected = getattr(expected_grouped, agg)().to_numpy()
-        np.testing.assert_array_almost_equal(result, expected)
+        if agg == "std":
+            np.testing.assert_array_almost_equal(result, expected)
+        else:
+            np.testing.assert_array_equal(result, expected)
     # Test built-in global multi-aggregation
     result_row = ray.data.from_items(xs).repartition(num_parts).aggregate(
         Sum(),
