@@ -21,14 +21,14 @@ class TestPettingZooEnv(unittest.TestCase):
 
     def test_pettingzoo_pistonball_v4_policies_are_dict_env(self):
         def env_creator(config):
-            env = pistonball_v4.env(local_ratio=config.get("local_ratio", 0.2))
+            env = pistonball_v4.env()
             env = dtype_v0(env, dtype=float32)
             env = color_reduction_v0(env, mode="R")
             env = normalize_obs_v0(env)
             return env
 
         config = deepcopy(get_trainer_class("PPO")._default_config)
-        config["env_config"] = {"local_ratio": 0.5}
+        config["env_config"] = {}
         # Register env
         register_env("pistonball",
                      lambda config: PettingZooEnv(env_creator(config)))
