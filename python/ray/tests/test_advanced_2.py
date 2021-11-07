@@ -12,7 +12,8 @@ import signal
 import ray
 import ray.cluster_utils
 
-from ray._private.test_utils import (run_string_as_driver_nonblocking, RayTestTimeoutException,
+from ray._private.test_utils import (run_string_as_driver_nonblocking,
+                                     RayTestTimeoutException,
                                      wait_for_pid_to_exit, wait_for_condition)
 
 logger = logging.getLogger(__name__)
@@ -792,7 +793,7 @@ print(ray.get(obj))
 """
     driver_script = driver_template.format(
         address=ray_start_regular["redis_address"])
-    
+
     driver_proc = run_string_as_driver_nonblocking(driver_script)
 
     try:
