@@ -516,7 +516,7 @@ py_test(
 py_test(
     name = "test_a2c",
     tags = ["team:ml", "trainers_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/a3c/tests/test_a2c.py"]
 )
 
@@ -531,7 +531,7 @@ py_test(
 py_test(
     name = "test_apex_dqn",
     tags = ["team:ml", "trainers_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/dqn/tests/test_apex_dqn.py"]
 )
 
