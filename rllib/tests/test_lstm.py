@@ -35,6 +35,31 @@ class TestLSTMUtils(unittest.TestCase):
         self.assertEqual([s.tolist() for s in s_init], [[209, 109, 105]])
         self.assertEqual(seq_lens.tolist(), [3, 4, 1])
 
+    def test_nested(self):
+        eps_ids = [1, 1, 1, 5, 5, 5, 5, 5]
+        agent_ids = [1, 1, 1, 1, 1, 1, 1, 1]
+        f = [{
+            "a": np.array([1, 2, 3, 4, 13, 14, 15, 16]),
+            "b": {
+                "ba": np.array([5, 6, 7, 8, 9, 10, 11, 12])
+            }
+        }]
+        s = [[209, 208, 207, 109, 108, 107, 106, 105]]
+
+        f_pad, s_init, seq_lens = chop_into_sequences(
+            episode_ids=eps_ids,
+            unroll_ids=np.ones_like(eps_ids),
+            agent_indices=agent_ids,
+            feature_columns=f,
+            state_columns=s,
+            max_seq_len=4,
+            handle_nested_data=True,
+        )
+        check(f_pad, [[[1, 2, 3, 0, 4, 13, 14, 15, 16, 0, 0, 0],
+                       [5, 6, 7, 0, 8, 9, 10, 11, 12, 0, 0, 0]]])
+        self.assertEqual([s.tolist() for s in s_init], [[209, 109, 105]])
+        self.assertEqual(seq_lens.tolist(), [3, 4, 1])
+
     def test_multi_dim(self):
         eps_ids = [1, 1, 1]
         agent_ids = [1, 1, 1]

@@ -271,7 +271,7 @@ class TorchPolicy(Policy):
         with torch.no_grad():
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
-            input_dict.is_training = False
+            input_dict.set_training(True)
             # Pack internal state inputs into (separate) list.
             state_batches = [
                 input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
@@ -439,7 +439,7 @@ class TorchPolicy(Policy):
             buffer_index: int = 0,
     ) -> int:
         # Set the is_training flag of the batch.
-        batch.is_training = True
+        batch.set_training(True)
 
         # Shortcut for 1 CPU only: Store batch in `self._loaded_batches`.
         if len(self.devices) == 1 and self.devices[0].type == "cpu":
@@ -587,7 +587,7 @@ class TorchPolicy(Policy):
                 view_requirements=self.view_requirements,
             )
 
-        postprocessed_batch.is_training = True
+        postprocessed_batch.set_training(True)
         self._lazy_tensor_dict(postprocessed_batch, device=self.devices[0])
 
         # Do the (maybe parallelized) gradient calculation step.
