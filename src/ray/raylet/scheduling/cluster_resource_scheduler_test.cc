@@ -979,6 +979,10 @@ TEST_F(ClusterResourceSchedulerTest, TestAlwaysSpillInfeasibleTask) {
   ASSERT_EQ(remote_feasible, resource_scheduler.GetBestSchedulableNode(
                                  resource_spec, false, false, false, false,
                                  &total_violations, &is_infeasible));
+  ASSERT_EQ(remote_feasible,
+            resource_scheduler.GetBestSchedulableNode(resource_spec, false, false, false,
+                                                      /*grant_or_reject=*/true,
+                                                      &total_violations, &is_infeasible));
 
   // Feasible remote node, and it currently has resources available. We should
   // prefer to spill there.

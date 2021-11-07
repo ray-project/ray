@@ -62,8 +62,10 @@ class WorkerLeaseInterface {
  public:
   /// Requests a worker from the raylet. The callback will be sent via gRPC.
   /// \param resource_spec Resources that should be allocated for the worker.
+  /// \param grant_or_reject: True if we we should either grant or reject the request
+  ///                         but no spillback.
+  /// \param callback: The callback to call when the request finishes.
   /// \param backlog_size The queue length for the given shape on the CoreWorker.
-  /// \return ray::Status
   virtual void RequestWorkerLease(
       const ray::TaskSpecification &resource_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,

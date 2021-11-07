@@ -29,6 +29,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler_interface.h"
 #include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
+#include "ray/raylet/scheduling/scheduling_policy.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -41,7 +42,7 @@ using rpc::HeartbeatTableData;
 /// resources at those nodes.
 class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
  public:
-  ClusterResourceScheduler(void);
+  ClusterResourceScheduler() {}
   /// Constructor initializing the resources associated with the local node.
   ///
   /// \param local_node_id: ID of local node,
@@ -104,9 +105,11 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///
   ///  \param resource_request: Task to be scheduled.
   ///  \param actor_creation: True if this is an actor creation task.
-  ///  \param force_spillback For non-actor creation requests, pick a remote
+  ///  \param force_spillback: For non-actor creation requests, pick a remote
   ///  feasible node. If this is false, then the task may be scheduled to the
   ///  local node.
+  ///  \param grant_or_reject: True if we we should either grant or reject the request
+  ///                          but no spillback.
   ///  \param violations: The number of soft constraint violations associated
   ///                     with the node returned by this function (assuming
   ///                     a node that can schedule resource_request is found).
@@ -121,8 +124,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
                                  bool *is_infeasible);
 
   /// Similar to
-  ///    int64_t GetBestSchedulableNode(const ResourceRequest &resource_request, int64_t
-  ///    *violations)
+  ///    int64_t GetBestSchedulableNode(...)
   /// but the return value is different:
   /// \return "", if no node can schedule the current request; otherwise,
   ///          return the ID in string format of a node that can schedule the
@@ -413,13 +415,13 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// Get mutable local node resources.
   NodeResources *GetMutableLocalNodeResources();
 
-  /// The threshold at which to switch from packing to spreading.
-  const float spread_threshold_;
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   absl::flat_hash_map<int64_t, Node> nodes_;
   /// Identifier of local node.
   int64_t local_node_id_;
+  /// The scheduling policy to use.
+  std::unique_ptr<raylet_scheduling_policy::SchedulingPolicy> scheduling_policy_;
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
   /// Resources of local node.

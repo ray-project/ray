@@ -642,12 +642,24 @@ TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
 
   // Resources are no longer available for the second.
   auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 5}});
-  rpc::RequestWorkerLeaseReply spillback_reply;
-  task_manager_.QueueAndScheduleTask(task2, false, &spillback_reply, callback);
+  rpc::RequestWorkerLeaseReply reject_reply;
+  task_manager_.QueueAndScheduleTask(task2, /*grant_or_reject=*/true, &reject_reply,
+                                     callback);
   pool_.TriggerCallbacks();
 
-  // The second task was spilled.
+  // The second task was rejected.
   ASSERT_EQ(num_callbacks, 1);
+  ASSERT_TRUE(reject_reply.rejected());
+  ASSERT_EQ(leased_workers_.size(), 0);
+
+  // Resources are no longer available for the third.
+  auto task3 = CreateTask({{ray::kCPU_ResourceLabel, 5}});
+  rpc::RequestWorkerLeaseReply spillback_reply;
+  task_manager_.QueueAndScheduleTask(task3, false, &spillback_reply, callback);
+  pool_.TriggerCallbacks();
+
+  // The third task was spilled.
+  ASSERT_EQ(num_callbacks, 2);
   ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
             remote_node_id.Binary());
   ASSERT_EQ(leased_workers_.size(), 0);
@@ -657,8 +669,8 @@ TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
-  // Check that both tasks got removed from the queue.
-  ASSERT_EQ(num_callbacks, 2);
+  // Check that all tasks got removed from the queue.
+  ASSERT_EQ(num_callbacks, 3);
   // The first task was dispatched.
   ASSERT_EQ(leased_workers_.size(), 1);
   // Leave one alive worker.

@@ -18,20 +18,17 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/raylet/scheduling/scheduling_policy.h"
 
 namespace ray {
-
-ClusterResourceScheduler::ClusterResourceScheduler()
-    : spread_threshold_(RayConfig::instance().scheduler_spread_threshold()){};
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources,
     gcs::GcsClient &gcs_client)
-    : spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
-      local_node_id_(local_node_id),
+    : local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       gcs_client_(&gcs_client) {
+  scheduling_policy_ = std::make_unique<raylet_scheduling_policy::SchedulingPolicy>(
+      local_node_id_, nodes_, RayConfig::instance().scheduler_spread_threshold());
   InitResourceUnitInstanceInfo();
   AddOrUpdateNode(local_node_id_, local_node_resources);
   InitLocalResources(local_node_resources);
@@ -42,10 +39,11 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     const absl::flat_hash_map<std::string, double> &local_node_resources,
     gcs::GcsClient &gcs_client, std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity)
-    : spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
-      get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
+    : get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
       gcs_client_(&gcs_client) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
+  scheduling_policy_ = std::make_unique<raylet_scheduling_policy::SchedulingPolicy>(
+      local_node_id_, nodes_, RayConfig::instance().scheduler_spread_threshold());
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
 
@@ -251,9 +249,9 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
 
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
   // remain bug compatible with the legacy scheduling algorithms.
-  int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
-      resource_request, local_node_id_, nodes_, spread_threshold_, force_spillback,
-      force_spillback, [this](auto node_id) { return this->NodeAlive(node_id); });
+  int64_t best_node_id = scheduling_policy_->HybridPolicy(
+      resource_request, force_spillback, force_spillback,
+      [this](auto node_id) { return this->NodeAlive(node_id); });
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {
     // TODO (Alex): Support soft constraints if needed later.
