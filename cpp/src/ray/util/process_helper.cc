@@ -107,7 +107,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
             redis_address, ConfigInternal::Instance().redis_password);
         RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
       }
-      session_dir = *global_state_accessor->GetInternalKV("session_dir");
+      session_dir = *global_state_accessor->GetInternalKV("@:session:session_dir");
     }
     log_dir = session_dir + "/logs";
   }
