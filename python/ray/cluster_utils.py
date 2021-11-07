@@ -168,8 +168,8 @@ class Cluster:
                     "redis_password", ray_constants.REDIS_DEFAULT_PASSWORD)
                 self.webui_url = self.head_node.webui_url
                 # Init global state accessor when creating head node.
-                self.global_state._initialize_global_state(self.redis_address,
-                                                           self.redis_password)
+                self.global_state._initialize_global_state(
+                    self.redis_address, self.redis_password)
             else:
                 ray_params.update_if_absent(redis_address=self.redis_address)
                 # We only need one log monitor per physical node.
@@ -184,11 +184,11 @@ class Cluster:
                 self.worker_nodes.add(node)
 
             if wait:
-                # Wait for the node to appear in the client table. We do this so
-                # that the nodes appears in the client table in the order that the
-                # corresponding calls to add_node were made. We do this because in
-                # the tests we assume that the driver is connected to the first
-                # node that is added.
+                # Wait for the node to appear in the client table. We do this
+                # so that the nodes appears in the client table in the order
+                # that the corresponding calls to add_node were made. We do
+                # this because in the tests we assume that the driver is
+                # connected to the first node that is added.
                 self._wait_for_node(node)
 
         return node
