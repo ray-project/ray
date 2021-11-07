@@ -17,7 +17,7 @@ GroupKeyT = Union[None, Callable[[T], KeyType], str, List[str]]
 
 @PublicAPI(stability="beta")
 class GroupedDataset(Generic[T]):
-    """Implements a lazy dataset grouped by key (Experimental).
+    """Represents a grouped dataset created by calling ``Dataset.groupby()``.
 
     The actual groupby is deferred until an aggregation is applied.
     """
@@ -40,7 +40,7 @@ class GroupedDataset(Generic[T]):
         else:
             self._key = key
 
-    def aggregate(self, *aggs: Tuple[AggregateFn]) -> Dataset[U]:
+    def aggregate(self, *aggs: AggregateFn) -> Dataset[U]:
         """Implements the accumulator-based aggregation.
 
         This is a blocking operation.
@@ -55,26 +55,20 @@ class GroupedDataset(Generic[T]):
 
         Args:
             aggs: Aggregations to do.
-                Currently only single aggregation is supported.
 
         Returns:
             If the input dataset is simple dataset then the output is
-            a simple dataset of (k, v) pairs where k is the groupby key
-            and v is the corresponding aggregation result.
+            a simple dataset of (k, v_1, ..., v_n) tuples where k is the
+            groupby key and v_i is the result of the ith given aggregation.
             If the input dataset is Arrow dataset then the output is
-            an Arrow dataset of two columns where first column is
-            the groupby key and the second column is the corresponding
-            aggregation result.
+            an Arrow dataset of n + 1 columns where first column is
+            the groupby key and the second through n + 1 columns are the
+            results of the aggregations.
             If groupby key is None then the key part of return is omitted.
         """
 
         if len(aggs) == 0:
             raise ValueError("Aggregate requires at least one aggregation")
-        if len(aggs) > 1:
-            raise NotImplementedError(
-                "Multi-aggregation is not implemented yet")
-        agg = aggs[0]
-
         # Handle empty dataset.
         if self._dataset.num_blocks() == 0:
             return self._dataset
@@ -98,22 +92,23 @@ class GroupedDataset(Generic[T]):
         map_results = np.empty((num_mappers, num_reducers), dtype=object)
         for i, block in enumerate(blocks):
             map_results[i, :] = partition_and_combine_block.remote(
-                block, boundaries, self._key, agg)
+                block, boundaries, self._key, aggs)
         map_bar = ProgressBar("GroupBy Map", len(map_results))
         map_bar.block_until_complete([ret[0] for ret in map_results])
         map_bar.close()
 
-        reduce_results = []
+        blocks = []
+        metadata = []
         for j in range(num_reducers):
-            ret = aggregate_combined_blocks.remote(
-                num_reducers, self._key, agg, *map_results[:, j].tolist())
-            reduce_results.append(ret)
-        reduce_bar = ProgressBar("GroupBy Reduce", len(reduce_results))
-        reduce_bar.block_until_complete([ret[0] for ret in reduce_results])
+            block, meta = aggregate_combined_blocks.remote(
+                num_reducers, self._key, aggs, *map_results[:, j].tolist())
+            blocks.append(block)
+            metadata.append(meta)
+        reduce_bar = ProgressBar("GroupBy Reduce", len(blocks))
+        reduce_bar.block_until_complete(blocks)
         reduce_bar.close()
 
-        blocks = [b for b, _ in reduce_results]
-        metadata = ray.get([m for _, m in reduce_results])
+        metadata = ray.get(metadata)
         return Dataset(BlockList(blocks, metadata), self._dataset._epoch)
 
     def count(self) -> Dataset[U]:
@@ -269,7 +264,7 @@ class GroupedDataset(Generic[T]):
 
 def _partition_and_combine_block(block: Block[T], boundaries: List[KeyType],
                                  key: GroupKeyT,
-                                 agg: AggregateFn) -> List[Block]:
+                                 aggs: Tuple[AggregateFn]) -> List[Block]:
     """Partition the block and combine rows with the same key."""
     if key is None:
         partitions = [block]
@@ -277,14 +272,14 @@ def _partition_and_combine_block(block: Block[T], boundaries: List[KeyType],
         partitions = BlockAccessor.for_block(block).sort_and_partition(
             boundaries, [(key, "ascending")] if isinstance(key, str) else key,
             descending=False)
-    return [BlockAccessor.for_block(p).combine(key, agg) for p in partitions]
+    return [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
 
 
 def _aggregate_combined_blocks(
-        num_reducers: int, key: GroupKeyT, agg: AggregateFn,
+        num_reducers: int, key: GroupKeyT, aggs: Tuple[AggregateFn],
         *blocks: Tuple[Block, ...]) -> Tuple[Block[U], BlockMetadata]:
     """Aggregate sorted and partially combined blocks."""
     if num_reducers == 1:
         blocks = [b[0] for b in blocks]  # Ray weirdness
     return BlockAccessor.for_block(blocks[0]).aggregate_combined_blocks(
-        list(blocks), key, agg)
+        list(blocks), key, aggs)

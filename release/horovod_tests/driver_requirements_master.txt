@@ -1,4 +1,0 @@
--r ./base_driver_reqs.txt
-
-# Horovod master.
-git+https://github.com/horovod/horovod.git

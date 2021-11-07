@@ -190,7 +190,7 @@ def find_redis_address(address=None):
     # /usr/local/lib/python3.8/dist-packages/ray/core/src/ray/raylet/raylet
     # --redis_address=123.456.78.910 --node_ip_address=123.456.78.910
     # --raylet_socket_name=... --store_socket_name=... --object_manager_port=0
-    # --min_worker_port=10000 --max_worker_port=10999
+    # --min_worker_port=10000 --max_worker_port=19999
     # --node_manager_port=58578 --redis_port=6379
     # --maximum_startup_concurrency=8
     # --static_resource_list=node:123.456.78.910,1.0,object_store_memory,66

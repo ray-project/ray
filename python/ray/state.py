@@ -7,6 +7,7 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 from ray.util.annotations import DeveloperAPI
 from google.protobuf.json_format import MessageToDict
+from ray.core.generated import gcs_pb2
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.utils import (decode, binary_to_hex, hex_to_binary)
 from ray._private.resource_spec import NODE_ID_PREFIX
@@ -339,6 +340,7 @@ class GlobalState:
                 raise ValueError(
                     f"Invalid strategy returned: {PlacementStrategy}")
 
+        stats = placement_group_info.stats
         assert placement_group_info is not None
         return {
             "placement_group_id": binary_to_hex(
@@ -353,6 +355,17 @@ class GlobalState:
             },
             "strategy": get_strategy(placement_group_info.strategy),
             "state": get_state(placement_group_info.state),
+            "stats": {
+                "end_to_end_creation_latency_ms": (
+                    stats.end_to_end_creation_latency_us / 1000.0),
+                "scheduling_latency_ms": (
+                    stats.scheduling_latency_us / 1000.0),
+                "scheduling_attempt": stats.scheduling_attempt,
+                "highest_retry_delay_ms": stats.highest_retry_delay_ms,
+                "scheduling_state": gcs_pb2.PlacementGroupStats.
+                SchedulingState.DESCRIPTOR.values_by_number[
+                    stats.scheduling_state].name
+            }
         }
 
     def _seconds_to_microseconds(self, time_in_seconds):

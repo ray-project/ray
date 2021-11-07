@@ -313,7 +313,7 @@ def debug(address):
     "--max-worker-port",
     required=False,
     type=int,
-    default=10999,
+    default=19999,
     help="the highest port number that workers will bind on. If set, "
     "'--min-worker-port' must also be set.")
 @click.option(

@@ -602,6 +602,75 @@ def test_placement_group_table(ray_start_cluster, connect_to_client):
         placement_group_assert_no_leak(pgs_created)
 
 
+def test_placement_group_stats(ray_start_cluster):
+    cluster = ray_start_cluster
+    num_nodes = 1
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=4, num_gpus=1)
+    ray.init(address=cluster.address)
+
+    # Test createable pgs.
+    pg = ray.util.placement_group(bundles=[{"CPU": 4, "GPU": 1}])
+    ray.get(pg.ready())
+    stats = ray.util.placement_group_table(pg)["stats"]
+    assert stats["scheduling_attempt"] == 1
+    assert stats["scheduling_state"] == "FINISHED"
+    assert stats["end_to_end_creation_latency_ms"] != 0
+
+    # Create a pending pg.
+    pg2 = ray.util.placement_group(bundles=[{"CPU": 4, "GPU": 1}])
+
+    def assert_scheduling_state():
+        stats = ray.util.placement_group_table(pg2)["stats"]
+        if stats["scheduling_attempt"] != 1:
+            return False
+        if stats["scheduling_state"] != "NO_RESOURCES":
+            return False
+        if stats["end_to_end_creation_latency_ms"] != 0:
+            return False
+        return True
+
+    wait_for_condition(assert_scheduling_state)
+
+    # Remove the first pg, and the second
+    # pg should be schedulable now.
+    ray.util.remove_placement_group(pg)
+
+    def assert_scheduling_state():
+        stats = ray.util.placement_group_table(pg2)["stats"]
+        if stats["scheduling_state"] != "FINISHED":
+            return False
+        if stats["end_to_end_creation_latency_ms"] == 0:
+            return False
+        return True
+
+    wait_for_condition(assert_scheduling_state)
+
+    # Infeasible pg.
+    pg3 = ray.util.placement_group(bundles=[{"CPU": 4, "a": 1}])
+    # TODO This is supposed to be infeasible, but it is printed
+    # as NO_RESOURCES. Fix the issue.
+    # def assert_scheduling_state():
+    #     stats = ray.util.placement_group_table(pg3)["stats"]
+    #     print(stats)
+    #     if stats["scheduling_state"] != "INFEASIBLE":
+    #         return False
+    #     return True
+    # wait_for_condition(assert_scheduling_state)
+
+    ray.util.remove_placement_group(pg3)
+
+    def assert_scheduling_state():
+        stats = ray.util.placement_group_table(pg3)["stats"]
+        if stats["scheduling_state"] != "REMOVED":
+            return False
+        return True
+
+    wait_for_condition(assert_scheduling_state)
+
+    placement_group_assert_no_leak([pg2])
+
+
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_cuda_visible_devices(ray_start_cluster, connect_to_client):
     @ray.remote(num_gpus=1)

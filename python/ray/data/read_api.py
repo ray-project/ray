@@ -111,15 +111,15 @@ def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
 
 @PublicAPI(stability="beta")
 def range_tensor(n: int, *, shape: Tuple = (1, ),
-                 parallelism: int = 200) -> Dataset[np.ndarray]:
+                 parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a Tensor dataset from a range of integers [0..n).
 
     Examples:
         >>> ds = ray.data.range_tensor(1000, shape=(3, 10))
-        >>> ds.map_batches(lambda arr: arr ** 2).show()
+        >>> ds.map_batches(lambda arr: arr * 2, batch_format="pandas").show()
 
-    This is similar to range(), but uses np.ndarrays to hold the integers
-    in tensor form. The dataset has overall the shape ``(n,) + shape``.
+    This is similar to range_arrow(), but uses the ArrowTensorArray extension
+    type. The dataset elements take the form {"value": array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.
@@ -128,7 +128,7 @@ def range_tensor(n: int, *, shape: Tuple = (1, ),
             Parallelism may be limited by the number of items.
 
     Returns:
-        Dataset holding the integers as tensors.
+        Dataset holding the integers as Arrow tensor records.
     """
     return read_datasource(
         RangeDatasource(),
