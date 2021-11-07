@@ -446,8 +446,8 @@ class StandardAutoscaler:
         # If we get a gRPC error with an UNIMPLEMENTED code, fail silently.
         # This error indicates that the GCS is using Ray version < 1.8.0,
         # for which DrainNode is not implemented.
-        except grpc._channel._InactiveRpcError as e:
-            # If the code is unimplemented, pass.
+        except grpc.RpcError as e:
+            # If the code is UNIMPLEMENTED, pass.
             if e.code() == grpc.StatusCode.UNIMPLEMENTED:
                 pass
             # Otherwise, it's a plane old gRPC error and we should log it in the
