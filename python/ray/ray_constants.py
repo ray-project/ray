@@ -292,5 +292,8 @@ KV_NAMESPACE_PDB = "ray_pdb"
 KV_NAMESPACE_AUTOSCALER = None
 KV_NAMESPACE_HEALTHCHECK = "healthcheck"
 KV_NAMESPACE_JOB = "job"
-KV_NAMESPACE_PACKAGE = "package"
+# TODO: Set package for runtime env
+# We need to update ray client for this since runtime env use ray client
+# This might introduce some compatibility issues so leave it here for now.
+KV_NAMESPACE_PACKAGE = None
 KV_NAMESPACE_SERVE = "serve"
