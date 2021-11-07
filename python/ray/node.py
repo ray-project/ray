@@ -787,7 +787,7 @@ class Node:
                 break
             except Exception:
                 time.sleep(1)
-                logger.debug("Waiting for gcs up")
+                logger.into("Waiting for gcs up")
 
     def start_raylet(self,
                      plasma_directory,
