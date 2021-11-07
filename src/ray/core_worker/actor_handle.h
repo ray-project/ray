@@ -83,6 +83,8 @@ class ActorHandle {
 
   int64_t MaxTaskRetries() const { return inner_.max_task_retries(); }
 
+  bool ExecuteOutOfOrder() const { return inner_.execute_out_of_order(); }
+
  private:
   // Protobuf-defined persistent state of the actor handle.
   const rpc::ActorHandle inner_;

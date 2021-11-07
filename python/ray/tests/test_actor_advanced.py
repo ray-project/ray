@@ -1346,14 +1346,17 @@ def test_execute_out_of_order(shutdown_only):
         time.sleep(10000)
 
     inp_ref_1 = never_return.remote()
+    #    inp_ref_1 = ray.put(2)
     inp_ref_2 = ray.put(2)
+
+    assert ray.get(inp_ref_2) == 2
 
     a = A.options(max_concurrency=2).remote()
 
     a.echo.remote(inp_ref_1)
     out_ref_2 = a.echo.remote(inp_ref_2)
 
-    assert ray.get(out_ref_2, timeout=5) == 2 # currently timeout!
+    assert ray.get(out_ref_2, timeout=5) == 2  # currently timeout!
 
 
 if __name__ == "__main__":

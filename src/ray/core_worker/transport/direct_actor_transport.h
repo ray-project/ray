@@ -133,22 +133,100 @@ class CoreWorkerDirectActorTaskSubmitter
   void CheckTimeoutTasks();
 
  private:
-  struct ClientQueue {
-    /// The current state of the actor. If this is ALIVE, then we should have
-    /// an RPC client to the actor. If this is DEAD, then all tasks in the
-    /// queue will be marked failed and all other ClientQueue state is ignored.
-    rpc::ActorTableData::ActorState state = rpc::ActorTableData::DEPENDENCIES_UNREADY;
-    /// Only applies when state=DEAD.
-    std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
-    /// How many times this actor has been restarted before. Starts at -1 to
-    /// indicate that the actor is not yet created. This is used to drop stale
-    /// messages from the GCS.
-    int64_t num_restarts = -1;
-    /// The RPC client. We use shared_ptr to enable shared_from_this for
-    /// pending client callbacks.
-    std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client = nullptr;
-    /// The intended worker ID of the actor.
-    std::string worker_id = "";
+  struct RequestQueue {
+    bool Emplace(uint64_t position, TaskSpecification spec) {
+      return requests
+          .emplace(position, std::make_pair(spec, /*dependency_resolved*/ false))
+          .second;
+    }
+
+    bool Contains(uint64_t position) { return requests.find(position) != requests.end(); }
+
+    const std::pair<TaskSpecification, bool> &Get(uint64_t position) {
+      auto it = requests.find(position);
+      RAY_CHECK(it != requests.end());
+      return it->second;
+    }
+
+    void MarkDependencyFailed(uint64_t position) { requests.erase(position); }
+
+    void MarkDependencyResolved(uint64_t position) {
+      auto it = requests.find(position);
+      RAY_CHECK(it != requests.end());
+      it->second.second = true;
+    }
+
+    std::vector<TaskID> ClearAllTasks() {
+      std::vector<TaskID> task_ids;
+      for (auto &[pos, spec] : requests) {
+        task_ids.push_back(spec.first.TaskId());
+      }
+      requests.clear();
+      return task_ids;
+    }
+
+    absl::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() {
+      auto head = requests.begin();
+      if (head != requests.end() && (/*seqno*/ head->first <= next_send_position) &&
+          (/*dependencies_resolved*/ head->second.second)) {
+        // If the task has been sent before, skip the other tasks in the send
+        // queue.
+        bool skip_queue = head->first < next_send_position;
+        auto task_spec = std::move(head->second.first);
+        head = requests.erase(head);
+        next_send_position++;
+        return std::make_pair(std::move(task_spec), skip_queue);
+      }
+      return absl::nullopt;
+    }
+
+    std::map<uint64_t, TaskSpecification> PopAllOutOfOrderCompletedTasks() {
+      auto result = std::move(out_of_order_completed_tasks);
+      out_of_order_completed_tasks.clear();
+      return result;
+    }
+
+    void OnClientConnected() {
+      // This assumes that all replies from the previous incarnation
+      // of the actor have been received. This assumption should be OK
+      // because we fail all inflight tasks in `DisconnectRpcClient`.
+      RAY_LOG(DEBUG) << "Resetting caller starts at for actor " << actor_id << " from "
+                     << caller_starts_at << " to " << next_task_reply_position;
+      caller_starts_at = next_task_reply_position;
+    }
+
+    uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const {
+      RAY_CHECK(task_spec.ActorCounter() >= caller_starts_at)
+          << "actor counter " << task_spec.ActorCounter() << " " << caller_starts_at;
+      return task_spec.ActorCounter() - caller_starts_at;
+    }
+
+    void MarkTaskCompleted(uint64_t position, TaskSpecification task_spec) {
+      // Try to increment queue.next_task_reply_position consecutively until we
+      // cannot. In the case of tasks not received in order, the following block
+      // ensure queue.next_task_reply_position are incremented to the max possible
+      // value.
+      out_of_order_completed_tasks.insert({position, task_spec});
+      auto min_completed_task = out_of_order_completed_tasks.begin();
+      while (min_completed_task != out_of_order_completed_tasks.end()) {
+        if (min_completed_task->first == next_task_reply_position) {
+          next_task_reply_position++;
+          // increment the iterator and erase the old value
+          out_of_order_completed_tasks.erase(min_completed_task++);
+        } else {
+          break;
+        }
+      }
+
+      RAY_LOG(DEBUG) << "Got PushTaskReply for actor " << actor_id
+                     << " with actor_counter " << position
+                     << " new queue.next_task_reply_position is "
+                     << next_task_reply_position
+                     << " and size of out_of_order_tasks set is "
+                     << out_of_order_completed_tasks.size();
+    }
+
+    ActorID actor_id;
 
     /// The actor's pending requests, ordered by the task number (see below
     /// diagram) in the request. The bool indicates whether the dependencies
@@ -210,6 +288,26 @@ class CoreWorkerDirectActorTaskSubmitter
     // NOTE(simon): consider absl::btree_set for performance, but it requires updating
     // abseil.
     std::map<uint64_t, TaskSpecification> out_of_order_completed_tasks;
+  };
+
+  struct ClientQueue {
+    /// The current state of the actor. If this is ALIVE, then we should have
+    /// an RPC client to the actor. If this is DEAD, then all tasks in the
+    /// queue will be marked failed and all other ClientQueue state is ignored.
+    rpc::ActorTableData::ActorState state = rpc::ActorTableData::DEPENDENCIES_UNREADY;
+    /// Only applies when state=DEAD.
+    std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
+    /// How many times this actor has been restarted before. Starts at -1 to
+    /// indicate that the actor is not yet created. This is used to drop stale
+    /// messages from the GCS.
+    int64_t num_restarts = -1;
+    /// The RPC client. We use shared_ptr to enable shared_from_this for
+    /// pending client callbacks.
+    std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client = nullptr;
+    /// The intended worker ID of the actor.
+    std::string worker_id = "";
+
+    RequestQueue requests;
 
     /// Tasks that can't be sent because 1) the callee actor is dead. 2) network error.
     /// For 1) the task will wait for the DEAD state notification, then mark task as
@@ -590,7 +688,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       int64_t reorder_wait_seconds = kMaxReorderWaitSeconds,
       bool execute_out_of_order = false)
-      : kExecuteOutOfOrder(execute_out_of_order),
+      : kExecuteOutOfOrder(true),
         kReorderWaitSeconds(reorder_wait_seconds),
         wait_timer_(main_io_service),
         main_thread_id_(boost::this_thread::get_id()),
@@ -655,10 +753,18 @@ class ActorSchedulingQueue : public SchedulingQueue {
         waiter_.Wait(dependencies, [this, request = std::move(request)]() mutable {
           RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
           request.MarkDependenciesSatisfied();
-          pending_actor_tasks_[sequence_no++] = std::move(request);
+          pending_actor_tasks_[sequence_no_] = std::move(request);
+          sequence_no_++;
+          RAY_LOG(INFO) << "sequence_no: " << sequence_no_
+                        << " next_seq_no_: " << next_seq_no_;
+          ScheduleRequests();
         });
       } else {
-        pending_actor_tasks_[sequence_no++] = std::move(request);
+        pending_actor_tasks_[sequence_no_] = std::move(request);
+        sequence_no_++;
+        RAY_LOG(INFO) << "sequence_no: " << sequence_no_
+                      << " next_seq_no_: " << next_seq_no_;
+        ScheduleRequests();
       }
     } else {
       // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in
@@ -780,7 +886,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Execute task out of order, mainly used for threaded actors and async actors.
   const bool kExecuteOutOfOrder = false;
   /// TODO
-  int64_t sequence_no = 0;
+  int64_t sequence_no_ = 0;
   /// Max time in seconds to wait for dependencies to show up.
   const int64_t kReorderWaitSeconds = 0;
   /// Sorted map of (accept, rej) task callbacks keyed by their sequence number.

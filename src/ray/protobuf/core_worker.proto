@@ -55,6 +55,9 @@ message ActorHandle {
 
   // How many times tasks may be retried on this actor if the actor fails.
   int64 max_task_retries = 9;
+
+  // Does the actor support execute out of order.
+  bool execute_out_of_order = 10;
 }
 
 message ReturnObject {
