@@ -213,10 +213,13 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulingFailed) {
   auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
   mock_placement_group_scheduler_->placement_groups_.clear();
 
+  ASSERT_EQ(placement_group->GetStats().scheduling_attempt(), 1);
   gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group,
                                                                GetExpBackOff(), true);
+
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
   ASSERT_EQ(mock_placement_group_scheduler_->placement_groups_.size(), 1);
+  ASSERT_EQ(placement_group->GetStats().scheduling_attempt(), 2);
   mock_placement_group_scheduler_->placement_groups_.clear();
 
   // Check that the placement_group is in state `CREATED`.
@@ -301,6 +304,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingPendingPlacementGroup) {
   gcs_placement_group_manager_->RemovePlacementGroup(placement_group_id,
                                                      [](const Status &status) {});
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::REMOVED);
+  ASSERT_EQ(placement_group->GetStats().scheduling_state(),
+            rpc::PlacementGroupStats::REMOVED);
 
   // Make sure it is not rescheduled
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
@@ -599,6 +604,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulingCanceledWhenPgIsInfeasible) {
   // Mark it non-retryable.
   gcs_placement_group_manager_->OnPlacementGroupCreationFailed(placement_group,
                                                                GetExpBackOff(), false);
+  ASSERT_EQ(placement_group->GetStats().scheduling_state(),
+            rpc::PlacementGroupStats::INFEASIBLE);
 
   // Schedule twice to make sure it will not be scheduled afterward.
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
@@ -615,6 +622,8 @@ TEST_F(GcsPlacementGroupManagerTest, TestSchedulingCanceledWhenPgIsInfeasible) {
 
   OnPlacementGroupCreationSuccess(placement_group);
   ASSERT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
+  ASSERT_EQ(placement_group->GetStats().scheduling_state(),
+            rpc::PlacementGroupStats::FINISHED);
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestRayNamespace) {
@@ -677,6 +686,93 @@ TEST_F(GcsPlacementGroupManagerTest, TestRayNamespace) {
               PlacementGroupID::FromBinary(
                   request1.placement_group_spec().placement_group_id()));
   }
+}
+
+TEST_F(GcsPlacementGroupManagerTest, TestStats) {
+  auto request = Mocker::GenCreatePlacementGroupRequest();
+  std::atomic<int> registered_placement_group_count(0);
+  RegisterPlacementGroup(request,
+                         [&registered_placement_group_count](const Status &status) {
+                           ++registered_placement_group_count;
+                         });
+
+  ASSERT_EQ(registered_placement_group_count, 1);
+  WaitForExpectedPgCount(1);
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.clear();
+
+  /// Feasible, but still failing.
+  {
+    ASSERT_EQ(placement_group->GetStats().scheduling_attempt(), 1);
+    ASSERT_EQ(placement_group->GetStats().scheduling_state(),
+              rpc::PlacementGroupStats::QUEUED);
+    gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
+        placement_group, GetExpBackOff(), /*is_feasible*/ true);
+    WaitForExpectedPgCount(1);
+    auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+    mock_placement_group_scheduler_->placement_groups_.clear();
+    ASSERT_EQ(placement_group->GetStats().scheduling_state(),
+              rpc::PlacementGroupStats::NO_RESOURCES);
+    ASSERT_EQ(placement_group->GetStats().scheduling_attempt(), 2);
+  }
+
+  /// Feasible, but failed to commit resources.
+  {
+    placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
+    gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
+        placement_group, GetExpBackOff(), /*is_feasible*/ true);
+    WaitForExpectedPgCount(1);
+    auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+    mock_placement_group_scheduler_->placement_groups_.clear();
+    ASSERT_EQ(placement_group->GetStats().scheduling_state(),
+              rpc::PlacementGroupStats::FAILED_TO_COMMIT_RESOURCES);
+    ASSERT_EQ(placement_group->GetStats().scheduling_attempt(), 3);
+  }
+
+  // Check that the placement_group scheduling state is `FINISHED`.
+  {
+    OnPlacementGroupCreationSuccess(placement_group);
+    ASSERT_EQ(placement_group->GetStats().scheduling_state(),
+              rpc::PlacementGroupStats::FINISHED);
+    ASSERT_EQ(placement_group->GetStats().scheduling_attempt(), 3);
+  }
+}
+
+TEST_F(GcsPlacementGroupManagerTest, TestStatsCreationTime) {
+  auto request = Mocker::GenCreatePlacementGroupRequest();
+  std::atomic<int> registered_placement_group_count(0);
+  auto request_received_ns = absl::GetCurrentTimeNanos();
+  RegisterPlacementGroup(request,
+                         [&registered_placement_group_count](const Status &status) {
+                           ++registered_placement_group_count;
+                         });
+  WaitForExpectedPgCount(1);
+  auto placement_group = mock_placement_group_scheduler_->placement_groups_.back();
+  mock_placement_group_scheduler_->placement_groups_.clear();
+
+  /// Failed to create a pg.
+  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
+      placement_group, GetExpBackOff(), /*is_feasible*/ true);
+  auto scheduling_started_ns = absl::GetCurrentTimeNanos();
+  WaitForExpectedPgCount(1);
+
+  OnPlacementGroupCreationSuccess(placement_group);
+  auto scheduling_done_ns = absl::GetCurrentTimeNanos();
+
+  /// Make sure the creation time is correctly recorded.
+  ASSERT_TRUE(placement_group->GetStats().scheduling_latency_us() != 0);
+  ASSERT_TRUE(placement_group->GetStats().end_to_end_creation_latency_us() != 0);
+  // The way to measure latency is a little brittle now. Alternatively, we can mock
+  // the absl::GetCurrentNanos() to a callback method and have more accurate test.
+  auto scheduling_latency_us =
+      absl::Nanoseconds(scheduling_done_ns - scheduling_started_ns) /
+      absl::Microseconds(1);
+  auto end_to_end_creation_latency_us =
+      absl::Nanoseconds(scheduling_done_ns - request_received_ns) / absl::Microseconds(1);
+  ASSERT_TRUE(placement_group->GetStats().scheduling_latency_us() <
+              scheduling_latency_us);
+  ASSERT_TRUE(placement_group->GetStats().end_to_end_creation_latency_us() <
+              end_to_end_creation_latency_us);
 }
 
 }  // namespace gcs

@@ -111,6 +111,13 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
 RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
 
+// TODO (Alex): Remove this feature flag once scheduling class capping is
+// implemented.
+/// Whether to include function descriptors, and depth in the
+// scheduling class. / This causes tasks to be queued differently, so it may
+// effect scheduling / behavior.
+RAY_CONFIG(bool, complex_scheduling_class, false)
+
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
 RAY_CONFIG(int64_t, max_direct_call_object_size, 100 * 1024)
@@ -256,7 +263,7 @@ RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
 RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // Feature flag to use grpc instead of redis for resource broadcast.
 // TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
-RAY_CONFIG(bool, grpc_based_resource_broadcast, false)
+RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 // Feature flag to enable grpc based pubsub in GCS.
 RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
 
