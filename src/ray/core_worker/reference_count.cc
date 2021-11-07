@@ -502,7 +502,11 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       deleted->push_back(id);
     }
 
-    reconstructable_owned_objects_index_.erase(id);
+    auto index_it = reconstructable_owned_objects_index_.find(id);
+    if (index_it != reconstructable_owned_objects_index_.end()) {
+      reconstructable_owned_objects_.erase(index_it->second);
+      reconstructable_owned_objects_index_.erase(index_it);
+    }
   }
 
   if (it->second.ShouldDelete(lineage_pinning_enabled_)) {
@@ -515,7 +519,11 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
 
 void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
   RAY_CHECK(it->second.ShouldDelete(lineage_pinning_enabled_));
-  reconstructable_owned_objects_index_.erase(it->first);
+  auto index_it = reconstructable_owned_objects_index_.find(it->first);
+  if (index_it != reconstructable_owned_objects_index_.end()) {
+    reconstructable_owned_objects_.erase(index_it->second);
+    reconstructable_owned_objects_index_.erase(index_it);
+  }
   freed_objects_.erase(it->first);
   object_id_refs_.erase(it);
   ShutdownIfNeeded();

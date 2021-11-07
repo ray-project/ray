@@ -68,6 +68,7 @@ class TaskManagerTest : public ::testing::Test {
   virtual void TearDown() { AssertNoLeaks(); }
 
   void AssertNoLeaks() {
+    absl::MutexLock lock(&manager_.mu_);
     ASSERT_EQ(manager_.submissible_tasks_.size(), 0);
     ASSERT_EQ(manager_.num_pending_tasks_, 0);
     ASSERT_EQ(manager_.total_lineage_footprint_bytes_, 0);

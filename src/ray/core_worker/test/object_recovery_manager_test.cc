@@ -141,7 +141,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
               RAY_CHECK(memory_store_->Put(data, object_id));
             }) {
     ref_counter_->SetReleaseLineageCallback(
-        [this](const ObjectID &, std::vector<ObjectID> *args) {});
+        [this](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
   }
 
   NodeID local_raylet_id_;
@@ -315,7 +315,7 @@ TEST_F(ObjectRecoveryManagerTest, TestLineageEvicted) {
   ObjectID object_id = ObjectID::FromRandom();
   ref_counter_->AddOwnedObject(object_id, {}, rpc::Address(), "", 0, true);
   ref_counter_->AddLocalReference(object_id, "");
-  ref_counter_->EvictAllLineage();
+  ref_counter_->EvictLineage(1);
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
   ASSERT_EQ(object_directory_->Flush(), 1);
