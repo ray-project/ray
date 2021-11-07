@@ -221,7 +221,7 @@ class Monitor:
         self.autoscaler = StandardAutoscaler(
             autoscaling_config,
             self.load_metrics,
-            gcs_node_info_stub,
+            self.gcs_node_info_stub,
             prefix_cluster_info=self.prefix_cluster_info,
             event_summarizer=self.event_summarizer,
             prom_metrics=self.prom_metrics)
