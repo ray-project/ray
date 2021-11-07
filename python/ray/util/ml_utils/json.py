@@ -16,7 +16,7 @@ class SafeFallbackEncoder(json.JSONEncoder):
 
             if isinstance(value, np.bool_):
                 return bool(value)
-            
+
             if np.isnan(value):
                 return self.nan_str
 
