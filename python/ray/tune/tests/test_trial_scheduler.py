@@ -1923,6 +1923,9 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
             def load_checkpoint(self, state):
                 self.state = state
 
+            def reset_config(self, config):
+                return True
+
         trial_hyperparams = {
             "float_factor": 2.0,
             "const_factor": 3,
