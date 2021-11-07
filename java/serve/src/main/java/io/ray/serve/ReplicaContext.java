@@ -3,7 +3,7 @@ package io.ray.serve;
 /** Stores data for Serve API calls from within the user's backend code. */
 public class ReplicaContext {
 
-  private String backendTag;
+  private String backendTag; // TODO deployment
 
   private String replicaTag;
 

@@ -102,7 +102,8 @@ void NewPlacementGroupResourceManager::CommitBundle(
   const auto &string_id_map = cluster_resource_scheduler_->GetStringIdMap();
   const auto &task_resource_instances = *bundle_state->resources_;
 
-  for (const auto &resource : bundle_spec.GetFormattedResources()) {
+  const auto &resources = bundle_spec.GetFormattedResources();
+  for (const auto &resource : resources) {
     const auto &resource_name = resource.first;
     const auto &original_resource_name = GetOriginalResourceName(resource_name);
     if (original_resource_name != kBundle_ResourceLabel) {
@@ -115,7 +116,8 @@ void NewPlacementGroupResourceManager::CommitBundle(
     }
   }
   cluster_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();
-  update_resources_(cluster_resource_scheduler_->GetResourceTotals());
+  update_resources_(
+      cluster_resource_scheduler_->GetResourceTotals(/*resource_name_filter*/ resources));
 }
 
 void NewPlacementGroupResourceManager::ReturnBundle(

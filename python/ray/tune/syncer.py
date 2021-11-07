@@ -12,11 +12,11 @@ from shlex import quote
 
 import ray
 import yaml
-from ray import services
 from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.checkpoint_manager import Checkpoint
 from ray.tune.result import NODE_IP
+from ray.util import get_node_ip_address
 from ray.util.debug import log_once
 from ray.ray_constants import env_integer
 from ray.tune.cluster_info import get_ssh_key, get_ssh_user
@@ -253,7 +253,7 @@ class NodeSyncer(Syncer):
     """Syncer for syncing files to/from a remote dir to a local dir."""
 
     def __init__(self, local_dir, remote_dir, sync_client):
-        self.local_ip = services.get_node_ip_address()
+        self.local_ip = get_node_ip_address()
         self.worker_ip = None
         super(NodeSyncer, self).__init__(local_dir, remote_dir, sync_client)
 
@@ -418,7 +418,10 @@ class SyncerCallback(Callback):
         from ray.tune.durable_trainable import DurableTrainable
 
         trial_syncer = self._get_trial_syncer(trial)
-        if trial.sync_on_checkpoint:
+        # If the sync_function is False, syncing to driver is disabled.
+        # In every other case (valid values include None, True Callable,
+        # NodeSyncer) syncing to driver is enabled.
+        if trial.sync_on_checkpoint and self._sync_function is not False:
             try:
                 # Wait for any other syncs to finish. We need to sync again
                 # after this to handle checkpoints taken mid-sync.

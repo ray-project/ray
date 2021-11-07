@@ -176,6 +176,15 @@ class FunctionActorManager:
                  "job_id", "function_id", "function_name", "function",
                  "module", "max_calls"
              ])
+
+        if ray_constants.ISOLATE_EXPORTS and \
+                job_id_str != self._worker.current_job_id.binary():
+            # A worker only executes tasks from the assigned job.
+            # TODO(jjyao): If fetching unrelated remote functions
+            # becomes a perf issue, we can also consider having export
+            # queue per job.
+            return
+
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
         function_name = decode(function_name)

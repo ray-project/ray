@@ -81,8 +81,8 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
   /// \param client_factory Factory to create remote core worker client, default factor
   /// will be used if not set.
   explicit GcsBasedActorScheduler(
-      instrumented_io_context &io_context, gcs::GcsActorTable &gcs_actor_table,
-      const GcsNodeManager &gcs_node_manager, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+      instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
+      const GcsNodeManager &gcs_node_manager,
       std::shared_ptr<GcsResourceManager> gcs_resource_manager,
       std::shared_ptr<GcsResourceScheduler> gcs_resource_scheduler,
       std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,

@@ -270,6 +270,45 @@ def test_actor_repr_in_traceback(ray_start_regular):
         assert label_dict["repr"] == actor_repr
 
 
+def test_unpickleable_stacktrace():
+    expected_output = """System error: Failed to unpickle serialized exception
+traceback: Traceback (most recent call last):
+  File "FILE", line ZZ, in from_bytes
+    return pickle.loads(ray_exception.serialized_exception)
+TypeError: __init__() missing 1 required positional argument: 'arg'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "FILE", line ZZ, in deserialize_objects
+    obj = self._deserialize_object(data, metadata, object_ref)
+  File "FILE", line ZZ, in _deserialize_object
+    return RayError.from_bytes(obj)
+  File "FILE", line ZZ, in from_bytes
+    raise RuntimeError(msg) from e
+RuntimeError: Failed to unpickle serialized exception"""
+
+    class NoPickleError(OSError):
+        def __init__(self, arg):
+            pass
+
+    def g(a):
+        raise NoPickleError("asdf")
+
+    @ray.remote
+    def f():
+        a = 3
+        b = 4
+        c = a + b
+        return g(c)
+
+    try:
+        ray.get(f.remote())
+    except Exception as ex:
+        print(repr(scrub_traceback(str(ex))))
+        assert clean_noqa(expected_output) == scrub_traceback(str(ex))
+
+
 if __name__ == "__main__":
     import pytest
     import sys

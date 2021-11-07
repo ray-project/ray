@@ -100,6 +100,7 @@ build:tsan --linkopt -fsanitize=thread
 # This config is only for running TSAN with LLVM toolchain on Linux.
 build:tsan-clang --config=tsan
 build:tsan-clang --config=llvm
+test:tsan --test_env=TSAN_OPTIONS="report_atomic_races=0"
 
 # Memory sanitizer configuration
 build:asan --strip=never
@@ -148,15 +149,13 @@ build:ci-github --experimental_repository_cache_hardlinks # GitHub Actions has l
 build:ci-github --disk_cache=~/ray-bazel-cache
 build:ci-github --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
 test:ci --flaky_test_attempts=3
-test:ci --nocache_test_results
-test:ci --spawn_strategy=local
+test:ci --genrule_strategy=local
 test:ci --test_output=errors
 test:ci --test_verbose_timeout_warnings
 test:ci-debug -c dbg
 test:ci-debug --copt="-g"
 test:ci-debug --flaky_test_attempts=3
-test:ci-debug --nocache_test_results
-test:ci-debug --spawn_strategy=local
+test:ci-debug --genrule_strategy=local
 test:ci-debug --test_output=errors
 test:ci-debug --test_verbose_timeout_warnings
 

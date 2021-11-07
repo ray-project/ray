@@ -75,7 +75,7 @@ std::shared_ptr<msgpack::sbuffer> TaskExecutor::current_actor_ = nullptr;
 TaskExecutor::TaskExecutor(AbstractRayRuntime &abstract_ray_tuntime_)
     : abstract_ray_tuntime_(abstract_ray_tuntime_) {}
 
-// TODO(Guyang Song): Make a common task execution function used for both local mode and
+// TODO(SongGuyang): Make a common task execution function used for both local mode and
 // cluster mode.
 std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
   abstract_ray_tuntime_.GetWorkerContext();
@@ -129,7 +129,9 @@ Status TaskExecutor::ExecuteTask(
     const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
     std::vector<std::shared_ptr<ray::RayObject>> *results,
     std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
-    bool *is_application_level_error) {
+    bool *is_application_level_error,
+    const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
+    const std::string name_of_concurrency_group_to_execute) {
   RAY_LOG(INFO) << "Execute task: " << TaskType_Name(task_type);
   RAY_CHECK(ray_function.GetLanguage() == ray::Language::CPP);
   auto function_descriptor = ray_function.GetFunctionDescriptor();

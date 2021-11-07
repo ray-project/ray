@@ -39,9 +39,6 @@
                     "config": {
                       "type": "object",
                       "properties": {
-                        "envVars": {
-                          "type": "object"
-                        },
                         "namespace": {
                           "type": "string"
                         },
@@ -53,7 +50,6 @@
                         }
                       },
                       "required": [
-                        "envVars",
                         "namespace",
                         "metadata",
                         "runtimeEnv"

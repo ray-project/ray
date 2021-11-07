@@ -1,13 +1,13 @@
 """
 Unit tests for the router class. Please don't add any test that will involve
-controller or the backend worker, use mock if necessary.
+controller or the actual replica wrapper, use mock if necessary.
 """
 import asyncio
 
 import pytest
 
 import ray
-from ray.serve.config import BackendConfig
+from ray.serve.common import RunningReplicaInfo
 from ray.serve.router import Query, ReplicaSet, RequestMetadata
 from ray._private.test_utils import SignalActor
 
@@ -81,10 +81,14 @@ async def test_replica_set(ray_instance):
         "my_backend",
         asyncio.get_event_loop(),
     )
-    workers = [MockWorker.remote() for _ in range(2)]
-    rs.set_max_concurrent_queries(
-        BackendConfig(max_concurrent_queries=1).to_proto_bytes())
-    rs.update_worker_replicas(workers)
+    replicas = [
+        RunningReplicaInfo(
+            backend_tag="my_backend",
+            replica_tag=str(i),
+            actor_handle=MockWorker.remote(),
+            max_concurrent_queries=1) for i in range(2)
+    ]
+    rs.update_running_replicas(replicas)
 
     # Send two queries. They should go through the router but blocked by signal
     # actors.
@@ -98,8 +102,8 @@ async def test_replica_set(ray_instance):
 
     # Each replica should have exactly one inflight query. Let make sure the
     # queries arrived there.
-    for worker in workers:
-        while await worker.num_queries.remote() != 1:
+    for replica in replicas:
+        while await replica.actor_handle.num_queries.remote() != 1:
             await asyncio.sleep(1)
 
     # Let's try to send another query.
@@ -110,12 +114,12 @@ async def test_replica_set(ray_instance):
     await asyncio.sleep(0.2)
     assert not third_ref_pending_task.done()
 
-    # Let's unblock the two workers
+    # Let's unblock the two replicas
     await signal.send.remote()
     assert await first_ref == "DONE"
     assert await second_ref == "DONE"
 
-    # The third request should be unblocked and sent to first worker.
+    # The third request should be unblocked and sent to first replica.
     # This meas we should be able to get the object ref.
     third_ref = await third_ref_pending_task
 
@@ -124,8 +128,8 @@ async def test_replica_set(ray_instance):
     assert await third_ref == "DONE"
 
     # Finally, make sure that one of the replica processed the third query.
-    num_queries_set = {(await worker.num_queries.remote())
-                       for worker in workers}
+    num_queries_set = {(await replica.actor_handle.num_queries.remote())
+                       for replica in replicas}
     assert num_queries_set == {2, 1}
 
 

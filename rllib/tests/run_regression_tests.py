@@ -77,7 +77,7 @@ if __name__ == "__main__":
 
     # Loop through all collected files.
     for yaml_file in yaml_files:
-        experiments = yaml.load(open(yaml_file).read())
+        experiments = yaml.safe_load(open(yaml_file).read())
         assert len(experiments) == 1,\
             "Error, can only run a single experiment per yaml file!"
 

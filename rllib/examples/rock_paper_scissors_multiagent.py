@@ -146,7 +146,7 @@ def run_with_custom_entropy_loss(args, stop):
     This performs about the same as the default loss does."""
 
     def entropy_policy_gradient_loss(policy, model, dist_class, train_batch):
-        logits, _ = model.from_batch(train_batch)
+        logits, _ = model(train_batch)
         action_dist = dist_class(logits, model)
         if args.framework == "torch":
             # Required by PGTorchPolicy's stats fn.

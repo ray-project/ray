@@ -49,8 +49,7 @@ class ObjectRecoveryManager {
                         std::shared_ptr<TaskResubmissionInterface> task_resubmitter,
                         std::shared_ptr<ReferenceCounter> reference_counter,
                         std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
-                        const ObjectRecoveryFailureCallback &recovery_failure_callback,
-                        bool lineage_reconstruction_enabled)
+                        const ObjectRecoveryFailureCallback &recovery_failure_callback)
       : task_resubmitter_(task_resubmitter),
         reference_counter_(reference_counter),
         rpc_address_(rpc_address),
@@ -58,8 +57,7 @@ class ObjectRecoveryManager {
         local_object_pinning_client_(local_object_pinning_client),
         object_lookup_(object_lookup),
         in_memory_store_(in_memory_store),
-        recovery_failure_callback_(recovery_failure_callback),
-        lineage_reconstruction_enabled_(lineage_reconstruction_enabled) {}
+        recovery_failure_callback_(recovery_failure_callback) {}
 
   /// Recover an object that was stored in plasma. This will only succeed for
   /// objects that are lost from memory and that this process owns (returns
@@ -132,11 +130,6 @@ class ObjectRecoveryManager {
 
   /// Callback to call if recovery fails.
   const ObjectRecoveryFailureCallback recovery_failure_callback_;
-
-  /// Whether lineage reconstruction is enabled. If disabled, then we will try
-  /// to pin new copies for a lost object, but we will never reconstruct it
-  /// through task submission.
-  const bool lineage_reconstruction_enabled_;
 
   /// Protects below fields.
   mutable absl::Mutex mu_;

@@ -27,6 +27,7 @@ SUPPORTED_BAZEL = (4, 2, 1)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
+SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 
 PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
@@ -140,7 +141,7 @@ if BUILD_JAVA or os.path.exists(
     ray_files.append("ray/jars/ray_dist.jar")
 
 if setup_spec.type == SetupType.RAY_CPP:
-    setup_spec.files_to_include += ["ray/core/src/ray/cpp/default_worker"]
+    setup_spec.files_to_include += ["ray/cpp/default_worker" + exe_suffix]
     # C++ API library and project template files.
     setup_spec.files_to_include += [
         os.path.join(dirpath, filename)
@@ -190,14 +191,14 @@ if setup_spec.type == SetupType.RAY:
             "fsspec",
         ],
         "default": [
-            "aiohttp",
+            "aiohttp >= 3.7",
             "aiohttp_cors",
             "aioredis < 2",
             "colorful",
             "py-spy >= 0.2.0",
             "jsonschema",
             "requests",
-            "gpustat",
+            "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
             "prometheus_client >= 0.7.1",
         ],
@@ -209,6 +210,10 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-exporter-otlp==1.1.0"
         ],
     }
+
+    # Ray Serve depends on the Ray dashboard components.
+    setup_spec.extras["serve"] = list(
+        set(setup_spec.extras["serve"] + setup_spec.extras["default"]))
 
     if RAY_EXTRA_CPP:
         setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
@@ -553,7 +558,10 @@ def add_system_dlls(dlls, target_dir):
 
 
 def pip_run(build_ext):
-    build(True, BUILD_JAVA, True)
+    if SKIP_BAZEL_BUILD:
+        build(False, False, False)
+    else:
+        build(True, BUILD_JAVA, True)
 
     if setup_spec.type == SetupType.RAY:
         setup_spec.files_to_include += ray_files

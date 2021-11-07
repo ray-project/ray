@@ -4,7 +4,8 @@ from collections import deque
 from enum import Enum, unique
 import hashlib
 import re
-from typing import Dict, List, Optional, Callable, Set, Iterator, Any
+from typing import (Dict, Generic, List, Optional, Callable, Set, TypeVar,
+                    Iterator, Any)
 import unicodedata
 
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from ray import ObjectRef
 from ray.util.annotations import PublicAPI
 
 # Alias types
+Event = Any
 StepID = str
 WorkflowOutputType = ObjectRef
 
@@ -128,6 +130,8 @@ class WorkflowData:
     ray_options: Dict[str, Any]
     # name of the step
     name: str
+    # meta data to store
+    user_metadata: Dict[str, Any]
 
     def to_metadata(self) -> Dict[str, Any]:
         f = self.func_body
@@ -139,6 +143,7 @@ class WorkflowData:
             "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
             "catch_exceptions": self.catch_exceptions,
             "ray_options": self.ray_options,
+            "user_metadata": self.user_metadata
         }
         return metadata
 
@@ -179,7 +184,10 @@ def slugify(value: str, allow_unicode=False) -> str:
     return re.sub(r"[-\s]+", "-", value)
 
 
-class Workflow:
+T = TypeVar("T")
+
+
+class Workflow(Generic[T]):
     def __init__(self,
                  workflow_data: WorkflowData,
                  prepare_inputs: Optional[Callable] = None):
@@ -261,7 +269,9 @@ class Workflow:
             "remote, or stored in Ray objects.")
 
     @PublicAPI(stability="beta")
-    def run(self, workflow_id: Optional[str] = None) -> Any:
+    def run(self,
+            workflow_id: Optional[str] = None,
+            metadata: Optional[Dict[str, Any]] = None) -> Any:
         """Run a workflow.
 
         If the workflow with the given id already exists, it will be resumed.
@@ -288,11 +298,18 @@ class Workflow:
         Args:
             workflow_id: A unique identifier that can be used to resume the
                 workflow. If not specified, a random id will be generated.
+            metadata: The metadata to add to the workflow. It has to be able
+                to serialize to json.
+
+        Returns:
+            The running result.
         """
-        return ray.get(self.run_async(workflow_id))
+        return ray.get(self.run_async(workflow_id, metadata))
 
     @PublicAPI(stability="beta")
-    def run_async(self, workflow_id: Optional[str] = None) -> ObjectRef:
+    def run_async(self,
+                  workflow_id: Optional[str] = None,
+                  metadata: Optional[Dict[str, Any]] = None) -> ObjectRef:
         """Run a workflow asynchronously.
 
         If the workflow with the given id already exists, it will be resumed.
@@ -319,11 +336,17 @@ class Workflow:
         Args:
             workflow_id: A unique identifier that can be used to resume the
                 workflow. If not specified, a random id will be generated.
+            metadata: The metadata to add to the workflow. It has to be able
+                to serialize to json.
+
+        Returns:
+           The running result as ray.ObjectRef.
+
         """
         # TODO(suquark): avoid cyclic importing
         from ray.workflow.execution import run
         self._step_id = None
-        return run(self, workflow_id)
+        return run(self, workflow_id, metadata)
 
 
 @PublicAPI(stability="beta")

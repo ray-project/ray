@@ -71,7 +71,15 @@ struct CoreWorkerOptions {
       const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
       std::vector<std::shared_ptr<RayObject>> *results,
       std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb_bytes,
-      bool *is_application_level_error)>;
+      bool *is_application_level_error,
+      // The following 2 parameters `defined_concurrency_groups` and
+      // `name_of_concurrency_group_to_execute` are used for Python
+      // asyncio actor only.
+      //
+      // Defined concurrency groups of this actor. Note this is only
+      // used for actor creation task.
+      const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
+      const std::string name_of_concurrency_group_to_execute)>;
 
   CoreWorkerOptions()
       : store_socket(""),
@@ -186,6 +194,12 @@ struct CoreWorkerOptions {
   int runtime_env_hash;
   /// The PID of the process for setup worker runtime env.
   pid_t worker_shim_pid;
+  /// The startup token of the process assigned to it
+  /// during startup via command line arguments.
+  /// This is needed because the actual core worker process
+  /// may not have the same pid as the process the worker pool
+  /// starts (due to shim processes).
+  StartupToken startup_token{0};
 };
 
 /// Lifecycle management of one or more `CoreWorker` instances in a process.
@@ -287,8 +301,10 @@ class CoreWorkerProcess {
 
   /// Check that the core worker environment is initialized for this process.
   ///
+  /// \param[in] quick_exit If set to true, quick exit if uninitialized without
+  /// crash.
   /// \return Void.
-  static void EnsureInitialized();
+  static void EnsureInitialized(bool quick_exit);
 
   static void HandleAtExit();
 
@@ -1040,6 +1056,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
 
  private:
+  void BuildCommonTaskSpec(
+      TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
+      const std::string &name, const TaskID &current_task_id, uint64_t task_index,
+      const TaskID &caller_id, const rpc::Address &address, const RayFunction &function,
+      const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
+      const std::unordered_map<std::string, double> &required_resources,
+      const std::unordered_map<std::string, double> &required_placement_resources,
+      const BundleID &bundle_id, bool placement_group_capture_child_tasks,
+      const std::string &debugger_breakpoint, const std::string &serialized_runtime_env,
+      const std::vector<std::string> &runtime_env_uris,
+      const std::string &concurrency_group_name = "");
   void SetCurrentTaskId(const TaskID &task_id);
 
   void SetActorId(const ActorID &actor_id);
@@ -1108,6 +1135,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      std::vector<std::shared_ptr<RayObject>> *return_objects,
                      ReferenceCounter::ReferenceTableProto *borrowed_refs,
                      bool *is_application_level_error);
+
+  /// Put an object in the local plasma store.
+  Status PutInLocalPlasmaStore(const RayObject &object, const ObjectID &object_id,
+                               bool pin_object);
 
   /// Execute a local mode task (runs normal ExecuteTask)
   ///

@@ -82,7 +82,7 @@ steps:
     - bazel test $(./scripts/bazel_export_options) --config=ci
       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI
-      --test_tag_filters=-kubernetes,-jenkins_only,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky,-flaky-mac
+      --test_tag_filters=-kubernetes,-medium_size_python_tests_a_to_j,-medium_size_python_tests_k_to_z,-flaky,-flaky-mac
       python/ray/tests/...
     - *epilogue_commands
 
@@ -91,7 +91,7 @@ steps:
   commands:
     - *prelude_commands
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=CI
-      --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_a_to_j,-flaky,-flaky-mac
+      --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j,-flaky,-flaky-mac
       python/ray/tests/...
     - *epilogue_commands
 
@@ -100,7 +100,7 @@ steps:
   commands:
     - *prelude_commands
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_env=CI
-      --test_tag_filters=-kubernetes,-jenkins_only,medium_size_python_tests_k_to_z,-flaky,-flaky-mac
+      --test_tag_filters=-kubernetes,medium_size_python_tests_k_to_z,-flaky,-flaky-mac
       python/ray/tests/...
     - *epilogue_commands
 
@@ -110,7 +110,7 @@ steps:
     - *prelude_commands
     - ./ci/travis/install-dependencies.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
-      --test_tag_filters=-kubernetes,-jenkins_only,flaky,flaky-mac
+      --test_tag_filters=-kubernetes,flaky,flaky-mac
       --test_env=CONDA_EXE
       --test_env=CONDA_PYTHON_EXE
       --test_env=CONDA_SHLVL

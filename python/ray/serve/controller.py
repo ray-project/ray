@@ -4,11 +4,12 @@ import time
 from collections import defaultdict
 import os
 from typing import Dict, List, Optional, Tuple, Any
+from ray.serve.autoscaling_policy import BasicAutoscalingPolicy
+from copy import copy
 
 import ray
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
-from ray.serve.autoscaling_policy import calculate_desired_num_replicas
 from ray.serve.backend_state import ReplicaState, BackendStateManager
 from ray.serve.common import (
     BackendInfo,
@@ -17,7 +18,7 @@ from ray.serve.common import (
     EndpointInfo,
     GoalId,
     NodeId,
-    ReplicaTag,
+    RunningReplicaInfo,
 )
 from ray.serve.config import BackendConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
@@ -26,6 +27,7 @@ from ray.serve.http_state import HTTPState
 from ray.serve.replica import create_replica_wrapper
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.long_poll import LongPollHost
+from ray.serve.storage.kv_store import RayInternalKVStore
 from ray.serve.utils import logger
 from ray.serve.autoscaling_metrics import InMemoryMetricsStore
 
@@ -70,9 +72,11 @@ class ServeController:
         # Used to read/write checkpoints.
         self.controller_namespace = ray.get_runtime_context().namespace
         self.controller_name = controller_name
+        kv_store_namespace = (
+            f"{self.controller_name}-{self.controller_namespace}")
         self.kv_store = make_kv_store(
-            checkpoint_path,
-            namespace=f"{self.controller_name}-{self.controller_namespace}")
+            checkpoint_path, namespace=kv_store_namespace)
+        self.snapshot_store = RayInternalKVStore(namespace=kv_store_namespace)
 
         # Dictionary of backend_tag -> proxy_name -> most recent queue length.
         self.backend_stats = defaultdict(lambda: defaultdict(dict))
@@ -135,13 +139,13 @@ class ServeController:
         return self.http_state.get_http_proxy_handles()
 
     def autoscale(self) -> None:
-        """Update autoscaling deployments with calculated num_replicas."""
+        """Updates autoscaling deployments with calculated num_replicas."""
         for deployment_name, (backend_info,
                               route_prefix) in self.list_deployments().items():
             backend_config = backend_info.backend_config
-            autoscaling_config = backend_config.autoscaling_config
+            autoscaling_policy = backend_info.autoscaling_policy
 
-            if autoscaling_config is None:
+            if autoscaling_policy is None:
                 continue
 
             replicas = self.backend_state_manager._backend_states[
@@ -154,7 +158,8 @@ class ServeController:
                 num_ongoing_requests = (
                     self.autoscaling_metrics_store.window_average(
                         replica_tag,
-                        time.time() - autoscaling_config.look_back_period_s))
+                        time.time() -
+                        autoscaling_policy.config.look_back_period_s))
                 if num_ongoing_requests is not None:
                     current_num_ongoing_requests.append(num_ongoing_requests)
 
@@ -162,20 +167,17 @@ class ServeController:
                 continue
 
             new_backend_config = backend_config.copy()
-            new_backend_config.num_replicas = calculate_desired_num_replicas(
-                autoscaling_config, current_num_ongoing_requests)
 
-            replica_config = backend_info.replica_config
-            deployer_job_id = backend_info.deployer_job_id
-            backend_config_proto_bytes = new_backend_config.to_proto_bytes()
-            goal_id, updating = self.deploy(
-                deployment_name,
-                backend_config_proto_bytes,
-                replica_config,
-                version=backend_info.version,
-                prev_version=backend_info.version,
-                route_prefix=route_prefix,
-                deployer_job_id=deployer_job_id)
+            decision_num_replicas = (
+                autoscaling_policy.get_decision_num_replicas(
+                    current_num_ongoing_requests, len(running_replicas)))
+            new_backend_config.num_replicas = decision_num_replicas
+
+            new_backend_info = copy(backend_info)
+            new_backend_info.backend_config = new_backend_config
+
+            goal_id, updating = self.backend_state_manager.deploy_backend(
+                deployment_name, new_backend_info)
 
     async def run_control_loop(self) -> None:
         while True:
@@ -240,12 +242,12 @@ class ServeController:
                     }
 
             val[deployment_name] = entry
-        self.kv_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
+        self.snapshot_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
-    def _all_replica_handles(
-            self) -> Dict[BackendTag, Dict[ReplicaTag, ActorHandle]]:
+    def _all_running_replicas(
+            self) -> Dict[BackendTag, List[RunningReplicaInfo]]:
         """Used for testing."""
-        return self.backend_state_manager.get_running_replica_handles()
+        return self.backend_state_manager.get_running_replica_infos()
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
@@ -297,6 +299,16 @@ class ServeController:
                 raise ValueError(f"prev_version '{prev_version}' "
                                  "does not match with the existing "
                                  f"version '{existing_backend_info.version}'.")
+
+        autoscaling_config = backend_config.autoscaling_config
+        if autoscaling_config is not None:
+            # TODO: is this the desired behaviour? Should this be a setting?
+            backend_config.num_replicas = autoscaling_config.min_replicas
+
+            autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
+        else:
+            autoscaling_policy = None
+
         backend_info = BackendInfo(
             actor_def=ray.remote(
                 create_replica_wrapper(name,
@@ -305,11 +317,11 @@ class ServeController:
             backend_config=backend_config,
             replica_config=replica_config,
             deployer_job_id=deployer_job_id,
-            start_time_ms=int(time.time() * 1000))
+            start_time_ms=int(time.time() * 1000),
+            autoscaling_policy=autoscaling_policy)
         # TODO(architkulkarni): When a deployment is redeployed, even if
         # the only change was num_replicas, the start_time_ms is refreshed.
-        # This is probably not the desired behavior for an autoscaling
-        # deployment, which redeploys very often to change num_replicas.
+        # Is this the desired behaviour?
 
         goal_id, updating = self.backend_state_manager.deploy_backend(
             name, backend_info)

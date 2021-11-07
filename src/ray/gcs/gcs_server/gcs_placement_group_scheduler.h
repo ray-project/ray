@@ -90,6 +90,15 @@ class GcsPlacementGroupSchedulerInterface {
   virtual void ReleaseUnusedBundles(
       const std::unordered_map<NodeID, std::vector<rpc::Bundle>> &node_to_bundles) = 0;
 
+  /// Initialize with the gcs tables data synchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param node_to_bundles Bundles used by each node.
+  virtual void Initialize(
+      const std::unordered_map<PlacementGroupID,
+                               std::vector<std::shared_ptr<BundleSpecification>>>
+          &group_to_bundles) = 0;
+
   virtual ~GcsPlacementGroupSchedulerInterface() {}
 };
 
@@ -451,6 +460,14 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param node_to_bundles Bundles used by each node.
   void ReleaseUnusedBundles(const std::unordered_map<NodeID, std::vector<rpc::Bundle>>
                                 &node_to_bundles) override;
+
+  /// Initialize with the gcs tables data synchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param node_to_bundles Bundles used by each node.
+  void Initialize(const std::unordered_map<
+                  PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
+                      &group_to_bundles) override;
 
  protected:
   /// Send a bundle PREPARE request to a node. The PREPARE request will lock resources

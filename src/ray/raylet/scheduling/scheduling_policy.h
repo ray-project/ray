@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "ray/common/ray_config.h"
+#include "ray/gcs/gcs_client.h"
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 
 namespace ray {
@@ -60,10 +61,18 @@ int64_t HybridPolicy(
     const ResourceRequest &resource_request, const int64_t local_node_id,
     const absl::flat_hash_map<int64_t, Node> &nodes, float spread_threshold,
     bool force_spillback, bool require_available,
+    std::function<bool(int64_t)> is_node_available,
     bool scheduler_avoid_gpu_nodes = RayConfig::instance().scheduler_avoid_gpu_nodes());
 
-//
-enum class NodeFilter { kAny, kGPU, kCPUOnly };
+enum class NodeFilter {
+  /// Default scheduling.
+  kAny,
+  /// Schedule on GPU only nodes.
+  kGPU,
+  /// Schedule on nodes that don't have GPU. Since GPUs are more scarce resources, we need
+  /// special handling for this.
+  kNonGpu
+};
 
 /// \param resource_request: The resource request we're attempting to schedule.
 /// \param local_node_id: The id of the local node, which is needed for traversal order.
@@ -72,7 +81,7 @@ enum class NodeFilter { kAny, kGPU, kCPUOnly };
 /// truncated to 0.
 /// \param node_filter: defines the subset of nodes were are allowed to schedule on.
 /// can be one of kAny (can schedule on all nodes), kGPU (can only schedule on kGPU
-/// nodes), kCPUOnly (can only schedule on non-GPU nodes.
+/// nodes), kNonGpu (can only schedule on non-GPU nodes.
 ///
 /// \return -1 if the task is unfeasible, otherwise the node id (key in `nodes`) to
 /// schedule on.
@@ -81,6 +90,7 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
                                const absl::flat_hash_map<int64_t, Node> &nodes,
                                float spread_threshold, bool force_spillback,
                                bool require_available,
+                               std::function<bool(int64_t)> is_node_available,
                                NodeFilter node_filter = NodeFilter::kAny);
 
 }  // namespace raylet_scheduling_policy

@@ -8,6 +8,7 @@ ray.init(address="auto")
 serve.start()
 
 
+# __custom_metrics_deployment_start__
 @serve.deployment
 class MyDeployment:
     def __init__(self):
@@ -23,6 +24,8 @@ class MyDeployment:
         if excellent:
             self.my_counter.inc()
 
+
+# __custom_metrics_deployment_end__
 
 MyDeployment.deploy()
 

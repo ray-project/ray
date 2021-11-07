@@ -3,7 +3,7 @@ import logging
 import pickle
 import traceback
 import inspect
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Tuple, Dict
 import time
 
 import starlette.responses
@@ -108,11 +108,15 @@ def create_replica_wrapper(name: str, serialized_backend_def: bytes):
             query = Query(request_args, request_kwargs, request_metadata)
             return await self.backend.handle_request(query)
 
-        async def reconfigure(self, user_config: Optional[Any] = None) -> None:
-            await self.backend.reconfigure(user_config)
+        async def reconfigure(self, user_config: Optional[Any] = None
+                              ) -> Tuple[BackendConfig, BackendVersion]:
+            if user_config is not None:
+                await self.backend.reconfigure(user_config)
 
-        def get_version(self) -> BackendVersion:
-            return self.backend.version
+            return self.get_metadata()
+
+        def get_metadata(self) -> Tuple[BackendConfig, BackendVersion]:
+            return self.backend.backend_config, self.backend.version
 
         async def prepare_for_shutdown(self):
             self.shutdown_event.set()
@@ -145,6 +149,7 @@ class RayServeReplica:
                  replica_tag: ReplicaTag, backend_config: BackendConfig,
                  user_config: Any, version: BackendVersion, is_function: bool,
                  controller_handle: ActorHandle) -> None:
+        self.backend_config = backend_config
         self.backend_tag = backend_tag
         self.replica_tag = replica_tag
         self.callable = _callable
@@ -223,10 +228,21 @@ class RayServeReplica:
                     f" component=serve deployment={self.backend_tag} "
                     f"replica={self.replica_tag}"))
 
+    def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
+        actor_stats = (
+            ray.runtime_context.get_runtime_context()._get_actor_call_stats())
+        method_stat = actor_stats.get("RayServeWrappedReplica.handle_request")
+        return method_stat
+
     def _collect_autoscaling_metrics(self):
-        # TODO(simon): Instead of relying on this counter, we should get the
-        # outstanding actor calls properly from Ray's core worker.
-        return {self.replica_tag: self.num_ongoing_requests}
+        method_stat = self._get_handle_request_stats()
+
+        num_inflight_requests = 0
+        if method_stat is not None:
+            num_inflight_requests = (
+                method_stat["pending"] + method_stat["running"])
+
+        return {self.replica_tag: num_inflight_requests}
 
     def get_runner_method(self, request_item: Query) -> Callable:
         method_name = request_item.metadata.call_method
@@ -292,39 +308,29 @@ class RayServeReplica:
 
         return result
 
-    async def reconfigure(self,
-                          user_config: Optional[Any] = None) -> BackendVersion:
-        if user_config:
-            self.user_config = user_config
-            self.version = BackendVersion(
-                self.version.code_version, user_config=user_config)
-            if self.is_function:
-                raise ValueError(
-                    "backend_def must be a class to use user_config")
-            elif not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
-                raise RayServeException("user_config specified but backend " +
-                                        self.backend_tag + " missing " +
-                                        BACKEND_RECONFIGURE_METHOD + " method")
-            reconfigure_method = sync_to_async(
-                getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
-            await reconfigure_method(user_config)
+    async def reconfigure(self, user_config: Any):
+        self.user_config = user_config
+        self.version = BackendVersion(
+            self.version.code_version, user_config=user_config)
+        if self.is_function:
+            raise ValueError("backend_def must be a class to use user_config")
+        elif not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
+            raise RayServeException("user_config specified but backend " +
+                                    self.backend_tag + " missing " +
+                                    BACKEND_RECONFIGURE_METHOD + " method")
+        reconfigure_method = sync_to_async(
+            getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
+        await reconfigure_method(user_config)
 
     async def handle_request(self, request: Query) -> asyncio.Future:
         request.tick_enter_replica = time.time()
         logger.debug("Replica {} received request {}".format(
             self.replica_tag, request.metadata.request_id))
 
-        self.num_ongoing_requests += 1
-        self.num_processing_items.set(self.num_ongoing_requests)
-
-        # Trigger a context switch so we can enqueue more requests in the
-        # meantime. Without this line and if the function is synchronous,
-        # other requests won't even get enqueued as await self.invoke_single
-        # doesn't context switch.
-        await asyncio.sleep(0)
+        num_running_requests = self._get_handle_request_stats()["running"]
+        self.num_processing_items.set(num_running_requests)
 
         result = await self.invoke_single(request)
-        self.num_ongoing_requests -= 1
         request_time_ms = (time.time() - request.tick_enter_replica) * 1000
         logger.debug("Replica {} finished request {} in {:.2f}ms".format(
             self.replica_tag, request.metadata.request_id, request_time_ms))
@@ -342,7 +348,12 @@ class RayServeReplica:
             # Sleep first because we want to make sure all the routers receive
             # the notification to remove this replica first.
             await asyncio.sleep(self._shutdown_wait_loop_s)
-            if self.num_ongoing_requests == 0:
+            method_stat = self._get_handle_request_stats()
+            # The handle_request method wasn't even invoked.
+            if method_stat is None:
+                break
+            # The handle_request method has 0 inflight requests.
+            if method_stat["running"] + method_stat["pending"] == 0:
                 break
             else:
                 logger.info(
@@ -355,8 +366,11 @@ class RayServeReplica:
         # destructor is called only once.
         try:
             if hasattr(self.callable, "__del__"):
-                self.callable.__del__()
-        except Exception:
-            logger.exception("Exception during graceful shutdown of replica.")
+                # Make sure to accept `async def __del__(self)` as well.
+                await sync_to_async(self.callable.__del__)()
+        except Exception as e:
+            logger.exception(
+                f"Exception during graceful shutdown of replica: {e}")
         finally:
-            self.callable.__del__ = lambda _self: None
+            if hasattr(self.callable, "__del__"):
+                del self.callable.__del__

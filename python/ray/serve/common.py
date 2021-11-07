@@ -4,8 +4,9 @@ from dataclasses import dataclass
 from typing import Optional
 from uuid import UUID
 
-from ray.actor import ActorClass
+from ray.actor import ActorClass, ActorHandle
 from ray.serve.config import BackendConfig, ReplicaConfig
+from ray.serve.autoscaling_policy import AutoscalingPolicy
 
 BackendTag = str
 EndpointTag = str
@@ -28,7 +29,8 @@ class BackendInfo:
                  actor_def: Optional[ActorClass] = None,
                  version: Optional[str] = None,
                  deployer_job_id: "Optional[ray._raylet.JobID]" = None,
-                 end_time_ms: Optional[int] = None):
+                 end_time_ms: Optional[int] = None,
+                 autoscaling_policy: Optional[AutoscalingPolicy] = None):
         self.backend_config = backend_config
         self.replica_config = replica_config
         # The time when .deploy() was first called for this deployment.
@@ -38,6 +40,7 @@ class BackendInfo:
         self.deployer_job_id = deployer_job_id
         # The time when this deployment was deleted.
         self.end_time_ms = end_time_ms
+        self.autoscaling_policy = autoscaling_policy
 
 
 @dataclass
@@ -67,3 +70,11 @@ class ReplicaName:
 
     def __str__(self):
         return self.replica_tag
+
+
+@dataclass(frozen=True)
+class RunningReplicaInfo:
+    backend_tag: BackendTag
+    replica_tag: ReplicaTag
+    actor_handle: ActorHandle
+    max_concurrent_queries: int

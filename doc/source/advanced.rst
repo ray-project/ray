@@ -468,11 +468,9 @@ Or specify per-actor or per-task in the ``@ray.remote()`` decorator or by using 
    :start-after: __per_task_per_actor_start__
    :end-before: __per_task_per_actor_end__
 
-Note: specifying within the ``@ray.remote()`` decorator is currently unsupported while using Ray Client; please use ``.options()`` instead in this case.
-
 The ``runtime_env`` is a Python dictionary including one or more of the following arguments:
 
-- ``working_dir`` (Path): Specifies the working directory for your job. This must be an existing local directory.
+- ``working_dir`` (Path): Specifies the working directory for your job. This must be an existing local directory with total size at most 100 MiB.
   It will be cached on the cluster, so the next time you connect with Ray Client you will be able to skip uploading the directory contents.
   All Ray workers for your job will be started in their node's local copy of this working directory.
 
@@ -516,6 +514,10 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 - ``env_vars`` (Dict[str, str]): Environment variables to set.
 
   - Example: ``{"OMP_NUM_THREADS": "32", "TF_WARNINGS": "none"}``
+
+- ``eager_install`` (bool): A boolean indicates whether to install runtime env eagerly before the workers are leased. This flag is set to True by default and only job level is supported now.
+
+  - Example: ``{"eager_install": False}``
 
 The runtime environment is inheritable, so it will apply to all tasks/actors within a job and all child tasks/actors of a task or actor, once set.
 

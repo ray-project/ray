@@ -264,7 +264,6 @@ def test_put_get(shutdown_only):
         assert value_before == value_after
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="Failing on Windows")
 def test_wait_timing(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -639,9 +638,8 @@ def test_args_named_and_star(ray_start_shared_local_modes):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_oversized_function(ray_start_shared_local_modes):
-    bar = np.zeros(100 * 1024 * 1024)
+    bar = np.zeros(100 * 1024 * 125)
 
     @ray.remote
     class Actor:

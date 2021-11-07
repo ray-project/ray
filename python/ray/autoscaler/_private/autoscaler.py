@@ -165,6 +165,12 @@ class StandardAutoscaler:
         self.disable_node_updaters = self.config["provider"].get(
             "disable_node_updaters", False)
 
+        # Disable launch config checking if true.
+        # This is set in the fake_multinode situations where there isn't any
+        # meaningful node "type" to enforce.
+        self.disable_launch_config_check = self.config["provider"].get(
+            "disable_launch_config_check", False)
+
         # Node launchers
         self.launch_queue = queue.Queue()
         self.pending_launches = ConcurrentCounter()
@@ -628,7 +634,6 @@ class StandardAutoscaler:
 
         Return KeepOrTerminate.decide_later otherwise.
 
-
         Args:
             node_type_counts(Dict[NodeType, int]): The non_terminated node
                 types counted so far.
@@ -758,6 +763,8 @@ class StandardAutoscaler:
                                  "Error parsing config.")
 
     def launch_config_ok(self, node_id):
+        if self.disable_launch_config_check:
+            return True
         node_tags = self.provider.node_tags(node_id)
         tag_launch_conf = node_tags.get(TAG_RAY_LAUNCH_CONFIG)
         node_type = node_tags.get(TAG_RAY_USER_NODE_TYPE)

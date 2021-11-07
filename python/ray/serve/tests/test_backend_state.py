@@ -29,101 +29,6 @@ from ray.serve.storage.kv_store import RayLocalKVStore
 from ray.serve.utils import get_random_letters
 
 
-class TestUserConfigHash:
-    def test_validation(self):
-        # Code version must be a string.
-        with pytest.raises(TypeError):
-            BackendVersion(123, None)
-
-        # Can't pass unhashable type as user config.
-        with pytest.raises(TypeError):
-            BackendVersion(123, set())
-
-        # Can't pass nested unhashable type as user config.
-        with pytest.raises(TypeError):
-            BackendVersion(123, {"set": set()})
-
-    def test_code_version(self):
-        v1 = BackendVersion("1", None)
-        v2 = BackendVersion("1", None)
-        v3 = BackendVersion("2", None)
-
-        assert v1 == v2
-        assert hash(v1) == hash(v2)
-        assert v1 != v3
-        assert hash(v1) != hash(v3)
-
-    def test_user_config_basic(self):
-        v1 = BackendVersion("1", "1")
-        v2 = BackendVersion("1", "1")
-        v3 = BackendVersion("1", "2")
-
-        assert v1 == v2
-        assert hash(v1) == hash(v2)
-        assert v1 != v3
-        assert hash(v1) != hash(v3)
-
-    def test_user_config_hashable(self):
-        v1 = BackendVersion("1", ("1", "2"))
-        v2 = BackendVersion("1", ("1", "2"))
-        v3 = BackendVersion("1", ("1", "3"))
-
-        assert v1 == v2
-        assert hash(v1) == hash(v2)
-        assert v1 != v3
-        assert hash(v1) != hash(v3)
-
-    def test_user_config_list(self):
-        v1 = BackendVersion("1", ["1", "2"])
-        v2 = BackendVersion("1", ["1", "2"])
-        v3 = BackendVersion("1", ["1", "3"])
-
-        assert v1 == v2
-        assert hash(v1) == hash(v2)
-        assert v1 != v3
-        assert hash(v1) != hash(v3)
-
-    def test_user_config_dict_keys(self):
-        v1 = BackendVersion("1", {"1": "1"})
-        v2 = BackendVersion("1", {"1": "1"})
-        v3 = BackendVersion("1", {"2": "1"})
-
-        assert v1 == v2
-        assert hash(v1) == hash(v2)
-        assert v1 != v3
-        assert hash(v1) != hash(v3)
-
-    def test_user_config_dict_vals(self):
-        v1 = BackendVersion("1", {"1": "1"})
-        v2 = BackendVersion("1", {"1": "1"})
-        v3 = BackendVersion("1", {"1": "2"})
-
-        assert v1 == v2
-        assert hash(v1) == hash(v2)
-        assert v1 != v3
-        assert hash(v1) != hash(v3)
-
-    def test_user_config_nested(self):
-        v1 = BackendVersion("1", [{"1": "2"}, {"1": "2"}])
-        v2 = BackendVersion("1", [{"1": "2"}, {"1": "2"}])
-        v3 = BackendVersion("1", [{"1": "2"}, {"1": "3"}])
-
-        assert v1 == v2
-        assert hash(v1) == hash(v2)
-        assert v1 != v3
-        assert hash(v1) != hash(v3)
-
-    def test_user_config_nested_in_hashable(self):
-        v1 = BackendVersion("1", ([{"1": "2"}, {"1": "2"}], ))
-        v2 = BackendVersion("1", ([{"1": "2"}, {"1": "2"}], ))
-        v3 = BackendVersion("1", ([{"1": "2"}, {"1": "3"}], ))
-
-        assert v1 == v2
-        assert hash(v1) == hash(v2)
-        assert v1 != v3
-        assert hash(v1) != hash(v3)
-
-
 class MockReplicaActorWrapper:
     def __init__(self, actor_name: str, detached: bool, controller_name: str,
                  replica_tag: ReplicaTag, backend_tag: BackendTag):
@@ -163,6 +68,10 @@ class MockReplicaActorWrapper:
     @property
     def actor_handle(self) -> ActorHandle:
         return None
+
+    @property
+    def max_concurrent_queries(self) -> int:
+        return 100
 
     def set_ready(self):
         self.ready = ReplicaStartupStatus.SUCCEEDED

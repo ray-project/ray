@@ -32,7 +32,7 @@ LocalModeTaskSubmitter::LocalModeTaskSubmitter(
 
 ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
                                         const ActorCreationOptions &options) {
-  /// TODO(Guyang Song): Make the information of TaskSpecification more reasonable
+  /// TODO(SongGuyang): Make the information of TaskSpecification more reasonable
   /// We just reuse the TaskSpecification class and make the single process mode work.
   /// Maybe some infomation of TaskSpecification are not reasonable or invalid.
   /// We will enhance this after implement the cluster mode.
@@ -82,7 +82,7 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
   AbstractRayRuntime *runtime = &local_mode_ray_tuntime_;
   if (invocation.task_type == TaskType::ACTOR_CREATION_TASK ||
       invocation.task_type == TaskType::ACTOR_TASK) {
-    /// TODO(Guyang Song): Handle task dependencies.
+    /// TODO(SongGuyang): Handle task dependencies.
     /// Execute actor task directly in the main thread because we must guarantee the actor
     /// task executed by calling order.
     TaskExecutor::Invoke(task_specification, actor, runtime, actor_contexts_,

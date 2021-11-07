@@ -1,11 +1,11 @@
 import asyncio
+import json
 import logging
 import time
-from typing import Set, List, Tuple, Optional, TYPE_CHECKING
+from typing import Set, List, Tuple, Optional, TYPE_CHECKING, Dict, Any
 import uuid
 
 import ray
-
 from ray.workflow import workflow_context
 from ray.workflow import workflow_storage
 from ray.workflow.common import (Workflow, WorkflowStatus, WorkflowMetaData,
@@ -23,9 +23,22 @@ logger = logging.getLogger(__name__)
 
 
 def run(entry_workflow: Workflow,
-        workflow_id: Optional[str] = None) -> ray.ObjectRef:
+        workflow_id: Optional[str] = None,
+        metadata: Optional[Dict] = None) -> ray.ObjectRef:
     """Run a workflow asynchronously.
     """
+    if metadata is not None:
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be a dict.")
+        for k, v in metadata.items():
+            try:
+                json.dumps(v)
+            except TypeError as e:
+                raise ValueError("metadata values must be JSON serializable, "
+                                 "however '{}' has a value whose {}.".format(
+                                     k, e))
+    metadata = metadata or {}
+
     store = get_global_storage()
     assert ray.is_initialized()
     if workflow_id is None:
@@ -40,6 +53,7 @@ def run(entry_workflow: Workflow,
                                                 store.storage_url):
         # checkpoint the workflow
         ws = workflow_storage.get_workflow_storage(workflow_id)
+        ws.save_workflow_user_metadata(metadata)
 
         wf_exists = True
         try:
@@ -129,6 +143,17 @@ def get_status(workflow_id: str) -> Optional[WorkflowStatus]:
     if meta.status == WorkflowStatus.RUNNING:
         return WorkflowStatus.RESUMABLE
     return meta.status
+
+
+def get_metadata(workflow_id: str, name: Optional[str]) -> Dict[str, Any]:
+    """Get the metadata of the workflow.
+    See "api.get_metadata()" for details.
+    """
+    store = workflow_storage.get_workflow_storage(workflow_id)
+    if name is None:
+        return store.load_workflow_metadata()
+    else:
+        return store.load_step_metadata(name)
 
 
 def list_all(status_filter: Set[WorkflowStatus]

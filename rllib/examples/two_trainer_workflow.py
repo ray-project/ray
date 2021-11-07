@@ -59,7 +59,7 @@ def custom_training_workflow(workers: WorkerSet, config: dict):
     local_replay_buffer = LocalReplayBuffer(
         num_shards=1,
         learning_starts=1000,
-        buffer_size=50000,
+        capacity=50000,
         replay_batch_size=64)
 
     def add_ppo_metrics(batch):

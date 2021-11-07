@@ -36,12 +36,14 @@ MAX_DEBUG_TRIALS = 20
 logger = logging.getLogger(__name__)
 
 
-def _find_newest_ckpt(ckpt_dir):
+def _find_newest_ckpt(ckpt_dir) -> Optional[str]:
     """Returns path to most recently modified checkpoint."""
     full_paths = [
         os.path.join(ckpt_dir, fname) for fname in os.listdir(ckpt_dir)
         if fname.startswith("experiment_state") and fname.endswith(".json")
     ]
+    if not full_paths:
+        return None
     return max(full_paths)
 
 
@@ -473,6 +475,13 @@ class TrialRunner:
                         "details. "
                         "Ray Tune will now start a new experiment.")
                     return False
+                if not self.checkpoint_exists(self._local_checkpoint_dir):
+                    logger.warning(
+                        "A remote checkpoint was fetched, but no checkpoint "
+                        "data was found. This can happen when e.g. the cloud "
+                        "bucket exists but does not contain any data. "
+                        "Ray Tune will start a new, fresh run.")
+                    return False
                 logger.info(
                     "A remote experiment checkpoint was found and will be "
                     "used to restore the previous experiment state.")
@@ -583,6 +592,12 @@ class TrialRunner:
         all ongoing trials.
         """
         newest_ckpt_path = _find_newest_ckpt(self._local_checkpoint_dir)
+
+        if not newest_ckpt_path:
+            raise ValueError(f"Tried to resume from checkpoint dir "
+                             f"`{self._local_checkpoint_dir}`, but no "
+                             f"experiment checkpoint data was found.")
+
         with open(newest_ckpt_path, "r") as f:
             runner_state = json.load(f, cls=TuneFunctionDecoder)
             self.checkpoint_file = newest_ckpt_path
@@ -797,11 +812,19 @@ class TrialRunner:
         Blocks if all trials queued have finished, but search algorithm is
         still not finished.
         """
-        trials_done = all(trial.is_finished() for trial in self._live_trials)
-        wait_for_trial = trials_done and not self._search_alg.is_finished()
+        no_trials_unfinished = True
+        no_trials_pending = True
+        for trial in self._live_trials:
+            if not trial.is_finished():
+                no_trials_unfinished = False
+            if trial.status == Trial.PENDING:
+                no_trials_pending = False
+            if not no_trials_unfinished and not no_trials_pending:
+                break
+        wait_for_trial = (no_trials_unfinished
+                          and not self._search_alg.is_finished())
         # Only fetch a new trial if we have no pending trial
-        if not any(trial.status == Trial.PENDING
-                   for trial in self._live_trials) or wait_for_trial:
+        if wait_for_trial or no_trials_pending:
             self._update_trial_queue(blocking=wait_for_trial)
         with warn_if_slow("choose_trial_to_run"):
             trial = self._scheduler_alg.choose_trial_to_run(self)
@@ -941,6 +964,8 @@ class TrialRunner:
         flat_result = flatten_dict(result)
         self._validate_result_metrics(flat_result)
 
+        _trigger_callback_complete = False
+
         if self._stopper(trial.trial_id,
                          result) or trial.should_stop(flat_result):
             result.update(done=True)
@@ -960,8 +985,7 @@ class TrialRunner:
                         trial=trial,
                         result=result.copy())
 
-            self._callbacks.on_trial_complete(
-                iteration=self._iteration, trials=self._trials, trial=trial)
+            _trigger_callback_complete = True
             decision = TrialScheduler.STOP
         else:
             with warn_if_slow("scheduler.on_trial_result"):
@@ -996,6 +1020,10 @@ class TrialRunner:
         # PAUSE only checkpoints to memory and does not update
         # the global checkpoint state.
         self._checkpoint_trial_if_needed(trial, force=force_checkpoint)
+
+        if _trigger_callback_complete:
+            self._callbacks.on_trial_complete(
+                iteration=self._iteration, trials=self._trials, trial=trial)
 
         if trial.is_saving:
             # Cache decision to execute on after the save is processed.

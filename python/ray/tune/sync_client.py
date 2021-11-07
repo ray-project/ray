@@ -156,18 +156,22 @@ class SyncClient:
         pass
 
 
-def _num_args(func):
+def _is_legacy_sync_fn(func) -> bool:
     sig = inspect.signature(func)
-    return len(sig.parameters)
+    try:
+        sig.bind_partial(None, None, None)
+        return False
+    except TypeError:
+        return True
 
 
 class FunctionBasedClient(SyncClient):
     def __init__(self, sync_up_func, sync_down_func, delete_func=None):
         self.sync_up_func = sync_up_func
-        self._sync_up_legacy = _num_args(sync_up_func) <= 2
+        self._sync_up_legacy = _is_legacy_sync_fn(sync_up_func)
 
         self.sync_down_func = sync_down_func
-        self._sync_down_legacy = _num_args(sync_up_func) <= 2
+        self._sync_down_legacy = _is_legacy_sync_fn(sync_up_func)
 
         if self._sync_up_legacy or self._sync_down_legacy:
             if log_once("func_sync_up_legacy"):
@@ -263,7 +267,8 @@ class CommandBasedClient(SyncClient):
         if self.is_running:
             logger.warning("Last sync client cmd still in progress, skipping.")
             return False
-        final_cmd = self.delete_template.format(target=quote(target))
+        final_cmd = self.delete_template.format(
+            target=quote(target), options="")
         logger.debug("Running delete: {}".format(final_cmd))
         self.cmd_process = subprocess.Popen(
             final_cmd,

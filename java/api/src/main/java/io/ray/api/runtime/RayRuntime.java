@@ -16,8 +16,10 @@ import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
+import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.api.runtimecontext.RuntimeContext;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
@@ -204,6 +206,13 @@ public interface RayRuntime {
 
   /** Intentionally exit the current actor. */
   void exitActor();
+
+  /**
+   * Get the resources available on this worker. Note that this API doesn't work on driver.
+   *
+   * @return The resource info of one node.
+   */
+  Map<String, List<ResourceValue>> getAvailableResourceIds();
 
   /**
    * Get a placement group by id.

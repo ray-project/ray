@@ -70,6 +70,10 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
+    void ReportWorkerBacklog(
+        const WorkerID &worker_id,
+        const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override {}
+
     /// WorkerLeaseInterface
     void RequestWorkerLease(
         const ray::TaskSpecification &resource_spec,
@@ -275,6 +279,11 @@ struct GcsServerMocker {
       RAY_CHECK(false) << "Unused";
     };
 
+    /// ShutdownRaylet
+    void ShutdownRaylet(
+        const NodeID &node_id, bool graceful,
+        const rpc::ClientCallback<rpc::ShutdownRayletReply> &callback) override{};
+
     ~MockRayletClient() {}
 
     int num_workers_requested = 0;
@@ -383,7 +392,7 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status UnregisterSelf() override { return Status::NotImplemented(""); }
+    Status DrainSelf() override { return Status::NotImplemented(""); }
 
     const NodeID &GetSelfId() const override {
       static NodeID node_id;
@@ -400,8 +409,8 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    Status AsyncUnregister(const NodeID &node_id,
-                           const gcs::StatusCallback &callback) override {
+    Status AsyncDrainNode(const NodeID &node_id,
+                          const gcs::StatusCallback &callback) override {
       if (callback) {
         callback(Status::OK());
       }
@@ -422,9 +431,9 @@ struct GcsServerMocker {
       return Status::NotImplemented("");
     }
 
-    absl::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
-                                         bool filter_dead_nodes = true) const override {
-      return absl::nullopt;
+    const rpc::GcsNodeInfo *Get(const NodeID &node_id,
+                                bool filter_dead_nodes = true) const override {
+      return nullptr;
     }
 
     const std::unordered_map<NodeID, rpc::GcsNodeInfo> &GetAll() const override {
@@ -447,7 +456,7 @@ struct GcsServerMocker {
     MockGcsPubSub(std::shared_ptr<gcs::RedisClient> redis_client)
         : GcsPubSub(redis_client) {}
 
-    Status Publish(const std::string &channel, const std::string &id,
+    Status Publish(std::string_view channel, const std::string &id,
                    const std::string &data, const gcs::StatusCallback &done) override {
       return Status::OK();
     }

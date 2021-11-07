@@ -405,10 +405,13 @@ class NodeInfoAccessor {
   virtual Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
                               const StatusCallback &callback) = 0;
 
-  /// Cancel registration of local node to GCS synchronously.
+  /// Drain (remove the information of the node from the cluster) the local node from GCS
+  /// synchronously.
   ///
-  /// \return Status
-  virtual Status UnregisterSelf() = 0;
+  /// Once the RPC is replied, it is guaranteed that GCS drains the information of the
+  /// local node, and all the nodes in the cluster will "eventually" be informed that the
+  /// node is drained. \return Status
+  virtual Status DrainSelf() = 0;
 
   /// Get id of local node which was registered by 'RegisterSelf'.
   ///
@@ -428,13 +431,16 @@ class NodeInfoAccessor {
   virtual Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
                                const StatusCallback &callback) = 0;
 
-  /// Cancel registration of a node to GCS asynchronously.
+  /// Drain (remove the information of the node from the cluster) the local node from GCS
+  /// asynchronously.
+  ///
+  /// Check gcs_service.proto NodeInfoGcsService.DrainNode for the API spec.
   ///
   /// \param node_id The ID of node that to be unregistered.
   /// \param callback Callback that will be called when unregistration is complete.
   /// \return Status
-  virtual Status AsyncUnregister(const NodeID &node_id,
-                                 const StatusCallback &callback) = 0;
+  virtual Status AsyncDrainNode(const NodeID &node_id,
+                                const StatusCallback &callback) = 0;
 
   /// Get information of all nodes from GCS asynchronously.
   ///
@@ -462,8 +468,8 @@ class NodeInfoAccessor {
   /// \param filter_dead_nodes Whether or not if this method will filter dead nodes.
   /// \return The item returned by GCS. If the item to read doesn't exist or the node is
   /// dead, this optional object is empty.
-  virtual absl::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
-                                               bool filter_dead_nodes = true) const = 0;
+  virtual const rpc::GcsNodeInfo *Get(const NodeID &node_id,
+                                      bool filter_dead_nodes = true) const = 0;
 
   /// Get information of all nodes from local cache.
   /// Non-thread safe.

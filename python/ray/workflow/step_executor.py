@@ -1,3 +1,4 @@
+import time
 import asyncio
 from dataclasses import dataclass
 import logging
@@ -179,6 +180,9 @@ async def _write_step_inputs(wf_storage: workflow_storage.WorkflowStorage,
         # TODO (Alex): Handle the json case better?
         wf_storage._put(
             wf_storage._key_step_input_metadata(step_id), metadata, True),
+        wf_storage._put(
+            wf_storage._key_step_user_metadata(step_id), inputs.user_metadata,
+            True),
         serialization.dump_to_storage(
             wf_storage._key_step_function_body(step_id), inputs.func_body,
             workflow_id, storage),
@@ -326,9 +330,13 @@ def _workflow_step_executor(step_type: StepType, func: Callable,
     args, kwargs = _resolve_step_inputs(baked_inputs)
     store = workflow_storage.get_workflow_storage()
     try:
+        step_prerun_metadata = {"start_time": time.time()}
+        store.save_step_prerun_metadata(step_id, step_prerun_metadata)
         persisted_output, volatile_output = _wrap_run(
             func, step_type, step_id, catch_exceptions, max_retries, *args,
             **kwargs)
+        step_postrun_metadata = {"end_time": time.time()}
+        store.save_step_postrun_metadata(step_id, step_postrun_metadata)
     except Exception as e:
         commit_step(store, step_id, None, e)
         raise e

@@ -240,7 +240,7 @@ In other words, you will have to make sure that your Ray cluster
 has machines that can actually fulfill your resource requests.
 
 In some cases your trainable might want to start other remote actors, for instance if you're
-leveraging distributed training via RaySGD. In these cases, you can use
+leveraging distributed training via Ray Train. In these cases, you can use
 :ref:`placement groups <ray-placement-group-doc-ref>` to request additional resources:
 
 .. code-block:: python

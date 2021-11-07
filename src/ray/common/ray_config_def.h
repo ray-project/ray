@@ -98,11 +98,6 @@ RAY_CONFIG(bool, lineage_pinning_enabled, false)
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
-/// Whether to use the hybrid scheduling policy, or one of the legacy spillback
-/// strategies. In the hybrid scheduling strategy, leases are packed until a threshold,
-/// then spread via weighted (by critical resource usage).
-RAY_CONFIG(bool, scheduler_hybrid_scheduling, true)
-
 /// The fraction of resource utilization on a node after which the scheduler starts
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
@@ -205,7 +200,7 @@ RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 5 * 1024 * 1024)
 
 /// The maximum number of outbound bytes to allow to be outstanding. This avoids
 /// excessive memory usage during object broadcast to many receivers.
-RAY_CONFIG(uint64_t, object_manager_max_bytes_in_flight, 2L * 1024 * 1024 * 1024)
+RAY_CONFIG(uint64_t, object_manager_max_bytes_in_flight, ((uint64_t) 2) * 1024 * 1024 * 1024)
 
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
@@ -306,6 +301,9 @@ RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 /// pipelining task submission.
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 
+/// Maximum number of pending lease requests per scheduling category
+RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 1)
+
 /// Interval to restart dashboard agent after the process exit.
 RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
 
@@ -322,10 +320,6 @@ RAY_CONFIG(uint32_t, agent_manager_retry_interval_ms, 1000);
 /// The maximum number of resource shapes included in the resource
 /// load reported by each raylet.
 RAY_CONFIG(int64_t, max_resource_shapes_per_load_report, 100)
-
-/// If true, the worker's queue backlog size will be propagated to the heartbeat batch
-/// data.
-RAY_CONFIG(bool, report_worker_backlog, true)
 
 /// The timeout for synchronous GCS requests in seconds.
 RAY_CONFIG(int64_t, gcs_server_request_timeout_seconds, 60)
@@ -476,16 +470,28 @@ RAY_CONFIG(int64_t, grpc_keepalive_time_ms, 10000);
 RAY_CONFIG(int64_t, grpc_keepalive_timeout_ms, 20000);
 
 /// Whether to use log reporter in event framework
-RAY_CONFIG(bool, event_log_reporter_enabled, true)
+RAY_CONFIG(bool, event_log_reporter_enabled, false)
 
-/// Whether to use log reporter in event framework
+/// Whether to enable register actor async.
+/// If it is false, the actor registration to GCS becomes synchronous, i.e.,
+/// core worker is blocked until GCS registers the actor and replies to it.
+/// If it is true, the actor registration is async, but actor handles cannot
+/// be passed to other worker until it is registered to GCS.
 RAY_CONFIG(bool, actor_register_async, true)
 
 /// Event severity threshold value
 RAY_CONFIG(std::string, event_level, "warning")
 
 /// Whether to avoid scheduling cpu requests on gpu nodes
-RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, false)
+RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)
 
 /// Whether to skip running local GC in runtime env.
 RAY_CONFIG(bool, runtime_env_skip_local_gc, false)
+
+/// Whether or not use TLS.
+RAY_CONFIG(bool, USE_TLS, false)
+
+/// Location of TLS credentials
+RAY_CONFIG(std::string, TLS_SERVER_CERT, "")
+RAY_CONFIG(std::string, TLS_SERVER_KEY, "")
+RAY_CONFIG(std::string, TLS_CA_CERT, "")

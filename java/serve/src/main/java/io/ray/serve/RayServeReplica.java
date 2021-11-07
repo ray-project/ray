@@ -1,16 +1,16 @@
 package io.ray.serve;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.protobuf.ByteString;
 import io.ray.api.BaseActorHandle;
-import io.ray.api.Ray;
 import io.ray.runtime.metric.Count;
 import io.ray.runtime.metric.Gauge;
 import io.ray.runtime.metric.Histogram;
-import io.ray.runtime.metric.MetricConfig;
 import io.ray.runtime.metric.Metrics;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.BackendConfig;
+import io.ray.serve.generated.BackendVersion;
 import io.ray.serve.generated.RequestWrapper;
 import io.ray.serve.poll.KeyListener;
 import io.ray.serve.poll.KeyType;
@@ -18,7 +18,6 @@ import io.ray.serve.poll.LongPollClient;
 import io.ray.serve.poll.LongPollNamespace;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ReflectUtil;
-import io.ray.serve.util.ServeProtoUtil;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
@@ -41,8 +40,6 @@ public class RayServeReplica {
 
   private Object callable;
 
-  private boolean metricsRegistered = false;
-
   private Count requestCounter;
 
   private Count errorCounter;
@@ -55,13 +52,20 @@ public class RayServeReplica {
 
   private LongPollClient longPollClient;
 
+  private BackendVersion version;
+
+  private boolean isDeleted = false;
+
   public RayServeReplica(
-      Object callable, BackendConfig backendConfig, BaseActorHandle actorHandle) {
+      Object callable,
+      BackendConfig backendConfig,
+      BackendVersion version,
+      BaseActorHandle actorHandle) {
     this.backendTag = Serve.getReplicaContext().getBackendTag();
     this.replicaTag = Serve.getReplicaContext().getReplicaTag();
     this.callable = callable;
     this.config = backendConfig;
-    this.reconfigure(ServeProtoUtil.parseUserConfig(backendConfig));
+    this.version = version;
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
     keyListeners.put(
@@ -73,55 +77,84 @@ public class RayServeReplica {
   }
 
   private void registerMetrics() {
-    if (!Ray.isInitialized() || Ray.getRuntimeContext().isSingleProcess()) {
-      return;
-    }
+    RayServeMetrics.execute(
+        () ->
+            requestCounter =
+                Metrics.count()
+                    .name(RayServeMetrics.SERVE_BACKEND_REQUEST_COUNTER.getName())
+                    .description(RayServeMetrics.SERVE_BACKEND_REQUEST_COUNTER.getDescription())
+                    .unit("")
+                    .tags(
+                        ImmutableMap.of(
+                            RayServeMetrics.TAG_BACKEND,
+                            backendTag,
+                            RayServeMetrics.TAG_REPLICA,
+                            replicaTag))
+                    .register());
 
-    Metrics.init(MetricConfig.DEFAULT_CONFIG);
-    requestCounter =
-        Metrics.count()
-            .name("serve_backend_request_counter")
-            .description("The number of queries that have been processed in this replica.")
-            .unit("")
-            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
-            .register();
+    RayServeMetrics.execute(
+        () ->
+            errorCounter =
+                Metrics.count()
+                    .name(RayServeMetrics.SERVE_BACKEND_ERROR_COUNTER.getName())
+                    .description(RayServeMetrics.SERVE_BACKEND_ERROR_COUNTER.getDescription())
+                    .unit("")
+                    .tags(
+                        ImmutableMap.of(
+                            RayServeMetrics.TAG_BACKEND,
+                            backendTag,
+                            RayServeMetrics.TAG_REPLICA,
+                            replicaTag))
+                    .register());
 
-    errorCounter =
-        Metrics.count()
-            .name("serve_backend_error_counter")
-            .description("The number of exceptions that have occurred in this replica.")
-            .unit("")
-            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
-            .register();
+    RayServeMetrics.execute(
+        () ->
+            restartCounter =
+                Metrics.count()
+                    .name(RayServeMetrics.SERVE_BACKEND_REPLICA_STARTS.getName())
+                    .description(RayServeMetrics.SERVE_BACKEND_REPLICA_STARTS.getDescription())
+                    .unit("")
+                    .tags(
+                        ImmutableMap.of(
+                            RayServeMetrics.TAG_BACKEND,
+                            backendTag,
+                            RayServeMetrics.TAG_REPLICA,
+                            replicaTag))
+                    .register());
 
-    restartCounter =
-        Metrics.count()
-            .name("serve_backend_replica_starts")
-            .description("The number of times this replica has been restarted due to failure.")
-            .unit("")
-            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
-            .register();
+    RayServeMetrics.execute(
+        () ->
+            processingLatencyTracker =
+                Metrics.histogram()
+                    .name(RayServeMetrics.SERVE_BACKEND_PROCESSING_LATENCY_MS.getName())
+                    .description(
+                        RayServeMetrics.SERVE_BACKEND_PROCESSING_LATENCY_MS.getDescription())
+                    .unit("")
+                    .boundaries(Constants.DEFAULT_LATENCY_BUCKET_MS)
+                    .tags(
+                        ImmutableMap.of(
+                            RayServeMetrics.TAG_BACKEND,
+                            backendTag,
+                            RayServeMetrics.TAG_REPLICA,
+                            replicaTag))
+                    .register());
 
-    processingLatencyTracker =
-        Metrics.histogram()
-            .name("serve_backend_processing_latency_ms")
-            .description("The latency for queries to be processed.")
-            .unit("")
-            .boundaries(Constants.DEFAULT_LATENCY_BUCKET_MS)
-            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
-            .register();
+    RayServeMetrics.execute(
+        () ->
+            numProcessingItems =
+                Metrics.gauge()
+                    .name(RayServeMetrics.SERVE_REPLICA_PROCESSING_QUERIES.getName())
+                    .description(RayServeMetrics.SERVE_REPLICA_PROCESSING_QUERIES.getDescription())
+                    .unit("")
+                    .tags(
+                        ImmutableMap.of(
+                            RayServeMetrics.TAG_BACKEND,
+                            backendTag,
+                            RayServeMetrics.TAG_REPLICA,
+                            replicaTag))
+                    .register());
 
-    numProcessingItems =
-        Metrics.gauge()
-            .name("serve_replica_processing_queries")
-            .description("The current number of queries being processed.")
-            .unit("")
-            .tags(ImmutableMap.of("backend", backendTag, "replica", replicaTag))
-            .register();
-
-    metricsRegistered = true;
-
-    restartCounter.inc(1.0);
+    RayServeMetrics.execute(() -> restartCounter.inc(1.0));
   }
 
   public Object handleRequest(Query request) {
@@ -130,7 +163,7 @@ public class RayServeReplica {
         "Replica {} received request {}", replicaTag, request.getMetadata().getRequestId());
 
     numOngoingRequests.incrementAndGet();
-    reportMetrics(() -> numProcessingItems.update(numOngoingRequests.get()));
+    RayServeMetrics.execute(() -> numProcessingItems.update(numOngoingRequests.get()));
     Object result = invokeSingle(request);
     numOngoingRequests.decrementAndGet();
 
@@ -157,10 +190,10 @@ public class RayServeReplica {
       Object[] args = parseRequestItem(requestItem);
       methodToCall = getRunnerMethod(requestItem.getMetadata().getCallMethod(), args);
       Object result = methodToCall.invoke(callable, args);
-      reportMetrics(() -> requestCounter.inc(1.0));
+      RayServeMetrics.execute(() -> requestCounter.inc(1.0));
       return result;
     } catch (Throwable e) {
-      reportMetrics(() -> errorCounter.inc(1.0));
+      RayServeMetrics.execute(() -> errorCounter.inc(1.0));
       throw new RayServeException(
           LogUtil.format(
               "Replica {} failed to invoke method {}",
@@ -168,7 +201,8 @@ public class RayServeReplica {
               methodToCall == null ? "unknown" : methodToCall.getName()),
           e);
     } finally {
-      reportMetrics(() -> processingLatencyTracker.update(System.currentTimeMillis() - start));
+      RayServeMetrics.execute(
+          () -> processingLatencyTracker.update(System.currentTimeMillis() - start));
     }
   }
 
@@ -209,8 +243,10 @@ public class RayServeReplica {
    * Perform graceful shutdown. Trigger a graceful shutdown protocol that will wait for all the
    * queued tasks to be completed and return to the controller.
    */
-  public void drainPendingQueries() {
+  public synchronized boolean prepareForShutdown() {
     while (true) {
+      // Sleep first because we want to make sure all the routers receive the notification to remove
+      // this replica first.
       try {
         Thread.sleep((long) (config.getGracefulShutdownWaitLoopS() * 1000));
       } catch (InterruptedException e) {
@@ -220,13 +256,27 @@ public class RayServeReplica {
       if (numOngoingRequests.get() == 0) {
         break;
       } else {
-        LOGGER.debug(
+        LOGGER.info(
             "Waiting for an additional {}s to shut down because there are {} ongoing requests.",
             config.getGracefulShutdownWaitLoopS(),
             numOngoingRequests.get());
       }
     }
-    Ray.exitActor();
+
+    // Explicitly call the del method to trigger clean up. We set isDeleted = true after
+    // succssifully calling it so the destructor is called only once.
+    try {
+      if (!isDeleted) {
+        ReflectUtil.getMethod(callable.getClass(), "del").invoke(callable);
+      }
+    } catch (NoSuchMethodException e) {
+      LOGGER.warn("Deployment {} has no del method.", backendTag);
+    } catch (Throwable e) {
+      LOGGER.error("Exception during graceful shutdown of replica.");
+    } finally {
+      isDeleted = true;
+    }
+    return true;
   }
 
   /**
@@ -234,28 +284,34 @@ public class RayServeReplica {
    *
    * @param userConfig new user's configuration
    */
-  private void reconfigure(Object userConfig) {
-    if (userConfig == null) {
-      return;
+  public BackendVersion reconfigure(Object userConfig) {
+    BackendVersion.Builder builder = BackendVersion.newBuilder();
+    builder.setCodeVersion(version.getCodeVersion());
+    if (userConfig != null) {
+      builder.setUserConfig(ByteString.copyFrom((byte[]) userConfig));
     }
+    version = builder.build();
+
     try {
       Method reconfigureMethod =
           ReflectUtil.getMethod(
               callable.getClass(),
               Constants.BACKEND_RECONFIGURE_METHOD,
-              userConfig); // TODO cache reconfigureMethod
+              userConfig != null
+                  ? MessagePackSerializer.decode((byte[]) userConfig, Object[].class)
+                  : new Object[0]); // TODO cache reconfigure method
       reconfigureMethod.invoke(callable, userConfig);
     } catch (NoSuchMethodException e) {
-      throw new RayServeException(
-          LogUtil.format(
-              "user_config specified but backend {} missing {} method",
-              backendTag,
-              Constants.BACKEND_RECONFIGURE_METHOD));
+      LOGGER.warn(
+          "user_config specified but backend {} missing {} method",
+          backendTag,
+          Constants.BACKEND_RECONFIGURE_METHOD);
     } catch (Throwable e) {
       throw new RayServeException(
           LogUtil.format("Backend {} failed to reconfigure user_config {}", backendTag, userConfig),
           e);
     }
+    return version;
   }
 
   /**
@@ -265,12 +321,9 @@ public class RayServeReplica {
    */
   private void updateBackendConfigs(Object newConfig) {
     config = (BackendConfig) newConfig;
-    reconfigure(((BackendConfig) newConfig).getUserConfig());
   }
 
-  private void reportMetrics(Runnable runnable) {
-    if (metricsRegistered) {
-      runnable.run();
-    }
+  public BackendVersion getVersion() {
+    return version;
   }
 }

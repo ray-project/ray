@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from collections import defaultdict, Counter
 from pathlib import Path
+import pytest
 
 import ray
 from ray import ray_constants
@@ -223,8 +224,72 @@ def test_log_monitor_backpressure(ray_start_cluster):
     assert (datetime.now() - now).seconds >= update_interval
 
 
+def test_ignore_windows_access_violation(ray_start_regular_shared):
+    @ray.remote
+    def print_msg():
+        print("Windows fatal exception: access violation\n")
+
+    @ray.remote
+    def print_after(_obj):
+        print("done")
+
+    p = init_log_pubsub()
+    print_after.remote(print_msg.remote())
+    msgs = get_log_message(
+        p, num=3, timeout=1, job_id=ray.get_runtime_context().job_id.hex())
+
+    assert len(msgs) == 1, msgs
+    assert msgs.pop() == "done"
+
+
+def test_log_redirect_to_stdout(shutdown_only):
+    os.environ["GLOG_logtostderr"] = "1"
+    ray.init()
+
+    session_dir = ray.worker.global_worker.node.address_info["session_dir"]
+    session_path = Path(session_dir)
+    log_dir_path = session_path / "logs"
+
+    log_components = [
+        ray_constants.PROCESS_TYPE_RAYLET,
+        ray_constants.PROCESS_TYPE_GCS_SERVER,
+    ]
+
+    # Run the basic workload.
+    @ray.remote
+    def f():
+        for i in range(10):
+            print(f"test {i}")
+
+    ray.get(f.remote())
+
+    paths = list(log_dir_path.iterdir())
+
+    for component in log_components:
+        for path in paths:
+            filename = path.stem
+            assert component not in filename
+
+
+def test_segfault_stack_trace(ray_start_cluster, capsys):
+    @ray.remote
+    def f():
+        import ctypes
+        ctypes.string_at(0)
+
+    with pytest.raises(
+            ray.exceptions.WorkerCrashedError,
+            match="The worker died unexpectedly"):
+        ray.get(f.remote())
+
+    stderr = capsys.readouterr().err
+    assert "*** SIGSEGV received at" in stderr, \
+        f"C++ stack trace not found in stderr: {stderr}"
+    assert "Fatal Python error: Segmentation fault" in stderr, \
+        f"Python stack trace not found in stderr: {stderr}"
+
+
 if __name__ == "__main__":
-    import pytest
     import sys
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"

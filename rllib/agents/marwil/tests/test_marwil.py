@@ -149,7 +149,7 @@ class TestMARWIL(unittest.TestCase):
                 cummulative_rewards = torch.tensor(cummulative_rewards)
             if fw != "tf":
                 batch = policy._lazy_tensor_dict(batch)
-            model_out, _ = model.from_batch(batch)
+            model_out, _ = model(batch)
             vf_estimates = model.value_function()
             if fw == "tf":
                 model_out, vf_estimates = \

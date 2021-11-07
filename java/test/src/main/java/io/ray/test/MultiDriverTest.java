@@ -103,17 +103,7 @@ public class MultiDriverTest extends BaseTest {
 
   private Process startDriver() throws IOException {
     RayConfig rayConfig = TestUtils.getRuntime().getRayConfig();
-
-    ProcessBuilder builder =
-        new ProcessBuilder(
-            "java",
-            "-cp",
-            System.getProperty("java.class.path"),
-            "-Dray.address=" + rayConfig.getRedisAddress(),
-            "-Dray.object-store.socket-name=" + rayConfig.objectStoreSocketName,
-            "-Dray.raylet.socket-name=" + rayConfig.rayletSocketName,
-            "-Dray.raylet.node-manager-port=" + String.valueOf(rayConfig.getNodeManagerPort()),
-            MultiDriverTest.class.getName());
+    ProcessBuilder builder = TestUtils.buildDriver(MultiDriverTest.class, null);
     builder.redirectError(Redirect.INHERIT);
     return builder.start();
   }

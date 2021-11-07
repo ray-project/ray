@@ -85,7 +85,7 @@ def test_starlette_response(serve_instance):
     assert resp.status_code == 418
 
 
-def test_backend_user_config(serve_instance):
+def test_user_config(serve_instance):
     @serve.deployment(
         "counter", num_replicas=2, user_config={
             "count": 123,

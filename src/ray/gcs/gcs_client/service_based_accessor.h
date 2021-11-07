@@ -144,7 +144,7 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   Status RegisterSelf(const rpc::GcsNodeInfo &local_node_info,
                       const StatusCallback &callback) override;
 
-  Status UnregisterSelf() override;
+  Status DrainSelf() override;
 
   const NodeID &GetSelfId() const override;
 
@@ -153,7 +153,7 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
   Status AsyncRegister(const rpc::GcsNodeInfo &node_info,
                        const StatusCallback &callback) override;
 
-  Status AsyncUnregister(const NodeID &node_id, const StatusCallback &callback) override;
+  Status AsyncDrainNode(const NodeID &node_id, const StatusCallback &callback) override;
 
   Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback) override;
 
@@ -161,8 +161,8 @@ class ServiceBasedNodeInfoAccessor : public NodeInfoAccessor {
       const SubscribeCallback<NodeID, rpc::GcsNodeInfo> &subscribe,
       const StatusCallback &done) override;
 
-  absl::optional<rpc::GcsNodeInfo> Get(const NodeID &node_id,
-                                       bool filter_dead_nodes = false) const override;
+  const rpc::GcsNodeInfo *Get(const NodeID &node_id,
+                              bool filter_dead_nodes = false) const override;
 
   const std::unordered_map<NodeID, rpc::GcsNodeInfo> &GetAll() const override;
 

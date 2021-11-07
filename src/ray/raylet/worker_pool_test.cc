@@ -105,8 +105,8 @@ class WorkerPoolMock : public WorkerPool {
                               &mock_worker_rpc_clients)
       : WorkerPool(
             io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
-            MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands, []() {}, 0,
-            [this]() { return current_time_ms_; }),
+            MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands, "", []() {},
+            0, [this]() { return current_time_ms_; }),
         last_worker_process_(),
         instrumented_io_service_(io_service),
         error_message_type_(1),
@@ -137,6 +137,8 @@ class WorkerPoolMock : public WorkerPool {
     pid_t pid = static_cast<pid_t>(PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
     last_worker_process_ = Process::FromPid(pid);
     worker_commands_by_proc_[last_worker_process_] = worker_command_args;
+    startup_tokens_by_proc_[last_worker_process_] =
+        WorkerPool::worker_startup_token_counter_;
     return last_worker_process_;
   }
 
@@ -176,9 +178,13 @@ class WorkerPoolMock : public WorkerPool {
     return state.restore_io_worker_state.num_starting_io_workers;
   }
 
+  StartupToken GetStartupToken(const Process &proc) {
+    return startup_tokens_by_proc_[proc];
+  }
+
   int GetProcessSize() const { return worker_commands_by_proc_.size(); }
 
-  const std::unordered_map<Process, std::vector<std::string>> &GetProcesses() {
+  const absl::flat_hash_map<Process, std::vector<std::string>> &GetProcesses() {
     return worker_commands_by_proc_;
   }
 
@@ -196,7 +202,7 @@ class WorkerPoolMock : public WorkerPool {
       Process proc, const Language &language = Language::PYTHON,
       const JobID &job_id = JOB_ID,
       const rpc::WorkerType worker_type = rpc::WorkerType::WORKER,
-      int runtime_env_hash = 0) {
+      int runtime_env_hash = 0, StartupToken worker_startup_token = 0) {
     std::function<void(ClientConnection &)> client_handler =
         [this](ClientConnection &client) { HandleNewClient(client); };
     std::function<void(std::shared_ptr<ClientConnection>, int64_t,
@@ -212,7 +218,7 @@ class WorkerPoolMock : public WorkerPool {
                                  "worker", {}, error_message_type_);
     std::shared_ptr<Worker> worker_ = std::make_shared<Worker>(
         job_id, runtime_env_hash, WorkerID::FromRandom(), language, worker_type,
-        "127.0.0.1", client, client_call_manager_);
+        "127.0.0.1", client, client_call_manager_, worker_startup_token);
     std::shared_ptr<WorkerInterface> worker =
         std::dynamic_pointer_cast<WorkerInterface>(worker_);
     auto rpc_client = std::make_shared<MockWorkerClient>(instrumented_io_service_);
@@ -258,12 +264,13 @@ class WorkerPoolMock : public WorkerPool {
             is_java = true;
           }
         }
-        // TODO(guyang.sgy): support C++ language workers.
+        // TODO(SongGuyang): support C++ language workers.
         int num_workers = is_java ? NUM_WORKERS_PER_PROCESS_JAVA : 1;
         for (int i = 0; i < num_workers; i++) {
           auto worker =
               CreateWorker(it->first, is_java ? Language::JAVA : Language::PYTHON, JOB_ID,
-                           rpc::WorkerType::WORKER, runtime_env_hash);
+                           rpc::WorkerType::WORKER, runtime_env_hash,
+                           startup_tokens_by_proc_[it->first]);
           OnWorkerStarted(worker);
           PushAvailableWorker(worker);
         }
@@ -302,9 +309,10 @@ class WorkerPoolMock : public WorkerPool {
  private:
   Process last_worker_process_;
   // The worker commands by process.
-  std::unordered_map<Process, std::vector<std::string>> worker_commands_by_proc_;
+  absl::flat_hash_map<Process, std::vector<std::string>> worker_commands_by_proc_;
+  absl::flat_hash_map<Process, StartupToken> startup_tokens_by_proc_;
   double current_time_ms_ = 0;
-  std::unordered_map<Process, std::vector<std::string>> pushedProcesses_;
+  absl::flat_hash_map<Process, std::vector<std::string>> pushedProcesses_;
   instrumented_io_context &instrumented_io_service_;
   int64_t error_message_type_;
   rpc::ClientCallManager client_call_manager_;
@@ -492,6 +500,7 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
     // Check that we cannot lookup the worker before it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                              worker_pool_->GetStartupToken(proc),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     // Check that we can lookup the worker after it's registered.
@@ -509,7 +518,8 @@ TEST_F(WorkerPoolTest, HandleWorkerRegistration) {
 
 TEST_F(WorkerPoolTest, HandleUnknownWorkerRegistration) {
   auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON);
-  auto status = worker_pool_->RegisterWorker(worker, 1234, 1234, [](Status, int) {});
+  auto status = worker_pool_->RegisterWorker(
+      worker, 1234, 1234, -1, [](const Status & /*unused*/, int /*unused*/) {});
   ASSERT_FALSE(status.ok());
 }
 
@@ -627,6 +637,7 @@ TEST_F(WorkerPoolTest, StartWorkerWithDynamicOptionsCommand) {
       {"-Xmx1g", "-Xms500m", "-Dmy-job.hello=world", "-Dmy-job.foo=bar"});
   // Ray-defined per-process options
   expected_command.push_back(GetNumJavaWorkersPerProcessSystemProperty(1));
+  expected_command.push_back("-Dray.raylet.startup-token=0");
   // User-defined per-process options
   expected_command.insert(expected_command.end(), actor_jvm_options.begin(),
                           actor_jvm_options.end());
@@ -717,7 +728,9 @@ TEST_F(WorkerPoolTest, MaximumStartupConcurrency) {
   // Call `RegisterWorker` to emulate worker registration.
   for (const auto &process : started_processes) {
     auto worker = worker_pool_->CreateWorker(Process());
+    worker->SetStartupToken(worker_pool_->GetStartupToken(process));
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, process.GetId(), process.GetId(),
+                                              worker_pool_->GetStartupToken(process),
                                               [](Status, int) {}));
     // Calling `RegisterWorker` won't affect the counter of starting worker processes.
     ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkerProcessesStarting());
@@ -975,8 +988,10 @@ TEST_F(WorkerPoolTest, NoPopOnCrashedWorkerProcess) {
 
   // 1. we register both workers.
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker1, proc.GetId(), proc.GetId(),
+                                            worker_pool_->GetStartupToken(proc),
                                             [](Status, int) {}));
   RAY_CHECK_OK(worker_pool_->RegisterWorker(worker2, proc.GetId(), proc.GetId(),
+                                            worker_pool_->GetStartupToken(proc),
                                             [](Status, int) {}));
 
   // 2. announce worker port for worker 1. When interacting with worker pool, it's
@@ -1019,8 +1034,10 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
     Process proc = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
+    worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
     workers.push_back(worker);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                              worker_pool_->GetStartupToken(proc),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
@@ -1112,6 +1129,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
         Language::PYTHON, rpc::WorkerType::SPILL_WORKER, job_id, &status);
     auto worker = CreateSpillWorker(Process());
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                              worker_pool_->GetStartupToken(proc),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
@@ -1123,6 +1141,7 @@ TEST_F(WorkerPoolTest, TestWorkerCapping) {
         Language::PYTHON, rpc::WorkerType::RESTORE_WORKER, job_id, &status);
     auto worker = CreateRestoreWorker(Process());
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                              worker_pool_->GetStartupToken(proc),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
@@ -1164,8 +1183,10 @@ TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
     Process proc = worker_pool_->StartWorkerProcess(
         Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
     auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
+    worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
     workers.push_back(worker);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                              worker_pool_->GetStartupToken(proc),
                                               [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);

@@ -80,6 +80,8 @@ class HyperBandScheduler(FIFOScheduler):
             reaching max_t. Defaults to True.
     """
 
+    _supports_buffered_results = False
+
     def __init__(self,
                  time_attr: str = "training_iteration",
                  metric: Optional[str] = None,
