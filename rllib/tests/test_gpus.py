@@ -51,8 +51,7 @@ class TestGPUs(unittest.TestCase):
                             print("direct RLlib")
                             self.assertRaisesRegex(
                                 RuntimeError,
-                                "Not enough GPUs found.+for "
-                                f"num_gpus={num_gpus}",
+                                "Found 0 GPUs on your machine",
                                 lambda: PGTrainer(config, env="CartPole-v0"),
                             )
                         # If actual_gpus >= num_gpus or faked,

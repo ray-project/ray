@@ -1,7 +1,7 @@
+import functools
 import gym
 import numpy as np
-import tree  # pip install dm_tree
-from typing import Union
+from typing import Optional, Union
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
@@ -10,6 +10,7 @@ from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.exploration.random import Random
 from ray.rllib.utils.framework import get_variable, try_import_tf, \
     try_import_torch, TensorType
+from ray.rllib.utils.tf_utils import zero_logps_from_actions
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -60,11 +61,12 @@ class StochasticSampling(Exploration):
             dtype=np.int64)
 
     @override(Exploration)
-    def get_exploration_action(self,
-                               *,
-                               action_distribution: ActionDistribution,
-                               timestep: Union[int, TensorType],
-                               explore: bool = True):
+    def get_exploration_action(
+            self,
+            *,
+            action_distribution: ActionDistribution,
+            timestep: Optional[Union[int, TensorType]] = None,
+            explore: bool = True):
         if self.framework == "torch":
             return self._get_torch_exploration_action(action_distribution,
                                                       timestep, explore)
@@ -73,7 +75,7 @@ class StochasticSampling(Exploration):
                                                       timestep, explore)
 
     def _get_tf_exploration_action_op(self, action_dist, timestep, explore):
-        ts = timestep if timestep is not None else self.last_timestep + 1
+        ts = self.last_timestep + 1
 
         stochastic_actions = tf.cond(
             pred=tf.convert_to_tensor(ts < self.random_timesteps),
@@ -90,22 +92,16 @@ class StochasticSampling(Exploration):
             true_fn=lambda: stochastic_actions,
             false_fn=lambda: deterministic_actions)
 
-        def logp_false_fn():
-            batch_size = tf.shape(tree.flatten(action)[0])[0]
-            return tf.zeros(shape=(batch_size, ), dtype=tf.float32)
-
         logp = tf.cond(
             tf.math.logical_and(
                 explore, tf.convert_to_tensor(ts >= self.random_timesteps)),
             true_fn=lambda: action_dist.sampled_action_logp(),
-            false_fn=logp_false_fn)
+            false_fn=functools.partial(zero_logps_from_actions,
+                                       deterministic_actions))
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
         if self.framework in ["tf2", "tfe"]:
-            if timestep is None:
-                self.last_timestep.assign_add(1)
-            else:
-                self.last_timestep.assign(timestep)
+            self.last_timestep.assign_add(1)
             return action, logp
         else:
             assign_op = (tf1.assign_add(self.last_timestep, 1)

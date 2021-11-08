@@ -2,14 +2,13 @@ import os
 import asyncio
 import logging
 from typing import Union
-from grpc.experimental import aio as aiogrpc
 
-import ray.new_dashboard.utils as dashboard_utils
-import ray.new_dashboard.consts as dashboard_consts
-from ray.ray_constants import env_bool
-from ray.new_dashboard.utils import async_loop_forever, create_task
-from ray.new_dashboard.modules.event import event_consts
-from ray.new_dashboard.modules.event.event_utils import monitor_events
+import ray._private.utils as utils
+import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.consts as dashboard_consts
+from ray.dashboard.utils import async_loop_forever, create_task
+from ray.dashboard.modules.event import event_consts
+from ray.dashboard.modules.event.event_utils import monitor_events
 from ray.core.generated import event_pb2
 from ray.core.generated import event_pb2_grpc
 
@@ -17,8 +16,6 @@ logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 
-@dashboard_utils.dashboard_module(
-    enable=env_bool(event_consts.EVENT_MODULE_ENVIRONMENT_KEY, False))
 class EventAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
@@ -46,8 +43,10 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 if dashboard_rpc_address:
                     logger.info("Report events to %s", dashboard_rpc_address)
                     options = (("grpc.enable_http_proxy", 0), )
-                    channel = aiogrpc.insecure_channel(
-                        dashboard_rpc_address, options=options)
+                    channel = utils.init_grpc_channel(
+                        dashboard_rpc_address,
+                        options=options,
+                        asynchronous=True)
                     return event_pb2_grpc.ReportEventServiceStub(channel)
             except Exception:
                 logger.exception("Connect to dashboard failed.")

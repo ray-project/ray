@@ -129,7 +129,6 @@ class SigOptSearch(Searcher):
                  space: List[Dict] = None,
                  name: str = "Default Tune Experiment",
                  max_concurrent: int = 1,
-                 reward_attr: Optional[str] = None,
                  connection: Optional[Connection] = None,
                  experiment_id: Optional[str] = None,
                  observation_budget: Optional[int] = None,

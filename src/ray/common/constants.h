@@ -51,3 +51,6 @@ constexpr int kMessagePackOffset = 9;
 /// Filename of "shim process" that sets up Python worker environment.
 /// Should be kept in sync with SETUP_WORKER_FILENAME in ray.ray_constants.
 constexpr char kSetupWorkerFilename[] = "setup_worker.py";
+
+/// The version of Ray
+constexpr char kRayVersion[] = "2.0.0.dev0";

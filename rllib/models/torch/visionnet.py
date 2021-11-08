@@ -6,13 +6,11 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.misc import normc_initializer, same_padding, \
     SlimConv2d, SlimFC
 from ray.rllib.models.utils import get_activation_fn, get_filter_config
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
-_, nn = try_import_torch()
+torch, nn = try_import_torch()
 
 
 class VisionNetwork(TorchModelV2, nn.Module):
@@ -46,17 +44,9 @@ class VisionNetwork(TorchModelV2, nn.Module):
         # a n x (1,1) Conv2D).
         self.last_layer_is_flattened = False
         self._logits = None
-        self.traj_view_framestacking = False
 
         layers = []
-        # Perform Atari framestacking via traj. view API.
-        if model_config.get("num_framestacks") != "auto" and \
-                model_config.get("num_framestacks", 0) > 1:
-            (w, h) = obs_space.shape
-            in_channels = model_config["num_framestacks"]
-            self.traj_view_framestacking = True
-        else:
-            (w, h, in_channels) = obs_space.shape
+        (w, h, in_channels) = obs_space.shape
 
         in_size = [w, h]
         for out_channels, kernel, stride in filters[:-1]:
@@ -151,9 +141,18 @@ class VisionNetwork(TorchModelV2, nn.Module):
             else:
                 self.last_layer_is_flattened = True
                 layers.append(nn.Flatten())
-                self.num_outputs = out_channels
 
         self._convs = nn.Sequential(*layers)
+
+        # If our num_outputs still unknown, we need to do a test pass to
+        # figure out the output dimensions. This could be the case, if we have
+        # the Flatten layer at the end.
+        if self.num_outputs is None:
+            # Create a B=1 dummy sample and push it through out conv-net.
+            dummy_in = torch.from_numpy(self.obs_space.sample()).permute(
+                2, 0, 1).unsqueeze(0).float()
+            dummy_out = self._convs(dummy_in)
+            self.num_outputs = dummy_out.shape[1]
 
         # Build the value layers
         self._value_branch_separate = self._value_branch = None
@@ -165,11 +164,7 @@ class VisionNetwork(TorchModelV2, nn.Module):
                 activation_fn=None)
         else:
             vf_layers = []
-            if self.traj_view_framestacking:
-                (w, h) = obs_space.shape
-                in_channels = model_config["num_framestacks"]
-            else:
-                (w, h, in_channels) = obs_space.shape
+            (w, h, in_channels) = obs_space.shape
             in_size = [w, h]
             for out_channels, kernel, stride in filters[:-1]:
                 padding, out_size = same_padding(in_size, kernel, stride)
@@ -207,27 +202,13 @@ class VisionNetwork(TorchModelV2, nn.Module):
         # Holds the current "base" output (before logits layer).
         self._features = None
 
-        # Optional: framestacking obs/new_obs for Atari.
-        if self.traj_view_framestacking:
-            from_ = model_config["num_framestacks"] - 1
-            self.view_requirements[SampleBatch.OBS].shift = \
-                "-{}:0".format(from_)
-            self.view_requirements[SampleBatch.OBS].shift_from = -from_
-            self.view_requirements[SampleBatch.OBS].shift_to = 0
-            self.view_requirements[SampleBatch.NEXT_OBS] = ViewRequirement(
-                data_col=SampleBatch.OBS,
-                shift="-{}:1".format(from_ - 1),
-                space=self.view_requirements[SampleBatch.OBS].space,
-            )
-
     @override(TorchModelV2)
     def forward(self, input_dict: Dict[str, TensorType],
                 state: List[TensorType],
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
         self._features = input_dict["obs"].float()
-        # No framestacking:
-        if not self.traj_view_framestacking:
-            self._features = self._features.permute(0, 3, 1, 2)
+        # Permuate b/c data comes in as [B, dim, dim, channels]:
+        self._features = self._features.permute(0, 3, 1, 2)
         conv_out = self._convs(self._features)
         # Store features to save forward pass when getting value_function out.
         if not self._value_branch_separate:

@@ -6,7 +6,6 @@ import gym
 from gym.spaces import Box, Discrete
 from functools import partial
 import logging
-import numpy as np
 from typing import Dict, List, Optional, Tuple, Type, Union
 
 import ray
@@ -17,7 +16,7 @@ from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
     PRIO_WEIGHTS
 from ray.rllib.agents.sac.sac_tf_model import SACTFModel
 from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
@@ -26,15 +25,13 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.framework import get_variable, try_import_tf, \
-    try_import_tfp
+from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.spaces.simplex import Simplex
-from ray.rllib.utils.tf_ops import huber_loss
+from ray.rllib.utils.tf_utils import huber_loss
 from ray.rllib.utils.typing import AgentID, LocalOptimizer, ModelGradients, \
     TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
-tfp = try_import_tfp()
 
 logger = logging.getLogger(__name__)
 
@@ -55,9 +52,6 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
             target model will be created in this function and assigned to
             `policy.target_model`.
     """
-    # With separate state-preprocessor (before obs+action concat).
-    num_outputs = int(np.product(obs_space.shape))
-
     # Force-ignore any additionally provided hidden layer sizes.
     # Everything should be configured using SAC's "Q_model" and "policy_model"
     # settings.
@@ -72,7 +66,7 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
     model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
-        num_outputs=num_outputs,
+        num_outputs=None,
         model_config=config["model"],
         framework=config["framework"],
         default_model=default_model_cls,
@@ -92,7 +86,7 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
     policy.target_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
-        num_outputs=num_outputs,
+        num_outputs=None,
         model_config=config["model"],
         framework=config["framework"],
         default_model=default_model_cls,
@@ -112,7 +106,7 @@ def postprocess_trajectory(
         policy: Policy,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+        episode: Optional[Episode] = None) -> SampleBatch:
     """Postprocesses a trajectory and returns the processed trajectory.
 
     The trajectory contains only data from one episode and from one agent.
@@ -130,7 +124,7 @@ def postprocess_trajectory(
         other_agent_batches (Optional[Dict[AgentID, SampleBatch]]): Optional
             dict of AgentIDs mapping to other agents' trajectory data (from the
             same episode). NOTE: The other agents use the same policy.
-        episode (Optional[MultiAgentEpisode]): Optional multi-agent episode
+        episode (Optional[Episode]): Optional multi-agent episode
             object in which the agents operated.
 
     Returns:

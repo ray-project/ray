@@ -67,6 +67,10 @@ DEFAULT_EXPERIMENT_INFO_KEYS = ("trainable_name", EXPERIMENT_TAG, TRIAL_ID)
 DEFAULT_RESULT_KEYS = (TRAINING_ITERATION, TIME_TOTAL_S, TIMESTEPS_TOTAL,
                        MEAN_ACCURACY, MEAN_LOSS)
 
+# Metrics that don't require at least one iteration to complete
+DEBUG_METRICS = (TRIAL_ID, "experiment_id", "date", "timestamp", PID, HOSTNAME,
+                 NODE_IP, "config")
+
 # Make sure this doesn't regress
 AUTO_RESULT_KEYS = (
     TRAINING_ITERATION,

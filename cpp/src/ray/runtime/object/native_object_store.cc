@@ -74,7 +74,11 @@ void NativeObjectStore::CheckException(const std::string &meta_str,
     throw RayWorkerException(std::move(data_str));
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::ACTOR_DIED)) {
     throw RayActorException(std::move(data_str));
-  } else if (meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE)) {
+  } else if (meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE) ||
+             meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_LOST) ||
+             meta_str == std::to_string(ray::rpc::ErrorType::OWNER_DIED) ||
+             meta_str == std::to_string(ray::rpc::ErrorType::OBJECT_DELETED)) {
+    // TODO: Differentiate object errors.
     throw UnreconstructableException(std::move(data_str));
   } else if (meta_str == std::to_string(ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION)) {
     throw RayTaskException(std::move(data_str));
@@ -112,7 +116,7 @@ std::vector<bool> NativeObjectStore::Wait(const std::vector<ObjectID> &ids,
                                           int num_objects, int timeout_ms) {
   std::vector<bool> results;
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
-  // TODO(guyang.sgy): Support `fetch_local` option in API.
+  // TODO(SongGuyang): Support `fetch_local` option in API.
   // Simply set `fetch_local` to be true.
   ::ray::Status status = core_worker.Wait(ids, num_objects, timeout_ms, &results, true);
   if (!status.ok()) {

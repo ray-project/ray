@@ -23,21 +23,13 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   num_tasks_submitted_++;
 
-  if (task_spec.IsActorCreationTask()) {
-    // Synchronously register the actor to GCS server.
-    // Previously, we asynchronously registered the actor after all its dependencies were
-    // resolved. This caused a problem: if the owner of the actor dies before dependencies
-    // are resolved, the actor will never be created. But the actor handle may already be
-    // passed to other workers. In this case, the actor tasks will hang forever.
-    // So we fixed this issue by synchronously registering the actor. If the owner dies
-    // before dependencies are resolved, GCS will notice this and mark the actor as dead.
-    auto status = actor_creator_->RegisterActor(task_spec);
+  resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) {
     if (!status.ok()) {
-      return status;
+      RAY_LOG(ERROR) << "Resolving task dependencies failed " << status.ToString();
+      RAY_UNUSED(task_finisher_->PendingTaskFailed(
+          task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
+      return;
     }
-  }
-
-  resolver_.ResolveDependencies(task_spec, [this, task_spec]() {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
     if (task_spec.IsActorCreationTask()) {
       // If gcs actor management is enabled, the actor creation task will be sent to
@@ -48,11 +40,15 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       auto task_id = task_spec.TaskId();
       RAY_LOG(INFO) << "Creating actor via GCS actor id = : " << actor_id;
       RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
-          task_spec, [this, actor_id, task_id](Status status) {
+          task_spec,
+          [this, actor_id, task_id](Status status, const rpc::CreateActorReply &reply) {
             if (status.ok()) {
               RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
-              task_finisher_->CompletePendingTask(task_id, rpc::PushTaskReply(),
-                                                  rpc::Address());
+              // Copy the actor's reply to the GCS for ref counting purposes.
+              rpc::PushTaskReply push_task_reply;
+              push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
+              task_finisher_->CompletePendingTask(task_id, push_task_reply,
+                                                  reply.actor_address());
             } else {
               RAY_LOG(ERROR) << "Failed to create actor " << actor_id
                              << " with status: " << status.ToString();
@@ -215,7 +211,6 @@ bool CoreWorkerDirectTaskSubmitter::FindOptimalVictimForStealing(
   const auto &victim_entry = worker_to_lease_entry_[victim_addr];
   // Double check that the victim has the correct SchedulingKey
   RAY_CHECK(victim_entry.scheduling_key == scheduling_key);
-
   RAY_LOG(DEBUG) << "Victim is worker " << victim_addr.worker_id << " and has "
                  << victim_entry.tasks_in_flight << " tasks in flight, "
                  << " among which we estimate that " << victim_entry.tasks_in_flight / 2
@@ -248,14 +243,9 @@ void CoreWorkerDirectTaskSubmitter::StealTasksOrReturnWorker(
     return;
   }
 
-  RAY_LOG(DEBUG) << "Beginning to steal work now! Thief is worker: "
-                 << thief_addr.worker_id;
-
   // Search for a suitable victim
   rpc::Address victim_raw_addr;
   if (!FindOptimalVictimForStealing(scheduling_key, thief_addr, &victim_raw_addr)) {
-    RAY_LOG(DEBUG) << "Could not find a suitable victim for stealing! Returning worker "
-                   << thief_addr.worker_id;
     // If stealing was enabled, we can now cancel any pending new workeer lease request,
     // because stealing is now possible this time.
     if (max_tasks_in_flight_per_worker_ > 1) {
@@ -342,8 +332,6 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
 
     // Return the worker only if there are no tasks in flight
     if (lease_entry.tasks_in_flight == 0) {
-      RAY_LOG(DEBUG)
-          << "Number of tasks in flight == 0, calling StealTasksOrReturnWorker!";
       StealTasksOrReturnWorker(addr, was_error, scheduling_key, assigned_resources);
     }
   } else {
@@ -386,15 +374,14 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
   RAY_LOG(DEBUG)
       << "Task queue is empty, and there are no stealable tasks; canceling lease request";
 
-  auto &pending_lease_request = scheduling_key_entry.pending_lease_request;
-  if (pending_lease_request.first) {
+  for (auto &pending_lease_request : scheduling_key_entry.pending_lease_requests) {
     // There is an in-flight lease request. Cancel it.
-    auto &lease_client = pending_lease_request.first;
-    auto &lease_id = pending_lease_request.second;
-    RAY_LOG(DEBUG) << "Canceling lease request " << lease_id;
+    auto lease_client = GetOrConnectLeaseClient(&pending_lease_request.second);
+    auto &task_id = pending_lease_request.first;
+    RAY_LOG(DEBUG) << "Canceling lease request " << task_id;
     lease_client->CancelWorkerLease(
-        lease_id, [this, scheduling_key](const Status &status,
-                                         const rpc::CancelWorkerLeaseReply &reply) {
+        task_id, [this, scheduling_key](const Status &status,
+                                        const rpc::CancelWorkerLeaseReply &reply) {
           absl::MutexLock lock(&mu_);
           if (status.ok() && !reply.success()) {
             // The cancellation request can fail if the raylet does not have
@@ -435,15 +422,58 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
   return lease_client;
 }
 
+void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklog() {
+  absl::MutexLock lock(&mu_);
+  ReportWorkerBacklogInternal();
+}
+
+void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogInternal() {
+  absl::flat_hash_map<SchedulingClass, std::pair<TaskSpecification, int64_t>> backlogs;
+  for (auto &scheduling_key_and_entry : scheduling_key_entries_) {
+    const SchedulingClass scheduling_class = std::get<0>(scheduling_key_and_entry.first);
+    if (backlogs.find(scheduling_class) == backlogs.end()) {
+      backlogs[scheduling_class].first = scheduling_key_and_entry.second.resource_spec;
+      backlogs[scheduling_class].second = 0;
+    }
+    // We report backlog size per scheduling class not per scheduling key
+    // so we need to aggregate backlog sizes of different scheduling keys
+    // with the same scheduling class
+    backlogs[scheduling_class].second += scheduling_key_and_entry.second.BacklogSize();
+    scheduling_key_and_entry.second.last_reported_backlog_size =
+        scheduling_key_and_entry.second.BacklogSize();
+  }
+
+  std::vector<rpc::WorkerBacklogReport> backlog_reports;
+  for (const auto &backlog : backlogs) {
+    rpc::WorkerBacklogReport backlog_report;
+    backlog_report.mutable_resource_spec()->CopyFrom(backlog.second.first.GetMessage());
+    backlog_report.set_backlog_size(backlog.second.second);
+    backlog_reports.emplace_back(backlog_report);
+  }
+  local_lease_client_->ReportWorkerBacklog(WorkerID::FromBinary(rpc_address_.worker_id()),
+                                           backlog_reports);
+}
+
+void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogIfNeeded(
+    const SchedulingKey &scheduling_key) {
+  const auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+
+  if (scheduling_key_entry.last_reported_backlog_size !=
+      scheduling_key_entry.BacklogSize()) {
+    ReportWorkerBacklogInternal();
+  }
+}
+
 void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     const SchedulingKey &scheduling_key, const rpc::Address *raylet_address) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-  auto &pending_lease_request = scheduling_key_entry.pending_lease_request;
 
-  if (pending_lease_request.first) {
-    // There's already an outstanding lease request for this type of task.
+  if (scheduling_key_entry.pending_lease_requests.size() ==
+      max_pending_lease_requests_per_scheduling_category_) {
     return;
   }
+  RAY_CHECK(scheduling_key_entry.pending_lease_requests.size() <
+            max_pending_lease_requests_per_scheduling_category_);
 
   // Check whether we really need a new worker or whether we have
   // enough room in an existing worker's pipeline to send the new tasks. If the pipelines
@@ -456,7 +486,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
     return;
   }
 
-  auto &task_queue = scheduling_key_entry.task_queue;
+  const auto &task_queue = scheduling_key_entry.task_queue;
   // Check if the task queue is empty. If that is the case, it only makes sense to
   // consider requesting a new worker if work stealing is enabled, and there is at least a
   // worker with stealable tasks. If work stealing is not enabled, or there is no tasks
@@ -473,15 +503,18 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
       }
       return;
     }
+  } else if (scheduling_key_entry.task_queue.size() <=
+             scheduling_key_entry.pending_lease_requests.size()) {
+    // All tasks have corresponding pending leases, no need to request more
+    return;
   }
 
+  num_leases_requested_++;
   // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
   // same TaskID to request a worker
-  num_leases_requested_++;
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
   resource_spec_msg.set_task_id(TaskID::ForFakeTask().Binary());
-  TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
-
+  const TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
   rpc::Address best_node_address;
   if (raylet_address == nullptr) {
     // If no raylet address is given, find the best worker for our next lease request.
@@ -490,22 +523,17 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   }
 
   auto lease_client = GetOrConnectLeaseClient(raylet_address);
-  TaskID task_id = resource_spec.TaskId();
-  // Subtract 1 so we don't double count the task we are requesting for.
-  int64_t queue_size = task_queue.size() - 1;
+  const TaskID task_id = resource_spec.TaskId();
 
   lease_client->RequestWorkerLease(
       resource_spec,
-      [this, scheduling_key](const Status &status,
-                             const rpc::RequestWorkerLeaseReply &reply) {
+      [this, scheduling_key, task_id, raylet_address = *raylet_address](
+          const Status &status, const rpc::RequestWorkerLeaseReply &reply) {
         absl::MutexLock lock(&mu_);
 
         auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-        auto &pending_lease_request = scheduling_key_entry.pending_lease_request;
-        RAY_CHECK(pending_lease_request.first);
-        auto lease_client = std::move(pending_lease_request.first);
-        const auto task_id = pending_lease_request.second;
-        pending_lease_request = std::make_pair(nullptr, TaskID::Nil());
+        auto lease_client = GetOrConnectLeaseClient(&raylet_address);
+        scheduling_key_entry.pending_lease_requests.erase(task_id);
 
         if (status.ok()) {
           if (reply.runtime_env_setup_failed()) {
@@ -517,8 +545,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             while (!task_queue.empty()) {
               auto &task_spec = task_queue.front();
               RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
-                  task_spec.TaskId(), task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED,
-                  nullptr));
+                  task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED, nullptr));
               task_queue.pop_front();
             }
             if (scheduling_key_entry.CanDelete()) {
@@ -549,23 +576,31 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           // A lease request to a remote raylet failed. Retry locally if the lease is
           // still needed.
           // TODO(swang): Fail after some number of retries?
-          RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. Error: "
-                         << status.ToString();
+          RAY_LOG(INFO) << "Retrying attempt to schedule task at remote node. Try again "
+                           "on a local node. Error: "
+                        << status.ToString();
 
           RequestNewWorkerIfNeeded(scheduling_key);
 
         } else {
-          // A local request failed. This shouldn't happen if the raylet is still alive
-          // and we don't currently handle raylet failures, so treat it as a fatal
-          // error.
-          RAY_LOG(ERROR) << "The worker failed to receive a response from the local "
-                            "raylet. This is most "
-                            "likely because the local raylet has crahsed.";
-          RAY_LOG(FATAL) << status.ToString();
+          if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+            RAY_LOG(WARNING)
+                << "The worker failed to receive a response from the local "
+                   "raylet because the raylet is crashed. Terminating the worker.";
+            QuickExit();
+          } else {
+            RAY_LOG(INFO)
+                << "The worker failed to receive a response from the local raylet, but "
+                   "raylet is still alive. Try again on a local node. Error: "
+                << status;
+            // TODO(sang): Maybe we should raise FATAL error if it happens too many times.
+            RequestNewWorkerIfNeeded(scheduling_key);
+          }
         }
       },
-      queue_size);
-  pending_lease_request = std::make_pair(lease_client, task_id);
+      task_queue.size());
+  scheduling_key_entry.pending_lease_requests.emplace(task_id, *raylet_address);
+  ReportWorkerBacklogIfNeeded(scheduling_key);
 }
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(
@@ -638,7 +673,11 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
               is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
               &status));
         } else {
-          task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
+          if (!task_spec.GetMessage().retry_exceptions() ||
+              !reply.is_application_level_error() ||
+              !task_finisher_->RetryTaskIfPossible(task_id)) {
+            task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
+          }
         }
       });
 }

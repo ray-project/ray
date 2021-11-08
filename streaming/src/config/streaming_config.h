@@ -16,6 +16,19 @@ using StreamingRole = proto::NodeType;
   TYPE Get##NAME() const { return VALUE; }       \
   void Set##NAME(TYPE value) { VALUE = value; }
 
+using TagsMap = std::unordered_map<std::string, std::string>;
+class StreamingMetricsConfig {
+ public:
+  DECL_GET_SET_PROPERTY(const std::string &, MetricsServiceName, metrics_service_name_);
+  DECL_GET_SET_PROPERTY(uint32_t, MetricsReportInterval, metrics_report_interval_);
+  DECL_GET_SET_PROPERTY(const TagsMap, MetricsGlobalTags, global_tags);
+
+ private:
+  std::string metrics_service_name_ = "streaming";
+  uint32_t metrics_report_interval_ = 10;
+  std::unordered_map<std::string, std::string> global_tags;
+};
+
 class StreamingConfig {
  public:
   static uint64_t TIME_WAIT_UINT;
@@ -50,6 +63,7 @@ class StreamingConfig {
 
   ReliabilityLevel streaming_strategy_ = ReliabilityLevel::EXACTLY_ONCE;
   StreamingRole streaming_role = StreamingRole::TRANSFORM;
+  bool metrics_enable = true;
 
  public:
   void FromProto(const uint8_t *, uint32_t size);
@@ -74,6 +88,7 @@ class StreamingConfig {
                         event_driven_flow_control_interval_)
   DECL_GET_SET_PROPERTY(StreamingRole, StreamingRole, streaming_role)
   DECL_GET_SET_PROPERTY(ReliabilityLevel, ReliabilityLevel, streaming_strategy_)
+  DECL_GET_SET_PROPERTY(bool, MetricsEnable, metrics_enable)
 
   uint32_t GetRingBufferCapacity() const;
   /// Note(lingxuan.zlx), RingBufferCapacity's valid range is from 1 to

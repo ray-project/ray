@@ -37,5 +37,7 @@ ActorID LocalModeRayRuntime::GetNextActorID() {
   return actor_id;
 }
 
+ActorID LocalModeRayRuntime::GetCurrentActorID() { return worker_->GetCurrentActorID(); }
+
 }  // namespace internal
 }  // namespace ray

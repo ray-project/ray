@@ -3,6 +3,46 @@
 # Please keep these sorted alphabetically, but start with the
 # root directory.
 # --------------------------------------------------------------------
+
+# Support for Dask has been dropped in 3.6.
+py_test(
+    name = "dask_xgboost",
+    size = "medium",
+    main = "examples/dask_xgboost/dask_xgboost.py",
+    srcs = ["examples/dask_xgboost/dask_xgboost.py"],
+    tags = ["exclusive", "team:ml", "py37"],
+    args = ["--smoke-test", "--address ''", "--num-actors 4",
+            "--cpus-per-actor 1", "--num-actors-inference 4",
+             "--cpus-per-actor-inference 1"]
+)
+
+# Support for Modin has been dropped in 3.6.
+py_test(
+    name = "modin_xgboost",
+    size = "medium",
+    main = "examples/modin_xgboost/modin_xgboost.py",
+    srcs = ["examples/modin_xgboost/modin_xgboost.py"],
+    tags = ["exclusive", "team:ml", "py37"],
+    args = ["--smoke-test", "--address ''", "--num-actors 4",
+            "--cpus-per-actor 1", "--num-actors-inference 4",
+             "--cpus-per-actor-inference 1"]
+)
+
+py_test(
+    name = "big_data_ingestion",
+    size = "small",
+    srcs = ["source/data/_examples/big_data_ingestion.py"],
+    tags = ["exclusive", "team:core", "py37"]
+)
+
+py_test(
+    name = "datasets_train",
+    size = "medium",
+    srcs = ["examples/datasets_train/datasets_train.py"],
+    tags = ["exclusive", "team:ml", "py37", "datasets_train"],
+    args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
+)
+
 py_test(
     name = "plot_hyperparameter",
     size = "small",

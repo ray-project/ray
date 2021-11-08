@@ -14,12 +14,11 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include "msgpack.hpp"
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
 #include "ray/util/util.h"
-
-#include "msgpack.hpp"
 
 namespace ray {
 namespace core {
@@ -30,9 +29,9 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
-void TaskManager::AddPendingTask(const rpc::Address &caller_address,
-                                 const TaskSpecification &spec,
-                                 const std::string &call_site, int max_retries) {
+std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
+    const rpc::Address &caller_address, const TaskSpecification &spec,
+    const std::string &call_site, int max_retries) {
   RAY_LOG(DEBUG) << "Adding pending task " << spec.TaskId() << " with " << max_retries
                  << " retries";
 
@@ -62,8 +61,10 @@ void TaskManager::AddPendingTask(const rpc::Address &caller_address,
   if (spec.IsActorTask()) {
     num_returns--;
   }
-  if (!spec.IsActorCreationTask()) {
-    for (size_t i = 0; i < num_returns; i++) {
+  std::vector<rpc::ObjectReference> returned_refs;
+  for (size_t i = 0; i < num_returns; i++) {
+    if (!spec.IsActorCreationTask()) {
+      bool is_reconstructable = max_retries != 0;
       // We pass an empty vector for inner IDs because we do not know the return
       // value of the task yet. If the task returns an ID(s), the worker will
       // publish the WaitForRefRemoved message that we are now a borrower for
@@ -71,8 +72,14 @@ void TaskManager::AddPendingTask(const rpc::Address &caller_address,
       // PushTaskReply.
       reference_counter_->AddOwnedObject(spec.ReturnId(i),
                                          /*inner_ids=*/{}, caller_address, call_site, -1,
-                                         /*is_reconstructable=*/true);
+                                         /*is_reconstructable=*/is_reconstructable);
     }
+
+    rpc::ObjectReference ref;
+    ref.set_object_id(spec.ReturnId(i).Binary());
+    ref.mutable_owner_address()->CopyFrom(caller_address);
+    ref.set_call_site(call_site);
+    returned_refs.push_back(std::move(ref));
   }
 
   {
@@ -82,6 +89,8 @@ void TaskManager::AddPendingTask(const rpc::Address &caller_address,
                   .second);
     num_pending_tasks_++;
   }
+
+  return returned_refs;
 }
 
 Status TaskManager::ResubmitTask(const TaskID &task_id,
@@ -182,8 +191,23 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                                       const rpc::Address &worker_addr) {
   RAY_LOG(DEBUG) << "Completing task " << task_id;
 
+  // Objects that were stored in plasma upon the first successful execution of
+  // this task. These objects will get stored in plasma again, even if they
+  // were returned directly in the worker's reply. This ensures that any
+  // reference holders that are already scheduled at the raylet can retrieve
+  // these objects through plasma.
+  absl::flat_hash_set<ObjectID> store_in_plasma_ids = {};
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    RAY_CHECK(it != submissible_tasks_.end())
+        << "Tried to complete task that was not pending " << task_id;
+    if (it->second.num_successful_executions > 0) {
+      store_in_plasma_ids = it->second.reconstructable_return_ids;
+    }
+  }
+
   std::vector<ObjectID> direct_return_ids;
-  std::vector<ObjectID> plasma_return_ids;
   for (int i = 0; i < reply.return_objects_size(); i++) {
     const auto &return_object = reply.return_objects(i);
     ObjectID object_id = ObjectID::FromBinary(return_object.object_id());
@@ -226,10 +250,14 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
             return_object.metadata().size());
       }
 
-      bool stored_in_direct_memory = in_memory_store_->Put(
-          RayObject(data_buffer, metadata_buffer, nested_refs), object_id);
-      if (stored_in_direct_memory) {
-        direct_return_ids.push_back(object_id);
+      RayObject object(data_buffer, metadata_buffer, nested_refs);
+      if (store_in_plasma_ids.count(object_id)) {
+        put_in_local_plasma_callback_(object, object_id);
+      } else {
+        bool stored_in_direct_memory = in_memory_store_->Put(object, object_id);
+        if (stored_in_direct_memory) {
+          direct_return_ids.push_back(object_id);
+        }
       }
     }
 
@@ -263,10 +291,12 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     RAY_LOG(DEBUG) << "Task " << it->first << " now has "
                    << it->second.reconstructable_return_ids.size()
                    << " plasma returns in scope";
+    it->second.num_successful_executions++;
+
     it->second.pending = false;
     num_pending_tasks_--;
 
-    // A finished task can be only be re-executed if it has some number of
+    // A finished task can only be re-executed if it has some number of
     // retries left and returned at least one object that is still in use and
     // stored in plasma.
     bool task_retryable = it->second.num_retries_left != 0 &&
@@ -284,17 +314,52 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   ShutdownIfNeeded();
 }
 
+bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
+  int num_retries_left = 0;
+  TaskSpecification spec;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    RAY_CHECK(it != submissible_tasks_.end())
+        << "Tried to retry task that was not pending " << task_id;
+    RAY_CHECK(it->second.pending)
+        << "Tried to retry task that was not pending " << task_id;
+    spec = it->second.spec;
+    num_retries_left = it->second.num_retries_left;
+    if (num_retries_left > 0) {
+      it->second.num_retries_left--;
+    } else {
+      RAY_CHECK(num_retries_left == 0 || num_retries_left == -1);
+    }
+  }
+
+  // We should not hold the lock during these calls because they may trigger
+  // callbacks in this or other classes.
+  if (num_retries_left != 0) {
+    std::ostringstream stream;
+    auto num_retries_left_str =
+        num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
+    stream << num_retries_left_str << " retries left for task " << spec.TaskId()
+           << ", attempting to resubmit.";
+    RAY_LOG(INFO) << stream.str();
+    retry_task_callback_(spec, /*delay=*/true);
+    return true;
+  } else {
+    return false;
+  }
+}
+
 bool TaskManager::PendingTaskFailed(
-    const TaskID &task_id, rpc::ErrorType error_type, Status *status,
+    const TaskID &task_id, rpc::ErrorType error_type, const Status *status,
     const std::shared_ptr<rpc::RayException> &creation_task_exception,
     bool immediately_mark_object_fail) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type);
-  int num_retries_left = 0;
+  const bool will_retry = RetryTaskIfPossible(task_id);
+  const bool release_lineage = !will_retry;
   TaskSpecification spec;
-  bool release_lineage = true;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -303,30 +368,13 @@ bool TaskManager::PendingTaskFailed(
     RAY_CHECK(it->second.pending)
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
-    num_retries_left = it->second.num_retries_left;
-    if (num_retries_left == 0) {
+    if (!will_retry) {
       submissible_tasks_.erase(it);
       num_pending_tasks_--;
-    } else if (num_retries_left == -1) {
-      release_lineage = false;
-    } else {
-      RAY_CHECK(num_retries_left > 0);
-      it->second.num_retries_left--;
-      release_lineage = false;
     }
   }
 
-  bool will_retry = false;
-  // We should not hold the lock during these calls because they may trigger
-  // callbacks in this or other classes.
-  if (num_retries_left != 0) {
-    auto retries_str =
-        num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-    RAY_LOG(INFO) << retries_str << " retries left for task " << spec.TaskId()
-                  << ", attempting to resubmit.";
-    retry_task_callback_(spec, /*delay=*/true);
-    will_retry = true;
-  } else {
+  if (!will_retry) {
     // Throttled logging of task failure errors.
     {
       absl::MutexLock lock(&mu_);
@@ -341,9 +389,9 @@ bool TaskManager::PendingTaskFailed(
         }
         last_log_time_ms_ = current_time_ms();
         if (status != nullptr) {
-          RAY_LOG(ERROR) << "Task failed: " << *status << ": " << spec.DebugString();
+          RAY_LOG(INFO) << "Task failed: " << *status << ": " << spec.DebugString();
         } else {
-          RAY_LOG(ERROR) << "Task failed: " << spec.DebugString();
+          RAY_LOG(INFO) << "Task failed: " << spec.DebugString();
         }
       }
     }
@@ -352,7 +400,7 @@ bool TaskManager::PendingTaskFailed(
     RemoveFinishedTaskReferences(spec, release_lineage, rpc::Address(),
                                  ReferenceCounter::ReferenceTableProto());
     if (immediately_mark_object_fail) {
-      MarkPendingTaskFailed(task_id, spec, error_type, creation_task_exception);
+      MarkPendingTaskFailed(spec, error_type, creation_task_exception);
     }
   }
 
@@ -461,8 +509,9 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
 }
 
 void TaskManager::MarkPendingTaskFailed(
-    const TaskID &task_id, const TaskSpecification &spec, rpc::ErrorType error_type,
+    const TaskSpecification &spec, rpc::ErrorType error_type,
     const std::shared_ptr<rpc::RayException> &creation_task_exception) {
+  const TaskID task_id = spec.TaskId();
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();

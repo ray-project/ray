@@ -13,8 +13,8 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, l2_loss, relu, sigmoid
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
-from ray.rllib.utils.torch_ops import convert_to_torch_tensor
+    check_train_results, framework_iterator
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -41,10 +41,11 @@ class TestDDPG(unittest.TestCase):
         num_iterations = 1
 
         # Test against all frameworks.
-        for _ in framework_iterator(config):
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
+        for _ in framework_iterator(config, with_eager_tracing=True):
+            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             for i in range(num_iterations):
                 results = trainer.train()
+                check_train_results(results)
                 print(results)
             check_compute_single_action(trainer)
             # Ensure apply_gradient_fn is being called and updating global_step
@@ -56,23 +57,6 @@ class TestDDPG(unittest.TestCase):
             check(a, 500)
             trainer.stop()
 
-    def test_ddpg_fake_multi_gpu_learning(self):
-        """Test whether DDPGTrainer can run SimpleEnv w/ faked multi-GPU."""
-        config = ddpg.DEFAULT_CONFIG.copy()
-        # Fake GPU setup.
-        config["num_gpus"] = 2
-        config["_fake_gpus"] = True
-        env = "ray.rllib.agents.sac.tests.test_sac.SimpleEnv"
-        config["env_config"] = {"config": {"repeat_delay": 0}}
-
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = ddpg.DDPGTrainer(config=config, env=env)
-            num_iterations = 2
-            for i in range(num_iterations):
-                results = trainer.train()
-                print(results)
-            trainer.stop()
-
     def test_ddpg_checkpoint_save_and_restore(self):
         """Test whether a DDPGTrainer can save and load checkpoints."""
         config = ddpg.DEFAULT_CONFIG.copy()
@@ -82,8 +66,8 @@ class TestDDPG(unittest.TestCase):
         config["exploration_config"]["random_timesteps"] = 100
 
         # Test against all frameworks.
-        for _ in framework_iterator(config):
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
+        for _ in framework_iterator(config, with_eager_tracing=True):
+            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             trainer.train()
             with TemporaryDirectory() as temp_dir:
                 checkpoint = trainer.save(temp_dir)
@@ -100,7 +84,7 @@ class TestDDPG(unittest.TestCase):
         for _ in framework_iterator(core_config):
             config = core_config.copy()
             # Default OUNoise setup.
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
+            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_single_action(obs, explore=False)
             self.assertEqual(trainer.get_policy().global_timestep, 1)
@@ -125,7 +109,7 @@ class TestDDPG(unittest.TestCase):
                 "initial_scale": 0.001,
                 "final_scale": 0.001,
             }
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
+            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = trainer.compute_single_action(
                 obs, explore=False)
@@ -305,8 +289,9 @@ class TestDDPG(unittest.TestCase):
 
             elif fw == "torch":
                 loss_torch(policy, policy.model, None, input_)
-                c, a, t = policy.critic_loss, policy.actor_loss, \
-                    policy.model.td_error
+                c, a, t = policy.get_tower_stats("critic_loss")[0], \
+                    policy.get_tower_stats("actor_loss")[0], \
+                    policy.get_tower_stats("td_error")[0]
                 # Check pure loss values.
                 check(c, expect_c)
                 check(a, expect_a)

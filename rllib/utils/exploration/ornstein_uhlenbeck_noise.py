@@ -8,6 +8,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     get_variable, TensorType
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules import Schedule
+from ray.rllib.utils.tf_utils import zero_logps_from_actions
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -134,14 +135,14 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
             true_fn=lambda: exploration_actions,
             false_fn=lambda: deterministic_actions)
         # Logp=always zero.
-        logp = tf.zeros_like(deterministic_actions, dtype=tf.float32)[:, 0]
+        logp = zero_logps_from_actions(deterministic_actions)
 
         # Increment `last_timestep` by 1 (or set to `timestep`).
         if self.framework in ["tf2", "tfe"]:
             if timestep is None:
                 self.last_timestep.assign_add(1)
             else:
-                self.last_timestep.assign(timestep)
+                self.last_timestep.assign(tf.cast(timestep, tf.int64))
         else:
             assign_op = (tf1.assign_add(self.last_timestep, 1)
                          if timestep is None else tf1.assign(
@@ -233,6 +234,9 @@ class OrnsteinUhlenbeckNoise(GaussianNoise):
                   sess: Optional["tf.Session"] = None) -> None:
         if self.framework == "tf":
             self.ou_state.load(state["ou_state"], session=sess)
-        else:
+        elif isinstance(self.ou_state, np.ndarray) or \
+                (torch and torch.is_tensor(self.ou_state)):
             self.ou_state = state["ou_state"]
+        else:
+            self.ou_state.assign(state["ou_state"])
         super().set_state(state, sess=sess)

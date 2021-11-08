@@ -36,6 +36,7 @@ if __name__ == "__main__":
     # hasn't been uploaded as a wheel to AWS.
     assert "RAY_COMMIT_SHA" not in ray.__commit__, ray.__commit__
 
+    retry = []
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
             if "dev" in ray.__version__:
@@ -50,7 +51,22 @@ if __name__ == "__main__":
                     sys_platform=sys_platform,
                     ray_version=ray.__version__,
                     py_version=py_version)
-            assert requests.head(url).status_code == 200, url
+            if requests.head(url).status_code != 200:
+                print("URL not found (yet?):", url)
+                retry.append(url)
+                continue
+            print("Successfully tested URL: ", url)
+            update_progress({"url": url})
+
+    if retry:
+        print(f"There are {len(retry)} URLs to retry. Sleeping 10 minutes "
+              f"to give some time for wheels to be built.")
+        print("List of URLs to retry:", retry)
+        time.sleep(600)
+        print("Retrying now...")
+        for url in retry:
+            assert requests.head(url).status_code == 200, \
+                f"URL still not found: {url}"
             print("Successfully tested URL: ", url)
             update_progress({"url": url})
 

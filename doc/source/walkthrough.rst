@@ -162,7 +162,7 @@ Ray enables arbitrary functions to be executed asynchronously. These asynchronou
   .. group-tab:: C++
 
     .. code:: c++
-      
+
       // A regular C++ function.
       int MyFunction() {
         return 1;
@@ -239,7 +239,7 @@ Passing object refs to remote functions
     assert(*obj_ref1.Get() == 1);
 
     // You can pass an object ref as an argument to another Ray remote function.
-    auto obj_ref2 = ray::Task(FunctionWithAnArgument, obj_ref1).Remote();
+    auto obj_ref2 = ray::Task(FunctionWithAnArgument).Remote(obj_ref1);
     assert(*obj_ref2.Get() == 2);
 
 Note the following behaviors:
@@ -263,7 +263,7 @@ this default behavior by passing in specific resources.
 .. tabs::
   .. group-tab:: Python
 
-    ``ray.init(num_cpus=8, num_gpus=4, resources={'Custom': 2})```
+    ``ray.init(num_cpus=8, num_gpus=4, resources={'Custom': 2})``
 
   .. group-tab:: Java
 
@@ -340,6 +340,11 @@ Below are more examples of resource specifications:
 
     // Ray aslo supports fractional and custom resources.
     ray::Task(MyFunction).SetResource("GPU", 0.5).SetResource("Custom", 1.0).Remote();
+
+.. tip::
+
+  Besides compute resources, you can also specify an environment for a task to run in,
+  which can include Python packages, local files, environment variables, and more--see :ref:`Runtime Environments <runtime-environments>` for details.
 
 Multiple returns
 ~~~~~~~~~~~~~~~~
@@ -523,7 +528,7 @@ works as follows.
     WaitResult<Integer> waitResult = Ray.wait(objectRefs, /*num_returns=*/0, /*timeoutMs=*/1000);
     System.out.println(waitResult.getReady());  // List of ready objects.
     System.out.println(waitResult.getUnready());  // list of unready objects.
-  
+
   .. code-tab:: c++
 
     ray::WaitResult<int> wait_result = ray::Wait(object_refs, /*num_objects=*/0, /*timeout_ms=*/1000);

@@ -7,9 +7,9 @@ import time
 import pytest
 import ray
 from ray import ray_constants
-from ray.new_dashboard.tests.conftest import *  # noqa
-from ray.new_dashboard.utils import Bunch
-from ray.new_dashboard.modules.reporter.reporter_agent import ReporterAgent
+from ray.dashboard.tests.conftest import *  # noqa
+from ray.dashboard.utils import Bunch
+from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent
 from ray._private.test_utils import (format_web_url, RayTestTimeoutException,
                                      wait_until_server_available,
                                      wait_for_condition, fetch_prometheus)

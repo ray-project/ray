@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// clang-format off
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 
 #include <memory>
@@ -28,12 +29,14 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/test/util.h"
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
 
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
 #include <chrono>
 
 #include "absl/container/flat_hash_map.h"
 #endif  // UNORDERED_VS_ABSL_MAPS_EVALUATION
+// clang-format on
 
 namespace ray {
 
@@ -48,14 +51,19 @@ class MockWorkerPool : public WorkerPoolInterface {
   void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback,
                  const std::string &allocated_instances_serialized_json) {
     num_pops++;
-    const WorkerCacheKey env = {
-        task_spec.OverrideEnvironmentVariables(), task_spec.SerializedRuntimeEnv(), {}};
+    const WorkerCacheKey env = {task_spec.SerializedRuntimeEnv(), {}};
     const int runtime_env_hash = env.IntHash();
     callbacks[runtime_env_hash].push_back(callback);
   }
 
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     workers.push_front(worker);
+  }
+
+  const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
+      bool filter_dead_workers) const {
+    RAY_CHECK(false) << "Not used.";
+    return {};
   }
 
   void TriggerCallbacks() {
@@ -97,44 +105,46 @@ class MockWorkerPool : public WorkerPoolInterface {
   }
 
   std::list<std::shared_ptr<WorkerInterface>> workers;
-  std::unordered_map<int, std::list<PopWorkerCallback>> callbacks;
+  absl::flat_hash_map<int, std::list<PopWorkerCallback>> callbacks;
   int num_pops;
 };
 
 std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
-    const std::string &id) {
-  std::unordered_map<std::string, double> local_node_resources;
-  local_node_resources[ray::kCPU_ResourceLabel] = 8;
-  local_node_resources[ray::kGPU_ResourceLabel] = 4;
+    const std::string &id, double num_cpus, double num_gpus, gcs::GcsClient &gcs_client) {
+  absl::flat_hash_map<std::string, double> local_node_resources;
+  local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
+  local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
 
-  auto scheduler = std::make_shared<ClusterResourceScheduler>(
-      ClusterResourceScheduler(id, local_node_resources));
+  auto scheduler =
+      std::make_shared<ClusterResourceScheduler>(id, local_node_resources, gcs_client);
 
   return scheduler;
 }
 
 RayTask CreateTask(const std::unordered_map<std::string, double> &required_resources,
                    int num_args = 0, std::vector<ObjectID> args = {},
-                   std::string serialized_runtime_env = "{}") {
+                   const std::string &serialized_runtime_env = "{}",
+                   const std::vector<std::string> &runtime_env_uris = {}) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
   rpc::Address address;
-  spec_builder.SetCommonTaskSpec(
-      id, "dummy_task", Language::PYTHON,
-      FunctionDescriptorBuilder::BuildPython("", "", "", ""), job_id, TaskID::Nil(), 0,
-      TaskID::Nil(), address, 0, required_resources, {},
-      std::make_pair(PlacementGroupID::Nil(), -1), true, "", serialized_runtime_env);
+  spec_builder.SetCommonTaskSpec(id, "dummy_task", Language::PYTHON,
+                                 FunctionDescriptorBuilder::BuildPython("", "", "", ""),
+                                 job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0,
+                                 required_resources, {},
+                                 std::make_pair(PlacementGroupID::Nil(), -1), true, "", 0,
+                                 serialized_runtime_env, runtime_env_uris);
 
   if (!args.empty()) {
     for (auto &arg : args) {
-      spec_builder.AddArg(TaskArgByReference(arg, rpc::Address()));
+      spec_builder.AddArg(TaskArgByReference(arg, rpc::Address(), ""));
     }
   } else {
     for (int i = 0; i < num_args; i++) {
       ObjectID put_id = ObjectID::FromIndex(RandomTaskId(), /*index=*/i + 1);
-      spec_builder.AddArg(TaskArgByReference(put_id, rpc::Address()));
+      spec_builder.AddArg(TaskArgByReference(put_id, rpc::Address(), ""));
     }
   }
 
@@ -153,7 +163,7 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
       const TaskID &task_id, const std::vector<rpc::ObjectReference> &required_objects) {
     RAY_CHECK(subscribed_tasks.insert(task_id).second);
     for (auto &obj_ref : required_objects) {
-      if (missing_objects_.count(ObjectRefToId(obj_ref))) {
+      if (missing_objects_.find(ObjectRefToId(obj_ref)) != missing_objects_.end()) {
         return false;
       }
     }
@@ -177,39 +187,51 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
 
 class ClusterTaskManagerTest : public ::testing::Test {
  public:
-  ClusterTaskManagerTest()
-      : id_(NodeID::FromRandom()),
-        scheduler_(CreateSingleNodeScheduler(id_.Binary())),
+  ClusterTaskManagerTest(double num_cpus_at_head = 8.0, double num_gpus_at_head = 0.0)
+      : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
+        id_(NodeID::FromRandom()),
+        scheduler_(CreateSingleNodeScheduler(id_.Binary(), num_cpus_at_head,
+                                             num_gpus_at_head, *gcs_client_)),
         is_owner_alive_(true),
         node_info_calls_(0),
         announce_infeasible_task_calls_(0),
         dependency_manager_(missing_objects_),
-        task_manager_(id_, scheduler_, dependency_manager_,
-                      /* is_owner_alive= */
-                      [this](const WorkerID &worker_id, const NodeID &node_id) {
-                        return is_owner_alive_;
-                      },
-                      /* get_node_info= */
-                      [this](const NodeID &node_id) {
-                        node_info_calls_++;
-                        return node_info_[node_id];
-                      },
-                      /* announce_infeasible_task= */
-                      [this](const RayTask &task) { announce_infeasible_task_calls_++; },
-                      pool_, leased_workers_,
-                      /* get_task_arguments= */
-                      [this](const std::vector<ObjectID> &object_ids,
-                             std::vector<std::unique_ptr<RayObject>> *results) {
-                        for (auto &obj_id : object_ids) {
-                          if (missing_objects_.count(obj_id) == 0) {
-                            results->emplace_back(MakeDummyArg());
-                          } else {
-                            results->emplace_back(nullptr);
-                          }
-                        }
-                        return true;
-                      },
-                      /*max_pinned_task_arguments_bytes=*/1000) {}
+        task_manager_(
+            id_, scheduler_, dependency_manager_,
+            /* is_owner_alive= */
+            [this](const WorkerID &worker_id, const NodeID &node_id) {
+              return is_owner_alive_;
+            },
+            /* get_node_info= */
+            [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
+              node_info_calls_++;
+              if (node_info_.count(node_id) != 0) {
+                return &node_info_[node_id];
+              }
+              return nullptr;
+            },
+            /* announce_infeasible_task= */
+            [this](const RayTask &task) { announce_infeasible_task_calls_++; }, pool_,
+            leased_workers_,
+            /* get_task_arguments= */
+            [this](const std::vector<ObjectID> &object_ids,
+                   std::vector<std::unique_ptr<RayObject>> *results) {
+              for (auto &obj_id : object_ids) {
+                if (missing_objects_.count(obj_id) == 0) {
+                  results->emplace_back(MakeDummyArg());
+                } else {
+                  results->emplace_back(nullptr);
+                }
+              }
+              return true;
+            },
+            /*max_pinned_task_arguments_bytes=*/1000) {}
+
+  void SetUp() {
+    static rpc::GcsNodeInfo node_info;
+    ON_CALL(*gcs_client_->mock_node_accessor, Get(::testing::_, ::testing::_))
+        .WillByDefault(::testing::Return(&node_info));
+  }
 
   RayObject *MakeDummyArg() {
     std::vector<uint8_t> data;
@@ -218,13 +240,11 @@ class ClusterTaskManagerTest : public ::testing::Test {
     return new RayObject(buffer, nullptr, {});
   }
 
-  void SetUp() {}
-
   void Shutdown() {}
 
   void AddNode(const NodeID &id, double num_cpus, double num_gpus = 0,
                double memory = 0) {
-    std::unordered_map<std::string, double> node_resources;
+    absl::flat_hash_map<std::string, double> node_resources;
     node_resources[ray::kCPU_ResourceLabel] = num_cpus;
     node_resources[ray::kGPU_ResourceLabel] = num_gpus;
     node_resources[ray::kMemory_ResourceLabel] = memory;
@@ -259,7 +279,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
     int count = 0;
     for (const auto &pair : task_manager_.tasks_to_dispatch_) {
       for (const auto &work : pair.second) {
-        if (work->status == WorkStatus::WAITING_FOR_WORKER) {
+        if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
           count++;
         }
       }
@@ -267,10 +287,11 @@ class ClusterTaskManagerTest : public ::testing::Test {
     return count;
   }
 
+  std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   NodeID id_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
-  std::unordered_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
+  absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 
   bool is_owner_alive_;
@@ -278,10 +299,24 @@ class ClusterTaskManagerTest : public ::testing::Test {
 
   int node_info_calls_;
   int announce_infeasible_task_calls_;
-  std::unordered_map<NodeID, boost::optional<rpc::GcsNodeInfo>> node_info_;
+  absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
 
   MockTaskDependencyManager dependency_manager_;
   ClusterTaskManager task_manager_;
+};
+
+// Same as ClusterTaskManagerTest, but the head node starts with 4.0 num gpus.
+class ClusterTaskManagerTestWithGPUsAtHead : public ClusterTaskManagerTest {
+ public:
+  ClusterTaskManagerTestWithGPUsAtHead()
+      : ClusterTaskManagerTest(/*num_cpus_at_head=*/8.0, /*num_gpus_at_head=*/4.0) {}
+};
+
+// Same as ClusterTaskManagerTest, but the head node starts with 0.0 num cpus.
+class ClusterTaskManagerTestWithoutCPUsAtHead : public ClusterTaskManagerTest {
+ public:
+  ClusterTaskManagerTestWithoutCPUsAtHead()
+      : ClusterTaskManagerTest(/*num_cpus_at_head=*/0.0) {}
 };
 
 TEST_F(ClusterTaskManagerTest, BasicTest) {
@@ -361,8 +396,7 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
   pool_.TriggerCallbacks();
 
   // Push a worker that can only run task A.
-  const WorkerCacheKey env_A = {
-      /*override_environment_variables=*/{}, serialized_runtime_env_A, {}};
+  const WorkerCacheKey env_A = {serialized_runtime_env_A, {}};
   const int runtime_env_hash_A = env_A.IntHash();
   std::shared_ptr<MockWorker> worker_A =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash_A);
@@ -854,7 +888,7 @@ TEST_F(ClusterTaskManagerTest, HeartbeatTest) {
 TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
   /*
     Test basic scheduler functionality:
-    1. Queue and attempt to schedule/dispatch atest with no workers available
+    1. Queue and attempt to schedule/dispatch a test with no workers available
     2. A worker becomes available, dispatch again.
    */
   rpc::RequestWorkerLeaseReply reply;
@@ -867,18 +901,21 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
 
   std::vector<TaskID> to_cancel;
 
-  // Don't add these fist 2 tasks to `to_cancel`.
+  const WorkerID worker_id_submitting_first_task = WorkerID::FromRandom();
+  // Don't add the fist task to `to_cancel`.
   for (int i = 0; i < 1; i++) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}});
-    task.SetBacklogSize(10 - i);
     task_manager_.QueueAndScheduleTask(task, &reply, callback);
+    task_manager_.SetWorkerBacklog(task.GetTaskSpecification().GetSchedulingClass(),
+                                   worker_id_submitting_first_task, 10 - i);
     pool_.TriggerCallbacks();
   }
 
   for (int i = 1; i < 10; i++) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}});
-    task.SetBacklogSize(10 - i);
     task_manager_.QueueAndScheduleTask(task, &reply, callback);
+    task_manager_.SetWorkerBacklog(task.GetTaskSpecification().GetSchedulingClass(),
+                                   WorkerID::FromRandom(), 10 - i);
     pool_.TriggerCallbacks();
     to_cancel.push_back(task.GetTaskSpecification().TaskId());
   }
@@ -904,6 +941,7 @@ TEST_F(ClusterTaskManagerTest, BacklogReportTest) {
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(worker);
   task_manager_.ScheduleAndDispatchTasks();
+  task_manager_.ClearWorkerBacklog(worker_id_submitting_first_task);
   pool_.TriggerCallbacks();
 
   {
@@ -1050,7 +1088,7 @@ TEST_F(ClusterTaskManagerTest, TestMultipleInfeasibleTasksWarnOnce) {
   ASSERT_EQ(announce_infeasible_task_calls_, 1);
 }
 
-TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
+TEST_F(ClusterTaskManagerTest, TestAnyPendingTasksForResourceAcquisition) {
   /*
     Check if the manager can correctly identify pending tasks.
    */
@@ -1077,8 +1115,8 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
   bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
-  ASSERT_FALSE(task_manager_.AnyPendingTasks(&exemplar, &any_pending,
-                                             &pending_actor_creations, &pending_tasks));
+  ASSERT_FALSE(task_manager_.AnyPendingTasksForResourceAcquisition(
+      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
 
   // task1: running, task2: queued.
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 6}});
@@ -1091,8 +1129,8 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
   task_manager_.QueueAndScheduleTask(task2, &reply2, callback2);
   pool_.TriggerCallbacks();
   ASSERT_FALSE(*callback_occurred2);
-  ASSERT_TRUE(task_manager_.AnyPendingTasks(&exemplar, &any_pending,
-                                            &pending_actor_creations, &pending_tasks));
+  ASSERT_TRUE(task_manager_.AnyPendingTasksForResourceAcquisition(
+      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
 }
 
 TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
@@ -1196,7 +1234,7 @@ TEST_F(ClusterTaskManagerTest, FeasibleToNonFeasible) {
             task1.GetTaskSpecification().TaskId());
 }
 
-TEST_F(ClusterTaskManagerTest, RleaseAndReturnWorkerCpuResources) {
+TEST_F(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources) {
   const NodeResources &node_resources = scheduler_->GetLocalNodeResources();
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::CPU].available, 8);
   ASSERT_EQ(node_resources.predefined_resources[PredefinedResources::GPU].available, 4);
@@ -1211,7 +1249,7 @@ TEST_F(ClusterTaskManagerTest, RleaseAndReturnWorkerCpuResources) {
       node_resource_instances.GetAvailableResourceInstances();
 
   auto allocated_instances = std::make_shared<TaskResourceInstances>();
-  const std::unordered_map<std::string, double> task_spec = {{"CPU", 1.}, {"GPU", 1.}};
+  const absl::flat_hash_map<std::string, double> task_spec = {{"CPU", 1.}, {"GPU", 1.}};
   ASSERT_TRUE(scheduler_->AllocateLocalTaskResources(task_spec, allocated_instances));
   worker->SetAllocatedInstances(allocated_instances);
 
@@ -1517,6 +1555,54 @@ TEST_F(ClusterTaskManagerTest, PopWorkerExactlyOnce) {
   ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
             task.GetTaskSpecification().TaskId());
   AssertNoLeaks();
+}
+
+// Regression test for https://github.com/ray-project/ray/issues/16935:
+// When a task requires 1 CPU and is infeasible because head node has 0 CPU,
+// make sure the task's resource demand is reported.
+TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, OneCpuInfeasibleTask) {
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr](const Status &, const std::function<void()> &,
+                                          const std::function<void()> &) {
+    *callback_occurred_ptr = true;
+  };
+
+  constexpr int num_cases = 5;
+  // Create 5 tasks with different CPU requests.
+  const std::array<int, num_cases> cpu_request = {1, 2, 1, 3, 1};
+  // Each type of CPU request corresponds to a types of resource demand.
+  const std::array<int, num_cases> demand_types = {1, 2, 2, 3, 3};
+  // Number of infeasible 1 CPU requests..
+  const std::array<int, num_cases> num_infeasible_1cpu = {1, 1, 2, 2, 3};
+
+  for (int i = 0; i < num_cases; ++i) {
+    RayTask task = CreateTask({{ray::kCPU_ResourceLabel, cpu_request[i]}});
+    task_manager_.QueueAndScheduleTask(task, &reply, callback);
+    pool_.TriggerCallbacks();
+
+    // The task cannot run because there is only 1 node (head) with 0 CPU.
+    ASSERT_FALSE(callback_occurred);
+    ASSERT_EQ(leased_workers_.size(), 0);
+    ASSERT_EQ(pool_.workers.size(), 0);
+    ASSERT_EQ(node_info_calls_, 0);
+
+    rpc::ResourcesData data;
+    task_manager_.FillResourceUsage(data);
+    const auto &resource_load_by_shape = data.resource_load_by_shape();
+    ASSERT_EQ(resource_load_by_shape.resource_demands().size(), demand_types[i]);
+
+    // Find the 1-cpu task and make sure the demand quantities are correct.
+    bool found = false;
+    for (const auto &demand : resource_load_by_shape.resource_demands()) {
+      if (demand.shape().size() == 1 && demand.shape().at("CPU") == 1) {
+        found = true;
+        EXPECT_EQ(demand.num_infeasible_requests_queued(), num_infeasible_1cpu[i]);
+      }
+    }
+    ASSERT_TRUE(found);
+  }
 }
 
 int main(int argc, char **argv) {

@@ -105,7 +105,7 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
     strategy = "STRICT_PACK"
     pg = placement_group(pg_demands, strategy=strategy)
     pg.ready()
-    time.sleep(2)  # wait for placemnt groups to propogate.
+    time.sleep(2)  # wait for placement groups to propagate.
 
     # Disable event clearing for test.
     monitor.event_summarizer.clear = lambda *a: None

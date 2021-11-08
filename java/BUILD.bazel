@@ -147,9 +147,12 @@ define_java_module(
         ":io_ray_ray_api",
         ":io_ray_ray_runtime",
         ":io_ray_ray_serve",
+        "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_protobuf_protobuf_java",
         "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_apache_httpcomponents_client5_httpclient5",
+        "@maven//:org_apache_httpcomponents_core5_httpcore5",
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_testng_testng",
     ],
@@ -157,9 +160,11 @@ define_java_module(
     deps = [
         ":io_ray_ray_api",
         ":io_ray_ray_runtime",
+        "@maven//:com_google_code_gson_gson",
         "@maven//:com_google_guava_guava",
         "@maven//:com_google_protobuf_protobuf_java",
         "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_apache_httpcomponents_core5_httpcore5",
         "@maven//:org_slf4j_slf4j_api",
     ],
 )
@@ -294,6 +299,8 @@ java_binary(
         "//java:io_ray_ray_api",
         "//java:io_ray_ray_runtime",
         "//java:io_ray_ray_serve",
+        "//streaming/java:io_ray_ray_streaming-api",
+        "//streaming/java:io_ray_ray_streaming-runtime",
     ],
 )
 
@@ -302,6 +309,7 @@ genrule(
     srcs = [
         "//java:ray_dist_deploy.jar",
         "//java:gen_maven_deps",
+        "//streaming/java:gen_maven_deps",
     ],
     outs = ["ray_java_pkg.out"],
     cmd = """

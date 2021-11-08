@@ -1,6 +1,7 @@
 import json
 import jsonschema
 import os
+import re
 import shutil
 from subprocess import CalledProcessError
 import tempfile
@@ -13,7 +14,7 @@ import copy
 from collections import defaultdict
 from ray.autoscaler._private.commands import get_or_create_head_node
 from jsonschema.exceptions import ValidationError
-from typing import Dict, Callable
+from typing import Dict, Callable, List, Optional
 
 import ray
 from ray.autoscaler._private.util import prepare_config, validate_config
@@ -24,6 +25,7 @@ from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.providers import (
     _NODE_PROVIDERS, _clear_provider_cache, _DEFAULT_CONFIGS)
+from ray.autoscaler._private.readonly.node_provider import ReadOnlyNodeProvider
 from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED, TAG_RAY_USER_NODE_TYPE, \
     NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER, NODE_KIND_HEAD, \
@@ -104,42 +106,56 @@ class MockProcessRunner:
 
             return return_string.encode()
 
-    def assert_has_call(self, ip, pattern=None, exact=None):
+    def assert_has_call(self,
+                        ip: str,
+                        pattern: Optional[str] = None,
+                        exact: Optional[List[str]] = None):
+        """Checks if the given value was called by this process runner.
+
+        NOTE: Either pattern or exact must be specified, not both!
+
+        Args:
+            ip: IP address of the node that the given call was executed on.
+            pattern: RegEx that matches one specific call.
+            exact: List of strings that when joined exactly match one call.
+        """
         with self.lock:
-            assert pattern or exact, \
+            assert bool(pattern) ^ bool(exact), \
                 "Must specify either a pattern or exact match."
-            out = ""
+            debug_output = ""
             if pattern is not None:
                 for cmd in self.command_history():
                     if ip in cmd:
-                        out += cmd
-                        out += "\n"
-                if pattern in out:
-                    return True
+                        debug_output += cmd
+                        debug_output += "\n"
+                    if re.search(pattern, cmd):
+                        return True
                 else:
                     raise Exception(
-                        f"Did not find [{pattern}] in [{out}] for ip={ip}."
-                        f"\n\nFull output: {self.command_history()}")
+                        f"Did not find [{pattern}] in [{debug_output}] for "
+                        f"ip={ip}.\n\nFull output: {self.command_history()}")
             elif exact is not None:
                 exact_cmd = " ".join(exact)
                 for cmd in self.command_history():
                     if ip in cmd:
-                        out += cmd
-                        out += "\n"
+                        debug_output += cmd
+                        debug_output += "\n"
                     if cmd == exact_cmd:
                         return True
                 raise Exception(
-                    f"Did not find [{exact_cmd}] in [{out}] for ip={ip}."
-                    f"\n\nFull output: {self.command_history()}")
+                    f"Did not find [{exact_cmd}] in [{debug_output}] for "
+                    f"ip={ip}.\n\nFull output: {self.command_history()}")
 
-    def assert_not_has_call(self, ip, pattern):
+    def assert_not_has_call(self, ip: str, pattern: str):
+        """Ensure that the given regex pattern was never called.
+        """
         with self.lock:
             out = ""
             for cmd in self.command_history():
                 if ip in cmd:
                     out += cmd
                     out += "\n"
-            if pattern in out:
+            if re.search(pattern, out):
                 raise Exception("Found [{}] in [{}] for {}".format(
                     pattern, out, ip))
             else:
@@ -448,7 +464,10 @@ class AutoscalingTest(unittest.TestCase):
         fail_msg = fail_msg or "Timed out waiting for {}".format(condition)
         raise RayTestTimeoutException(fail_msg)
 
-    def waitForNodes(self, expected, comparison=None, tag_filters={}):
+    def waitForNodes(self, expected, comparison=None, tag_filters=None):
+        if tag_filters is None:
+            tag_filters = {}
+
         MAX_ITER = 50
         for i in range(MAX_ITER):
             n = len(self.provider.non_terminated_nodes(tag_filters))
@@ -535,7 +554,7 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Mounts", ["[]"])
-        # Two initial calls to docker cp, + 2 more calls during run_init
+        # Two initial calls to rsync, + 2 more calls during run_init
         runner.respond_to_call(".State.Running",
                                ["false", "false", "false", "false"])
         runner.respond_to_call("json .Config.Env", ["[]"])
@@ -586,12 +605,13 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_not_has_call(
             "1.2.3.4",
             pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
+        common_container_copy = \
+            f"rsync -e.*docker exec -i.*{docker_mount_prefix}/~/"
+        runner.assert_has_call(
+            "1.2.3.4", pattern=common_container_copy + "ray_bootstrap_key.pem")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern=f"docker cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
-        pattern_to_assert = \
-            f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
-        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+            pattern=common_container_copy + "ray_bootstrap_config.yaml")
         return config
 
     def testNodeTypeNameChange(self):
@@ -735,7 +755,7 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Mounts", ["[]"])
-        # Two initial calls to docker cp, + 2 more calls during run_init
+        # Two initial calls to rsync, + 2 more calls during run_init
         runner.respond_to_call(".State.Running",
                                ["false", "false", "false", "false"])
         runner.respond_to_call("json .Config.Env", ["[]"])
@@ -760,12 +780,13 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_not_has_call(
             "1.2.3.4",
             pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
+        common_container_copy = \
+            f"rsync -e.*podman exec -i.*{docker_mount_prefix}/~/"
+        runner.assert_has_call(
+            "1.2.3.4", pattern=common_container_copy + "ray_bootstrap_key.pem")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern=f"podman cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
-        pattern_to_assert = \
-            f"podman cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
-        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+            pattern=common_container_copy + "ray_bootstrap_config.yaml")
 
         for cmd in runner.command_history():
             assert "docker" not in cmd, ("Docker (not podman) found in call: "
@@ -783,7 +804,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         runner = MockProcessRunner()
         runner.respond_to_call("json .Mounts", ["[]"])
-        # Two initial calls to docker cp, + 2 more calls during run_init
+        # Two initial calls to rsync, + 2 more calls during run_init
         runner.respond_to_call(".State.Running",
                                ["false", "false", "false", "false"])
         runner.respond_to_call("json .Config.Env", ["[]"])
@@ -809,25 +830,29 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_not_has_call(
             "1.2.3.4",
             pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
+        common_container_copy = \
+            f"rsync -e.*docker exec -i.*{docker_mount_prefix}/~/"
+        runner.assert_has_call(
+            "1.2.3.4", pattern=common_container_copy + "ray_bootstrap_key.pem")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern=f"docker cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
-        pattern_to_assert = \
-            f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
-        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+            pattern=common_container_copy + "ray_bootstrap_config.yaml")
 
         # This next section of code ensures that the following order of
         # commands are executed:
         # 1. mkdir -p {docker_mount_prefix}
-        # 2. rsync bootstrap files
-        # 3. docker cp bootstrap files into container
+        # 2. rsync bootstrap files (over ssh)
+        # 3. rsync bootstrap files into container
         commands_with_mount = [
             (i, cmd) for i, cmd in enumerate(runner.command_history())
             if docker_mount_prefix in cmd
         ]
-        rsync_commands = [x for x in commands_with_mount if "rsync" in x[1]]
-        docker_cp_commands = [
-            x for x in commands_with_mount if "docker cp" in x[1]
+        rsync_commands = [
+            x for x in commands_with_mount if "rsync --rsh" in x[1]
+        ]
+        copy_into_container = [
+            x for x in commands_with_mount
+            if re.search("rsync -e.*docker exec -i", x[1])
         ]
         first_mkdir = min(x[0] for x in commands_with_mount if "mkdir" in x[1])
         docker_run_cmd_indx = [
@@ -840,7 +865,7 @@ class AutoscalingTest(unittest.TestCase):
             first_rsync = min(x[0] for x in rsync_commands
                               if "ray_bootstrap_config.yaml" in x[1])
             first_cp = min(
-                x[0] for x in docker_cp_commands if file_to_check in x[1])
+                x[0] for x in copy_into_container if file_to_check in x[1])
             # Ensures that `mkdir -p` precedes `docker run` because Docker
             # will auto-create the folder with wrong permissions.
             assert first_mkdir < docker_run_cmd_indx
@@ -858,7 +883,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         runner = MockProcessRunner()
         runner.respond_to_call("json .Mounts", ["[]"])
-        # Two initial calls to docker cp, + 2 more calls during run_init
+        # Two initial calls to rsync, + 2 more calls during run_init
         runner.respond_to_call(".State.Running",
                                ["false", "false", "false", "false"])
         runner.respond_to_call("json .Config.Env", ["[]"])
@@ -892,7 +917,7 @@ class AutoscalingTest(unittest.TestCase):
             "Propagation": "rprivate"
         }]
         runner.respond_to_call("json .Mounts", [json.dumps(mounts)])
-        # Two initial calls to docker cp, +1 more call during run_init
+        # Two initial calls to rsync, +1 more call during run_init
         runner.respond_to_call(".State.Running",
                                ["false", "false", "true", "true"])
         runner.respond_to_call("json .Config.Env", ["[]"])
@@ -918,12 +943,13 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_not_has_call(
             "1.2.3.4",
             pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
+        common_container_copy = \
+            f"rsync -e.*docker exec -i.*{docker_mount_prefix}/~/"
+        runner.assert_has_call(
+            "1.2.3.4", pattern=common_container_copy + "ray_bootstrap_key.pem")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern=f"docker cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
-        pattern_to_assert = \
-            f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
-        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+            pattern=common_container_copy + "ray_bootstrap_config.yaml")
 
     def testDockerFileMountsRemoved(self):
         config = copy.deepcopy(SMALL_CLUSTER)
@@ -940,7 +966,7 @@ class AutoscalingTest(unittest.TestCase):
             "Propagation": "rprivate"
         }]
         runner.respond_to_call("json .Mounts", [json.dumps(mounts)])
-        # Two initial calls to docker cp, +1 more call during run_init
+        # Two initial calls to rsync, +1 more call during run_init
         runner.respond_to_call(".State.Running",
                                ["false", "false", "true", "true"])
         runner.respond_to_call("json .Config.Env", ["[]"])
@@ -967,12 +993,13 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_not_has_call(
             "1.2.3.4",
             pattern=f"-v {docker_mount_prefix}/~/ray_bootstrap_config")
+        common_container_copy = \
+            f"rsync -e.*docker exec -i.*{docker_mount_prefix}/~/"
+        runner.assert_has_call(
+            "1.2.3.4", pattern=common_container_copy + "ray_bootstrap_key.pem")
         runner.assert_has_call(
             "1.2.3.4",
-            pattern=f"docker cp {docker_mount_prefix}/~/ray_bootstrap_key.pem")
-        pattern_to_assert = \
-            f"docker cp {docker_mount_prefix}/~/ray_bootstrap_config.yaml"
-        runner.assert_has_call("1.2.3.4", pattern=pattern_to_assert)
+            pattern=common_container_copy + "ray_bootstrap_config.yaml")
 
     def testRsyncCommandWithDocker(self):
         assert SMALL_CLUSTER["docker"]["container_name"]
@@ -999,8 +1026,8 @@ class AutoscalingTest(unittest.TestCase):
             override_cluster_name=None,
             down=True,
             _runner=runner)
-        runner.assert_has_call("1.2.3.0", pattern="docker cp")
-        runner.assert_has_call("1.2.3.0", pattern="rsync")
+        runner.assert_has_call("1.2.3.0", pattern="rsync -e.*docker exec -i")
+        runner.assert_has_call("1.2.3.0", pattern="rsync --rsh")
         runner.clear_history()
 
         commands.rsync(
@@ -1011,8 +1038,8 @@ class AutoscalingTest(unittest.TestCase):
             down=True,
             ip_address="1.2.3.5",
             _runner=runner)
-        runner.assert_has_call("1.2.3.5", pattern="docker cp")
-        runner.assert_has_call("1.2.3.5", pattern="rsync")
+        runner.assert_has_call("1.2.3.5", pattern="rsync -e.*docker exec -i")
+        runner.assert_has_call("1.2.3.5", pattern="rsync --rsh")
         runner.clear_history()
 
         commands.rsync(
@@ -1024,8 +1051,8 @@ class AutoscalingTest(unittest.TestCase):
             down=True,
             use_internal_ip=True,
             _runner=runner)
-        runner.assert_has_call("172.0.0.4", pattern="docker cp")
-        runner.assert_has_call("172.0.0.4", pattern="rsync")
+        runner.assert_has_call("172.0.0.4", pattern="rsync -e.*docker exec -i")
+        runner.assert_has_call("172.0.0.4", pattern="rsync --rsh")
 
     def testRsyncCommandWithoutDocker(self):
         cluster_cfg = SMALL_CLUSTER.copy()
@@ -1077,6 +1104,43 @@ class AutoscalingTest(unittest.TestCase):
             _runner=runner)
         runner.assert_has_call("172.0.0.4", pattern="rsync")
         runner.clear_history()
+
+    def testReadonlyNodeProvider(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config_path = self.write_config(config)
+        self.provider = ReadOnlyNodeProvider(config_path, "readonly")
+        runner = MockProcessRunner()
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+        autoscaler = StandardAutoscaler(
+            config_path,
+            LoadMetrics(),
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+            prom_metrics=mock_metrics)
+        assert len(self.provider.non_terminated_nodes({})) == 0
+
+        # No updates in read-only mode.
+        autoscaler.update()
+        self.waitForNodes(0)
+        assert mock_metrics.started_nodes.inc.call_count == 0
+        assert len(runner.calls) == 0
+
+        # Reflect updates to the readonly provider.
+        self.provider._set_nodes([
+            ("foo1", "1.1.1.1"),
+            ("foo2", "1.1.1.1"),
+            ("foo3", "1.1.1.1"),
+        ])
+
+        # No updates in read-only mode.
+        autoscaler.update()
+        self.waitForNodes(3)
+        assert mock_metrics.started_nodes.inc.call_count == 0
+        assert mock_metrics.stopped_nodes.inc.call_count == 0
+        assert len(runner.calls) == 0
+        events = autoscaler.event_summarizer.summary()
+        assert not events, events
 
     def ScaleUpHelper(self, disable_node_updaters):
         config = copy.deepcopy(SMALL_CLUSTER)
@@ -1857,7 +1921,8 @@ class AutoscalingTest(unittest.TestCase):
             assert "empty_node" not in event
 
         node_type_counts = defaultdict(int)
-        for node_id in autoscaler.workers():
+        autoscaler.update_worker_list()
+        for node_id in autoscaler.workers:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
@@ -2115,7 +2180,7 @@ class AutoscalingTest(unittest.TestCase):
         # Check the node removal event is generated.
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
-        assert ("Terminating 1 nodes of type "
+        assert ("Removing 1 nodes of type "
                 "ray-legacy-worker-node-type (lost contact with raylet)." in
                 events), events
 
@@ -2521,8 +2586,7 @@ class AutoscalingTest(unittest.TestCase):
         for i in [0, 1]:
             runner.assert_not_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                f"172.0.0.{i}", f"172.0.0.{i}",
-                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
                 f"{docker_mount_prefix}/home/test-folder/")
 
     def testFileMountsNonContinuous(self):
@@ -2557,8 +2621,7 @@ class AutoscalingTest(unittest.TestCase):
         for i in [0, 1]:
             runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                f"172.0.0.{i}", f"172.0.0.{i}",
-                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
                 f"{docker_mount_prefix}/home/test-folder/")
 
         runner.clear_history()
@@ -2601,8 +2664,7 @@ class AutoscalingTest(unittest.TestCase):
         for i in [0, 1]:
             runner.assert_has_call(f"172.0.0.{i}", "setup_cmd")
             runner.assert_has_call(
-                f"172.0.0.{i}", f"172.0.0.{i}",
-                f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
+                f"172.0.0.{i}", f"{file_mount_dir}/ ubuntu@172.0.0.{i}:"
                 f"{docker_mount_prefix}/home/test-folder/")
 
     def testAutodetectResources(self):
@@ -2820,7 +2882,8 @@ MemAvailable:   33000000 kB
         # Node 0 was terminated during the last update.
         # Node 1's updater failed, but node 1 won't be terminated until the
         # next autoscaler update.
-        assert 0 not in autoscaler.workers(), "Node zero still non-terminated."
+        autoscaler.update_worker_list()
+        assert 0 not in autoscaler.workers, "Node zero still non-terminated."
         assert not self.provider.is_terminated(1),\
             "Node one terminated prematurely."
 
@@ -2848,7 +2911,8 @@ MemAvailable:   33000000 kB
         # Should get two new nodes after the next update.
         autoscaler.update()
         self.waitForNodes(2)
-        assert set(autoscaler.workers()) == {2, 3},\
+        autoscaler.update_worker_list()
+        assert set(autoscaler.workers) == {2, 3},\
             "Unexpected node_ids"
 
         assert mock_metrics.stopped_nodes.inc.call_count == 1

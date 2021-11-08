@@ -154,7 +154,7 @@ class TrialRunnerCallbacks(unittest.TestCase):
         result = {TRAINING_ITERATION: 1, "metric": 800, "done": False}
         self.executor.results[trials[1]] = result
         self.executor.next_trial = trials[1]
-        self.assertEqual(trials[1].last_result, {})
+        self.assertTrue(not trials[1].has_reported_at_least_once)
         self.trial_runner.step()
         self.assertEqual(self.callback.state["trial_result"]["iteration"], 3)
         self.assertEqual(self.callback.state["trial_result"]["trial"].trial_id,

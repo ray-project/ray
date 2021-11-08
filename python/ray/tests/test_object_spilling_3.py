@@ -112,19 +112,19 @@ def _test_object_spilling_threshold(thres, num_objects, num_objects_spilled):
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+    platform.system() != "Linux", reason="Failing on Windows/macOS.")
 def test_object_spilling_threshold_default():
     _test_object_spilling_threshold(None, 10, 5)
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+    platform.system() != "Linux", reason="Failing on Windows/macOS.")
 def test_object_spilling_threshold_1_0():
     _test_object_spilling_threshold(1.0, 10, 0)
 
 
 @pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows.")
+    platform.system() != "Linux", reason="Failing on Windows/macOS.")
 def test_object_spilling_threshold_0_1():
     _test_object_spilling_threshold(0.1, 10, 5)
 

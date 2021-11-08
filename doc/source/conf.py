@@ -42,6 +42,10 @@ MOCK_MODULES = [
     "gym.spaces",
     "horovod",
     "horovod.ray",
+    "horovod.ray.runner",
+    "horovod.ray.utils",
+    "hyperopt",
+    "hyperopt.hp"
     "kubernetes",
     "mlflow",
     "modin",
@@ -57,6 +61,8 @@ MOCK_MODULES = [
     "ray.core.generated.common_pb2",
     "ray.core.generated.gcs_pb2",
     "ray.core.generated.ray.protocol.Task",
+    "ray.serve.generated",
+    "ray.serve.generated.serve_pb2",
     "scipy.signal",
     "scipy.stats",
     "setproctitle",
@@ -134,6 +140,7 @@ extensions = [
     'sphinx_copybutton',
     'sphinxcontrib.yt',
     'versionwarning.extension',
+    'sphinx_sitemap',
 ]
 
 versionwarning_admonition_type = "note"
@@ -156,10 +163,10 @@ versionwarning_messages = {
 
 versionwarning_body_selector = "#main-content"
 sphinx_gallery_conf = {
-    "examples_dirs": ["../examples",
-                      "tune/_tutorials"],  # path to example scripts
+    "examples_dirs": ["../examples", "tune/_tutorials",
+                      "data/_examples"],  # path to example scripts
     # path where to save generated examples
-    "gallery_dirs": ["auto_examples", "tune/tutorials"],
+    "gallery_dirs": ["auto_examples", "tune/tutorials", "data/examples"],
     "ignore_pattern": "../examples/doc_code/",
     "plot_gallery": "False",
     "min_reported_time": sys.maxsize,
@@ -261,6 +268,10 @@ pygments_style = 'pastie'
 
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
+
+# Do not check anchors for links because it produces many false positives
+# and is slow (it needs to download the linked website).
+linkcheck_anchors = False
 
 # -- Options for HTML output ----------------------------------------------
 

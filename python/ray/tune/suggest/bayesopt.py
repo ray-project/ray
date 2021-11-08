@@ -203,7 +203,7 @@ class BayesOptSearch(Searcher):
             self.register_analysis(self._analysis)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         if self.optimizer:
             return False
         space = self.convert_search_space(config)

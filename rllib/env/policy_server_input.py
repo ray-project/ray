@@ -23,8 +23,8 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
     and port to serve policy requests and forward experiences to RLlib. For
     high performance experience collection, it implements InputReader.
 
-    For an example, run `examples/cartpole_server.py` along
-    with `examples/cartpole_client.py --inference-mode=local|remote`.
+    For an example, run `examples/serving/cartpole_server.py` along
+    with `examples/serving/cartpole_client.py --inference-mode=local|remote`.
 
     Examples:
         >>> pg = PGTrainer(
@@ -89,9 +89,18 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         # and sends data and metrics into the queues.
         handler = _make_handler(self.rollout_worker, self.samples_queue,
                                 self.metrics_queue)
-        HTTPServer.__init__(self, (address, port), handler)
+        try:
+            import time
+            time.sleep(1)
+            HTTPServer.__init__(self, (address, port), handler)
+        except OSError:
+            print(f"Creating a PolicyServer on {address}:{port} failed!")
+            import time
+            time.sleep(1)
+            raise
 
-        logger.info("Starting connector server at {}:{}".format(address, port))
+        logger.info("Starting connector server at "
+                    f"{self.server_name}:{self.server_port}")
 
         # Start the serving thread, listening on socket and handling commands.
         serving_thread = threading.Thread(

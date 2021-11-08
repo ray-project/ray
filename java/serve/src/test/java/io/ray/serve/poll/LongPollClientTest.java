@@ -1,5 +1,8 @@
 package io.ray.serve.poll;
 
+import com.google.protobuf.ByteString;
+import io.ray.serve.generated.DeploymentConfig;
+import io.ray.serve.generated.UpdatedObject;
 import java.util.HashMap;
 import java.util.Map;
 import org.testng.Assert;
@@ -10,25 +13,35 @@ public class LongPollClientTest {
   @Test
   public void test() throws Throwable {
 
-    KeyType keyType = new KeyType(LongPollNamespace.BACKEND_CONFIGS, "backendTag");
-    int[] a = new int[] {0};
+    String[] a = new String[] {"test"};
+
+    // Construct a listener map.
+    KeyType keyType = new KeyType(LongPollNamespace.BACKEND_CONFIGS, "deploymentName");
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
-    keyListeners.put(keyType, (object) -> a[0] = (Integer) object);
+    keyListeners.put(
+        keyType, (object) -> a[0] = String.valueOf(((DeploymentConfig) object).getNumReplicas()));
+
+    // Initialize LongPollClient.
     LongPollClient longPollClient = new LongPollClient(null, keyListeners);
 
+    // Construct updated object.
+    DeploymentConfig.Builder deploymentConfig = DeploymentConfig.newBuilder();
+    deploymentConfig.setNumReplicas(20);
     int snapshotId = 10;
-    int objectSnapshot = 20;
-    UpdatedObject updatedObject = new UpdatedObject();
+    UpdatedObject.Builder updatedObject = UpdatedObject.newBuilder();
     updatedObject.setSnapshotId(snapshotId);
-    updatedObject.setObjectSnapshot(objectSnapshot);
+    updatedObject.setObjectSnapshot(ByteString.copyFrom(deploymentConfig.build().toByteArray()));
 
+    // Process update.
     Map<KeyType, UpdatedObject> updates = new HashMap<>();
-    updates.put(keyType, updatedObject);
+    updates.put(keyType, updatedObject.build());
     longPollClient.processUpdate(updates);
 
+    // Validation.
     Assert.assertEquals(longPollClient.getSnapshotIds().get(keyType).intValue(), snapshotId);
     Assert.assertEquals(
-        ((Integer) longPollClient.getObjectSnapshots().get(keyType)).intValue(), objectSnapshot);
-    Assert.assertEquals(a[0], objectSnapshot);
+        ((DeploymentConfig) longPollClient.getObjectSnapshots().get(keyType)).getNumReplicas(),
+        deploymentConfig.getNumReplicas());
+    Assert.assertEquals(a[0], String.valueOf(deploymentConfig.getNumReplicas()));
   }
 }

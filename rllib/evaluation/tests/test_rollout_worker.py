@@ -4,18 +4,22 @@ from gym.spaces import Box, Discrete
 import numpy as np
 import os
 import random
+import tempfile
 import time
 import unittest
 
 import ray
 from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.agents.a3c import A2CTrainer
+from ray.rllib.env.multi_agent_env import MultiAgentEnv
+from ray.rllib.env.utils import VideoMonitor
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.examples.env.mock_env import MockEnv, MockEnv2, MockVectorEnv,\
     VectorizedMockEnv
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.examples.env.multi_agent import BasicMultiAgent,\
+    MultiAgentCartPole
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     STEPS_TRAINED_COUNTER
@@ -113,21 +117,24 @@ class TestRolloutWorker(unittest.TestCase):
         ev.stop()
 
     def test_batch_ids(self):
+        fragment_len = 100
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v0"),
             policy_spec=MockPolicy,
-            rollout_fragment_length=1)
+            rollout_fragment_length=fragment_len)
         batch1 = ev.sample()
         batch2 = ev.sample()
-        self.assertEqual(len(set(batch1["unroll_id"])), 1)
-        self.assertEqual(len(set(batch2["unroll_id"])), 1)
-        self.assertEqual(
-            len(set(SampleBatch.concat(batch1, batch2)["unroll_id"])), 2)
+        unroll_ids_1 = set(batch1["unroll_id"])
+        unroll_ids_2 = set(batch2["unroll_id"])
+        # Assert no overlap of unroll IDs between sample() calls.
+        self.assertTrue(not any(uid in unroll_ids_2 for uid in unroll_ids_1))
+        # CartPole episodes should be short initially: Expect more than one
+        # unroll ID in each batch.
+        self.assertTrue(len(unroll_ids_1) > 1)
+        self.assertTrue(len(unroll_ids_2) > 1)
         ev.stop()
 
     def test_global_vars_update(self):
-        # Allow for Unittest run.
-        ray.init(num_cpus=5, ignore_reinit_error=True)
         for fw in framework_iterator(frameworks=("tf2", "tf")):
             agent = A2CTrainer(
                 env="CartPole-v0",
@@ -157,13 +164,14 @@ class TestRolloutWorker(unittest.TestCase):
     def test_no_step_on_init(self):
         register_env("fail", lambda _: FailOnStepEnv())
         for fw in framework_iterator():
-            pg = PGTrainer(
+            # We expect this to fail already on Trainer init due
+            # to the env sanity check right after env creation (inside
+            # RolloutWorker).
+            self.assertRaises(Exception, lambda: PGTrainer(
                 env="fail", config={
-                    "num_workers": 1,
+                    "num_workers": 2,
                     "framework": fw,
-                })
-            self.assertRaises(Exception, lambda: pg.train())
-            pg.stop()
+                }))
 
     def test_callbacks(self):
         for fw in framework_iterator(frameworks=("torch", "tf")):
@@ -676,9 +684,60 @@ class TestRolloutWorker(unittest.TestCase):
             num_envs=3,
             policy_spec=MockPolicy,
             seed=1)
+        # Make sure we can properly sample from the wrapped env.
+        ev.sample()
+        # Make sure all environments got a different deterministic seed.
         seeds = ev.foreach_env(lambda env: env.rng_seed)
-        # Make sure all environments get a different deterministic seed.
-        assert seeds == [1, 2, 3]
+        self.assertEqual(seeds, [1, 2, 3])
+        ev.stop()
+
+    def test_wrap_multi_agent_env(self):
+        ev = RolloutWorker(
+            env_creator=lambda _: BasicMultiAgent(10),
+            policy_spec=MockPolicy,
+            policy_config={
+                "in_evaluation": False,
+            },
+            record_env=tempfile.gettempdir())
+        # Make sure we can properly sample from the wrapped env.
+        ev.sample()
+        # Make sure the resulting environment is indeed still an
+        # instance of MultiAgentEnv and VideoMonitor.
+        self.assertTrue(isinstance(ev.env.unwrapped, MultiAgentEnv))
+        self.assertTrue(isinstance(ev.env, gym.Env))
+        self.assertTrue(isinstance(ev.env, VideoMonitor))
+        ev.stop()
+
+    def test_no_training(self):
+        class NoTrainingEnv(MockEnv):
+            def __init__(self, episode_length, training_enabled):
+                super(NoTrainingEnv, self).__init__(episode_length)
+                self.training_enabled = training_enabled
+
+            def step(self, action):
+                obs, rew, done, info = super(NoTrainingEnv, self).step(action)
+                return obs, rew, done, {
+                    **info, "training_enabled": self.training_enabled
+                }
+
+        ev = RolloutWorker(
+            env_creator=lambda _: NoTrainingEnv(10, True),
+            policy_spec=MockPolicy,
+            rollout_fragment_length=5,
+            batch_mode="complete_episodes")
+        batch = ev.sample()
+        self.assertEqual(batch.count, 10)
+        self.assertEqual(len(batch["obs"]), 10)
+        ev.stop()
+
+        ev = RolloutWorker(
+            env_creator=lambda _: NoTrainingEnv(10, False),
+            policy_spec=MockPolicy,
+            rollout_fragment_length=5,
+            batch_mode="complete_episodes")
+        batch = ev.sample()
+        self.assertTrue(isinstance(batch, MultiAgentBatch))
+        self.assertEqual(len(batch.policy_batches), 0)
         ev.stop()
 
     def sample_and_flush(self, ev):

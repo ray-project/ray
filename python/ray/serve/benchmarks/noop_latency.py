@@ -25,7 +25,7 @@ def run_http_benchmark(url, num_queries):
     latency = latency[200:]
 
     series = pd.Series(latency) * 1000
-    print("Latency for single noop backend (ms)")
+    print("Latency for single noop deployment (ms)")
     print(series.describe(percentiles=[0.5, 0.9, 0.95, 0.99]))
 
 

@@ -21,6 +21,7 @@
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task_execution_spec.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/gcs/gcs_server/gcs_actor_distribution.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
@@ -31,6 +32,7 @@
 
 namespace ray {
 namespace gcs {
+class GcsActorWorkerAssignment;
 
 /// GcsActor just wraps `ActorTableData` and provides some convenient interfaces to access
 /// the fields inside `ActorTableData`.
@@ -85,7 +87,8 @@ class GcsActor {
       break;
     }
 
-    actor_table_data_.set_serialized_runtime_env(task_spec.serialized_runtime_env());
+    actor_table_data_.set_serialized_runtime_env(
+        task_spec.runtime_env().serialized_runtime_env());
   }
 
   /// Get the node id on which this actor is created.
@@ -125,14 +128,21 @@ class GcsActor {
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
 
+  std::shared_ptr<const GcsActorWorkerAssignment> GetActorWorkerAssignment() const;
+
+  void SetActorWorkerAssignment(std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr);
+
  private:
   /// The actor meta data which contains the task specification as well as the state of
   /// the gcs actor and so on (see gcs.proto).
   rpc::ActorTableData actor_table_data_;
+  // TODO(Chong-Li): Considering shared assignments, this pointer would be moved out.
+  std::shared_ptr<GcsActorWorkerAssignment> assignment_ptr_ = nullptr;
 };
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
-using CreateActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
+using CreateActorCallback =
+    std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>;
 
 /// GcsActorManager is responsible for managing the lifecycle of all actors.
 /// This class is not thread-safe.
@@ -183,11 +193,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param scheduler Used to schedule actor creation tasks.
   /// \param gcs_table_storage Used to flush actor data to storage.
-  /// \param gcs_pub_sub Used to publish gcs message.
+  /// \param gcs_publisher Used to publish gcs message.
   GcsActorManager(
+      boost::asio::io_context &io_context,
       std::shared_ptr<GcsActorSchedulerInterface> scheduler,
-      std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-      std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub, RuntimeEnvManager &runtime_env_manager,
+      std::shared_ptr<GcsTableStorage> gcs_table_storage,
+      std::shared_ptr<GcsPublisher> gcs_publisher, RuntimeEnvManager &runtime_env_manager,
       std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
       std::function<std::string(const JobID &)> get_ray_namespace,
       std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
@@ -291,17 +302,24 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
   void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id);
 
-  /// Handle actor creation task failure. This should be called when scheduling
-  /// an actor creation task is infeasible.
+  /// Handle actor creation task failure. This should be called
+  /// - when scheduling an actor creation task is infeasible.
+  /// - when actor cannot be created to the cluster (e.g., runtime environment ops
+  /// failed).
   ///
   /// \param actor The actor whose creation task is infeasible.
-  void OnActorCreationFailed(std::shared_ptr<GcsActor> actor);
+  /// \param destroy_actor Whether or not we should destroy an actor.
+  /// If false is given, the actor will be rescheduled. Otherwise, all
+  /// the interest party (driver that has actor handles) will notify
+  /// that the actor is dead.
+  void OnActorCreationFailed(std::shared_ptr<GcsActor> actor, bool destroy_actor = false);
 
   /// Handle actor creation task success. This should be called when the actor
   /// creation task has been scheduled successfully.
   ///
   /// \param actor The actor that has been created.
-  void OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor);
+  void OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
+                              const rpc::PushTaskReply &reply);
 
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
@@ -331,6 +349,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   void CollectStats() const;
 
   std::string DebugString() const;
+
+  bool GetSchedulePendingActorsPosted() const;
+
+  void SetSchedulePendingActorsPosted(bool posted);
 
  private:
   /// A data structure representing an actor's owner.
@@ -476,12 +498,13 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// according to its owner, or the owner dies.
   absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, Owner>> owners_;
 
+  boost::asio::io_context &io_context_;
   /// The scheduler to schedule all registered actors.
-  std::shared_ptr<gcs::GcsActorSchedulerInterface> gcs_actor_scheduler_;
+  std::shared_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// Used to update actor information upon creation, deletion, etc.
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::shared_ptr<GcsTableStorage> gcs_table_storage_;
   /// A publisher for publishing gcs messages.
-  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Factory to produce clients to workers. This is used to communicate with
   /// actors and their owners.
   rpc::ClientFactoryFn worker_client_factory_;
@@ -498,6 +521,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   std::function<void(std::function<void(void)>, boost::posix_time::milliseconds)>
       run_delayed_;
   const boost::posix_time::milliseconds actor_gc_delay_;
+
+  /// Indicate whether a call of SchedulePendingActors has been posted.
+  bool schedule_pending_actors_posted_;
 
   // Debug info.
   enum CountType {

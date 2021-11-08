@@ -16,7 +16,6 @@ from socket import socket
 
 import ray
 import psutil
-import grpc
 import ray._private.services as services
 import ray.ray_constants as ray_constants
 import ray._private.utils
@@ -26,6 +25,8 @@ from ray.autoscaler._private.commands import (
     get_local_dump_archive, get_cluster_dump_archive, debug_status,
     RUN_ENV_TYPES)
 from ray.autoscaler._private.constants import RAY_PROCESSES
+from ray.autoscaler._private.fake_multi_node.node_provider import \
+    FAKE_HEAD_NODE_ID
 
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
@@ -305,7 +306,7 @@ def debug(address):
     "--max-worker-port",
     required=False,
     type=int,
-    default=10999,
+    default=19999,
     help="the highest port number that workers will bind on. If set, "
     "'--min-worker-port' must also be set.")
 @click.option(
@@ -434,12 +435,6 @@ def debug(address):
     type=json.loads,
     help="Override system configuration defaults.")
 @click.option(
-    "--lru-evict",
-    is_flag=True,
-    hidden=True,
-    default=False,
-    help="Specify whether LRU evict will be used for this cluster.")
-@click.option(
     "--enable-object-reconstruction",
     is_flag=True,
     default=False,
@@ -469,20 +464,6 @@ def debug(address):
     "span processor, and additional instruments. See docs.ray.io/tracing.html "
     "for more info.")
 @click.option(
-    "--worker-setup-hook",
-    hidden=True,
-    default=ray_constants.DEFAULT_WORKER_SETUP_HOOK,
-    type=str,
-    help="Module path to the Python function that will be used to set up the "
-    "environment for the worker process.")
-@click.option(
-    "--runtime-env-setup-hook",
-    hidden=True,
-    default=ray_constants.DEFAULT_RUNTIME_ENV_SETUP_HOOK,
-    type=str,
-    help="Module path to the Python function that will be used to set up the "
-    "runtime env in agent.")
-@click.option(
     "--ray-debugger-external",
     is_flag=True,
     default=False,
@@ -498,10 +479,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           dashboard_agent_listen_port, block, plasma_directory,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir,
-          system_config, lru_evict, enable_object_reconstruction,
-          metrics_export_port, no_monitor, tracing_startup_hook,
-          worker_setup_hook, runtime_env_setup_hook, ray_debugger_external,
-          log_style, log_color, verbose):
+          system_config, enable_object_reconstruction, metrics_export_port,
+          no_monitor, tracing_startup_hook, ray_debugger_external, log_style,
+          log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
     if gcs_server_port and not head:
@@ -556,13 +536,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         dashboard_port=dashboard_port,
         dashboard_agent_listen_port=dashboard_agent_listen_port,
         _system_config=system_config,
-        lru_evict=lru_evict,
         enable_object_reconstruction=enable_object_reconstruction,
         metrics_export_port=metrics_export_port,
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
-        worker_setup_hook=worker_setup_hook,
-        runtime_env_setup_hook=runtime_env_setup_hook,
         ray_debugger_external=ray_debugger_external)
     if head:
         # Use default if port is none, allocate an available port if port is 0
@@ -573,6 +550,11 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             with socket() as s:
                 s.bind(("", 0))
                 port = s.getsockname()[1]
+
+        if os.environ.get("RAY_FAKE_CLUSTER"):
+            ray_params.env_vars = {
+                "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID
+            }
 
         num_redis_shards = None
         # Start Ray on the head node.
@@ -616,10 +598,9 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                         "password.", cf.bold("--redis-password"),
                         cf.bold("--address"))
 
-        node_ip_address = services.get_node_ip_address()
-
         # Get the node IP address if one is not provided.
-        ray_params.update_if_absent(node_ip_address=node_ip_address)
+        ray_params.update_if_absent(
+            node_ip_address=services.get_node_ip_address())
         cli_logger.labeled_value("Local node IP", ray_params.node_ip_address)
         ray_params.update_if_absent(
             redis_port=port,
@@ -632,7 +613,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
 
         # Fail early when starting a new cluster when one is already running
         if address is None:
-            default_address = f"{node_ip_address}:{port}"
+            default_address = f"{ray_params.node_ip_address}:{port}"
             redis_addresses = services.find_redis_address(default_address)
             if len(redis_addresses) > 0:
                 raise ConnectionError(
@@ -769,6 +750,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         cli_logger.newline()
         cli_logger.print("To terminate the Ray runtime, run")
         cli_logger.print(cf.bold("  ray stop"))
+        cli_logger.flush()
 
     if block:
         cli_logger.newline()
@@ -778,6 +760,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.print(
                 "Running subprocesses are monitored and a message will be "
                 "printed if any of them terminate unexpectedly.")
+            cli_logger.flush()
 
         while True:
             time.sleep(1)
@@ -869,7 +852,7 @@ def stop(force, verbose, log_style, log_color):
                 cli_logger.verbose(
                     "Attempted to stop `{}`, but process was already dead.",
                     cf.bold(proc_string))
-                pass
+                total_stopped += 1
             except (psutil.Error, OSError) as ex:
                 cli_logger.error("Could not terminate `{}` due to {}",
                                  cf.bold(proc_string), str(ex))
@@ -1793,9 +1776,10 @@ def healthcheck(address, redis_password, component):
         try:
             gcs_address = redis_client.get("GcsServerAddress").decode("utf-8")
             options = (("grpc.enable_http_proxy", 0), )
-            channel = grpc.insecure_channel(gcs_address, options=options)
+            channel = ray._private.utils.init_grpc_channel(
+                gcs_address, options)
             stub = gcs_service_pb2_grpc.HeartbeatInfoGcsServiceStub(channel)
-            request = gcs_service_pb2.CheckAliveRequest(seq=0)
+            request = gcs_service_pb2.CheckAliveRequest()
             reply = stub.CheckAlive(
                 request, timeout=ray.ray_constants.HEALTHCHECK_EXPIRATION_S)
             if reply.status.code == 0:
@@ -1939,7 +1923,7 @@ def cpp(show_library_path, generate_bazel_project_template_to, log_style,
         cli_logger.print(
             cf.bold(
                 f"    cd {os.path.abspath(generate_bazel_project_template_to)}"
-                " && sh run.sh"))
+                " && bash run.sh"))
 
 
 def add_command_alias(command, name, hidden):

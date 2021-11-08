@@ -1,8 +1,10 @@
 # coding: utf-8
+import gc
 import logging
 import os
 import sys
 import time
+import subprocess
 
 import numpy as np
 import pytest
@@ -13,9 +15,11 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
     wait_for_condition,
 )
+from ray.autoscaler._private.constants import RAY_PROCESSES
 from pathlib import Path
 
 import ray
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -158,14 +162,24 @@ def test_background_tasks_with_max_calls(shutdown_only):
     nested = ray.get([f.remote() for _ in range(10)])
     while nested:
         pid, g_id = nested.pop(0)
-        ray.get(g_id)
+        assert ray.get(g_id) == 0
         del g_id
+        # Necessary to dereference the object via GC, so the worker can exit.
+        gc.collect()
         wait_for_pid_to_exit(pid)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_fair_queueing(shutdown_only):
-    ray.init(num_cpus=1)
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            # Having parallel leases is slow in this case
+            # because tasks are scheduled FIFO,
+            # the more parallism we have,
+            # the more workers we need to start to execute f and g tasks
+            # before we can execute the first h task.
+            "max_pending_lease_requests_per_scheduling_category": 1
+        })
 
     @ray.remote
     def h():
@@ -181,8 +195,9 @@ def test_fair_queueing(shutdown_only):
 
     # This will never finish without fair queueing of {f, g, h}:
     # https://github.com/ray-project/ray/issues/3644
+    timeout = 510.0 if sys.platform == "win32" else 60.0
     ready, _ = ray.wait(
-        [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
+        [f.remote() for _ in range(1000)], timeout=timeout, num_returns=1000)
     assert len(ready) == 1000, len(ready)
 
 
@@ -286,6 +301,51 @@ def test_worker_startup_count(ray_start_cluster):
                 break
         assert num == 16
         time.sleep(0.1)
+
+
+def test_function_unique_export(ray_start_regular):
+    @ray.remote
+    def f():
+        pass
+
+    @ray.remote
+    def g():
+        ray.get(f.remote())
+
+    ray.get(g.remote())
+    num_exports = ray.worker.global_worker.redis_client.llen("Exports")
+    ray.get([g.remote() for _ in range(5)])
+    assert ray.worker.global_worker.redis_client.llen("Exports") == num_exports
+
+
+@pytest.mark.skipif(
+    sys.platform not in ["win32", "darwin"],
+    reason="Only listen on localhost by default on mac and windows.")
+def test_listen_on_localhost(ray_start_regular):
+    """All ray processes should listen on localhost by default
+       on mac and windows to prevent security popups.
+    """
+
+    process_infos = []
+    for proc in psutil.process_iter(["name", "cmdline"]):
+        try:
+            process_infos.append((proc, proc.name(), proc.cmdline()))
+        except psutil.Error:
+            pass
+
+    for keyword, filter_by_cmd in RAY_PROCESSES:
+        for candidate in process_infos:
+            proc, proc_cmd, proc_cmdline = candidate
+            corpus = (proc_cmd if filter_by_cmd else
+                      subprocess.list2cmdline(proc_cmdline))
+            if keyword not in corpus:
+                continue
+
+            for connection in proc.connections():
+                if connection.status != psutil.CONN_LISTEN:
+                    continue
+                # ip can be 127.0.0.1 or ::127.0.0.1
+                assert "127.0.0.1" in connection.laddr.ip
 
 
 if __name__ == "__main__":

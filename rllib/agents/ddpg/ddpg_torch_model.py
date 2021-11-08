@@ -1,6 +1,6 @@
 import numpy as np
 import gym
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Optional
 
 from ray.rllib.models.torch.misc import SlimFC
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -31,9 +31,9 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
             model_config: ModelConfigDict,
             name: str,
             # Extra DDPGActionModel args:
-            actor_hiddens: List[int] = [256, 256],
+            actor_hiddens: Optional[List[int]] = None,
             actor_hidden_activation: str = "relu",
-            critic_hiddens: List[int] = [256, 256],
+            critic_hiddens: Optional[List[int]] = None,
             critic_hidden_activation: str = "relu",
             twin_q: bool = False,
             add_layer_norm: bool = False):
@@ -51,6 +51,12 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         only defines the layers for the output heads. Those layers for
         forward() should be defined in subclasses of DDPGTorchModel.
         """
+        if actor_hiddens is None:
+            actor_hiddens = [256, 256]
+
+        if critic_hiddens is None:
+            critic_hiddens = [256, 256]
+
         nn.Module.__init__(self)
         super(DDPGTorchModel, self).__init__(obs_space, action_space,
                                              num_outputs, model_config, name)

@@ -3,7 +3,7 @@ from typing import Optional, Dict
 
 import ray
 from ray.rllib.agents.ppo.ppo_torch_policy import ValueNetworkMixin
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
 from ray.rllib.models.action_dist import ActionDistribution
@@ -11,9 +11,11 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import Deprecated
+from ray.rllib.policy.torch_policy import LearningRateSchedule, \
+    EntropyCoeffSchedule
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import apply_grad_clipping, sequence_mask
+from ray.rllib.utils.torch_utils import apply_grad_clipping, sequence_mask
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
     PolicyID, LocalOptimizer
 
@@ -28,7 +30,7 @@ def add_advantages(
         policy: Policy,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[PolicyID, SampleBatch]] = None,
-        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+        episode: Optional[Episode] = None) -> SampleBatch:
 
     return compute_gae_for_sample_batch(policy, sample_batch,
                                         other_agent_batches, episode)
@@ -37,7 +39,7 @@ def add_advantages(
 def actor_critic_loss(policy: Policy, model: ModelV2,
                       dist_class: ActionDistribution,
                       train_batch: SampleBatch) -> TensorType:
-    logits, _ = model.from_batch(train_batch)
+    logits, _ = model(train_batch)
     values = model.value_function()
 
     if policy.is_recurrent():
@@ -70,21 +72,28 @@ def actor_critic_loss(policy: Policy, model: ModelV2,
     entropy = torch.sum(torch.masked_select(dist.entropy(), valid_mask))
 
     total_loss = (pi_err + value_err * policy.config["vf_loss_coeff"] -
-                  entropy * policy.config["entropy_coeff"])
+                  entropy * policy.entropy_coeff)
 
-    policy.entropy = entropy
-    policy.pi_err = pi_err
-    policy.value_err = value_err
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["entropy"] = entropy
+    model.tower_stats["pi_err"] = pi_err
+    model.tower_stats["value_err"] = value_err
 
     return total_loss
 
 
-def loss_and_entropy_stats(policy: Policy,
-                           train_batch: SampleBatch) -> Dict[str, TensorType]:
+def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
+
     return {
-        "policy_entropy": policy.entropy,
-        "policy_loss": policy.pi_err,
-        "vf_loss": policy.value_err,
+        "cur_lr": policy.cur_lr,
+        "entropy_coeff": policy.entropy_coeff,
+        "policy_entropy": torch.mean(
+            torch.stack(policy.get_tower_stats("entropy"))),
+        "policy_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("pi_err"))),
+        "vf_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("value_err"))),
     }
 
 
@@ -111,6 +120,9 @@ def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
         action_space (gym.spaces.Space): The Policy's action space.
         config (TrainerConfigDict): The Policy's config.
     """
+    EntropyCoeffSchedule.__init__(policy, config["entropy_coeff"],
+                                  config["entropy_coeff_schedule"])
+    LearningRateSchedule.__init__(policy, config["lr"], config["lr_schedule"])
     ValueNetworkMixin.__init__(policy, obs_space, action_space, config)
 
 
@@ -119,11 +131,11 @@ A3CTorchPolicy = build_policy_class(
     framework="torch",
     get_default_config=lambda: ray.rllib.agents.a3c.a3c.DEFAULT_CONFIG,
     loss_fn=actor_critic_loss,
-    stats_fn=loss_and_entropy_stats,
+    stats_fn=stats,
     postprocess_fn=compute_gae_for_sample_batch,
     extra_action_out_fn=model_value_predictions,
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=torch_optimizer,
     before_loss_init=setup_mixins,
-    mixins=[ValueNetworkMixin],
+    mixins=[ValueNetworkMixin, LearningRateSchedule, EntropyCoeffSchedule],
 )

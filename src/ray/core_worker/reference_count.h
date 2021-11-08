@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <boost/bind.hpp>
-
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -39,7 +37,8 @@ class ReferenceCounterInterface {
   virtual void AddLocalReference(const ObjectID &object_id,
                                  const std::string &call_site) = 0;
   virtual bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
-                                 const rpc::Address &owner_address) = 0;
+                                 const rpc::Address &owner_address,
+                                 bool foreign_owner_already_monitoring = false) = 0;
   virtual void AddOwnedObject(
       const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
       const rpc::Address &owner_address, const std::string &call_site,
@@ -209,7 +208,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// task ID (for non-actors) or the actor ID of the owner.
   /// \param[in] owner_address The owner's address.
   bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
-                         const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
+                         const rpc::Address &owner_address,
+                         bool foreign_owner_already_monitoring = false)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner address of the given object.
   ///
@@ -297,6 +298,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// IDs that were passed by reference in the task spec or that were
   /// serialized in inlined arguments.
   ///
+  /// NOTE(swang): Task arguments should be pinned with a fake local reference
+  /// during task execution. This method removes the fake references so that
+  /// the reference deletion is atomic with removing the ref count information.
+  ///
   /// See GetAndClearLocalBorrowersInternal for the spec of the returned table
   /// and how this mutates the local reference count.
   ///
@@ -307,8 +312,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// arguments.
   /// \param[out] proto The protobuf table to populate with the borrowed
   /// references.
-  void GetAndClearLocalBorrowers(const std::vector<ObjectID> &borrowed_ids,
-                                 ReferenceTableProto *proto) LOCKS_EXCLUDED(mutex_);
+  void PopAndClearLocalBorrowers(const std::vector<ObjectID> &borrowed_ids,
+                                 ReferenceTableProto *proto,
+                                 std::vector<ObjectID> *deleted) LOCKS_EXCLUDED(mutex_);
 
   /// Mark that this ObjectID contains another ObjectID(s). This should be
   /// called in two cases:
@@ -465,6 +471,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddBorrowerAddress(const ObjectID &object_id, const rpc::Address &borrower_address)
       LOCKS_EXCLUDED(mutex_);
 
+  bool IsObjectReconstructable(const ObjectID &object_id) const;
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
@@ -478,6 +486,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
         : call_site(call_site),
           object_size(object_size),
           owned_by_us(true),
+          foreign_owner_already_monitoring(false),
           owner_address(owner_address),
           pinned_at_raylet_id(pinned_at_raylet_id),
           is_reconstructable(is_reconstructable) {}
@@ -491,8 +500,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// The reference count. This number includes:
     /// - Python references to the ObjectID.
     /// - Pending submitted tasks that depend on the object.
-    /// - ObjectIDs that we own, that contain this ObjectID, and that are still
-    ///   in scope.
+    /// - ObjectIDs containing this ObjectID that we own and that are still in
+    /// scope.
     size_t RefCount() const {
       return local_ref_count + submitted_task_ref_count + contained_in_owned.size();
     }
@@ -505,7 +514,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// - We gave the reference to at least one other process.
     bool OutOfScope(bool lineage_pinning_enabled) const {
       bool in_scope = RefCount() > 0;
-      bool was_contained_in_borrowed_id = contained_in_borrowed_id.has_value();
+      bool is_nested = contained_in_borrowed_ids.size();
       bool has_borrowers = borrowers.size() > 0;
       bool was_stored_in_objects = stored_in_objects.size() > 0;
 
@@ -514,7 +523,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
         has_lineage_references = lineage_ref_count > 0;
       }
 
-      return !(in_scope || was_contained_in_borrowed_id || has_borrowers ||
+      return !(in_scope || is_nested || has_nested_refs_to_report || has_borrowers ||
                was_stored_in_objects || has_lineage_references);
     }
 
@@ -540,6 +549,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).
     bool owned_by_us = false;
+    /// Whether the object was created with a foreign owner (i.e., _owner set).
+    /// In this case, the owner is already monitoring this reference with a
+    /// WaitForRefRemoved() call, and it is an error to return borrower
+    /// metadata to the parent of the current task.
+    /// See https://github.com/ray-project/ray/pull/19910 for more context.
+    bool foreign_owner_already_monitoring = false;
     /// The object's owner's address, if we know it. If this process is the
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before
@@ -568,30 +583,23 @@ class ReferenceCounter : public ReferenceCounterInterface,
     ///  2. A task that we submitted returned an ID(s).
     /// ObjectIDs are erased from this field when their Reference is deleted.
     absl::flat_hash_set<ObjectID> contained_in_owned;
-    /// An Object ID that we (or one of our children) borrowed that contains
-    /// this object ID, which is also borrowed. This is used in cases where an
-    /// ObjectID is nested. We need to notify the owner of the outer ID of any
-    /// borrowers of this object, so we keep this field around until
-    /// GetAndClearLocalBorrowersInternal is called on the outer ID. This field
-    /// is updated in 2 cases:
-    ///  1. We deserialize an ID that we do not own and that was stored in
-    ///     another object that we do not own.
-    ///  2. Case (1) occurred for a task that we submitted and we also do not
-    ///     own the inner or outer object. Then, we need to notify our caller
-    ///     that the task we submitted is a borrower for the inner ID.
-    /// This field is reset to null once GetAndClearLocalBorrowersInternal is
-    /// called on contained_in_borrowed_id. For each borrower, this field is
-    /// set at most once during the reference's lifetime. If the object ID is
-    /// later found to be nested in a second object, we do not need to remember
-    /// the second ID because we will already have notified the owner of the
-    /// first outer object about our reference.
-    absl::optional<ObjectID> contained_in_borrowed_id;
+    /// Object IDs that we borrowed and that contain this object ID.
+    /// ObjectIDs are added to this field when we get the value of an ObjectRef
+    /// (either by deserializing the object or receiving the GetObjectStatus
+    /// reply for inlined objects) and it contains another ObjectRef.
+    absl::flat_hash_set<ObjectID> contained_in_borrowed_ids;
+    /// Reverse pointer for contained_in_owned and contained_in_borrowed_ids.
     /// The object IDs contained in this object. These could be objects that we
     /// own or are borrowing. This field is updated in 2 cases:
     ///  1. We call ray.put() on this ID and store the contained IDs.
     ///  2. We call ray.get() on an ID whose contents we do not know and we
     ///     discover that it contains these IDs.
     absl::flat_hash_set<ObjectID> contains;
+    /// ObjectRefs nested in this object that are or were in use. These objects
+    /// are not owned by us, and we need to report that we are borrowing them
+    /// to their owner. Nesting is transitive, so this flag is set as long as
+    /// any child object is in scope.
+    bool has_nested_refs_to_report = false;
     /// A list of processes that are we gave a reference to that are still
     /// borrowing the ID. This field is updated in 2 cases:
     ///  1. If we are a borrower of the ID, then we add a process to this list
@@ -634,6 +642,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
+
+  void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   bool GetOwnerInternal(const ObjectID &object_id,
                         rpc::Address *owner_address = nullptr) const
@@ -695,7 +706,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///   that contained it. We don't need this anymore because we already marked
   ///   that the borrowed ID contained another ID in the returned
   ///   borrowed_refs.
-  bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
+  bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id, bool for_ref_removed,
                                          ReferenceTable *borrowed_refs)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -733,8 +744,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Helper method to add an object that we are borrowing. This is used when
   /// deserializing IDs from a task's arguments, or when deserializing an ID
   /// during ray.get().
+  ///
+  /// \param[in] foreign_owner_already_monitoring Whether to set the bit that an
+  ///            externally assigned owner is monitoring the lifetime of this
+  ///            object. This is the case for `ray.put(..., _owner=ZZZ)`.
   bool AddBorrowedObjectInternal(const ObjectID &object_id, const ObjectID &outer_id,
-                                 const rpc::Address &owner_address)
+                                 const rpc::Address &owner_address,
+                                 bool foreign_owner_already_monitoring)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to delete an entry from the reference map and run any necessary

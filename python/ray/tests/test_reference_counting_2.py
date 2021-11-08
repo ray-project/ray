@@ -91,12 +91,15 @@ def test_recursively_nest_ids(one_worker_100MiB, use_ray_put, failure):
 
     # Fulfill the dependency, causing the tail task to finish.
     ray.get(signal.send.remote())
-    try:
+    if not failure:
         ray.get(tail_oid)
-        assert not failure
-    # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.ObjectLostError:
-        assert failure
+    else:
+        # There is only 1 core, so the same worker will execute all `recursive`
+        # tasks. Therefore, if we kill the worker during the last task, its
+        # owner (the worker that executed the second-to-last task) will also
+        # have died.
+        with pytest.raises(ray.exceptions.OwnerDiedError):
+            ray.get(tail_oid)
 
     # Reference should be gone, check that array gets evicted.
     _fill_object_store_and_get(array_oid_bytes, succeed=False)
@@ -233,8 +236,11 @@ def test_recursively_pass_returned_object_ref(one_worker_100MiB, use_ray_put,
         ray.get(outer_oid)
         _fill_object_store_and_get(inner_oid)
         assert not failure
-    # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.ObjectLostError:
+    except ray.exceptions.OwnerDiedError:
+        # There is only 1 core, so the same worker will execute all `recursive`
+        # tasks. Therefore, if we kill the worker during the last task, its
+        # owner (the worker that executed the second-to-last task) will also
+        # have died.
         assert failure
 
     inner_oid_bytes = inner_oid.binary()
@@ -286,6 +292,10 @@ def test_recursively_return_borrowed_object_ref(one_worker_100MiB, use_ray_put,
     # Reference should be gone, check that returned ID gets evicted.
     _fill_object_store_and_get(final_oid_bytes, succeed=False)
 
+    if failure:
+        with pytest.raises(ray.exceptions.OwnerDiedError):
+            ray.get(final_oid)
+
 
 @pytest.mark.parametrize("failure", [False, True])
 def test_borrowed_id_failure(one_worker_100MiB, failure):
@@ -314,7 +324,8 @@ def test_borrowed_id_failure(one_worker_100MiB, failure):
         def resolve_ref(self):
             assert self.ref is not None
             if failure:
-                with pytest.raises(ray.exceptions.ObjectLostError):
+                with pytest.raises(
+                        ray.exceptions.ReferenceCountingAssertionError):
                     ray.get(self.ref)
             else:
                 ray.get(self.ref)
@@ -610,6 +621,85 @@ def test_return_nested_ids(shutdown_only, inline_args):
         print(ray.get(block))
 
     ray.get(test.remote())
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_actor_constructor_borrowed_refs(shutdown_only):
+    ray.init(object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote
+    class Borrower:
+        def __init__(self, borrowed_refs):
+            self.borrowed_refs = borrowed_refs
+
+        def test(self):
+            ray.get(self.borrowed_refs)
+
+    # Actor is the only one with a ref.
+    ref = ray.put(np.random.random(1024 * 1024))
+    b = Borrower.remote([ref])
+    del ref
+    # Check that the actor's ref is usable.
+    for _ in range(3):
+        ray.get(b.test.remote())
+        time.sleep(1)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_deep_nested_refs(shutdown_only):
+    ray.init(object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote
+    def f(x):
+        print(f"=> step {x}")
+        if x > 200:
+            return x
+        return f.remote(x + 1)
+
+    r = f.remote(1)
+    i = 0
+    while isinstance(r, ray.ObjectRef):
+        print(i, r)
+        i += 1
+        r = ray.get(r)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_forward_nested_ref(shutdown_only):
+    ray.init(object_store_memory=100 * 1024 * 1024)
+
+    @ray.remote
+    def nested_ref():
+        return ray.put(1)
+
+    @ray.remote
+    def nested_nested_ref():
+        return nested_ref.remote()
+
+    @ray.remote
+    class Borrower:
+        def __init__(self):
+            return
+
+        def pass_ref(self, middle_ref):
+            self.inner_ref = ray.get(middle_ref)
+
+        def check_ref(self):
+            ray.get(self.inner_ref)
+
+    @ray.remote
+    def pass_nested_ref(borrower, outer_ref):
+        ray.get(borrower.pass_ref.remote(outer_ref[0]))
+
+    b = Borrower.remote()
+    outer_ref = nested_nested_ref.remote()
+    x = pass_nested_ref.remote(b, [outer_ref])
+    del outer_ref
+    ray.get(x)
+
+    for _ in range(3):
+        ray.get(b.check_ref.remote())
+        time.sleep(1)
 
 
 if __name__ == "__main__":

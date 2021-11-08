@@ -8,17 +8,18 @@ import shutil
 import sys
 import tempfile
 import time
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union
 import uuid
 
 import ray
 import ray.cloudpickle as pickle
 from ray.tune.resources import Resources
 from ray.tune.result import (
-    DEFAULT_RESULTS_DIR, SHOULD_CHECKPOINT, TIME_THIS_ITER_S,
-    TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL, EPISODES_THIS_ITER,
-    EPISODES_TOTAL, TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_INFO,
-    STDOUT_FILE, STDERR_FILE)
+    DEBUG_METRICS, DEFAULT_RESULTS_DIR, HOSTNAME, NODE_IP, PID,
+    SHOULD_CHECKPOINT, TIME_THIS_ITER_S, TIME_TOTAL_S, TIMESTEPS_THIS_ITER,
+    DONE, TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL,
+    TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_ID, TRIAL_INFO, STDOUT_FILE,
+    STDERR_FILE)
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
@@ -76,7 +77,8 @@ class Trainable:
         self.config = config or {}
         trial_info = self.config.pop(TRIAL_INFO, None)
 
-        disable_ipython()
+        if self.is_actor():
+            disable_ipython()
 
         self._result_logger = self._logdir = None
         self._create_logger(self.config, logger_creator)
@@ -152,6 +154,48 @@ class Trainable:
     def get_current_ip(self):
         self._local_ip = ray.util.get_node_ip_address()
         return self._local_ip
+
+    def get_auto_filled_metrics(self,
+                                now: Optional[datetime] = None,
+                                time_this_iter: Optional[float] = None,
+                                debug_metrics_only: bool = False) -> dict:
+        """Return a dict with metrics auto-filled by the trainable.
+
+        If ``debug_metrics_only`` is True, only metrics that don't
+        require at least one iteration will be returned
+        (``ray.tune.result.DEBUG_METRICS``).
+        """
+        if now is None:
+            now = datetime.today()
+        autofilled = {
+            TRIAL_ID: self.trial_id,
+            "experiment_id": self._experiment_id,
+            "date": now.strftime("%Y-%m-%d_%H-%M-%S"),
+            "timestamp": int(time.mktime(now.timetuple())),
+            TIME_THIS_ITER_S: time_this_iter,
+            TIME_TOTAL_S: self._time_total,
+            PID: os.getpid(),
+            HOSTNAME: platform.node(),
+            NODE_IP: self._local_ip,
+            "config": self.config,
+            "time_since_restore": self._time_since_restore,
+            "timesteps_since_restore": self._timesteps_since_restore,
+            "iterations_since_restore": self._iterations_since_restore
+        }
+        if debug_metrics_only:
+            autofilled = {
+                k: v
+                for k, v in autofilled.items() if k in DEBUG_METRICS
+            }
+        return autofilled
+
+    def is_actor(self):
+        try:
+            actor_id = ray.worker.global_worker.actor_id
+            return actor_id != actor_id.nil()
+        except Exception:
+            # If global_worker is not instantiated, we're not in an actor
+            return False
 
     def train_buffered(self,
                        buffer_time_s: float,
@@ -280,19 +324,7 @@ class Trainable:
             result.setdefault("neg_mean_loss", -result["mean_loss"])
 
         now = datetime.today()
-        result.update(
-            experiment_id=self._experiment_id,
-            date=now.strftime("%Y-%m-%d_%H-%M-%S"),
-            timestamp=int(time.mktime(now.timetuple())),
-            time_this_iter_s=time_this_iter,
-            time_total_s=self._time_total,
-            pid=os.getpid(),
-            hostname=platform.node(),
-            node_ip=self._local_ip,
-            config=self.config,
-            time_since_restore=self._time_since_restore,
-            timesteps_since_restore=self._timesteps_since_restore,
-            iterations_since_restore=self._iterations_since_restore)
+        result.update(self.get_auto_filled_metrics(now, time_this_iter))
 
         monitor_data = self._monitor.get_data()
         if monitor_data:
@@ -692,7 +724,7 @@ class Trainable:
 
         """
         if self._implements_method("_train") and log_once("_train"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._train is deprecated and is now removed. Override "
                 "Trainable.step instead.")
         raise NotImplementedError
@@ -734,7 +766,7 @@ class Trainable:
             "/tmp/NEW_CHECKPOINT_PATH/my_checkpoint_file" # This will error.
         """
         if self._implements_method("_save") and log_once("_save"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._save is deprecated and is now removed. Override "
                 "Trainable.save_checkpoint instead.")
         raise NotImplementedError
@@ -783,7 +815,7 @@ class Trainable:
                 underneath the `checkpoint_dir` `save_checkpoint` is preserved.
         """
         if self._implements_method("_restore") and log_once("_restore"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._restore is deprecated and is now removed. "
                 "Override Trainable.load_checkpoint instead.")
         raise NotImplementedError
@@ -799,7 +831,7 @@ class Trainable:
 
         """
         if self._implements_method("_setup") and log_once("_setup"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._setup is deprecated and is now removed. Override "
                 "Trainable.setup instead.")
         pass
@@ -817,7 +849,7 @@ class Trainable:
             result (dict): Training result returned by step().
         """
         if self._implements_method("_log_result") and log_once("_log_result"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._log_result is deprecated and is now removed. "
                 "Override Trainable.log_result instead.")
         self._result_logger.on_result(result)
@@ -834,7 +866,7 @@ class Trainable:
         .. versionadded:: 0.8.7
         """
         if self._implements_method("_stop") and log_once("_stop"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._stop is deprecated and is now removed. Override "
                 "Trainable.cleanup instead.")
         pass

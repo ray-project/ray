@@ -1,7 +1,6 @@
-from typing import TypeVar, Iterable, Any, Union, Callable
+from typing import TypeVar, Any, Union, Callable, List
 
 import ray
-from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
@@ -15,26 +14,30 @@ CallableClass = type
 
 
 class ComputeStrategy:
-    def apply(self, fn: Any,
-              blocks: Iterable[Block]) -> Iterable[ObjectRef[Block]]:
+    def apply(self, fn: Any, blocks: BlockList) -> BlockList:
         raise NotImplementedError
 
 
-def _map_block(block: Block, meta: BlockMetadata,
-               fn: Any) -> (Block, BlockMetadata):
+def _map_block(block: Block, fn: Any,
+               input_files: List[str]) -> (Block, BlockMetadata):
     new_block = fn(block)
     accessor = BlockAccessor.for_block(new_block)
     new_meta = BlockMetadata(
         num_rows=accessor.num_rows(),
         size_bytes=accessor.size_bytes(),
         schema=accessor.schema(),
-        input_files=meta.input_files)
+        input_files=input_files)
     return new_block, new_meta
 
 
 class TaskPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
-              blocks: BlockList[Any]) -> BlockList[Any]:
+              blocks: BlockList) -> BlockList:
+        # Handle empty datasets.
+        if blocks.initial_num_blocks() == 0:
+            return blocks
+
+        blocks = list(blocks.iter_blocks_with_metadata())
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         kwargs = remote_args.copy()
@@ -42,13 +45,28 @@ class TaskPool(ComputeStrategy):
 
         map_block = cached_remote_fn(_map_block)
         refs = [
-            map_block.options(**kwargs).remote(b, m, fn)
-            for b, m in zip(blocks, blocks.get_metadata())
+            map_block.options(**kwargs).remote(b, fn, m.input_files)
+            for b, m in blocks
         ]
         new_blocks, new_metadata = zip(*refs)
 
-        map_bar.block_until_complete(list(new_blocks))
-        new_metadata = ray.get(list(new_metadata))
+        new_metadata = list(new_metadata)
+        try:
+            new_metadata = map_bar.fetch_until_complete(new_metadata)
+        except (ray.exceptions.RayTaskError, KeyboardInterrupt) as e:
+            # One or more mapper tasks failed, or we received a SIGINT signal
+            # while waiting; either way, we cancel all map tasks.
+            for ref in new_metadata:
+                ray.cancel(ref)
+            # Wait until all tasks have failed or been cancelled.
+            for ref in new_metadata:
+                try:
+                    ray.get(ref)
+                except (ray.exceptions.RayTaskError,
+                        ray.exceptions.TaskCancelledError):
+                    pass
+            # Reraise the original task failure exception.
+            raise e from None
         return BlockList(list(new_blocks), list(new_metadata))
 
 
@@ -61,38 +79,40 @@ class ActorPool(ComputeStrategy):
             w.__ray_terminate__.remote()
 
     def apply(self, fn: Any, remote_args: dict,
-              blocks: Iterable[Block]) -> Iterable[ObjectRef[Block]]:
+              blocks: BlockList) -> BlockList:
 
-        map_bar = ProgressBar("Map Progress", total=len(blocks))
+        blocks_in = list(blocks.iter_blocks_with_metadata())
+        orig_num_blocks = len(blocks_in)
+        blocks_out = []
+        map_bar = ProgressBar("Map Progress", total=orig_num_blocks)
 
         class BlockWorker:
             def ready(self):
                 return "ok"
 
             @ray.method(num_returns=2)
-            def process_block(self, block: Block,
-                              meta: BlockMetadata) -> (Block, BlockMetadata):
+            def process_block(self, block: Block, input_files: List[str]
+                              ) -> (Block, BlockMetadata):
                 new_block = fn(block)
                 accessor = BlockAccessor.for_block(new_block)
                 new_metadata = BlockMetadata(
                     num_rows=accessor.num_rows(),
                     size_bytes=accessor.size_bytes(),
                     schema=accessor.schema(),
-                    input_files=meta.input_files)
+                    input_files=input_files)
                 return new_block, new_metadata
 
         if not remote_args:
             remote_args["num_cpus"] = 1
+
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
         self.workers = [BlockWorker.remote()]
         metadata_mapping = {}
         tasks = {w.ready.remote(): w for w in self.workers}
         ready_workers = set()
-        blocks_in = [(b, m) for (b, m) in zip(blocks, blocks.get_metadata())]
-        blocks_out = []
 
-        while len(blocks_out) < len(blocks):
+        while len(blocks_out) < orig_num_blocks:
             ready, _ = ray.wait(
                 list(tasks), timeout=0.01, num_returns=1, fetch_local=False)
             if not ready:
@@ -119,8 +139,9 @@ class ActorPool(ComputeStrategy):
 
             # Schedule a new task.
             if blocks_in:
+                block, meta = blocks_in.pop()
                 block_ref, meta_ref = worker.process_block.remote(
-                    *blocks_in.pop())
+                    block, meta.input_files)
                 metadata_mapping[block_ref] = meta_ref
                 tasks[block_ref] = worker
 

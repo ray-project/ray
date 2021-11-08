@@ -8,7 +8,7 @@
 import logging
 from abc import ABC
 from collections import Iterable
-from typing import Dict
+from typing import Dict, Optional
 
 import numpy as np
 from gym.spaces import Discrete
@@ -39,7 +39,9 @@ class MatrixSequentialSocialDilemma(InfoAccumulationInterface, MultiAgentEnv,
     episode.
     """
 
-    def __init__(self, config: Dict = {}):
+    def __init__(self, config: Optional[Dict] = None):
+        if config is None:
+            config = {}
 
         assert "reward_randomness" not in config.keys()
         assert self.PAYOUT_MATRIX is not None

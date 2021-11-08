@@ -350,7 +350,7 @@ def memory_summary(state,
                    line_wrap=True,
                    unit="B",
                    num_entries=None) -> str:
-    from ray.new_dashboard.modules.node.node_head\
+    from ray.dashboard.modules.node.node_head\
          import node_stats_to_dict
 
     # Get terminal size

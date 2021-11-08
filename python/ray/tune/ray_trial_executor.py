@@ -1,5 +1,6 @@
 # coding: utf-8
 import copy
+from collections import deque
 from functools import partial
 import logging
 import os
@@ -19,7 +20,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError
 from ray import ray_constants
-from ray._private.resource_spec import ResourceSpec, NODE_ID_PREFIX
+from ray._private.resource_spec import NODE_ID_PREFIX
 from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.logger import NoopLogger
@@ -32,7 +33,7 @@ from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.utils import warn_if_slow
 from ray.util import log_once
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
@@ -92,11 +93,18 @@ class _TrialCleanup:
     Args:
         threshold (int): Number of futures to hold at once. If the threshold
             is passed, cleanup will kick in and remove futures.
+        force_cleanup (int): Grace periods for forceful actor termination.
+            If 0, actors will not be forcefully terminated.
     """
 
-    def __init__(self, threshold: int = TRIAL_CLEANUP_THRESHOLD):
+    def __init__(self,
+                 threshold: int = TRIAL_CLEANUP_THRESHOLD,
+                 force_cleanup: int = 0):
         self.threshold = threshold
         self._cleanup_map = {}
+        if force_cleanup < 0:
+            force_cleanup = 0
+        self._force_cleanup = force_cleanup
 
     def add(self, trial: Trial, actor: ActorHandle):
         """Adds a trial actor to be stopped.
@@ -122,15 +130,27 @@ class _TrialCleanup:
         If partial=False, all futures are expected to return. If a future
         does not return within the timeout period, the cleanup terminates.
         """
+        # At this point, self._cleanup_map holds the last references
+        # to actors. Removing those references either one-by-one
+        # (graceful termination case) or all at once, by reinstantiating
+        # self._cleanup_map (forceful termination case) will cause Ray
+        # to kill the actors during garbage collection.
         logger.debug("Cleaning up futures")
         num_to_keep = int(self.threshold) / 2 if partial else 0
         while len(self._cleanup_map) > num_to_keep:
             dones, _ = ray.wait(
-                list(self._cleanup_map), timeout=DEFAULT_GET_TIMEOUT)
+                list(self._cleanup_map),
+                timeout=DEFAULT_GET_TIMEOUT
+                if not self._force_cleanup else self._force_cleanup)
             if not dones:
                 logger.warning(
                     "Skipping cleanup - trainable.stop did not return in "
                     "time. Consider making `stop` a faster operation.")
+                if not partial and self._force_cleanup:
+                    logger.warning(
+                        "Forcing trainable cleanup by terminating actors.")
+                    self._cleanup_map = {}
+                    return
             else:
                 done = dones[0]
                 del self._cleanup_map[done]
@@ -144,30 +164,29 @@ def noop_logger_creator(config, logdir):
     return NoopLogger(config, logdir)
 
 
-@PublicAPI
+@DeveloperAPI
 class RayTrialExecutor(TrialExecutor):
     """An implementation of TrialExecutor based on Ray."""
 
     def __init__(self,
-                 queue_trials: bool = False,
                  reuse_actors: bool = False,
                  result_buffer_length: Optional[int] = None,
                  refresh_period: Optional[float] = None,
                  wait_for_placement_group: Optional[float] = None):
-        super(RayTrialExecutor, self).__init__(queue_trials)
-        # Check for if we are launching a trial without resources in kick off
-        # autoscaler.
-        self._trial_queued = False
+        super(RayTrialExecutor, self).__init__()
         self._running = {}
         # Since trial resume after paused should not run
         # trial.train.remote(), thus no more new remote object ref generated.
         # We use self._paused to store paused trials here.
         self._paused = {}
 
-        self._trial_cleanup = _TrialCleanup()
+        force_trial_cleanup = int(
+            os.environ.get("TUNE_FORCE_TRIAL_CLEANUP_S", "0"))
+        self._trial_cleanup = _TrialCleanup(force_cleanup=force_trial_cleanup)
         self._has_cleaned_up_pgs = False
         self._reuse_actors = reuse_actors
-        self._cached_actor_pg = (None, None)
+        # The maxlen will be updated when `set_max_pending_trials()` is called
+        self._cached_actor_pg = deque(maxlen=1)
 
         self._avail_resources = Resources(cpu=0, gpu=0)
         self._committed_resources = Resources(cpu=0, gpu=0)
@@ -216,6 +235,12 @@ class RayTrialExecutor(TrialExecutor):
         return self._pg_manager.in_staging_grace_period()
 
     def set_max_pending_trials(self, max_pending: int) -> None:
+        if len(self._cached_actor_pg) > 0:
+            logger.warning(
+                "Cannot update maximum number of queued actors for reuse "
+                "during a run.")
+        else:
+            self._cached_actor_pg = deque(maxlen=max_pending)
         self._pg_manager.set_max_staging(max_pending)
 
     def stage_and_update_status(self, trials: Iterable[Trial]):
@@ -268,11 +293,10 @@ class RayTrialExecutor(TrialExecutor):
         self.try_checkpoint_metadata(trial)
         logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
 
-        if self._reuse_actors and self._cached_actor_pg[0] is not None:
+        if self._reuse_actors and len(self._cached_actor_pg) > 0:
+            existing_runner, pg = self._cached_actor_pg.popleft()
             logger.debug(f"Trial {trial}: Reusing cached runner "
-                         f"{self._cached_actor_pg[0]}")
-            existing_runner, pg = self._cached_actor_pg
-            self._cached_actor_pg = (None, None)
+                         f"{existing_runner}")
 
             trial.set_runner(existing_runner)
             if pg and trial.uses_placement_groups:
@@ -285,17 +309,17 @@ class RayTrialExecutor(TrialExecutor):
                     "implemented and return True.")
             return existing_runner
 
-        if self._cached_actor_pg[0]:
-            logger.debug("Cannot reuse cached runner {} for new trial".format(
-                self._cached_actor_pg[0]))
-            existing_runner, pg = self._cached_actor_pg
+        if len(self._cached_actor_pg) > 0:
+            existing_runner, pg = self._cached_actor_pg.popleft()
+
+            logger.debug(
+                f"Cannot reuse cached runner {existing_runner} for new trial")
 
             if pg:
                 self._pg_manager.return_or_clean_cached_pg(pg)
 
             with self._change_working_directory(trial):
                 self._trial_cleanup.add(trial, actor=existing_runner)
-            self._cached_actor_pg = (None, None)
 
         trainable_cls = trial.get_trainable_cls()
         if not trainable_cls:
@@ -519,13 +543,14 @@ class RayTrialExecutor(TrialExecutor):
             trial.write_error_log(error_msg)
             if hasattr(trial, "runner") and trial.runner:
                 if (not error and self._reuse_actors
-                        and self._cached_actor_pg[0] is None):
+                        and (len(self._cached_actor_pg) <
+                             (self._cached_actor_pg.maxlen or float("inf")))):
                     logger.debug("Reusing actor for %s", trial.runner)
                     # Move PG into cache (disassociate from trial)
                     pg = self._pg_manager.cache_trial_pg(trial)
                     if pg or not trial.uses_placement_groups:
                         # True if a placement group was replaced
-                        self._cached_actor_pg = (trial.runner, pg)
+                        self._cached_actor_pg.append((trial.runner, pg))
                         should_destroy_actor = False
                     else:
                         # False if no placement group was replaced. This should
@@ -813,13 +838,7 @@ class RayTrialExecutor(TrialExecutor):
                     "Cluster resources not detected or are 0. Attempt #"
                     "%s...", i + 1)
                 time.sleep(0.5)
-            try:
-                resources = ray.cluster_resources()
-            except Exception as exc:
-                # TODO(rliaw): Remove this when local mode is fixed.
-                # https://github.com/ray-project/ray/issues/4147
-                logger.debug(f"{exc}: Using resources for local machine.")
-                resources = ResourceSpec().resolve(True).to_resource_dict()
+            resources = ray.cluster_resources()
             if resources:
                 break
 
@@ -852,9 +871,9 @@ class RayTrialExecutor(TrialExecutor):
     def has_resources_for_trial(self, trial: Trial) -> bool:
         """Returns whether this runner has resources available for this trial.
 
-        If using placement groups, this will return True as long as we
-        didn't reach the maximum number of pending trials. It will also return
-        True if the trial placement group is already staged.
+        This will return True as long as we didn't reach the maximum number
+        of pending trials. It will also return True if the trial placement
+        group is already staged.
 
         Args:
             trial: Trial object which should be scheduled.
@@ -895,19 +914,6 @@ class RayTrialExecutor(TrialExecutor):
         if have_space:
             # The assumption right now is that we block all trials if one
             # trial is queued.
-            self._trial_queued = False
-            return True
-
-        can_overcommit = self._queue_trials and not self._trial_queued
-        if can_overcommit:
-            self._trial_queued = True
-            logger.warning(
-                "Allowing trial to start even though the "
-                "cluster does not have enough free resources. Trial actors "
-                "may appear to hang until enough resources are added to the "
-                "cluster (e.g., via autoscaling). You can disable this "
-                "behavior by specifying `queue_trials=False` in "
-                "ray.tune.run().")
             return True
 
         return False

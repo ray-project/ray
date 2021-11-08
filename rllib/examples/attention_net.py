@@ -157,7 +157,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    # training loop
+    # Manual training loop (no Ray tune).
     if args.no_tune:
         # manual training loop using PPO and manually keeping track of state
         if args.run != "PPO":

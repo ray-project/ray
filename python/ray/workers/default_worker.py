@@ -125,10 +125,10 @@ parser.add_argument(
     default=0,
     help="The PID of the process for setup worker runtime env.")
 parser.add_argument(
-    "--serialized-runtime-env",
-    type=str,
-    default="{}",
-    help="The serialized and validated runtime env json.")
+    "--startup-token",
+    required=True,
+    type=int,
+    help="The startup token assigned to this worker process by the raylet.")
 parser.add_argument(
     "--ray-debugger-external",
     default=False,
@@ -150,8 +150,6 @@ if __name__ == "__main__":
         mode = ray.SPILL_WORKER_MODE
     elif args.worker_type == "RESTORE_WORKER":
         mode = ray.RESTORE_WORKER_MODE
-    elif args.worker_type == "UTIL_WORKER":
-        mode = ray.UTIL_WORKER_MODE
     else:
         raise ValueError("Unknown worker type: " + args.worker_type)
 
@@ -195,8 +193,8 @@ if __name__ == "__main__":
         node,
         mode=mode,
         runtime_env_hash=args.runtime_env_hash,
-        runtime_env_json=args.serialized_runtime_env,
         worker_shim_pid=args.worker_shim_pid,
+        startup_token=args.startup_token,
         ray_debugger_external=args.ray_debugger_external)
 
     # Add code search path to sys.path, set load_code_from_local.
@@ -218,8 +216,7 @@ if __name__ == "__main__":
 
     if mode == ray.WORKER_MODE:
         ray.worker.global_worker.main_loop()
-    elif (mode == ray.RESTORE_WORKER_MODE or mode == ray.SPILL_WORKER_MODE
-          or mode == ray.UTIL_WORKER_MODE):
+    elif mode in [ray.RESTORE_WORKER_MODE, ray.SPILL_WORKER_MODE]:
         # It is handled by another thread in the C++ core worker.
         # We just need to keep the worker alive.
         while True:

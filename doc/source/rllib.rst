@@ -21,11 +21,12 @@ The following is a whirlwind overview of RLlib. For a more in-depth guide, see a
 Running RLlib
 ~~~~~~~~~~~~~
 
-RLlib has extra dependencies on top of ``ray``. First, you'll need to install either `PyTorch <http://pytorch.org/>`__ or `TensorFlow <https://www.tensorflow.org>`__. Then, install the RLlib module:
+RLlib has extra dependencies on top of ``ray``. You'll need to install either `PyTorch <http://pytorch.org/>`__ or `TensorFlow <https://www.tensorflow.org>`__ as well as a couple of other dependencies:
 
 .. code-block:: bash
 
-  pip install 'ray[rllib]'
+  # Note: You will only need either `torch` or `tensorflow`, but feel free to install both:
+  pip install "ray[rllib]" pandas tensorflow torch
 
 Then, you can try out training in the following equivalent ways:
 
@@ -42,6 +43,16 @@ Then, you can try out training in the following equivalent ways:
   tune.run(PPOTrainer, config={"env": "CartPole-v0"})  # "log_level": "INFO" for verbose,
                                                        # "framework": "tfe"/"tf2" for eager,
                                                        # "framework": "torch" for PyTorch
+
+If you run into issues, be sure to check you're using the correct RLlib executable with ``which rllib``.
+
+Finally, if you'd like to pause the ``CartPole-v0`` example and restart some other time, you can do so with ``CTRL+C``, and you'll see something like the following:
+
+.. code-block:: bash
+
+  2021-10-27 17:40:20,804 WARNING tune.py:622 -- Experiment has been interrupted, but the most recent state was saved.You can continue running this experiment by passing `resume=True` to `tune.run()`
+
+You can read more here about RLlib's deep integration with Ray Tune, and how this allows you to save model checkpoints as you train so your progress is never lost.
 
 Next, we'll cover three key concepts in RLlib: Policies, Samples, and Trainers.
 
@@ -96,7 +107,7 @@ Policies each define a ``learn_on_batch()`` method that improves the policy give
 - Simple `Q-function loss <https://github.com/ray-project/ray/blob/a1d2e1762325cd34e14dc411666d63bb15d6eaf0/rllib/agents/dqn/simple_q_policy.py#L136>`__
 - Importance-weighted `APPO surrogate loss <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/appo_torch_policy.py>`__
 
-RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distributed workflow of running rollouts and optimizing policies. They do this by leveraging Ray `parallel iterators <iter.html>`__ to implement the desired computation pattern. The following figure shows *synchronous sampling*, the simplest of `these patterns <rllib-algorithms.html>`__:
+RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distributed workflow of running rollouts and optimizing policies. Trainer classes leverage parallel iterators to implement the desired computation pattern. The following figure shows *synchronous sampling*, the simplest of `these patterns <rllib-algorithms.html>`__:
 
 .. figure:: a2c-arch.svg
 

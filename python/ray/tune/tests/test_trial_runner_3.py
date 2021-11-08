@@ -32,6 +32,7 @@ class TrialRunnerTest3(unittest.TestCase):
         os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
         # Block for results even when placement groups are pending
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
 
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"  # Reset default
 
@@ -554,7 +555,8 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(
             runner2.get_trial("checkpoint").status == Trial.TERMINATED)
         self.assertTrue(runner2.get_trial("pending").status == Trial.PENDING)
-        self.assertTrue(not runner2.get_trial("pending").last_result)
+        self.assertTrue(
+            not runner2.get_trial("pending").has_reported_at_least_once)
         runner2.step()
 
     def testCheckpointWithFunction(self):

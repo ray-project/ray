@@ -64,7 +64,8 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
     };
 
     // Callback that is invoked when the owner of the object id is dead.
-    auto owner_dead_callback = [this](const std::string &object_id_binary) {
+    auto owner_dead_callback = [this](const std::string &object_id_binary,
+                                      const Status &) {
       const auto object_id = ObjectID::FromBinary(object_id_binary);
       ReleaseFreedObject(object_id);
     };
@@ -72,9 +73,10 @@ void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
     auto sub_message = std::make_unique<rpc::SubMessage>();
     sub_message->mutable_worker_object_eviction_message()->Swap(wait_request.get());
 
-    core_worker_subscriber_->Subscribe(
+    RAY_CHECK(core_worker_subscriber_->Subscribe(
         std::move(sub_message), rpc::ChannelType::WORKER_OBJECT_EVICTION, owner_address,
-        object_id.Binary(), subscription_callback, owner_dead_callback);
+        object_id.Binary(), /*subscribe_done_callback=*/nullptr, subscription_callback,
+        owner_dead_callback));
   }
 }
 
@@ -238,10 +240,11 @@ void LocalObjectManager::SpillObjectsInternal(
         rpc::SpillObjectsRequest request;
         for (const auto &object_id : objects_to_spill) {
           RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
-          request.add_object_ids_to_spill(object_id.Binary());
+          auto ref = request.add_object_refs_to_spill();
+          ref->set_object_id(object_id.Binary());
           auto it = objects_pending_spill_.find(object_id);
           RAY_CHECK(it != objects_pending_spill_.end());
-          request.add_owner_addresses()->MergeFrom(it->second.second);
+          ref->mutable_owner_address()->CopyFrom(it->second.second);
         }
         io_worker->rpc_client()->SpillObjects(
             request, [this, objects_to_spill, callback, io_worker](

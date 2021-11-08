@@ -13,7 +13,7 @@ from gym.spaces import Discrete
 from gym.utils import seeding
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils import override
-from typing import Dict
+from typing import Dict, Optional
 
 from ray.rllib.examples.env.utils.interfaces import InfoAccumulationInterface
 
@@ -36,7 +36,9 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
         np.array([-1, 0]),
     ]
 
-    def __init__(self, config: Dict = {}):
+    def __init__(self, config: Optional[Dict] = None):
+        if config is None:
+            config = {}
 
         self._validate_config(config)
 
@@ -325,7 +327,10 @@ class CoinGame(InfoAccumulationInterface, MultiAgentEnv, gym.Env):
 class AsymCoinGame(CoinGame):
     NAME = "AsymCoinGame"
 
-    def __init__(self, config: dict = {}):
+    def __init__(self, config: Optional[dict] = None):
+        if config is None:
+            config = {}
+
         if "asymmetric" in config:
             assert config["asymmetric"]
         else:

@@ -138,6 +138,13 @@ def main(results=None):
 
     results += timeit("single client put gigabytes", put_large, 8 * 0.1)
 
+    def small_value_batch():
+        submitted = [small_value.remote() for _ in range(1000)]
+        ray.get(submitted)
+        return 0
+
+    results += timeit("single client tasks and get batch", small_value_batch)
+
     @ray.remote
     def do_put():
         for _ in range(10):

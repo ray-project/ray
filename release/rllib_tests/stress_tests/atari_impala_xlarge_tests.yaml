@@ -11,11 +11,11 @@ atari-impala:
     run: IMPALA
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 40.0
         timesteps_total: 45000000
     stop:
         time_total_s: 3600
     config:
+        framework: tf
         num_gpus: 1
         num_cpus_for_driver: 0
         rollout_fragment_length: 50

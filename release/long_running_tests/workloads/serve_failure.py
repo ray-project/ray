@@ -61,16 +61,16 @@ serve.start(detached=True)
 @ray.remote
 class RandomKiller:
     def __init__(self, kill_period_s=1):
-        self.client = serve.connect()
         self.kill_period_s = kill_period_s
 
     def _get_all_serve_actors(self):
-        controller = self.client._controller
+        controller = serve.api._get_global_client()._controller
         routers = list(ray.get(controller.get_http_proxies.remote()).values())
         all_handles = routers + [controller]
-        worker_handle_dict = ray.get(controller._all_replica_handles.remote())
-        for _, replica_dict in worker_handle_dict.items():
-            all_handles.extend(list(replica_dict.values()))
+        worker_handle_dict = ray.get(controller._all_running_replicas.remote())
+        for _, replica_info_list in worker_handle_dict.items():
+            for replica_info in replica_info_list:
+                all_handles.append(replica_info.actor_handle)
 
         return all_handles
 

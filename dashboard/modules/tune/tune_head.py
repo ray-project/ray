@@ -4,10 +4,10 @@ import copy
 import os
 import aiohttp.web
 
-import ray.new_dashboard.modules.tune.tune_consts \
+import ray.dashboard.modules.tune.tune_consts \
     as tune_consts
-import ray.new_dashboard.utils as dashboard_utils
-from ray.new_dashboard.utils import async_loop_forever, rest_response
+import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.utils import async_loop_forever, rest_response
 
 logger = logging.getLogger(__name__)
 

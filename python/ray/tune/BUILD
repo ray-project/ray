@@ -2,6 +2,16 @@
 # Tests from the python/ray/tune/tests directory.
 # Covers all tests starting with `test_`.
 # Please keep these sorted alphabetically.
+#
+# Tags:
+# "team:ml": Tag indicating this test is owned by the ML team.
+# "client": Test uses the ray client.
+# "example": Test runs a tune example script.
+# "exclusive": ???
+# "py37": Test requires py3.7 or later.
+# "soft_imports": Tests checking whether Tune runs without any of its soft dependencies.
+# "pytorch": Test uses PyTorch.
+# "tensorflow": Test uses TensorFlow.
 # --------------------------------------------------------------------
 py_test(
     name = "test_actor_reuse",
@@ -16,7 +26,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_api.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "rllib"],
 )
 
 py_test(
@@ -40,7 +50,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_client.py"],
     deps = [":tune_lib"],
-    tags = ["team:serverless", "client", "py37", "exclusive"]
+    tags = ["team:ml", "client", "py37", "exclusive"]
 )
 
 py_test(
@@ -48,7 +58,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_cluster.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "rllib"],
 )
 
 py_test(
@@ -160,7 +170,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_logger.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "jenkins_only"],
+    tags = ["team:ml"],
 )
 
 py_test(
@@ -223,14 +233,6 @@ py_test(
     name = "test_sync",
     size = "medium",
     srcs = ["tests/test_sync.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_track",
-    size = "small",
-    srcs = ["tests/test_track.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )
@@ -312,7 +314,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_tune_restore.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "rllib"],
 )
 
 py_test(
@@ -541,6 +543,16 @@ py_test(
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
+
+py_test(
+    name = "hyperopt_conditional_search_space_example",
+    size = "medium",
+    srcs = ["examples/hyperopt_conditional_search_space_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
 
 py_test(
     name = "lightgbm_example",

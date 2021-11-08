@@ -9,6 +9,13 @@ if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
     serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
 
 
+@pytest.fixture
+def ray_shutdown():
+    yield
+    serve.shutdown()
+    ray.shutdown()
+
+
 @pytest.fixture(scope="session")
 def _shared_serve_instance():
     # Note(simon):
@@ -36,3 +43,5 @@ def serve_instance(_shared_serve_instance):
     # Clear all state between tests to avoid naming collisions.
     for deployment in serve.list_deployments().values():
         deployment.delete()
+    # Clear the ServeHandle cache between tests to avoid them piling up.
+    _shared_serve_instance.handle_cache.clear()

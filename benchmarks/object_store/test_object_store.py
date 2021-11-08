@@ -65,6 +65,7 @@ print(f"Broadcast time: {end - start} ({OBJECT_SIZE} B x {NUM_NODES} nodes)")
 if "TEST_OUTPUT_JSON" in os.environ:
     out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
     results = {
+        "broadcast_time": end - start,
         "object_size": OBJECT_SIZE,
         "num_nodes": NUM_NODES,
         "success": "1"

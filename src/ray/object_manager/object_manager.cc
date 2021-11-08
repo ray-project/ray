@@ -88,6 +88,7 @@ ObjectManager::ObjectManager(
       buffer_pool_(config_.store_socket_name, config_.object_chunk_size),
       rpc_work_(rpc_service_),
       object_manager_server_("ObjectManager", config_.object_manager_port,
+                             config_.object_manager_address == "127.0.0.1",
                              config_.rpc_service_threads_number),
       object_manager_service_(rpc_service_, *this),
       client_call_manager_(main_service, config_.rpc_service_threads_number),
@@ -366,7 +367,7 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
 
   if (object_reader->GetDataSize() != data_size ||
       object_reader->GetMetadataSize() != metadata_size) {
-    if (object_reader->GetDataSize() == 0 && object_reader->GetMetadataSize() == 1) {
+    if (object_reader->GetDataSize() == 0) {
       // TODO(scv119): handle object size changes in a more graceful way.
       RAY_LOG(WARNING) << object_id
                        << " is marked as failed but object_manager has stale info "
@@ -441,17 +442,18 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id, const NodeID &
             [=]() {
               // Post to the multithreaded RPC event loop so that data is copied
               // off of the main thread.
-              SendObjectChunk(push_id, object_id, node_id, chunk_id, rpc_client,
-                              [=](const Status &status) {
-                                // Post back to the main event loop because the
-                                // PushManager is thread-safe.
-                                main_service_->post(
-                                    [this, node_id, object_id]() {
-                                      push_manager_->OnChunkComplete(node_id, object_id);
-                                    },
-                                    "ObjectManager.Push");
-                              },
-                              std::move(chunk_reader));
+              SendObjectChunk(
+                  push_id, object_id, node_id, chunk_id, rpc_client,
+                  [=](const Status &status) {
+                    // Post back to the main event loop because the
+                    // PushManager is thread-safe.
+                    main_service_->post(
+                        [this, node_id, object_id]() {
+                          push_manager_->OnChunkComplete(node_id, object_id);
+                        },
+                        "ObjectManager.Push");
+                  },
+                  chunk_reader);
             },
             "ObjectManager.Push");
       });

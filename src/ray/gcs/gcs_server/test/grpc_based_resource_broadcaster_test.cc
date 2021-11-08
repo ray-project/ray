@@ -13,10 +13,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
+
 #include <memory>
 
 #include "gtest/gtest.h"
-#include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
 namespace ray {
@@ -52,7 +53,6 @@ class GrpcBasedResourceBroadcasterTest : public ::testing::Test {
   void AssertNoLeaks() {
     absl::MutexLock guard(&broadcaster_.mutex_);
     ASSERT_EQ(broadcaster_.nodes_.size(), 0);
-    ASSERT_EQ(broadcaster_.inflight_updates_.size(), 0);
   }
 
   int num_batches_sent_;
@@ -67,48 +67,6 @@ TEST_F(GrpcBasedResourceBroadcasterTest, TestBasic) {
   SendBroadcast();
   ASSERT_EQ(callbacks_.size(), 1);
   ASSERT_EQ(num_batches_sent_, 1);
-}
-
-TEST_F(GrpcBasedResourceBroadcasterTest, TestStragglerNodes) {
-  // When a node doesn't ACK a batch update, drop future requests to that node to prevent
-  // a queue from building up.
-  for (int i = 0; i < 10; i++) {
-    auto node_info = Mocker::GenNodeInfo();
-    broadcaster_.HandleNodeAdded(*node_info);
-  }
-
-  SendBroadcast();
-  ASSERT_EQ(callbacks_.size(), 10);
-  ASSERT_EQ(num_batches_sent_, 10);
-
-  // Only 7 nodes reply.
-  for (int i = 0; i < 7; i++) {
-    rpc::UpdateResourceUsageReply reply;
-    auto &callback = callbacks_.front();
-    callback(Status::OK(), reply);
-    callbacks_.pop_front();
-  }
-  ASSERT_EQ(callbacks_.size(), 3);
-  ASSERT_EQ(num_batches_sent_, 10);
-
-  // We should only send a new rpc to the 7 nodes that haven't received one yet.
-  SendBroadcast();
-  ASSERT_EQ(callbacks_.size(), 10);
-  ASSERT_EQ(num_batches_sent_, 17);
-
-  // Now clear the queue and resume sending broadcasts to everyone.
-  while (callbacks_.size()) {
-    rpc::UpdateResourceUsageReply reply;
-    auto &callback = callbacks_.front();
-    callback(Status::OK(), reply);
-    callbacks_.pop_front();
-  }
-  ASSERT_EQ(callbacks_.size(), 0);
-  ASSERT_EQ(num_batches_sent_, 17);
-
-  SendBroadcast();
-  ASSERT_EQ(callbacks_.size(), 10);
-  ASSERT_EQ(num_batches_sent_, 27);
 }
 
 TEST_F(GrpcBasedResourceBroadcasterTest, TestNodeRemoval) {

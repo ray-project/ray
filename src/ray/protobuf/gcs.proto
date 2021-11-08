@@ -13,6 +13,7 @@
 // limitations under the License.
 
 syntax = "proto3";
+option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -149,19 +150,17 @@ message ActorTableData {
   RayException creation_task_exception = 18;
   // The actor's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
   string ray_namespace = 19;
-  // Runtime required to run this actor
-  // It'll only be set if it's a detached actor and the original job has this field
-  RuntimeEnv runtime_env = 20;
   // The unix ms timestamp the actor was started at.
-  uint64 start_time = 21;
+  uint64 start_time = 20;
   // The unix ms timestamp the actor was ended at.
-  uint64 end_time = 22;
+  uint64 end_time = 21;
+  // Serialized runtime_env used to report in the dashboard snapshot. We need to populate
+  // it here instead of grabbing it from the task spec because the task spec is cleared
+  // for deleted actors: https://github.com/ray-project/ray/pull/11149.
+  string serialized_runtime_env = 22;
   // The actor's class name. This is necessary because the task spec's lifetime
   // is shorter than the ActorTableData.
   string class_name = 23;
-  // The actor's serialized runtime environment. This is necessary because the
-  // task spec's lifetime is shorter than the ActorTableData.
-  string serialized_runtime_env = 24;
 }
 
 message ErrorTableData {
@@ -253,6 +252,9 @@ message GcsNodeInfo {
   int32 metrics_export_port = 9;
   // Timestamp that the node is dead.
   int64 timestamp = 10;
+
+  // The total resources of this node.
+  map<string, double> resources_total = 11;
 }
 
 message HeartbeatTableData {
@@ -275,24 +277,20 @@ message TaskLeaseData {
 }
 
 message JobConfig {
-  // Environment variables to be set on worker processes.
-  map<string, string> worker_env = 1;
   // The number of java workers per worker process.
-  uint32 num_java_workers_per_process = 2;
+  uint32 num_java_workers_per_process = 1;
   // The jvm options for java workers of the job.
-  repeated string jvm_options = 3;
+  repeated string jvm_options = 2;
   // A list of directories or files (jar files or dynamic libraries) that specify the
   // search path for user code. This will be used as `CLASSPATH` in Java, and `PYTHONPATH`
   // in Python. In C++, libraries under these paths will be loaded by 'dlopen'.
-  repeated string code_search_path = 4;
+  repeated string code_search_path = 3;
   // Runtime environment to run the code
-  RuntimeEnv runtime_env = 5;
+  RuntimeEnv runtime_env = 4;
   // The job's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
-  string ray_namespace = 6;
-  // Serialized JSON string of the parsed runtime environment dict for this job.
-  string serialized_runtime_env = 7;
+  string ray_namespace = 5;
   // An opaque kv store for job related metadata.
-  map<string, string> metadata = 8;
+  map<string, string> metadata = 6;
 }
 
 message JobTableData {
@@ -458,15 +456,19 @@ message ResourcesData {
   bool should_global_gc = 8;
   // IP address of the node.
   string node_manager_address = 9;
-  // Normal task resources.
-  map<string, double> resources_normal_task = 10;
-  // Indicates whether resource normal task is changed. Only used when
-  // light heartbeat enabled.
-  bool resources_normal_task_changed = 11;
   // Whether this node has object pulls queued. This can happen if
   // the node has more pull requests than available object store
   // memory. This is a proxy for available object store memory.
-  bool object_pulls_queued = 12;
+  bool object_pulls_queued = 10;
+  // Normal task resources.
+  map<string, double> resources_normal_task = 11;
+  // Indicates whether resource normal task is changed. Only used when
+  // light heartbeat enabled.
+  bool resources_normal_task_changed = 12;
+  // The timestamp that normal task resources are measured.
+  int64 resources_normal_task_timestamp = 13;
+  // Whether this node has detected a resource deadlock (full of actors).
+  bool cluster_full_of_actors_detected = 14;
 }
 
 message ResourceUsageBatchData {
@@ -481,6 +483,69 @@ message ResourceUsageBatchData {
 message PlacementGroupLoad {
   // The list of pending placement group specifications.
   repeated PlacementGroupTableData placement_group_data = 1;
+}
+
+message PlacementGroupStats {
+  // The scheduling state of the placement group.
+  // This is purely for observability and the
+  // information could not be consistent
+  // if GCS restarts.
+  // QUEUED / REMOVED <-----------------------------
+  //          |                                     |
+  // SCHEDULING_STARTED / NO_RESOURCES / INFEASIBLE |
+  //          |                                     |
+  // FINISHED / FAILED_TO_COMMIT_RESOURCES ----------
+  enum SchedulingState {
+    //
+    // Initial scheduling states.
+    //
+    // Queued for scheduling.
+    QUEUED = 0;
+    // Scheduling has cancelled because it is removed.
+    REMOVED = 1;
+
+    //
+    // Scheduling In Progress.
+    //
+    // Scheduling has started.
+    SCHEDULING_STARTED = 2;
+    // Placement group creation failed because there was
+    // no nodes that satisfy resources.
+    NO_RESOURCES = 3;
+    // Placement group creation has failed because the
+    // requested resources are infeasible.
+    INFEASIBLE = 4;
+
+    //
+    // Scheduling Finished.
+    //
+    // Placement group creation failed because there was
+    // an issue commiting resources to nodes
+    // (e.g., node failures).
+    FAILED_TO_COMMIT_RESOURCES = 5;
+    // Scheduling has finished properly.
+    FINISHED = 6;
+  }
+  // The time creation request is first received.
+  int64 creation_request_received_ns = 2;
+  // The time scheduling is started after queuing.
+  int64 scheduling_started_time_ns = 3;
+  // The time from scheduling started <-> scheduling succeeds.
+  int64 scheduling_latency_us = 4;
+  // The time from first request received <-> all placement group
+  // resources are available on all relevant nodes.
+  // end_to_end_creation_latency_us - scheduling_latency_us
+  // == queuing time.
+  int64 end_to_end_creation_latency_us = 5;
+  // The number of time scheduling has attempted on this placement group.
+  uint32 scheduling_attempt = 6;
+  // Scheduler retries the pg scheduling with
+  // exponential backoff delay.
+  // The biggest delay that's ever seen from
+  // this placement group creation process.
+  double highest_retry_delay_ms = 7;
+  // The cause of placement group creation failure.
+  SchedulingState scheduling_state = 8;
 }
 
 message PlacementGroupTableData {
@@ -520,5 +585,8 @@ message PlacementGroupTableData {
   bool is_detached = 10;
   // The pg's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
   string ray_namespace = 11;
+  // The placement group's stats / information such as when it is created or
+  // what's the current scheduling state.
+  PlacementGroupStats stats = 12;
 }
 ///////////////////////////////////////////////////////////////////////////////

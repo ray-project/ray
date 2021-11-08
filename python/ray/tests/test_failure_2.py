@@ -45,9 +45,22 @@ def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
 
     # Placement group cannot be made, but no warnings should occur.
-    pg = placement_group([{"GPU": 1}], strategy="STRICT_PACK")
-    pg.ready()
-    f.options(placement_group=pg).remote()
+    total_cpus = ray.cluster_resources()["CPU"]
+
+    # Occupy one cpu by an actor
+    @ray.remote(num_cpus=1)
+    class A:
+        pass
+
+    a = A.remote()
+    print(a)
+
+    @ray.remote(num_cpus=total_cpus)
+    def g():
+        pass
+
+    pg = placement_group([{"CPU": total_cpus}], strategy="STRICT_PACK")
+    g.options(placement_group=pg).remote()
 
     errors = get_error_message(
         p, 1, ray_constants.INFEASIBLE_TASK_ERROR, timeout=5)
@@ -67,11 +80,12 @@ def test_warning_for_infeasible_zero_cpu_actor(shutdown_only):
         pass
 
     # The actor creation should be infeasible.
-    Foo.remote()
+    a = Foo.remote()
     errors = get_error_message(p, 1, ray_constants.INFEASIBLE_TASK_ERROR)
     assert len(errors) == 1
     assert errors[0].type == ray_constants.INFEASIBLE_TASK_ERROR
     p.close()
+    del a
 
 
 def test_warning_for_too_many_actors(shutdown_only):
@@ -283,7 +297,7 @@ def test_raylet_crash_when_get(ray_start_regular):
 
     thread = threading.Thread(target=sleep_to_kill_raylet)
     thread.start()
-    with pytest.raises(ray.exceptions.ObjectLostError):
+    with pytest.raises(ray.exceptions.ReferenceCountingAssertionError):
         ray.get(object_ref)
     thread.join()
 
@@ -307,7 +321,7 @@ def test_eviction(ray_start_cluster):
     # Evict the object.
     ray.internal.free([obj])
     # ray.get throws an exception.
-    with pytest.raises(ray.exceptions.ObjectLostError):
+    with pytest.raises(ray.exceptions.ReferenceCountingAssertionError):
         ray.get(obj)
 
     @ray.remote

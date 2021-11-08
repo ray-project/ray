@@ -131,8 +131,9 @@ class _TorchTrainable(DistributedTrainable):
 
     def load_checkpoint(self, checkpoint_dir: str):
         checkpoint_obj = TrainableUtil.checkpoint_to_object(checkpoint_dir)
-        return ray.get(
-            w.restore_from_object.remote(checkpoint_obj) for w in self.workers)
+        return ray.get([
+            w.restore_from_object.remote(checkpoint_obj) for w in self.workers
+        ])
 
     def stop(self):
         ray.get([worker.stop.remote() for worker in self.workers])
@@ -188,7 +189,7 @@ def DistributedTrainableCreator(func: Callable,
         analysis = tune.run(trainable_cls)
     """
     if use_gpu:
-        raise ValueError(
+        raise DeprecationWarning(
             "use_gpu is deprecated. Use 'num_gpus_per_worker' instead.")
     detect_checkpoint_function(func, abort=True)
     if num_workers_per_host:
