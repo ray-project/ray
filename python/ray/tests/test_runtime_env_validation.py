@@ -3,13 +3,15 @@ import pytest
 import sys
 import tempfile
 from pathlib import Path
+from ray import job_config
 import yaml
 
 from ray._private.runtime_env.validation import (
     parse_and_validate_excludes, parse_and_validate_working_dir,
     parse_and_validate_conda, parse_and_validate_pip,
     parse_and_validate_env_vars, parse_and_validate_py_modules,
-    ParsedRuntimeEnv, override_task_or_actor_runtime_env)
+    ParsedRuntimeEnv, override_task_or_actor_runtime_env, _decode_plugin_uri,
+    _encode_plugin_uri)
 
 CONDA_DICT = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
 
@@ -44,6 +46,16 @@ def test_key_with_value_none():
     runtime_env_dict = {"pip": None}
     parsed_runtime_env = ParsedRuntimeEnv(runtime_env_dict)
     assert parsed_runtime_env == {}
+
+
+def test_encode_plugin_uri():
+    assert _encode_plugin_uri("plugin", "uri") == "plugin|uri"
+
+
+def test_decode_plugin_uri():
+    with pytest.raises(ValueError):
+        _decode_plugin_uri("no_vertical_bar_separator")
+    assert _decode_plugin_uri("plugin|uri") == ("plugin", "uri")
 
 
 class TestValidateWorkingDir:
@@ -317,6 +329,14 @@ class TestOverrideRuntimeEnvs:
         parent_env = {"pip": ["pkg-name"], "uris": ["a", "b"]}
         result_env = override_task_or_actor_runtime_env(child_env, parent_env)
         assert result_env == {"uris": ["a"], "pip": ["pkg-name"]}
+
+
+class TestParseJobConfig:
+    def test_parse_runtime_env_from_json_env_variable(self):
+        job_config_json = {"runtime_env": {"working_dir": "uri://abc"}}
+        config = job_config.JobConfig.from_json(job_config_json)
+        assert config.runtime_env == job_config_json.get("runtime_env")
+        assert config.metadata == {}
 
 
 if __name__ == "__main__":

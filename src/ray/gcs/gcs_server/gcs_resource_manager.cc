@@ -17,6 +17,10 @@
 #include "ray/common/ray_config.h"
 #include "ray/stats/stats.h"
 
+DEFINE_stats(placement_group_resource_persist_latency_ms,
+             "Time to persist placement resources to Redis.", (),
+             ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::Histogram);
+
 namespace ray {
 namespace gcs {
 
@@ -58,7 +62,7 @@ void GcsResourceManager::HandleUpdateResources(
     const rpc::UpdateResourcesRequest &request, rpc::UpdateResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(INFO) << "Updating resources, node id = " << node_id;
+  RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
   auto changed_resources = std::make_shared<std::unordered_map<std::string, double>>();
   for (const auto &entry : request.resources()) {
     changed_resources->emplace(entry.first, entry.second.resource_capacity());
@@ -81,8 +85,12 @@ void GcsResourceManager::HandleUpdateResources(
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
 
-    auto on_done = [this, node_id, changed_resources, reply,
-                    send_reply_callback](const Status &status) {
+    auto start = absl::GetCurrentTimeNanos();
+    auto on_done = [this, node_id, changed_resources, reply, send_reply_callback,
+                    start](const Status &status) {
+      auto end = absl::GetCurrentTimeNanos();
+      STATS_placement_group_resource_persist_latency_ms.Record(
+          absl::Nanoseconds(end - start) / absl::Milliseconds(1));
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());

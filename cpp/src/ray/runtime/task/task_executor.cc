@@ -28,7 +28,7 @@ namespace ray {
 namespace internal {
 /// Execute remote functions by networking stream.
 msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
-                                      const std::vector<msgpack::sbuffer> &args_buffer,
+                                      const ArgsBufferList &args_buffer,
                                       msgpack::sbuffer *actor_ptr) {
   if (func_name.empty()) {
     throw std::invalid_argument("Task function name is empty");
@@ -85,7 +85,7 @@ std::unique_ptr<ObjectID> TaskExecutor::Execute(InvocationSpec &invocation) {
 /// TODO(qicosmos): Need to add more details of the error messages, such as object id,
 /// task id etc.
 std::pair<Status, std::shared_ptr<msgpack::sbuffer>> GetExecuteResult(
-    const std::string &func_name, const std::vector<msgpack::sbuffer> &args_buffer,
+    const std::string &func_name, const ArgsBufferList &args_buffer,
     msgpack::sbuffer *actor_ptr) {
   try {
     EntryFuntion entry_function;
@@ -142,10 +142,20 @@ Status TaskExecutor::ExecuteTask(
 
   Status status{};
   std::shared_ptr<msgpack::sbuffer> data = nullptr;
-  std::vector<msgpack::sbuffer> ray_args_buffer;
-  for (auto &arg : args_buffer) {
+  ArgsBufferList ray_args_buffer;
+  for (size_t i = 0; i < args_buffer.size(); i++) {
+    auto &ref = arg_refs.at(i);
+    bool is_ref_arg = (ref.object_id() != ray::ObjectID::Nil().Binary());
+
     msgpack::sbuffer sbuf;
-    sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
+
+    if (is_ref_arg) {
+      sbuf.write(ref.object_id().data(), ref.object_id().size());
+    } else {
+      auto &arg = args_buffer.at(i);
+      sbuf.write((const char *)(arg->GetData()->Data()), arg->GetData()->Size());
+    }
+
     ray_args_buffer.push_back(std::move(sbuf));
   }
   if (task_type == ray::TaskType::ACTOR_CREATION_TASK) {
@@ -211,11 +221,13 @@ void TaskExecutor::Invoke(
     AbstractRayRuntime *runtime,
     std::unordered_map<ActorID, std::unique_ptr<ActorContext>> &actor_contexts,
     absl::Mutex &actor_contexts_mutex) {
-  std::vector<msgpack::sbuffer> args_buffer;
+  ArgsBufferList args_buffer;
   for (size_t i = 0; i < task_spec.NumArgs(); i++) {
     if (task_spec.ArgByRef(i)) {
-      auto arg = runtime->Get(task_spec.ArgId(i).Binary());
-      args_buffer.push_back(std::move(*arg));
+      const auto &id = task_spec.ArgId(i).Binary();
+      msgpack::sbuffer sbuf;
+      sbuf.write(id.data(), id.size());
+      args_buffer.push_back(std::move(sbuf));
     } else {
       msgpack::sbuffer sbuf;
       sbuf.write((const char *)task_spec.ArgData(i), task_spec.ArgDataSize(i));

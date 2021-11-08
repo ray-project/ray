@@ -13,6 +13,7 @@ Finally, we've also included some content on using core Ray APIs with `Tensorflo
    starting-ray.rst
    actors.rst
    namespaces.rst
+   dependency-management.rst
    async_api.rst
    concurrency_group_api.rst
    using-ray-with-gpus.rst

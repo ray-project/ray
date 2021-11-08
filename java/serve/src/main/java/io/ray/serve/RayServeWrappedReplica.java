@@ -6,8 +6,8 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
-import io.ray.serve.generated.BackendConfig;
-import io.ray.serve.generated.BackendVersion;
+import io.ray.serve.generated.DeploymentConfig;
+import io.ray.serve.generated.DeploymentVersion;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.util.ReflectUtil;
 import io.ray.serve.util.ServeProtoUtil;
@@ -23,21 +23,21 @@ public class RayServeWrappedReplica {
 
   @SuppressWarnings("rawtypes")
   public RayServeWrappedReplica(
-      String backendTag,
+      String deploymentName,
       String replicaTag,
       String backendDef,
       byte[] initArgsbytes,
-      byte[] backendConfigBytes,
-      byte[] backendVersionBytes,
+      byte[] deploymentConfigBytes,
+      byte[] deploymentVersionBytes,
       String controllerName)
       throws ClassNotFoundException, NoSuchMethodException, InstantiationException,
           IllegalAccessException, IllegalArgumentException, InvocationTargetException, IOException {
 
-    // Parse BackendConfig.
-    BackendConfig backendConfig = ServeProtoUtil.parseBackendConfig(backendConfigBytes);
+    // Parse DeploymentConfig.
+    DeploymentConfig deploymentConfig = ServeProtoUtil.parseDeploymentConfig(deploymentConfigBytes);
 
     // Parse init args.
-    Object[] initArgs = parseInitArgs(initArgsbytes, backendConfig);
+    Object[] initArgs = parseInitArgs(initArgsbytes, deploymentConfig);
 
     // Instantiate the object defined by backendDef.
     Class backendClass = Class.forName(backendDef);
@@ -51,39 +51,42 @@ public class RayServeWrappedReplica {
 
     // Set the controller name so that Serve.connect() in the user's backend code will connect to
     // the instance that this backend is running in.
-    Serve.setInternalReplicaContext(backendTag, replicaTag, controllerName, callable);
+    Serve.setInternalReplicaContext(deploymentName, replicaTag, controllerName, callable);
 
     // Construct worker replica.
     backend =
         new RayServeReplica(
             callable,
-            backendConfig,
-            ServeProtoUtil.parseBackendVersion(backendVersionBytes),
+            deploymentConfig,
+            ServeProtoUtil.parseDeploymentVersion(deploymentVersionBytes),
             optional.get());
   }
 
   public RayServeWrappedReplica(
-      String backendTag, String replicaTag, DeploymentInfo deploymentInfo, String controllerName)
+      String deploymentName,
+      String replicaTag,
+      DeploymentInfo deploymentInfo,
+      String controllerName)
       throws ClassNotFoundException, NoSuchMethodException, InstantiationException,
           IllegalAccessException, IllegalArgumentException, InvocationTargetException, IOException {
     this(
-        backendTag,
+        deploymentName,
         replicaTag,
         deploymentInfo.getReplicaConfig().getBackendDef(),
         deploymentInfo.getReplicaConfig().getInitArgs(),
-        deploymentInfo.getBackendConfig(),
-        deploymentInfo.getBackendVersion(),
+        deploymentInfo.getDeploymentConfig(),
+        deploymentInfo.getDeploymentVersion(),
         controllerName);
   }
 
-  private Object[] parseInitArgs(byte[] initArgsbytes, BackendConfig backendConfig)
+  private Object[] parseInitArgs(byte[] initArgsbytes, DeploymentConfig deploymentConfig)
       throws IOException {
 
     if (initArgsbytes == null || initArgsbytes.length == 0) {
       return new Object[0];
     }
 
-    if (!backendConfig.getIsCrossLanguage()) {
+    if (!deploymentConfig.getIsCrossLanguage()) {
       // If the construction request is from Java API, deserialize initArgsbytes to Object[]
       // directly.
       return MessagePackSerializer.decode(initArgsbytes, Object[].class);
@@ -132,8 +135,8 @@ public class RayServeWrappedReplica {
   }
 
   public byte[] reconfigure(Object userConfig) {
-    BackendVersion backendVersion = backend.reconfigure(userConfig);
-    return backendVersion.toByteArray();
+    DeploymentVersion deploymentVersion = backend.reconfigure(userConfig);
+    return deploymentVersion.toByteArray();
   }
 
   public byte[] getVersion() {

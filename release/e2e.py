@@ -375,7 +375,7 @@ def wheel_exists(ray_version, git_branch, git_commit):
 def commit_or_url(commit_or_url: str) -> str:
     if commit_or_url.startswith("http"):
         # Directly return the S3 url
-        if "s3-us-west-2.amazonaws" in commit_or_url:
+        if "s3" in commit_or_url and "amazonaws.com" in commit_or_url:
             return commit_or_url
         # Resolve the redirects for buildkite artifacts
         # This is needed because otherwise pip won't recognize the file name.
@@ -660,7 +660,9 @@ def find_cloud_by_name(sdk: AnyscaleSDK, cloud_name: str,
     paging_token = None
     while not cloud_id:
         result = sdk.search_clouds(
-            clouds_query=dict(count=50, paging_token=paging_token))
+            clouds_query=dict(
+                paging=dict(count=50, paging_token=paging_token)))
+
         paging_token = result.metadata.next_paging_token
 
         for res in result.results:
@@ -672,13 +674,6 @@ def find_cloud_by_name(sdk: AnyscaleSDK, cloud_name: str,
 
         if not paging_token or cloud_id or not len(result.results):
             break
-
-        # TODO: Currently the sdk.search_clouds API does not work
-        # and always returns the same 10 results. Thus we break here
-        # - if the cloud is not found in the first 10 results, this will
-        # throw an error downstream. Remove this comment and break in the next
-        # line once the issue is resolved.
-        break
 
     return cloud_id
 
@@ -805,6 +800,20 @@ def create_or_find_app_config(
             logger.info(f"App config created with ID {app_config_id}")
 
     return app_config_id, app_config_name
+
+
+def run_bash_script(local_dir: str, bash_script: str):
+    previous_dir = os.getcwd()
+
+    bash_script_local_dir = os.path.dirname(bash_script)
+    file_name = os.path.basename(bash_script)
+
+    full_local_dir = os.path.join(local_dir, bash_script_local_dir)
+    os.chdir(full_local_dir)
+
+    subprocess.run("./" + file_name, shell=True, check=True)
+
+    os.chdir(previous_dir)
 
 
 def install_app_config_packages(app_config: Dict[Any, Any]):
@@ -1939,6 +1948,11 @@ def run_test(test_config_file: str,
                 "Saving artifacts are not yet supported when running with "
                 "Anyscale connect.")
 
+    # Perform necessary driver side setup.
+    driver_setup_script = test_config.get("driver_setup", None)
+    if driver_setup_script:
+        run_bash_script(local_dir, driver_setup_script)
+
     result = run_test_config(
         local_dir,
         project_id,
@@ -1989,22 +2003,25 @@ def run_test(test_config_file: str,
             category=category,
         )
 
-        # Check if result are met
-        alert = maybe_get_alert_for_result(report_kwargs)
+        if not has_errored(result):
+            # Check if result are met if test succeeded
+            alert = maybe_get_alert_for_result(report_kwargs)
 
-        if alert:
-            # If we get an alert, the test failed.
-            logger.error(f"Alert has been raised for {test_suite}/{test_name} "
-                         f"({category}): {alert}")
-            result["status"] = "error (alert raised)"
-            report_kwargs["status"] = "error (alert raised)"
+            if alert:
+                # If we get an alert, the test failed.
+                logger.error(f"Alert has been raised for "
+                             f"{test_suite}/{test_name} "
+                             f"({category}): {alert}")
+                result["status"] = "error (alert raised)"
+                report_kwargs["status"] = "error (alert raised)"
 
-            # For printing/reporting to the database
-            report_kwargs["last_logs"] = alert
-            last_logs = alert
-        else:
-            logger.info(f"No alert raised for test {test_suite}/{test_name} "
-                        f"({category}) - the test successfully passed!")
+                # For printing/reporting to the database
+                report_kwargs["last_logs"] = alert
+                last_logs = alert
+            else:
+                logger.info(f"No alert raised for test "
+                            f"{test_suite}/{test_name} "
+                            f"({category}) - the test successfully passed!")
 
         if report:
             report_result(**report_kwargs)

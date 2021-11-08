@@ -191,7 +191,7 @@ class TaskID : public BaseID<TaskID> {
   static TaskID ForDriverTask(const JobID &job_id);
 
   /// Generate driver task id for the given job.
-  static TaskID ForFakeTask();
+  static TaskID FromRandom(const JobID &job_id);
 
   /// Creates a TaskID for an actor creation task.
   ///

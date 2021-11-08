@@ -29,8 +29,19 @@ namespace core {
 // be better to use a mock clock or lease manager interface, but that's high
 // overhead for the very simple timeout logic we currently have.
 int64_t kLongTimeout = 1024 * 1024 * 1024;
+
 TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &resources,
-                                const FunctionDescriptor &function_descriptor);
+                                const FunctionDescriptor &function_descriptor,
+                                int64_t depth = 0,
+                                std::string serialized_runtime_env = "") {
+  TaskSpecBuilder builder;
+  rpc::Address empty_address;
+  builder.SetCommonTaskSpec(
+      TaskID::Nil(), "dummy_task", Language::PYTHON, function_descriptor, JobID::Nil(),
+      TaskID::Nil(), 0, TaskID::Nil(), empty_address, 1, resources, resources,
+      std::make_pair(PlacementGroupID::Nil(), -1), true, serialized_runtime_env, depth);
+  return builder.Build();
+}
 // Calls BuildTaskSpec with empty resources map and empty function descriptor
 TaskSpecification BuildEmptyTaskSpec();
 
@@ -110,7 +121,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
   }
 
   bool PendingTaskFailed(
-      const TaskID &task_id, rpc::ErrorType error_type, Status *status,
+      const TaskID &task_id, rpc::ErrorType error_type, const Status *status,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr,
       bool immediately_mark_object_fail = true) override {
     num_tasks_failed++;
@@ -492,17 +503,6 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
   ASSERT_EQ(task_finisher->num_contained_ids, 2);
 }
 
-TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &resources,
-                                const FunctionDescriptor &function_descriptor) {
-  TaskSpecBuilder builder;
-  rpc::Address empty_address;
-  builder.SetCommonTaskSpec(TaskID::Nil(), "dummy_task", Language::PYTHON,
-                            function_descriptor, JobID::Nil(), TaskID::Nil(), 0,
-                            TaskID::Nil(), empty_address, 1, resources, resources,
-                            std::make_pair(PlacementGroupID::Nil(), -1), true, "");
-  return builder.Build();
-}
-
 TaskSpecification BuildEmptyTaskSpec() {
   std::unordered_map<std::string, double> empty_resources;
   FunctionDescriptor empty_descriptor =
@@ -520,9 +520,9 @@ TEST(DirectTaskTransportTest, TestSubmitOneTask) {
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
-                                          lease_policy, store, task_finisher,
-                                          NodeID::Nil(), kLongTimeout, actor_creator);
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil());
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
@@ -561,9 +561,9 @@ TEST(DirectTaskTransportTest, TestRetryTaskApplicationLevelError) {
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
-                                          lease_policy, store, task_finisher,
-                                          NodeID::Nil(), kLongTimeout, actor_creator);
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil());
   TaskSpecification task = BuildEmptyTaskSpec();
   task.GetMutableMessage().set_retry_exceptions(true);
 
@@ -608,9 +608,9 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
-                                          lease_policy, store, task_finisher,
-                                          NodeID::Nil(), kLongTimeout, actor_creator);
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil());
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -642,7 +642,7 @@ TEST(DirectTaskTransportTest, TestConcurrentWorkerLeases) {
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
-      NodeID::Nil(), kLongTimeout, actor_creator, 1, absl::nullopt, 2);
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil(), 1, absl::nullopt, 2);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -711,7 +711,7 @@ TEST(DirectTaskTransportTest, TestSubmitMultipleTasks) {
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
-      NodeID::Nil(), kLongTimeout, actor_creator, 1, absl::nullopt, 1);
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil(), 1, absl::nullopt, 1);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -773,7 +773,7 @@ TEST(DirectTaskTransportTest, TestReuseWorkerLease) {
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
-      NodeID::Nil(), kLongTimeout, actor_creator, 1, absl::nullopt, 1);
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil(), 1, absl::nullopt, 1);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -836,7 +836,7 @@ TEST(DirectTaskTransportTest, TestRetryLeaseCancellation) {
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
-      NodeID::Nil(), kLongTimeout, actor_creator, 1, absl::nullopt, 1);
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil(), 1, absl::nullopt, 1);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -892,9 +892,9 @@ TEST(DirectTaskTransportTest, TestConcurrentCancellationAndSubmission) {
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
-                                          lease_policy, store, task_finisher,
-                                          NodeID::Nil(), kLongTimeout, actor_creator);
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil());
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -949,7 +949,7 @@ TEST(DirectTaskTransportTest, TestWorkerNotReusedOnError) {
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
-      NodeID::Nil(), kLongTimeout, actor_creator, 1, absl::nullopt, 1);
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil(), 1, absl::nullopt, 1);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
 
@@ -993,9 +993,9 @@ TEST(DirectTaskTransportTest, TestWorkerNotReturnedOnExit) {
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
-                                          lease_policy, store, task_finisher,
-                                          NodeID::Nil(), kLongTimeout, actor_creator);
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil());
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
@@ -1040,7 +1040,7 @@ TEST(DirectTaskTransportTest, TestSpillback) {
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, lease_client_factory, lease_policy, store,
-      task_finisher, NodeID::Nil(), kLongTimeout, actor_creator);
+      task_finisher, NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil());
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1104,7 +1104,7 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
   auto lease_policy = std::make_shared<MockLeasePolicy>(local_raylet_id);
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, lease_client_factory, lease_policy, store,
-      task_finisher, local_raylet_id, kLongTimeout, actor_creator);
+      task_finisher, local_raylet_id, kLongTimeout, actor_creator, JobID::Nil());
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1165,7 +1165,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
-      NodeID::Nil(), kLongTimeout, actor_creator, 1, absl::nullopt, 1);
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil(), 1, absl::nullopt, 1);
 
   ASSERT_TRUE(submitter.SubmitTask(same1).ok());
   ASSERT_TRUE(submitter.SubmitTask(same2).ok());
@@ -1215,6 +1215,7 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
 }
 
 TEST(DirectTaskTransportTest, TestSchedulingKeys) {
+  RayConfig::instance().complex_scheduling_class() = true;
   auto store = std::make_shared<CoreWorkerMemoryStore>();
 
   std::unordered_map<std::string, double> resources1({{"a", 1.0}});
@@ -1230,11 +1231,23 @@ TEST(DirectTaskTransportTest, TestSchedulingKeys) {
                     BuildTaskSpec(resources1, descriptor1),
                     BuildTaskSpec(resources2, descriptor1));
 
-  // Tasks with different function descriptors do not request different worker leases.
-  RAY_LOG(INFO) << "Test different descriptors";
+  // Tasks with different functions should request different worker leases.
+  RAY_LOG(INFO) << "Test different functions";
   TestSchedulingKey(store, BuildTaskSpec(resources1, descriptor1),
-                    BuildTaskSpec(resources1, descriptor2),
-                    BuildTaskSpec(resources2, descriptor1));
+                    BuildTaskSpec(resources1, descriptor1),
+                    BuildTaskSpec(resources1, descriptor2));
+
+  // Tasks with different depths should request different worker leases.
+  RAY_LOG(INFO) << "Test different depths";
+  TestSchedulingKey(store, BuildTaskSpec(resources1, descriptor1, 0),
+                    BuildTaskSpec(resources1, descriptor1, 0),
+                    BuildTaskSpec(resources1, descriptor1, 1));
+
+  // Tasks with different runtime envs do not request different workers.
+  RAY_LOG(INFO) << "Test different runtimes";
+  TestSchedulingKey(store, BuildTaskSpec(resources1, descriptor1, 0, "a"),
+                    BuildTaskSpec(resources1, descriptor1, 0, "b"),
+                    BuildTaskSpec(resources1, descriptor1, 1, "a"));
 
   ObjectID direct1 = ObjectID::FromRandom();
   ObjectID direct2 = ObjectID::FromRandom();
@@ -1292,7 +1305,7 @@ TEST(DirectTaskTransportTest, TestBacklogReport) {
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
-      NodeID::Nil(), kLongTimeout, actor_creator, 1, absl::nullopt, 1);
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil(), 1, absl::nullopt, 1);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
@@ -1352,7 +1365,7 @@ TEST(DirectTaskTransportTest, TestWorkerLeaseTimeout) {
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
       NodeID::Nil(),
-      /*lease_timeout_ms=*/5, actor_creator, 1, absl::nullopt, 1);
+      /*lease_timeout_ms=*/5, actor_creator, JobID::Nil(), 1, absl::nullopt, 1);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1407,9 +1420,9 @@ TEST(DirectTaskTransportTest, TestKillExecutingTask) {
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
-                                          lease_policy, store, task_finisher,
-                                          NodeID::Nil(), kLongTimeout, actor_creator);
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil());
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1457,9 +1470,9 @@ TEST(DirectTaskTransportTest, TestKillPendingTask) {
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
-                                          lease_policy, store, task_finisher,
-                                          NodeID::Nil(), kLongTimeout, actor_creator);
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil());
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1491,9 +1504,9 @@ TEST(DirectTaskTransportTest, TestKillResolvingTask) {
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
-  CoreWorkerDirectTaskSubmitter submitter(address, raylet_client, client_pool, nullptr,
-                                          lease_policy, store, task_finisher,
-                                          NodeID::Nil(), kLongTimeout, actor_creator);
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil());
   TaskSpecification task = BuildEmptyTaskSpec();
   ObjectID obj1 = ObjectID::FromRandom();
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());
@@ -1531,8 +1544,8 @@ TEST(DirectTaskTransportTest, TestPipeliningConcurrentWorkerLeases) {
   uint32_t max_tasks_in_flight_per_worker = 10;
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
-      NodeID::Nil(), kLongTimeout, actor_creator, max_tasks_in_flight_per_worker,
-      absl::nullopt, 1);
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil(),
+      max_tasks_in_flight_per_worker, absl::nullopt, 1);
 
   // Prepare 20 tasks and save them in a vector.
   std::vector<TaskSpecification> tasks;
@@ -1606,8 +1619,8 @@ TEST(DirectTaskTransportTest, TestPipeliningReuseWorkerLease) {
   uint32_t max_tasks_in_flight_per_worker = 10;
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
-      NodeID::Nil(), kLongTimeout, actor_creator, max_tasks_in_flight_per_worker,
-      absl::nullopt, 2);
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil(),
+      max_tasks_in_flight_per_worker, absl::nullopt, 2);
 
   // prepare 30 tasks and save them in a vector
   std::vector<TaskSpecification> tasks;
@@ -1698,8 +1711,8 @@ TEST(DirectTaskTransportTest, TestPipeliningNumberOfWorkersRequested) {
   uint32_t max_tasks_in_flight_per_worker = 10;
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
-      NodeID::Nil(), kLongTimeout, actor_creator, max_tasks_in_flight_per_worker,
-      absl::nullopt, 1);
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil(),
+      max_tasks_in_flight_per_worker, absl::nullopt, 1);
 
   // prepare 30 tasks and save them in a vector
   std::vector<TaskSpecification> tasks;
@@ -1884,8 +1897,8 @@ TEST(DirectTaskTransportTest, TestStealingTasks) {
   uint32_t max_tasks_in_flight_per_worker = 10;
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
-      NodeID::Nil(), kLongTimeout, actor_creator, max_tasks_in_flight_per_worker,
-      absl::nullopt, 1);
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil(),
+      max_tasks_in_flight_per_worker, absl::nullopt, 1);
 
   // prepare 20 tasks and save them in a vector
   std::vector<TaskSpecification> tasks;
@@ -2065,8 +2078,8 @@ TEST(DirectTaskTransportTest, TestNoStealingByExpiredWorker) {
   uint32_t max_tasks_in_flight_per_worker = 10;
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
-      NodeID::Nil(), 1000, actor_creator, max_tasks_in_flight_per_worker, absl::nullopt,
-      1);
+      NodeID::Nil(), 1000, actor_creator, JobID::Nil(), max_tasks_in_flight_per_worker,
+      absl::nullopt, 1);
 
   // prepare 30 tasks and save them in a vector
   std::vector<TaskSpecification> tasks;
@@ -2204,8 +2217,8 @@ TEST(DirectTaskTransportTest, TestNoWorkerRequestedIfStealingUnavailable) {
   uint32_t max_tasks_in_flight_per_worker = 10;
   CoreWorkerDirectTaskSubmitter submitter(
       address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
-      NodeID::Nil(), kLongTimeout, actor_creator, max_tasks_in_flight_per_worker,
-      absl::nullopt, 2);
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil(),
+      max_tasks_in_flight_per_worker, absl::nullopt, 2);
 
   // prepare 10 tasks and save them in a vector
   std::vector<TaskSpecification> tasks;

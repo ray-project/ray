@@ -214,6 +214,9 @@ public interface RayRuntime {
    */
   Map<String, List<ResourceValue>> getAvailableResourceIds();
 
+  /** Get the namespace of this job. */
+  String getNamespace();
+
   /**
    * Get a placement group by id.
    *
