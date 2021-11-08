@@ -759,8 +759,8 @@ class Policy(metaclass=ABCMeta):
             SampleBatch.EPS_ID: ViewRequirement(),
             SampleBatch.UNROLL_ID: ViewRequirement(),
             SampleBatch.AGENT_INDEX: ViewRequirement(),
-            "t": ViewRequirement(),
             SampleBatch.OBS_EMBEDS: ViewRequirement(),
+            "t": ViewRequirement(),
         }
 
     def _initialize_loss_from_dummy_batch(

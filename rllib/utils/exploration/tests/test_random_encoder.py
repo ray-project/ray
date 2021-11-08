@@ -4,10 +4,12 @@ from parameterized import parameterized
 
 import ray
 from ray.rllib.agents import ppo, sac
+from ray.rllib.utils.exploration.random_encoder import RE3UpdateCallbacks
 
 
 class TestRE3(unittest.TestCase):
     """Tests for RE3 exploration algorithm."""
+
     @classmethod
     def setUpClass(cls):
         ray.init()
@@ -30,7 +32,13 @@ class TestRE3(unittest.TestCase):
             config = sac.DEFAULT_CONFIG.copy()
             trainer_cls = sac.SACTrainer
             beta_schedule = "linear_decay"
+
+        class RE3Callbacks(RE3UpdateCallbacks, config["callbacks"]):
+            pass
+
         config["env"] = "LunarLanderContinuous-v2"
+        config["seed"] = 12345
+        config["callbacks"] = RE3Callbacks
         config["exploration_config"] = {
             "type": "RE3",
             "embeds_dim": 128,
