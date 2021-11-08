@@ -1,8 +1,8 @@
 import time
 
 from ray import serve
-from ray.serve.backend_state import (SLOW_STARTUP_WARNING_S,
-                                     SLOW_STARTUP_WARNING_PERIOD_S)
+from ray.serve.deployment_state import (SLOW_STARTUP_WARNING_S,
+                                        SLOW_STARTUP_WARNING_PERIOD_S)
 
 
 def test_slow_allocation_warning(serve_instance, capsys):

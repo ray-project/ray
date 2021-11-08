@@ -49,7 +49,11 @@ def setup_anyscale_cluster(checkpoint_path: str = DEFAULT_CHECKPOINT_PATH):
     # TODO: Ray client didn't work with releaser script yet because
     # we cannot connect to anyscale cluster from its headnode
     # ray.client().env({}).connect()
-    ray.init(address="auto")
+    ray.init(
+        address="auto",
+        runtime_env={"env_vars": {
+            "SERVE_ENABLE_SCALING_LOG": "1"
+        }})
     serve_client = serve.start(
         http_options={"location": DeploymentMode.EveryNode},
         _checkpoint_path=checkpoint_path,
