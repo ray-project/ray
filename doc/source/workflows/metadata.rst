@@ -121,3 +121,70 @@ And you can also do this in a nested fashion:
     assert workflow.get_metadata("counter", "incr_3")["user_metadata"] == {"current_n": 3}
     assert workflow.get_metadata("counter", "incr_4")["user_metadata"] == {"current_n": 4}
 
+Notes
+-----
+1. Unlike ``get_output()``, ``get_metadata()`` returns an immediate
+result for the time it is called, this also means not all fields will
+be available in the result if corresponding metadata is not available
+(e.g. ``metadata["stats"]["end_time"]`` won't be available until the workflow
+is completed).
+
+.. code-block:: python
+
+    @workflow.step
+    def simple():
+        flag.touch() # touch a file here
+        time.sleep(1000)
+        return 0
+
+    simple.step().run_async(workflow_id)
+
+    # make sure workflow step starts running
+    while not flag.exists():
+        time.sleep(1)
+
+    workflow_metadata = workflow.get_metadata(workflow_id)
+    assert workflow_metadata["status"] == "RUNNING"
+    assert "start_time" in workflow_metadata["stats"]
+    assert "end_time" not in workflow_metadata["stats"]
+
+    workflow.cancel(workflow_id)
+
+    workflow_metadata = workflow.get_metadata(workflow_id)
+    assert workflow_metadata["status"] == "CANCELED"
+    assert "start_time" in workflow_metadata["stats"]
+    assert "end_time" not in workflow_metadata["stats"]
+
+2. For resumed workflow, current behavior is that **stats** will
+be updated whenever a workflow is resumed.
+
+.. code-block:: python
+
+    @workflow.step
+    def simple():
+        if error_flag.exists():
+            raise ValueError()
+        return 0
+
+    # create a flag to force step fail
+    error_flag.touch()
+
+    try:
+        simple.step().run(workflow_id)
+
+    workflow_metadata_failed = workflow.get_metadata(workflow_id)
+    assert workflow_metadata_failed["status"] == "FAILED"
+
+    # remove flag to make step success
+    error_flag.unlink()
+    ref = workflow.resume(workflow_id)
+    assert ray.get(ref) == 0
+
+    workflow_metadata_resumed = workflow.get_metadata(workflow_id)
+    assert workflow_metadata_resumed["status"] == "SUCCESSFUL"
+
+    # resume updated running metrics
+    assert workflow_metadata_resumed["stats"]["start_time"] \
+           > workflow_metadata_failed["stats"]["start_time"]
+    assert workflow_metadata_resumed["stats"]["end_time"] \
+           > workflow_metadata_failed["stats"]["end_time"]
