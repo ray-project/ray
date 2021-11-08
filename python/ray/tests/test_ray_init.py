@@ -72,8 +72,8 @@ class TestRedisPassword:
             host=redis_ip, port=redis_port, password=password)
         assert redis_client.ping()
 
-    @pytest.mark.xfail("avoid_multi_node",
-                       reason="cluster requires multi-node")
+    @pytest.mark.xfail(
+        "avoid_multi_node", reason="cluster requires multi-node")
     def test_redis_password_cluster(self, password, shutdown_only):
         @ray.remote
         def f():

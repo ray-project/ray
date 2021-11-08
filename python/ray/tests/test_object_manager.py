@@ -29,7 +29,7 @@ def create_cluster(num_nodes):
 @pytest.fixture()
 def ray_start_cluster_with_resource():
     if avoid_multi_node:
-        pytest.skip('multi-node not supported')
+        pytest.skip("multi-node not supported")
     num_nodes = 5
     cluster = create_cluster(num_nodes)
     yield cluster, num_nodes

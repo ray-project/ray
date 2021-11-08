@@ -37,8 +37,8 @@ def get_config():
 
 
 class KubernetesTest(unittest.TestCase):
-    @pytest.mark.xfail("avoid_multi_node",
-                       reason="cluster requires multi-node")
+    @pytest.mark.xfail(
+        "avoid_multi_node", reason="cluster requires multi-node")
     def test_up_and_down(self):
         """(1) Runs 'ray up' with a Kubernetes config that specifies
         min_workers=1.

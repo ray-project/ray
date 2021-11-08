@@ -101,7 +101,7 @@ def ray_start_regular_shared(request):
     }])
 def ray_start_shared_local_modes(request):
     param = getattr(request, "param", {})
-    if params["local_mode"] is False and os.name == "nt":
+    if param["local_mode"] is False and os.name == "nt":
         pytest.skip("multi-node not supported on windows")
     with _ray_start(**param) as res:
         yield res

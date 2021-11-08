@@ -358,6 +358,7 @@ def test_identical_function_names(ray_start_regular):
     assert result_values == num_calls * [5]
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Flaky on windows")
 def test_illegal_api_calls(ray_start_regular):
 
     # Verify that we cannot call put on an ObjectRef.
@@ -395,7 +396,7 @@ def test_multithreading(ray_start_2_cpus):
             time.sleep(delay_ms / 1000.0)
         return value
 
-    def test_api_in_multi_threads():
+    def test_api_in_multi_threads_base():
         """Test using Ray api in multiple threads."""
 
         @ray.remote
@@ -429,6 +430,7 @@ def test_multithreading(ray_start_2_cpus):
 
         run_test_in_multi_threads(test_put_and_get)
 
+    def test_api_in_multi_threads_wait():
         # Test multiple threads waiting for objects.
         num_wait_objects = 10
         objects = [
@@ -447,15 +449,24 @@ def test_multithreading(ray_start_2_cpus):
         run_test_in_multi_threads(test_wait, num_repeats=1)
 
     # Run tests in a driver.
-    test_api_in_multi_threads()
+    test_api_in_multi_threads_base()
+    if sys.platform != "win32":
+        test_api_in_multi_threads_wait()
 
     # Run tests in a worker.
     @ray.remote
-    def run_tests_in_worker():
-        test_api_in_multi_threads()
+    def run_tests_in_worker_base():
+        test_api_in_multi_threads_base()
         return "ok"
 
-    assert ray.get(run_tests_in_worker.remote()) == "ok"
+    @ray.remote
+    def run_tests_in_worker_wait():
+        test_api_in_multi_threads_wait()
+        return "ok"
+
+    if sys.platform != "win32":
+        assert ray.get(run_tests_in_worker_base.remote()) == "ok"
+        assert ray.get(run_tests_in_worker_wait.remote()) == "ok"
 
     # Test actor that runs background threads.
     @ray.remote
@@ -503,9 +514,10 @@ def test_multithreading(ray_start_2_cpus):
             assert self.thread_results == ["ok"] * len(self.threads)
             return "ok"
 
-    actor = MultithreadedActor.remote()
-    actor.spawn.remote()
-    ray.get(actor.join.remote()) == "ok"
+    if sys.platform != "win32":
+        actor = MultithreadedActor.remote()
+        actor.spawn.remote()
+        ray.get(actor.join.remote()) == "ok"
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
