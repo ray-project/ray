@@ -516,20 +516,12 @@ class RayTrialExecutor(TrialExecutor):
                         logger.exception(
                             "Trial %s: updating resources timed out.", trial)
 
-    def _stop_trial(self,
-                    trial: Trial,
-                    error=False,
-                    error_msg=None,
-                    destroy_pg_if_cannot_replace=True):
+    def _stop_trial(self, trial: Trial, error=False, error_msg=None):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
         trial fails, the run will be marked as terminated in error, but no
         exception will be thrown.
-
-        If the placement group will be used right away
-        (destroy_pg_if_cannot_replace=False), we do not remove its placement
-        group (or a surrogate placement group).
 
         Args:
             error (bool): Whether to mark this trial as terminated in error.
@@ -629,18 +621,9 @@ class RayTrialExecutor(TrialExecutor):
     def stop_trial(self,
                    trial: Trial,
                    error: bool = False,
-                   error_msg: Optional[str] = None,
-                   destroy_pg_if_cannot_replace: bool = True) -> None:
-        """Only returns resources if resources allocated.
-
-        If destroy_pg_if_cannot_replace is False, the Trial placement group
-        will not be removed if it can't replace any staging ones."""
+                   error_msg: Optional[str] = None) -> None:
         prior_status = trial.status
-        self._stop_trial(
-            trial,
-            error=error,
-            error_msg=error_msg,
-            destroy_pg_if_cannot_replace=destroy_pg_if_cannot_replace)
+        self._stop_trial(trial, error=error, error_msg=error_msg)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             if not trial.uses_placement_groups:
