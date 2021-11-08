@@ -675,7 +675,7 @@ cache/
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize(
     "working_dir",
-    [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
+    [*REMOTE_URIS, lazy_fixture("tmp_working_dir")])
 def test_runtime_context(start_cluster, working_dir):
     """Tests that the working_dir is propagated in the runtime_context."""
     cluster, address = start_cluster
@@ -683,8 +683,8 @@ def test_runtime_context(start_cluster, working_dir):
 
     def check():
         wd = ray.get_runtime_context().runtime_env["working_dir"]
-        if working_dir == S3_PACKAGE_URI:
-            assert wd == S3_PACKAGE_URI
+        if working_dir in REMOTE_URIS:
+            assert wd == working_dir
         else:
             assert wd.startswith("gcs://_ray_pkg_")
 
