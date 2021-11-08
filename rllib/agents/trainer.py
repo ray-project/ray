@@ -694,7 +694,10 @@ class Trainer(Trainable):
         # setting tracing to True for speedups.
         if tf1 and self.config["framework"] in ["tf2", "tfe"]:
             if self.config["framework"] == "tf2" and tfv < 2:
-                raise ValueError("`framework`=tf2, but tf-version is < 2.0!")
+                raise ValueError(
+                    "You configured `framework`=tf2, but your installed pip "
+                    "tf-version is < 2.0! Make sure your TensorFlow version "
+                    "is >= 2.x.")
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
             logger.info(
