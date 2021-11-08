@@ -457,6 +457,7 @@ class StandardAutoscaler:
         except Exception:
             # We don't need to interrupt the autoscaler update with an
             # exception, but we should log what went wrong.
+            self.prom_metrics.drain_node_exceptions.inc()
             logger.exception("Failed to drain Ray nodes. Traceback follows.")
 
     def launch_required_nodes(self, to_launch: Dict[NodeType, int]) -> None:
