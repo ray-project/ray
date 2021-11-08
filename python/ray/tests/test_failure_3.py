@@ -1,8 +1,5 @@
-import threading
 import os
 import sys
-import random
-import string
 
 import ray
 
@@ -11,7 +8,6 @@ import pytest
 import time
 
 from ray._private.test_utils import SignalActor
-from ray.data.impl.progress_bar import ProgressBar
 
 
 @pytest.mark.parametrize(
@@ -108,69 +104,6 @@ def test_async_actor_task_retries(ray_start_regular):
     ray.get(signal.send.remote())
     assert ray.get(ref_1) == 1
     assert ray.get(ref_3) == 3
-
-
-def test_task_retry_mini_integration(ray_start_cluster):
-    """Test nested tasks with infinite retry and
-        keep killing nodes while retrying is happening.
-
-        It is the sanity check test for larger scale chaos testing.
-    """
-    cluster = ray_start_cluster
-    NUM_NODES = 3
-    NUM_CPUS = 8
-    # head node.
-    cluster.add_node(num_cpus=0, resources={"head": 1})
-    ray.init(address=cluster.address)
-    workers = []
-    for _ in range(NUM_NODES):
-        workers.append(
-            cluster.add_node(num_cpus=NUM_CPUS, resources={"worker": 1}))
-
-    @ray.remote(max_retries=-1, resources={"worker": 0.1})
-    def task():
-        def generate_data(size_in_kb=10):
-            return np.zeros(1024 * size_in_kb, dtype=np.uint8)
-
-        a = ""
-        for _ in range(100000):
-            a = a + random.choice(string.ascii_letters)
-        return generate_data(size_in_kb=50)
-
-    @ray.remote(max_retries=-1, resources={"worker": 0.1})
-    def invoke_nested_task():
-        time.sleep(0.8)
-        return ray.get(task.remote())
-
-    # 50MB of return values.
-    TOTAL_TASKS = 500
-
-    def run_chaos_test():
-        # Chaos testing.
-        pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS)
-        results = [invoke_nested_task.remote() for _ in range(TOTAL_TASKS)]
-        start = time.time()
-        pb.block_until_complete(results)
-        runtime_with_failure = time.time() - start
-        print(f"Runtime when there are many failures: {runtime_with_failure}")
-        pb.close()
-
-    x = threading.Thread(target=run_chaos_test)
-    x.start()
-
-    kill_interval = 2
-    start = time.time()
-    while True:
-        worker_to_kill = workers.pop(0)
-        pid = worker_to_kill.all_processes["raylet"][0].process.pid
-        # SIGKILL
-        os.kill(pid, 9)
-        workers.append(
-            cluster.add_node(num_cpus=NUM_CPUS, resources={"worker": 1}))
-        time.sleep(kill_interval)
-        if time.time() - start > 30:
-            break
-    x.join()
 
 
 if __name__ == "__main__":

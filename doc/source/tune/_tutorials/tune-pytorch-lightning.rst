@@ -68,15 +68,10 @@ Lastly, we added a new metric, the validation accuracy, to the logs.
 And that's it! You can now run ``train_mnist(config)`` to train the classifier, e.g.
 like so:
 
-.. code-block:: python
-
-    config = {
-        "layer_1_size": 128,
-        "layer_2_size": 256,
-        "lr": 1e-3,
-        "batch_size": 64
-    }
-    train_mnist(config)
+.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
+   :language: python
+   :start-after: __no_tune_train_begin__
+   :end-before: __no_tune_train_end__
 
 Tuning the model parameters
 ---------------------------
@@ -97,7 +92,7 @@ First, we need some additional imports:
 Talking to Tune with a PyTorch Lightning callback
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-PyTorch Lightning introduced `Callbacks <https://pytorch-lightning.readthedocs.io/en/latest/callbacks.html>`_
+PyTorch Lightning introduced `Callbacks <https://pytorch-lightning.readthedocs.io/en/latest/extensions/callbacks.html>`_
 that can be used to plug custom functions into the training loop. This way the original
 ``LightningModule`` does not have to be altered at all. Also, we could use the same
 callback for multiple modules.
@@ -105,13 +100,12 @@ callback for multiple modules.
 Ray Tune comes with ready-to-use PyTorch Lightning callbacks. To report metrics
 back to Tune after each validation epoch, we will use the ``TuneReportCallback``:
 
-.. code-block:: python
-
-    from ray.tune.integration.pytorch_lightning import TuneReportCallback
-    callback = TuneReportCallback({
-        "loss": "avg_val_loss",
-        "mean_accuracy": "avg_val_accuracy"
-    }, on="validation_end")
+.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
+   :language: python
+   :start-after: __tune_train_begin__
+   :end-before: __tune_train_end__
+   :lines: 12-17
+   :dedent: 12
 
 This callback will take the ``avg_val_loss`` and ``avg_val_accuracy`` values
 from the PyTorch Lightning trainer and report them to Tune as the ``loss``
@@ -135,6 +129,8 @@ TensorBoard, one time for Tune's logs, and another time for PyTorch Lightning's 
    :language: python
    :start-after: __tune_train_begin__
    :end-before: __tune_train_end__
+   :lines: 2-8
+   :dedent: 4
 
 
 Configuring the search space
@@ -283,13 +279,12 @@ another callback to save model checkpoints. Since Tune requires a call to
 ``tune.report()`` after creating a new checkpoint to register it, we will use
 a combined reporting and checkpointing callback:
 
-.. code-block:: python
-
-    from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
-    callback = TuneReportCheckpointCallback(
-        metrics={"loss": "val_loss", "mean_accuracy": "val_accuracy"},
-        filename="checkpoint",
-        on="validation_end")
+.. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
+   :language: python
+   :start-after: __tune_train_checkpoint_begin__
+   :end-before: __tune_train_checkpoint_end__
+   :lines: 15-21
+   :dedent: 12
 
 The ``checkpoint`` value is the name of the checkpoint file within the
 checkpoint directory.

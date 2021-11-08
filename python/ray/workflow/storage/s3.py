@@ -1,9 +1,9 @@
+import os
 import tempfile
 import json
 import urllib.parse as parse
 from botocore.exceptions import ClientError
 import aioboto3
-import itertools
 import ray
 from typing import Any, List
 from ray.workflow.storage.base import Storage, KeyNotFoundError
@@ -45,7 +45,7 @@ class S3StorageImpl(Storage):
         self._config = config
 
     def make_key(self, *names: str) -> str:
-        return "/".join(itertools.chain([self._s3_path], names))
+        return os.path.join(self._s3_path, *names)
 
     async def put(self, key: str, data: Any, is_json: bool = False) -> None:
         with tempfile.SpooledTemporaryFile(

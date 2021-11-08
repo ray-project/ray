@@ -506,6 +506,69 @@ message PlacementGroupLoad {
   repeated PlacementGroupTableData placement_group_data = 1;
 }
 
+message PlacementGroupStats {
+  // The scheduling state of the placement group.
+  // This is purely for observability and the
+  // information could not be consistent
+  // if GCS restarts.
+  // QUEUED / REMOVED <-----------------------------
+  //          |                                     |
+  // SCHEDULING_STARTED / NO_RESOURCES / INFEASIBLE |
+  //          |                                     |
+  // FINISHED / FAILED_TO_COMMIT_RESOURCES ----------
+  enum SchedulingState {
+    //
+    // Initial scheduling states.
+    //
+    // Queued for scheduling.
+    QUEUED = 0;
+    // Scheduling has cancelled because it is removed.
+    REMOVED = 1;
+
+    //
+    // Scheduling In Progress.
+    //
+    // Scheduling has started.
+    SCHEDULING_STARTED = 2;
+    // Placement group creation failed because there was
+    // no nodes that satisfy resources.
+    NO_RESOURCES = 3;
+    // Placement group creation has failed because the
+    // requested resources are infeasible.
+    INFEASIBLE = 4;
+
+    //
+    // Scheduling Finished.
+    //
+    // Placement group creation failed because there was
+    // an issue commiting resources to nodes
+    // (e.g., node failures).
+    FAILED_TO_COMMIT_RESOURCES = 5;
+    // Scheduling has finished properly.
+    FINISHED = 6;
+  }
+  // The time creation request is first received.
+  int64 creation_request_received_ns = 2;
+  // The time scheduling is started after queuing.
+  int64 scheduling_started_time_ns = 3;
+  // The time from scheduling started <-> scheduling succeeds.
+  int64 scheduling_latency_us = 4;
+  // The time from first request received <-> all placement group
+  // resources are available on all relevant nodes.
+  // end_to_end_creation_latency_us - scheduling_latency_us
+  // == queuing time.
+  int64 end_to_end_creation_latency_us = 5;
+  // The number of time scheduling has attempted on this placement group.
+  uint32 scheduling_attempt = 6;
+  // Scheduler retries the pg scheduling with
+  // exponential backoff delay.
+  // The biggest delay that's ever seen from
+  // this placement group creation process.
+  double highest_retry_delay_ms = 7;
+  // The cause of placement group creation failure.
+  SchedulingState scheduling_state = 8;
+}
+
 message PlacementGroupTableData {
   // State of a placement group.
   enum PlacementGroupState {
@@ -543,5 +606,8 @@ message PlacementGroupTableData {
   bool is_detached = 10;
   // The pg's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
   string ray_namespace = 11;
+  // The placement group's stats / information such as when it is created or
+  // what's the current scheduling state.
+  PlacementGroupStats stats = 12;
 }
 ///////////////////////////////////////////////////////////////////////////////

@@ -68,3 +68,14 @@
   smoke_test:
       run:
         timeout: 2000
+
+# Tests that exercise auto-scaling and Anyscale connect.
+- name: connect_tests
+  cluster:
+    app_config: app_config.yaml
+    compute_template: auto_scale.yaml
+
+  run:
+    use_connect: True
+    timeout: 3000
+    script: python connect_tests/run_connect_tests.py

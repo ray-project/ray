@@ -34,7 +34,7 @@ class HEBOSearch(Searcher):
 
     HEBO is a cutting edge black-box optimization framework created
     by Huawei's Noah Ark. More info can be found here:
-    https://github.com/huawei-noah/noah-research/tree/master/HEBO.
+    https://github.com/huawei-noah/HEBO/tree/master/HEBO.
 
     You will need to install HEBO via the following (dependencies are
     pinned to avoid HEBO 0.1.0 errors):

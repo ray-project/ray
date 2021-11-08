@@ -341,18 +341,20 @@ class ArrowBlockAccessor(BlockAccessor):
         ret.append(_copy_table(table.slice(prev_i)))
         return ret
 
-    def combine(self, key: GroupKeyT, agg: AggregateFn) -> Block[ArrowRow]:
+    def combine(self, key: GroupKeyT,
+                aggs: Tuple[AggregateFn]) -> Block[ArrowRow]:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
 
         Args:
             key: The column name of key or None for global aggregation.
-            agg: The aggregation to do.
+            aggs: The aggregations to do.
 
         Returns:
-            A sorted block of [k, v] columns where k is the groupby key
-            and v is the partially combined accumulator.
+            A sorted block of [k, v_1, ..., v_n] columns where k is the groupby
+            key and v_i is the partially combined accumulator for the ith given
+            aggregation.
             If key is None then the k column is omitted.
         """
         # TODO(jjyao) This can be implemented natively in Arrow
@@ -377,16 +379,35 @@ class ArrowBlockAccessor(BlockAccessor):
                             next_row = None
                             break
 
-                accumulator = agg.init(next_key)
+                # Accumulate.
+                accumulators = [agg.init(next_key) for agg in aggs]
                 for r in gen():
-                    accumulator = agg.accumulate(accumulator, r)
-                if key is None:
-                    builder.add({agg.name: accumulator})
-                else:
-                    builder.add({key: next_key, agg.name: accumulator})
+                    for i in range(len(aggs)):
+                        accumulators[i] = aggs[i].accumulate(
+                            accumulators[i], r)
+
+                # Build the row.
+                row = {}
+                if key is not None:
+                    row[key] = next_key
+
+                count = collections.defaultdict(int)
+                for agg, accumulator in zip(aggs, accumulators):
+                    name = agg.name
+                    # Check for conflicts with existing aggregation name.
+                    if count[name] > 0:
+                        name = self._munge_conflict(name, count[name])
+                    count[name] += 1
+                    row[name] = accumulator
+
+                builder.add(row)
             except StopIteration:
                 break
         return builder.build()
+
+    @staticmethod
+    def _munge_conflict(name, count):
+        return f"{name}_{count+1}"
 
     @staticmethod
     def merge_sorted_blocks(
@@ -404,7 +425,7 @@ class ArrowBlockAccessor(BlockAccessor):
     @staticmethod
     def aggregate_combined_blocks(
             blocks: List[Block[ArrowRow]], key: GroupKeyT,
-            agg: AggregateFn) -> Tuple[Block[ArrowRow], BlockMetadata]:
+            aggs: Tuple[AggregateFn]) -> Tuple[Block[ArrowRow], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
         This assumes blocks are already sorted by key in ascending order,
@@ -413,12 +434,12 @@ class ArrowBlockAccessor(BlockAccessor):
         Args:
             blocks: A list of partially combined and sorted blocks.
             key: The column name of key or None for global aggregation.
-            agg: The aggregation to do.
+            aggs: The aggregations to do.
 
         Returns:
-            A block of [k, v] columns and its metadata
-            where k is the groupby key
-            and v is the corresponding aggregation result.
+            A block of [k, v_1, ..., v_n] columns and its metadata where k is
+            the groupby key and v_i is the corresponding aggregation result for
+            the ith given aggregation.
             If key is None then the k column is omitted.
         """
 
@@ -449,21 +470,38 @@ class ArrowBlockAccessor(BlockAccessor):
                             next_row = None
                             break
 
+                # Merge.
                 first = True
-                accumulator = None
+                accumulators = [None] * len(aggs)
+                resolved_agg_names = [None] * len(aggs)
                 for r in gen():
                     if first:
-                        accumulator = r[agg.name]
+                        count = collections.defaultdict(int)
+                        for i in range(len(aggs)):
+                            name = aggs[i].name
+                            # Check for conflicts with existing aggregation
+                            # name.
+                            if count[name] > 0:
+                                name = ArrowBlockAccessor._munge_conflict(
+                                    name, count[name])
+                            count[name] += 1
+                            resolved_agg_names[i] = name
+                            accumulators[i] = r[name]
                         first = False
                     else:
-                        accumulator = agg.merge(accumulator, r[agg.name])
-                if key is None:
-                    builder.add({agg.name: agg.finalize(accumulator)})
-                else:
-                    builder.add({
-                        next_key_name: next_key,
-                        agg.name: agg.finalize(accumulator)
-                    })
+                        for i in range(len(aggs)):
+                            accumulators[i] = aggs[i].merge(
+                                accumulators[i], r[resolved_agg_names[i]])
+                # Build the row.
+                row = {}
+                if key is not None:
+                    row[next_key_name] = next_key
+
+                for agg, agg_name, accumulator in zip(aggs, resolved_agg_names,
+                                                      accumulators):
+                    row[agg_name] = agg.finalize(accumulator)
+
+                builder.add(row)
             except StopIteration:
                 break
 

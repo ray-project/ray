@@ -95,9 +95,10 @@ class MockReferenceCounter : public ReferenceCounterInterface {
   MOCK_METHOD2(AddLocalReference,
                void(const ObjectID &object_id, const std::string &call_sit));
 
-  MOCK_METHOD3(AddBorrowedObject,
+  MOCK_METHOD4(AddBorrowedObject,
                bool(const ObjectID &object_id, const ObjectID &outer_id,
-                    const rpc::Address &owner_address));
+                    const rpc::Address &owner_address,
+                    bool foreign_owner_already_monitoring));
 
   MOCK_METHOD7(AddOwnedObject,
                void(const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
@@ -229,7 +230,7 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
 
   // Sinece RegisterActor happens in a non-owner worker, we should
   // make sure it borrows an object.
-  EXPECT_CALL(*reference_counter_, AddBorrowedObject(_, _, _));
+  EXPECT_CALL(*reference_counter_, AddBorrowedObject(_, _, _, _));
   ActorID returned_actor_id = actor_manager_->RegisterActorHandle(
       std::move(actor_handle), outer_object_id, call_site, caller_address);
   ASSERT_TRUE(returned_actor_id == actor_id);

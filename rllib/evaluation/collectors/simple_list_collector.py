@@ -441,7 +441,7 @@ class _PolicyCollector:
         batch = SampleBatch.concat_samples(self.batches)
         # Clear batches for future samples.
         self.batches = []
-        # Reset agent steps to 0 and seq-lens to empty list.
+        # Reset agent steps to 0.
         self.agent_steps = 0
         return batch
 
@@ -773,6 +773,7 @@ class SimpleListCollector(SampleCollector):
             if getattr(policy, "exploration", None) is not None:
                 policy.exploration.postprocess_trajectory(
                     policy, post_batches[agent_id], policy.get_session())
+            post_batches[agent_id].set_get_interceptor(None)
             post_batches[agent_id] = policy.postprocess_trajectory(
                 post_batches[agent_id], other_batches, episode)
 
