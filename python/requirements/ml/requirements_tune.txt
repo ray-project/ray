@@ -31,7 +31,7 @@ pytest-remotedata==0.3.2
 lightning-bolts==0.4.0
 pytorch-lightning==1.4.9
 shortuuid==1.0.1
-scikit-learn==0.24.2
+scikit-learn==1.0.1
 scikit-optimize==0.8.1
 sigopt==7.5.0
 smart_open==5.1.0
