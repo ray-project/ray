@@ -1483,7 +1483,7 @@ void ClusterTaskManager::UpdateSchedulingClassWaitTime(
     int64_t exp = current_capacity - allowed_capacity;
     int64_t wait_time = sched_cls_cap_interval_ms_ * (1L << exp);
     sched_cls_info.next_update_time =
-        std::min(get_time_ms_() + wait_time, sched_cls_info.next_update_time);
+      std::min(get_time_ms_() + wait_time, sched_cls_info.next_update_time);
   }
 }
 
