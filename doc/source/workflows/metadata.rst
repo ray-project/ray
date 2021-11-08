@@ -21,7 +21,6 @@ For example:
     workflow_metadata = workflow.get_metadata("add_example")
 
     assert workflow_metadata["status"] == "SUCCESSFUL"
-    assert "user_metadata" in workflow_metadata
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" in workflow_metadata["stats"]
 
@@ -34,10 +33,7 @@ providing the step name:
 
     step_metadata = workflow.get_metadata("add_example_2", name="add_step")
 
-    assert "name" in step_metadata
-    assert step_metadata["step_options"]["step_options"] == "FUNCTION"
-    assert step_metadata["step_options"]["max_retries"] == 3
-    assert "user_metadata" in step_metadata
+    assert "step_options" in step_metadata
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" in workflow_metadata["stats"]
 
@@ -83,12 +79,9 @@ Virtual Actors also support metadata ingestion and retrieval. For example:
     assert workflow.get_metadata("vid", "add")["user_metadata"] == {"k1": "v1"}
     assert workflow.get_metadata("vid", "add_1")["user_metadata"] == {"k2": "v2"}
     assert workflow.get_metadata("vid", "add_2")["user_metadata"] == {"k3": "v3"}
-    assert workflow.get_metadata("vid", "add")["stats"]["end_time"] >= \
-           workflow.get_metadata("vid", "add")["stats"]["start_time"] + 1
-    assert workflow.get_metadata("vid", "add_1")["stats"]["end_time"] >= \
-           workflow.get_metadata("vid", "add_1")["stats"]["start_time"] + 1
-    assert workflow.get_metadata("vid", "add_2")["stats"]["end_time"] >= \
-           workflow.get_metadata("vid", "add_2")["stats"]["start_time"] + 1
+    assert workflow.get_metadata("vid", "add")["stats"]["end_time"] >= workflow.get_metadata("vid", "add")["stats"]["start_time"] + 1
+    assert workflow.get_metadata("vid", "add_1")["stats"]["end_time"] >= workflow.get_metadata("vid", "add_1")["stats"]["start_time"] + 1
+    assert workflow.get_metadata("vid", "add_2")["stats"]["end_time"] >= workflow.get_metadata("vid", "add_2")["stats"]["start_time"] + 1
 
 Notice that if there are multiple steps with the same name, a suffix
 with a counter _n will be added automatically.
