@@ -20,7 +20,7 @@ import ray
 from ray import tune
 
 from ray.rllib.agents.ppo import ppo
-from ray.rllib.examples.simulators.sumo import marlenvironment
+from ray.rllib.examples.external_simulators.sumo import marlenvironment
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 logging.basicConfig(level=logging.WARN)

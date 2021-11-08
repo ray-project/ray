@@ -7,13 +7,11 @@ Includes options for LSTM-based models (--use-lstm), attention-net models
 """
 import argparse
 import gym
-import numpy as np
 import os
 
 import ray
 from ray import tune
 from ray.rllib.agents.registry import get_trainer_class
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -29,17 +27,6 @@ parser.add_argument(
     help="The DL framework specifier.")
 parser.add_argument("--eager-tracing", action="store_true")
 parser.add_argument(
-    "--use-lstm", action="store_true",
-    help="Whether you would like to use a default, LSTM-wrapped model.")
-parser.add_argument(
-    "--use-attention", action="store_true",
-    help="Whether you would like to use a default, attention (GTrXL)-"
-         "wrapped model.")
-parser.add_argument(
-    "--explore-during-inference", action="store_true",
-    help="Whether the trained policy should use exploration during action "
-         "inference.")
-parser.add_argument(
     "--stop-iters",
     type=int,
     default=200,
@@ -54,6 +41,16 @@ parser.add_argument(
     type=float,
     default=150.0,
     help="Reward at which we stop training before we do inference.")
+parser.add_argument(
+    "--explore-during-inference",
+    action="store_true",
+    help="Whether the trained policy should use exploration during action "
+    "inference.")
+parser.add_argument(
+    "--num-episodes-during-inference",
+    type=int,
+    default=10,
+    help="Number of episodes to do inference over after training.")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -64,10 +61,6 @@ if __name__ == "__main__":
         "env": "FrozenLake-v1",
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-        "model": {
-            "use_lstm": args.use_lstm,
-            "use_attantion": args.use_attention,
-        },
         "framework": args.framework,
         # Run with tracing enabled for tfe/tf2?
         "eager_tracing": args.eager_tracing,
@@ -80,7 +73,14 @@ if __name__ == "__main__":
     }
 
     print("Training policy until desired reward/timesteps/iterations. ...")
-    results = tune.run(args.run, config=config, stop=stop, verbose=2)
+    results = tune.run(
+        args.run,
+        config=config,
+        stop=stop,
+        verbose=2,
+        checkpoint_freq=1,
+        checkpoint_at_end=True,
+    )
 
     print("Training completed. Restoring new Trainer for action inference.")
     # Get the last checkpoint from the above training run.
@@ -93,34 +93,12 @@ if __name__ == "__main__":
     env = gym.make("FrozenLake-v1")
     obs = env.reset()
 
-    # In case the model needs previous-reward/action inputs, keep track of
-    # these via these variables here (we'll have to pass them into the
-    # compute_actions methods below).
-    init_prev_a = prev_a = None
-    init_prev_r = prev_r = None
+    num_episodes = 0
 
-    # Set some initial internal state, in case we are using an RNN-model
-    # (LSTM or attention net).
-    init_state = state = None
-    if args.use_lstm:
-        lstm_cell_size = config["model"]["lstm_cell_size"]
-        # range(2) b/c h- and c-states of the LSTM.
-        init_state = state = [
-            np.zeros([lstm_cell_size], np.float32) for _ in range(2)
-        ]
-        init_prev_a = prev_a = 0
-        init_prev_r = prev_r = 0.0
-    elif args.use_attention:
-        init_prev_a = prev_a = 0
-        init_prev_r = prev_r = 0.0
-
-    while True:
+    while num_episodes < args.num_episodes_during_inference:
         # Compute an action (`a`).
         a, state_out, _ = trainer.compute_single_action(
             observation=obs,
-            state=state,
-            previous_action=prev_a,
-            previous_reward=prev_r,
             explore=args.explore_during_inference,
             policy_id="default_policy",  # <- default value
         )
@@ -129,14 +107,6 @@ if __name__ == "__main__":
         # Is the episode `done`? -> Reset.
         if done:
             obs = env.reset()
-            state = init_state
-            prev_a = init_prev_a
-            prev_r = init_prev_r
-        # Episode is still ongoing -> Continue.
-        else:
-            state = state_out
-            if init_prev_a is not None:
-                prev_a = a
-                prev_r = reward
+            num_episodes += 1
 
     ray.shutdown()
