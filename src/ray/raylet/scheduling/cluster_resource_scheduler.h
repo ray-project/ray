@@ -415,9 +415,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   bool SubtractRemoteNodeAvailableResources(int64_t node_id,
                                             const ResourceRequest &resource_request);
 
-  /// Get mutable local node resources.
-  NodeResources *GetMutableLocalNodeResources();
-
   /// The threshold at which to switch from packing to spreading.
   const float spread_threshold_;
   /// List of nodes in the clusters and their resources organized as a map.

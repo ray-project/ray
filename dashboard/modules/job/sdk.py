@@ -10,12 +10,12 @@ from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
 from ray._private.job_manager import JobStatus
 from ray.dashboard.modules.job.data_types import (
-    GetPackageResponse, JobSubmitRequest, JobSubmitResponse, JobStatusResponse,
-    JobLogsResponse)
+    GetPackageResponse, JobSubmitRequest, JobSubmitResponse, JobStopResponse,
+    JobStatusResponse, JobLogsResponse)
 
 from ray.dashboard.modules.job.job_head import (
-    JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STATUS,
-    JOBS_API_ROUTE_PACKAGE)
+    JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP,
+    JOBS_API_ROUTE_STATUS, JOBS_API_ROUTE_PACKAGE)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -46,7 +46,6 @@ class JobSubmissionClient:
                      f"json: {json_data}, params: {params}.")
         r = requests.request(
             method, url, data=data, json=json_data, params=params)
-
         r.raise_for_status()
         if response_type is None:
             return None
@@ -129,6 +128,14 @@ class JobSubmissionClient:
             json_data=dataclasses.asdict(req),
             response_type=JobSubmitResponse)
         return resp.job_id
+
+    def stop_job(self, job_id: str) -> bool:
+        resp = self._do_request(
+            "POST",
+            JOBS_API_ROUTE_STOP,
+            params={"job_id": job_id},
+            response_type=JobStopResponse)
+        return resp.stopped
 
     def get_job_status(self, job_id: str) -> JobStatus:
         resp = self._do_request(
