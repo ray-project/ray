@@ -348,5 +348,52 @@ def test_listen_on_localhost(ray_start_regular):
                 assert "127.0.0.1" in connection.laddr.ip
 
 
+def test_job_id_consistency(ray_start_regular):
+    @ray.remote
+    def foo():
+        return "bar"
+
+    @ray.remote
+    class Foo:
+        def ping(self):
+            return "pong"
+
+    @ray.remote
+    def verify_job_id(job_id, new_thread):
+        def verify():
+            current_task_id = ray.runtime_context.get_runtime_context().task_id
+            assert job_id == current_task_id.job_id()
+            obj1 = foo.remote()
+            assert job_id == obj1.job_id()
+            obj2 = ray.put(1)
+            assert job_id == obj2.job_id()
+            a = Foo.remote()
+            assert job_id == a._actor_id.job_id
+            obj3 = a.ping.remote()
+            assert job_id == obj3.job_id()
+
+        if not new_thread:
+            verify()
+        else:
+            exc = []
+
+            def run():
+                try:
+                    verify()
+                except BaseException as e:
+                    exc.append(e)
+
+            import threading
+            t = threading.Thread(target=run)
+            t.start()
+            t.join()
+            if len(exc) > 0:
+                raise exc[0]
+
+    job_id = ray.runtime_context.get_runtime_context().job_id
+    ray.get(verify_job_id.remote(job_id, False))
+    ray.get(verify_job_id.remote(job_id, True))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
