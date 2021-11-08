@@ -1797,38 +1797,38 @@ py_test(
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/centralized_critic_tf",
-    main = "examples/multi_agent_and_self_play/centralized_critic.py",
+    name = "examples/centralized_critic_tf",
+    main = "examples/centralized_critic.py",
     tags = ["team:ml", "examples", "examples_C", "examples_C_AtoT"],
     size = "large",
-    srcs = ["examples/multi_agent_and_self_play/centralized_critic.py"],
+    srcs = ["examples/centralized_critic.py"],
     args = ["--as-test", "--stop-reward=7.2"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/centralized_critic_torch",
-    main = "examples/multi_agent_and_self_play/centralized_critic.py",
+    name = "examples/centralized_critic_torch",
+    main = "examples/centralized_critic.py",
     tags = ["team:ml", "examples", "examples_C", "examples_C_AtoT"],
     size = "large",
-    srcs = ["examples/cmulti_agent_and_self_play/entralized_critic.py"],
+    srcs = ["examples/centralized_critic.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=7.2"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/centralized_critic_2_tf",
-    main = "examples/multi_agent_and_self_play/centralized_critic_2.py",
+    name = "examples/centralized_critic_2_tf",
+    main = "examples/centralized_critic_2.py",
     tags = ["team:ml", "examples", "examples_C", "examples_C_AtoT"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/centralized_critic_2.py"],
+    srcs = ["examples/centralized_critic_2.py"],
     args = ["--as-test", "--stop-reward=6.0"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/centralized_critic_2_torch",
-    main = "examples/multi_agent_and_self_play/centralized_critic_2.py",
+    name = "examples/centralized_critic_2_torch",
+    main = "examples/centralized_critic_2.py",
     tags = ["team:ml", "examples", "examples_C", "examples_C_AtoT"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/centralized_critic_2.py"],
+    srcs = ["examples/centralized_critic_2.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=6.0"]
 )
 
@@ -2229,67 +2229,67 @@ py_test(
 # )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/multi_agent_cartpole_tf",
-    main = "examples/multi_agent_and_self_play/multi_agent_cartpole.py",
+    name = "examples/multi_agent_cartpole_tf",
+    main = "examples/multi_agent_cartpole.py",
     tags = ["team:ml", "examples", "examples_M"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/multi_agent_cartpole.py"],
+    srcs = ["examples/multi_agent_cartpole.py"],
     args = ["--as-test", "--stop-reward=70.0", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/multi_agent_cartpole_torch",
-    main = "examples/multi_agent_and_self_play/multi_agent_cartpole.py",
+    name = "examples/multi_agent_cartpole_torch",
+    main = "examples/multi_agent_cartpole.py",
     tags = ["team:ml", "examples", "examples_M"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/multi_agent_cartpole.py"],
+    srcs = ["examples/multi_agent_cartpole.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=70.0", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/multi_agent_custom_policy_tf",
-    main = "examples/multi_agent_and_self_play/multi_agent_custom_policy.py",
+    name = "examples/multi_agent_custom_policy_tf",
+    main = "examples/multi_agent_custom_policy.py",
     tags = ["team:ml", "examples", "examples_M"],
     size = "small",
-    srcs = ["examples/multi_agent_and_self_play/multi_agent_custom_policy.py"],
+    srcs = ["examples/multi_agent_custom_policy.py"],
     args = ["--as-test", "--stop-reward=80"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/multi_agent_custom_policy_torch",
-    main = "examples/multi_agent_and_self_play/multi_agent_custom_policy.py",
+    name = "examples/multi_agent_custom_policy_torch",
+    main = "examples/multi_agent_custom_policy.py",
     tags = ["team:ml", "examples", "examples_M"],
     size = "small",
-    srcs = ["examples/multi_agent_and_self_play/multi_agent_custom_policy.py"],
+    srcs = ["examples/multi_agent_custom_policy.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=80"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/multi_agent_two_trainers_tf",
-    main = "examples/multi_agent_and_self_play/multi_agent_two_trainers.py",
+    name = "examples/multi_agent_two_trainers_tf",
+    main = "examples/multi_agent_two_trainers.py",
     tags = ["team:ml", "examples", "examples_M"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/multi_agent_two_trainers.py"],
+    srcs = ["examples/multi_agent_two_trainers.py"],
     args = ["--as-test", "--stop-reward=70"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/multi_agent_two_trainers_torch",
-    main = "examples/multi_agent_and_self_play/multi_agent_two_trainers.py",
+    name = "examples/multi_agent_two_trainers_torch",
+    main = "examples/multi_agent_two_trainers.py",
     tags = ["team:ml", "examples", "examples_M"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/multi_agent_two_trainers.py"],
+    srcs = ["examples/multi_agent_two_trainers.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=70"]
 )
 
 # Taking out this test for now: Mixed torch- and tf- policies within the same
 # Trainer never really worked.
 # py_test(
-#     name = "examples/multi_agent_and_self_play/multi_agent_two_trainers_mixed_torch_tf",
-#     main = "examples/multi_agent_and_self_play/multi_agent_two_trainers.py",
+#     name = "examples/multi_agent_two_trainers_mixed_torch_tf",
+#     main = "examples/multi_agent_two_trainers.py",
 #     tags = ["team:ml", "examples", "examples_M"],
 #     size = "medium",
-#     srcs = ["examples/multi_agent_and_self_play/multi_agent_two_trainers.py"],
+#     srcs = ["examples/multi_agent_two_trainers.py"],
 #     args = ["--as-test", "--mixed-torch-tf", "--stop-reward=70"]
 # )
 
@@ -2534,38 +2534,38 @@ py_test(
 # Deactivated for now due to open-spiel's dependency on an outdated
 # tensorflow-probability version.
 # py_test(
-#    name = "examples/multi_agent_and_self_play/self_play_with_open_spiel_connect_4_tf",
-#    main = "examples/multi_agent_and_self_play/self_play_with_open_spiel.py",
+#    name = "examples/self_play_with_open_spiel_connect_4_tf",
+#    main = "examples/self_play_with_open_spiel.py",
 #    tags = ["team:ml", "examples", "examples_S"],
 #    size = "medium",
-#    srcs = ["examples/multi_agent_and_self_play/self_play_with_open_spiel.py"],
+#    srcs = ["examples/self_play_with_open_spiel.py"],
 #    args = ["--framework=tf", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
 # )
 
 # py_test(
-#    name = "examples/multi_agent_and_self_play/self_play_with_open_spiel_connect_4_torch",
-#    main = "examples/multi_agent_and_self_play/self_play_with_open_spiel.py",
+#    name = "examples/self_play_with_open_spiel_connect_4_torch",
+#    main = "examples/self_play_with_open_spiel.py",
 #    tags = ["team:ml", "examples", "examples_S"],
 #    size = "medium",
-#    srcs = ["examples/multi_agent_and_self_play/self_play_with_open_spiel.py"],
+#    srcs = ["examples/self_play_with_open_spiel.py"],
 #    args = ["--framework=torch", "--env=connect_four", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
 # )
 
 # py_test(
-#    name = "examples/multi_agent_and_self_play/self_play_league_based_with_open_spiel_markov_soccer_tf",
-#    main = "examples/multi_agent_and_self_play/self_play_league_based_with_open_spiel.py",
+#    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_tf",
+#    main = "examples/self_play_league_based_with_open_spiel.py",
 #    tags = ["team:ml", "examples", "examples_S"],
 #    size = "medium",
-#    srcs = ["examples/multi_agent_and_self_play/self_play_league_based_with_open_spiel.py"],
+#    srcs = ["examples/self_play_league_based_with_open_spiel.py"],
 #    args = ["--framework=tf", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
 # )
 
 # py_test(
-#    name = "examples/multi_agent_and_self_play/self_play_league_based_with_open_spiel_markov_soccer_torch",
-#    main = "examples/multi_agent_and_self_play/self_play_league_based_with_open_spiel.py",
+#    name = "examples/self_play_league_based_with_open_spiel_markov_soccer_torch",
+#    main = "examples/self_play_league_based_with_open_spiel.py",
 #    tags = ["team:ml", "examples", "examples_S"],
 #    size = "medium",
-#    srcs = ["examples/multi_agent_and_self_play/self_play_league_based_with_open_spiel_markov_soccer.py"],
+#    srcs = ["examples/self_play_league_based_with_open_spiel_markov_soccer.py"],
 #    args = ["--framework=torch", "--env=markov_soccer", "--win-rate-threshold=0.6", "--stop-iters=2", "--num-episodes-human-play=0"]
 # )
 
@@ -2624,38 +2624,38 @@ py_test(
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/two_step_game_maddpg",
-    main = "examples/multi_agent_and_self_play/two_step_game.py",
+    name = "examples/two_step_game_maddpg",
+    main = "examples/two_step_game.py",
     tags = ["team:ml", "examples", "examples_T"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/two_step_game.py"],
+    srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--stop-reward=7.1", "--run=contrib/MADDPG"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/two_step_game_pg_tf",
-    main = "examples/multi_agent_and_self_play/two_step_game.py",
+    name = "examples/two_step_game_pg_tf",
+    main = "examples/two_step_game.py",
     tags = ["team:ml", "examples", "examples_T"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/two_step_game.py"],
+    srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--stop-reward=7", "--run=PG"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/two_step_game_pg_torch",
-    main = "examples/multi_agent_and_self_play/two_step_game.py",
+    name = "examples/two_step_game_pg_torch",
+    main = "examples/two_step_game.py",
     tags = ["team:ml", "examples", "examples_T"],
     size = "medium",
-    srcs = ["examples/multi_agent_and_self_play/two_step_game.py"],
+    srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=PG"]
 )
 
 py_test(
-    name = "examples/multi_agent_and_self_play/two_step_game_qmix",
-    main = "examples/multi_agent_and_self_play/two_step_game.py",
+    name = "examples/two_step_game_qmix",
+    main = "examples/two_step_game.py",
     tags = ["team:ml", "examples", "examples_T"],
     size = "large",
-    srcs = ["examples/multi_agent_and_self_play/two_step_game.py"],
+    srcs = ["examples/two_step_game.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=7", "--run=QMIX"]
 )
 
