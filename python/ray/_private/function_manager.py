@@ -24,7 +24,8 @@ from ray._private.utils import (
     ensure_str,
     format_error_message,
 )
-from ray.experimental.internal_kv import _internal_kv_mput, _internal_kv_mget, _internal_kv_exists
+from ray.experimental.internal_kv import (_internal_kv_mput, _internal_kv_mget,
+                                          _internal_kv_exists)
 from ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 from ray.util.inspect import (
     is_function_or_method,
@@ -166,7 +167,8 @@ class FunctionActorManager:
                 "collision_identifier": self.compute_collision_identifier(
                     function),
                 "max_calls": remote_function._max_calls
-            }, namespace=KV_NAMESPACE_FUNCTION_TABLE)
+            },
+            namespace=KV_NAMESPACE_FUNCTION_TABLE)
         self._worker.redis_client.rpush("Exports", key)
 
     def fetch_and_register_remote_function(self, key):
@@ -176,7 +178,8 @@ class FunctionActorManager:
              key, [
                  "job_id", "function_id", "function_name", "function",
                  "module", "max_calls"
-             ], namespace=KV_NAMESPACE_FUNCTION_TABLE)
+             ],
+             namespace=KV_NAMESPACE_FUNCTION_TABLE)
 
         if ray_constants.ISOLATE_EXPORTS and \
                 job_id_str != self._worker.current_job_id.binary():
@@ -359,7 +362,8 @@ class FunctionActorManager:
         """
         # We set the driver ID here because it may not have been available when
         # the actor class was defined.
-        _internal_kv_mput(key, actor_class_info, namespace=KV_NAMESPACE_FUNCTION_TABLE)
+        _internal_kv_mput(
+            key, actor_class_info, namespace=KV_NAMESPACE_FUNCTION_TABLE)
         self._worker.redis_client.rpush("Exports", key)
 
     def export_actor_class(self, Class, actor_creation_function_descriptor,

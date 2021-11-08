@@ -1,4 +1,5 @@
-from typing import List, Union, Optional, Tuple, Any
+from typing import List, Union, Optional, Tuple, Any, Dict
+import cloudpickle as pickle
 
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.gcs_utils import GcsClient
@@ -156,7 +157,6 @@ def _internal_kv_mput(key: Union[str, bytes],
                       overwrite: bool = True,
                       *,
                       namespace: Optional[str] = None) -> int:
-    fields = pickle.dumps(list(value.keys()))
     put_num = 0
     for (field, data) in value.items():
         field_key = __make_key(namespace, key, field)
