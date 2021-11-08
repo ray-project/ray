@@ -81,7 +81,6 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
 
   std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor =
       CreateGlobalStateAccessor(redis_address, ConfigInternal::Instance().redis_password);
-  ;
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
     std::string node_to_connect;
     auto status =
@@ -102,7 +101,6 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   if (log_dir.empty()) {
     std::string session_dir = ConfigInternal::Instance().session_dir;
     if (session_dir.empty()) {
-      RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
       session_dir = *global_state_accessor->GetInternalKV("session_dir");
     }
     log_dir = session_dir + "/logs";
