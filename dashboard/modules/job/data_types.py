@@ -1,11 +1,6 @@
 from enum import Enum
 from typing import Any, Dict
-
-try:
-    from pydantic import BaseModel
-except ImportError:
-    # Lazy import without breaking class def
-    BaseModel = object
+from dataclasses import dataclass
 
 
 class JobStatus(str, Enum):
@@ -19,67 +14,53 @@ class JobStatus(str, Enum):
     FAILED = "FAILED"
 
 
-class JobSpec(BaseModel):
-    # Dict to setup execution environment, better to have schema for this
-    runtime_env: Dict[str, Any]
-    # Command to start execution, ex: "python script.py"
-    entrypoint: str
-    # Metadata to pass in to configure job behavior or use as tags
-    # Required by Anyscale product and already supported in Ray drivers
-    metadata: Dict[str, str]
-    # Likely there will be more fields needed later on for different apps
-    # but we should keep it minimal and delegate policies to job manager
-
-
 # ==== Get Package ====
 
 
-class GetPackageRequest(BaseModel):
-    package_uri: str
-
-
-class GetPackageResponse(BaseModel):
+@dataclass
+class GetPackageResponse:
     package_exists: bool
-
-
-# ==== Upload Package ====
-
-
-class UploadPackageRequest(BaseModel):
-    package_uri: str
-    encoded_package_bytes: str
 
 
 # ==== Job Submit ====
 
 
-class JobSubmitRequest(BaseModel):
-    job_spec: JobSpec
+@dataclass
+class JobSubmitRequest:
+    # Dict to setup execution environment.
+    runtime_env: Dict[str, Any]
+    # Command to start execution, ex: "python script.py"
+    entrypoint: str
+    # Metadata to pass in to the JobConfig.
+    metadata: Dict[str, str]
 
 
-class JobSubmitResponse(BaseModel):
+@dataclass
+class JobSubmitResponse:
     job_id: str
+
+
+# ==== Job Stop ====
+
+
+@dataclass
+class JobStopResponse:
+    stopped: bool
 
 
 # ==== Job Status ====
 
 
-class JobStatusRequest(BaseModel):
-    job_id: str
-
-
-class JobStatusResponse(BaseModel):
+@dataclass
+class JobStatusResponse:
     job_status: JobStatus
 
 
 # ==== Job Logs ====
 
 
-class JobLogsRequest(BaseModel):
-    job_id: str
-
-
 # TODO(jiaodong): Support log streaming #19415
-class JobLogsResponse(BaseModel):
+@dataclass
+class JobLogsResponse:
     stdout: str
     stderr: str

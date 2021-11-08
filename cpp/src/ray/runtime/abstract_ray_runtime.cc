@@ -144,8 +144,6 @@ InvocationSpec BuildInvocationSpec1(TaskType task_type,
                                     const ActorID &actor) {
   InvocationSpec invocation_spec;
   invocation_spec.task_type = task_type;
-  invocation_spec.task_id =
-      TaskID::ForFakeTask();  // TODO(SongGuyang): make it from different task
   invocation_spec.remote_function_holder = remote_function_holder;
   invocation_spec.actor_id = actor;
   invocation_spec.args = TransformArgs(args);

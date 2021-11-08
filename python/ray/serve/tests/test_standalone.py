@@ -116,7 +116,7 @@ def test_detached_deployment(ray_cluster):
     serve.api._global_client = None
     ray.shutdown()
 
-    # Create the second job, make sure we can still create new backends.
+    # Create the second job, make sure we can still create new deployments.
     ray.init(head_node.address, namespace="serve")
     assert ray.get_runtime_context().job_id != first_job_id
 
