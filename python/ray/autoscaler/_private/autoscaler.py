@@ -440,7 +440,9 @@ class StandardAutoscaler:
             }
             failed_to_drain = raylet_ids_to_drain - drained_raylet_ids
             if failed_to_drain:
-                logger.error(
+                # The exception will be caught and logged in the second
+                # `except` clause.
+                raise Exception(
                     f"Failed to drain raylets with ids {failed_to_drain}.")
 
         # If we get a gRPC error with an UNIMPLEMENTED code, fail silently.
