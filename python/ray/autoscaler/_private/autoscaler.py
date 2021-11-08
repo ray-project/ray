@@ -432,8 +432,8 @@ class StandardAutoscaler:
             # the nodes without the GCS printing an error.
             response = self.gcs_node_info_stub.DrainNode(request, timeout=5)
 
-            # Check if we succeeded in draining all of the intended nodes by looking
-            # at the RPC response.
+            # Check if we succeeded in draining all of the intended nodes by
+            # looking at the RPC response.
             drained_raylet_ids = {
                 status_item.node_id
                 for status_item in response.drain_node_status
@@ -452,8 +452,8 @@ class StandardAutoscaler:
             # If the code is UNIMPLEMENTED, pass.
             if e.code() == grpc.StatusCode.UNIMPLEMENTED:
                 pass
-            # Otherwise, it's a plane old gRPC error and we should log it in the
-            # next `except` clause.
+            # Otherwise, it's a plane old gRPC error and we should log it in
+            # the next `except` clause.
             else:
                 raise e
         except Exception:

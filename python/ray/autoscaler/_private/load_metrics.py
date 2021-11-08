@@ -147,8 +147,7 @@ class LoadMetrics:
                     logger.info(
                         "LoadMetrics: "
                         "Removed ip: {unwanted_ip}."
-                        "\n(Is not the ip of a Ray node known to the autoscaler.)"
-                    )
+                        "\n(Is not the ip of a node known to the autoscaler.)")
                 del mapping[unwanted_ip]
             if unwanted_ips and should_log:
                 logger.info(
