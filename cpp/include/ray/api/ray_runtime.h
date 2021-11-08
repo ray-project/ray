@@ -77,10 +77,6 @@ class RayRuntime {
   virtual PlacementGroup GetPlacementGroupById(const std::string &id) = 0;
   virtual PlacementGroup GetPlacementGroup(const std::string &name, bool global) = 0;
   virtual bool IsLocalMode() { return false; }
-  virtual std::string GetOwnershipInfo(const std::string &object_id) = 0;
-  virtual void RegisterOwnershipInfoAndResolveFuture(const std::string &object_id,
-                                                     const std::string &outer_object_id,
-                                                     const std::string &owner_addr) = 0;
 };
 }  // namespace internal
 }  // namespace ray

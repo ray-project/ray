@@ -21,6 +21,8 @@
 namespace ray {
 namespace internal {
 
+inline thread_local std::string outer_object_id;
+
 class Serializer {
  public:
   template <typename T>

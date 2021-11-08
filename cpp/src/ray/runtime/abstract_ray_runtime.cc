@@ -115,6 +115,32 @@ std::vector<bool> AbstractRayRuntime::Wait(const std::vector<std::string> &ids,
   return object_store_->Wait(StringIDsToObjectIDs(ids), num_objects, timeout_ms);
 }
 
+rpc::Address GetOwnershipInfo(const std::string &object_id_str) {
+  ray::internal::outer_object_id = object_id_str;
+  auto object_id = ray::ObjectID::FromBinary(object_id_str);
+  rpc::Address address;
+  std::string serialized_object_status;
+  CoreWorkerProcess::GetCoreWorker().GetOwnershipInfo(object_id, &address,
+                                                      &serialized_object_status);
+  return address;
+}
+
+void RegisterOwnershipInfoAndResolveFuture(const std::string &object_id_str,
+                                           const std::string &outer_object_id,
+                                           const rpc::Address &owner_addr) {
+  ray::ObjectID object_id = ray::ObjectID::FromBinary(object_id_str);
+  auto outer_objectId = ray::ObjectID::Nil();
+  if (!outer_object_id.empty()) {
+    outer_objectId = ray::ObjectID::FromBinary(outer_object_id);
+  }
+
+  rpc::GetObjectStatusReply object_status;
+  auto serialized_status = object_status.SerializeAsString();
+  CoreWorkerProcess::GetCoreWorker().RegisterOwnershipInfoAndResolveFuture(
+      object_id, outer_objectId, owner_addr, serialized_status);
+  ray::internal::outer_object_id = "";
+}
+
 std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
     std::vector<ray::internal::TaskArg> &args) {
   std::vector<std::unique_ptr<::ray::TaskArg>> ray_args;
@@ -129,7 +155,7 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
     } else {
       RAY_CHECK(arg.id);
       ray_arg = absl::make_unique<ray::TaskArgByReference>(ObjectID::FromBinary(*arg.id),
-                                                           ray::rpc::Address{},
+                                                           GetOwnershipInfo(*arg.id),
                                                            /*call_site=*/"");
     }
     ray_args.push_back(std::move(ray_arg));
@@ -316,31 +342,6 @@ PlacementGroup AbstractRayRuntime::GetPlacementGroup(const std::string &name,
   }
   PlacementGroup group = GeneratePlacementGroup(*str_ptr);
   return group;
-}
-
-std::string AbstractRayRuntime::GetOwnershipInfo(const std::string &object_id_str) {
-  auto object_id = ray::ObjectID::FromBinary(object_id_str);
-  rpc::Address address;
-  std::string serialized_object_status;
-  CoreWorkerProcess::GetCoreWorker().GetOwnershipInfo(object_id, &address,
-                                                      &serialized_object_status);
-  return address.SerializeAsString();
-}
-
-void AbstractRayRuntime::RegisterOwnershipInfoAndResolveFuture(
-    const std::string &object_id_str, const std::string &outer_object_id,
-    const std::string &owner_addr) {
-  ray::ObjectID object_id = ray::ObjectID::FromBinary(object_id_str);
-  auto outer_objectId = ray::ObjectID::Nil();
-  if (!outer_object_id.empty()) {
-    outer_objectId = ray::ObjectID::FromBinary(outer_object_id);
-  }
-  rpc::Address address;
-  address.ParseFromString(owner_addr);
-  rpc::GetObjectStatusReply object_status;
-  auto serialized_status = object_status.SerializeAsString();
-  CoreWorkerProcess::GetCoreWorker().RegisterOwnershipInfoAndResolveFuture(
-      object_id, outer_objectId, address, serialized_status);
 }
 
 }  // namespace internal

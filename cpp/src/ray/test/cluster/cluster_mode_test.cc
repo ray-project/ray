@@ -289,18 +289,22 @@ TEST(RayClusterModeTest, DependencyRefrenceTest) {
   auto r1 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Return1).Remote());
   auto object_id = ray::ObjectID::FromBinary(r1->ID());
   EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(1, 0)}}));
+  r1.reset();
 
-  auto r2 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Plus1).Remote(*r1));
+  auto r = ray::Put(1);
+  auto object_id0 = ray::ObjectID::FromBinary(r.ID());
+  auto r2 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Plus1).Remote(r));
   EXPECT_TRUE(
-      CheckRefCount({{object_id, std::make_pair(1, 1)},
+      CheckRefCount({{object_id0, std::make_pair(1, 1)},
                      {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
+  r.Get();
   r2->Get();
   EXPECT_TRUE(
-      CheckRefCount({{object_id, std::make_pair(1, 0)},
+      CheckRefCount({{object_id0, std::make_pair(1, 0)},
                      {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
-  r1.reset();
+
   r2.reset();
-  EXPECT_TRUE(CheckRefCount({}));
+  EXPECT_TRUE(CheckRefCount({{object_id0, std::make_pair(1, 0)}}));
 }
 
 TEST(RayClusterModeTest, GetActorTest) {

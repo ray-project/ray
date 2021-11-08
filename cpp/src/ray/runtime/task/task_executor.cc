@@ -150,6 +150,8 @@ Status TaskExecutor::ExecuteTask(
     msgpack::sbuffer sbuf;
 
     if (is_ref_arg) {
+      RegisterOwnershipInfoAndResolveFuture(
+          ref.object_id(), ray::internal::outer_object_id, ref.owner_address());
       sbuf.write(ref.object_id().data(), ref.object_id().size());
     } else {
       auto &arg = args_buffer.at(i);
