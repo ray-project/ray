@@ -162,7 +162,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::function<int64_t(void)> get_time_ms =
           []() { return absl::GetCurrentTimeNanos() / 100000; },
       int64_t sched_cls_cap_interval_ms =
-      RayConfig::instance().worker_cap_initial_backoff_delay_ms());
+          RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
   void SetWorkerBacklog(SchedulingClass scheduling_class, const WorkerID &worker_id,
                         int64_t backlog_size) override;
