@@ -153,7 +153,7 @@ class FunctionActorManager:
                                  "remote function", self._worker)
         key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
                + remote_function._function_descriptor.function_id.binary())
-        if _internal_kv_exists(key, namespace=KV_NAMESPACE_FUNCTION_TABLE)1:
+        if _internal_kv_exists(key, namespace=KV_NAMESPACE_FUNCTION_TABLE):
             return
         _internal_kv_mput(
             key, {

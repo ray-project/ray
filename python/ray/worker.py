@@ -393,8 +393,9 @@ class Worker:
             function({"worker": self})
             # Check if the function has already been put into redis.
             function_exported = _internal_kv_put(
-                b"Lock:" + key, 1,
-                overwrite = False,
+                b"Lock:" + key,
+                1,
+                overwrite=False,
                 namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
             if function_exported:
                 # In this case, the function has already been exported, so
@@ -406,12 +407,13 @@ class Worker:
 
             # Run the function on all workers.
             _internal_kv_mput(
-                key,
-                {
+                key, {
                     "job_id": self.current_job_id.binary(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
-                }, True, namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+                },
+                True,
+                namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
             # successfully completes the hset and rpush, then the program will
