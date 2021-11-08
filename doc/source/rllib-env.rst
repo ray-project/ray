@@ -175,7 +175,7 @@ If all the agents will be using the same algorithm class to train, then you can 
 
 RLlib will create three distinct policies and route agent decisions to its bound policy. When an agent first appears in the env, ``policy_mapping_fn`` will be called to determine which policy it is bound to. RLlib reports separate training statistics for each policy in the return from ``train()``, along with the combined reward.
 
-Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__ in which you can vary the number of agents and policies in the environment. For how to use multiple training methods at once (here DQN and PPO), see the `two-trainer example <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_two_trainers.py>`__. Metrics are reported for each policy separately, for example:
+Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/multi_agent_cartpole.py>`__ in which you can vary the number of agents and policies in the environment. For how to use multiple training methods at once (here DQN and PPO), see the `two-trainer example <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_two_trainers.py>`__. Metrics are reported for each policy separately, for example:
 
 .. code-block:: bash
    :emphasize-lines: 6,14,22
@@ -257,7 +257,7 @@ RLlib will create each policy's model in a separate ``tf.variable_scope``. Howev
                 auxiliary_name_scope=False):
             <create the shared layers here>
 
-There is a full example of this in the `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__.
+There is a full example of this in the `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_and_self_play/multi_agent_cartpole.py>`__.
 
 Implementing a Centralized Critic
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -281,11 +281,11 @@ The most general way of implementing a centralized critic involves defining the 
             self.critic_network, feed_dict={"obs": global_obs_batch})
         return sample_batch
 
-To update the critic, you'll also have to modify the loss of the policy. For an end-to-end runnable example, see `examples/centralized_critic.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__.
+To update the critic, you'll also have to modify the loss of the policy. For an end-to-end runnable example, see `examples/multi_agent_and_self_play/centralized_critic.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__.
 
 **Strategy 2: Sharing observations through an observation function**:
 
-Alternatively, you can use an observation function to share observations between agents. In this strategy, each observation includes all global state, and policies use a custom model to ignore state they aren't supposed to "see" when computing actions. The advantage of this approach is that it's very simple and you don't have to change the algorithm at all -- just use the observation func (i.e., like an env wrapper) and custom model. However, it is a bit less principled in that you have to change the agent observation spaces to include training-time only information. You can find a runnable example of this strategy at `examples/centralized_critic_2.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__.
+Alternatively, you can use an observation function to share observations between agents. In this strategy, each observation includes all global state, and policies use a custom model to ignore state they aren't supposed to "see" when computing actions. The advantage of this approach is that it's very simple and you don't have to change the algorithm at all -- just use the observation func (i.e., like an env wrapper) and custom model. However, it is a bit less principled in that you have to change the agent observation spaces to include training-time only information. You can find a runnable example of this strategy at `examples/multi_agent_and_self_play/centralized_critic_2.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__.
 
 Grouping Agents
 ~~~~~~~~~~~~~~~
@@ -346,12 +346,12 @@ RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/
 Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``.
 This can be done for multiple concurrent episodes as well.
 
-Take a look at the examples here for a `simple "CartPole-v0" server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__
-and `n client(s) <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__
+Take a look at the examples here for a `simple "CartPole-v0" server <https://github.com/ray-project/ray/blob/master/rllib/examples/external_simulators/cartpole_server.py>`__
+and `n client(s) <https://github.com/ray-project/ray/blob/master/rllib/examples/external_simulators/cartpole_client.py>`__
 scripts, in which we setup an RLlib policy server that listens on one or more ports for client connections
 and connect several clients to this server to learn the env.
 
-Another `example <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/unity3d_server.py>`__ shows,
+Another `example <https://github.com/ray-project/ray/blob/master/rllib/examples/external_simulators/unity3d_server.py>`__ shows,
 how to run a similar setup against a Unity3D external game engine.
 
 
@@ -376,7 +376,8 @@ You can configure any Trainer to launch a policy server with the following confi
     trainer_config = {
         # An environment class is still required, but it doesn't need to be runnable.
         # You only need to define its action and observation space attributes.
-        # See examples/serving/unity3d_server.py for an example using a RandomMultiAgentEnv stub.
+        # See examples/external_simulators/unity3d_server.py for an example using
+        # a RandomMultiAgentEnv stub.
         "env": YOUR_ENV_STUB,
         # Use the policy server to generate experiences.
         "input": (
@@ -407,9 +408,9 @@ To understand the difference between standard envs, external envs, and connectin
 .. image:: rllib-external.svg
 
 Try it yourself by launching either a
-`simple CartPole server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__ (see below), and connecting it to any number of clients
-(`cartpole_client.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__) or
-run a `Unity3D learning sever <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/unity3d_server.py>`__
+`simple CartPole server <https://github.com/ray-project/ray/blob/master/rllib/examples/external_simulators/cartpole_server.py>`__ (see below), and connecting it to any number of clients
+(`cartpole_client.py <https://github.com/ray-project/ray/blob/master/rllib/examples/external_simulators/cartpole_client.py>`__) or
+run a `Unity3D learning sever <https://github.com/ray-project/ray/blob/master/rllib/examples/external_simulators/unity3d_server.py>`__
 against distributed Unity game engines in the cloud.
 
 CartPole Example:
@@ -417,13 +418,13 @@ CartPole Example:
 .. code-block:: bash
 
     # Start the server by running:
-    >>> python rllib/examples/serving/cartpole_server.py --run=PPO
+    >>> python rllib/examples/external_simulators/cartpole_server.py --run=PPO
     --
     -- Starting policy server at localhost:9900
     --
 
     # To connect from a client with inference_mode="remote".
-    >>> python rllib/examples/serving/cartpole_client.py --inference-mode=remote
+    >>> python rllib/examples/external_simulators/cartpole_client.py --inference-mode=remote
     Total reward: 10.0
     Total reward: 58.0
     ...
@@ -431,7 +432,7 @@ CartPole Example:
     ...
 
     # To connect from a client with inference_mode="local" (faster).
-    >>> python rllib/examples/serving/cartpole_client.py --inference-mode=local
+    >>> python rllib/examples/external_simulators/cartpole_client.py --inference-mode=local
     Querying server for new policy weights.
     Generating new batch of experiences.
     Total reward: 13.0

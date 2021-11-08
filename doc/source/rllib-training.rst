@@ -486,7 +486,7 @@ Similar to accessing policy state, you may want to get a reference to the underl
     [<tf.Variable 'default_policy/fc_1/kernel:0' shape=(4, 256) dtype=float32>, ...]
 
     # Run a forward pass to get base model output. Note that complex observations
-    # must be preprocessed. An example of preprocessing is examples/saving_experiences.py
+    # must be preprocessed. An example of preprocessing is examples/offline_rl/saving_experiences.py
     >>> model_out = model.from_batch({"obs": np.array([[0.1, 0.2, 0.3, 0.4]])})
     (<tf.Tensor: id=832, shape=(1, 256), dtype=float32, numpy=...)
 
