@@ -501,8 +501,7 @@ bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) c
   return (iter != client_queues_.end() && iter->second.rpc_client);
 }
 
-bool CoreWorkerDirectActorTaskSubmitter::FullOfPendingTasks(
-    const ActorID &actor_id) const {
+bool CoreWorkerDirectActorTaskSubmitter::PendingTasksFull(const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());

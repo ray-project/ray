@@ -1953,7 +1953,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
     const ActorID &actor_id, const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args, const TaskOptions &task_options) {
   /// Determine if there will be backpressure at the very beginning of submitting a task.
-  if (direct_actor_submitter_->FullOfPendingTasks(actor_id)) {
+  if (direct_actor_submitter_->PendingTasksFull(actor_id)) {
     RAY_LOG(DEBUG) << "Back pressure occur. actor_id: " << actor_id;
     return std::nullopt;
   }
@@ -1999,7 +1999,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
         rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
     direct_actor_submitter_->SubmitTask(task_spec);
   }
-  return {returned_refs};
+  return {std::move(returned_refs)};
 }
 
 Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill,

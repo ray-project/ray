@@ -143,7 +143,7 @@ class CoreWorkerDirectActorTaskSubmitter
   ///
   /// \param[in] actor_id Actor id.
   /// \return Whether the corresponding client queue is full or not.
-  bool FullOfPendingTasks(const ActorID &actor_id) const;
+  bool PendingTasksFull(const ActorID &actor_id) const;
 
  private:
   struct ClientQueue {

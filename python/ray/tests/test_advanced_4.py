@@ -108,7 +108,7 @@ def test_back_pressure():
     except ray.exceptions.BackPressureError:
         assert False
 
-    with pytest.raises(ray.exceptions.BackPressureError) as e:
+    with pytest.raises(ray.exceptions.BackPressureError):
         signal_actor.acquire.remote()
 
     @ray.remote
