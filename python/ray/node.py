@@ -362,17 +362,17 @@ class Node:
             ]
             if len(required_cpu_instruction_sets) > 0:
                 cpu_info = get_cpu_info()
-                env_resources += {
+                env_resources.update({
                     required_ins:
                     ray_constants.DEFAULT_CPU_INSTRUCTION_SET_RESOURCE_NUMBER
                     for required_ins in
                     set(required_cpu_instruction_sets) & set(cpu_info["flags"])
-                }
+                })
             env_string = os.getenv(
                 ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
             if env_string:
                 try:
-                    env_resources += json.loads(env_string)
+                    env_resources.update(json.loads(env_string))
                 except Exception:
                     logger.exception("Failed to load {}".format(env_string))
                     raise
