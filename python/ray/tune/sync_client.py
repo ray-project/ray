@@ -94,8 +94,9 @@ def get_cloud_sync_client(remote_path):
         delete_template = "hdfs dfs -rm -r {target}"
         exclude_template = None
     else:
-        raise ValueError("Upload uri must start with one of: {}"
-                         "".format(ALLOWED_REMOTE_PREFIXES))
+        raise ValueError(
+            f"Upload uri must start with one of: {ALLOWED_REMOTE_PREFIXES} "
+            f"(is: `{remote_path}`)")
     return CommandBasedClient(sync_up_template, sync_down_template,
                               delete_template, exclude_template)
 
