@@ -156,7 +156,7 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Get a handle to a named actor of current job.
+   * Get a handle to a named actor of current namespace.
    *
    * <p>Gets a handle to a named actor with the given name. The actor must have been created with
    * name specified.
@@ -168,21 +168,6 @@ public final class Ray extends RayCall {
    */
   public static <T extends BaseActorHandle> Optional<T> getActor(String name) {
     return internal().getActor(name, false);
-  }
-
-  /**
-   * Get a handle to a global named actor.
-   *
-   * <p>Gets a handle to a global named actor with the given name. The actor must have been created
-   * with global name specified.
-   *
-   * @param name The global name of the named actor.
-   * @return an ActorHandle to the actor if the actor of specified name exists or an
-   *     Optional.empty()
-   * @throws RayException An exception is raised if timed out.
-   */
-  public static <T extends BaseActorHandle> Optional<T> getGlobalActor(String name) {
-    return internal().getActor(name, true);
   }
 
   /**
