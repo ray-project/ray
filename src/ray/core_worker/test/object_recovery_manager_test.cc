@@ -141,7 +141,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
               RAY_CHECK(memory_store_->Put(data, object_id));
             }) {
     ref_counter_->SetReleaseLineageCallback(
-        [this](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
+        [](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
   }
 
   NodeID local_raylet_id_;
