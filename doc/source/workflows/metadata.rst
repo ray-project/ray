@@ -20,11 +20,12 @@ For example:
 
     workflow_metadata = workflow.get_metadata("add_example")
 
-    assert "status" in workflow_metadata
+    assert workflow_metadata["status"] == "SUCCESSFUL"
     assert "user_metadata" in workflow_metadata
-    assert "stats" in workflow_metadata
+    assert "start_time" in workflow_metadata["stats"]
+    assert "end_time" in workflow_metadata["stats"]
 
-We can retrieve metadata for individual workflow steps as well by
+We can also retrieve metadata for individual workflow steps by
 providing the step name:
 
 .. code-block:: python
@@ -34,15 +35,17 @@ providing the step name:
     step_metadata = workflow.get_metadata("add_example_2", name="add_step")
 
     assert "name" in step_metadata
-    assert "step_options" in step_metadata
+    assert step_metadata["step_options"]["step_options"] == "FUNCTION"
+    assert step_metadata["step_options"]["max_retries"] == 3
     assert "user_metadata" in step_metadata
-    assert "stats" in step_metadata
+    assert "start_time" in workflow_metadata["stats"]
+    assert "end_time" in workflow_metadata["stats"]
 
 Attaching user-defined metadata
 ----------------------------
-Metadata can also be added to a workflow or a workflow step by user,
-this is useful when you want to attach some information to the workflow
-or a workflow step. For example:
+You can also add custom metadata to a workflow or a workflow step,
+this is useful when you want to attach some extra information to the
+workflow or workflow step. For example:
 
 .. code-block:: python
 
@@ -52,12 +55,12 @@ or a workflow step. For example:
     assert workflow.get_metadata("add_example_3")["user_metadata"] == {"workflow_k": "workflow_v"}
     assert workflow.get_metadata("add_example_3", name="add_step")["user_metadata"] == {"step_k": "step_v"}
 
-**Note: user metadata must be a python dictionary with values that are
+**Note: user-defined metadata must be a python dictionary with values that are
 json serializable.**
 
 Metadata in Virtual Actor
 -------------------------
-You can do the same for virtual actors. For example:
+Virtual Actors also support metadata ingestion and retrieval. For example:
 
 .. code-block:: python
 
@@ -90,7 +93,7 @@ You can do the same for virtual actors. For example:
 **Notice that if there are multiple steps with the same name, a suffix
 with a counter _n will be added automatically.**
 
-And you can even do this in a nested fashion:
+And you can also do this in a nested fashion:
 
 .. code-block:: python
 
