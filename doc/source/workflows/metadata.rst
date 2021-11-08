@@ -1,7 +1,7 @@
 Workflow Metadata
 =================
 
-There are Each workflow is linked with a collection of metadata, including
+Each workflow is linked with a collection of metadata, including
 system metrics and user input metadata. You can easily "put" or
 "get" metadata for a workflow or a workflow step.
 
@@ -46,14 +46,11 @@ or a workflow step. For example:
 
 .. code-block:: python
 
-    add.options(name="add_step", metadata={"step_k": "step_v"})\
-    .step(10, 20)\
+    add.options(name="add_step", metadata={"step_k": "step_v"}).step(10, 20)\
     .run("add_example_3", metadata={"workflow_k": "workflow_v"})
 
-    assert workflow.get_metadata("add_example_3")["user_metadata"]\
-    == {"workflow_k": "workflow_v"}
-    assert workflow.get_metadata("add_example_3", name="add_step")\
-    ["user_metadata"] == {"step_k": "step_v"}
+    assert workflow.get_metadata("add_example_3")["user_metadata"] == {"workflow_k": "workflow_v"}
+    assert workflow.get_metadata("add_example_3", name="add_step")["user_metadata"] == {"step_k": "step_v"}
 
 **Note: user metadata must be a python dictionary with values that are
 json serializable.**
@@ -115,19 +112,9 @@ And you can even do this in a nested fashion:
     counter = Counter.get_or_create("counter")
     counter.incr.options(name="incr", metadata={"outer_k": "outer_v"}).run(5)
 
-    assert workflow.get_metadata("counter", "incr")["user_metadata"] == {
-        "outer_k": "outer_v"
-    }
-    assert workflow.get_metadata("counter", "incr_1")["user_metadata"] == {
-        "current_n": 1
-    }
-    assert workflow.get_metadata("counter", "incr_2")["user_metadata"] == {
-        "current_n": 2
-    }
-    assert workflow.get_metadata("counter", "incr_3")["user_metadata"] == {
-        "current_n": 3
-    }
-    assert workflow.get_metadata("counter", "incr_4")["user_metadata"] == {
-        "current_n": 4
-    }
+    assert workflow.get_metadata("counter", "incr")["user_metadata"] == {"outer_k": "outer_v"}
+    assert workflow.get_metadata("counter", "incr_1")["user_metadata"] == {"current_n": 1}
+    assert workflow.get_metadata("counter", "incr_2")["user_metadata"] == {"current_n": 2}
+    assert workflow.get_metadata("counter", "incr_3")["user_metadata"] == {"current_n": 3}
+    assert workflow.get_metadata("counter", "incr_4")["user_metadata"] == {"current_n": 4}
 
