@@ -645,11 +645,13 @@ def test_cpu_instruction(shutdown_only):
     os.environ["CPU_INSTRUCTION_SET"] = "avx2"
     os.environ["EXTEND_CPU_INSTRUCTIONS"] = "avx2"
     ray.init()
+
     @ray.remote
     class ResourceActor():
         def check_resource(self, res):
             cpu_info = get_cpu_info()
             return res in cpu_info["flags"]
+
     driver_cpu_info = get_cpu_info()
     required_cpu_instruction_str = os.getenv("EXTEND_CPU_INSTRUCTIONS", "")
     required_instruction_set = \
@@ -670,6 +672,7 @@ def test_cpu_instruction(shutdown_only):
             result = actor.check_resource.remote(required_ins)
             assert not ray.get(result)
     del os.environ["CPU_INSTRUCTION_SET"]
+
 
 if __name__ == "__main__":
     import pytest

@@ -158,6 +158,8 @@ DEFAULT_CPU_INSTRUCTION_SET_RESOURCE_NUMBER = 512.0
 
 # Default list of cpu instruction set, like "avx, avx2".
 CPU_INSTRUCTION_SETS = ""
+CPU_INSTRUCTION_SETS_ENV = "CPU_INSTRUCTION_SET"
+CPU_INSTRUCTION_SETS_FLAGS = "flags"
 
 # The reporter will report its statistics this often (milliseconds).
 REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)

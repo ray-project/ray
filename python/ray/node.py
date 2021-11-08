@@ -356,7 +356,7 @@ class Node:
             env_resources = {}
             required_cpu_instruction_sets_str = \
                 os.getenv(
-                    "CPU_INSTRUCTION_SET", ray_constants.CPU_INSTRUCTION_SETS)
+                    ray_constants.CPU_INSTRUCTION_SETS_ENV, ray_constants.CPU_INSTRUCTION_SETS)
             required_cpu_instruction_sets = [
                 x.strip() for x in required_cpu_instruction_sets_str.split(",")
             ]
@@ -366,7 +366,8 @@ class Node:
                     required_ins:
                     ray_constants.DEFAULT_CPU_INSTRUCTION_SET_RESOURCE_NUMBER
                     for required_ins in
-                    set(required_cpu_instruction_sets) & set(cpu_info["flags"])
+                    set(required_cpu_instruction_sets) \
+                        & set(cpu_info[ray_constants.CPU_INSTRUCTION_SETS_FLAGS])
                 })
             env_string = os.getenv(
                 ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
