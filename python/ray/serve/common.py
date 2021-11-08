@@ -7,6 +7,7 @@ from uuid import UUID
 from ray.actor import ActorHandle
 from ray.serve.config import DeploymentConfig, ReplicaConfig
 from ray.serve.autoscaling_policy import AutoscalingPolicy
+from ray.serve.utils import cached_property
 
 str = str
 EndpointTag = str
@@ -44,7 +45,8 @@ class DeploymentInfo:
         self.end_time_ms = end_time_ms
         self.autoscaling_policy = autoscaling_policy
 
-    @property
+    # We don't want to serialize the actor class.
+    @cached_property
     def actor_def(self):
         # Delayed import as replica depends on this file.
         from ray.serve.replica import create_replica_wrapper

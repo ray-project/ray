@@ -521,9 +521,9 @@ def test_local_store_recovery():
         return "hello"
 
     # https://github.com/ray-project/ray/issues/19987
-    @serve.deployment
-    def world(_):
-        return "world"
+    # @serve.deployment
+    # def world(_):
+    #     return "world"
 
     def check(name):
         try:
@@ -540,16 +540,16 @@ def test_local_store_recovery():
 
     serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
     hello.deploy()
-    world.deploy()
+    # world.deploy()
     assert check("hello")
-    assert check("world")
+    # assert check("world")
     crash()
 
     # Simulate a crash
 
     serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
     wait_for_condition(lambda: check("hello"))
-    wait_for_condition(lambda: check("world"))
+    # wait_for_condition(lambda: check("world"))
     crash()
 
 
