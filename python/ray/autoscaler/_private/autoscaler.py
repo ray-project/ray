@@ -409,15 +409,20 @@ class StandardAutoscaler:
         # node provider node id -> ip -> raylet id
 
         # Convert node provider node ids to ips.
-        node_ips = [
+        node_ips = {
             self.provider.internal_ip(provider_node_id)
             for provider_node_id in provider_node_ids_to_drain
-        ]
+        }
+
+        # Only attempt to drain connected nodes, i.e. nodes with ips in
+        # LoadMetrics.
+        connected_node_ips = (
+            node_ips & self.load_metrics.raylet_id_by_ip.keys())
 
         # Convert ips to Raylet ids.
         raylet_ids_to_drain = {
             self.load_metrics.raylet_id_by_ip[ip]
-            for ip in node_ips
+            for ip in connected_node_ips
         }
 
         logger.info(f"Draining raylets with ids {raylet_ids_to_drain}.")
