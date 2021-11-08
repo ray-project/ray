@@ -880,11 +880,6 @@ void WorkerPool::TryKillingIdleWorkers() {
       }
     }
 
-    if (pending_exit_idle_workers_.count(idle_worker->WorkerId())) {
-      // If the worker is pending exit, just skip it.
-      continue;
-    }
-
     if (now - idle_pair.second <
         RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
       break;
@@ -919,6 +914,13 @@ void WorkerPool::TryKillingIdleWorkers() {
         can_be_killed = false;
         break;
       }
+
+      // Skip killing the worker process if there's any inflight `Exit` RPC requests to
+      // this worker process.
+      if (pending_exit_idle_workers_.count(worker->WorkerId())) {
+        can_be_killed = false;
+        break;
+      }
     }
     if (!can_be_killed) {
       continue;
@@ -947,6 +949,7 @@ void WorkerPool::TryKillingIdleWorkers() {
       if (!worker->IsDead()) {
         // Register the worker to pending exit so that we can correctly calculate the
         // running_size.
+        // This also means that there's an inflight `Exit` RPC request to the worker.
         pending_exit_idle_workers_.emplace(worker->WorkerId(), worker);
         auto rpc_client = worker->rpc_client();
         RAY_CHECK(rpc_client);
@@ -955,6 +958,8 @@ void WorkerPool::TryKillingIdleWorkers() {
         rpc::ExitRequest request;
         rpc_client->Exit(request, [this, worker](const ray::Status &status,
                                                  const rpc::ExitReply &r) {
+          RAY_CHECK(pending_exit_idle_workers_.count(worker->WorkerId()));
+          RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
           }
@@ -980,9 +985,6 @@ void WorkerPool::TryKillingIdleWorkers() {
             idle_of_all_languages_.pop_front();
             RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
           }
-
-          RAY_CHECK(pending_exit_idle_workers_.count(worker->WorkerId()));
-          RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
         });
       } else {
         // Even it's a dead worker, we still need to remove them from the pool.

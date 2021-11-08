@@ -1228,6 +1228,89 @@ TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers / 2);
 }
 
+TEST_F(WorkerPoolTest, TestWorkerCappingWithExitDelay) {
+  ///
+  /// When there are multiple workers in a worker process, and the worker process's Exit
+  /// reply is delayed, We shouldn't send more Exit requests to workers in this process
+  /// until we received all Exit replies form this process.
+  ///
+  auto job_id = JOB_ID;
+
+  ///
+  /// Register some idle Python and Java (w/ multi-worker enabled) workers
+  ///
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  std::unordered_map<Language, int> language_to_workers_to_start;
+  language_to_workers_to_start.emplace(Language::PYTHON, 1);
+  language_to_workers_to_start.emplace(Language::JAVA, NUM_WORKERS_PER_PROCESS_JAVA);
+  for (int i = 0; i < POOL_SIZE_SOFT_LIMIT * 2; i++) {
+    for (const auto &entry : language_to_workers_to_start) {
+      auto language = entry.first;
+      auto workers_to_start = entry.second;
+      Process proc = worker_pool_->StartWorkerProcess(language, rpc::WorkerType::WORKER,
+                                                      job_id, workers_to_start,
+                                                      /*for_actor=*/false);
+      for (int j = 0; j < workers_to_start; j++) {
+        auto worker = CreateWorker(Process(), language, job_id);
+        workers.push_back(worker);
+        RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                                  [](Status, int) {}));
+        worker_pool_->OnWorkerStarted(worker);
+        ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
+        worker_pool_->PushWorker(worker);
+      }
+    }
+  }
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
+
+  // 1000 ms has passed, so idle workers should be killed.
+  worker_pool_->SetCurrentTimeMs(1000);
+  worker_pool_->TryKillingIdleWorkers();
+
+  // Let's assume that all workers own objects, so they won't be killed.
+
+  // Due to the heavy load on this machine, some workers may reply Exit with a delay, so
+  // only a part of workers replied before the next round of killing.
+  std::vector<std::shared_ptr<WorkerInterface>> delayed_workers;
+  bool delay = false;
+  for (auto worker : workers) {
+    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
+    if (mock_rpc_client_it->second->callbacks_.size() == 0) {
+      // This worker is not being killed. Skip it.
+      continue;
+    }
+    if (!delay) {
+      ASSERT_TRUE(mock_rpc_client_it->second->ExitReplyFailed());
+    } else {
+      delayed_workers.push_back(worker);
+    }
+    delay = !delay;
+  }
+  // No workers are killed because they own objects.
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
+
+  // The second round of killing starts.
+  worker_pool_->SetCurrentTimeMs(2000);
+  worker_pool_->TryKillingIdleWorkers();
+
+  // Delayed workers reply first, then all workers reply the second time.
+  for (auto worker : delayed_workers) {
+    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
+    ASSERT_TRUE(mock_rpc_client_it->second->ExitReplyFailed());
+  }
+
+  for (auto worker : workers) {
+    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
+    if (mock_rpc_client_it->second->callbacks_.size() == 0) {
+      // This worker is not being killed. Skip it.
+      continue;
+    }
+    ASSERT_TRUE(mock_rpc_client_it->second->ExitReplyFailed());
+  }
+
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
+}
+
 TEST_F(WorkerPoolTest, PopWorkerWithRuntimeEnv) {
   ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
   auto actor_creation_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
