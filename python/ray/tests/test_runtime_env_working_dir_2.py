@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from importlib import import_module
+
 import os
 from pathlib import Path
 import sys
@@ -11,7 +11,8 @@ from ray._private.test_utils import run_string_as_driver
 
 import ray
 import ray.experimental.internal_kv as kv
-from ray.tests.test_runtime_env_working_dir import tmp_working_dir
+from ray.tests.test_runtime_env_working_dir \
+    import tmp_working_dir  # noqa: F401
 from ray._private.test_utils import wait_for_condition
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
