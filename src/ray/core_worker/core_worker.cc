@@ -1722,7 +1722,11 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(const rpc::RuntimeEnv *run
 
 static std::vector<std::string> GetUrisFromSerializedRuntimeEnv(const std::string &serialized_runtime_env) {
   rpc::RuntimeEnv runtime_env;
-  RAY_CHECK(google::protobuf::util::JsonStringToMessage(serialized_runtime_env, &runtime_env).ok());
+  if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env, &runtime_env).ok()) {
+    RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env;
+    // TODO(SongGuyang): We pass the raw string here and the task will fail after an exception raised in runtime env agent. Actually, we can fail the task here.
+    return {};
+  }
   return GetUrisFromRuntimeEnv(&runtime_env);
 }
 
@@ -1747,7 +1751,11 @@ std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(const std::string &seriali
     }
     if (parent) {
       rpc::RuntimeEnv child_runtime_env;
-      RAY_CHECK(google::protobuf::util::JsonStringToMessage(serialized_runtime_env, &child_runtime_env).ok());
+      if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env, &child_runtime_env).ok()) {
+        RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env;
+        // TODO(SongGuyang): We pass the raw string here and the task will fail after an exception raised in runtime env agent. Actually, we can fail the task here.
+        return serialized_runtime_env;
+      }
       auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
       std::string result;
       RAY_CHECK(google::protobuf::util::MessageToJsonString(override_runtime_env, &result).ok());
