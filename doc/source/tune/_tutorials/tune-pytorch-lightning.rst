@@ -107,7 +107,7 @@ back to Tune after each validation epoch, we will use the ``TuneReportCallback``
    :lines: 12-17
    :dedent: 12
 
-This callback will take the ``avg_val_loss`` and ``avg_val_accuracy`` values
+This callback will take the ``val_loss`` and ``val_accuracy`` values
 from the PyTorch Lightning trainer and report them to Tune as the ``loss``
 and ``mean_accuracy``, respectively.
 
@@ -129,8 +129,6 @@ TensorBoard, one time for Tune's logs, and another time for PyTorch Lightning's 
    :language: python
    :start-after: __tune_train_begin__
    :end-before: __tune_train_end__
-   :lines: 2-8
-   :dedent: 4
 
 
 Configuring the search space
@@ -161,7 +159,7 @@ configurations.
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 9-14
+   :lines: 9-12
    :dedent: 4
 
 
@@ -176,7 +174,7 @@ output tables only include information we would like to see.
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 16-18
+   :lines: 14-16
    :dedent: 4
 
 Passing constants to the train function
@@ -184,14 +182,14 @@ Passing constants to the train function
 
 The ``data_dir``, ``num_epochs`` and ``num_gpus`` we pass to the training function
 are constants. To avoid including them as non-configurable parameters in the ``config``
-specification, we can use ``functools.partial`` to wrap around the training function.
+specification, we can use ``tune.with_parameters`` to wrap around the training function.
 
 .. literalinclude:: /../../python/ray/tune/examples/mnist_pytorch_lightning.py
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 21-25
-   :dedent: 8
+   :lines: 18-21
+   :dedent: 4
 
 Training with GPUs
 ~~~~~~~~~~~~~~~~~~
@@ -207,7 +205,7 @@ we would like to use:
    :language: python
    :start-after: __tune_asha_begin__
    :end-before: __tune_asha_end__
-   :lines: 26
+   :lines: 22
    :dedent: 4
 
 You can also specify :doc:`fractional GPUs for Tune </using-ray-with-gpus>`, allowing multiple trials to share GPUs

@@ -15,13 +15,13 @@
 #include "ray/common/id.h"
 
 #include <limits.h>
+
 #include <algorithm>
 #include <chrono>
 #include <mutex>
 #include <random>
 
 #include "absl/time/clock.h"
-
 #include "ray/common/constants.h"
 #include "ray/common/status.h"
 #include "ray/util/macros.h"
@@ -160,9 +160,10 @@ TaskID TaskID::ForDriverTask(const JobID &job_id) {
   return TaskID::FromBinary(data);
 }
 
-TaskID TaskID::ForFakeTask() {
-  std::string data(kLength, 0);
+TaskID TaskID::FromRandom(const JobID &job_id) {
+  std::string data(kLength - JobID::kLength, 0);
   FillRandom(&data);
+  std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
   return TaskID::FromBinary(data);
 }
 
