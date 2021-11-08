@@ -248,9 +248,10 @@ The checkpoint path argument accepts the following format:
 
 - ``file://local_file_path``
 - ``s3://bucket/path``
+- ``gcs://bucket/path``
 - ``custom://importable.custom_python.Class/path``
 
-While we have native support for on disk and AWS S3 storage, there is no reason we cannot support more. 
+While we have native support for on disk, AWS S3, and Google Cloud Storage (GCS), there is no reason we cannot support more.
 
 In Kubernetes environment, we recommend using `Persistent Volumes`_ to create a disk and mount it into the Ray head node.
 For example, you can provision Azure Disk, AWS Elastic Block Store, or GCP Persistent Disk using the K8s `Persistent Volumes`_ API.

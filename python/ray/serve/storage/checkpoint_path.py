@@ -5,6 +5,7 @@ from ray.serve.constants import DEFAULT_CHECKPOINT_PATH
 from ray.serve.storage.kv_store import (RayInternalKVStore, RayLocalKVStore,
                                         RayS3KVStore)
 from ray.serve.storage.kv_store_base import KVStoreBase
+from ray.serve.storage.ray_gcs_kv_store import RayGcsKVStore
 from ray._private.utils import import_attr
 
 
@@ -17,7 +18,7 @@ def make_kv_store(checkpoint_path, namespace):
         return RayInternalKVStore(namespace)
     else:
         parsed_url = urlparse(checkpoint_path)
-        if parsed_url.scheme not in {"s3", "file", "custom"}:
+        if parsed_url.scheme not in {"gcs", "s3", "file", "custom"}:
             raise ValueError(
                 f"Checkpoint must be one of `{DEFAULT_CHECKPOINT_PATH}`, "
                 "`file://path...`, `s3://path...` or "
@@ -29,6 +30,21 @@ def make_kv_store(checkpoint_path, namespace):
             logger.info("Using RayLocalKVStore for controller "
                         f"checkpoint and recovery: path={db_path}")
             return RayLocalKVStore(namespace, db_path)
+
+        if parsed_url.scheme == "gcs":
+            bucket = parsed_url.netloc
+            # We need to strip leading "/" in path as right key to use in
+            # gcs. Ex: gcs://bucket/folder/file.zip -> key = "folder/file.zip"
+            prefix = parsed_url.path.lstrip("/")
+            logger.info(
+                "Using Ray GCS KVStore for controller checkpoint and"
+                " recovery: "
+                f"bucket={bucket} checkpoint_path={checkpoint_path}")
+            return RayGcsKVStore(
+                namespace,
+                bucket=bucket,
+                prefix=prefix,
+            )
 
         if parsed_url.scheme == "s3":
             bucket = parsed_url.netloc
