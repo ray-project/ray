@@ -5,8 +5,7 @@ import weakref
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray._private.signature as signature
-from ray._private.runtime_env.validation import (
-    override_task_or_actor_runtime_env, ParsedRuntimeEnv)
+from ray._private.runtime_env.validation import ParsedRuntimeEnv
 import ray.worker
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
@@ -27,6 +26,7 @@ from ray.util.tracing.tracing_helper import (_tracing_actor_creation,
                                              _tracing_actor_method_invocation,
                                              _inject_tracing_into_class)
 from ray.core.generated.common_pb2 import RuntimeEnv
+from google.protobuf import json_format
 
 logger = logging.getLogger(__name__)
 
@@ -513,13 +513,13 @@ class ActorClass:
             elif isinstance(runtime_env, RuntimeEnv):
                 new_runtime_env = json_format.MessageToJson(runtime_env)
             else:
-                new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
+                new_runtime_env = ParsedRuntimeEnv(runtime_env
+                                                   or {}).serialize()
         else:
-            # Keep the new_runtime_env as None.  In .remote(), we need to know if
-            # runtime_env is None to know whether or not to fall back to the
+            # Keep the new_runtime_env as None.  In .remote(), we need to know
+            # if runtime_env is None to know whether or not to fall back to the
             # runtime_env specified in the @ray.remote decorator.
             new_runtime_env = None
-
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):

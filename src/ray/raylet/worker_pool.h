@@ -405,7 +405,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param serialized_runtime_env_context The context of runtime env.
   /// \param allocated_instances_serialized_json The allocated resource instances
   //  json string.
-  /// \return The id of the process that we started if it's positive, otherwise it means we didn't start a process.
+  /// \return The id of the process that we started if it's positive, otherwise it means
+  /// we didn't start a process.
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
       PopWorkerStatus *status /*output*/,

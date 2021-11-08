@@ -11,6 +11,7 @@ from ray.experimental.internal_kv import (_initialize_internal_kv,
 from ray._private.job_manager import (JOB_ID_METADATA_KEY,
                                       JobStatusStorageClient)
 import ray.dashboard.utils as dashboard_utils
+from ray._private.runtime_env.validation import ParsedRuntimeEnv
 
 import json
 import aiohttp.web
@@ -88,8 +89,9 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             config = {
                 "namespace": job_table_entry.config.ray_namespace,
                 "metadata": metadata,
-                "runtime_env": json.loads(
-                    job_table_entry.config.runtime_env.serialized_runtime_env),
+                "runtime_env": ParsedRuntimeEnv.deserialize(
+                    job_table_entry.config.serialized_runtime_env.
+                    serialized_runtime_env),
             }
             entry = {
                 "status": self._get_job_status(metadata),

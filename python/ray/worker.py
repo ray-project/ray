@@ -34,7 +34,6 @@ import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
 from ray.util.debug import log_once
-from ray.core.generated.common_pb2 import RuntimeEnv
 import ray
 import colorama
 import setproctitle

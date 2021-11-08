@@ -4,7 +4,6 @@ import tempfile
 import pytest
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
-from ray.core.generated.common_pb2 import RuntimeEnv
 
 import ray
 

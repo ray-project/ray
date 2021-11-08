@@ -1994,10 +1994,12 @@ cdef class CoreWorker:
         if self.current_runtime_env is None:
             if self.is_driver:
                 job_config = self.get_job_config()
-                serialized_env = job_config.serialized_runtime_env.serialized_runtime_env
+                serialized_env = job_config.serialized_runtime_env \
+                                           .serialized_runtime_env
             else:
                 serialized_env = CCoreWorkerProcess.GetCoreWorker() \
-                        .GetWorkerContext().GetCurrentSerializedRuntimeEnv().decode("utf-8")
+                        .GetWorkerContext().GetCurrentSerializedRuntimeEnv() \
+                        .decode("utf-8")
 
             self.current_runtime_env = serialized_env
 

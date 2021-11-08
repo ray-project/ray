@@ -354,7 +354,8 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   if (language == Language::PYTHON || language == Language::JAVA) {
-    if (serialized_runtime_env_context != "{}" && !serialized_runtime_env_context.empty()) {
+    if (serialized_runtime_env_context != "{}" &&
+        !serialized_runtime_env_context.empty()) {
       worker_command_args.push_back("--language=" + Language_Name(language));
 
       worker_command_args.push_back("--runtime-env-hash=" +
@@ -543,7 +544,8 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
   all_jobs_[job_id] = job_config;
   if (job_config.serialized_runtime_env().runtime_env_eager_install() &&
       job_config.has_serialized_runtime_env()) {
-    auto const &runtime_env = job_config.serialized_runtime_env().serialized_runtime_env();
+    auto const &runtime_env =
+        job_config.serialized_runtime_env().serialized_runtime_env();
     if (runtime_env != "{}" && runtime_env != "") {
       RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
                     << ". The runtime environment was " << runtime_env << ".";
@@ -1003,7 +1005,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                            const PopWorkerCallback &callback,
                            const std::string &allocated_instances_serialized_json) {
   RAY_LOG(DEBUG) << "Pop worker for task " << task_spec.TaskId() << " task name "
-                 << task_spec.FunctionDescriptor()->ToString() << ", task_spec.HasRuntimeEnv(): " << task_spec.HasRuntimeEnv();
+                 << task_spec.FunctionDescriptor()->ToString()
+                 << ", task_spec.HasRuntimeEnv(): " << task_spec.HasRuntimeEnv();
   auto &state = GetStateForLanguage(task_spec.GetLanguage());
 
   std::shared_ptr<WorkerInterface> worker = nullptr;
@@ -1017,7 +1020,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     PopWorkerStatus status = PopWorkerStatus::OK;
     Process proc = StartWorkerProcess(
         task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(), &status,
-        dynamic_options, task_spec.GetRuntimeEnvHash(),serialized_runtime_env_context, 
+        dynamic_options, task_spec.GetRuntimeEnvHash(), serialized_runtime_env_context,
         allocated_instances_serialized_json);
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());

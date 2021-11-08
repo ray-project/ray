@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/core_worker/context.h"
+
 #include <google/protobuf/util/json_util.h>
 
 namespace ray {
@@ -230,9 +231,12 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     // never see a new one.
     serialized_runtime_env_ = task_spec.SerializedRuntimeEnv();
     if (!serialized_runtime_env_.serialized_runtime_env().empty()) {
-      RAY_LOG(INFO) << "serialized_runtime_env_.serialized_runtime_env() " << serialized_runtime_env_.serialized_runtime_env();
+      RAY_LOG(INFO) << "serialized_runtime_env_.serialized_runtime_env() "
+                    << serialized_runtime_env_.serialized_runtime_env();
       runtime_env_.reset(new rpc::RuntimeEnv());
-      RAY_CHECK(google::protobuf::util::JsonStringToMessage(serialized_runtime_env_.serialized_runtime_env(), runtime_env_.get()).ok());
+      RAY_CHECK(google::protobuf::util::JsonStringToMessage(
+                    serialized_runtime_env_.serialized_runtime_env(), runtime_env_.get())
+                    .ok());
     }
   }
 }

@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/core_worker.h"
 
+#include <google/protobuf/util/json_util.h>
+
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
@@ -24,7 +26,6 @@
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/util.h"
-#include <google/protobuf/util/json_util.h>
 
 namespace ray {
 namespace core {
@@ -462,12 +463,17 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Parse job config from serialized string.
   job_config_.reset(new rpc::JobConfig());
   job_config_->ParseFromString(serialized_job_config);
-  auto job_serialized_runtime_env = job_config_->serialized_runtime_env().serialized_runtime_env();
+  auto job_serialized_runtime_env =
+      job_config_->serialized_runtime_env().serialized_runtime_env();
   RAY_LOG(INFO) << "job_serialized_runtime_env " << job_serialized_runtime_env;
   if (!job_serialized_runtime_env.empty()) {
     job_runtime_env_.reset(new rpc::RuntimeEnv());
-    RAY_CHECK(google::protobuf::util::JsonStringToMessage(job_config_->serialized_runtime_env().serialized_runtime_env(), job_runtime_env_.get()).ok());
-    RAY_LOG(INFO) << "job_serialized_runtime_env uri size " << job_runtime_env_->uris().size();
+    RAY_CHECK(google::protobuf::util::JsonStringToMessage(
+                  job_config_->serialized_runtime_env().serialized_runtime_env(),
+                  job_runtime_env_.get())
+                  .ok());
+    RAY_LOG(INFO) << "job_serialized_runtime_env uri size "
+                  << job_runtime_env_->uris().size();
   }
 
   // Start RPC server after all the task receivers are properly initialized and we have
@@ -1684,15 +1690,16 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
   return resources;
 }
 
-
-static rpc::RuntimeEnv OverrideRuntimeEnv(const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent) {
-    // By default, the child runtime env inherits non-specified options from the
-    // parent. There is one exception to this:
-    //     - The env_vars dictionaries are merged, so environment variables
-    //       not specified by the child are still inherited from the parent.
+static rpc::RuntimeEnv OverrideRuntimeEnv(const rpc::RuntimeEnv &child,
+                                          const std::shared_ptr<rpc::RuntimeEnv> parent) {
+  // By default, the child runtime env inherits non-specified options from the
+  // parent. There is one exception to this:
+  //     - The env_vars dictionaries are merged, so environment variables
+  //       not specified by the child are still inherited from the parent.
 
   // Override environment variables.
-  RAY_LOG(INFO) << "OverrideRuntimeEnv: child working dir " << child.working_dir() << ", parent working dir " << parent->working_dir();
+  RAY_LOG(INFO) << "OverrideRuntimeEnv: child working dir " << child.working_dir()
+                << ", parent working dir " << parent->working_dir();
   google::protobuf::Map<std::string, std::string> result_env_vars(parent->env_vars());
   result_env_vars.insert(child.env_vars().begin(), child.env_vars().end());
   // Inherit all other non-specified options from the parent.
@@ -1700,74 +1707,90 @@ static rpc::RuntimeEnv OverrideRuntimeEnv(const rpc::RuntimeEnv &child, const st
   // fix this
   result_runtime_env.MergeFrom(child);
   if (!result_env_vars.empty()) {
-    result_runtime_env.mutable_env_vars()->insert(result_env_vars.begin(), result_env_vars.end());
+    result_runtime_env.mutable_env_vars()->insert(result_env_vars.begin(),
+                                                  result_env_vars.end());
   }
   // // working_dir should not be in child env.
   // result_runtime_env.clear_working_dir();
   return result_runtime_env;
 }
 
-static std::vector<std::string> GetUrisFromRuntimeEnv(const rpc::RuntimeEnv *runtime_env) {
+static std::vector<std::string> GetUrisFromRuntimeEnv(
+    const rpc::RuntimeEnv *runtime_env) {
   std::vector<std::string> result;
   if (runtime_env == nullptr) {
     RAY_LOG(INFO) << "GetUrisFromRuntimeEnv nullptr";
     return result;
   }
   RAY_LOG(INFO) << "GetUrisFromRuntimeEnv size " << runtime_env->uris().size();
-  for(const auto &uri : runtime_env->uris()) {
+  for (const auto &uri : runtime_env->uris()) {
     result.emplace_back(uri);
   }
   return result;
 }
 
-static std::vector<std::string> GetUrisFromSerializedRuntimeEnv(const std::string &serialized_runtime_env) {
+static std::vector<std::string> GetUrisFromSerializedRuntimeEnv(
+    const std::string &serialized_runtime_env) {
   rpc::RuntimeEnv runtime_env;
-  if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env, &runtime_env).ok()) {
+  if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env, &runtime_env)
+           .ok()) {
     RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env;
-    // TODO(SongGuyang): We pass the raw string here and the task will fail after an exception raised in runtime env agent. Actually, we can fail the task here.
+    // TODO(SongGuyang): We pass the raw string here and the task will fail after an
+    // exception raised in runtime env agent. Actually, we can fail the task here.
     return {};
   }
   return GetUrisFromRuntimeEnv(&runtime_env);
 }
 
-std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(const std::string &serialized_runtime_env,
-                                                      std::vector<std::string> *runtime_env_uris) {
-    RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: " << serialized_runtime_env << ", job config " << job_config_->serialized_runtime_env().serialized_runtime_env();
-    std::shared_ptr<rpc::RuntimeEnv> parent = nullptr;
-    if (options_.worker_type == WorkerType::DRIVER) {
-      if (serialized_runtime_env == "") {
-        RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 00000 " << job_config_->serialized_runtime_env().serialized_runtime_env();
-        *runtime_env_uris = GetUrisFromRuntimeEnv(job_runtime_env_.get());
-        return job_config_->serialized_runtime_env().serialized_runtime_env();
-      }
-      parent = job_runtime_env_;
-    } else {
-      if (serialized_runtime_env == "") {
-        RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 11111 " << worker_context_.GetCurrentSerializedRuntimeEnv();
-        *runtime_env_uris = GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get());
-        return worker_context_.GetCurrentSerializedRuntimeEnv();
-      }
-      parent = worker_context_.GetCurrentRuntimeEnv();
+std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
+    const std::string &serialized_runtime_env,
+    std::vector<std::string> *runtime_env_uris) {
+  RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: " << serialized_runtime_env
+                << ", job config "
+                << job_config_->serialized_runtime_env().serialized_runtime_env();
+  std::shared_ptr<rpc::RuntimeEnv> parent = nullptr;
+  if (options_.worker_type == WorkerType::DRIVER) {
+    if (serialized_runtime_env == "") {
+      RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 00000 "
+                    << job_config_->serialized_runtime_env().serialized_runtime_env();
+      *runtime_env_uris = GetUrisFromRuntimeEnv(job_runtime_env_.get());
+      return job_config_->serialized_runtime_env().serialized_runtime_env();
     }
-    if (parent) {
-      rpc::RuntimeEnv child_runtime_env;
-      if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env, &child_runtime_env).ok()) {
-        RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env;
-        // TODO(SongGuyang): We pass the raw string here and the task will fail after an exception raised in runtime env agent. Actually, we can fail the task here.
-        return serialized_runtime_env;
-      }
-      auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
-      std::string result;
-      RAY_CHECK(google::protobuf::util::MessageToJsonString(override_runtime_env, &result).ok());
-      RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 22222 " << result;
-      *runtime_env_uris = GetUrisFromRuntimeEnv(&override_runtime_env);
-      RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 22222 result working dir {}" << override_runtime_env.working_dir();
-      return result;
-    } else {
-      RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 33333 " << serialized_runtime_env;
-      *runtime_env_uris = GetUrisFromSerializedRuntimeEnv(serialized_runtime_env);
+    parent = job_runtime_env_;
+  } else {
+    if (serialized_runtime_env == "") {
+      RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 11111 "
+                    << worker_context_.GetCurrentSerializedRuntimeEnv();
+      *runtime_env_uris =
+          GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get());
+      return worker_context_.GetCurrentSerializedRuntimeEnv();
+    }
+    parent = worker_context_.GetCurrentRuntimeEnv();
+  }
+  if (parent) {
+    rpc::RuntimeEnv child_runtime_env;
+    if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env,
+                                                     &child_runtime_env)
+             .ok()) {
+      RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env;
+      // TODO(SongGuyang): We pass the raw string here and the task will fail after an
+      // exception raised in runtime env agent. Actually, we can fail the task here.
       return serialized_runtime_env;
     }
+    auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
+    std::string result;
+    RAY_CHECK(
+        google::protobuf::util::MessageToJsonString(override_runtime_env, &result).ok());
+    RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 22222 " << result;
+    *runtime_env_uris = GetUrisFromRuntimeEnv(&override_runtime_env);
+    RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 22222 result working dir {}"
+                  << override_runtime_env.working_dir();
+    return result;
+  } else {
+    RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv: 33333 " << serialized_runtime_env;
+    *runtime_env_uris = GetUrisFromSerializedRuntimeEnv(serialized_runtime_env);
+    return serialized_runtime_env;
+  }
 }
 
 void CoreWorker::BuildCommonTaskSpec(
@@ -1783,8 +1806,10 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::string &concurrency_group_name) {
   // Build common task spec.
   std::vector<std::string> runtime_env_uris;
-  auto override_runtime_env = OverrideTaskOrActorRuntimeEnv(serialized_runtime_env, &runtime_env_uris);
-  RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv result " << override_runtime_env << ", and runtime_env_uris size " << runtime_env_uris.size();
+  auto override_runtime_env =
+      OverrideTaskOrActorRuntimeEnv(serialized_runtime_env, &runtime_env_uris);
+  RAY_LOG(INFO) << "OverrideTaskOrActorRuntimeEnv result " << override_runtime_env
+                << ", and runtime_env_uris size " << runtime_env_uris.size();
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
@@ -1876,8 +1901,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, new_resource,
                       new_placement_resources, actor_creation_options.placement_options,
-                      actor_creation_options.placement_group_capture_child_tasks,
-                      "", /* debugger_breakpoint */ depth,
+                      actor_creation_options.placement_group_capture_child_tasks, "",
+                      /* debugger_breakpoint */ depth,
                       actor_creation_options.serialized_runtime_env);
 
   auto actor_handle = std::make_unique<ActorHandle>(
@@ -2066,10 +2091,10 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
                       required_resources, std::make_pair(PlacementGroupID::Nil(), -1),
-                      true, /* placement_group_capture_child_tasks */
-                      "",   /* debugger_breakpoint */
+                      true,  /* placement_group_capture_child_tasks */
+                      "",    /* debugger_breakpoint */
                       depth, /*depth*/
-                      "{}", /* serialized_runtime_env */
+                      "{}",  /* serialized_runtime_env */
                       task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.

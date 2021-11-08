@@ -154,7 +154,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 ok=False,
                 msg="Runtime environment doesn't match "
                 f"request one {job_config.serialized_runtime_env.uris} "
-                f"current one {current_job_config.serialized_runtime_env.uris}")
+                f"current one {current_job_config.serialized_runtime_env.uris}"
+            )
         return ray_client_pb2.InitResponse(ok=True)
 
     @_use_response_cache

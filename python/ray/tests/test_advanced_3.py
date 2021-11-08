@@ -1,6 +1,5 @@
 # coding: utf-8
 import glob
-import json
 import logging
 import os
 import sys
@@ -741,7 +740,8 @@ def test_sync_job_config(shutdown_only):
     job_config = ray.worker.global_worker.core_worker.get_job_config()
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)
-    job_runtime_env = json_format.Parse(job_config.serialized_runtime_env.serialized_runtime_env, RuntimeEnv())
+    job_runtime_env = json_format.Parse(
+        job_config.serialized_runtime_env.serialized_runtime_env, RuntimeEnv())
     assert job_runtime_env.env_vars == runtime_env["env_vars"]
 
     @ray.remote
@@ -754,7 +754,8 @@ def test_sync_job_config(shutdown_only):
     job_config.ParseFromString(ray.get(get_job_config.remote()))
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)
-    job_runtime_env = json_format.Parse(job_config.serialized_runtime_env.serialized_runtime_env, RuntimeEnv())
+    job_runtime_env = json_format.Parse(
+        job_config.serialized_runtime_env.serialized_runtime_env, RuntimeEnv())
     assert job_runtime_env.env_vars == runtime_env["env_vars"]
 
 

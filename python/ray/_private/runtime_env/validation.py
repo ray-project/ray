@@ -9,11 +9,16 @@ import yaml
 
 import ray
 from ray.core.generated.common_pb2 import RuntimeEnv
-from ray._private.runtime_env.plugin import RuntimeEnvPlugin, build_proto_plugin_runtime_env, parse_proto_plugin_runtime_env
+from ray._private.runtime_env.plugin import (RuntimeEnvPlugin,
+                                             build_proto_plugin_runtime_env,
+                                             parse_proto_plugin_runtime_env)
 from ray._private.utils import import_attr
-from ray._private.runtime_env.pip import build_proto_pip_runtime_env, parse_proto_pip_runtime_env
-from ray._private.runtime_env.conda import build_proto_conda_runtime_env, parse_proto_conda_runtime_env
-from ray._private.runtime_env.container import build_proto_container_runtime_env, parse_proto_container_runtime_env
+from ray._private.runtime_env.pip import (build_proto_pip_runtime_env,
+                                          parse_proto_pip_runtime_env)
+from ray._private.runtime_env.conda import (build_proto_conda_runtime_env,
+                                            parse_proto_conda_runtime_env)
+from ray._private.runtime_env.container import (
+    build_proto_container_runtime_env, parse_proto_container_runtime_env)
 from google.protobuf import json_format
 from ray._private.runtime_env import conda
 
@@ -378,8 +383,8 @@ class ParsedRuntimeEnv(dict):
             env_vars = self.get("env_vars", {})
             pb.env_vars.update(env_vars.items())
             if "_inject_current_ray" in self:
-                pb.extensions["_inject_current_ray"] = str(self[
-                    "_inject_current_ray"])
+                pb.extensions["_inject_current_ray"] = str(
+                    self["_inject_current_ray"])
             build_proto_pip_runtime_env(self, pb)
             build_proto_conda_runtime_env(self, pb)
             build_proto_container_runtime_env(self, pb)
@@ -408,7 +413,10 @@ class ParsedRuntimeEnv(dict):
 
     def serialize(self) -> str:
         # Sort the keys we can compare the serialized string for equality.
-        return json.dumps(json.loads(json_format.MessageToJson(self.get_proto_runtime_env())), sort_keys=True)
+        return json.dumps(
+            json.loads(
+                json_format.MessageToJson(self.get_proto_runtime_env())),
+            sort_keys=True)
 
 
 def get_conda_uri_from_pb(runtime_env: RuntimeEnv):

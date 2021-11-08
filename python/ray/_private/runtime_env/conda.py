@@ -7,7 +7,6 @@ import hashlib
 import subprocess
 import runpy
 import shutil
-import json
 
 from filelock import FileLock
 from typing import Optional, List, Dict, Any, Set
@@ -15,7 +14,7 @@ from pathlib import Path
 
 import ray
 
-from ray.core.generated.common_pb2 import RuntimeEnv, CondaRuntimeEnv
+from ray.core.generated.common_pb2 import RuntimeEnv
 from ray._private.runtime_env.conda_utils import (
     get_conda_activate_commands, create_conda_env, delete_conda_env)
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -25,22 +24,27 @@ from ray._private.runtime_env.packaging import Protocol, parse_uri
 
 default_logger = logging.getLogger(__name__)
 
-def build_proto_conda_runtime_env(runtime_env_dict: dict, runtime_env: RuntimeEnv):
+
+def build_proto_conda_runtime_env(runtime_env_dict: dict,
+                                  runtime_env: RuntimeEnv):
     """ Construct conda runtime env protobuf from runtime env dict.
     """
     if runtime_env_dict.get("conda"):
         if isinstance(runtime_env_dict["conda"], str):
-            runtime_env.conda_runtime_env.conda_env_name = runtime_env_dict["conda"]
+            runtime_env.conda_runtime_env.conda_env_name = runtime_env_dict[
+                "conda"]
         else:
             runtime_env.conda_runtime_env.config = json.dumps(
                 runtime_env_dict["conda"], sort_keys=True)
 
 
-def parse_proto_conda_runtime_env(runtime_env: RuntimeEnv, runtime_env_dict: dict):
+def parse_proto_conda_runtime_env(runtime_env: RuntimeEnv,
+                                  runtime_env_dict: dict):
     """ Parse conda runtime env protobuf to runtime env dict.
     """
     if runtime_env.HasField("conda_runtime_env"):
-        runtime_env_dict["conda"] = json.loads(runtime_env.conda_runtime_env.config)
+        runtime_env_dict["conda"] = json.loads(
+            runtime_env.conda_runtime_env.config)
 
 
 def _resolve_current_ray_path():
@@ -103,7 +107,8 @@ def get_conda_dict(runtime_env, resources_dir) -> Optional[Dict[Any, Any]]:
         else:
             return None
     if runtime_env.HasField("pip_runtime_env"):
-        requirements_txt = "\n".join(runtime_env.pip_runtime_env.config.packages) + "\n"
+        requirements_txt = "\n".join(
+            runtime_env.pip_runtime_env.config.packages) + "\n"
         pip_hash = hashlib.sha1(requirements_txt.encode("utf-8")).hexdigest()
         pip_hash_str = f"pip-generated-{pip_hash}"
 
@@ -295,7 +300,8 @@ class CondaManager:
                     "pip_runtime_env"):
             return
 
-        logger.debug(f"Setting up conda or pip for runtime_env: {serialized_runtime_env}")
+        logger.debug("Setting up conda or pip for runtime_env: "
+                     f"{serialized_runtime_env}")
 
         if runtime_env.conda_runtime_env.HasField("conda_env_name"):
             conda_env_name = runtime_env.conda_runtime_env.conda_env_name
@@ -316,7 +322,8 @@ class CondaManager:
             conda_dict = inject_dependencies(conda_dict, _current_py_version(),
                                              extra_pip_dependencies)
 
-            logger.info(f"Setting up conda environment with {serialized_runtime_env}")
+            logger.info(
+                f"Setting up conda environment with {serialized_runtime_env}")
 
             # It is not safe for multiple processes to install conda envs
             # concurrently, even if the envs are different, so use a global

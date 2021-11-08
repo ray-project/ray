@@ -10,8 +10,7 @@ from ray._private.client_mode_hook import client_mode_convert_function
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray.util.placement_group import configure_placement_group_based_on_context
 import ray._private.signature
-from ray._private.runtime_env.validation import (
-    override_task_or_actor_runtime_env, ParsedRuntimeEnv)
+from ray._private.runtime_env.validation import ParsedRuntimeEnv
 from ray.util.tracing.tracing_helper import (_tracing_task_invocation,
                                              _inject_tracing_into_function)
 from ray.core.generated.common_pb2 import RuntimeEnv
