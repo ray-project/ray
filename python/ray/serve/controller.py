@@ -181,22 +181,19 @@ class ServeController:
                 deployment_name, new_deployment_info)
 
     async def run_control_loop(self) -> None:
+        # NOTE(edoakes): we catch all exceptions here and simply log them,
+        # because an unhandled exception would cause the main control loop to
+        # halt, which should *never* happen.
         while True:
             try:
                 self.autoscale()
-            except Exception:
-                logger.exception("Exception while autoscaling deployments.")
-            async with self.write_lock:
-                try:
+                async with self.write_lock:
                     self.http_state.update()
-                except Exception:
-                    logger.exception("Exception updating HTTP state.")
-                try:
                     self.deployment_state_manager.update()
-                except Exception:
-                    logger.exception("Exception updating deployment state.")
-            self._put_serve_snapshot()
-            await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
+                self._put_serve_snapshot()
+                await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
+            except Exception:
+                logger.exception("Exception in main control loop.")
 
     def _put_serve_snapshot(self) -> None:
         val = dict()
