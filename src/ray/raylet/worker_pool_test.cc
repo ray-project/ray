@@ -85,6 +85,7 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
       reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
     } else {
       reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+      reply.set_serialized_runtime_env_context("{\"dummy\":\"dummy\"}");
     }
     callback(Status::OK(), reply);
   };
