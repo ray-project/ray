@@ -454,7 +454,7 @@ Distributed Checkpointing
 
 On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node. This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also requires rsync to be installed.
 
-Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing (or use a Ray built-in model type described here). See :doc:`/tune/examples/custom_func_checkpointing` for an example.
+Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing (or use a model type with a built-in Ray Tune integration as described here). See :doc:`/tune/examples/custom_func_checkpointing` for an example.
 
 If you are running Ray Tune on Kubernetes, you should usually use a
 :func:`DurableTrainable <ray.tune.durable>` or a shared filesystem for checkpoint sharing.
