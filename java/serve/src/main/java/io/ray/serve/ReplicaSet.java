@@ -35,7 +35,7 @@ public class ReplicaSet {
 
   private Gauge numQueuedQueriesGauge;
 
-  public ReplicaSet(String backendTag) {
+  public ReplicaSet(String deploymentName) {
     this.inFlightQueries = new ConcurrentHashMap<>();
     RayServeMetrics.execute(
         () ->
@@ -44,7 +44,7 @@ public class ReplicaSet {
                     .name(RayServeMetrics.SERVE_DEPLOYMENT_QUEUED_QUERIES.getName())
                     .description(RayServeMetrics.SERVE_DEPLOYMENT_QUEUED_QUERIES.getDescription())
                     .unit("")
-                    .tags(ImmutableMap.of(RayServeMetrics.TAG_DEPLOYMENT, backendTag))
+                    .tags(ImmutableMap.of(RayServeMetrics.TAG_DEPLOYMENT, deploymentName))
                     .register());
   }
 

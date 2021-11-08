@@ -79,7 +79,7 @@ Custom- and Complex Models
    An example on how a model can use the trajectory view API to specify its own input.
 - `MobileNetV2 wrapping example model <https://github.com/ray-project/ray/blob/master/rllib/examples/mobilenet_v2_with_lstm.py>`__:
    Implementations of `tf.keras.applications.mobilenet_v2.MobileNetV2` and `torch.hub (mobilenet_v2)`-wrapping example models.
-- `Differentiable Neural Computer <https://github.com/ray-project/ray/blob/master/rllib/examples/neural_computer.py>`__:
+- `Differentiable Neural Computer <https://github.com/ray-project/ray/blob/master/rllib/examples/models/neural_computer.py>`__:
    Example of DeepMind's Differentiable Neural Computer for partially-observable environments.
 
 
@@ -117,7 +117,7 @@ Evaluation:
 
 Serving and Offline
 -------------------
-- `Offline RL with CQL <https://github.com/ray-project/ray/tree/master/rllib/examples/serving/offline_rl.py>`__:
+- `Offline RL with CQL <https://github.com/ray-project/ray/tree/master/rllib/examples/offline_rl.py>`__:
    Example showing how to run an offline RL training job using a historic-data json file.
 - :ref:`Serving RLlib models with Ray Serve <serve-rllib-tutorial>`: Example of using Ray Serve to serve RLlib models
    with HTTP and JSON interface. **This is the recommended way to expose RLlib for online serving use case**.

@@ -15,11 +15,11 @@ import org.testng.annotations.Test;
 
 public class ReplicaSetTest {
 
-  private String backendTag = "ReplicaSetTest";
+  private String deploymentName = "ReplicaSetTest";
 
   @Test
   public void setMaxConcurrentQueriesTest() {
-    ReplicaSet replicaSet = new ReplicaSet(backendTag);
+    ReplicaSet replicaSet = new ReplicaSet(deploymentName);
     io.ray.serve.generated.DeploymentConfig.Builder builder =
         io.ray.serve.generated.DeploymentConfig.newBuilder();
     builder.setMaxConcurrentQueries(200);
@@ -30,7 +30,7 @@ public class ReplicaSetTest {
 
   @Test
   public void updateWorkerReplicasTest() {
-    ReplicaSet replicaSet = new ReplicaSet(backendTag);
+    ReplicaSet replicaSet = new ReplicaSet(deploymentName);
     ActorSet.Builder builder = ActorSet.newBuilder();
 
     replicaSet.updateWorkerReplicas(builder.build());
@@ -46,8 +46,8 @@ public class ReplicaSetTest {
     Ray.init();
 
     try {
-      String controllerName = backendTag + "_controller";
-      String replicaTag = backendTag + "_replica";
+      String controllerName = deploymentName + "_controller";
+      String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
 
@@ -59,11 +59,11 @@ public class ReplicaSetTest {
       DeploymentConfig deploymentConfig =
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA.getNumber());
 
-      Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
+      Object[] initArgs = new Object[] {deploymentName, replicaTag, controllerName, new Object()};
 
       DeploymentInfo deploymentInfo =
           new DeploymentInfo()
-              .setName(backendTag)
+              .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
               .setBackendDef("io.ray.serve.ReplicaContext")
@@ -81,7 +81,7 @@ public class ReplicaSetTest {
       Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // ReplicaSet
-      ReplicaSet replicaSet = new ReplicaSet(backendTag);
+      ReplicaSet replicaSet = new ReplicaSet(deploymentName);
       ActorSet.Builder builder = ActorSet.newBuilder();
       builder.addNames(actorName);
       replicaSet.updateWorkerReplicas(builder.build());
@@ -89,12 +89,12 @@ public class ReplicaSetTest {
       // assign
       RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
       requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
-      requestMetadata.setCallMethod("getBackendTag");
+      requestMetadata.setCallMethod("getDeploymentName");
 
       Query query = new Query(requestMetadata.build(), null);
       ObjectRef<Object> resultRef = replicaSet.assignReplica(query);
 
-      Assert.assertEquals((String) resultRef.get(), backendTag);
+      Assert.assertEquals((String) resultRef.get(), deploymentName);
     } finally {
       if (!inited) {
         Ray.shutdown();

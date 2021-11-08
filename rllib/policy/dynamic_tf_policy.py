@@ -250,7 +250,7 @@ class DynamicTFPolicy(TFPolicy):
                 True, (), name="is_exploring")
 
         # Placeholder for `is_training` flag.
-        self._input_dict.is_training = self._get_is_training_placeholder()
+        self._input_dict.set_training(self._get_is_training_placeholder())
 
         # Multi-GPU towers do not need any action computing/exploration
         # graphs.
@@ -464,7 +464,7 @@ class DynamicTFPolicy(TFPolicy):
             buffer_index: int = 0,
     ) -> int:
         # Set the is_training flag of the batch.
-        batch.is_training = True
+        batch.set_training(True)
 
         # Shortcut for 1 CPU only: Store batch in
         # `self._loaded_single_cpu_batch`.

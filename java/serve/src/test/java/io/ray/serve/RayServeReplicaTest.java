@@ -23,7 +23,7 @@ public class RayServeReplicaTest {
 
     try {
       String controllerName = "RayServeReplicaTest";
-      String backendTag = "b_tag";
+      String deploymentName = "b_tag";
       String replicaTag = "r_tag";
       String version = "v1";
 
@@ -34,7 +34,7 @@ public class RayServeReplicaTest {
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA.getNumber());
       DeploymentInfo deploymentInfo =
           new DeploymentInfo()
-              .setName(backendTag)
+              .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
               .setBackendDef(DummyBackendReplica.class.getName());

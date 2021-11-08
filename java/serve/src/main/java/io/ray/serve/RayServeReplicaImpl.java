@@ -28,7 +28,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RayServeReplicaImpl.class);
 
-  private String backendTag;
+  private String deploymentName;
 
   private String replicaTag;
 
@@ -63,7 +63,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
       DeploymentConfig deploymentConfig,
       DeploymentVersion version,
       BaseActorHandle actorHandle) {
-    this.backendTag = Serve.getReplicaContext().getBackendTag();
+    this.deploymentName = Serve.getReplicaContext().getDeploymentName();
     this.replicaTag = Serve.getReplicaContext().getReplicaTag();
     this.callable = callable;
     this.config = deploymentConfig;
@@ -74,7 +74,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
     keyListeners.put(
-        new KeyType(LongPollNamespace.BACKEND_CONFIGS, backendTag),
+        new KeyType(LongPollNamespace.BACKEND_CONFIGS, deploymentName),
         newConfig -> updateDeploymentConfigs(newConfig));
     this.longPollClient = new LongPollClient(actorHandle, keyListeners);
     this.longPollClient.start();
@@ -92,7 +92,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
                     .tags(
                         ImmutableMap.of(
                             RayServeMetrics.TAG_BACKEND,
-                            backendTag,
+                            deploymentName,
                             RayServeMetrics.TAG_REPLICA,
                             replicaTag))
                     .register());
@@ -107,7 +107,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
                     .tags(
                         ImmutableMap.of(
                             RayServeMetrics.TAG_BACKEND,
-                            backendTag,
+                            deploymentName,
                             RayServeMetrics.TAG_REPLICA,
                             replicaTag))
                     .register());
@@ -122,7 +122,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
                     .tags(
                         ImmutableMap.of(
                             RayServeMetrics.TAG_BACKEND,
-                            backendTag,
+                            deploymentName,
                             RayServeMetrics.TAG_REPLICA,
                             replicaTag))
                     .register());
@@ -139,7 +139,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
                     .tags(
                         ImmutableMap.of(
                             RayServeMetrics.TAG_BACKEND,
-                            backendTag,
+                            deploymentName,
                             RayServeMetrics.TAG_REPLICA,
                             replicaTag))
                     .register());
@@ -154,7 +154,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
                     .tags(
                         ImmutableMap.of(
                             RayServeMetrics.TAG_BACKEND,
-                            backendTag,
+                            deploymentName,
                             RayServeMetrics.TAG_REPLICA,
                             replicaTag))
                     .register());
@@ -290,7 +290,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
         ReflectUtil.getMethod(callable.getClass(), "del").invoke(callable);
       }
     } catch (NoSuchMethodException e) {
-      LOGGER.warn("Deployment {} has no del method.", backendTag);
+      LOGGER.warn("Deployment {} has no del method.", deploymentName);
     } catch (Throwable e) {
       LOGGER.error("Exception during graceful shutdown of replica.");
     } finally {
@@ -311,7 +311,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
     LOGGER.info(
         "Replica {} of deployment {} reconfigure userConfig: {}",
         replicaTag,
-        backendTag,
+        deploymentName,
         userConfig);
     try {
       ReflectUtil.getMethod(callable.getClass(), Constants.RECONFIGURE_METHOD, userConfig)
@@ -321,7 +321,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
       String errMsg =
           LogUtil.format(
               "user_config specified but backend {} missing {} method",
-              backendTag,
+              deploymentName,
               Constants.RECONFIGURE_METHOD);
       LOGGER.error(errMsg);
       throw new RayServeException(errMsg, e);
@@ -330,7 +330,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
           LogUtil.format(
               "Replica {} of deployment {} failed to reconfigure userConfig {}",
               replicaTag,
-              backendTag,
+              deploymentName,
               userConfig);
       LOGGER.error(errMsg);
       throw new RayServeException(errMsg, e);
@@ -338,7 +338,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
       LOGGER.info(
           "Replica {} of deployment {} finished reconfiguring userConfig: {}",
           replicaTag,
-          backendTag,
+          deploymentName,
           userConfig);
     }
   }
@@ -366,7 +366,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
       LOGGER.info(
           "Replica {} of deployment {} check health of {}",
           replicaTag,
-          backendTag,
+          deploymentName,
           callable.getClass().getName());
       Object isHealthy = checkHealthMethod.invoke(callable);
       if (!(isHealthy instanceof Boolean)) {
@@ -375,7 +375,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
             isHealthy == null ? "null" : isHealthy.getClass().getName() + ":" + isHealthy,
             callable.getClass().getName(),
             replicaTag,
-            backendTag);
+            deploymentName);
         result = false;
       } else {
         result = (boolean) isHealthy;
@@ -384,7 +384,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
       LOGGER.error(
           "Replica {} of deployment {} failed to check health of {}",
           replicaTag,
-          backendTag,
+          deploymentName,
           callable.getClass().getName(),
           e);
       result = false;
@@ -393,7 +393,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
           "The health check result of {} in replica {} of deployment {} is {}.",
           callable.getClass().getName(),
           replicaTag,
-          backendTag,
+          deploymentName,
           result);
     }
     return result;

@@ -17,9 +17,9 @@ public class RayServeHandleTest {
     Ray.init();
 
     try {
-      String backendTag = "RayServeHandleTest";
-      String controllerName = backendTag + "_controller";
-      String replicaTag = backendTag + "_replica";
+      String deploymentName = "RayServeHandleTest";
+      String controllerName = deploymentName + "_controller";
+      String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
 
@@ -31,11 +31,11 @@ public class RayServeHandleTest {
       DeploymentConfig deploymentConfig =
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA.getNumber());
 
-      Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
+      Object[] initArgs = new Object[] {deploymentName, replicaTag, controllerName, new Object()};
 
       DeploymentInfo deploymentInfo =
           new DeploymentInfo()
-              .setName(backendTag)
+              .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
               .setBackendDef("io.ray.serve.ReplicaContext")
@@ -54,15 +54,15 @@ public class RayServeHandleTest {
 
       // RayServeHandle
       RayServeHandle rayServeHandle =
-          new RayServeHandle(controllerHandle, backendTag, null, null)
-              .setMethodName("getBackendTag");
+          new RayServeHandle(controllerHandle, deploymentName, null, null)
+              .setMethodName("getDeploymentName");
       ActorSet.Builder builder = ActorSet.newBuilder();
       builder.addNames(actorName);
       rayServeHandle.getRouter().getReplicaSet().updateWorkerReplicas(builder.build());
 
       // remote
       ObjectRef<Object> resultRef = rayServeHandle.remote(null);
-      Assert.assertEquals((String) resultRef.get(), backendTag);
+      Assert.assertEquals((String) resultRef.get(), deploymentName);
     } finally {
       if (!inited) {
         Ray.shutdown();

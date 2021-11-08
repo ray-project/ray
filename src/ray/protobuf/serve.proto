@@ -83,7 +83,7 @@ message DeploymentConfig {
   AutoscalingConfig autoscaling_config = 8;
 }
 
-// Backend language.
+// Deployment language.
 enum DeploymentLanguage {
   PYTHON = 0;
   JAVA = 1;

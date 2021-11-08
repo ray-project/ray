@@ -172,31 +172,6 @@ bool ClusterResourceScheduler::RemoveNode(const std::string &node_id_string) {
   return RemoveNode(node_id);
 }
 
-bool ClusterResourceScheduler::IsFeasible(const ResourceRequest &resource_request,
-                                          const NodeResources &resources) const {
-  // First, check predefined resources.
-  for (size_t i = 0; i < PredefinedResources_MAX; i++) {
-    if (resource_request.predefined_resources[i] >
-        resources.predefined_resources[i].total) {
-      return false;
-    }
-  }
-
-  // Now check custom resources.
-  for (const auto &task_req_custom_resource : resource_request.custom_resources) {
-    auto it = resources.custom_resources.find(task_req_custom_resource.first);
-
-    if (it == resources.custom_resources.end()) {
-      return false;
-    }
-    if (task_req_custom_resource.second > it->second.total) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
                                                 int64_t node_id,
                                                 const NodeResources &resources) const {
@@ -809,10 +784,13 @@ void ClusterResourceScheduler::UpdateLocalAvailableResourcesFromResourceInstance
   auto local_view = it_local_node->second.GetMutableLocalView();
   for (size_t i = 0; i < PredefinedResources_MAX; i++) {
     local_view->predefined_resources[i].available = 0;
+    local_view->predefined_resources[i].total = 0;
     for (size_t j = 0; j < local_resources_.predefined_resources[i].available.size();
          j++) {
       local_view->predefined_resources[i].available +=
           local_resources_.predefined_resources[i].available[j];
+      local_view->predefined_resources[i].total +=
+          local_resources_.predefined_resources[i].total[j];
     }
   }
 

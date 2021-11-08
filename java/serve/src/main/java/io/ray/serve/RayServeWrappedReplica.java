@@ -26,7 +26,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
   private RayServeReplicaImpl backend;
 
   public RayServeWrappedReplica(
-      String backendTag,
+      String deploymentName,
       String replicaTag,
       String backendDef,
       byte[] initArgsbytes,
@@ -54,7 +54,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
     // Init replica.
     init(
         new DeploymentInfo()
-            .setName(backendTag)
+            .setName(deploymentName)
             .setDeploymentConfig(deploymentConfig)
             .setDeploymentVersion(ServeProtoUtil.parseDeploymentVersion(deploymentVersionBytes))
             .setBackendDef(backendDef)
