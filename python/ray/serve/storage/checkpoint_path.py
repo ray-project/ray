@@ -36,10 +36,9 @@ def make_kv_store(checkpoint_path, namespace):
             # We need to strip leading "/" in path as right key to use in
             # gcs. Ex: gcs://bucket/folder/file.zip -> key = "folder/file.zip"
             prefix = parsed_url.path.lstrip("/")
-            logger.info(
-                "Using Ray GCS KVStore for controller checkpoint and"
-                " recovery: "
-                f"bucket={bucket} checkpoint_path={checkpoint_path}")
+            logger.info("Using Ray GCS KVStore for controller checkpoint and"
+                        " recovery: "
+                        f"bucket={bucket} checkpoint_path={checkpoint_path}")
             return RayGcsKVStore(
                 namespace,
                 bucket=bucket,
