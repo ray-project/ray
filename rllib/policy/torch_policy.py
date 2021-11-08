@@ -408,9 +408,12 @@ class TorchPolicy(Policy):
             return log_likelihoods
 
     @ExperimentalAPI
-    def loss(self, model: ModelV2, dist_class: Type[TorchDistributionWrapper],
+    def loss(self, *, model: ModelV2,
+             dist_class: Type[TorchDistributionWrapper],
              train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
         """Loss function for this Policy.
+
+        May return single loss term or a tuple of loss terms.
 
         Args:
             model: The model to calculate the loss(es).
@@ -1014,7 +1017,10 @@ class TorchPolicy(Policy):
                 with NullContextManager(
                 ) if device.type == "cpu" else torch.cuda.device(device):
                     loss_out = force_list(
-                        self._loss(model, self.dist_class, sample_batch))
+                        self._loss(
+                            model=model,
+                            dist_class=self.dist_class,
+                            train_batch=sample_batch))
 
                     # Call Model's custom-loss with Policy loss outputs and
                     # train_batch.
