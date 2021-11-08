@@ -612,7 +612,8 @@ def run_learning_tests_from_yaml(
             e.pop("frameworks", None)
 
             e["stop"] = e["stop"] if "stop" in e else {}
-            e["pass_criteria"] = e["pass_criteria"] if "pass_criteria" in e else {}
+            e["pass_criteria"] = e[
+                "pass_criteria"] if "pass_criteria" in e else {}
 
             # For smoke-tests, we just run for n min.
             if smoke_test:
