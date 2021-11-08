@@ -24,6 +24,8 @@ from ray._private.utils import (
     ensure_str,
     format_error_message,
 )
+from ray.experimental.internal_kv import _internal_kv_mput, _internal_kv_mget, _internal_kv_exists
+from ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 from ray.util.inspect import (
     is_function_or_method,
     is_class_method,
@@ -151,11 +153,10 @@ class FunctionActorManager:
                                  "remote function", self._worker)
         key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
                + remote_function._function_descriptor.function_id.binary())
-        if self._worker.redis_client.exists(key) == 1:
+        if _internal_kv_exists(key, namespace=KV_NAMESPACE_FUNCTION_TABLE)1:
             return
-        self._worker.redis_client.hset(
-            key,
-            mapping={
+        _internal_kv_mput(
+            key, {
                 "job_id": self._worker.current_job_id.binary(),
                 "function_id": remote_function._function_descriptor.
                 function_id.binary(),
@@ -165,17 +166,17 @@ class FunctionActorManager:
                 "collision_identifier": self.compute_collision_identifier(
                     function),
                 "max_calls": remote_function._max_calls
-            })
+            }, namespace=KV_NAMESPACE_FUNCTION_TABLE)
         self._worker.redis_client.rpush("Exports", key)
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
         (job_id_str, function_id_str, function_name, serialized_function,
-         module, max_calls) = self._worker.redis_client.hmget(
+         module, max_calls) = _internal_kv_mget(
              key, [
                  "job_id", "function_id", "function_name", "function",
                  "module", "max_calls"
-             ])
+             ], namespace=KV_NAMESPACE_FUNCTION_TABLE)
 
         if ray_constants.ISOLATE_EXPORTS and \
                 job_id_str != self._worker.current_job_id.binary():
@@ -358,7 +359,7 @@ class FunctionActorManager:
         """
         # We set the driver ID here because it may not have been available when
         # the actor class was defined.
-        self._worker.redis_client.hset(key, mapping=actor_class_info)
+        _internal_kv_mput(key, actor_class_info, namespace=KV_NAMESPACE_FUNCTION_TABLE)
         self._worker.redis_client.rpush("Exports", key)
 
     def export_actor_class(self, Class, actor_creation_function_descriptor,
@@ -534,9 +535,10 @@ class FunctionActorManager:
 
         # Fetch raw data from GCS.
         (job_id_str, class_name, module, pickled_class,
-         actor_method_names) = self._worker.redis_client.hmget(
+         actor_method_names) = _internal_kv_mget(
              key,
-             ["job_id", "class_name", "module", "class", "actor_method_names"])
+             ["job_id", "class_name", "module", "class", "actor_method_names"],
+             namespace=KV_NAMESPACE_FUNCTION_TABLE)
 
         class_name = ensure_str(class_name)
         module_name = ensure_str(module)

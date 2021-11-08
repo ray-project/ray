@@ -60,7 +60,7 @@ from ray._private.utils import check_oversized_function
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
     _internal_kv_initialized, _initialize_internal_kv, \
-    _internal_kv_reset
+    _internal_kv_reset, _internal_kv_put, _internal_kv_mput
 from ray._private.client_mode_hook import client_mode_hook
 
 SCRIPT_MODE = 0
@@ -392,8 +392,11 @@ class Worker:
             # We always run the task locally.
             function({"worker": self})
             # Check if the function has already been put into redis.
-            function_exported = self.redis_client.setnx(b"Lock:" + key, 1)
-            if not function_exported:
+            function_exported = _internal_kv_put(
+                b"Lock:" + key, 1,
+                overwrite = False,
+                namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+            if function_exported:
                 # In this case, the function has already been exported, so
                 # we don't need to export it again.
                 return
@@ -402,13 +405,13 @@ class Worker:
                                      "function", self)
 
             # Run the function on all workers.
-            self.redis_client.hset(
+            _internal_kv_mput(
                 key,
-                mapping={
+                {
                     "job_id": self.current_job_id.binary(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
-                })
+                }, True, namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
             # successfully completes the hset and rpush, then the program will
