@@ -206,7 +206,6 @@ class Client:
             ray_actor_options = {}
 
         curr_job_env = ray.get_runtime_context().runtime_env
-        # fix this
         if "runtime_env" in ray_actor_options:
             ray_actor_options["runtime_env"].setdefault(
                 "working_dir", curr_job_env.get("working_dir"))

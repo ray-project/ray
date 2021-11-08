@@ -120,7 +120,6 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
                 # Add the mapping of URIs -> the serialized environment to be
                 # used for cache invalidation.
-
                 for plugin_uri in runtime_env.uris:
                     self._uris_to_envs[plugin_uri].add(serialized_runtime_env)
 

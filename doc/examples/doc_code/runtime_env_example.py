@@ -19,7 +19,7 @@ runtime_env = {
         }]
     },
     "env_vars": {"TF_WARNINGS": "none"},
-    "eager_install": False,
+    "_inject_current_ray": False
 }
 # __runtime_env_conda_def_end__
 

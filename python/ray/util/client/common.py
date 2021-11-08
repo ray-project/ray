@@ -413,6 +413,7 @@ def set_task_options(task: ray_client_pb2.ClientTask,
     if options is None:
         task.ClearField(field)
         return
+
     # If there's a non-null "placement_group" in `options`, convert the
     # placement group to a dict so that `options` can be passed to json.dumps.
     pg = options.get("placement_group", None)

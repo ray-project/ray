@@ -12,13 +12,13 @@ from ray.core.generated.common_pb2 import RuntimeEnv
 from ray._private.runtime_env.plugin import (RuntimeEnvPlugin,
                                              build_proto_plugin_runtime_env,
                                              parse_proto_plugin_runtime_env)
-from ray._private.utils import import_attr
 from ray._private.runtime_env.pip import (build_proto_pip_runtime_env,
                                           parse_proto_pip_runtime_env)
 from ray._private.runtime_env.conda import (build_proto_conda_runtime_env,
                                             parse_proto_conda_runtime_env)
 from ray._private.runtime_env.container import (
     build_proto_container_runtime_env, parse_proto_container_runtime_env)
+from ray._private.utils import import_attr
 from google.protobuf import json_format
 from ray._private.runtime_env import conda
 
@@ -382,6 +382,10 @@ class ParsedRuntimeEnv(dict):
             pb.uris.extend(self.get_uris())
             env_vars = self.get("env_vars", {})
             pb.env_vars.update(env_vars.items())
+            if "_ray_release" in self:
+                pb.extensions["_ray_release"] = str(self["_ray_release"])
+            if "_ray_commit" in self:
+                pb.extensions["_ray_commit"] = str(self["_ray_commit"])
             if "_inject_current_ray" in self:
                 pb.extensions["_inject_current_ray"] = str(
                     self["_inject_current_ray"])

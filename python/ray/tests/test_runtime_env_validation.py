@@ -231,7 +231,7 @@ class TestParsedRuntimeEnv:
         deserialized_env1 = ParsedRuntimeEnv.deserialize(serialized_env1)
         deserialized_env2 = ParsedRuntimeEnv.deserialize(serialized_env2)
 
-        assert deserialized_env1 == deserialized_env2
+        assert env1 == deserialized_env1 == env2 == deserialized_env2
 
     def test_reject_pip_and_conda(self):
         with pytest.raises(ValueError):

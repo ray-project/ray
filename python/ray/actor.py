@@ -25,8 +25,6 @@ from ray.exceptions import AsyncioActorExit
 from ray.util.tracing.tracing_helper import (_tracing_actor_creation,
                                              _tracing_actor_method_invocation,
                                              _inject_tracing_into_class)
-from ray.core.generated.common_pb2 import RuntimeEnv
-from google.protobuf import json_format
 
 logger = logging.getLogger(__name__)
 
@@ -407,11 +405,8 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = str()
         if isinstance(runtime_env, str):
             new_runtime_env = runtime_env
-        elif isinstance(runtime_env, RuntimeEnv):
-            new_runtime_env = json_format.MessageToJson(runtime_env)
         else:
             new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
 
@@ -433,11 +428,8 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = str()
         if isinstance(runtime_env, str):
             new_runtime_env = runtime_env
-        elif isinstance(runtime_env, RuntimeEnv):
-            new_runtime_env = json_format.MessageToJson(runtime_env)
         else:
             new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
 
@@ -505,13 +497,9 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = str()
-
         if runtime_env is not None:
             if isinstance(runtime_env, str):
                 new_runtime_env = runtime_env
-            elif isinstance(runtime_env, RuntimeEnv):
-                new_runtime_env = json_format.MessageToJson(runtime_env)
             else:
                 new_runtime_env = ParsedRuntimeEnv(runtime_env
                                                    or {}).serialize()
@@ -767,13 +755,10 @@ class ActorClass:
             meta.class_name,
             placement_group=placement_group)
 
-        new_runtime_env = str()
         if runtime_env:
             if isinstance(runtime_env, str):
                 # Serialzed protobuf runtime env from Ray client.
                 new_runtime_env = runtime_env
-            elif isinstance(runtime_env, RuntimeEnv):
-                new_runtime_env = json_format.MessageToJson(runtime_env)
             elif isinstance(runtime_env, ParsedRuntimeEnv):
                 new_runtime_env = runtime_env.serialize()
             else:
@@ -800,7 +785,6 @@ class ActorClass:
             concurrency_groups_dict[cg_name]["function_descriptors"].append(
                 PythonFunctionDescriptor(module_name, method_name, class_name))
 
-        logger.info(f"create actor with runtime env {new_runtime_env}")
         actor_id = worker.core_worker.create_actor(
             meta.language,
             meta.actor_creation_function_descriptor,

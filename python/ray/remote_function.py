@@ -13,8 +13,6 @@ import ray._private.signature
 from ray._private.runtime_env.validation import ParsedRuntimeEnv
 from ray.util.tracing.tracing_helper import (_tracing_task_invocation,
                                              _inject_tracing_into_function)
-from ray.core.generated.common_pb2 import RuntimeEnv
-from google.protobuf import json_format
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
@@ -171,17 +169,18 @@ class RemoteFunction:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = str()
-        if isinstance(runtime_env, str):
-            # Serialzed protobuf runtime env from Ray client.
-            new_runtime_env = runtime_env
-        elif isinstance(runtime_env, RuntimeEnv):
-            new_runtime_env = json_format.MessageToJson(runtime_env)
+        if runtime_env is not None:
+            if isinstance(runtime_env, str):
+                # Serialzed protobuf runtime env from Ray client.
+                new_runtime_env = runtime_env
+            else:
+                new_runtime_env = ParsedRuntimeEnv(runtime_env
+                                                   or {}).serialize()
         else:
             # Keep the runtime_env as None.  In .remote(), we need to know if
             # runtime_env is None to know whether or not to fall back to the
             # runtime_env specified in the @ray.remote decorator.
-            new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
+            new_runtime_env = None
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):

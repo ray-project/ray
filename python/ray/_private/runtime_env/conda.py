@@ -314,7 +314,7 @@ class CondaManager:
             ray_pip = current_ray_pip_specifier(logger=logger)
             if ray_pip:
                 extra_pip_dependencies = [ray_pip, "ray[default]"]
-            elif runtime_env.extensions.get("_inject_current_ray"):
+            elif runtime_env.extensions.get("_inject_current_ray") == "True":
                 extra_pip_dependencies = (
                     _resolve_install_from_source_ray_dependencies())
             else:

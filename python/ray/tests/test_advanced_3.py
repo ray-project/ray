@@ -151,7 +151,6 @@ def test_not_logging_to_driver(shutdown_only):
         time.sleep(1)
 
     output_lines = captured["out"]
-    print(output_lines)
     assert len(output_lines) == 0
 
     err_lines = captured["err"]
