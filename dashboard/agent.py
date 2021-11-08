@@ -18,7 +18,7 @@ import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_utils import GcsClient
+from ray._private.gcs_utils import GcsClient, GcsPublisher
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
@@ -226,6 +226,11 @@ if __name__ == "__main__":
         type=str,
         help="the IP address of this node.")
     parser.add_argument(
+        "--gcs-address",
+        required=False,
+        type=str,
+        help="The address (ip:port) of GCS.")
+    parser.add_argument(
         "--redis-address",
         required=True,
         type=str,
@@ -374,6 +379,9 @@ if __name__ == "__main__":
             # impact of the issue.
             redis_client = ray._private.services.create_redis_client(
                 args.redis_address, password=args.redis_password)
+            gcs_publisher = None
+            if args.gcs_address:
+                gcs_publisher = GcsPublisher(args.gcs_address)
             traceback_str = ray._private.utils.format_error_message(
                 traceback.format_exc())
             message = (
@@ -388,8 +396,10 @@ if __name__ == "__main__":
                 "\nCheck out the `dashboard_agent.log` to see the "
                 "detailed failure messages.")
             ray._private.utils.publish_error_to_driver(
-                redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR,
-                message)
+                ray_constants.DASHBOARD_AGENT_DIED_ERROR,
+                message,
+                redis_client=redis_client,
+                gcs_publisher=gcs_publisher)
             logger.error(message)
         logger.exception(e)
         exit(1)

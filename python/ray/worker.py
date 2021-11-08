@@ -1248,6 +1248,59 @@ def listen_error_messages_raylet(worker, threads_stopped):
         worker.error_message_pubsub_client.close()
 
 
+def listen_error_messages_from_gcs(worker, threads_stopped):
+    """Listen to error messages in the background on the driver.
+
+    This runs in a separate thread on the driver and pushes (error, time)
+    tuples to the output queue.
+
+    Args:
+        worker: The worker class that this thread belongs to.
+        threads_stopped (threading.Event): A threading event used to signal to
+            the thread that it should exit.
+    """
+    worker.gcs_subscriber = gcs_utils.GcsSubscriber(channel=worker.gcs_channel)
+    # Exports that are published after the call to
+    # gcs_subscriber.subscribe_error() and before the call to
+    # gcs_subscriber.poll_error() will still be processed in the loop.
+
+    # Really we should just subscribe to the errors for this specific job.
+    # However, currently all errors seem to be published on the same channel.
+    worker.gcs_subscriber.subscribe_error()
+
+    try:
+        if _internal_kv_initialized():
+            # Get any autoscaler errors that occurred before the call to
+            # subscribe.
+            error_message = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+            if error_message is not None:
+                logger.warning(error_message.decode())
+
+        while True:
+            # Exit if we received a signal that we should stop.
+            if threads_stopped.is_set():
+                return
+
+            msg_id, error_data = worker.gcs_subscriber.poll_error()
+            if msg_id is None and error_data is None:
+                continue
+            if msg_id not in [
+                    worker.current_job_id.binary(),
+                    JobID.nil().binary(),
+            ]:
+                continue
+
+            error_message = error_data.error_message
+            if error_data.type == ray_constants.TASK_PUSH_ERROR:
+                # TODO(ekl) remove task push errors entirely now that we have
+                # the separate unhandled exception handler.
+                pass
+            else:
+                logger.warning(error_message)
+    except (OSError, ConnectionError) as e:
+        logger.error(f"listen_error_messages_from_gcs: {e}")
+
+
 @PublicAPI
 @client_mode_hook(auto_init=False)
 def is_initialized() -> bool:
@@ -1308,11 +1361,18 @@ def connect(node,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
     worker.redis_client = node.create_redis_client()
-    worker.gcs_client = gcs_utils.GcsClient.create_from_redis(
-        worker.redis_client)
+    worker.gcs_channel = gcs_utils.create_gcs_channel(
+        gcs_utils.get_gcs_address_from_redis(worker.redis_client))
+    worker.gcs_client = gcs_utils.GcsClient(channel=worker.gcs_channel)
     _initialize_internal_kv(worker.gcs_client)
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
+    worker.use_gcs_pubsub = (
+        os.environ.get("RAY_gcs_grpc_based_pubsub") == "true")
+    worker.gcs_publisher = None
+    if worker.use_gcs_pubsub:
+        worker.gcs_publisher = gcs_utils.GcsPublisher(
+            channel=worker.gcs_channel)
 
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
@@ -1352,10 +1412,11 @@ def connect(node,
         elif mode == WORKER_MODE:
             traceback_str = traceback.format_exc()
             ray._private.utils.publish_error_to_driver(
-                worker.redis_client,
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
-                job_id=None)
+                job_id=None,
+                redis_client=worker.redis_client,
+                gcs_publisher=worker.gcs_publisher)
 
     worker.lock = threading.RLock()
 
@@ -1446,7 +1507,8 @@ def connect(node,
     # scheduler for new error messages.
     if mode == SCRIPT_MODE:
         worker.listener_thread = threading.Thread(
-            target=listen_error_messages_raylet,
+            target=listen_error_messages_from_gcs
+            if worker.use_gcs_pubsub else listen_error_messages_raylet,
             name="ray_listen_error_messages",
             args=(worker, worker.threads_stopped))
         worker.listener_thread.daemon = True
@@ -1515,6 +1577,8 @@ def disconnect(exiting_interpreter=False):
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
+            if hasattr(worker, "gcs_subscriber"):
+                worker.gcs_subscriber.close()
             worker.listener_thread.join()
         if hasattr(worker, "logger_thread"):
             worker.logger_thread.join()

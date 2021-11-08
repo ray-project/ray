@@ -270,39 +270,53 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 logger.exception("Error receiving log info.")
 
     async def _update_error_info(self):
-        aioredis_client = self._dashboard_head.aioredis_client
-        receiver = Receiver()
+        def process_error(error_data):
+            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
+            message = error_data.error_message
+            message = re.sub(r"\x1b\[\d+m", "", message)
+            match = re.search(r"\(pid=(\d+), ip=(.*?)\)", message)
+            if match:
+                pid = match.group(1)
+                ip = match.group(2)
+                errs_for_ip = dict(DataSource.ip_and_pid_to_errors.get(ip, {}))
+                pid_errors = list(errs_for_ip.get(pid, []))
+                pid_errors.append({
+                    "message": message,
+                    "timestamp": error_data.timestamp,
+                    "type": error_data.type
+                })
+                errs_for_ip[pid] = pid_errors
+                DataSource.ip_and_pid_to_errors[ip] = errs_for_ip
+                logger.info(f"Received error entry for {ip} {pid}")
 
-        key = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
-        pattern = receiver.pattern(key)
-        await aioredis_client.psubscribe(pattern)
-        logger.info("Subscribed to %s", key)
+        if self._dashboard_head.gcs_subscriber:
+            self._dashboard_head.gcs_subscriber.subscribe_error()
 
-        async for sender, msg in receiver.iter():
-            try:
-                _, data = msg
-                pubsub_msg = gcs_utils.PubSubMessage.FromString(data)
-                error_data = gcs_utils.ErrorTableData.FromString(
-                    pubsub_msg.data)
-                message = error_data.error_message
-                message = re.sub(r"\x1b\[\d+m", "", message)
-                match = re.search(r"\(pid=(\d+), ip=(.*?)\)", message)
-                if match:
-                    pid = match.group(1)
-                    ip = match.group(2)
-                    errs_for_ip = dict(
-                        DataSource.ip_and_pid_to_errors.get(ip, {}))
-                    pid_errors = list(errs_for_ip.get(pid, []))
-                    pid_errors.append({
-                        "message": message,
-                        "timestamp": error_data.timestamp,
-                        "type": error_data.type
-                    })
-                    errs_for_ip[pid] = pid_errors
-                    DataSource.ip_and_pid_to_errors[ip] = errs_for_ip
-                    logger.info(f"Received error entry for {ip} {pid}")
-            except Exception:
-                logger.exception("Error receiving error info.")
+            while True:
+                _, error_data = self._dashboard_head.gcs_subscriber.poll_error(
+                )
+                try:
+                    process_error(error_data)
+                except Exception:
+                    logger.exception("Error receiving error info from GCS.")
+        else:
+            aioredis_client = self._dashboard_head.aioredis_client
+            receiver = Receiver()
+
+            key = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+            pattern = receiver.pattern(key)
+            await aioredis_client.psubscribe(pattern)
+            logger.info("Subscribed to %s", key)
+
+            async for _, msg in receiver.iter():
+                try:
+                    _, data = msg
+                    pubsub_msg = gcs_utils.PubSubMessage.FromString(data)
+                    error_data = gcs_utils.ErrorTableData.FromString(
+                        pubsub_msg.data)
+                    process_error(error_data)
+                except Exception:
+                    logger.exception("Error receiving error info from Redis.")
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel

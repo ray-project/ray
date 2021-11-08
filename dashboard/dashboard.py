@@ -13,6 +13,7 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
 import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
+import ray._private.gcs_utils as gcs_utils
 import ray._private.services
 import ray._private.utils
 from ray._private.ray_logging import setup_component_logger
@@ -135,6 +136,11 @@ if __name__ == "__main__":
         default=0,
         help="The retry times to select a valid port.")
     parser.add_argument(
+        "--gcs-address",
+        required=False,
+        type=str,
+        help="The address (ip:port) of GCS.")
+    parser.add_argument(
         "--redis-address",
         required=True,
         type=str,
@@ -226,13 +232,20 @@ if __name__ == "__main__":
         # Something went wrong, so push an error to all drivers.
         redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
+        gcs_publisher = None
+        if args.gcs_address:
+            gcs_publisher = gcs_utils.GcsPublisher(address=args.gcs_address)
         traceback_str = ray._private.utils.format_error_message(
             traceback.format_exc())
         message = f"The dashboard on node {platform.uname()[1]} " \
                   f"failed with the following " \
                   f"error:\n{traceback_str}"
         ray._private.utils.publish_error_to_driver(
-            redis_client, ray_constants.DASHBOARD_DIED_ERROR, message)
+            redis_client,
+            ray_constants.DASHBOARD_DIED_ERROR,
+            message,
+            redis_client=redis_client,
+            gcs_publisher=gcs_publisher)
         if isinstance(e, FrontendNotFoundError):
             logger.warning(message)
         else:

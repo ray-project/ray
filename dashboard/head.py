@@ -13,7 +13,7 @@ from grpc.experimental import aio as aiogrpc
 import grpc
 
 import ray._private.utils
-from ray._private.gcs_utils import GcsClient
+from ray._private.gcs_utils import GcsClient, GcsAioSubscriber
 import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
@@ -112,6 +112,7 @@ class DashboardHead:
         self.log_dir = log_dir
         self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
+        self.gcs_subscriber = None
         self.http_session = None
         self.ip = ray.util.get_node_ip_address()
         ip, port = redis_address.split(":")
@@ -190,9 +191,13 @@ class DashboardHead:
 
         # Waiting for GCS is ready.
         gcs_address = await get_gcs_address_with_retry(self.aioredis_client)
-        self.gcs_client = GcsClient(gcs_address)
+        self.gcs_client = GcsClient(address=gcs_address)
         self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
             gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True)
+        self.gcs_subscriber = None
+        if os.environ.get("RAY_gcs_grpc_based_pubsub") == "true":
+            self.gcs_subscriber = GcsAioSubscriber(
+                channel=self.aiogrpc_gcs_channel)
 
         self.health_check_thread = GCSHealthCheckThread(gcs_address)
         self.health_check_thread.start()

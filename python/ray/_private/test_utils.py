@@ -502,24 +502,32 @@ def get_non_head_nodes(cluster):
 
 def init_error_pubsub():
     """Initialize redis error info pub/sub"""
-    p = ray.worker.global_worker.redis_client.pubsub(
-        ignore_subscribe_messages=True)
-    error_pubsub_channel = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
-    p.psubscribe(error_pubsub_channel)
-    return p
+    if os.environ.get("RAY_gcs_grpc_based_pubsub") == "true":
+        s = gcs_utils.GcsSubscriber(
+            channel=ray.worker.global_worker.gcs_channel)
+        s.subscribe_error()
+    else:
+        s = ray.worker.global_worker.redis_client.pubsub(
+            ignore_subscribe_messages=True)
+        s.psubscribe(gcs_utils.RAY_ERROR_PUBSUB_PATTERN)
+    return s
 
 
-def get_error_message(pub_sub, num, error_type=None, timeout=20):
-    """Get errors through pub/sub."""
-    start_time = time.time()
+def get_error_message(subscriber, num, error_type=None, timeout=20):
+    """Get errors through subscriber."""
+    deadline = time.time() + timeout
     msgs = []
-    while time.time() - start_time < timeout and len(msgs) < num:
-        msg = pub_sub.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            continue
-        pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
-        error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
+    while time.time() < deadline and len(msgs) < num:
+        if isinstance(subscriber, gcs_utils.GcsSubscriber):
+            _, error_data = subscriber.poll_error(timeout=deadline -
+                                                  time.time())
+        else:
+            msg = subscriber.get_message()
+            if msg is None:
+                time.sleep(0.01)
+                continue
+            pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
+            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
         if error_type is None or error_type == error_data.type:
             msgs.append(error_data)
         else:

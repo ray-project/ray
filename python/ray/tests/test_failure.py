@@ -68,7 +68,9 @@ def test_publish_error_to_driver(ray_start_regular, error_pubsub):
         address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     error_message = "Test error message"
     ray._private.utils.publish_error_to_driver(
-        redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR, error_message)
+        ray_constants.DASHBOARD_AGENT_DIED_ERROR,
+        error_message,
+        redis_client=redis_client)
     errors = get_error_message(error_pubsub, 1,
                                ray_constants.DASHBOARD_AGENT_DIED_ERROR)
     assert errors[0].type == ray_constants.DASHBOARD_AGENT_DIED_ERROR

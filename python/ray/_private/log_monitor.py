@@ -366,6 +366,11 @@ if __name__ == "__main__":
                      "log monitor to connect "
                      "to."))
     parser.add_argument(
+        "--gcs-address",
+        required=False,
+        type=str,
+        help="The address (ip:port) of GCS.")
+    parser.add_argument(
         "--redis-address",
         required=True,
         type=str,
@@ -436,11 +441,17 @@ if __name__ == "__main__":
         # Something went wrong, so push an error to all drivers.
         redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
+        gcs_publisher = None
+        if args.gcs_address:
+            gcs_publisher = gcs_utils.GcsPublisher(address=args.gcs_address)
         traceback_str = ray._private.utils.format_error_message(
             traceback.format_exc())
         message = (f"The log monitor on node {platform.node()} "
                    f"failed with the following error:\n{traceback_str}")
         ray._private.utils.publish_error_to_driver(
-            redis_client, ray_constants.LOG_MONITOR_DIED_ERROR, message)
+            ray_constants.LOG_MONITOR_DIED_ERROR,
+            message,
+            redis_client=redis_client,
+            gcs_publisher=gcs_publisher)
         logger.error(message)
         raise e

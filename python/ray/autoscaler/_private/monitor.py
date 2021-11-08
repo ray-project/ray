@@ -430,6 +430,11 @@ if __name__ == "__main__":
         description=("Parse Redis server for the "
                      "monitor to connect to."))
     parser.add_argument(
+        "--gcs-address",
+        required=False,
+        type=str,
+        help="The address (ip:port) of GCS.")
+    parser.add_argument(
         "--redis-address",
         required=True,
         type=str,

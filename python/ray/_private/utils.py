@@ -113,7 +113,11 @@ def push_error_to_driver(worker, error_type, message, job_id=None):
     worker.core_worker.push_error(job_id, error_type, message, time.time())
 
 
-def publish_error_to_driver(client, error_type, message, job_id=None):
+def publish_error_to_driver(error_type,
+                            message,
+                            job_id=None,
+                            redis_client=None,
+                            gcs_publisher=None):
     """Push an error message to the driver to be printed in the background.
 
     Normally the push_error_to_driver function should be used. However, in some
@@ -134,14 +138,16 @@ def publish_error_to_driver(client, error_type, message, job_id=None):
     assert isinstance(job_id, ray.JobID)
     error_data = gcs_utils.construct_error_message(job_id, error_type, message,
                                                    time.time())
-    if hasattr(client, "publish"):
+    if gcs_publisher:
+        gcs_publisher.publish_error(job_id.hex(), error_data)
+    elif redis_client:
         pubsub_msg = gcs_utils.PubSubMessage()
-        pubsub_msg.id = job_id.binary()
+        pubsub_msg.id = job_id.hex()
         pubsub_msg.data = error_data.SerializeToString()
-        client.publish("ERROR_INFO:" + job_id.hex(),
-                       pubsub_msg.SerializeToString())
+        redis_client.publish("ERROR_INFO:" + job_id.hex(),
+                             pubsub_msg.SerializeToString())
     else:
-        pass
+        raise "One of redis_client and gcs_publisher needs to be specified!"
 
 
 def random_string():

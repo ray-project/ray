@@ -1,8 +1,9 @@
+from collections import deque
 import enum
 import logging
 import random
 import threading
-from typing import List
+from typing import List, Tuple
 
 import grpc
 
@@ -78,85 +79,6 @@ TablePrefix_ACTOR_string = "ACTOR"
 WORKER = 0
 DRIVER = 1
 
-_gcs_connection_lock = threading.Lock()
-_gcs_address = None
-_gcs_channel = None
-_gcs_aio_channel = None
-
-
-def init_gcs_address(address: str, update=False) -> None:
-    """Initializes the address of GCS.
-
-    Args:
-        address: address of GCS. Repeated initialization to the same address is
-            fine, but it is an error to initialize GCS to different addresses.
-        update: whether updating the current GCS address is allowed, if the GCS
-            address has already been initialized and is different.
-    """
-    global _gcs_address
-    if _gcs_address == address:
-        return
-
-    with _gcs_connection_lock:
-        # if _gcs_address is None:
-        #     _gcs_address = address
-        #     return
-        if _gcs_address == address:
-            return
-        if _gcs_address is not None and not update:
-            raise ValueError("GCS initialized to different addresses")
-        _gcs_address = address
-        global _gcs_channel, _gcs_aio_channel
-        _gcs_channel = None
-        _gcs_aio_channel = None
-
-
-def get_gcs_address() -> str:
-    """Returns the address of GCS."""
-    global _gcs_address
-    return _gcs_address
-
-
-def get_gcs_channel() -> grpc.Channel:
-    """Returns a GRPC channel to GCS."""
-    global _gcs_channel
-    channel = _gcs_channel
-    if channel:
-        return channel
-    if _gcs_channel:
-        return _gcs_channel
-    with _gcs_connection_lock:
-        if _gcs_channel:
-            return _gcs_channel
-        from ray._private.utils import init_grpc_channel
-        options = [("grpc.enable_http_proxy",
-                    0), ("grpc.max_send_message_length",
-                         GcsClient.MAX_MESSAGE_LENGTH),
-                   ("grpc.max_receive_message_length",
-                    GcsClient.MAX_MESSAGE_LENGTH)]
-        _gcs_channel = init_grpc_channel(get_gcs_address(), options=options)
-        return _gcs_channel
-
-
-def get_gcs_aio_channel() -> grpc.aio.Channel:
-    """Returns a AIO GRPC channel to GCS."""
-    global _gcs_aio_channel
-    channel = _gcs_aio_channel
-    if channel and channel.get_state() != grpc.ChannelConnectivity.SHUTDOWN:
-        return channel
-    with _gcs_connection_lock:
-        if _gcs_aio_channel:
-            return _gcs_aio_channel
-        from ray._private.utils import init_grpc_channel
-        options = [("grpc.enable_http_proxy",
-                    0), ("grpc.max_send_message_length",
-                         GcsClient.MAX_MESSAGE_LENGTH),
-                   ("grpc.max_receive_message_length",
-                    GcsClient.MAX_MESSAGE_LENGTH)]
-        _gcs_aio_channel = init_grpc_channel(
-            get_gcs_address(), options=options, asynchronous=True)
-        return _gcs_aio_channel
-
 
 def construct_error_message(job_id, error_type, message, timestamp):
     """Construct an ErrorTableData object.
@@ -179,6 +101,34 @@ def construct_error_message(job_id, error_type, message, timestamp):
     return data
 
 
+def get_gcs_address_from_redis(redis) -> str:
+    """Reads GCS address from redis."""
+    gcs_address = redis.get("GcsServerAddress")
+    if gcs_address is None:
+        raise RuntimeError("Failed to look up gcs address through redis")
+    return gcs_address.decode()
+
+
+def create_gcs_channel(address: str) -> grpc.Channel:
+    """Returns a GRPC channel to GCS."""
+    from ray._private.utils import init_grpc_channel
+    options = [("grpc.enable_http_proxy", 0), ("grpc.max_send_message_length",
+                                               GcsClient.MAX_MESSAGE_LENGTH),
+               ("grpc.max_receive_message_length",
+                GcsClient.MAX_MESSAGE_LENGTH)]
+    return init_grpc_channel(address, options=options)
+
+
+def create_gcs_aio_channel(address: str) -> grpc.aio.Channel:
+    """Returns a AIO GRPC channel to GCS."""
+    from ray._private.utils import init_grpc_channel
+    options = [("grpc.enable_http_proxy", 0), ("grpc.max_send_message_length",
+                                               GcsClient.MAX_MESSAGE_LENGTH),
+               ("grpc.max_receive_message_length",
+                GcsClient.MAX_MESSAGE_LENGTH)]
+    return init_grpc_channel(address, options=options, asynchronous=True)
+
+
 class GcsCode(enum.IntEnum):
     # corresponding to ray/src/ray/common/status.h
     OK = 0
@@ -188,15 +138,11 @@ class GcsCode(enum.IntEnum):
 class GcsClient:
     MAX_MESSAGE_LENGTH = 512 * 1024 * 1024  # 512MB
 
-    def __init__(self, address):
-        logger.debug(f"Connecting to gcs address: {address}")
-        from ray._private.utils import init_grpc_channel
-        options = [("grpc.enable_http_proxy",
-                    0), ("grpc.max_send_message_length",
-                         GcsClient.MAX_MESSAGE_LENGTH),
-                   ("grpc.max_receive_message_length",
-                    GcsClient.MAX_MESSAGE_LENGTH)]
-        channel = init_grpc_channel(address, options=options)
+    def __init__(self, address: str = None, channel: grpc.Channel = None):
+        if address:
+            assert channel is None, \
+                "Only one of address and channel can be specified"
+            channel = create_gcs_channel(address)
         self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(channel)
 
     def internal_kv_get(self, key: bytes) -> bytes:
@@ -250,10 +196,7 @@ class GcsClient:
 
     @staticmethod
     def create_from_redis(redis_cli):
-        gcs_address = redis_cli.get("GcsServerAddress")
-        if gcs_address is None:
-            raise RuntimeError("Failed to look up gcs address through redis")
-        return GcsClient(gcs_address.decode())
+        return GcsClient(get_gcs_address_from_redis(redis_cli))
 
     @staticmethod
     def connect_to_gcs_by_redis_address(redis_address, redis_password):
@@ -263,11 +206,15 @@ class GcsClient:
 
 
 class GcsPublisher:
-    def __init__(self):
-        if get_gcs_address() is None:
-            raise "Must initialize GCS address with init_gcs_address()"
-        self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(
-            get_gcs_channel())
+    def __init__(self, address: str = None, channel: grpc.Channel = None):
+        if address:
+            assert channel is None, \
+                "address and channel cannot both be specified"
+            channel = create_gcs_channel(address)
+        else:
+            assert channel is not None, \
+                "One of address and channel must be specified"
+        self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
 
     def publish_error(self, key_id: bytes, error_info: ErrorTableData) -> None:
         msg = pubsub_pb2.PubMessage(
@@ -279,43 +226,108 @@ class GcsPublisher:
 
 
 class GcsSubscriber:
-    def __init__(self):
-        if get_gcs_address() is None:
-            raise "Must initialize GCS address with init_gcs_address()"
-        self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(
-            get_gcs_channel())
+    """Subscribes to GCS. Thread safe."""
+
+    def __init__(
+            self,
+            address: str = None,
+            channel: grpc.Channel = None,
+    ):
+        if address:
+            assert channel is None, \
+                "address and channel cannot both be specified"
+            channel = create_gcs_channel(address)
+        else:
+            assert channel is not None, \
+                "One of address and channel must be specified"
+        self._lock = threading.RLock()
+        self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
         self._subscriber_id = bytes(
             bytearray(random.getrandbits(8) for _ in range(28)))
+        # Whether error info has been subscribed.
         self._subscribed_error = False
+        # Buffer for holding error info.
+        self._errors = deque()
+        # Future for indicating whether the subscriber has closed.
+        self._close = threading.Event()
 
     def subscribe_error(self) -> None:
-        cmd = pubsub_pb2.Command(
-            channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
-            subscribe_message={})
-        req = gcs_service_pb2.GcsSubscriberCommandBatchRequest(
-            subscriber_id=self._subscriber_id, commands=[cmd])
-        self._stub.GcsSubscriberCommandBatch(req)
-        self._subscribed_error = True
+        with self._lock:
+            if self._close.is_set():
+                return
+            if self._subscribed_error:
+                return
+            cmd = pubsub_pb2.Command(
+                channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
+                subscribe_message={})
+            req = gcs_service_pb2.GcsSubscriberCommandBatchRequest(
+                subscriber_id=self._subscriber_id, commands=[cmd])
+            self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+            self._subscribed_error = True
 
-    def poll_error(self) -> List[ErrorTableData]:
-        if not self._subscribed_error:
+    def poll_error(self, timeout=None) -> Tuple[bytes, ErrorTableData]:
+        with self._lock:
+            if self._close.is_set():
+                return
+
             self.subscribe_error()
 
-        req = gcs_service_pb2.GcsSubscriberPollRequest(
-            subscriber_id=self._subscriber_id)
-        reply = self._stub.GcsSubscriberPoll(req)
-        error_info = []
-        for msg in reply.pub_messages:
-            error_info.append((msg.key_id, msg.error_info_message))
-        return error_info
+            if len(self._errors) == 0:
+                req = gcs_service_pb2.GcsSubscriberPollRequest(
+                    subscriber_id=self._subscriber_id)
+                fut = self._stub.GcsSubscriberPoll.future(req, timeout=timeout)
+                while True:
+                    try:
+                        fut.result(timeout=1)
+                        break
+                    except grpc.FutureTimeoutError:
+                        # Subscriber has closed. Cancel inflight the request
+                        # and return from polling.
+                        if self._close.is_set():
+                            fut.cancel()
+                            break
+                        # GRPC has not replied, continue waiting.
+                        continue
+                    except Exception:
+                        # GRPC error
+                        raise
+                if fut.done():
+                    for msg in fut.result().pub_messages:
+                        self._errors.append((msg.key_id,
+                                             msg.error_info_message))
+
+            if len(self._errors) == 0:
+                return None, None
+            return self._errors.popleft()
+
+    def close(self) -> None:
+        # Terminate inflight pollings and prevent future requests.
+        self._close.set()
+        with self._lock:
+            if not self._stub:
+                # Subscriber already closed.
+                return
+            req = gcs_service_pb2.GcsSubscriberCommandBatchRequest(
+                subscriber_id=self._subscriber_id, commands=[])
+            if self._subscribed_error:
+                cmd = pubsub_pb2.Command(
+                    channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
+                    unsubscribe_message={})
+                req.commands.append(cmd)
+            self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+            self._stub = None
 
 
 class GcsAioPublisher:
-    def __init__(self):
-        if get_gcs_address() is None:
-            raise "Must initialize GCS address with init_gcs_address()"
-        self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(
-            get_gcs_aio_channel())
+    def __init__(self, address: str = None, channel: grpc.aio.Channel = None):
+        if address:
+            assert channel is None, \
+                "address and channel cannot both be specified"
+            channel = create_gcs_aio_channel(address)
+        else:
+            assert channel is not None, \
+                "One of address and channel must be specified"
+        self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
 
     async def publish_error(self, key_id: bytes,
                             error_info: ErrorTableData) -> None:
@@ -328,14 +340,21 @@ class GcsAioPublisher:
 
 
 class GcsAioSubscriber:
-    def __init__(self):
-        if get_gcs_address() is None:
-            raise "Must initialize GCS address with init_gcs_address()"
-        self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(
-            get_gcs_aio_channel())
+    def __init__(self, address: str = None, channel: grpc.aio.Channel = None):
+        if address:
+            assert channel is None, \
+                "address and channel cannot both be specified"
+            channel = create_gcs_aio_channel(address)
+        else:
+            assert channel is not None, \
+                "One of address and channel must be specified"
+        self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
         self._subscriber_id = bytes(
             bytearray(random.getrandbits(8) for _ in range(28)))
+        # Whether error info has been subscribed.
         self._subscribed_error = False
+        # Buffer for holding error info.
+        self._errors = deque()
 
     async def subscribe_error(self) -> None:
         cmd = pubsub_pb2.Command(
@@ -346,9 +365,20 @@ class GcsAioSubscriber:
         await self._stub.GcsSubscriberCommandBatch(req)
         self._subscribed_error = True
 
-    async def poll_error(self) -> List[ErrorTableData]:
+    async def poll_error(self, timeout=None) -> Tuple[bytes, ErrorTableData]:
         if not self._subscribed_error:
             self.subscribe_error()
+
+        if len(self._errors) == 0:
+            req = gcs_service_pb2.GcsSubscriberPollRequest(
+                subscriber_id=self._subscriber_id)
+            reply = await self._stub.GcsSubscriberPoll(req, timeout=timeout)
+            for msg in reply.pub_messages:
+                self._errors.append((msg.key_id, msg.error_info_message))
+
+        if len(self._errors) == 0:
+            return None, None
+        return self._errors.popleft()
 
         req = gcs_service_pb2.GcsSubscriberPollRequest(
             subscriber_id=self._subscriber_id)
@@ -357,3 +387,14 @@ class GcsAioSubscriber:
         for msg in reply.pub_messages:
             error_info.append((msg.key_id, msg.error_info_message))
         return error_info
+
+    async def close(self) -> None:
+        req = gcs_service_pb2.GcsSubscriberCommandBatchRequest(
+            subscriber_id=self._subscriber_id, commands=[])
+        if self._subscribed_error:
+            cmd = pubsub_pb2.Command(
+                channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
+                unsubscribe_message={})
+            req.commands.append(cmd)
+        await self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+        self._subscribed_error = False
