@@ -431,8 +431,9 @@ def test_job_level_gc(start_cluster, option: str, source: str):
 # TODO(edoakes): fix this bug and enable test.
 @pytest.mark.skip("Currently failing.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("remote_uri", REMOTE_URIS)
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-def test_actor_level_gc(start_cluster, option: str):
+def test_actor_level_gc(start_cluster, remote_uri, option: str):
     """Tests that actor-level working_dir is GC'd when the actor exits."""
     NUM_NODES = 3
     cluster, address = start_cluster
@@ -447,9 +448,9 @@ def test_actor_level_gc(start_cluster, option: str):
             assert "test_module" in os.listdir()
 
     if option == "working_dir":
-        A = A.options(runtime_env={"working_dir": S3_PACKAGE_URI})
+        A = A.options(runtime_env={"working_dir": remote_uri})
     else:
-        A = A.options(runtime_env={"py_modules": [S3_PACKAGE_URI]})
+        A = A.options(runtime_env={"py_modules": [remote_uri]})
 
     actors = [A.remote() for _ in range(5)]
     ray.get([a.check.remote() for a in actors])
