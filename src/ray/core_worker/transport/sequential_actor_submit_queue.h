@@ -25,107 +25,35 @@ namespace ray {
 namespace core {
 
 /**
- * SequentialActorSumitQueue ensures actor are send in the sequence_no.
- * TODO(scv119): failures/reconnection.
+ * SequentialActorSumitQueue extends IActorSubmitQueue and ensures actor are send in the
+ * sequence_no.
+ *
  */
 class SequentialActorSubmitQueue : public IActorSubmitQueue {
  public:
-  SequentialActorSubmitQueue(ActorID actor_id) : actor_id(actor_id) {}
+  explicit SequentialActorSubmitQueue(ActorID actor_id);
 
-  bool Emplace(uint64_t sequence_no, TaskSpecification spec) override {
-    return requests
-        .emplace(sequence_no, std::make_pair(spec, /*dependency_resolved*/ false))
-        .second;
-  }
+  bool Emplace(uint64_t sequence_no, TaskSpecification spec) override;
 
-  bool Contains(uint64_t sequence_no) const override {
-    return requests.find(sequence_no) != requests.end();
-  }
+  bool Contains(uint64_t sequence_no) const override;
 
-  const std::pair<TaskSpecification, bool> &Get(uint64_t sequence_no) const override {
-    auto it = requests.find(sequence_no);
-    RAY_CHECK(it != requests.end());
-    return it->second;
-  }
+  const std::pair<TaskSpecification, bool> &Get(uint64_t sequence_no) const override;
 
-  void MarkDependencyFailed(uint64_t sequence_no) override {
-    requests.erase(sequence_no);
-  }
+  void MarkDependencyFailed(uint64_t sequence_no) override;
 
-  void MarkDependencyResolved(uint64_t sequence_no) override {
-    auto it = requests.find(sequence_no);
-    RAY_CHECK(it != requests.end());
-    it->second.second = true;
-  }
+  void MarkDependencyResolved(uint64_t sequence_no) override;
 
-  std::vector<TaskID> ClearAllTasks() override {
-    std::vector<TaskID> task_ids;
-    for (auto &[pos, spec] : requests) {
-      task_ids.push_back(spec.first.TaskId());
-    }
-    requests.clear();
-    return task_ids;
-  }
+  std::vector<TaskID> ClearAllTasks() override;
 
-  absl::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() override {
-    auto head = requests.begin();
-    if (head != requests.end() && (/*seqno*/ head->first <= next_send_position) &&
-        (/*dependencies_resolved*/ head->second.second)) {
-      // If the task has been sent before, skip the other tasks in the send
-      // queue.
-      bool skip_queue = head->first < next_send_position;
-      auto task_spec = std::move(head->second.first);
-      head = requests.erase(head);
-      next_send_position++;
-      return std::make_pair(std::move(task_spec), skip_queue);
-    }
-    return absl::nullopt;
-  }
+  absl::optional<std::pair<TaskSpecification, bool>> PopNextTaskToSend() override;
 
-  std::map<uint64_t, TaskSpecification> PopAllOutOfOrderCompletedTasks() override {
-    auto result = std::move(out_of_order_completed_tasks);
-    out_of_order_completed_tasks.clear();
-    return result;
-  }
+  std::map<uint64_t, TaskSpecification> PopAllOutOfOrderCompletedTasks() override;
 
-  void OnClientConnected() override {
-    // This assumes that all replies from the previous incarnation
-    // of the actor have been received. This assumption should be OK
-    // because we fail all inflight tasks in `DisconnectRpcClient`.
-    RAY_LOG(DEBUG) << "Resetting caller starts at for actor " << actor_id << " from "
-                   << caller_starts_at << " to " << next_task_reply_position;
-    caller_starts_at = next_task_reply_position;
-  }
+  void OnClientConnected() override;
 
-  uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const override {
-    RAY_CHECK(task_spec.ActorCounter() >= caller_starts_at)
-        << "actor counter " << task_spec.ActorCounter() << " " << caller_starts_at;
-    return task_spec.ActorCounter() - caller_starts_at;
-  }
+  uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const override;
 
-  void MarkTaskCompleted(uint64_t sequence_no, TaskSpecification task_spec) override {
-    // Try to increment queue.next_task_reply_position consecutively until we
-    // cannot. In the case of tasks not received in order, the following block
-    // ensure queue.next_task_reply_position are incremented to the max possible
-    // value.
-    out_of_order_completed_tasks.insert({sequence_no, task_spec});
-    auto min_completed_task = out_of_order_completed_tasks.begin();
-    while (min_completed_task != out_of_order_completed_tasks.end()) {
-      if (min_completed_task->first == next_task_reply_position) {
-        next_task_reply_position++;
-        // increment the iterator and erase the old value
-        out_of_order_completed_tasks.erase(min_completed_task++);
-      } else {
-        break;
-      }
-    }
-
-    RAY_LOG(DEBUG) << "Got PushTaskReply for actor " << actor_id << " with actor_counter "
-                   << sequence_no << " new queue.next_task_reply_position is "
-                   << next_task_reply_position
-                   << " and size of out_of_order_tasks set is "
-                   << out_of_order_completed_tasks.size();
-  }
+  void MarkTaskCompleted(uint64_t sequence_no, TaskSpecification task_spec) override;
 
  private:
   /// The ID of the actor.
