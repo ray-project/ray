@@ -155,7 +155,7 @@ is completed).
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" not in workflow_metadata["stats"]
 
-2. For resumed workflow, current behavior is that **stats** will
+2. For resumed workflow, current behavior is that "stats" will
 be updated whenever a workflow is resumed.
 
 .. code-block:: python
@@ -183,8 +183,6 @@ be updated whenever a workflow is resumed.
     workflow_metadata_resumed = workflow.get_metadata(workflow_id)
     assert workflow_metadata_resumed["status"] == "SUCCESSFUL"
 
-    # resume updated running metrics
-    assert workflow_metadata_resumed["stats"]["start_time"] \
-           > workflow_metadata_failed["stats"]["start_time"]
-    assert workflow_metadata_resumed["stats"]["end_time"] \
-           > workflow_metadata_failed["stats"]["end_time"]
+    # resume updated running stats
+    assert workflow_metadata_resumed["stats"]["start_time"] > workflow_metadata_failed["stats"]["start_time"]
+    assert workflow_metadata_resumed["stats"]["end_time"] > workflow_metadata_failed["stats"]["end_time"]
