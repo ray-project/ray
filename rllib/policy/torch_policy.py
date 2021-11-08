@@ -20,7 +20,8 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list, NullContextManager
-from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, \
+    override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -228,6 +229,8 @@ class TorchPolicy(Policy):
 
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
+        # If `loss` provided here, make it a method,
+        # otherwise simply point to the overridden `self.loss` method.
         self._loss = loss.__get__(self, self.__class__) if loss else self.loss
         self._optimizers = force_list(self.optimizer())
         # Store, which params (by index within the model's list of
@@ -403,6 +406,24 @@ class TorchPolicy(Policy):
             log_likelihoods = action_dist.logp(actions)
 
             return log_likelihoods
+
+    @ExperimentalAPI
+    def loss(self, model: ModelV2, dist_class: Type[TorchDistributionWrapper],
+             train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+        """Loss function for this Policy.
+
+        Args:
+            model: The model to calculate the loss(es).
+            dist_class: The action distribution class to sample actions
+                from the model's outputs.
+            train_batch: The input batch on which to calculate the loss.
+
+        Returns:
+            Either a single loss tensor or a list of loss tensors.
+            Note: The number of returned loss terms must match the number of
+            local optimizers this policy defines in self.optimizer.
+        """
+        raise NotImplementedError
 
     @with_lock
     @override(Policy)

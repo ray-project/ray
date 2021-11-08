@@ -1,10 +1,12 @@
 import logging
-from typing import Dict
+from typing import Dict, List, Type, Union
 
 import ray
 from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
+from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import EntropyCoeffSchedule, \
     LearningRateSchedule, TorchPolicy
@@ -53,7 +55,19 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
     # TODO: Add method to Policy base class (as the new way of defining loss
     #  functions (instead of passing 'loss` to the super's constructor)).
     @override(TorchPolicy)
-    def loss(self, model, action_dist, train_batch):
+    def loss(self, model: ModelV2, dist_class: Type[ActionDistribution],
+             train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+        """Constructs the loss for Proximal Policy Objective.
+
+        Args:
+            model: The Model to calculate the loss for.
+            dist_class: The action distr. class.
+            train_batch: The training data.
+
+        Returns:
+            The PPO loss tensor given the input batch.
+        """
+
         logits, state = self.model(train_batch)
         curr_action_dist = self.dist_class(logits, self.model)
 
@@ -130,7 +144,7 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
 
         return total_loss
 
-    def value_function(self, input_dict):
+    def _value(self, input_dict):
         # When doing GAE, we need the value function estimate on the
         # observation.
         if self.config["use_gae"]:
