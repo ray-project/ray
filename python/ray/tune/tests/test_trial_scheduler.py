@@ -1888,6 +1888,9 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
                     f.write("OK")
                 return checkpoint
 
+            def reset_config(self, config):
+                return True
+
         trial_hyperparams = {
             "float_factor": 2.0,
             "const_factor": 3,
