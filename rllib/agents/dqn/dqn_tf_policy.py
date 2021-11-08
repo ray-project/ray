@@ -348,7 +348,6 @@ def compute_q_values(policy: Policy,
 
     config = policy.config
 
-    input_batch["is_training"] = is_training
     model_out, state = model(input_batch, state_batches or [], seq_lens)
 
     if config["num_atoms"] > 1:

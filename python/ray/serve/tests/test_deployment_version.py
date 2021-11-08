@@ -1,7 +1,7 @@
 import pytest
 
 import ray
-from ray.serve.backend_state import DeploymentVersion
+from ray.serve.deployment_state import DeploymentVersion
 
 
 def test_validation():

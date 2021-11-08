@@ -25,7 +25,7 @@ from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.simplex import Simplex
-from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+from ray.rllib.utils.torch_utils import apply_grad_clipping, \
     concat_multi_gpu_td_errors, huber_loss
 from ray.rllib.utils.typing import LocalOptimizer, ModelInputDict, \
     TensorType, TrainerConfigDict

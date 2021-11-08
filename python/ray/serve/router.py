@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 import random
 
 from ray.actor import ActorHandle
-from ray.serve.common import BackendTag, ReplicaTag, RunningReplicaInfo
+from ray.serve.common import str, ReplicaTag, RunningReplicaInfo
 from ray.serve.long_poll import LongPollClient, LongPollNamespace
 from ray.serve.utils import compute_iterable_delta, logger
 
@@ -27,7 +27,7 @@ class RequestMetadata:
     http_headers: Dict[str, str] = field(default_factory=dict)
 
     # This flag will be set to true if the input argument is manually pickled
-    # and it needs to be deserialized by the backend worker.
+    # and it needs to be deserialized by the replica.
     http_arg_is_pickled: bool = False
 
     def __post_init__(self):
@@ -47,10 +47,10 @@ class ReplicaSet:
 
     def __init__(
             self,
-            backend_tag,
+            deployment_name,
             event_loop: asyncio.AbstractEventLoop,
     ):
-        self.backend_tag = backend_tag
+        self.deployment_name = deployment_name
         self.in_flight_queries: Dict[ReplicaTag, set] = dict()
         # The iterator used for load balancing among replicas. Using itertools
         # cycle, we implements a round-robin policy, skipping overloaded
@@ -80,7 +80,7 @@ class ReplicaSet:
                 " to be assigned to a replica."),
             tag_keys=("deployment", "endpoint"))
         self.num_queued_queries_gauge.set_default_tags({
-            "deployment": self.backend_tag
+            "deployment": self.deployment_name
         })
 
     def update_running_replicas(self,
@@ -139,7 +139,7 @@ class ReplicaSet:
     async def assign_replica(self, query: Query) -> ray.ObjectRef:
         """Given a query, submit it to a replica and return the object ref.
         This method will keep track of the in flight queries for each replicas
-        and only send a query to available replicas (determined by the backend
+        and only send a query to available replicas (determined by the
         max_concurrent_quries value.)
         """
         endpoint = query.metadata.endpoint
@@ -176,28 +176,30 @@ class Router:
     def __init__(
             self,
             controller_handle: ActorHandle,
-            backend_tag: BackendTag,
+            deployment_name: str,
             event_loop: asyncio.BaseEventLoop = None,
     ):
-        """Router process incoming queries: choose backend, and assign replica.
+        """Router process incoming queries: assign a replica.
 
         Args:
             controller_handle(ActorHandle): The controller handle.
         """
         self._event_loop = event_loop
-        self._replica_set = ReplicaSet(backend_tag, event_loop)
+        self._replica_set = ReplicaSet(deployment_name, event_loop)
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Counter(
             "serve_num_router_requests",
             description="The number of requests processed by the router.",
             tag_keys=("deployment", ))
-        self.num_router_requests.set_default_tags({"deployment": backend_tag})
+        self.num_router_requests.set_default_tags({
+            "deployment": deployment_name
+        })
 
         self.long_poll_client = LongPollClient(
             controller_handle,
             {
-                (LongPollNamespace.RUNNING_REPLICAS, backend_tag): self.
+                (LongPollNamespace.RUNNING_REPLICAS, deployment_name): self.
                 _replica_set.update_running_replicas,
             },
             call_in_event_loop=event_loop,
