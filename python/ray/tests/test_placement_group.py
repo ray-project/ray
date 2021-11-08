@@ -44,6 +44,82 @@ def test_placement_ready(ray_start_regular, connect_to_client):
         placement_group_assert_no_leak([pg])
 
 
+def test_placement_group_invalid_resource_request(shutdown_only):
+    """
+    Make sure exceptions are raised if
+    requested resources don't fit any bundles.
+    """
+    ray.init(resources={"a": 1})
+    pg = ray.util.placement_group(bundles=[{"a": 1}])
+
+    #
+    # Test an actor with 0 cpu.
+    #
+    @ray.remote
+    class A:
+        def ready(self):
+            pass
+
+    # The actor cannot be scheduled with the default because
+    # it requires 1 cpu for the placement, but the pg doesn't have it.
+    with pytest.raises(ValueError):
+        a = A.options(placement_group=pg).remote()
+    # Shouldn't work with 1 CPU because pg doesn't contain CPUs.
+    with pytest.raises(ValueError):
+        a = A.options(num_cpus=1, placement_group=pg).remote()
+    # 0 CPU should work.
+    a = A.options(num_cpus=0, placement_group=pg).remote()
+    ray.get(a.ready.remote())
+    del a
+
+    #
+    # Test an actor with non-0 resources.
+    #
+    @ray.remote(resources={"a": 1})
+    class B:
+        def ready(self):
+            pass
+
+    # When resources are given to the placement group,
+    # it automatically adds 1 CPU to resources, so it should fail.
+    with pytest.raises(ValueError):
+        b = B.options(placement_group=pg).remote()
+    # If 0 cpu is given, it should work.
+    b = B.options(num_cpus=0, placement_group=pg).remote()
+    ray.get(b.ready.remote())
+    del b
+    # If resources are requested too much, it shouldn't work.
+    with pytest.raises(ValueError):
+        # The actor cannot be scheduled with no resource specified.
+        # Note that the default actor has 0 cpu.
+        B.options(num_cpus=0, resources={"a": 2}, placement_group=pg).remote()
+
+    #
+    # Test a function with 1 CPU.
+    #
+    @ray.remote
+    def f():
+        pass
+
+    # 1 CPU shouldn't work because the pg doesn't have CPU bundles.
+    with pytest.raises(ValueError):
+        f.options(placement_group=pg).remote()
+    # 0 CPU should work.
+    ray.get(f.options(placement_group=pg, num_cpus=0).remote())
+
+    #
+    # Test a function with 0 CPU.
+    #
+    @ray.remote(num_cpus=0)
+    def g():
+        pass
+
+    # 0 CPU should work.
+    ray.get(g.options(placement_group=pg).remote())
+
+    placement_group_assert_no_leak([pg])
+
+
 @pytest.mark.parametrize("connect_to_client", [False, True])
 def test_placement_group_pack(ray_start_cluster, connect_to_client):
     @ray.remote(num_cpus=2)
@@ -525,6 +601,75 @@ def test_placement_group_table(ray_start_cluster, connect_to_client):
         assert true_name_set == get_name_set
 
         placement_group_assert_no_leak(pgs_created)
+
+
+def test_placement_group_stats(ray_start_cluster):
+    cluster = ray_start_cluster
+    num_nodes = 1
+    for _ in range(num_nodes):
+        cluster.add_node(num_cpus=4, num_gpus=1)
+    ray.init(address=cluster.address)
+
+    # Test createable pgs.
+    pg = ray.util.placement_group(bundles=[{"CPU": 4, "GPU": 1}])
+    ray.get(pg.ready())
+    stats = ray.util.placement_group_table(pg)["stats"]
+    assert stats["scheduling_attempt"] == 1
+    assert stats["scheduling_state"] == "FINISHED"
+    assert stats["end_to_end_creation_latency_ms"] != 0
+
+    # Create a pending pg.
+    pg2 = ray.util.placement_group(bundles=[{"CPU": 4, "GPU": 1}])
+
+    def assert_scheduling_state():
+        stats = ray.util.placement_group_table(pg2)["stats"]
+        if stats["scheduling_attempt"] != 1:
+            return False
+        if stats["scheduling_state"] != "NO_RESOURCES":
+            return False
+        if stats["end_to_end_creation_latency_ms"] != 0:
+            return False
+        return True
+
+    wait_for_condition(assert_scheduling_state)
+
+    # Remove the first pg, and the second
+    # pg should be schedulable now.
+    ray.util.remove_placement_group(pg)
+
+    def assert_scheduling_state():
+        stats = ray.util.placement_group_table(pg2)["stats"]
+        if stats["scheduling_state"] != "FINISHED":
+            return False
+        if stats["end_to_end_creation_latency_ms"] == 0:
+            return False
+        return True
+
+    wait_for_condition(assert_scheduling_state)
+
+    # Infeasible pg.
+    pg3 = ray.util.placement_group(bundles=[{"CPU": 4, "a": 1}])
+    # TODO This is supposed to be infeasible, but it is printed
+    # as NO_RESOURCES. Fix the issue.
+    # def assert_scheduling_state():
+    #     stats = ray.util.placement_group_table(pg3)["stats"]
+    #     print(stats)
+    #     if stats["scheduling_state"] != "INFEASIBLE":
+    #         return False
+    #     return True
+    # wait_for_condition(assert_scheduling_state)
+
+    ray.util.remove_placement_group(pg3)
+
+    def assert_scheduling_state():
+        stats = ray.util.placement_group_table(pg3)["stats"]
+        if stats["scheduling_state"] != "REMOVED":
+            return False
+        return True
+
+    wait_for_condition(assert_scheduling_state)
+
+    placement_group_assert_no_leak([pg2])
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])

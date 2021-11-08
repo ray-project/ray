@@ -77,7 +77,7 @@ Summary
      - :doc:`/tune/examples/sigopt_example`
    * - :ref:`HEBOSearch <tune-hebo>`
      - Heteroscedastic Evolutionary Bayesian Optimization
-     - [`HEBO <https://github.com/huawei-noah/noah-research/tree/master/HEBO>`__]
+     - [`HEBO <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]
      - :doc:`/tune/examples/hebo_example`
 
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`, Tune SearchAlgorithms cannot affect or stop training processes. However, you can use them together to **early stop the evaluation of bad trials**.

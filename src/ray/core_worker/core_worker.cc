@@ -188,8 +188,8 @@ void CoreWorkerProcess::EnsureInitialized(bool quick_exit) {
   }
 
   if (quick_exit) {
-    RAY_LOG(ERROR) << "The core worker process is not initialized yet or already "
-                   << "shutdown.";
+    RAY_LOG(WARNING) << "The core worker process is not initialized yet or already "
+                     << "shutdown.";
     QuickExit();
   } else {
     RAY_CHECK(core_worker_process)
@@ -1685,7 +1685,8 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     const BundleID &bundle_id, bool placement_group_capture_child_tasks,
-    const std::string &debugger_breakpoint, const std::string &serialized_runtime_env,
+    const std::string &debugger_breakpoint, int64_t depth,
+    const std::string &serialized_runtime_env,
     const std::vector<std::string> &runtime_env_uris,
     const std::string &concurrency_group_name) {
   // Build common task spec.
@@ -1693,7 +1694,7 @@ void CoreWorker::BuildCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint,
+      debugger_breakpoint, depth,
       // TODO(SongGuyang): Move the logic of `prepare_runtime_env` from Python to Core
       // Worker. A common process is needed.
       // If runtime env is not provided, use job config. Only for Java and C++ because it
@@ -1725,12 +1726,13 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
+  int64_t depth = worker_context_.GetTaskDepth() + 1;
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, placement_options,
-                      placement_group_capture_child_tasks, debugger_breakpoint,
+                      placement_group_capture_child_tasks, debugger_breakpoint, depth,
                       task_options.serialized_runtime_env, task_options.runtime_env_uris);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions);
   TaskSpecification task_spec = builder.Build();
@@ -1781,12 +1783,13 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_name.empty()
           ? function.GetFunctionDescriptor()->DefaultTaskName()
           : actor_name + ":" + function.GetFunctionDescriptor()->CallString();
+  int64_t depth = worker_context_.GetTaskDepth() + 1;
   BuildCommonTaskSpec(builder, job_id, actor_creation_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, new_resource,
                       new_placement_resources, actor_creation_options.placement_options,
                       actor_creation_options.placement_group_capture_child_tasks,
-                      "", /* debugger_breakpoint */
+                      "" /* debugger_breakpoint */, depth,
                       actor_creation_options.serialized_runtime_env,
                       actor_creation_options.runtime_env_uris);
 
@@ -1968,14 +1971,19 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
   const auto task_name = task_options.name.empty()
                              ? function.GetFunctionDescriptor()->DefaultTaskName()
                              : task_options.name;
+
+  // Depth shouldn't matter for an actor task, but for consistency it should be
+  // the same as the actor creation task's depth.
+  int64_t depth = worker_context_.GetTaskDepth();
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
                       required_resources, std::make_pair(PlacementGroupID::Nil(), -1),
-                      true, /* placement_group_capture_child_tasks */
-                      "",   /* debugger_breakpoint */
-                      "{}", /* serialized_runtime_env */
-                      {},   /* runtime_env_uris */
+                      true,  /* placement_group_capture_child_tasks */
+                      "",    /* debugger_breakpoint */
+                      depth, /*depth*/
+                      "{}",  /* serialized_runtime_env */
+                      {},    /* runtime_env_uris */
                       task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
