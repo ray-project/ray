@@ -309,7 +309,7 @@ class RemoteFunction:
             self._function_descriptor.function_name,
             placement_group=placement_group)
 
-        if not runtime_env:
+        if not runtime_env or runtime_env == "{}":
             runtime_env = self._runtime_env
 
         def invocation(args, kwargs):

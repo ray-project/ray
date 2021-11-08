@@ -16,9 +16,9 @@ def build_proto_container_runtime_env(runtime_env_dict: dict, runtime_env: Runti
     """
     if runtime_env_dict.get("container"):
         container = runtime_env_dict["container"]
-        runtime_env.container_runtime_env.image = container.get("image", "")
-        runtime_env.container_runtime_env.worker_path = container.get("worker_path", "")
-        runtime_env.container_runtime_env.run_options.extend(container.get("run_options", []))
+        runtime_env.py_container_runtime_env.image = container.get("image", "")
+        runtime_env.py_container_runtime_env.worker_path = container.get("worker_path", "")
+        runtime_env.py_container_runtime_env.run_options.extend(container.get("run_options", []))
 
 
 def parse_proto_container_runtime_env(runtime_env: RuntimeEnv, runtime_env_dict: dict):

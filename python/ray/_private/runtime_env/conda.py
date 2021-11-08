@@ -288,6 +288,7 @@ class CondaManager:
               runtime_env: RuntimeEnv,
               serialized_runtime_env: str,
               context: RuntimeEnvContext,
+              uri: str,
               logger: Optional[logging.Logger] = default_logger):
         if not runtime_env.HasField(
                 "conda_runtime_env") and not runtime_env.HasField(
@@ -300,7 +301,7 @@ class CondaManager:
             conda_env_name = runtime_env.conda_runtime_env.conda_env_name
         else:
             conda_dict = get_conda_dict(runtime_env, self._resources_dir)
-            protocol, hash = parse_uri(get_uri(runtime_env))
+            protocol, hash = parse_uri(uri)
             conda_env_name = self._get_path_from_hash(hash)
             assert conda_dict is not None
 

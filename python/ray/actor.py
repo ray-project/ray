@@ -506,15 +506,20 @@ class ActorClass:
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
         new_runtime_env = str()
-        if isinstance(runtime_env, str):
-            new_runtime_env = runtime_env
-        elif isinstance(runtime_env, RuntimeEnv):
-            new_runtime_env = json_format.MessageToJson(runtime_env)
+
+        if runtime_env is not None:
+            if isinstance(runtime_env, str):
+                new_runtime_env = runtime_env
+            elif isinstance(runtime_env, RuntimeEnv):
+                new_runtime_env = json_format.MessageToJson(runtime_env)
+            else:
+                new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
         else:
-            # Keep the runtime_env as None.  In .remote(), we need to know if
+            # Keep the new_runtime_env as None.  In .remote(), we need to know if
             # runtime_env is None to know whether or not to fall back to the
             # runtime_env specified in the @ray.remote decorator.
-            new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
+            new_runtime_env = None
+
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
