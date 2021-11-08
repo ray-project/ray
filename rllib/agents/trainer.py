@@ -660,31 +660,30 @@ class Trainer(Trainable):
                                                  self._allow_unknown_configs)
 
         # Setup the "env creator" callable.
-        if self._env_id:
-            self.config["env"] = self._env_id
+        env = self._env_id
+        if env:
+            self.config["env"] = env
 
             # An already registered env.
-            if _global_registry.contains(ENV_CREATOR, self._env_id):
-                self.env_creator = _global_registry.get(
-                    ENV_CREATOR, self._env_id)
+            if _global_registry.contains(ENV_CREATOR, env):
+                self.env_creator = _global_registry.get(ENV_CREATOR, env)
 
             # A class path specifier.
-            elif "." in self._env_id:
+            elif "." in env:
 
                 def env_creator_from_classpath(env_context):
                     try:
-                        env_obj = from_config(self._env_id, env_context)
+                        env_obj = from_config(env, env_context)
                     except ValueError:
                         raise EnvError(
-                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(
-                                self._env_id))
+                            ERR_MSG_INVALID_ENV_DESCRIPTOR.format(env))
                     return env_obj
 
                 self.env_creator = env_creator_from_classpath
             # Try gym/PyBullet/Vizdoom.
             else:
                 self.env_creator = functools.partial(
-                    gym_env_creator, env_descriptor=self._env_id)
+                    gym_env_creator, env_descriptor=env)
         # No env -> Env creator always returns None.
         else:
             self.env_creator = lambda env_config: None
