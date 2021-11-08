@@ -111,16 +111,36 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
   return worker_failure_info_ptr;
 }
 
-inline bool IsActorDiedDueToCreationTaskFailure(const rpc::ActorDeathCause &death_cause) {
-  return death_cause.context_case() ==
-         rpc::ActorDeathCause::ContextCase::kCreationTaskFailureContext;
+/// Get actor creation task exception from ActorDeathCause.
+/// Returns nullptr if actor isn't dead due to creation task failure.
+inline std::shared_ptr<rpc::RayException> GetCreationTaskExceptionFromDeathCause(
+    const std::shared_ptr<rpc::ActorDeathCause> &death_cause) {
+  if (death_cause == nullptr ||
+      death_cause->context_case() !=
+          rpc::ActorDeathCause::ContextCase::kCreationTaskFailureContext) {
+    return nullptr;
+  }
+  return std::make_shared<rpc::RayException>(
+      death_cause->creation_task_failure_context().creation_task_exception());
 }
 
-inline bool IsActorDiedDueToRuntimeEnvSetupFailure(
-    const rpc::ActorDeathCause &death_cause) {
-  return death_cause.context_case() ==
-         rpc::ActorDeathCause::ContextCase::kRuntimeEnvSetupFailureContext;
+/// Generate object error type from ActorDeathCause.
+inline rpc::ErrorType GenErrorTypeFromDeathCause(
+    const std::shared_ptr<rpc::ActorDeathCause> &death_cause) {
+  if (death_cause == nullptr) {
+    return rpc::ErrorType::ACTOR_DIED;
+  }
+  if (death_cause->context_case() ==
+      rpc::ActorDeathCause::ContextCase::kCreationTaskFailureContext) {
+    return rpc::ErrorType::ACTOR_DIED;
+  }
+  if (death_cause->context_case() ==
+      rpc::ActorDeathCause::ContextCase::kRuntimeEnvSetupFailureContext) {
+    return rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
+  }
+  return rpc::ErrorType::ACTOR_DIED;
 }
+
 }  // namespace gcs
 
 }  // namespace ray

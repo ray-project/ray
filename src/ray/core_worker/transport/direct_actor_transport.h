@@ -52,8 +52,9 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
   virtual void AddActorQueueIfNotExists(const ActorID &actor_id) = 0;
   virtual void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
                             int64_t num_restarts) = 0;
-  virtual void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead,
-                               const rpc::ActorDeathCause *death_cause = nullptr) = 0;
+  virtual void DisconnectActor(
+      const ActorID &actor_id, int64_t num_restarts, bool dead,
+      const std::shared_ptr<rpc::ActorDeathCause> &death_cause = nullptr) = 0;
   virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
 
   virtual void CheckTimeoutTasks() = 0;
@@ -119,8 +120,9 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \param[in] dead Whether the actor is permanently dead. In this case, all
   /// pending tasks for the actor should be failed.
   /// \param[in] death_cause Context about why this actor is dead.
-  void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead,
-                       const rpc::ActorDeathCause *death_cause = nullptr);
+  void DisconnectActor(
+      const ActorID &actor_id, int64_t num_restarts, bool dead,
+      const std::shared_ptr<rpc::ActorDeathCause> &death_cause = nullptr);
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);
@@ -135,7 +137,7 @@ class CoreWorkerDirectActorTaskSubmitter
     /// queue will be marked failed and all other ClientQueue state is ignored.
     rpc::ActorTableData::ActorState state = rpc::ActorTableData::DEPENDENCIES_UNREADY;
     /// Only applies when state=DEAD.
-    rpc::ActorDeathCause death_cause;
+    std::shared_ptr<rpc::ActorDeathCause> death_cause = nullptr;
     /// How many times this actor has been restarted before. Starts at -1 to
     /// indicate that the actor is not yet created. This is used to drop stale
     /// messages from the GCS.
