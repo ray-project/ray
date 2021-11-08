@@ -22,7 +22,7 @@ Ray is packaged with the following libraries for accelerating machine learning w
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
 - `Train`_: Distributed Deep Learning (alpha)
-- `Datasets`_: Flexible Distributed Data Loading (beta)
+- `Datasets`_: Distributed Data Loading and Compute (beta)
 
 As well as libraries for taking ML and distributed apps to production:
 

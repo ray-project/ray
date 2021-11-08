@@ -10,10 +10,10 @@ from copy import copy
 import ray
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
-from ray.serve.backend_state import ReplicaState, BackendStateManager
+from ray.serve.deployment_state import ReplicaState, DeploymentStateManager
 from ray.serve.common import (
     DeploymentInfo,
-    BackendTag,
+    str,
     EndpointTag,
     EndpointInfo,
     GoalId,
@@ -77,8 +77,8 @@ class ServeController:
             checkpoint_path, namespace=kv_store_namespace)
         self.snapshot_store = RayInternalKVStore(namespace=kv_store_namespace)
 
-        # Dictionary of backend_tag -> proxy_name -> most recent queue length.
-        self.backend_stats = defaultdict(lambda: defaultdict(dict))
+        # Dictionary of deployment_name -> proxy_name -> queue length.
+        self.deployment_stats = defaultdict(lambda: defaultdict(dict))
 
         # Used to ensure that only a single state-changing operation happens
         # at any given time.
@@ -92,7 +92,7 @@ class ServeController:
         # Fetch all running actors in current cluster as source of current
         # replica state for controller failure recovery
         all_current_actor_names = ray.util.list_named_actors()
-        self.backend_state_manager = BackendStateManager(
+        self.deployment_state_manager = DeploymentStateManager(
             controller_name, detached, self.kv_store, self.long_poll_host,
             self.goal_manager, all_current_actor_names)
 
@@ -109,7 +109,7 @@ class ServeController:
         return self.autoscaling_metrics_store.data
 
     def _dump_replica_states_for_testing(self, deployment_name):
-        return self.backend_state_manager._backend_states[
+        return self.deployment_state_manager._deployment_states[
             deployment_name]._replicas
 
     async def wait_for_goal(self, goal_id: GoalId) -> Optional[Exception]:
@@ -129,8 +129,8 @@ class ServeController:
         return await (
             self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
 
-    def get_all_endpoints(self) -> Dict[EndpointTag, Dict[BackendTag, Any]]:
-        """Returns a dictionary of backend tag to backend config."""
+    def get_all_endpoints(self) -> Dict[EndpointTag, Dict[str, Any]]:
+        """Returns a dictionary of deployment name to config."""
         return self.endpoint_state.get_endpoints()
 
     def get_http_proxies(self) -> Dict[NodeId, ActorHandle]:
@@ -147,7 +147,7 @@ class ServeController:
             if autoscaling_policy is None:
                 continue
 
-            replicas = self.backend_state_manager._backend_states[
+            replicas = self.deployment_state_manager._deployment_states[
                 deployment_name]._replicas
             running_replicas = replicas.get([ReplicaState.RUNNING])
 
@@ -176,7 +176,7 @@ class ServeController:
             new_deployment_info = copy(deployment_info)
             new_deployment_info.deployment_config = new_deployment_config
 
-            goal_id, updating = self.backend_state_manager.deploy_backend(
+            goal_id, updating = self.deployment_state_manager.deploy(
                 deployment_name, new_deployment_info)
 
     async def run_control_loop(self) -> None:
@@ -191,9 +191,9 @@ class ServeController:
                 except Exception:
                     logger.exception("Exception updating HTTP state.")
                 try:
-                    self.backend_state_manager.update()
+                    self.deployment_state_manager.update()
                 except Exception:
-                    logger.exception("Exception updating backend state.")
+                    logger.exception("Exception updating deployment state.")
             self._put_serve_snapshot()
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
@@ -221,7 +221,7 @@ class ServeController:
                                if deployment_info.end_time_ms else "RUNNING")
             entry["actors"] = dict()
             if entry["status"] == "RUNNING":
-                replicas = self.backend_state_manager._backend_states[
+                replicas = self.deployment_state_manager._deployment_states[
                     deployment_name]._replicas
                 running_replicas = replicas.get([ReplicaState.RUNNING])
                 for replica in running_replicas:
@@ -244,10 +244,9 @@ class ServeController:
             val[deployment_name] = entry
         self.snapshot_store.put(SNAPSHOT_KEY, json.dumps(val).encode("utf-8"))
 
-    def _all_running_replicas(
-            self) -> Dict[BackendTag, List[RunningReplicaInfo]]:
+    def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
         """Used for testing."""
-        return self.backend_state_manager.get_running_replica_infos()
+        return self.deployment_state_manager.get_running_replica_infos()
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
@@ -266,7 +265,7 @@ class ServeController:
     async def shutdown(self) -> List[GoalId]:
         """Shuts down the serve instance completely."""
         async with self.write_lock:
-            goal_ids = self.backend_state_manager.shutdown()
+            goal_ids = self.deployment_state_manager.shutdown()
             self.endpoint_state.shutdown()
             self.http_state.shutdown()
 
@@ -288,8 +287,8 @@ class ServeController:
             deployment_config_proto_bytes)
 
         if prev_version is not None:
-            existing_deployment_info = self.backend_state_manager.get_backend(
-                name)
+            existing_deployment_info = (
+                self.deployment_state_manager.get_deployment(name))
             if (existing_deployment_info is None
                     or not existing_deployment_info.version):
                 raise ValueError(
@@ -323,7 +322,7 @@ class ServeController:
         # the only change was num_replicas, the start_time_ms is refreshed.
         # Is this the desired behaviour?
 
-        goal_id, updating = self.backend_state_manager.deploy_backend(
+        goal_id, updating = self.deployment_state_manager.deploy(
             name, deployment_info)
         endpoint_info = EndpointInfo(route=route_prefix)
         self.endpoint_state.update_endpoint(name, endpoint_info)
@@ -331,7 +330,7 @@ class ServeController:
 
     def delete_deployment(self, name: str) -> Optional[GoalId]:
         self.endpoint_state.delete_endpoint(name)
-        return self.backend_state_manager.delete_backend(name)
+        return self.deployment_state_manager.delete_deployment(name)
 
     def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
         """Get the current information about a deployment.
@@ -345,7 +344,7 @@ class ServeController:
         Raises:
             KeyError if the deployment doesn't exist.
         """
-        deployment_info = self.backend_state_manager.get_backend(name)
+        deployment_info = self.deployment_state_manager.get_deployment(name)
         if deployment_info is None:
             raise KeyError(f"Deployment {name} does not exist.")
 
@@ -368,9 +367,9 @@ class ServeController:
             KeyError if the deployment doesn't exist.
         """
         return {
-            name: (self.backend_state_manager.get_backend(
+            name: (self.deployment_state_manager.get_deployment(
                 name, include_deleted=include_deleted),
                    self.endpoint_state.get_endpoint_route(name))
-            for name in self.backend_state_manager.get_deployment_configs(
+            for name in self.deployment_state_manager.get_deployment_configs(
                 include_deleted=include_deleted)
         }

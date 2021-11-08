@@ -64,6 +64,7 @@ class CoreWorkerDirectTaskSubmitter {
       std::shared_ptr<CoreWorkerMemoryStore> store,
       std::shared_ptr<TaskFinisherInterface> task_finisher, NodeID local_raylet_id,
       int64_t lease_timeout_ms, std::shared_ptr<ActorCreatorInterface> actor_creator,
+      const JobID &job_id,
       uint32_t max_tasks_in_flight_per_worker =
           ::RayConfig::instance().max_tasks_in_flight_per_worker(),
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt,
@@ -79,6 +80,7 @@ class CoreWorkerDirectTaskSubmitter {
         local_raylet_id_(local_raylet_id),
         actor_creator_(actor_creator),
         client_cache_(core_worker_client_pool),
+        job_id_(job_id),
         max_tasks_in_flight_per_worker_(max_tasks_in_flight_per_worker),
         max_pending_lease_requests_per_scheduling_category_(
             max_pending_lease_requests_per_scheduling_category),
@@ -249,6 +251,9 @@ class CoreWorkerDirectTaskSubmitter {
 
   /// Cache of gRPC clients to other workers.
   std::shared_ptr<rpc::CoreWorkerClientPool> client_cache_;
+
+  /// The ID of the job.
+  const JobID job_id_;
 
   // max_tasks_in_flight_per_worker_ limits the number of tasks that can be pipelined to a
   // worker using a single lease.

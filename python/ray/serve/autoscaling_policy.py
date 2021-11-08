@@ -71,7 +71,7 @@ class AutoscalingPolicy:
     def get_decision_num_replicas(self,
                                   current_num_ongoing_requests: List[float],
                                   curr_target_num_replicas: int) -> int:
-        """Make a decision to scale backends.
+        """Make a decision to scale replicas.
 
         Arguments:
             current_num_ongoing_requests: List[float]: List of number of
@@ -80,7 +80,7 @@ class AutoscalingPolicy:
                 deployment is currently trying to scale to.
 
         Returns:
-            int: The new number of replicas to scale this backend to.
+            int: The new number of replicas to scale to.
         """
         return curr_target_num_replicas
 
