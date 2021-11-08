@@ -95,6 +95,7 @@ py_test_module_list(
     "test_threaded_actor.py",
     "test_tls_auth.py",
     "test_ray_debugger.py",
+    "test_worker_capping.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -395,7 +396,6 @@ py_test_module_list(
     "test_object_spilling_2.py",
     "test_object_spilling_3.py",
     "test_scheduling.py",
-    "test_worker_capping.py",
     "test_array.py"
   ],
   size = "medium",
@@ -411,7 +411,6 @@ py_test_module_list(
     "test_object_spilling_2.py",
     "test_object_spilling_3.py",
     "test_scheduling.py",
-    "test_worker_capping.py",
     "test_array.py"
   ],
   size = "large",
