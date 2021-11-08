@@ -41,7 +41,10 @@ Attaching user-defined metadata
 ----------------------------
 Custom metadata can be added to a workflow or a workflow step by user,
 this is useful when you want to attach some extra information to the
-workflow or workflow step. For example:
+workflow or workflow step.
+
+- workflow-level metadata can be added via ``.run(metadata=metadata)``
+- step-level metadata can be added via ``.options(metadata=metadata)`` or in the decorator ``@workflow.step(metadata=metadata``)
 
 .. code-block:: python
 
