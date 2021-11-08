@@ -465,7 +465,7 @@ def test_actor_level_gc(start_cluster, remote_uri, option: str):
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize(
-    "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
+    "source", [*REMOTE_URIS, lazy_fixture("tmp_working_dir")])
 def test_detached_actor_gc(start_cluster, option: str, source: str):
     """Tests that URIs for detached actors are GC'd only when they exit."""
     cluster, address = start_cluster
@@ -474,7 +474,7 @@ def test_detached_actor_gc(start_cluster, option: str, source: str):
         ray.init(
             address, namespace="test", runtime_env={"working_dir": source})
     elif option == "py_modules":
-        if source != S3_PACKAGE_URI:
+        if source not in REMOTE_URIS:
             source = str(Path(source) / "test_module")
         ray.init(
             address, namespace="test", runtime_env={"py_modules": [source]})
@@ -482,7 +482,7 @@ def test_detached_actor_gc(start_cluster, option: str, source: str):
     # For a local directory, the package should be in the GCS.
     # For an S3 URI, there should be nothing in the GCS because
     # it will be downloaded from S3 directly on each node.
-    if source == S3_PACKAGE_URI:
+    if source in REMOTE_URIS:
         assert check_internal_kv_gced()
     else:
         assert not check_internal_kv_gced()
