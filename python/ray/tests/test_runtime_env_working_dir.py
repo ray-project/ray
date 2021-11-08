@@ -258,13 +258,14 @@ def test_input_validation(start_cluster, option: str):
 
     ray.shutdown()
 
-    with pytest.raises(ValueError):
-        if option == "working_dir":
-            ray.init(address, runtime_env={"working_dir": "s3://no_dot_zip"})
-        else:
-            ray.init(address, runtime_env={"py_modules": ["s3://no_dot_zip"]})
+    for uri in ["s3://no_dot_zip", "https://no_dot_zip"]:
+        with pytest.raises(ValueError):
+            if option == "working_dir":
+                ray.init(address, runtime_env={"working_dir": uri})
+            else:
+                ray.init(address, runtime_env={"py_modules": [uri]})
 
-    ray.shutdown()
+        ray.shutdown()
 
     if option == "py_modules":
         with pytest.raises(TypeError):
