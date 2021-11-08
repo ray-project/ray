@@ -187,13 +187,25 @@ class ServeController:
         while True:
             try:
                 self.autoscale()
-                async with self.write_lock:
-                    self.http_state.update()
-                    self.deployment_state_manager.update()
-                self._put_serve_snapshot()
-                await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
             except Exception:
-                logger.exception("Exception in main control loop.")
+                logger.exception("Exception in autoscaling.")
+
+            async with self.write_lock:
+                try:
+                    self.http_state.update()
+                except Exception:
+                    logger.exception("Exception updating HTTP state.")
+
+                try:
+                    self.deployment_state_manager.update()
+                except Exception:
+                    logger.exception("Exception updating deployment state.")
+
+                try:
+                    self._put_serve_snapshot()
+                except Exception:
+                    logger.exception("Exception putting serve snapshot.")
+                await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
     def _put_serve_snapshot(self) -> None:
         val = dict()
