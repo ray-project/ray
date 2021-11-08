@@ -11,7 +11,8 @@ import signal
 
 import ray
 import ray.cluster_utils
-
+from ray.experimental.internal_kv import (_internal_kv_get,
+                                          _internal_kv_exists)
 from ray._private.test_utils import (run_string_as_driver_nonblocking,
                                      RayTestTimeoutException,
                                      wait_for_pid_to_exit, wait_for_condition)
@@ -748,42 +749,30 @@ def test_max_call_tasks(ray_start_regular):
     wait_for_pid_to_exit(pid1)
 
 
-def test_worker_leaked_when_drain(ray_start_regular):
-    @ray.remote
-    def hello():
-        return "hello"
-
-    # Warnup cluster
-    assert "hello" == ray.get(hello.remote())
-
+# This case tests that the worker leaked issue when task finished with errors.
+#
+# Case steps are:
+#   1. Start a driver which creates a normal task with a long sleeping. This
+#      makes the normal task doesn't return.
+#   2. Send a SIGTERM to the normal task to trigger an error for it.
+#   3. After the normal task being reconstructed, we send a SIGTERM to the
+#      driver to make it offline and expects Ray collects the idle workers for
+#      the previous nomral task.
+def test_whether_worker_leaked_when_task_finished_with_errors(ray_start_regular):
     driver_template = """
 import ray
 import os
 import ray
 import numpy as np
 import time
+from ray.experimental.internal_kv import _internal_kv_put
 
 ray.init(address="{address}", namespace="test")
 
 @ray.remote
-class KvStore:
-    def __init__(self):
-        self.__data = dict()
-
-    def put(self, k, v):
-        self.__data[k] = v
-        return True
-
-    def get(self, k):
-        return self.__data[k]
-
-@ray.remote
 def normal_task(large):
-    try:
-        kvstore = ray.get_actor("kvstore", namespace="test")
-    except Exception as e:
-        kvstore = KvStore.options(name="kvstore", lifetime="detached").remote()
-    ray.get(kvstore.put.remote("pid", os.getpid()))
+    # Record the pid of this normal task.
+    _internal_kv_put("NORMAL_TASK_PID", str(os.getpid()))
     time.sleep(60 * 60)
     return "normaltask"
 
@@ -793,25 +782,29 @@ print(ray.get(obj))
 """
     driver_script = driver_template.format(
         address=ray_start_regular["redis_address"])
-
     driver_proc = run_string_as_driver_nonblocking(driver_script)
-
     try:
         driver_proc.wait(10)
     except Exception as e:
-        print(e)
+        pass
 
-    kvstore = ray.get_actor("kvstore", namespace="test")
-    normal_task_pid = ray.get(kvstore.get.remote("pid"))
+    wait_for_condition(lambda: _internal_kv_exists("NORMAL_TASK_PID"), 10)
+    normal_task_pid = int(_internal_kv_get("NORMAL_TASK_PID"))
+    assert normal_task_pid is not None
     normal_task_proc = psutil.Process(normal_task_pid)
-    print("killing normal task process, pid=", normal_task_pid)
+    print("killing normal task process, pid =", normal_task_pid)
     normal_task_proc.send_signal(signal.SIGTERM)
-    time.sleep(3)
+
+    def normal_task_was_reconstructed():
+        curr_pid_bytes = _internal_kv_get("NORMAL_TASK_PID")
+        return curr_pid_bytes is not None \
+            and int(curr_pid_bytes) != normal_task_pid
+    wait_for_condition(lambda: normal_task_was_reconstructed(), 10)
 
     driver_proc.send_signal(signal.SIGTERM)
-    # Sleep to make sure raylet triggered cleanuping the idle workers.
+    # Sleep here to make sure raylet has triggered cleaning up
+    # the idle workers.
     time.sleep(10)
-
     assert not psutil.pid_exists(normal_task_pid)
 
 
