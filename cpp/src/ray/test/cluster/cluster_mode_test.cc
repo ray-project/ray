@@ -302,9 +302,6 @@ TEST(RayClusterModeTest, DependencyRefrenceTest) {
   EXPECT_TRUE(
       CheckRefCount({{object_id0, std::make_pair(1, 0)},
                      {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
-
-  r2.reset();
-  EXPECT_TRUE(CheckRefCount({{object_id0, std::make_pair(1, 0)}}));
 }
 
 TEST(RayClusterModeTest, GetActorTest) {
@@ -410,6 +407,17 @@ TEST(RayClusterModeTest, TaskWithPlacementGroup) {
                .Remote();
   EXPECT_EQ(*r.Get(), 1);
   ray::RemovePlacementGroup(placement_group.GetID());
+}
+
+TEST(RayClusterModeTest, ObjectRefArgsTest) {
+  auto obj = ray::Put(std::string("aaa"));
+  auto r = ray::Task(GetVal).Remote(obj);
+  EXPECT_EQ(*r.Get(), "aaa");
+
+  auto obj1 = ray::Put(1);
+  auto obj2 = ray::Put(2);
+  auto r1 = ray::Task(Add).Remote(obj1, obj2);
+  EXPECT_EQ(*r1.Get(), 3);
 }
 
 int main(int argc, char **argv) {

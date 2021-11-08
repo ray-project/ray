@@ -18,5 +18,9 @@ int Return1() { return 1; };
 int Plus1(int x) { return x + 1; };
 int Plus(int x, int y) { return x + y; };
 void ThrowTask() { throw std::logic_error("error"); }
+std::string GetVal(ray::ObjectRef<std::string> obj) { return *obj.Get(); }
+int Add(ray::ObjectRef<int> obj1, ray::ObjectRef<int> obj2) {
+  return *obj1.Get() + *obj2.Get();
+}
 
-RAY_REMOTE(Return1, Plus1, Plus, ThrowTask);
+RAY_REMOTE(Return1, Plus1, Plus, ThrowTask, GetVal, Add);
