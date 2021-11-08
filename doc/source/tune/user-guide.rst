@@ -47,6 +47,8 @@ Even if the trial cannot be scheduled right now, Ray Tune will still try to star
 the respective placement group. If not enough resources are available, this will trigger
 :ref:`autoscaling behavior<cluster-index>` if you're using the Ray cluster launcher.
 
+It is also possible to specify memory (``"memory"``, in bytes) and custom resource requirements.
+
 If your trainable function starts more remote workers, you will need to pass placement groups
 factory objects to request these resources. See the
 :class:`PlacementGroupFactory documentation <ray.tune.utils.placement_groups.PlacementGroupFactory>`

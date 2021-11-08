@@ -30,7 +30,7 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
-#include "ray/gcs/gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet/worker.h"
 
@@ -86,6 +86,7 @@ class WorkerPoolInterface {
   /// cases:
   /// Case 1: An suitable worker was found in idle worker pool.
   /// Case 2: An suitable worker registered to raylet.
+  /// The corresponding PopWorkerStatus will be passed to the callback.
   /// \param allocated_instances_serialized_json The allocated resource instances
   /// json string, it contains resource ID which assigned to this worker.
   /// Instance resource value will be like {"GPU":[10000,0,10000]}, non-instance

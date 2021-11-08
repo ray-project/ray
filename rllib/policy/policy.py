@@ -10,7 +10,8 @@ from typing import Dict, List, Optional, Type, TYPE_CHECKING
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
@@ -23,7 +24,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation import MultiAgentEpisode
+    from ray.rllib.evaluation import Episode
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +102,7 @@ class Policy(metaclass=ABCMeta):
         self.action_space_struct = get_base_struct_from_space(action_space)
 
         self.config: TrainerConfigDict = config
+        self.framework = self.config.get("framework")
         # Create the callbacks object to use for handling custom callbacks.
         if self.config.get("callbacks"):
             self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
@@ -142,7 +144,7 @@ class Policy(metaclass=ABCMeta):
             prev_reward: Optional[TensorStructType] = None,
             info: dict = None,
             input_dict: Optional[SampleBatch] = None,
-            episode: Optional["MultiAgentEpisode"] = None,
+            episode: Optional["Episode"] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             # Kwars placeholder for future compatibility.
@@ -238,7 +240,7 @@ class Policy(metaclass=ABCMeta):
             input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
             explore: bool = None,
             timestep: Optional[int] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
+            episodes: Optional[List["Episode"]] = None,
             **kwargs) -> \
             Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
@@ -300,7 +302,7 @@ class Policy(metaclass=ABCMeta):
             prev_reward_batch: Union[List[TensorStructType],
                                      TensorStructType] = None,
             info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List["MultiAgentEpisode"]] = None,
+            episodes: Optional[List["Episode"]] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             **kwargs) -> \
@@ -313,7 +315,7 @@ class Policy(metaclass=ABCMeta):
             prev_action_batch: Batch of previous action values.
             prev_reward_batch: Batch of previous rewards.
             info_batch: Batch of info objects.
-            episodes: List of MultiAgentEpisodes, one for each obs in
+            episodes: List of Episode objects, one for each obs in
                 obs_batch. This provides access to all of the internal
                 episode state, which may be useful for model-based or
                 multi-agent algorithms.
@@ -377,7 +379,7 @@ class Policy(metaclass=ABCMeta):
             sample_batch: SampleBatch,
             other_agent_batches: Optional[Dict[AgentID, Tuple[
                 "Policy", SampleBatch]]] = None,
-            episode: Optional["MultiAgentEpisode"] = None) -> SampleBatch:
+            episode: Optional["Episode"] = None) -> SampleBatch:
         """Implements algorithm-specific trajectory postprocessing.
 
         This will be called on each trajectory fragment computed during policy
@@ -762,6 +764,12 @@ class Policy(metaclass=ABCMeta):
                 TensorType]]]): An optional stats function to be called after
                 the loss.
         """
+        # Signal Policy that currently we do not like to eager/jit trace
+        # any function calls. This is to be able to track, which columns
+        # in the dummy batch are accessed by the different function (e.g.
+        # loss) such that we can then adjust our view requirements.
+        self._no_tracing = True
+
         sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size)
@@ -769,6 +777,9 @@ class Policy(metaclass=ABCMeta):
         actions, state_outs, extra_outs = \
             self.compute_actions_from_input_dict(
                 self._dummy_batch, explore=False)
+        for key, view_req in self.view_requirements.items():
+            if key not in self._dummy_batch.accessed_keys:
+                view_req.used_for_compute_actions = False
         # Add all extra action outputs to view reqirements (these may be
         # filtered out later again, if not needed for postprocessing or loss).
         for key, value in extra_outs.items():
@@ -804,7 +815,7 @@ class Policy(metaclass=ABCMeta):
         # Switch on lazy to-tensor conversion on `postprocessed_batch`.
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         # Calling loss, so set `is_training` to True.
-        train_batch.is_training = True
+        train_batch.set_training(True)
         if seq_lens is not None:
             train_batch[SampleBatch.SEQ_LENS] = seq_lens
         train_batch.count = self._dummy_batch.count
@@ -814,6 +825,9 @@ class Policy(metaclass=ABCMeta):
         # Call the stats fn, if given.
         if stats_fn is not None:
             stats_fn(self, train_batch)
+
+        # Re-enable tracing.
+        self._no_tracing = False
 
         # Add new columns automatically to view-reqs.
         if auto_remove_unneeded_view_reqs:

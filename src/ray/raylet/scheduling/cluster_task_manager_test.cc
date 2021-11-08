@@ -29,7 +29,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/test/util.h"
-#include "mock/ray/gcs/gcs_client.h"
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
 
 #ifdef UNORDERED_VS_ABSL_MAPS_EVALUATION
 #include <chrono>
@@ -134,7 +134,7 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
                                  FunctionDescriptorBuilder::BuildPython("", "", "", ""),
                                  job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0,
                                  required_resources, {},
-                                 std::make_pair(PlacementGroupID::Nil(), -1), true, "",
+                                 std::make_pair(PlacementGroupID::Nil(), -1), true, "", 0,
                                  serialized_runtime_env, runtime_env_uris);
 
   if (!args.empty()) {
@@ -279,7 +279,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
     int count = 0;
     for (const auto &pair : task_manager_.tasks_to_dispatch_) {
       for (const auto &work : pair.second) {
-        if (work->status == WorkStatus::WAITING_FOR_WORKER) {
+        if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
           count++;
         }
       }
@@ -1088,7 +1088,7 @@ TEST_F(ClusterTaskManagerTest, TestMultipleInfeasibleTasksWarnOnce) {
   ASSERT_EQ(announce_infeasible_task_calls_, 1);
 }
 
-TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
+TEST_F(ClusterTaskManagerTest, TestAnyPendingTasksForResourceAcquisition) {
   /*
     Check if the manager can correctly identify pending tasks.
    */
@@ -1115,8 +1115,8 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
   bool any_pending = false;
   int pending_actor_creations = 0;
   int pending_tasks = 0;
-  ASSERT_FALSE(task_manager_.AnyPendingTasks(&exemplar, &any_pending,
-                                             &pending_actor_creations, &pending_tasks));
+  ASSERT_FALSE(task_manager_.AnyPendingTasksForResourceAcquisition(
+      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
 
   // task1: running, task2: queued.
   RayTask task2 = CreateTask({{ray::kCPU_ResourceLabel, 6}});
@@ -1129,8 +1129,8 @@ TEST_F(ClusterTaskManagerTest, TestAnyPendingTasks) {
   task_manager_.QueueAndScheduleTask(task2, &reply2, callback2);
   pool_.TriggerCallbacks();
   ASSERT_FALSE(*callback_occurred2);
-  ASSERT_TRUE(task_manager_.AnyPendingTasks(&exemplar, &any_pending,
-                                            &pending_actor_creations, &pending_tasks));
+  ASSERT_TRUE(task_manager_.AnyPendingTasksForResourceAcquisition(
+      &exemplar, &any_pending, &pending_actor_creations, &pending_tasks));
 }
 
 TEST_F(ClusterTaskManagerTest, ArgumentEvicted) {
@@ -1593,11 +1593,15 @@ TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, OneCpuInfeasibleTask) {
     const auto &resource_load_by_shape = data.resource_load_by_shape();
     ASSERT_EQ(resource_load_by_shape.resource_demands().size(), demand_types[i]);
 
-    // 1 CPU demand currently is always the 1st.
-    const auto &demand = resource_load_by_shape.resource_demands()[0];
-    EXPECT_EQ(demand.num_infeasible_requests_queued(), num_infeasible_1cpu[i]);
-    ASSERT_EQ(demand.shape().size(), 1);
-    ASSERT_EQ(demand.shape().at("CPU"), 1);
+    // Find the 1-cpu task and make sure the demand quantities are correct.
+    bool found = false;
+    for (const auto &demand : resource_load_by_shape.resource_demands()) {
+      if (demand.shape().size() == 1 && demand.shape().at("CPU") == 1) {
+        found = true;
+        EXPECT_EQ(demand.num_infeasible_requests_queued(), num_infeasible_1cpu[i]);
+      }
+    }
+    ASSERT_TRUE(found);
   }
 }
 

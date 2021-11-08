@@ -115,6 +115,11 @@ public class RayDevRuntime extends AbstractRayRuntime {
   }
 
   @Override
+  public String getNamespace() {
+    return null;
+  }
+
+  @Override
   public void exitActor() {}
 
   private JobId nextJobId() {

@@ -1,8 +1,12 @@
-from pydantic import BaseModel
 from enum import Enum
+from typing import Any, Dict
+from dataclasses import dataclass
 
 
 class JobStatus(str, Enum):
+    def __str__(self):
+        return f"{self.value}"
+
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     STOPPED = "STOPPED"
@@ -10,55 +14,53 @@ class JobStatus(str, Enum):
     FAILED = "FAILED"
 
 
-class JobSpec(BaseModel):
-    # Dict to setup execution environment, better to have schema for this
-    runtime_env: dict
-    # Command to start execution, ex: "python script.py"
-    entrypoint: str
-    # Metadata to pass in to configure job behavior or use as tags
-    # Required by Anyscale product and already supported in Ray drivers
-    metadata: dict
-    # Likely there will be more fields needed later on for different apps
-    # but we should keep it minimal and delegate policies to job manager
+# ==== Get Package ====
+
+
+@dataclass
+class GetPackageResponse:
+    package_exists: bool
 
 
 # ==== Job Submit ====
 
 
-class JobSubmitRequest(BaseModel):
-    job_spec: JobSpec
-    # Globally unique job id. It’s recommended to generate this id from
-    # external job manager first, then pass into this API.
-    # If job server never had a job running with given id:
-    #   - Start new job execution
-    # Else if job server has a running job with given id:
-    #   - Fail, deployment update and reconfigure should happen in job manager
-    job_id: str = None
+@dataclass
+class JobSubmitRequest:
+    # Dict to setup execution environment.
+    runtime_env: Dict[str, Any]
+    # Command to start execution, ex: "python script.py"
+    entrypoint: str
+    # Metadata to pass in to the JobConfig.
+    metadata: Dict[str, str]
 
 
-class JobSubmitResponse(BaseModel):
+@dataclass
+class JobSubmitResponse:
     job_id: str
+
+
+# ==== Job Stop ====
+
+
+@dataclass
+class JobStopResponse:
+    stopped: bool
 
 
 # ==== Job Status ====
 
 
-class JobStatusRequest(BaseModel):
-    job_id: str
-
-
-class JobStatusResponse(BaseModel):
+@dataclass
+class JobStatusResponse:
     job_status: JobStatus
 
 
 # ==== Job Logs ====
 
 
-class JobLogsRequest(BaseModel):
-    job_id: str
-
-
 # TODO(jiaodong): Support log streaming #19415
-class JobLogsResponse(BaseModel):
+@dataclass
+class JobLogsResponse:
     stdout: str
     stderr: str

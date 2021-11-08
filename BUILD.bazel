@@ -674,6 +674,7 @@ cc_library(
     deps = [
         ":agent_manager_rpc",
         ":gcs",
+        ":gcs_client_lib",
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":object_manager",
@@ -682,7 +683,6 @@ cc_library(
         ":ray_common",
         ":ray_util",
         ":runtime_env_rpc",
-        ":service_based_gcs_client_lib",
         ":stats_lib",
         ":worker_rpc",
         "//src/ray/protobuf:common_cc_proto",
@@ -755,11 +755,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":gcs",
+        ":gcs_client_lib",
         ":plasma_client",
         ":ray_common",
         ":ray_util",
         ":raylet_client_lib",
-        ":service_based_gcs_client_lib",
         ":stats_lib",
         ":worker_rpc",
         "//src/ray/protobuf:worker_cc_proto",
@@ -936,6 +936,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":gcs_client_lib",
         ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1466,6 +1467,9 @@ cc_library(
     ],
     copts = COPTS,
     strip_include_prefix = "src",
+    deps = [
+        ":gcs_client_lib",
+    ],
 )
 
 cc_test(
@@ -1525,6 +1529,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
+        ":gcs_client_lib",
         ":gcs_server_lib",
         ":gcs_server_test_util",
         ":gcs_test_util_lib",
@@ -1717,17 +1722,15 @@ cc_test(
 )
 
 cc_library(
-    name = "service_based_gcs_client_lib",
-    srcs = glob(
-        [
-            "src/ray/gcs/gcs_client/service_based_*.cc",
-        ],
-    ),
-    hdrs = glob(
-        [
-            "src/ray/gcs/gcs_client/service_based_*.h",
-        ],
-    ),
+    name = "gcs_client_lib",
+    srcs = [
+        "src/ray/gcs/gcs_client/accessor.cc",
+        "src/ray/gcs/gcs_client/gcs_client.cc",
+    ],
+    hdrs = [
+        "src/ray/gcs/gcs_client/accessor.h",
+        "src/ray/gcs/gcs_client/gcs_client.h",
+    ],
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
@@ -1755,7 +1758,7 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        ":service_based_gcs_client_lib",
+        ":gcs_client_lib",
     ],
 )
 
@@ -1776,10 +1779,10 @@ cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        ":gcs_client_lib",
         ":gcs_server_lib",
         ":gcs_test_util_lib",
         ":global_state_accessor_lib",
-        ":service_based_gcs_client_lib",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1787,7 +1790,7 @@ cc_test(
 cc_test(
     name = "gcs_server_test",
     srcs = [
-        "src/ray/gcs/gcs_client/test/service_based_gcs_client_test.cc",
+        "src/ray/gcs/gcs_client/test/gcs_client_test.cc",
     ],
     args = [
         "$(location redis-server)",
@@ -1800,24 +1803,8 @@ cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        ":gcs_client_lib",
         ":gcs_server_lib",
-        ":gcs_test_util_lib",
-        ":service_based_gcs_client_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "gcs_object_manager_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_object_manager_test.cc",
-    ],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
         ":gcs_test_util_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1884,6 +1871,13 @@ cc_library(
         "src/ray/util/*.h",
     ]),
     copts = COPTS,
+    linkopts = select({
+        "@bazel_tools//src/conditions:windows": [
+        ],
+        "//conditions:default": [
+            "-lpthread",
+        ],
+    }),
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [

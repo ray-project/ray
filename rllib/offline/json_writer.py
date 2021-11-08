@@ -34,15 +34,14 @@ class JsonWriter(OutputWriter):
                  ioctx: IOContext = None,
                  max_file_size: int = 64 * 1024 * 1024,
                  compress_columns: List[str] = frozenset(["obs", "new_obs"])):
-        """Initialize a JsonWriter.
+        """Initializes a JsonWriter instance.
 
         Args:
-            path (str): a path/URI of the output directory to save files in.
-            ioctx (IOContext): current IO context object.
-            max_file_size (int): max size of single files before rolling over.
-            compress_columns (list): list of sample batch columns to compress.
+            path: a path/URI of the output directory to save files in.
+            ioctx: current IO context object.
+            max_file_size: max size of single files before rolling over.
+            compress_columns: list of sample batch columns to compress.
         """
-
         self.ioctx = ioctx or IOContext()
         self.max_file_size = max_file_size
         self.compress_columns = compress_columns

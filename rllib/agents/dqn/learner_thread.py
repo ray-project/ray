@@ -3,8 +3,8 @@ import threading
 
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
+from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.timer import TimerStat
-from ray.rllib.utils.window_stat import WindowStat
 
 LEARNER_QUEUE_MAX_SIZE = 16
 

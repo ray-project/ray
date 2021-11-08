@@ -27,10 +27,10 @@ def do_test_log_likelihood(run,
     config["num_workers"] = 0
     # Env setup.
     if continuous:
-        env = "Pendulum-v0"
+        env = "Pendulum-v1"
         obs_batch = preprocessed_obs_batch = np.array([[0.0, 0.1, -0.1]])
     else:
-        env = "FrozenLake-v0"
+        env = "FrozenLake-v1"
         config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
         obs_batch = np.array([0])
         preprocessed_obs_batch = one_hot(obs_batch, depth=16)

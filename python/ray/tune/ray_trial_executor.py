@@ -20,7 +20,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError
 from ray import ray_constants
-from ray._private.resource_spec import ResourceSpec, NODE_ID_PREFIX
+from ray._private.resource_spec import NODE_ID_PREFIX
 from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
@@ -839,13 +839,7 @@ class RayTrialExecutor(TrialExecutor):
                     "Cluster resources not detected or are 0. Attempt #"
                     "%s...", i + 1)
                 time.sleep(0.5)
-            try:
-                resources = ray.cluster_resources()
-            except Exception as exc:
-                # TODO(rliaw): Remove this when local mode is fixed.
-                # https://github.com/ray-project/ray/issues/4147
-                logger.debug(f"{exc}: Using resources for local machine.")
-                resources = ResourceSpec().resolve(True).to_resource_dict()
+            resources = ray.cluster_resources()
             if resources:
                 break
 

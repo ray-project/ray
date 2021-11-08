@@ -20,7 +20,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
 #include "ray/util/util.h"
@@ -65,15 +65,6 @@ ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &rep
 
 /// The global instance of `CoreWorkerProcess`.
 std::unique_ptr<CoreWorkerProcess> core_worker_process;
-
-/// Teriminate the process without cleaning up the resources.
-/// It will flush the log if logging_enabled is set to true.
-void QuickExit(bool logging_enabled) {
-  if (logging_enabled) {
-    RayLog::ShutDownRayLog();
-  }
-  _Exit(1);
-}
 }  // namespace
 
 thread_local std::weak_ptr<CoreWorker> CoreWorkerProcess::current_core_worker_;
@@ -197,9 +188,9 @@ void CoreWorkerProcess::EnsureInitialized(bool quick_exit) {
   }
 
   if (quick_exit) {
-    RAY_LOG(ERROR) << "The core worker process is not initialized yet or already "
-                   << "shutdown.";
-    QuickExit(/*logging-enabled*/ false);
+    RAY_LOG(WARNING) << "The core worker process is not initialized yet or already "
+                     << "shutdown.";
+    QuickExit();
   } else {
     RAY_CHECK(core_worker_process)
         << "The core worker process is not initialized yet or already "
@@ -222,26 +213,45 @@ void CoreWorkerProcess::InitializeSystemConfig() {
         options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
     raylet::RayletClient raylet_client(grpc_client);
 
-    std::function<void(int64_t)> get_once = [&get_once, &raylet_client, &promise,
+    std::function<void(int64_t)> get_once = [this, &get_once, &raylet_client, &promise,
                                              &io_service](int64_t num_attempts) {
-      raylet_client.GetSystemConfig([num_attempts, &get_once, &promise, &io_service](
-                                        const Status &status,
-                                        const rpc::GetSystemConfigReply &reply) {
-        RAY_LOG(DEBUG) << "Getting system config from raylet, remaining retries = "
-                       << num_attempts;
-        if (!status.ok()) {
-          if (num_attempts <= 1) {
-            RAY_LOG(FATAL) << "Failed to get the system config from Raylet: " << status;
-          } else {
-            std::this_thread::sleep_for(std::chrono::milliseconds(
-                RayConfig::instance().raylet_client_connect_timeout_milliseconds()));
-            get_once(num_attempts - 1);
-          }
-        } else {
-          promise.set_value(reply.system_config());
-          io_service.stop();
-        }
-      });
+      raylet_client.GetSystemConfig(
+          [this, num_attempts, &get_once, &promise, &io_service](
+              const Status &status, const rpc::GetSystemConfigReply &reply) {
+            RAY_LOG(DEBUG) << "Getting system config from raylet, remaining retries = "
+                           << num_attempts;
+            if (status.ok()) {
+              promise.set_value(reply.system_config());
+              io_service.stop();
+              return;
+            }
+
+            if (num_attempts > 1) {
+              std::this_thread::sleep_for(std::chrono::milliseconds(
+                  RayConfig::instance().raylet_client_connect_timeout_milliseconds()));
+              get_once(num_attempts - 1);
+              return;
+            }
+
+            // If there's no more attempt to try.
+            if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+              std::ostringstream ss;
+              ss << "Failed to get the system config from raylet because "
+                 << "it is dead. Worker will terminate. Status: " << status;
+              if (options_.worker_type == WorkerType::DRIVER) {
+                // If it is the driver, surface the issue to the user.
+                RAY_LOG(ERROR) << ss.str();
+              } else {
+                RAY_LOG(WARNING) << ss.str();
+              }
+              QuickExit();
+            }
+
+            // Unexpected.
+            RAY_LOG(FATAL)
+                << "Failed to get the system config from Raylet on time unexpectedly."
+                << status;
+          });
     };
 
     get_once(RayConfig::instance().raylet_client_num_connect_attempts());
@@ -288,7 +298,7 @@ CoreWorker &CoreWorkerProcess::GetCoreWorker() {
       RAY_LOG(ERROR) << "The global worker has already been shutdown. This happens when "
                         "the language frontend accesses the Ray's worker after it is "
                         "shutdown. The process will exit";
-      QuickExit(core_worker_process->options_.enable_logging);
+      QuickExit();
     }
     RAY_CHECK(global_worker) << "global_worker_ must not be NULL";
     return *global_worker;
@@ -441,7 +451,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     RAY_LOG(ERROR) << "Failed to register worker " << worker_id << " to Raylet. "
                    << raylet_client_status;
     // Quit the process immediately.
-    QuickExit(options_.enable_logging);
+    QuickExit();
   }
 
   connected_ = true;
@@ -488,7 +498,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       options_.gcs_options.password_,
       /*enable_sync_conn=*/false, /*enable_async_conn=*/false,
       /*enable_subscribe_conn=*/true);
-  gcs_client_ = std::make_shared<gcs::ServiceBasedGcsClient>(
+  gcs_client_ = std::make_shared<gcs::GcsClient>(
       gcs_options, [this](std::pair<std::string, int> *address) {
         absl::MutexLock lock(&gcs_server_address_mutex_);
         if (gcs_server_address_.second != 0) {
@@ -819,19 +829,8 @@ void CoreWorker::Exit(
                 << ", exit_type=" << rpc::WorkerExitType_Name(exit_type);
   exiting_ = true;
   // Release the resources early in case draining takes a long time.
-  auto status =
-      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true);
-  if (status.IsIOError()) {
-    // If the core worker fails to be connected to raylet due to broken pipe, we just exit
-    // quickly without proceeding graceful shutdown. This happens if
-    // - raylet is already crashed.
-    // - Raylet already unregistered this worker.
-    RAY_LOG(INFO)
-        << "Failed to notify that the direct call task has blocked. Call status: "
-        << status;
-    QuickExit(options_.enable_logging);
-    RAY_LOG(FATAL) << "Unreachable.";
-  }
+  RAY_CHECK_OK(
+      local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
 
   // Callback to shutdown.
   auto shutdown = [this, exit_type, creation_task_exception_pb_bytes]() {
@@ -987,20 +986,17 @@ void CoreWorker::RegisterToGcs() {
 }
 
 void CoreWorker::CheckForRayletFailure() {
-  bool should_shutdown = false;
-  // When running worker process in container, the worker parent process is not raylet.
-  // So we add RAY_RAYLET_PID enviroment to ray worker process.
-  if (auto env_pid = RayConfig::instance().RAYLET_PID(); !env_pid.empty()) {
-    auto pid = static_cast<pid_t>(std::stoi(env_pid));
-    if (!IsProcessAlive(pid)) {
-      RAY_LOG(ERROR) << "Raylet failed. Shutting down. Raylet PID: " << pid;
-      should_shutdown = true;
-    }
-  } else if (!IsParentProcessAlive()) {
-    RAY_LOG(ERROR) << "Raylet failed. Shutting down.";
-    should_shutdown = true;
-  }
+  auto env_pid = RayConfig::instance().RAYLET_PID();
+  bool should_shutdown = IsRayletFailed(env_pid);
   if (should_shutdown) {
+    std::ostringstream stream;
+    stream << "Shutting down the core worker because the local raylet failed. "
+           << "Check out the raylet.out log file.";
+    if (!env_pid.empty()) {
+      auto pid = static_cast<pid_t>(std::stoi(env_pid));
+      stream << " Raylet pid: " << pid;
+    }
+    RAY_LOG(WARNING) << stream.str();
     if (options_.worker_type == WorkerType::WORKER) {
       task_execution_service_.post([this]() { Shutdown(); }, "CoreWorker.Shutdown");
     } else {
@@ -1218,8 +1214,9 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
     // by invoking `AddLocalReference` first. Note that in worker.py we set
     // skip_adding_local_ref=True to avoid double referencing the object.
     AddLocalReference(*object_id);
-    RAY_UNUSED(reference_counter_->AddBorrowedObject(*object_id, ObjectID::Nil(),
-                                                     real_owner_address));
+    RAY_UNUSED(reference_counter_->AddBorrowedObject(
+        *object_id, ObjectID::Nil(), real_owner_address,
+        /*foreign_owner_already_monitoring=*/true));
 
     // Remote call `AssignObjectOwner()`.
     rpc::AssignObjectOwnerRequest request;
@@ -1687,7 +1684,8 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     const BundleID &bundle_id, bool placement_group_capture_child_tasks,
-    const std::string &debugger_breakpoint, const std::string &serialized_runtime_env,
+    const std::string &debugger_breakpoint, int64_t depth,
+    const std::string &serialized_runtime_env,
     const std::vector<std::string> &runtime_env_uris,
     const std::string &concurrency_group_name) {
   // Build common task spec.
@@ -1695,7 +1693,7 @@ void CoreWorker::BuildCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint,
+      debugger_breakpoint, depth,
       // TODO(SongGuyang): Move the logic of `prepare_runtime_env` from Python to Core
       // Worker. A common process is needed.
       // If runtime env is not provided, use job config. Only for Java and C++ because it
@@ -1727,12 +1725,13 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
+  int64_t depth = worker_context_.GetTaskDepth() + 1;
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, placement_options,
-                      placement_group_capture_child_tasks, debugger_breakpoint,
+                      placement_group_capture_child_tasks, debugger_breakpoint, depth,
                       task_options.serialized_runtime_env, task_options.runtime_env_uris);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions);
   TaskSpecification task_spec = builder.Build();
@@ -1783,12 +1782,13 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_name.empty()
           ? function.GetFunctionDescriptor()->DefaultTaskName()
           : actor_name + ":" + function.GetFunctionDescriptor()->CallString();
+  int64_t depth = worker_context_.GetTaskDepth() + 1;
   BuildCommonTaskSpec(builder, job_id, actor_creation_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, new_resource,
                       new_placement_resources, actor_creation_options.placement_options,
                       actor_creation_options.placement_group_capture_child_tasks,
-                      "", /* debugger_breakpoint */
+                      "" /* debugger_breakpoint */, depth,
                       actor_creation_options.serialized_runtime_env,
                       actor_creation_options.runtime_env_uris);
 
@@ -1970,14 +1970,19 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
   const auto task_name = task_options.name.empty()
                              ? function.GetFunctionDescriptor()->DefaultTaskName()
                              : task_options.name;
+
+  // Depth shouldn't matter for an actor task, but for consistency it should be
+  // the same as the actor creation task's depth.
+  int64_t depth = worker_context_.GetTaskDepth();
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
                       required_resources, std::make_pair(PlacementGroupID::Nil(), -1),
-                      true, /* placement_group_capture_child_tasks */
-                      "",   /* debugger_breakpoint */
-                      "{}", /* serialized_runtime_env */
-                      {},   /* runtime_env_uris */
+                      true,  /* placement_group_capture_child_tasks */
+                      "",    /* debugger_breakpoint */
+                      depth, /*depth*/
+                      "{}",  /* serialized_runtime_env */
+                      {},    /* runtime_env_uris */
                       task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
@@ -2953,7 +2958,7 @@ void CoreWorker::HandleCancelTask(const rpc::CancelTaskRequest &request,
     // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
     // `exit()` will destruct static objects in an incorrect order, which will lead to
     // core dumps.
-    QuickExit(options_.enable_logging);
+    QuickExit();
   }
 }
 
@@ -2989,7 +2994,7 @@ void CoreWorker::HandleKillActor(const rpc::KillActorRequest &request,
     // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
     // `exit()` will destruct static objects in an incorrect order, which will lead to
     // core dumps.
-    QuickExit(options_.enable_logging);
+    QuickExit();
   } else {
     Exit(rpc::WorkerExitType::INTENDED_EXIT);
   }

@@ -7,9 +7,9 @@ import com.google.protobuf.InvalidProtocolBufferException;
 import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.Constants;
 import io.ray.serve.RayServeException;
-import io.ray.serve.generated.BackendConfig;
-import io.ray.serve.generated.BackendLanguage;
-import io.ray.serve.generated.BackendVersion;
+import io.ray.serve.generated.DeploymentConfig;
+import io.ray.serve.generated.DeploymentLanguage;
+import io.ray.serve.generated.DeploymentVersion;
 import io.ray.serve.generated.EndpointInfo;
 import io.ray.serve.generated.EndpointSet;
 import io.ray.serve.generated.LongPollResult;
@@ -25,23 +25,23 @@ public class ServeProtoUtil {
 
   private static final Gson GSON = new Gson();
 
-  public static BackendConfig parseBackendConfig(byte[] backendConfigBytes) {
+  public static DeploymentConfig parseDeploymentConfig(byte[] deploymentConfigBytes) {
 
-    // Get a builder from BackendConfig(bytes) or create a new one.
-    BackendConfig.Builder builder = null;
-    if (backendConfigBytes == null) {
-      builder = BackendConfig.newBuilder();
+    // Get a builder from DeploymentConfig(bytes) or create a new one.
+    DeploymentConfig.Builder builder = null;
+    if (deploymentConfigBytes == null) {
+      builder = DeploymentConfig.newBuilder();
     } else {
-      BackendConfig backendConfig = null;
+      DeploymentConfig deploymentConfig = null;
       try {
-        backendConfig = BackendConfig.parseFrom(backendConfigBytes);
+        deploymentConfig = DeploymentConfig.parseFrom(deploymentConfigBytes);
       } catch (InvalidProtocolBufferException e) {
-        throw new RayServeException("Failed to parse BackendConfig from protobuf bytes.", e);
+        throw new RayServeException("Failed to parse DeploymentConfig from protobuf bytes.", e);
       }
-      if (backendConfig == null) {
-        builder = BackendConfig.newBuilder();
+      if (deploymentConfig == null) {
+        builder = DeploymentConfig.newBuilder();
       } else {
-        builder = BackendConfig.newBuilder(backendConfig);
+        builder = DeploymentConfig.newBuilder(deploymentConfig);
       }
     }
 
@@ -64,22 +64,23 @@ public class ServeProtoUtil {
       builder.setGracefulShutdownTimeoutS(20);
     }
 
-    if (builder.getBackendLanguage() == BackendLanguage.UNRECOGNIZED) {
+    if (builder.getDeploymentLanguage() == DeploymentLanguage.UNRECOGNIZED) {
       throw new RayServeException(
           LogUtil.format(
               "Unrecognized backend language {}. Backend language must be in {}.",
-              builder.getBackendLanguageValue(),
-              Lists.newArrayList(BackendLanguage.values())));
+              builder.getDeploymentLanguageValue(),
+              Lists.newArrayList(DeploymentLanguage.values())));
     }
 
     return builder.build();
   }
 
-  public static Object parseUserConfig(BackendConfig backendConfig) {
-    if (backendConfig.getUserConfig() == null || backendConfig.getUserConfig().size() == 0) {
+  public static Object parseUserConfig(DeploymentConfig deploymentConfig) {
+    if (deploymentConfig.getUserConfig() == null || deploymentConfig.getUserConfig().size() == 0) {
       return null;
     }
-    return MessagePackSerializer.decode(backendConfig.getUserConfig().toByteArray(), Object.class);
+    return MessagePackSerializer.decode(
+        deploymentConfig.getUserConfig().toByteArray(), Object.class);
   }
 
   public static RequestMetadata parseRequestMetadata(byte[] requestMetadataBytes)
@@ -157,14 +158,14 @@ public class ServeProtoUtil {
     return endpointSet.getEndpointsMap();
   }
 
-  public static BackendVersion parseBackendVersion(byte[] backendVersionBytes) {
-    if (backendVersionBytes == null) {
+  public static DeploymentVersion parseDeploymentVersion(byte[] deploymentVersionBytes) {
+    if (deploymentVersionBytes == null) {
       return null;
     }
     try {
-      return BackendVersion.parseFrom(backendVersionBytes);
+      return DeploymentVersion.parseFrom(deploymentVersionBytes);
     } catch (InvalidProtocolBufferException e) {
-      throw new RayServeException("Failed to parse BackendVersion from protobuf bytes.", e);
+      throw new RayServeException("Failed to parse DeploymentVersion from protobuf bytes.", e);
     }
   }
 }

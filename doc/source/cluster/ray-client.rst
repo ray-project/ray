@@ -5,9 +5,9 @@ Ray Client
 
 **What is the Ray Client?**
 
-The Ray Client is an API that connects a python script to a **remote** Ray cluster. Effectively, it allows you to leverage a remote Ray cluster just like you would with Ray running on your local machine.
+The Ray Client is an API that connects a Python script to a **remote** Ray cluster. Effectively, it allows you to leverage a remote Ray cluster just like you would with Ray running on your local machine.
 
-By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you can connect from your laptop (or anywhere) directly to a remote cluster and scale-out your Ray code, while maintaining the ability to develop interactively in a python shell. **This will only work with Ray 1.5+.** If you're using an older version of ray, see the `1.4.1 docs <https://docs.ray.io/en/releases-1.4.1/cluster/ray-client.html>`_
+By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you can connect from your laptop (or anywhere) directly to a remote cluster and scale-out your Ray code, while maintaining the ability to develop interactively in a Python shell. **This will only work with Ray 1.5+.** If you're using an older version of ray, see the `1.4.1 docs <https://docs.ray.io/en/releases-1.4.1/cluster/ray-client.html>`_
 
 
 .. code-block:: python
@@ -31,36 +31,42 @@ By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you
 Client arguments
 ----------------
 
-Ray client is used when the address passed into ``ray.init`` is prefixed with ``ray://``. Client mode currently accepts two arguments:
+Ray Client is used when the address passed into ``ray.init`` is prefixed with ``ray://``. Besides the address, Client mode currently accepts two other arguments:
 
-- ``namespace``: Sets the namespace for the session
-- ``runtime_env``: Sets the `runtime environment <../advanced.html?highlight=runtime environment#runtime-environments-experimental>`_ for the session
+- ``namespace`` (optional): Sets the namespace for the session.
+- ``runtime_env`` (optional): Sets the `runtime environment <../advanced.html?highlight=runtime environment#runtime-environments-experimental>`_ for the session, allowing you to dynamically specify environment variables, packages, local files, and more.
 
 .. code-block:: python
 
    # Connects to an existing cluster at 1.2.3.4 listening on port 10001, using
-   # the namespace "my_namespace"
-   ray.init("ray://1.2.3.4:10001", namespace="my_namespace")
+   # the namespace "my_namespace". The Ray workers will run inside a cluster-side
+   # copy of the local directory "files/my_project", in a Python environment with
+   # `toolz` and `requests` installed.
+   ray.init(
+       "ray://1.2.3.4:10001",
+       namespace="my_namespace",
+       runtime_env={"working_dir": "files/my_project", "pip": ["toolz", "requests"]},
+   )
    #....
 
-When to use Ray client
+When to use Ray Client
 ----------------------
 
-Ray client should be used when you want to connect a script or an interactive shell session to a **remote** cluster.
+Ray Client should be used when you want to connect a script or an interactive shell session to a **remote** cluster.
 
-* Use ``ray.init("ray://<head_node_host>:10001")`` (Ray client) if you've set up a remote cluster at ``<head_node_host>``. This will connect your local script or shell to the cluster. See the section on :ref:`using ray client<how-do-you-use-the-ray-client>` for more details on setting up your cluster.
+* Use ``ray.init("ray://<head_node_host>:10001")`` (Ray Client) if you've set up a remote cluster at ``<head_node_host>``. This will connect your local script or shell to the cluster. See the section on :ref:`using Ray Client<how-do-you-use-the-ray-client>` for more details on setting up your cluster.
 * Use ``ray.init("localhost:<port>")`` (non-client connection, local address) if you're developing locally or on the head node of your cluster and you have already started the cluster (i.e. ``ray start --head`` has already been run)
 * Use ``ray.init()`` (non-client connection, no address specified) if you're developing locally and want to automatically create a local cluster and attach directly to it.
 
 .. _how-do-you-use-the-ray-client:
 
-How do you use the Ray client?
+How do you use the Ray Client?
 ------------------------------
 
 Step 1: Set up your Ray cluster
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you have a running Ray cluster (version >= 1.5), Ray client server is likely already running on port ``10001`` of the head node by default. Otherwise, you'll want to create a Ray cluster. To start a Ray cluster locally, you can run
+If you have a running Ray cluster (version >= 1.5), Ray Client server is likely already running on port ``10001`` of the head node by default. Otherwise, you'll want to create a Ray cluster. To start a Ray cluster locally, you can run
 
 .. code-block:: bash
 
@@ -68,7 +74,7 @@ If you have a running Ray cluster (version >= 1.5), Ray client server is likely 
 
 To start a Ray cluster remotely, you can follow the directions in :ref:`ref-cluster-quick-start`.
 
-If necessary, you can modify the Ray client server port to be other than ``10001``, by specifying ``--ray-client-server-port=...`` to the ``ray start`` :ref:`command <ray-start-doc>`.
+If necessary, you can modify the Ray Client server port to be other than ``10001``, by specifying ``--ray-client-server-port=...`` to the ``ray start`` :ref:`command <ray-start-doc>`.
 
 Step 2: Check ports
 ~~~~~~~~~~~~~~~~~~~
@@ -163,7 +169,7 @@ Then, you can connect to the Ray cluster **from another terminal** using  ``loca
 Connect to multiple ray clusters (Experimental)
 -----------------------------------------------
 
-Ray client allows connecting to multiple ray clusters in one Python process. To do this, just pass ``allow_multiple=True`` to ``ray.init``:
+Ray Client allows connecting to multiple Ray clusters in one Python process. To do this, just pass ``allow_multiple=True`` to ``ray.init``:
 
 .. code-block:: python
 
@@ -202,11 +208,11 @@ Ray client allows connecting to multiple ray clusters in one Python process. To 
     cli2.disconnect()
 
 
-When using ray multi-client, there are some different behaviors to pay attention to:
+When using Ray multi-client, there are some different behaviors to pay attention to:
 
 * The client won't be disconnected automatically. Call ``disconnect`` explicitly to close the connection.
 * Object references can only be used by the client from which it was obtained.
-* ``ray.init`` without ``allow_multiple`` will create a default global ray client.
+* ``ray.init`` without ``allow_multiple`` will create a default global Ray client.
 
 Things to know
 --------------
@@ -227,7 +233,7 @@ Similarly, the minor Python (e.g., 3.6 vs 3.7) must match between the client and
 Starting a connection on older Ray versions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you encounter ``socket.gaierror: [Errno -2] Name or service not known`` when using ``ray.init("ray://...")`` then you may be on a version of Ray prior to 1.5 that does not support starting client connections through ``ray.init``. If this is the case, see the `1.4.1 docs <https://docs.ray.io/en/releases-1.4.1/cluster/ray-client.html>`_ for Ray client.
+If you encounter ``socket.gaierror: [Errno -2] Name or service not known`` when using ``ray.init("ray://...")`` then you may be on a version of Ray prior to 1.5 that does not support starting client connections through ``ray.init``. If this is the case, see the `1.4.1 docs <https://docs.ray.io/en/releases-1.4.1/cluster/ray-client.html>`_ for Ray Client.
 
 Connection through the Ingress
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -259,4 +265,15 @@ If you are using the ``nginx-ingress-controller``, you may be able to resolve th
         nginx.ingress.kubernetes.io/server-snippet: |
           underscores_in_headers on;
           ignore_invalid_headers on;
+
+Ray client logs
+~~~~~~~~~~~~~~~
+
+Ray client logs can be found at ``/tmp/ray/session_latest/logs`` on the head node.
    
+Uploads
+~~~~~~~
+
+If a ``working_dir`` is specified in the runtime env, when running ``ray.init()`` the Ray client will upload the ``working_dir`` on the laptop to ``/tmp/ray/session_latest/runtime_resources/_ray_pkg_<hash of directory contents>``.
+
+Ray workers are started in the ``/tmp/ray/session_latest/runtime_resources/_ray_pkg_<hash of directory contents>`` directory on the cluster. This means that relative paths in the remote tasks and actors in the code will work on the laptop and on the cluster without any code changes. For example, if the ``working_dir`` on the laptop contains ``data.txt`` and ``run.py``, inside the remote task definitions in ``run.py`` one can just use the relative path ``"data.txt"``. Then ``python run.py`` will work on my laptop, and also on the cluster. As a side note, since relative paths can be used in the code, the absolute path is only useful for debugging purposes.

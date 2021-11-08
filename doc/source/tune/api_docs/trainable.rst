@@ -324,6 +324,7 @@ Trainables can themselves be distributed. If your trainable function / class cre
 
 The ``Trainable`` also provides the ``default_resource_requests`` interface to automatically declare the ``resources_per_trial`` based on the given configuration.
 
+It is also possible to specify memory (``"memory"``, in bytes) and custom resource requirements.
 
 
 .. _tune-function-docstring:
