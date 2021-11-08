@@ -152,6 +152,19 @@ def _internal_kv_list(prefix: Union[str, bytes],
 
 
 @client_mode_hook(auto_init=False)
+def _internal_kv_count(prefix: Union[str, bytes],
+                       *,
+                       namespace: Optional[str] = None) -> int:
+    """Count the number of keys with this prefix
+    """
+    if isinstance(prefix, str):
+        prefix = prefix.encode()
+    prefix = __make_key(namespace, prefix)
+    # TODO: Add built in support for this API
+    return len(global_gcs_client.internal_kv_keys(prefix))
+
+
+@client_mode_hook(auto_init=False)
 def _internal_kv_mput(key: Union[str, bytes],
                       value: Dict[Union[str, bytes], Any],
                       overwrite: bool = True,

@@ -394,7 +394,7 @@ class Worker:
             # Check if the function has already been put into redis.
             function_exported = _internal_kv_put(
                 b"Lock:" + key,
-                1,
+                "1",
                 overwrite=False,
                 namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
             if function_exported:

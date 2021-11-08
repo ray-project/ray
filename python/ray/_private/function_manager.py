@@ -26,7 +26,7 @@ from ray._private.utils import (
 )
 from ray.experimental.internal_kv import (_internal_kv_mput, _internal_kv_mget,
                                           _internal_kv_exists)
-from ray_constants import KV_NAMESPACE_FUNCTION_TABLE
+from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 from ray.util.inspect import (
     is_function_or_method,
     is_class_method,
@@ -191,9 +191,9 @@ class FunctionActorManager:
 
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
-        function_name = decode(function_name)
+        function_name = decode(function_name.encode())
         max_calls = int(max_calls)
-        module = decode(module)
+        module = decode(module.encode())
 
         # This function is called by ImportThread. This operation needs to be
         # atomic. Otherwise, there is race condition. Another thread may use

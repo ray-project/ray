@@ -7,8 +7,8 @@ import redis
 import ray
 from ray import ray_constants
 from ray import cloudpickle as pickle
+from ray.experimental.internal_kv import _internal_kv_mget
 import ray._private.profiling as profiling
-
 import logging
 
 logger = logging.getLogger(__name__)
@@ -93,16 +93,18 @@ class ImportThread:
     def _get_import_info_for_collision_detection(self, key):
         """Retrieve the collision identifier, type, and name of the import."""
         if key.startswith(b"RemoteFunction"):
-            collision_identifier, function_name = (self.redis_client.hmget(
-                key, ["collision_identifier", "function_name"]))
+            collision_identifier, function_name = _internal_kv_mget(
+                key, ["collision_identifier", "function_name"],
+                namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
             return (collision_identifier,
-                    ray._private.utils.decode(function_name),
+                    ray._private.utils.decode(function_name.encode()),
                     "remote function")
         elif key.startswith(b"ActorClass"):
-            collision_identifier, class_name = self.redis_client.hmget(
-                key, ["collision_identifier", "class_name"])
+            collision_identifier, class_name = _internal_kv_mget(
+                key, ["collision_identifier", "class_name"],
+                namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
             return collision_identifier, ray._private.utils.decode(
-                class_name), "actor"
+                class_name.encode()), "actor"
 
     def _process_key(self, key):
         """Process the given export key from redis."""
@@ -160,8 +162,9 @@ class ImportThread:
 
     def fetch_and_execute_function_to_run(self, key):
         """Run on arbitrary function on the worker."""
-        (job_id, serialized_function) = self.redis_client.hmget(
-            key, ["job_id", "function"])
+        (job_id, serialized_function) = _internal_kv_mget(
+            key, ["job_id", "function"],
+            namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
 
         if self.worker.mode == ray.SCRIPT_MODE:
             return
