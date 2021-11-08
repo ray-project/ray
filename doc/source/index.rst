@@ -296,6 +296,7 @@ Papers
    workflows/basics.rst
    workflows/management.rst
    workflows/actors.rst
+   workflows/metadata.rst
    workflows/events.rst
    workflows/comparison.rst
    workflows/package-ref.rst
