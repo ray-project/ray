@@ -2398,7 +2398,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/inference_and_serving/policy_inference_after_training.py"],
-    args = ["--stop-iters=3", "framework=tf"]
+    args = ["--stop-iters=3", "--framework=tf"]
 )
 
 py_test(
@@ -2407,7 +2407,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/inference_and_serving/policy_inference_after_training.py"],
-    args = ["--stop-iters=3", "framework=torch"]
+    args = ["--stop-iters=3", "--framework=torch"]
 )
 
 py_test(
@@ -2416,7 +2416,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/inference_and_serving/policy_inference_after_training_with_attention.py"],
-    args = ["--stop-iters=2", "framework=tf"]
+    args = ["--stop-iters=2", "--framework=tf"]
 )
 
 py_test(
@@ -2425,7 +2425,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/inference_and_serving/policy_inference_after_training_with_attention.py"],
-    args = ["--stop-iters=2", "framework=torch"]
+    args = ["--stop-iters=2", "--framework=torch"]
 )
 
 py_test(
@@ -2434,7 +2434,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/inference_and_serving/policy_inference_after_training_with_lstm.py"],
-    args = ["--stop-iters=1", "framework=tf"]
+    args = ["--stop-iters=1", "--framework=tf"]
 )
 
 py_test(
@@ -2443,7 +2443,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/inference_and_serving/policy_inference_after_training_with_lstm.py"],
-    args = ["--stop-iters=1", "framework=torch"]
+    args = ["--stop-iters=1", "--framework=torch"]
 )
 
 py_test(
