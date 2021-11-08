@@ -347,6 +347,13 @@ Papers
 .. toctree::
    :hidden:
    :maxdepth: -1
+   :caption: Ray Streaming
+
+   streaming/streaming.rst
+   
+.. toctree::
+   :hidden:
+   :maxdepth: -1
    :caption: More Libraries
 
    multiprocessing.rst

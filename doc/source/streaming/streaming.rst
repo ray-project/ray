@@ -117,22 +117,22 @@ Import Ray Streaming using maven:
    <dependency>
        <artifactId>ray-api</artifactId>
        <groupId>io.ray</groupId>
-       <version>1.0.1</version>
+       <version>${RAY_VERSION}</version>
    </dependency>
    <dependency>
        <artifactId>ray-runtime</artifactId>
        <groupId>io.ray</groupId>
-       <version>1.0.1</version>
+       <version>${RAY_VERSION}</version>
    </dependency>
    <dependency>
        <artifactId>streaming-api</artifactId>
        <groupId>io.ray</groupId>
-       <version>1.0.1</version>
+       <version>${RAY_VERSION}</version>
    </dependency>
    <dependency>
        <artifactId>streaming-runtime</artifactId>
        <groupId>io.ray</groupId>
-       <version>1.0.1</version>
+       <version>${RAY_VERSION}</version>
    </dependency>
 
 Internal Design
@@ -172,15 +172,10 @@ Development Guides
    Build streaming java
 
 
-   * build ray
+   * build ray & streaming
 
-     * ``bazel build //java:gen_maven_deps``
+     * ``bazel build //java:ray_java_pkg``
      * ``cd java && mvn clean install -Dmaven.test.skip=true && cd ..``
-
-   * build streaming
-
-     * ``bazel build //streaming/java:gen_maven_deps``
-     * ``mvn clean install -Dmaven.test.skip=true``
 
 #. 
    Build ray python will build ray streaming python.
