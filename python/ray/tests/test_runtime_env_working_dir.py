@@ -677,7 +677,7 @@ def test_runtime_context(start_cluster, working_dir):
     ray.init(runtime_env={"working_dir": working_dir})
 
     def check():
-        wd = ray.get_runtime_context().runtime_env.working_dir
+        wd = ray.get_runtime_context().runtime_env["working_dir"]
         if working_dir == S3_PACKAGE_URI:
             assert wd == S3_PACKAGE_URI
         else:

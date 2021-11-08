@@ -157,7 +157,6 @@ class RuntimeContext(object):
         Returns:
             The runtime env string currently using by this worker.
         """
-
         return self.worker.runtime_env
 
     @property

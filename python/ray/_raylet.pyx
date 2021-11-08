@@ -1997,7 +1997,7 @@ cdef class CoreWorker:
                 serialized_env = job_config.serialized_runtime_env.serialized_runtime_env
             else:
                 serialized_env = CCoreWorkerProcess.GetCoreWorker() \
-                        .GetWorkerContext().GetCurrentSerializedRuntimeEnv()
+                        .GetWorkerContext().GetCurrentSerializedRuntimeEnv().decode("utf-8")
 
             self.current_runtime_env = serialized_env
 

@@ -15,6 +15,7 @@ from ray._private.runtime_env.validation import (
 from ray.util.tracing.tracing_helper import (_tracing_task_invocation,
                                              _inject_tracing_into_function)
 from ray.core.generated.common_pb2 import RuntimeEnv
+from google.protobuf import json_format
 
 # Default parameters for remote functions.
 DEFAULT_REMOTE_FUNCTION_CPUS = 1
@@ -176,7 +177,7 @@ class RemoteFunction:
             # Serialzed protobuf runtime env from Ray client.
             new_runtime_env = runtime_env
         elif isinstance(runtime_env, RuntimeEnv):
-            new_runtime_env = runtime_env.SerializeToString()
+            new_runtime_env = json_format.MessageToJson(runtime_env)
         else:
             # Keep the runtime_env as None.  In .remote(), we need to know if
             # runtime_env is None to know whether or not to fall back to the

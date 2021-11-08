@@ -411,7 +411,7 @@ class ActorClass:
         if isinstance(runtime_env, str):
             new_runtime_env = runtime_env
         elif isinstance(runtime_env, RuntimeEnv):
-            new_runtime_env = runtime_env.SerializeToString()
+            new_runtime_env = json_format.MessageToJson(runtime_env)
         else:
             new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
 
@@ -437,7 +437,7 @@ class ActorClass:
         if isinstance(runtime_env, str):
             new_runtime_env = runtime_env
         elif isinstance(runtime_env, RuntimeEnv):
-            new_runtime_env = runtime_env.SerializeToString()
+            new_runtime_env = json_format.MessageToJson(runtime_env)
         else:
             new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
 
@@ -509,7 +509,7 @@ class ActorClass:
         if isinstance(runtime_env, str):
             new_runtime_env = runtime_env
         elif isinstance(runtime_env, RuntimeEnv):
-            new_runtime_env = runtime_env.SerializeToString()
+            new_runtime_env = json_format.MessageToJson(runtime_env)
         else:
             # Keep the runtime_env as None.  In .remote(), we need to know if
             # runtime_env is None to know whether or not to fall back to the
@@ -768,7 +768,7 @@ class ActorClass:
                 # Serialzed protobuf runtime env from Ray client.
                 new_runtime_env = runtime_env
             elif isinstance(runtime_env, RuntimeEnv):
-                new_runtime_env = runtime_env.SerializeToString()
+                new_runtime_env = json_format.MessageToJson(runtime_env)
             elif isinstance(runtime_env, ParsedRuntimeEnv):
                 new_runtime_env = runtime_env.serialize()
             else:
