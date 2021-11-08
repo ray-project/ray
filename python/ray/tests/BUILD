@@ -245,6 +245,7 @@ py_test_module_list(
   files = [
     "test_runtime_env.py",
     "test_runtime_env_working_dir.py"
+    "test_runtime_env_working_dir_2.py"
   ],
   size = "large",
   extra_srcs = SRCS,
