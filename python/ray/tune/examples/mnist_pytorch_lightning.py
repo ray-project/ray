@@ -215,16 +215,14 @@ def tune_mnist_asha(num_samples=10, num_epochs=10, gpus_per_trial=0, data_dir="~
         parameter_columns=["layer_1_size", "layer_2_size", "lr", "batch_size"],
         metric_columns=["loss", "mean_accuracy", "training_iteration"])
 
-    analysis = tune.run(
-        tune.with_parameters(
-            train_mnist_tune,
-            num_epochs=num_epochs,
-            num_gpus=gpus_per_trial,
-            data_dir=data_dir),
-        resources_per_trial={
-            "cpu": 1,
-            "gpu": gpus_per_trial
-        },
+    train_fn_with_parameters = tune.with_parameters(train_mnist_tune,
+                                                    num_epochs=num_epochs,
+                                                    num_gpus=gpus_per_trial,
+                                                    data_dir=data_dir)
+    resources_per_trial = {"cpu": 1, "gpu": gpus_per_trial}
+
+    analysis = tune.run(train_fn_with_parameters,
+        resources_per_trial=resources_per_trial,
         metric="loss",
         mode="min",
         config=config,

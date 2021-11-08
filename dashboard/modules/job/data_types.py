@@ -40,6 +40,14 @@ class JobSubmitResponse:
     job_id: str
 
 
+# ==== Job Stop ====
+
+
+@dataclass
+class JobStopResponse:
+    stopped: bool
+
+
 # ==== Job Status ====
 
 
