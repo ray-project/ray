@@ -271,7 +271,6 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   if (it->second.RefCount() == 0) {
     DeleteReferenceInternal(it, deleted);
   }
-  PRINT_REF_COUNT(it);
 }
 
 void ReferenceCounter::UpdateSubmittedTaskReferences(
