@@ -822,8 +822,9 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id) {
   ReconstructActor(actor_id, /*need_reschedule=*/true);
 }
 
-void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_reschedule,
-                                       const rpc::ActorDeathCause *death_cause) {
+void GcsActorManager::ReconstructActor(
+    const ActorID &actor_id, bool need_reschedule,
+    const std::shared_ptr<rpc::ActorDeathCause> &death_cause) {
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before reconstruction.
   auto iter = registered_actors_.find(actor_id);
@@ -930,10 +931,10 @@ void GcsActorManager::OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
     return;
   }
 
-  rpc::ActorDeathCause death_cause;
+  auto death_cause = std::make_shared<rpc::ActorDeathCause>();
   // TODO(sang, lixin) 1. Make this message more friendly 2. Show this message in
   // object.get()'s error.
-  death_cause.mutable_runtime_env_setup_failure_context()->set_error_message(
+  death_cause->mutable_runtime_env_setup_failure_context()->set_error_message(
       "RuntimeEnv setup failed!");
   // If there is runtime env failure, mark this actor as dead immediately.
   ReconstructActor(actor->GetActorID(), /*need_reschedule=*/false, death_cause);

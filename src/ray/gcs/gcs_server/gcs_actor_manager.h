@@ -395,8 +395,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// again.
   /// \param death_cause Context about why this actor is dead. Should only be set when
   /// need_reschedule=false.
-  void ReconstructActor(const ActorID &actor_id, bool need_reschedule,
-                        const rpc::ActorDeathCause *death_cause = nullptr);
+  void ReconstructActor(
+      const ActorID &actor_id, bool need_reschedule,
+      const std::shared_ptr<rpc::ActorDeathCause> &death_cause = nullptr);
 
   /// Reconstruct the specified actor and reschedule it.
   void ReconstructActor(const ActorID &actor_id);
