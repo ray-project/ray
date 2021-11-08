@@ -300,8 +300,6 @@ class GcsTableStorage {
     node_resource_table_ = std::make_unique<GcsNodeResourceTable>(store_client_);
     placement_group_schedule_table_ =
         std::make_unique<GcsPlacementGroupScheduleTable>(store_client_);
-    placement_group_schedule_table_ =
-        std::make_unique<GcsPlacementGroupScheduleTable>(store_client_);
     resource_usage_batch_table_ =
         std::make_unique<GcsResourceUsageBatchTable>(store_client_);
     profile_table_ = std::make_unique<GcsProfileTable>(store_client_);

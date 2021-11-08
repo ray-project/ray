@@ -1,9 +1,11 @@
 import argparse
-import ray
+import os
 
+import ray
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.examples.policy.bare_metal_policy_with_custom_view_reqs \
     import BareMetalPolicyWithCustomViewReqs
+from ray import tune
 
 
 def get_cli_args():
@@ -14,6 +16,21 @@ def get_cli_args():
     parser.add_argument(
         "--run", default="PPO", help="The RLlib-registered algorithm to use.")
     parser.add_argument("--num-cpus", type=int, default=3)
+    parser.add_argument(
+        "--stop-iters",
+        type=int,
+        default=200,
+        help="Number of iterations to train.")
+    parser.add_argument(
+        "--stop-timesteps",
+        type=int,
+        default=100000,
+        help="Number of timesteps to train.")
+    parser.add_argument(
+        "--stop-reward",
+        type=float,
+        default=80.0,
+        help="Reward at which we stop training.")
     parser.add_argument(
         "--local-mode",
         action="store_true",
@@ -35,6 +52,8 @@ if __name__ == "__main__":
 
     config = {
         "env": "CartPole-v0",
+        # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
+        "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         "model": {
             # Necessary to get the whole trajectory of 'state_in_0' in the
             # sample batch.
@@ -48,7 +67,12 @@ if __name__ == "__main__":
         "create_env_on_driver": True,
     }
 
+    stop = {
+        "training_iteration": args.stop_iters,
+        "timesteps_total": args.stop_timesteps,
+        "episode_reward_mean": args.stop_reward,
+    }
+
     # Train the Trainer with our policy.
-    my_trainer = BareMetalPolicyTrainer(config=config)
-    results = my_trainer.train()
+    results = tune.run(BareMetalPolicyTrainer, config=config, stop=stop)
     print(results)

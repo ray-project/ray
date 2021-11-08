@@ -18,6 +18,7 @@ package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
+import "src/ray/protobuf/pubsub.proto";
 
 message AddJobRequest {
   JobTableData data = 1;
@@ -628,6 +629,42 @@ service InternalKVGcsService {
   rpc InternalKVDel(InternalKVDelRequest) returns (InternalKVDelReply);
   rpc InternalKVExists(InternalKVExistsRequest) returns (InternalKVExistsReply);
   rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
+}
+
+message GcsSubscriberPollRequest {
+  /// The id of the subscriber.
+  bytes subscriber_id = 1;
+}
+
+message GcsSubscriberPollReply {
+  /// The messages that are published.
+  repeated PubMessage pub_messages = 1;
+  // Not populated.
+  GcsStatus status = 100;
+}
+
+message GcsSubscriberCommandBatchRequest {
+  /// The id of the subscriber.
+  bytes subscriber_id = 1;
+  /// Set of pubsub commands. Look at pubsub.proto for more details about the term.
+  repeated Command commands = 2;
+}
+
+message GcsSubscriberCommandBatchReply {
+  // Not populated.
+  GcsStatus status = 100;
+}
+
+/// This supports subscribing updates from GCS with long poll, and registering /
+/// de-registering subscribers.
+service InternalPubSubGcsService {
+  /// The long polling request sent to GCS for pubsub operations.
+  /// The long poll request will be replied once there are a batch of messages that
+  /// need to be published to the caller (subscriber).
+  rpc GcsSubscriberPoll(GcsSubscriberPollRequest) returns (GcsSubscriberPollReply);
+  /// A batch of subscribe / unsubscribe requests sent by the subscriber.
+  rpc GcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest)
+      returns (GcsSubscriberCommandBatchReply);
 }
 
 message GetAllResourceUsageRequest {

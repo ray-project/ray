@@ -22,14 +22,12 @@ namespace pubsub {
 /// SubscriberChannel
 ///////////////////////////////////////////////////////////////////////////////
 
-template <typename KeyIdType>
-void SubscriberChannel<KeyIdType>::Subscribe(
-    const rpc::Address &publisher_address, const std::string &key_id_binary,
+void SubscriberChannel::Subscribe(
+    const rpc::Address &publisher_address, const std::string &key_id,
     SubscriptionCallback subscription_callback,
     SubscriptionFailureCallback subscription_failure_callback) {
   cum_subscribe_requests_++;
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-  const auto key_id = KeyIdType::FromBinary(key_id_binary);
 
   RAY_CHECK(subscription_map_[publisher_id]
                 .subscription_callback_map
@@ -38,12 +36,10 @@ void SubscriberChannel<KeyIdType>::Subscribe(
                 .second);
 }
 
-template <typename KeyIdType>
-bool SubscriberChannel<KeyIdType>::Unsubscribe(const rpc::Address &publisher_address,
-                                               const std::string &key_id_binary) {
+bool SubscriberChannel::Unsubscribe(const rpc::Address &publisher_address,
+                                    const std::string &key_id) {
   cum_unsubscribe_requests_++;
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-  const auto key_id = KeyIdType::FromBinary(key_id_binary);
 
   auto subscription_it = subscription_map_.find(publisher_id);
   if (subscription_it == subscription_map_.end()) {
@@ -62,8 +58,22 @@ bool SubscriberChannel<KeyIdType>::Unsubscribe(const rpc::Address &publisher_add
   return true;
 }
 
-template <typename KeyIdType>
-bool SubscriberChannel<KeyIdType>::CheckNoLeaks() const {
+bool SubscriberChannel::IsSubscribed(const rpc::Address &publisher_address,
+                                     const std::string &key_id) const {
+  const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
+  auto subscription_it = subscription_map_.find(publisher_id);
+  if (subscription_it == subscription_map_.end()) {
+    return false;
+  }
+  auto &subscription_callback_map = subscription_it->second.subscription_callback_map;
+  auto subscription_callback_it = subscription_callback_map.find(key_id);
+  if (subscription_callback_it == subscription_callback_map.end()) {
+    return false;
+  }
+  return true;
+}
+
+bool SubscriberChannel::CheckNoLeaks() const {
   for (const auto &subscription : subscription_map_) {
     if (subscription.second.subscription_callback_map.size() != 0) {
       return false;
@@ -72,9 +82,8 @@ bool SubscriberChannel<KeyIdType>::CheckNoLeaks() const {
   return subscription_map_.size() == 0;
 }
 
-template <typename KeyIdType>
-void SubscriberChannel<KeyIdType>::HandlePublishedMessage(
-    const rpc::Address &publisher_address, const rpc::PubMessage &pub_message) const {
+void SubscriberChannel::HandlePublishedMessage(const rpc::Address &publisher_address,
+                                               const rpc::PubMessage &pub_message) const {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   auto subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
@@ -83,8 +92,10 @@ void SubscriberChannel<KeyIdType>::HandlePublishedMessage(
   }
 
   const auto channel_type = pub_message.channel_type();
-  const auto key_id = KeyIdType::FromBinary(pub_message.key_id());
-  RAY_CHECK(channel_type == channel_type_);
+  const auto &key_id = pub_message.key_id();
+  RAY_CHECK(channel_type == channel_type_)
+      << "Message from " << rpc::ChannelType_Name(channel_type) << ", this channel is "
+      << rpc::ChannelType_Name(channel_type_);
   RAY_LOG(DEBUG) << "key id " << key_id << " information was published from "
                  << publisher_id;
 
@@ -103,9 +114,7 @@ void SubscriberChannel<KeyIdType>::HandlePublishedMessage(
       "Subscriber.HandlePublishedMessage_" + channel_name);
 }
 
-template <typename KeyIdType>
-void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
-    const rpc::Address &publisher_address) {
+void SubscriberChannel::HandlePublisherFailure(const rpc::Address &publisher_address) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   const auto &subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
@@ -119,7 +128,7 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
     const auto &key_id = key_id_it.first;
     auto unsubscribe_needed = HandlePublisherFailureInternal(publisher_address, key_id);
     if (unsubscribe_needed) {
-      key_ids_to_unsubscribe.push_back(key_id.Binary());
+      key_ids_to_unsubscribe.push_back(key_id);
     }
   }
 
@@ -132,32 +141,29 @@ void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
   }
 }
 
-template <typename KeyIdType>
-void SubscriberChannel<KeyIdType>::HandlePublisherFailure(
-    const rpc::Address &publisher_address, const std::string &key_id_binary) {
+void SubscriberChannel::HandlePublisherFailure(const rpc::Address &publisher_address,
+                                               const std::string &key_id) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   const auto &subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
   if (subscription_it == subscription_map_.end()) {
     return;
   }
-  const auto key_id = KeyIdType::FromBinary(key_id_binary);
   auto unsubscribe_needed = HandlePublisherFailureInternal(publisher_address, key_id);
   if (unsubscribe_needed) {
-    RAY_CHECK(Unsubscribe(publisher_address, key_id_binary))
+    RAY_CHECK(Unsubscribe(publisher_address, key_id))
         << "Calling UnsubscribeObject inside a failure callback is not allowed.";
   }
 }
 
-template <typename KeyIdType>
-bool SubscriberChannel<KeyIdType>::HandlePublisherFailureInternal(
-    const rpc::Address &publisher_address, const KeyIdType &key_id) {
+bool SubscriberChannel::HandlePublisherFailureInternal(
+    const rpc::Address &publisher_address, const std::string &key_id) {
   auto maybe_failure_callback = GetFailureCallback(publisher_address, key_id);
   if (maybe_failure_callback.has_value()) {
     const auto &channel_name =
         rpc::ChannelType_descriptor()->FindValueByNumber(channel_type_)->name();
     callback_service_->post([failure_callback = std::move(maybe_failure_callback.value()),
-                             key_id]() { failure_callback(key_id.Binary()); },
+                             key_id]() { failure_callback(key_id); },
                             "Subscriber.HandleFailureCallback_" + channel_name);
     return true;
   } else {
@@ -165,8 +171,7 @@ bool SubscriberChannel<KeyIdType>::HandlePublisherFailureInternal(
   }
 }
 
-template <typename KeyIdType>
-std::string SubscriberChannel<KeyIdType>::DebugString() const {
+std::string SubscriberChannel::DebugString() const {
   std::stringstream result;
   const google::protobuf::EnumDescriptor *descriptor = rpc::ChannelType_descriptor();
   const auto &channel_name = descriptor->FindValueByNumber(channel_type_)->name();
@@ -186,14 +191,16 @@ std::string SubscriberChannel<KeyIdType>::DebugString() const {
 void Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
                            const rpc::ChannelType channel_type,
                            const rpc::Address &publisher_address,
-                           const std::string &key_id_binary,
+                           const std::string &key_id,
                            SubscriptionCallback subscription_callback,
                            SubscriptionFailureCallback subscription_failure_callback) {
   // Batch a subscribe command.
   auto command = std::make_unique<rpc::Command>();
   command->set_channel_type(channel_type);
-  command->set_key_id(key_id_binary);
-  command->mutable_subscribe_message()->Swap(sub_message.get());
+  command->set_key_id(key_id);
+  if (sub_message != nullptr) {
+    command->mutable_subscribe_message()->Swap(sub_message.get());
+  }
 
   absl::MutexLock lock(&mutex_);
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
@@ -202,17 +209,17 @@ void Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
   MakeLongPollingConnectionIfNotConnected(publisher_address);
 
   Channel(channel_type)
-      ->Subscribe(publisher_address, key_id_binary, std::move(subscription_callback),
+      ->Subscribe(publisher_address, key_id, std::move(subscription_callback),
                   std::move(subscription_failure_callback));
 }
 
 bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
                              const rpc::Address &publisher_address,
-                             const std::string &key_id_binary) {
+                             const std::string &key_id) {
   // Batch the unsubscribe command.
   auto command = std::make_unique<rpc::Command>();
   command->set_channel_type(channel_type);
-  command->set_key_id(key_id_binary);
+  command->set_key_id(key_id);
   rpc::UnsubscribeMessage unsub_message;
   command->mutable_unsubscribe_message()->CopyFrom(unsub_message);
 
@@ -221,7 +228,18 @@ bool Subscriber::Unsubscribe(const rpc::ChannelType channel_type,
   commands_[publisher_id].emplace(std::move(command));
   SendCommandBatchIfPossible(publisher_address);
 
-  return Channel(channel_type)->Unsubscribe(publisher_address, key_id_binary);
+  return Channel(channel_type)->Unsubscribe(publisher_address, key_id);
+}
+
+bool Subscriber::IsSubscribed(const rpc::ChannelType channel_type,
+                              const rpc::Address &publisher_address,
+                              const std::string &key_id) const {
+  absl::MutexLock lock(&mutex_);
+  auto *channel = Channel(channel_type);
+  if (channel == nullptr) {
+    return false;
+  }
+  return channel->IsSubscribed(publisher_address, key_id);
 }
 
 void Subscriber::MakeLongPollingConnectionIfNotConnected(
@@ -375,10 +393,6 @@ std::string Subscriber::DebugString() const {
   }
   return result.str();
 }
-
-/// Per each key id, we need to define templates for these functions/classes here so
-/// that symbols are discoverable.
-template class SubscriberChannel<ObjectID>;
 
 }  // namespace pubsub
 

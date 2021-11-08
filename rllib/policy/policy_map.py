@@ -8,7 +8,7 @@ from typing import Callable, Dict, Optional, Set, Type, TYPE_CHECKING
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import get_tf_eager_cls_if_necessary
+from ray.rllib.utils.tf_utils import get_tf_eager_cls_if_necessary
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import PartialTrainerConfigDict, \
     PolicyID, TrainerConfigDict

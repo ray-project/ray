@@ -31,10 +31,16 @@ starlette
 tabulate
 uvicorn
 werkzeug
+<<<<<<< HEAD
 py-cpuinfo==6.0.0
 git+git://github.com/ray-project/tune-sklearn@master#tune-sklearn
 git+git://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray
 git+git://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
+=======
+git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
+git+https://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray
+git+https://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
+>>>>>>> origin/master
 git+https://github.com/ray-project/ray_lightning#ray_lightning
 scikit-optimize
 sphinx-sitemap==2.2.0

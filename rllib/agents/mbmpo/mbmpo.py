@@ -336,8 +336,8 @@ def post_process_samples(samples, config: TrainerConfigDict):
     return samples, split_lst
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
     """Execution plan of the PPO algorithm. Defines the distributed dataflow.
 
     Args:
@@ -349,6 +349,9 @@ def execution_plan(workers: WorkerSet,
         LocalIterator[dict]: The Policy class to use with PPOTrainer.
             If None, use `default_policy` provided in build_trainer().
     """
+    assert len(kwargs) == 0, (
+        "MBMPO execution_plan does NOT take any additional parameters")
+
     # Train TD Models on the driver.
     workers.local_worker().foreach_policy(fit_dynamics)
 
