@@ -142,7 +142,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param get_task_arguments: A callback for getting a tasks' arguments by
   ///        their ids.
   /// \param max_pinned_task_arguments_bytes: The cap on pinned arguments.
-  /// \param get_time: A callback which returns the current time in seconds.
+  /// \param get_time_ms: A callback which returns the current time in milliseconds.
   /// \param sched_cls_cap_interval_ms: The time before we increase the cap
   ///        on the number of tasks that can run per scheduling class. If set
   ///        to 0, there is no cap. If it's a large number, the cap is hard.
@@ -159,9 +159,10 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
                          std::vector<std::unique_ptr<RayObject>> *results)>
           get_task_arguments,
       size_t max_pinned_task_arguments_bytes,
-      std::function<int64_t(void)> get_time = absl::GetCurrentTimeNanos,
+      std::function<int64_t(void)> get_time_ms =
+          []() { return absl::GetCurrentTimeNanos() / 100000; },
       int64_t sched_cls_cap_interval_ms =
-          RayConfig::instance().scheduling_class_capacity_interval_ms());
+      RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
   void SetWorkerBacklog(SchedulingClass scheduling_class, const WorkerID &worker_id,
                         int64_t backlog_size) override;
@@ -317,7 +318,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///          should be running (or blocked) at once.
   uint64_t MaxRunningTasksPerSchedulingClass(SchedulingClass sched_cls_id) const;
 
-  void UpdateSchedulingClassCapacity(SchedulingClassInfo &sched_cls_info);
+  /// Caclulate the next time a task can be scheduled in this scheduling class
+  /// when it goes above its capacity.
+  ///
+  /// \param sched_cls_info The (mutable) scheduling class info to be updated.
+  void UpdateSchedulingClassWaitTime(SchedulingClassInfo &sched_cls_info);
 
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.
@@ -344,18 +349,21 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// class. This information is used to place a cap on the number of running
   /// running tasks per scheduling class.
   struct SchedulingClassInfo {
-    SchedulingClassInfo()
+    SchedulingClassInfo(int64_t cap)
         : running_tasks(),
-          capacity(0),
+          capacity(cap),
           next_update_time(std::numeric_limits<int64_t>::max()) {}
     /// Track the running task ids in this scheduling class.
     absl::flat_hash_set<TaskID> running_tasks;
     /// The total number of tasks that can run from this scheduling class.
-    uint64_t capacity;
-    /// The next time to update the class's capacity.
+    const uint64_t capacity;
+    /// The next time that a new task of this scheduling class may be dispatched.
     int64_t next_update_time;
   };
 
+  /// Mapping from scheduling class to information about the running tasks of
+  /// the scheduling class. See `struct SchedulingClassInfo` above for more
+  /// details about what information is tracked.
   absl::flat_hash_map<SchedulingClass, SchedulingClassInfo> info_by_sched_cls_;
 
   /// Queue of lease requests that should be scheduled onto workers.
@@ -429,8 +437,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// The maximum amount of bytes that can be used by executing task arguments.
   size_t max_pinned_task_arguments_bytes_;
 
-  /// Returns the current time in seconds
-  std::function<int64_t()> get_time_;
+  /// Returns the current time in milliseconds.
+  std::function<int64_t()> get_time_ms_;
 
   /// The initial interval before the cap on the number of worker processes is increased.
   const int64_t sched_cls_cap_interval_ms_;

@@ -226,7 +226,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
               return true;
             },
             /*max_pinned_task_arguments_bytes=*/1000,
-            /*get_time=*/[this]() { return current_time_ns_; }) {}
+            /*get_time=*/[this]() { return current_time_ms_; }) {}
 
   void SetUp() {
     static rpc::GcsNodeInfo node_info;
@@ -303,7 +303,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
   int node_info_calls_;
   int announce_infeasible_task_calls_;
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
-  int64_t current_time_ns_ = 0;
+  int64_t current_time_ms_ = 0;
 
   MockTaskDependencyManager dependency_manager_;
   ClusterTaskManager task_manager_;
@@ -1789,7 +1789,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
     return nullptr;
   };
 
-  int64_t UNIT = RayConfig::instance().scheduling_class_capacity_interval_ms() * 1e6;
+  int64_t UNIT = RayConfig::instance().worker_cap_initial_backoff_delay_ms();
   std::vector<RayTask> tasks;
   for (int i = 0; i < 3; i++) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
@@ -1819,7 +1819,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
 
   ASSERT_EQ(num_callbacks, 1);
 
-  current_time_ns_ += UNIT;
+  current_time_ms_ += UNIT;
   ASSERT_FALSE(workers.back()->IsBlocked());
   ASSERT_TRUE(task_manager_.ReleaseCpuResourcesFromUnblockedWorker(
       get_unblocked_worker(workers)));
@@ -1829,7 +1829,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
   ASSERT_EQ(num_callbacks, 2);
 
   // Since we're increasing exponentially, increasing by a unit show no longer be enough.
-  current_time_ns_ += UNIT;
+  current_time_ms_ += UNIT;
   ASSERT_TRUE(task_manager_.ReleaseCpuResourcesFromUnblockedWorker(
       get_unblocked_worker(workers)));
   task_manager_.ScheduleAndDispatchTasks();
@@ -1838,7 +1838,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
   ASSERT_EQ(num_callbacks, 2);
 
   // Now it should run
-  current_time_ns_ += UNIT;
+  current_time_ms_ += UNIT;
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
   task_manager_.ScheduleAndDispatchTasks();
@@ -1854,7 +1854,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
     }
   }
 
-  current_time_ns_ += UNIT;
+  current_time_ms_ += UNIT;
 
   // Now schedule another task of the same scheduling class.
   RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
@@ -1871,7 +1871,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
   // the tasks finished).
   ASSERT_EQ(num_callbacks, 3);
 
-  current_time_ns_ += 2 * UNIT;
+  current_time_ms_ += 2 * UNIT;
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 4);
@@ -1886,7 +1886,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
 
 /// Ensure we reset the cap after we've finished executing through the queue.
 TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
-  int64_t UNIT = RayConfig::instance().scheduling_class_capacity_interval_ms() * 1e6;
+  int64_t UNIT = RayConfig::instance().worker_cap_initial_backoff_delay_ms();
   std::vector<RayTask> tasks;
   for (int i = 0; i < 2; i++) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
@@ -1912,7 +1912,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
   task_manager_.ScheduleAndDispatchTasks();
 
   ASSERT_TRUE(task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker1));
-  current_time_ns_ += UNIT;
+  current_time_ms_ += UNIT;
 
   std::shared_ptr<MockWorker> worker2 =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
@@ -1942,7 +1942,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
   ASSERT_EQ(num_callbacks, 3);
 
   ASSERT_TRUE(task_manager_.ReleaseCpuResourcesFromUnblockedWorker(worker3));
-  current_time_ns_ += UNIT;
+  current_time_ms_ += UNIT;
 
   std::shared_ptr<MockWorker> worker4 =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
@@ -1975,7 +1975,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
 /// Test that scheduling classes which have reached their running cap start
 /// their timer after the new task is submitted, not before.
 TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
-  int64_t UNIT = RayConfig::instance().scheduling_class_capacity_interval_ms() * 1e6;
+  int64_t UNIT = RayConfig::instance().worker_cap_initial_backoff_delay_ms();
   RayTask first_task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
                                   /*num_args=*/0, /*args=*/{});
 
@@ -2012,7 +2012,7 @@ TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
     }
   }
 
-  current_time_ns_ += UNIT;
+  current_time_ms_ += UNIT;
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
 
@@ -2024,7 +2024,7 @@ TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
   }
 
   /// A lot of time passes, definitely more than the timeout.
-  current_time_ns_ += 100000 * UNIT;
+  current_time_ms_ += 100000 * UNIT;
 
   RayTask third_task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
                                   /*num_args=*/0, /*args=*/{});
@@ -2035,7 +2035,7 @@ TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
   /// until after the task is queued.
   ASSERT_EQ(num_callbacks, 2);
 
-  current_time_ns_ += 2 * UNIT;
+  current_time_ms_ += 2 * UNIT;
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
 

@@ -357,7 +357,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
 
   periodical_runner_.RunFnPeriodically(
       [this]() { cluster_task_manager_->ScheduleAndDispatchTasks(); },
-      RayConfig::instance().scheduling_class_capacity_interval_ms());
+      RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.

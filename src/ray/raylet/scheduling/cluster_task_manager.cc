@@ -39,7 +39,7 @@ ClusterTaskManager::ClusterTaskManager(
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_task_arguments,
-    size_t max_pinned_task_arguments_bytes, std::function<int64_t(void)> get_time,
+    size_t max_pinned_task_arguments_bytes, std::function<int64_t(void)> get_time_ms,
     int64_t sched_cls_cap_interval_ms)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
@@ -53,7 +53,7 @@ ClusterTaskManager::ClusterTaskManager(
       leased_workers_(leased_workers),
       get_task_arguments_(get_task_arguments),
       max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes),
-      get_time_(get_time),
+      get_time_ms_(get_time_ms),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
       metric_tasks_queued_(0),
       metric_tasks_dispatched_(0),
@@ -290,10 +290,11 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
     if (info_by_sched_cls_.find(scheduling_class) == info_by_sched_cls_.end()) {
       // Initialize the class info.
-      info_by_sched_cls_[scheduling_class].capacity =
-          MaxRunningTasksPerSchedulingClass(scheduling_class);
+      info_by_sched_cls_.emplace(
+          scheduling_class,
+          SchedulingClassInfo(MaxRunningTasksPerSchedulingClass(scheduling_class)));
     }
-    auto &sched_cls_info = info_by_sched_cls_[scheduling_class];
+    auto &sched_cls_info = info_by_sched_cls_.at(scheduling_class);
 
     /// We cap the maximum running tasks of a scheduling class to avoid
     /// scheduling too many tasks of a single type/depth, when there are
@@ -311,12 +312,15 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         continue;
       }
 
+      // Check if the scheduling class is at capacity now.
       if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity &&
           work->GetState() == internal::WorkStatus::WAITING) {
-        RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_()
+        RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_ms_()
                        << " next update time=" << sched_cls_info.next_update_time;
-        if (get_time_() < sched_cls_info.next_update_time) {
-          UpdateSchedulingClassCapacity(sched_cls_info);
+        if (get_time_ms_() < sched_cls_info.next_update_time) {
+          // We're over capacity and it's not time to admit a new task yet.
+          // Calculate the next time we should admit a new task.
+          UpdateSchedulingClassWaitTime(sched_cls_info);
           break;
         } else {
           // Force us to recalculate the next update time the next time a task
@@ -367,8 +371,12 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         RAY_LOG(WARNING) << "RayTask: " << task.GetTaskSpecification().TaskId()
                          << "'s caller is no longer running. Cancelling task.";
         auto sched_cls = task.GetTaskSpecification().GetSchedulingClass();
-        if (info_by_sched_cls_[sched_cls].running_tasks.size() == 0) {
-          info_by_sched_cls_.erase(sched_cls);
+        auto it = info_by_sched_cls_.find(sched_cls);
+        if (it != info_by_sched_cls_.end()) {
+          it->second.running_tasks.erase(spec.TaskId());
+          if (it->second.running_tasks.size() == 0) {
+            info_by_sched_cls_.erase(it);
+          }
         }
         if (!spec.GetDependencies().empty()) {
           task_dependency_manager_.RemoveTaskDependencies(task_id);
@@ -504,12 +512,15 @@ void ClusterTaskManager::TaskFinished(std::shared_ptr<WorkerInterface> worker,
                                       RayTask *task) {
   RAY_CHECK(worker != nullptr && task != nullptr);
   *task = worker->GetAssignedTask();
-  auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
-  auto &sched_cls_info = info_by_sched_cls_[sched_cls];
-  sched_cls_info.running_tasks.erase(task->GetTaskSpecification().TaskId());
-  // UpdateSchedulingClassCapacity(sched_cls_info);
-  if (info_by_sched_cls_[sched_cls].running_tasks.size() == 0) {
-    info_by_sched_cls_.erase(sched_cls);
+  {
+    auto sched_cls = task->GetTaskSpecification().GetSchedulingClass();
+    auto it = info_by_sched_cls_.find(sched_cls);
+    if (it != info_by_sched_cls_.end()) {
+      it->second.running_tasks.erase(task->GetTaskSpecification().TaskId());
+      if (it->second.running_tasks.size() == 0) {
+        info_by_sched_cls_.erase(it);
+      }
+    }
   }
 
   ReleaseTaskArgs(task->GetTaskSpecification().TaskId());
@@ -1464,15 +1475,15 @@ uint64_t ClusterTaskManager::MaxRunningTasksPerSchedulingClass(
   return static_cast<uint64_t>(std::round(total_cpus / cpu_req));
 }
 
-void ClusterTaskManager::UpdateSchedulingClassCapacity(
+void ClusterTaskManager::UpdateSchedulingClassWaitTime(
     SchedulingClassInfo &sched_cls_info) {
   if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity) {
     int64_t current_capacity = sched_cls_info.running_tasks.size();
     int64_t allowed_capacity = sched_cls_info.capacity;
     int64_t exp = current_capacity - allowed_capacity;
-    int64_t wait_time = (1e6 * sched_cls_cap_interval_ms_) * (1L << exp);
+    int64_t wait_time = sched_cls_cap_interval_ms_ * (1L << exp);
     sched_cls_info.next_update_time =
-        std::min(get_time_() + wait_time, sched_cls_info.next_update_time);
+        std::min(get_time_ms_() + wait_time, sched_cls_info.next_update_time);
   }
 }
 
