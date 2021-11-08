@@ -1,9 +1,12 @@
 Workflow Metadata
 =================
 
-Each workflow is linked with a collection of metadata, including
-system metrics and user input metadata. You can easily "put" or
-"get" metadata for a workflow or a workflow step.
+Observability is important for workflow - sometimes we not only want
+to get the output, but also want to gain insights on the internal
+states (e.g. to measure the performance or find the bottleneck).
+Workflow metadata provides a number of stats that helps understand
+the workflow, from basic running status and step options, to performance
+and user-imposed metadata.
 
 Retrieving metadata
 -------------------
@@ -37,7 +40,7 @@ providing the step name:
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" in workflow_metadata["stats"]
 
-Attaching user-defined metadata
+User-defined metadata
 ----------------------------
 Custom metadata can be added to a workflow or a workflow step by user,
 this is useful when you want to attach some extra information to the
@@ -89,7 +92,7 @@ Virtual Actors also support metadata ingestion and retrieval. For example:
 Notice that if there are multiple steps with the same name, a suffix
 with a counter _n will be added automatically.
 
-And you can also do this in a nested fashion:
+And you can also do this in a nested way:
 
 .. code-block:: python
 
