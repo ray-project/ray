@@ -25,7 +25,7 @@ For example:
     assert "start_time" in workflow_metadata["stats"]
     assert "end_time" in workflow_metadata["stats"]
 
-We can also retrieve metadata for individual workflow steps by
+You can also retrieve metadata for individual workflow steps by
 providing the step name:
 
 .. code-block:: python
@@ -43,7 +43,7 @@ providing the step name:
 
 Attaching user-defined metadata
 ----------------------------
-You can also add custom metadata to a workflow or a workflow step,
+Custom metadata can be added to a workflow or a workflow step by user,
 this is useful when you want to attach some extra information to the
 workflow or workflow step. For example:
 
@@ -90,8 +90,8 @@ Virtual Actors also support metadata ingestion and retrieval. For example:
     assert workflow.get_metadata("vid", "add_2")["stats"]["end_time"] >= \
            workflow.get_metadata("vid", "add_2")["stats"]["start_time"] + 1
 
-**Notice that if there are multiple steps with the same name, a suffix
-with a counter _n will be added automatically.**
+Notice that if there are multiple steps with the same name, a suffix
+with a counter _n will be added automatically.
 
 And you can also do this in a nested fashion:
 
