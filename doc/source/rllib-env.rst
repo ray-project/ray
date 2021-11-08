@@ -346,12 +346,12 @@ RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/
 Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``.
 This can be done for multiple concurrent episodes as well.
 
-Take a look at the examples here for a `simple "CartPole-v0" server <https://github.com/ray-project/ray/blob/master/rllib/examples/external_simulators/cartpole_server.py>`__
-and `n client(s) <https://github.com/ray-project/ray/blob/master/rllib/examples/external_simulators/cartpole_client.py>`__
+Take a look at the examples here for a `simple "CartPole-v0" server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__
+and `n client(s) <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__
 scripts, in which we setup an RLlib policy server that listens on one or more ports for client connections
 and connect several clients to this server to learn the env.
 
-Another `example <https://github.com/ray-project/ray/blob/master/rllib/examples/external_simulators/unity3d_server.py>`__ shows,
+Another `example <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/unity3d_server.py>`__ shows,
 how to run a similar setup against a Unity3D external game engine.
 
 
@@ -376,8 +376,7 @@ You can configure any Trainer to launch a policy server with the following confi
     trainer_config = {
         # An environment class is still required, but it doesn't need to be runnable.
         # You only need to define its action and observation space attributes.
-        # See examples/external_simulators/unity3d_server.py for an example using
-        # a RandomMultiAgentEnv stub.
+        # See examples/serving/unity3d_server.py for an example using a RandomMultiAgentEnv stub.
         "env": YOUR_ENV_STUB,
         # Use the policy server to generate experiences.
         "input": (
@@ -408,9 +407,9 @@ To understand the difference between standard envs, external envs, and connectin
 .. image:: rllib-external.svg
 
 Try it yourself by launching either a
-`simple CartPole server <https://github.com/ray-project/ray/blob/master/rllib/examples/external_simulators/cartpole_server.py>`__ (see below), and connecting it to any number of clients
-(`cartpole_client.py <https://github.com/ray-project/ray/blob/master/rllib/examples/external_simulators/cartpole_client.py>`__) or
-run a `Unity3D learning sever <https://github.com/ray-project/ray/blob/master/rllib/examples/external_simulators/unity3d_server.py>`__
+`simple CartPole server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`__ (see below), and connecting it to any number of clients
+(`cartpole_client.py <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`__) or
+run a `Unity3D learning sever <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/unity3d_server.py>`__
 against distributed Unity game engines in the cloud.
 
 CartPole Example:
@@ -418,13 +417,13 @@ CartPole Example:
 .. code-block:: bash
 
     # Start the server by running:
-    >>> python rllib/examples/external_simulators/cartpole_server.py --run=PPO
+    >>> python rllib/examples/serving/cartpole_server.py --run=PPO
     --
     -- Starting policy server at localhost:9900
     --
 
     # To connect from a client with inference_mode="remote".
-    >>> python rllib/examples/external_simulators/cartpole_client.py --inference-mode=remote
+    >>> python rllib/examples/serving/cartpole_client.py --inference-mode=remote
     Total reward: 10.0
     Total reward: 58.0
     ...
@@ -432,7 +431,7 @@ CartPole Example:
     ...
 
     # To connect from a client with inference_mode="local" (faster).
-    >>> python rllib/examples/external_simulators/cartpole_client.py --inference-mode=local
+    >>> python rllib/examples/serving/cartpole_client.py --inference-mode=local
     Querying server for new policy weights.
     Generating new batch of experiences.
     Total reward: 13.0

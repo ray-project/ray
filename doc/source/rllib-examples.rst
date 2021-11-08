@@ -124,13 +124,13 @@ Serving and Offline
 - `Another example for using RLlib with Ray Serve <https://github.com/ray-project/ray/tree/master/rllib/examples/inference_and_serving/serve_and_rllib.py>`__
    This script offers a simple workflow for 1) training a policy with RLlib first, 2) creating a new policy 3) restoring its weights from the trained
    one and serving the new policy via Ray Serve.
-- `Unity3D client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/external_simulators/unity3d_server.py>`__:
+- `Unity3D client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/serving/unity3d_server.py>`__:
    Example of how to setup n distributed Unity3D (compiled) games in the cloud that function as data collecting
    clients against a central RLlib Policy server learning how to play the game.
    The n distributed clients could themselves be servers for external/human players and allow for control
    being fully in the hands of the Unity entities instead of RLlib.
    Note: Uses Unity's MLAgents SDK (>=1.0) and supports all provided MLAgents example games and multi-agent setups.
-- `CartPole client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/external_simulators/cartpole_server.py>`__:
+- `CartPole client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/serving/cartpole_server.py>`__:
    Example of online serving of predictions for a simple CartPole policy.
 - `Saving experiences <https://github.com/ray-project/ray/blob/master/rllib/examples/saving_experiences.py>`__:
    Example of how to externally generate experience batches in RLlib-compatible format.
