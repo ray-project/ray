@@ -456,7 +456,8 @@ class StandardAutoscaler:
                 raise e
         except Exception:
             # We don't need to interrupt the autoscaler update with an
-            # exception, but we should log what went wrong.
+            # exception, but we should log what went wrong and record the
+            # failure in Prometheus.
             self.prom_metrics.drain_node_exceptions.inc()
             logger.exception("Failed to drain Ray nodes. Traceback follows.")
 
