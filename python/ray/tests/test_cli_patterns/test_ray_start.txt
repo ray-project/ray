@@ -6,7 +6,7 @@ Ray runtime started.
 
 Next steps
   To connect to this Ray runtime from another node, run
-    ray start --address='.+' --redis-password='.+'
+    ray start --address=.+ --redis-password=.+
 
   Alternatively, use the following Python code:
     import ray
