@@ -45,7 +45,13 @@ def wait_for_sync():
         syncer.wait()
 
 
-def set_sync_periods(sync_config):
+def validate_sync_config(sync_config: "SyncConfig"):
+    if sync_config.sync_to_driver is None:
+        # Per default, only sync to driver if not using cloud checkpointing
+        sync_config.sync_to_driver = not bool(sync_config.upload_dir)
+
+
+def set_sync_periods(sync_config: "SyncConfig"):
     """Sets sync periods from config."""
     global CLOUD_SYNC_PERIOD
     global NODE_SYNC_PERIOD

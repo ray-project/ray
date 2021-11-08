@@ -28,7 +28,8 @@ from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, \
 from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.tune.suggest.variant_generator import has_unresolved_values
-from ray.tune.syncer import SyncConfig, set_sync_periods, wait_for_sync
+from ray.tune.syncer import (SyncConfig, validate_sync_config,
+                             set_sync_periods, wait_for_sync)
 from ray.tune.trainable import Trainable
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
@@ -385,6 +386,7 @@ def run(
     config = config or {}
     sync_config = sync_config or SyncConfig()
     set_sync_periods(sync_config)
+    validate_sync_config(sync_config)
 
     if num_samples == -1:
         num_samples = sys.maxsize
