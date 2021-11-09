@@ -270,6 +270,8 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
   PRINT_REF_COUNT(it);
   if (it->second.RefCount() == 0) {
     DeleteReferenceInternal(it, deleted);
+  } else {
+    PRINT_REF_COUNT(it);
   }
 }
 
