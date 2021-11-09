@@ -109,7 +109,7 @@ class WorkerContext {
   mutable absl::Mutex mutex_;
 
  private:
-  static WorkerThreadContext &GetThreadContext();
+  WorkerThreadContext &GetThreadContext() const;
 
   /// Per-thread worker context.
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;
