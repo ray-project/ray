@@ -366,7 +366,6 @@ def check_internal_kv_gced():
 def check_local_files_gced(cluster):
     for node in cluster.list_all_nodes():
         for subdir in ["working_dir_files", "py_modules_files"]:
-            print("THIS IS MY DIR: ", node.get_runtime_env_dir_path())
             all_files = os.listdir(
                 os.path.join(node.get_runtime_env_dir_path(), subdir))
             # Check that there are no files remaining except for .lock files.
