@@ -116,7 +116,8 @@ def list_trials(experiment_path,
     _check_tabulate()
 
     try:
-        checkpoints_df = ExperimentAnalysis(experiment_path).dataframe()  # last result
+        checkpoints_df = ExperimentAnalysis(
+            experiment_path).dataframe()  # last result
     except TuneError as e:
         raise click.ClickException("No trial data found!") from e
 

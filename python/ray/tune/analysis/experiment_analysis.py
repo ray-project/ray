@@ -76,8 +76,8 @@ class ExperimentAnalysis:
                 latest_checkpoint = []
                 for fname in os.listdir(experiment_checkpoint_path):
                     fname = os.path.join(experiment_checkpoint_path, fname)
-                    latest_checkpoint_subdir = find_newest_experiment_checkpoint(
-                        fname)
+                    latest_checkpoint_subdir = (
+                        find_newest_experiment_checkpoint(fname))
                     if latest_checkpoint_subdir:
                         latest_checkpoint.append(latest_checkpoint_subdir)
             if not latest_checkpoint:
@@ -105,7 +105,8 @@ class ExperimentAnalysis:
         self._checkpoints = []
         for experiment_state in self._experiment_states:
             if "checkpoints" not in experiment_state:
-                raise TuneError("Experiment state invalid; no checkpoints found.")
+                raise TuneError(
+                    "Experiment state invalid; no checkpoints found.")
             self._checkpoints += [
                 json.loads(cp, cls=TuneFunctionDecoder)
                 if isinstance(cp, str) else cp
@@ -338,8 +339,8 @@ class ExperimentAnalysis:
 
         if mode and not metric:
             raise ValueError(
-                "If a `mode` is passed to `ExperimentAnalysis.dataframe(), you'll "
-                "also have to pass a `metric`!")
+                "If a `mode` is passed to `ExperimentAnalysis.dataframe(),"
+                " you'll also have to pass a `metric`!")
 
         rows = self._retrieve_rows(metric=metric, mode=mode)
         all_configs = self.get_all_configs(prefix=True)
@@ -637,7 +638,11 @@ class ExperimentAnalysis:
         if len(self._experiment_states) == 1:
             return self._experiment_states[0]["stats"]
         else:
-            return {experiment_state["runner_data"]["_session_str"]: experiment_state["stats"] for experiment_state in self._experiment_states}
+            return {
+                experiment_state["runner_data"]["_session_str"]:
+                experiment_state["stats"]
+                for experiment_state in self._experiment_states
+            }
 
     def set_filetype(self, file_type: Optional[str] = None):
         """Overrides the existing file type.
@@ -659,15 +664,19 @@ class ExperimentAnalysis:
         if len(self._experiment_states) == 1:
             return self._experiment_states[0]["runner_data"]
         else:
-            return {experiment_state["runner_data"]["_session_str"]: experiment_state["runner_data"] for experiment_state in self._experiment_states}
+            return {
+                experiment_state["runner_data"]["_session_str"]:
+                experiment_state["runner_data"]
+                for experiment_state in self._experiment_states
+            }
 
     def _get_trial_paths(self) -> List[str]:
         if self.trials:
             _trial_paths = [t.logdir for t in self.trials]
         else:
             logger.info("No `self.trials`. Drawing logdirs from checkpoint "
-                           "file. This may result in some information that is "
-                           "out of sync, as checkpointing is periodic.")
+                        "file. This may result in some information that is "
+                        "out of sync, as checkpointing is periodic.")
             _trial_paths = [
                 checkpoint["logdir"] for checkpoint in self._checkpoints
             ]
@@ -679,9 +688,9 @@ class ExperimentAnalysis:
                 except Exception as e:
                     logger.warning(
                         f"Could not load trials from experiment checkpoint. "
-                        f"This means your experiment checkpoint is likely faulty "
-                        f"or incomplete, and you won't have access to all "
-                        f"analysis methods. "
+                        f"This means your experiment checkpoint is likely "
+                        f"faulty or incomplete, and you won't have access "
+                        f"to all analysis methods. "
                         f"Observed error: {e}")
 
         if not _trial_paths:
