@@ -188,7 +188,8 @@ message ContainerRuntimeEnv {
   string image = 1;
   /// The default worker path in the container.
   string worker_path = 2;
-  /// A list of docker run options. Refer to https://docs.docker.com/engine/reference/run/.
+  /// A list of docker run options. Refer to
+  /// https://docs.docker.com/engine/reference/run/.
   repeated string run_options = 3;
 }
 
