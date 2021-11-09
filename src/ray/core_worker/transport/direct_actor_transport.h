@@ -37,6 +37,7 @@
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/direct_actor_task_submitter.h"
 #include "ray/core_worker/transport/normal_scheduling_queue.h"
+#include "ray/core_worker/transport/out_of_order_actor_scheduling_queue.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
@@ -94,6 +95,11 @@ class CoreWorkerDirectTaskReceiver {
 
   void Stop();
 
+ private:
+  /// Set up the configs for an actor.
+  /// This should be called once for the actor creation task.
+  void SetupActor(bool is_asyncio, int fiber_max_concurrency, bool execute_out_of_order);
+
  protected:
   /// Cache the concurrency groups of actors.
   absl::flat_hash_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
@@ -122,15 +128,12 @@ class CoreWorkerDirectTaskReceiver {
   /// The max number of concurrent calls to allow for fiber mode.
   /// 0 indicates that the value is not set yet.
   int fiber_max_concurrency_ = 0;
-
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
   std::shared_ptr<PoolManager> pool_manager_;
   /// Whether this actor use asyncio for concurrency.
   bool is_asyncio_ = false;
-
-  /// Set the max concurrency for fiber actor.
-  /// This should be called once for the actor creation task.
-  void SetMaxActorConcurrency(bool is_asyncio, int fiber_max_concurrency);
+  /// Whether this actor execute our of order.
+  bool execute_out_of_order_ = false;
 };
 
 }  // namespace core

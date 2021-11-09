@@ -61,6 +61,9 @@ message ActorHandle {
 
   // The namespace that this actor belongs to.
   string ray_namespace = 11;
+
+  // Does the actor support execute out of order.
+  bool execute_out_of_order = 12;
 }
 
 message ReturnObject {

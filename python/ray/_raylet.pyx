@@ -1523,7 +1523,10 @@ cdef class CoreWorker:
                         placement_group_capture_child_tasks,
                         serialized_runtime_env,
                         c_runtime_env_uris,
-                        c_concurrency_groups),
+                        c_concurrency_groups,
+                        # execute out of order for
+                        # async or threaded actors.
+                        is_asyncio or max_concurrency > 1),
                     extension_data,
                     &c_actor_id))
 
