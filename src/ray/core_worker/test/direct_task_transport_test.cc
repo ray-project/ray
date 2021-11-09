@@ -266,7 +266,7 @@ class MockActorCreator : public ActorCreatorInterface {
  public:
   MockActorCreator() {}
 
-  Status RegisterActor(const TaskSpecification &task_spec) override {
+  Status RegisterActor(const TaskSpecification &task_spec) const override {
     return Status::OK();
   };
 
