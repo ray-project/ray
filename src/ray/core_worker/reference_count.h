@@ -792,8 +792,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                     const ObjectID &object_id,
                                     const rpc::WorkerAddress &borrower_addr);
 
-  /// Internally decrease the local reference count for the ObjectID by one.
-  /// Note this requires `mutex_` lock is held.
+  /// Decrease the local reference count for the ObjectID by one.
+  /// This method is internal and not thread-safe. mutex_ lock must be held before
+  /// calling this method.
   void RemoveLocalReferenceInternal(const ObjectID &object_id,
                                     std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);

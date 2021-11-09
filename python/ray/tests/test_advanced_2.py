@@ -750,6 +750,7 @@ def test_max_call_tasks(ray_start_regular):
 
 
 # This case tests that the worker leaked issue when task finished with errors.
+# See https://github.com/ray-project/ray/issues/19639.
 #
 # Case steps are:
 #   1. Start a driver which creates a normal task with a long sleeping. This
