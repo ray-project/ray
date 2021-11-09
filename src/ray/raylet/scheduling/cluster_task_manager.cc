@@ -56,6 +56,18 @@ ClusterTaskManager::ClusterTaskManager(
       metric_tasks_dispatched_(0),
       metric_tasks_spilled_(0) {}
 
+void ReplyCancelled(const std::shared_ptr<internal::Work> &work,
+                    bool runtime_env_setup_failed) {
+  auto reply = work->reply;
+  auto callback = work->callback;
+  auto task_spec = work->task.GetTaskSpecification().GetMessage();
+  reply->set_canceled(true);
+  reply->mutable_runtime_env_setup_failed_node_ids()->CopyFrom(
+      task_spec.runtime_env_setup_failed_node_ids());
+  reply->set_runtime_env_setup_failed(runtime_env_setup_failed);
+  callback();
+}
+
 bool ClusterTaskManager::SchedulePendingTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
   TryLocalInfeasibleTaskScheduling();
@@ -72,25 +84,22 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       // tasks from being scheduled.
       const std::shared_ptr<internal::Work> &work = *work_it;
       RayTask task = work->task;
-      RAY_LOG(DEBUG) << "Scheduling pending task "
-                     << task.GetTaskSpecification().TaskId();
+      const TaskSpecification &task_spec = task.GetTaskSpecification();
+      RAY_LOG(DEBUG) << "Scheduling pending task " << task_spec.TaskId();
       auto placement_resources =
-          task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
+          task_spec.GetRequiredPlacementResources().GetResourceMap();
       // This argument is used to set violation, which is an unsupported feature now.
       int64_t _unused;
       std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
           placement_resources,
-          /*requires_object_store_memory=*/false,
-          task.GetTaskSpecification().IsActorCreationTask(),
-          /*force_spillback=*/false, &_unused, &is_infeasible,
-          task.GetTaskSpecification());
+          /*requires_object_store_memory=*/false, task_spec.IsActorCreationTask(),
+          /*force_spillback=*/false, &_unused, &is_infeasible, task_spec);
 
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
       if (node_id_string.empty()) {
-        RAY_LOG(DEBUG) << "No node found to schedule a task "
-                       << task.GetTaskSpecification().TaskId() << " is infeasible?"
-                       << is_infeasible;
+        RAY_LOG(DEBUG) << "No node found to schedule a task " << task_spec.TaskId()
+                       << " is infeasible?" << is_infeasible;
         break;
       }
 
@@ -113,10 +122,24 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       auto &work_queue = shapes_it->second;
       const auto &work = work_queue[0];
       const RayTask task = work->task;
-      announce_infeasible_task_(task);
+      const TaskSpecification task_spec = task.GetTaskSpecification();
 
-      // TODO(sang): Use a shared pointer deque to reduce copy overhead.
-      infeasible_tasks_[shapes_it->first] = shapes_it->second;
+      // If this task's runtime env has failed to setup in this node, and can't find
+      // another node to retry, cancel this task immediately.
+      if (task_spec.HasRuntimeEnvFailureAtNode(self_node_id_.Binary())) {
+        // Cancel this task directly and raise a `RuntimeEnvSetupError` exception to
+        // user eventually. The task will be removed from dispatch queue in
+        // `CancelTask`.
+        RAY_LOG(WARNING)
+            << "Task " << task_spec.TaskId()
+            << " has been canceled because runtime env setup failed in this node, and "
+               "there isn't any other node feasible.";
+        ReplyCancelled(work, /*runtime_env_setup_failed=*/true);
+      } else {
+        announce_infeasible_task_(task);
+        // TODO(sang): Use a shared pointer deque to reduce copy overhead.
+        infeasible_tasks_[shapes_it->first] = shapes_it->second;
+      }
       tasks_to_schedule_.erase(shapes_it++);
     } else if (work_queue.empty()) {
       tasks_to_schedule_.erase(shapes_it++);
@@ -237,8 +260,21 @@ bool ClusterTaskManager::PoppedWorkerHandler(
           // user eventually. The task will be removed from dispatch queue in
           // `CancelTask`.
           CancelTask(task_id, /*runtime_env_setup_failed=*/true);
+          // Remove task dependencies.
+          if (!spec.GetDependencies().empty()) {
+            task_dependency_manager_.RemoveTaskDependencies(
+                task.GetTaskSpecification().TaskId());
+          }
+        } else {
+          /// Retry scheduling.
+          work->SetStateWaiting(cause);
+          tasks_to_schedule_[scheduling_class].push_back(work);
+          ScheduleAndDispatchTasks();
         }
-      } else if (status == PopWorkerStatus::JobConfigMissing) {
+        return dispatched;
+      }
+
+      if (status == PopWorkerStatus::JobConfigMissing) {
         cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
       } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
         cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_RATE_LIMITED;
@@ -582,18 +618,6 @@ void ClusterTaskManager::ReleaseTaskArgs(const TaskID &task_id) {
     }
     executing_task_args_.erase(it);
   }
-}
-
-void ReplyCancelled(std::shared_ptr<internal::Work> &work,
-                    bool runtime_env_setup_failed) {
-  auto reply = work->reply;
-  auto callback = work->callback;
-  auto task_spec = work->task.GetTaskSpecification().GetMessage();
-  reply->set_canceled(true);
-  reply->mutable_runtime_env_setup_failed_node_ids()->CopyFrom(
-      task_spec.runtime_env_setup_failed_node_ids());
-  reply->set_runtime_env_setup_failed(runtime_env_setup_failed);
-  callback();
 }
 
 bool ClusterTaskManager::CancelTask(const TaskID &task_id,
