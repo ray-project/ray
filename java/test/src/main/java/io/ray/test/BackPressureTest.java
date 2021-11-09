@@ -43,6 +43,7 @@ public class BackPressureTest extends BaseTest {
       LOGGER.info("call waitSignal");
       signalActor.task(SignalActor::waitSignal).remote();
     } catch (BackPressureException e) {
+      LOGGER.info(e.toString());
       backPressure = true;
     } finally {
       Assert.assertTrue(backPressure);

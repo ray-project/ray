@@ -12,11 +12,6 @@ public class BackPressureException extends RayException {
   public ActorId actorId;
 
   public BackPressureException(String message) {
-    super("Back pressure occurs when submitting the actor call.");
-  }
-
-  public BackPressureException(ActorId actorId) {
-    super(String.format("Back pressure occurs when submitting the actor call to %s.", actorId));
-    this.actorId = actorId;
+    super(message);
   }
 }

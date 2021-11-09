@@ -362,7 +362,15 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   auto return_refs = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
       actor_id, ray_function, task_args, task_options);
   if (!return_refs.has_value()) {
-    env->ThrowNew(java_ray_back_pressure_exception_class, "Back pressure");
+    std::stringstream ss;
+    ss << "Cannot submit the actor task "
+       << ray_function.GetFunctionDescriptor()->ToString();
+    ss << " because the number of pending tasks queued exceeds the limit "
+       << CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id)->MaxPendingCalls();
+    ss << " To increase the max number of queued tasks to the actor, use "
+          "setMaxPendingCalls to set the max_pending_calls option when create the "
+          "actor.";
+    env->ThrowNew(java_ray_back_pressure_exception_class, ss.str().c_str());
     return nullptr;
   }
 

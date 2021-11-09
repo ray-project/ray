@@ -405,10 +405,7 @@ class RuntimeEnvSetupError(RayError):
 
 class BackPressureError(RayError):
     """Raised when actor call back pressure occurs."""
-
-    def __str__(self):
-        return super(BackPressureError, self).__str__() + (
-            "Back pressure occurs when submitting the actor call.")
+    pass
 
 
 RAY_EXCEPTION_TYPES = [

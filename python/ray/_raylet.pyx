@@ -1634,7 +1634,7 @@ cdef class CoreWorker:
                 raise BackPressureError("Cannot submit the actor task {} "
                                         "of actor {} because the number "
                                         "of pending tasks queued exceeds "
-                                        "the limit {}. To increase the max ""
+                                        "the limit {}. To increase the max "
                                         "number of queued tasks to the actor, "
                                         "set the max_pending_calls option "
                                         "when create the actor. ".format(
