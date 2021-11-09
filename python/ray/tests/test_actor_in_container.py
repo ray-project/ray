@@ -67,45 +67,6 @@ def test_actor_in_heterogeneous_image():
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
-def test_actor_in_container_with_resource_limit():
-    job_config = ray.job_config.JobConfig(
-        runtime_env={
-            "container": {
-                "image": "rayproject/ray-worker-container:nightly-py36-cpu",
-                # Currently runc will mount individual cgroupfs
-                # issue: https://github.com/containers/podman/issues/10989
-                "run_options": [
-                    "--runtime", "/usr/sbin/runc", "--security-opt",
-                    "seccomp=unconfined"
-                ],
-            }
-        })
-    ray.init(
-        job_config=job_config,
-        _system_config={"worker_resource_limits_enabled": True})
-
-    @ray.remote
-    class Counter(object):
-        def __init__(self):
-            self.value = 0
-
-        def get_memory_limit(self):
-            f = open("/sys/fs/cgroup/memory/memory.limit_in_bytes", "r")
-            return f.readline().strip("\n")
-
-        def get_cpu_share(self):
-            f = open("/sys/fs/cgroup/cpu/cpu.shares", "r")
-            return f.readline().strip("\n")
-
-    a1 = Counter.options(num_cpus=2, memory=100 * 1024 * 1024).remote()
-    cpu_share = ray.get(a1.get_cpu_share.remote())
-    assert cpu_share == "2048"
-    memory_limit = ray.get(a1.get_memory_limit.remote())
-    assert memory_limit == "104857600"
-    ray.shutdown()
-
-
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_reuse_worker_with_resource_limit():
     runtime_env = {
         "container": {
