@@ -8,6 +8,7 @@ import ray
 from ray import ObjectRef
 from ray._private import signature
 
+from ray.workflow import events
 from ray.workflow import workflow_context
 from ray.workflow import recovery
 from ray.workflow.workflow_context import get_step_status_info
@@ -151,7 +152,17 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
         workflow_data.inputs)
     if step_options.step_type == StepType.EVENT:
-        raise EventsUnresolved([workflow])
+        logger.info(f"DETECTED EVENT, type: {workflow_data.func_body}, inputs: {baked_inputs}")
+        coordinator = events.get_or_create_manager()
+        workflow_id = workflow_context.get_current_workflow_id()
+        ref = coordinator.register_workflow_dependency.remote(
+            workflow_id, workflow_data,
+workflow_context.get_workflow_step_context(), workflow.step_id,
+            baked_inputs
+
+        )
+        ray.get(ref)
+        raise EventsUnresolved([])
 
     persisted_output, volatile_output = _workflow_step_executor.options(
         **step_options.ray_options).remote(

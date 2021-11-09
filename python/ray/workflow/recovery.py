@@ -1,10 +1,11 @@
 from typing import List, Any, Union, Dict, Callable, Tuple, Optional
 
 import ray
+from ray.workflow import events
 from ray.workflow import workflow_context
 from ray.workflow import serialization
 from ray.workflow.common import (Workflow, StepID, WorkflowRef,
-                                 WorkflowExecutionResult)
+                                 WorkflowExecutionResult, StepType,)
 from ray.workflow import storage
 from ray.workflow import workflow_storage
 from ray.workflow.step_function import WorkflowStepFunction
@@ -100,12 +101,17 @@ def _construct_resume_workflow_from_step(
         args, kwargs = reader.load_step_args(step_id, input_workflows,
                                              workflow_refs)
         step_options = result.step_options
-        recovery_workflow: Workflow = _recover_workflow_step.step(
-            args, kwargs, input_workflows, workflow_refs)
-        recovery_workflow._step_id = step_id
-        # override step_options
-        recovery_workflow.data.step_options = step_options
-        return recovery_workflow
+        if step_options.step_type == StepType.EVENT:
+            func_body = reader.load_step_func_body(step_id)
+            return events.make_event(func_body, args, kwargs)
+            pass
+        else:
+            recovery_workflow: Workflow = _recover_workflow_step.step(
+                args, kwargs, input_workflows, workflow_refs)
+            recovery_workflow._step_id = step_id
+            # override step_options
+            recovery_workflow.data.step_options = step_options
+            return recovery_workflow
 
 
 @ray.remote(num_returns=2)

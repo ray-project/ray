@@ -65,6 +65,7 @@ def _resolve_workflow_output(workflow_id: Optional[str],
     Returns:
         The resolved physical object.
     """
+    logger.info("============= IN DERENFERENCER ===================")
     if workflow_id is not None:
         try:
             actor = get_management_actor()
@@ -178,16 +179,9 @@ class WorkflowManagementActor:
             current_output = self._workflow_outputs[workflow_id].output
         except KeyError:
             current_output = None
-        result = None
-        try:
-            result = recovery.resume_workflow_step(
-                workflow_id, step_id, self._store.storage_url, current_output)
-        except EventsUnresolved as e:
-            print("==========================================")
-            print("Got an eventsunresolved exeception")
-            print(e.events)
-            print("==========================================")
-            return None
+        logger.info(f"Resuming workflow_id")
+        result = recovery.resume_workflow_step(
+            workflow_id, step_id, self._store.storage_url, current_output)
         latest_output = LatestWorkflowOutput(result.persisted_output,
                                              workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output

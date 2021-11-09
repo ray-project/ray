@@ -22,6 +22,7 @@ WorkflowOutputType = ObjectRef
 MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
 STORAGE_ACTOR_NAME = "StorageManagementActor"
+EVENT_ACTOR_NAME = "EventManagementActor"
 
 
 def get_module(f):

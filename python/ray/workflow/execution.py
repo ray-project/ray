@@ -76,7 +76,7 @@ def run(entry_workflow: Workflow,
         result: "WorkflowExecutionResult" = ray.get(
             workflow_manager.run_or_resume.remote(workflow_id,
                                                   ignore_existing))
-        if step_type == StepType.FUNCTION:
+        if step_type == StepType.FUNCTION or step_type == StepType.EVENT:
             return flatten_workflow_output(workflow_id,
                                            result.persisted_output)
         else:
