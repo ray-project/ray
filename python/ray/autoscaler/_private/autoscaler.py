@@ -425,7 +425,7 @@ class StandardAutoscaler:
             for ip in connected_node_ips
         }
 
-        logger.info(f"Draining raylets with ids {raylet_ids_to_drain}.")
+        logger.info(f"Draining len({raylet_ids_to_drain}) raylet(s).")
         try:
             request = gcs_service_pb2.DrainNodeRequest(drain_node_data=[
                 gcs_service_pb2.DrainNodeData(node_id=raylet_id)
@@ -447,7 +447,7 @@ class StandardAutoscaler:
             if failed_to_drain:
                 self.prom_metrics.drain_node_exceptions.inc()
                 logger.error(
-                    f"Failed to drain raylets with ids {failed_to_drain}.")
+                    f"Failed to drain {len(failed_to_drain)} raylet(s).")
 
         # If we get a gRPC error with an UNIMPLEMENTED code, fail silently.
         # This error indicates that the GCS is using Ray version < 1.8.0,
