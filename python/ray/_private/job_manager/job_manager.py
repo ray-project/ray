@@ -20,8 +20,6 @@ from ray.experimental.internal_kv import (
 )
 from ray.dashboard.modules.job.data_types import JobStatus
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
-# Used in testing only to cover job status under concurrency
-from ray._private.test_utils import SignalActor
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +193,7 @@ class JobSupervisor:
             self,
             entrypoint_cmd: str,
             # Signal actor used in testing to capture PENDING -> RUNNING cases
-            _start_signal_actor: Optional[SignalActor] = None):
+            _start_signal_actor: Optional[ActorHandle] = None):
         """
         Stop and start both happen asynchrously, coordinated by asyncio event
         and coroutine, respectively.
@@ -312,7 +310,7 @@ class JobManager:
                    entrypoint: str,
                    runtime_env: Optional[Dict[str, Any]] = None,
                    metadata: Optional[Dict[str, str]] = None,
-                   _start_signal_actor: Optional[SignalActor] = None) -> str:
+                   _start_signal_actor: Optional[ActorHandle] = None) -> str:
         """
         Job execution happens asynchronously.
 
