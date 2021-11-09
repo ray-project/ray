@@ -396,7 +396,7 @@ py_test(
 
 py_test(
     name = "blendsearch_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/blendsearch_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
