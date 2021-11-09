@@ -75,6 +75,8 @@ def start_actors(num_actors, num_nodes):
     num_actors = int(num_actors)
     start = time.time()
     nodes = []
+    # Place an actor per node in round-robin.
+    # It is added here to simulate the real user workload.
     while len(nodes) < num_nodes:
         nodes = [
             next((r for r in n["Resources"] if "node" in r), None)
