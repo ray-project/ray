@@ -1798,7 +1798,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_id, GetCallerId(), rpc_address_, job_id,
       /*actor_cursor=*/ObjectID::FromIndex(actor_creation_task_id, 1),
       function.GetLanguage(), function.GetFunctionDescriptor(), extension_data,
-      actor_creation_options.max_task_retries);
+      actor_creation_options.max_task_retries, actor_name,
+      actor_creation_options.ray_namespace);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   builder.SetActorCreationTaskSpec(
@@ -2074,7 +2075,9 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
       cb(Status::Invalid(stream.str()));
     }
   });
-  return f.get();
+  const auto &status = f.get();
+  actor_manager_->InvalidateActorHandleCache(actor_id);
+  return status;
 }
 
 Status CoreWorker::KillActorLocalMode(const ActorID &actor_id) {

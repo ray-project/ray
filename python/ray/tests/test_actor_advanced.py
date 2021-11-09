@@ -1311,7 +1311,6 @@ def test_get_actor_after_killed(shutdown_only):
     actor = A.options(
         name="actor", namespace="namespace", lifetime="detached").remote()
     ray.kill(actor)
-    # This could be flaky due to our caching named actor mechanism.
     with pytest.raises(ValueError):
         ray.get_actor("actor", namespace="namespace")
 
@@ -1323,12 +1322,6 @@ def test_get_actor_after_killed(shutdown_only):
     ray.kill(actor, no_restart=False)
     assert ray.get(
         ray.get_actor("actor_2", namespace="namespace").ready.remote())
-
-    # TODO(sang): This currently doesn't pass without time.sleep.
-    # ray.kill(actor, no_restart=False)
-    # # Now the actor is killed.
-    # with pytest.raises(ValueError):
-    #     ray.get_actor("actor_2", namespace="namespace")
 
 
 if __name__ == "__main__":
