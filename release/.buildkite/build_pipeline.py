@@ -103,6 +103,7 @@ NIGHTLY_TESTS = {
         "dask_xgboost_test",
         "modin_xgboost_test",
         "torch_tune_serve_test",
+        "rllib_tune_serve_test",
     ],
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
         "dask_on_ray_large_scale_test_no_spilling",
