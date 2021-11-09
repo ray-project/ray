@@ -172,6 +172,7 @@ test_python() {
       -python/ray/tests:test_multi_node
       -python/ray/tests:test_multi_node_2
       -python/ray/tests:test_multi_node_3
+      -python/ray/tests:test_multi_node_failures_2
       -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
       -python/ray/tests:test_multiprocessing_client_mode  # timeout
       -python/ray/tests:test_node_manager
@@ -186,6 +187,7 @@ test_python() {
       -python/ray/tests:test_runtime_env_plugin # runtime_env not supported on Windows
       -python/ray/tests:test_runtime_env_env_vars # runtime_env not supported on Windows
       -python/ray/tests:test_runtime_env_complicated # conda install slow leading to timeout
+      -python/ray/tests:test_runtime_env_conda # conda not supported on Windows
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_k8s_operator_unit_tests

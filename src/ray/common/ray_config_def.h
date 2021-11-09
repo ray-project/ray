@@ -92,6 +92,14 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
+/// Maximum amount of lineage to keep in bytes. This includes the specs of all
+/// tasks that have previously already finished but that may be retried again.
+/// If we reach this limit, 50% of the current lineage will be evicted and
+/// objects that are still in scope will no longer be reconstructed if lost.
+/// Each task spec is on the order of 1KB but can be much larger if it has many
+/// inlined args.
+RAY_CONFIG(int64_t, max_lineage_bytes, 1024 * 1024 * 1024)
+
 /// Whether to re-populate plasma memory. This avoids memory allocation failures
 /// at runtime (SIGBUS errors creating new objects), however it will use more memory
 /// upfront and can slow down Ray startup.
@@ -312,7 +320,7 @@ RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 RAY_CONFIG(uint32_t, max_tasks_in_flight_per_worker, 1)
 
 /// Maximum number of pending lease requests per scheduling category
-RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 10)
+RAY_CONFIG(uint64_t, max_pending_lease_requests_per_scheduling_category, 1)
 
 /// Interval to restart dashboard agent after the process exit.
 RAY_CONFIG(uint32_t, agent_restart_interval_ms, 1000)
