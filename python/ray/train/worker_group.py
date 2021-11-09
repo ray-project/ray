@@ -301,6 +301,11 @@ class WorkerGroup:
     def add_workers(self, num_workers: int):
         """Adds ``num_workers`` to this WorkerGroup.
 
+        Note: Adding workers when the cluster/placement group is at capacity
+        may lead to undefined hanging behavior. If you are attempting to
+        replace existing workers in the WorkerGroup, remove_workers() should
+        be called first.
+
         Args:
             num_workers (int): The number of workers to add.
         """
