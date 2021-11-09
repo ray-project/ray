@@ -2289,6 +2289,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestBasicLineage) {
   rc->SetReleaseLineageCallback(
       [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
         lineage_deleted.push_back(object_id);
+        return 0;
       });
 
   // We should not keep lineage for borrowed objects.
@@ -2334,6 +2335,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
         if (i > 0) {
           ids_to_release->push_back(ids[i - 1]);
         }
+        return 0;
       });
 
   for (size_t i = 0; i < ids.size() - 1; i++) {
@@ -2366,6 +2368,53 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
   ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
 }
 
+TEST_F(ReferenceCountLineageEnabledTest, TestEvictLineage) {
+  std::vector<ObjectID> ids;
+  for (int i = 0; i < 3; i++) {
+    ObjectID id = ObjectID::FromRandom();
+    ids.push_back(id);
+    rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true);
+  }
+  std::vector<ObjectID> lineage_deleted;
+  rc->SetReleaseLineageCallback(
+      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+        lineage_deleted.push_back(object_id);
+        if (object_id == ids[1]) {
+          // ID1 depends on ID0.
+          ids_to_release->push_back(ids[0]);
+        }
+
+        return 10;
+      });
+
+  // ID1 depends on ID0.
+  rc->UpdateSubmittedTaskReferences({ids[0]});
+  rc->UpdateFinishedTaskReferences({ids[0]}, /*release_lineage=*/false, empty_borrower,
+                                   empty_refs, nullptr);
+  rc->AddLocalReference(ids[1], "");
+  rc->AddLocalReference(ids[2], "");
+
+  bool lineage_evicted = false;
+  for (const auto &id : ids) {
+    ASSERT_TRUE(rc->IsObjectReconstructable(id, &lineage_evicted));
+    ASSERT_FALSE(lineage_evicted);
+  }
+
+  // IDs 0 and 1 should be evicted because they were created before ID2, and
+  // ID1 depends on ID0.
+  auto bytes_evicted = rc->EvictLineage(10);
+  ASSERT_EQ(bytes_evicted, 20);
+  ASSERT_EQ(lineage_deleted.size(), 2);
+  ASSERT_FALSE(rc->HasReference(ids[0]));
+  ASSERT_TRUE(rc->HasReference(ids[1]));
+  ASSERT_TRUE(rc->HasReference(ids[2]));
+  // ID1 is no longer reconstructable due to lineage eviction.
+  ASSERT_FALSE(rc->IsObjectReconstructable(ids[1], &lineage_evicted));
+  ASSERT_TRUE(lineage_evicted);
+  ASSERT_TRUE(rc->IsObjectReconstructable(ids[2], &lineage_evicted));
+  ASSERT_FALSE(lineage_evicted);
+}
+
 TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
   std::vector<ObjectID> out;
   std::vector<ObjectID> lineage_deleted;
@@ -2376,6 +2425,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
   rc->SetReleaseLineageCallback(
       [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
         lineage_deleted.push_back(object_id);
+        return 0;
       });
 
   // Local references.

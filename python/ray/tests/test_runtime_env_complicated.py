@@ -620,8 +620,8 @@ def test_conda_pip_filepaths_remote(call_ray_start, tmp_path):
             with pytest.raises(ModuleNotFoundError):
                 # Ensure pip-install-test is not installed on the test machine
                 import pip_install_test  # noqa
-            assert ray.get(f_pip.remote())
-            assert ray.get(f_conda.remote())
+            assert ray.get(f_pip.remote()), str(runtime_env)
+            assert ray.get(f_conda.remote()), str(runtime_env)
 
 
 install_env_script = """
