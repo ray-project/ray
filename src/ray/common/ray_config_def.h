@@ -435,7 +435,7 @@ RAY_CONFIG(bool, gcs_actor_scheduling_enabled, false);
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 
 /// If enabled, raylet will response resources only when resources are changed.
-RAY_CONFIG(bool, enable_light_weight_resource_report, false)
+RAY_CONFIG(bool, enable_light_weight_resource_report, true)
 
 // The number of seconds to wait for the Raylet to start. This is normally
 // fast, but when RAY_preallocate_plasma_memory=1 is set, it may take some time
