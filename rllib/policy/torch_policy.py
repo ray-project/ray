@@ -228,13 +228,16 @@ class TorchPolicy(Policy):
 
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
-        # If `loss` provided here, use as-is (as a function),
-        # otherwise convert the overridden `self.loss` into a staticmethod so
-        # it can be called the same way as `loss`.
+        # To ensure backward compatibility:
+        # Old way: If `loss` provided here, use as-is (as a function).
         if loss is not None:
             self._loss = loss
-        elif self.loss.__func__.__qualname__ != "TorchPolicy.loss":
-            self._loss = staticmethod(self.loss)
+        # New way: Convert the overridden `self.loss` into a plain function,
+        # so it can be called the same way as `loss` would be, ensuring
+        # backward compatibility.
+        elif self.loss.__func__.__qualname__ != "Policy.loss":
+            self._loss = self.loss.__func__
+        # `loss` not provided nor overridden from Policy -> Set to None.
         else:
             self._loss = None
         self._optimizers = force_list(self.optimizer())

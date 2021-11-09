@@ -326,10 +326,16 @@ def build_eager_tf_policy(
             self._re_trace_counter = 0
 
             self._loss_initialized = False
+            # To ensure backward compatibility:
+            # Old way: If `loss` provided here, use as-is (as a function).
             if loss_fn is not None:
                 self._loss = loss_fn
-            elif self.loss.__func__.__qualname__ != "TorchPolicy.loss":
-                self._loss = staticmethod(self.loss)
+            # New way: Convert the overridden `self.loss` into a plain
+            # function, so it can be called the same way as `loss` would
+            # be, ensuring backward compatibility.
+            elif self.loss.__func__.__qualname__ != "Policy.loss":
+                self._loss = self.loss.__func__
+            # `loss` not provided nor overridden from Policy -> Set to None.
             else:
                 self._loss = None
 

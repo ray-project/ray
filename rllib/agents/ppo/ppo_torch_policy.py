@@ -144,7 +144,7 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
 
         return total_loss
 
-    def _value(self, input_dict):
+    def _value(self, **input_dict):
         # When doing GAE, we need the value function estimate on the
         # observation.
         if self.config["use_gae"]:

@@ -271,7 +271,8 @@ class TestPPO(unittest.TestCase):
                 ppo_surrogate_loss_tf(policy, policy.model, Categorical,
                                       train_batch)
             elif fw == "torch":
-                PPOTorchPolicy.loss(policy, train_batch)
+                PPOTorchPolicy.loss(policy, policy.model, policy.dist_class,
+                                    train_batch)
 
             vars = policy.model.variables() if fw != "torch" else \
                 list(policy.model.parameters())

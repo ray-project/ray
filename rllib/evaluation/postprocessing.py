@@ -168,10 +168,7 @@ def compute_gae_for_sample_batch(
         # Create an input dict according to the Model's requirements.
         input_dict = sample_batch.get_single_step_input_dict(
             policy.model.view_requirements, index="last")
-        if callable(getattr(policy, "value_function", None)):
-            last_r = policy.value_function(input_dict)
-        else:
-            last_r = policy._value(**input_dict)
+        last_r = policy._value(**input_dict)
 
     # Adds the policy logits, VF preds, and advantages to the batch,
     # using GAE ("generalized advantage estimation") or not.
