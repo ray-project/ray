@@ -428,7 +428,7 @@ def get_conda_uri_from_pb(runtime_env: RuntimeEnv):
         key, value = _decode_plugin_uri(uri)
         if key == "conda":
             return value
-        return None
+    return None
 
 
 def override_task_or_actor_runtime_env(
