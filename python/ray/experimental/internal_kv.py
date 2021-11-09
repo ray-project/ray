@@ -1,5 +1,4 @@
-from typing import List, Union, Optional, Tuple, Any, Dict
-import ray.cloudpickle as pickle
+from typing import List, Union, Optional, Tuple
 
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.gcs_utils import GcsClient
@@ -30,44 +29,24 @@ def _initialize_internal_kv(gcs_client: GcsClient):
 # If the key in storage has this, it'll contain namespace
 __NS_START_CHAR = b"@"
 
-# b'#' will be the leading characters for field
-__FS_START_CHAR = b"#"
 
-
-def __make_key(namespace: Optional[str],
-               key: bytes,
-               field: Optional[str] = None) -> bytes:
+def __make_key(namespace: Optional[str], key: bytes) -> bytes:
     if namespace is None:
-        if field is not None:
-            raise ValueError("field has to be none is namespace is not set")
         if key.startswith(__NS_START_CHAR + b":"):
             raise ValueError("key is not allowed to start with '@:'")
         return key
     assert isinstance(namespace, str)
     assert isinstance(key, bytes)
-    if field is None:
-        return b":".join([__NS_START_CHAR, namespace.encode(), key])
-    else:
-        return b":".join([
-            __NS_START_CHAR,
-            namespace.encode(), __FS_START_CHAR,
-            field.encode(), key
-        ])
+    return b":".join([__NS_START_CHAR, namespace.encode(), key])
 
 
-# db key -> (ns, fs, key)
-def __parse_key(key: bytes) -> Tuple[Optional[str], Optional[str], bytes]:
+def __parse_key(key: bytes) -> Tuple[Optional[str], bytes]:
     assert isinstance(key, bytes)
     if not key.startswith(__NS_START_CHAR + b":"):
-        return (None, None, key)
+        return (None, key)
+
     _, ns, key = key.split(b":", 2)
-    ns = ns.decode()
-    if key.startswith(__FS_START_CHAR + b":"):
-        fs, key = key.split(b":", 2)
-        fs = fs.decode()
-    else:
-        fs = None
-    return (ns, fs, key)
+    return (ns.decode(), key)
 
 
 @client_mode_hook(auto_init=False)
@@ -146,49 +125,6 @@ def _internal_kv_list(prefix: Union[str, bytes],
         prefix = prefix.encode()
     prefix = __make_key(namespace, prefix)
     return [
-        __parse_key(key)[2]
+        __parse_key(key)[1]
         for key in global_gcs_client.internal_kv_keys(prefix)
     ]
-
-
-@client_mode_hook(auto_init=False)
-def _internal_kv_count(prefix: Union[str, bytes],
-                       *,
-                       namespace: Optional[str] = None) -> int:
-    """Count the number of keys with this prefix
-    """
-    if isinstance(prefix, str):
-        prefix = prefix.encode()
-    prefix = __make_key(namespace, prefix)
-    # TODO: Add built in support for this API
-    return len(global_gcs_client.internal_kv_keys(prefix))
-
-
-@client_mode_hook(auto_init=False)
-def _internal_kv_mput(key: Union[str, bytes],
-                      value: Dict[Union[str, bytes], Any],
-                      overwrite: bool = True,
-                      *,
-                      namespace: Optional[str] = None) -> int:
-    put_num = 0
-    for (field, data) in value.items():
-        field_key = __make_key(namespace, key, field)
-        if global_gcs_client.internal_kv_put(field_key, pickle.dumps(data),
-                                             overwrite) != 0:
-            put_num += 1
-    return put_num
-
-
-@client_mode_hook(auto_init=False)
-def _internal_kv_mget(key: Union[str, bytes],
-                      fields: List[str],
-                      *,
-                      namespace: Optional[str] = None) -> List[Any]:
-    data = []
-    for field in fields:
-        field_key = __make_key(namespace, key, field)
-        val = global_gcs_client.internal_kv_get(field_key)
-        if val is not None:
-            val = pickle.loads(val)
-        data.append(val)
-    return data
