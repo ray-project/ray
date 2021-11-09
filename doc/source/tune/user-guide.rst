@@ -352,13 +352,10 @@ Let's assume for this example you're running this script from your laptop, and c
         # see above! we will sync our checkpoints to S3 directory
         sync_config=sync_config,
 
-        # we'll checkpoint every 10 iterations, keep the best five
-        # checkpoints (by AUC score, reported by the trainable, descending), and always checkpoint
-        # at the end of the last run!
+        # we'll keep the best five checkpoints at all times
+        # checkpoints (by AUC score, reported by the trainable, descending)
         checkpoint_score_attr="max-auc",
         keep_checkpoints_num=5,
-        checkpoint_freq=10,
-        checkpoint_at_end=True,
 
         # a very useful trick! this will resume from the last run specified by
         # sync_config (if one exists), otherwise it will start a new tuning run
@@ -369,7 +366,7 @@ In this example, checkpoints will be saved:
 
 * **Locally**: not saved! we set ``sync_to_driver=False``, so nothing will be sync'd to the driver (your laptop)
 * **S3**: ``s3://my-checkpoints-bucket/path/my-tune-exp/<trial_name>/checkpoint_<step>``
-* **On head node**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>``
+* **On head node**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node, due to ``sync_to_driver=False``)
 * **On workers nodes**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node)
 
 If your run stopped for any reason (finished, errored, user CTRL+C), you can restart it any time by running the script above again -- note with ``resume="AUTO"``, it will detect the previous run so long as the ``sync_config`` points to the same location.
