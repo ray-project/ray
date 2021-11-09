@@ -1234,26 +1234,25 @@ TEST_F(WorkerPoolTest, TestWorkerCappingWithExitDelay) {
   /// reply is delayed, We shouldn't send more Exit requests to workers in this process
   /// until we received all Exit replies form this process.
   ///
-  auto job_id = JOB_ID;
 
   ///
   /// Register some idle Python and Java (w/ multi-worker enabled) workers
   ///
   std::vector<std::shared_ptr<WorkerInterface>> workers;
-  std::unordered_map<Language, int> language_to_workers_to_start;
-  language_to_workers_to_start.emplace(Language::PYTHON, 1);
-  language_to_workers_to_start.emplace(Language::JAVA, NUM_WORKERS_PER_PROCESS_JAVA);
+  std::vector<Language> languages({Language::PYTHON, Language::JAVA});
   for (int i = 0; i < POOL_SIZE_SOFT_LIMIT * 2; i++) {
-    for (const auto &entry : language_to_workers_to_start) {
-      auto language = entry.first;
-      auto workers_to_start = entry.second;
+    for (const auto &language : languages) {
+      PopWorkerStatus status;
       Process proc = worker_pool_->StartWorkerProcess(language, rpc::WorkerType::WORKER,
-                                                      job_id, workers_to_start,
-                                                      /*for_actor=*/false);
+                                                      JOB_ID, &status);
+      int workers_to_start =
+          language == Language::JAVA ? NUM_WORKERS_PER_PROCESS_JAVA : 1;
       for (int j = 0; j < workers_to_start; j++) {
-        auto worker = CreateWorker(Process(), language, job_id);
+        auto worker = worker_pool_->CreateWorker(Process(), language);
+        worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
         workers.push_back(worker);
         RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                                  worker_pool_->GetStartupToken(proc),
                                                   [](Status, int) {}));
         worker_pool_->OnWorkerStarted(worker);
         ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
