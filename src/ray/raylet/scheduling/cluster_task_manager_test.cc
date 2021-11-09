@@ -134,7 +134,7 @@ RayTask CreateTask(const std::unordered_map<std::string, double> &required_resou
                                  FunctionDescriptorBuilder::BuildPython("", "", "", ""),
                                  job_id, TaskID::Nil(), 0, TaskID::Nil(), address, 0,
                                  required_resources, {},
-                                 std::make_pair(PlacementGroupID::Nil(), -1), true, "",
+                                 std::make_pair(PlacementGroupID::Nil(), -1), true, "", 0,
                                  serialized_runtime_env, runtime_env_uris);
 
   if (!args.empty()) {

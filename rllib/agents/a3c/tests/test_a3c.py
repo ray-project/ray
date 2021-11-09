@@ -27,7 +27,7 @@ class TestA3C(unittest.TestCase):
         num_iterations = 1
 
         # Test against all frameworks.
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, with_eager_tracing=True):
             for env in ["CartPole-v1", "Pendulum-v1", "PongDeterministic-v0"]:
                 print("env={}".format(env))
                 config["model"]["use_lstm"] = env == "CartPole-v1"

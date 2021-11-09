@@ -44,9 +44,11 @@ def _convert_to_tf(x, dtype=None):
 
     if x is not None:
         d = dtype
-        x = tf.nest.map_structure(
+        return tf.nest.map_structure(
             lambda f: _convert_to_tf(f, d) if isinstance(f, RepeatedValues)
-            else tf.convert_to_tensor(f, d) if f is not None else None, x)
+            else tf.convert_to_tensor(f, d) if
+            f is not None and not tf.is_tensor(f) else f, x)
+
     return x
 
 
@@ -101,32 +103,39 @@ def _disallow_var_creation(next_creator, **kw):
                      "model initialization: {}".format(v.name))
 
 
-def traced_eager_policy(eager_policy_cls):
-    """Wrapper that enables tracing for all eager policy methods.
+def check_too_many_retraces(obj):
+    """Asserts that a given number of re-traces is not breached."""
 
-    This is enabled by the --trace / "eager_tracing" config."""
+    def _func(self_, *args, **kwargs):
+        if self_.config.get("eager_max_retraces") is not None and \
+                self_._re_trace_counter > self_.config["eager_max_retraces"]:
+            raise RuntimeError(
+                "Too many tf-eager re-traces detected! This could lead to"
+                " significant slow-downs (even slower than running in "
+                "tf-eager mode w/ `eager_tracing=False`). To switch off "
+                "these re-trace counting checks, set `eager_max_retraces`"
+                " in your config to None.")
+        return obj(self_, *args, **kwargs)
+
+    return _func
+
+
+def traced_eager_policy(eager_policy_cls):
+    """Wrapper class that enables tracing for all eager policy methods.
+
+    This is enabled by the `--trace`/`eager_tracing=True` config when
+    framework=[tf2|tfe].
+    """
 
     class TracedEagerPolicy(eager_policy_cls):
         def __init__(self, *args, **kwargs):
-            self._traced_learn_on_batch = None
-            self._traced_compute_action_helper = False
-            self._traced_compute_gradients = None
-            self._traced_apply_gradients = None
+            self._traced_learn_on_batch_helper = False
+            self._traced_compute_actions_helper = False
+            self._traced_compute_gradients_helper = False
+            self._traced_apply_gradients_helper = False
             super(TracedEagerPolicy, self).__init__(*args, **kwargs)
 
-        @override(eager_policy_cls)
-        @convert_eager_inputs
-        @convert_eager_outputs
-        def _learn_on_batch_eager(self, samples):
-
-            if self._traced_learn_on_batch is None:
-                self._traced_learn_on_batch = tf.function(
-                    super(TracedEagerPolicy, self)._learn_on_batch_eager,
-                    autograph=False,
-                    experimental_relax_shapes=True)
-
-            return self._traced_learn_on_batch(samples)
-
+        @check_too_many_retraces
         @override(Policy)
         def compute_actions_from_input_dict(
                 self,
@@ -136,16 +145,20 @@ def traced_eager_policy(eager_policy_cls):
                 episodes: Optional[List[Episode]] = None,
                 **kwargs
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
+            """Traced version of Policy.compute_actions_from_input_dict."""
 
-            # Create a traced version of `self._compute_action_helper`.
-            if self._traced_compute_action_helper is False:
-                self._compute_action_helper = convert_eager_inputs(
+            # Create a traced version of `self._compute_actions_helper`.
+            if self._traced_compute_actions_helper is False and \
+                    not self._no_tracing:
+                self._compute_actions_helper = convert_eager_inputs(
                     tf.function(
-                        super(TracedEagerPolicy, self)._compute_action_helper,
+                        super(TracedEagerPolicy, self)._compute_actions_helper,
                         autograph=False,
                         experimental_relax_shapes=True))
-                self._traced_compute_action_helper = True
+                self._traced_compute_actions_helper = True
 
+            # Now that the helper method is traced, call super's
+            # apply_gradients (which will call the traced helper).
             return super(TracedEagerPolicy, self).\
                 compute_actions_from_input_dict(
                     input_dict=input_dict,
@@ -155,55 +168,67 @@ def traced_eager_policy(eager_policy_cls):
                     **kwargs,
             )
 
+        @check_too_many_retraces
         @override(eager_policy_cls)
-        @convert_eager_outputs
-        def _compute_gradients_eager(self, samples: SampleBatch) -> \
-                ModelGradients:
-            """Traced version of EagerTFPolicy's `_compute_gradients_eager`.
+        def learn_on_batch(self, samples):
+            """Traced version of Policy.learn_on_batch."""
 
-            Note that `samples` is already zero-padded and has the is_training
-            flag set. We convert this sample batch into tensors here and do the
-            actual computation.
-
-            Args:
-                samples: The SampleBatch to compute gradients for.
-
-            Returns:
-                The computed model gradients.
-            """
-            # Have we traced the `_compute_gradients_eager` function yet?
-            if self._traced_compute_gradients is None:
-                self._traced_compute_gradients = convert_eager_inputs(
+            # Create a traced version of `self._learn_on_batch_helper`.
+            if self._traced_learn_on_batch_helper is False and \
+                    not self._no_tracing:
+                self._learn_on_batch_helper = convert_eager_inputs(
                     tf.function(
-                        super()._compute_gradients_eager,
+                        super(TracedEagerPolicy, self)._learn_on_batch_helper,
                         autograph=False,
                         experimental_relax_shapes=True))
+                self._traced_learn_on_batch_helper = True
 
-            # Call the only-once compiled traced function with the SampleBatch
-            # (will be converted to tensors beforehand).
-            return self._traced_compute_gradients(samples)
+            # Now that the helper method is traced, call super's
+            # apply_gradients (which will call the traced helper).
+            return super(TracedEagerPolicy, self).learn_on_batch(samples)
 
+        @check_too_many_retraces
+        @override(eager_policy_cls)
+        def compute_gradients(self, samples: SampleBatch) -> \
+                ModelGradients:
+            """Traced version of Policy.compute_gradients."""
+
+            # Create a traced version of `self._compute_gradients_helper`.
+            if self._traced_compute_gradients_helper is False and \
+                    not self._no_tracing:
+                self._compute_gradients_helper = convert_eager_inputs(
+                    tf.function(
+                        super(TracedEagerPolicy,
+                              self)._compute_gradients_helper,
+                        autograph=False,
+                        experimental_relax_shapes=True))
+                self._traced_compute_gradients_helper = True
+
+            # Now that the helper method is traced, call super's
+            # apply_gradients (which will call the traced helper).
+            return super(TracedEagerPolicy, self).compute_gradients(samples)
+
+        @check_too_many_retraces
         @override(Policy)
-        @convert_eager_outputs
         def apply_gradients(self, grads: ModelGradients) -> None:
-            """Traced version of EagerTFPolicy's `apply_gradients` method.
+            """Traced version of Policy.apply_gradients."""
 
-            Args:
-                grads: The ModelGradients to apply using our optimizer(s).
-            """
-            # Have we traced the `apply_gradients` function yet?
-            if self._traced_apply_gradients is None:
-                self._traced_apply_gradients = tf.function(
-                    super().apply_gradients,
-                    autograph=False,
-                    experimental_relax_shapes=True)
+            # Create a traced version of `self._apply_gradients_helper`.
+            if self._traced_apply_gradients_helper is False and \
+                    not self._no_tracing:
+                self._apply_gradients_helper = convert_eager_inputs(
+                    tf.function(
+                        super(TracedEagerPolicy, self)._apply_gradients_helper,
+                        autograph=False,
+                        experimental_relax_shapes=True))
+                self._traced_apply_gradients_helper = True
 
-            # Call the only-once compiled traced function with the grads
-            # (will be converted to tensors beforehand).
-            return self._traced_apply_gradients(grads)
+            # Now that the helper method is traced, call super's
+            # apply_gradients (which will call the traced helper).
+            return super(TracedEagerPolicy, self).apply_gradients(grads)
 
-    TracedEagerPolicy.__name__ = eager_policy_cls.__name__
-    TracedEagerPolicy.__qualname__ = eager_policy_cls.__qualname__
+    TracedEagerPolicy.__name__ = eager_policy_cls.__name__ + "_traced"
+    TracedEagerPolicy.__qualname__ = eager_policy_cls.__qualname__ + "_traced"
     return TracedEagerPolicy
 
 
@@ -289,9 +314,20 @@ def build_eager_tf_policy(
                         worker_idx if worker_idx > 0 else "local"))
 
             self._is_training = False
-            self._loss_initialized = False
 
+            # Only for `config.eager_tracing=True`: A counter to keep track of
+            # how many times an eager-traced method (e.g.
+            # `self._compute_actions_helper`) has been re-traced by tensorflow.
+            # We will raise an error if more than n re-tracings have been
+            # detected, since this would considerably slow down execution.
+            # The variable below should only get incremented during the
+            # tf.function trace operations, never when calling the already
+            # traced function after that.
+            self._re_trace_counter = 0
+
+            self._loss_initialized = False
             self._loss = loss_fn
+
             self.batch_divisibility_req = get_batch_divisibility_req(self) if \
                 callable(get_batch_divisibility_req) else \
                 (get_batch_divisibility_req or 1)
@@ -377,107 +413,6 @@ def build_eager_tf_policy(
             self.global_timestep = 0
 
         @override(Policy)
-        def postprocess_trajectory(self,
-                                   sample_batch,
-                                   other_agent_batches=None,
-                                   episode=None):
-            assert tf.executing_eagerly()
-            # Call super's postprocess_trajectory first.
-            sample_batch = Policy.postprocess_trajectory(self, sample_batch)
-            if postprocess_fn:
-                return postprocess_fn(self, sample_batch, other_agent_batches,
-                                      episode)
-            return sample_batch
-
-        @with_lock
-        @override(Policy)
-        def learn_on_batch(self, postprocessed_batch):
-            # Callback handling.
-            learn_stats = {}
-            self.callbacks.on_learn_on_batch(
-                policy=self,
-                train_batch=postprocessed_batch,
-                result=learn_stats)
-
-            if not isinstance(postprocessed_batch, SampleBatch) or \
-                    not postprocessed_batch.zero_padded:
-                pad_batch_to_sequences_of_same_size(
-                    postprocessed_batch,
-                    max_seq_len=self._max_seq_len,
-                    shuffle=False,
-                    batch_divisibility_req=self.batch_divisibility_req,
-                    view_requirements=self.view_requirements,
-                )
-
-            self._is_training = True
-            postprocessed_batch.is_training = True
-            stats = self._learn_on_batch_eager(postprocessed_batch)
-            stats.update({"custom_metrics": learn_stats})
-            return stats
-
-        @convert_eager_inputs
-        @convert_eager_outputs
-        def _learn_on_batch_eager(self, samples):
-            with tf.variable_creator_scope(_disallow_var_creation):
-                grads_and_vars, stats = self._compute_gradients(samples)
-            self._apply_gradients(grads_and_vars)
-            return stats
-
-        @override(Policy)
-        def compute_gradients(self, samples):
-            pad_batch_to_sequences_of_same_size(
-                samples,
-                shuffle=False,
-                max_seq_len=self._max_seq_len,
-                batch_divisibility_req=self.batch_divisibility_req,
-                view_requirements=self.view_requirements,
-            )
-
-            self._is_training = True
-            samples.is_training = True
-            return self._compute_gradients_eager(samples)
-
-        @convert_eager_inputs
-        @convert_eager_outputs
-        def _compute_gradients_eager(self, samples):
-            with tf.variable_creator_scope(_disallow_var_creation):
-                grads_and_vars, stats = self._compute_gradients(samples)
-            grads = [g for g, v in grads_and_vars]
-            return grads, stats
-
-        @override(Policy)
-        def compute_actions(self,
-                            obs_batch,
-                            state_batches=None,
-                            prev_action_batch=None,
-                            prev_reward_batch=None,
-                            info_batch=None,
-                            episodes=None,
-                            explore=None,
-                            timestep=None,
-                            **kwargs):
-
-            # Create input dict to simply pass the entire call to
-            # self.compute_actions_from_input_dict().
-            input_dict = SampleBatch(
-                {
-                    SampleBatch.CUR_OBS: obs_batch,
-                },
-                _is_training=tf.constant(False))
-            if prev_action_batch is not None:
-                input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
-            if prev_reward_batch is not None:
-                input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
-
-            return self.compute_actions_from_input_dict(
-                input_dict=input_dict,
-                explore=explore,
-                timestep=timestep,
-                episodes=episodes,
-                **kwargs,
-            )
-
-        @override(Policy)
         def compute_actions_from_input_dict(
                 self,
                 input_dict: Dict[str, TensorType],
@@ -502,7 +437,8 @@ def build_eager_tf_policy(
 
             # Pass lazy (eager) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
-            input_dict.is_training = False
+            input_dict.set_training(False)
+
             # Pack internal state inputs into (separate) list.
             state_batches = [
                 input_dict[k] for k in input_dict.keys() if "state_in" in k[:8]
@@ -514,7 +450,7 @@ def build_eager_tf_policy(
             self.exploration.before_compute_actions(
                 timestep=timestep, explore=explore, tf_sess=self.get_session())
 
-            ret = self._compute_action_helper(
+            ret = self._compute_actions_helper(
                 input_dict,
                 state_batches,
                 # TODO: Passing episodes into a traced method does not work.
@@ -525,9 +461,254 @@ def build_eager_tf_policy(
             self.global_timestep += int(tree.flatten(ret[0])[0].shape[0])
             return convert_to_numpy(ret)
 
+        @override(Policy)
+        def compute_actions(self,
+                            obs_batch,
+                            state_batches=None,
+                            prev_action_batch=None,
+                            prev_reward_batch=None,
+                            info_batch=None,
+                            episodes=None,
+                            explore=None,
+                            timestep=None,
+                            **kwargs):
+
+            # Create input dict to simply pass the entire call to
+            # self.compute_actions_from_input_dict().
+            input_dict = SampleBatch(
+                {
+                    SampleBatch.CUR_OBS: obs_batch,
+                },
+                _is_training=tf.constant(False))
+            if state_batches is not None:
+                for s in enumerate(state_batches):
+                    input_dict["state_in_{i}"] = s
+            if prev_action_batch is not None:
+                input_dict[SampleBatch.PREV_ACTIONS] = prev_action_batch
+            if prev_reward_batch is not None:
+                input_dict[SampleBatch.PREV_REWARDS] = prev_reward_batch
+            if info_batch is not None:
+                input_dict[SampleBatch.INFOS] = info_batch
+
+            return self.compute_actions_from_input_dict(
+                input_dict=input_dict,
+                explore=explore,
+                timestep=timestep,
+                episodes=episodes,
+                **kwargs,
+            )
+
         @with_lock
-        def _compute_action_helper(self, input_dict, state_batches, episodes,
-                                   explore, timestep):
+        @override(Policy)
+        def compute_log_likelihoods(
+                self,
+                actions,
+                obs_batch,
+                state_batches=None,
+                prev_action_batch=None,
+                prev_reward_batch=None,
+                actions_normalized=True,
+        ):
+            if action_sampler_fn and action_distribution_fn is None:
+                raise ValueError("Cannot compute log-prob/likelihood w/o an "
+                                 "`action_distribution_fn` and a provided "
+                                 "`action_sampler_fn`!")
+
+            seq_lens = tf.ones(len(obs_batch), dtype=tf.int32)
+            input_batch = SampleBatch(
+                {
+                    SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch)
+                },
+                _is_training=False)
+            if prev_action_batch is not None:
+                input_batch[SampleBatch.PREV_ACTIONS] = \
+                    tf.convert_to_tensor(prev_action_batch)
+            if prev_reward_batch is not None:
+                input_batch[SampleBatch.PREV_REWARDS] = \
+                    tf.convert_to_tensor(prev_reward_batch)
+
+            # Exploration hook before each forward pass.
+            self.exploration.before_compute_actions(explore=False)
+
+            # Action dist class and inputs are generated via custom function.
+            if action_distribution_fn:
+                dist_inputs, dist_class, _ = action_distribution_fn(
+                    self,
+                    self.model,
+                    input_batch,
+                    explore=False,
+                    is_training=False)
+            # Default log-likelihood calculation.
+            else:
+                dist_inputs, _ = self.model(input_batch, state_batches,
+                                            seq_lens)
+                dist_class = self.dist_class
+
+            action_dist = dist_class(dist_inputs, self.model)
+
+            # Normalize actions if necessary.
+            if not actions_normalized and self.config["normalize_actions"]:
+                actions = normalize_action(actions, self.action_space_struct)
+
+            log_likelihoods = action_dist.logp(actions)
+
+            return log_likelihoods
+
+        @override(Policy)
+        def postprocess_trajectory(self,
+                                   sample_batch,
+                                   other_agent_batches=None,
+                                   episode=None):
+            assert tf.executing_eagerly()
+            # Call super's postprocess_trajectory first.
+            sample_batch = Policy.postprocess_trajectory(self, sample_batch)
+            if postprocess_fn:
+                return postprocess_fn(self, sample_batch, other_agent_batches,
+                                      episode)
+            return sample_batch
+
+        @with_lock
+        @override(Policy)
+        def learn_on_batch(self, postprocessed_batch):
+            # Callback handling.
+            learn_stats = {}
+            self.callbacks.on_learn_on_batch(
+                policy=self,
+                train_batch=postprocessed_batch,
+                result=learn_stats)
+
+            pad_batch_to_sequences_of_same_size(
+                postprocessed_batch,
+                max_seq_len=self._max_seq_len,
+                shuffle=False,
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
+
+            self._is_training = True
+            postprocessed_batch = self._lazy_tensor_dict(postprocessed_batch)
+            postprocessed_batch.set_training(True)
+            stats = self._learn_on_batch_helper(postprocessed_batch)
+            stats.update({"custom_metrics": learn_stats})
+            return convert_to_numpy(stats)
+
+        @override(Policy)
+        def compute_gradients(self, postprocessed_batch: SampleBatch) -> \
+                Tuple[ModelGradients, Dict[str, TensorType]]:
+
+            pad_batch_to_sequences_of_same_size(
+                postprocessed_batch,
+                shuffle=False,
+                max_seq_len=self._max_seq_len,
+                batch_divisibility_req=self.batch_divisibility_req,
+                view_requirements=self.view_requirements,
+            )
+
+            self._is_training = True
+            self._lazy_tensor_dict(postprocessed_batch)
+            postprocessed_batch.set_training(True)
+            grads_and_vars, grads, stats = self._compute_gradients_helper(
+                postprocessed_batch)
+            return convert_to_numpy((grads, stats))
+
+        @override(Policy)
+        def apply_gradients(self, gradients: ModelGradients) -> None:
+            self._apply_gradients_helper(
+                list(
+                    zip([(tf.convert_to_tensor(g)
+                          if g is not None else None) for g in gradients],
+                        self.model.trainable_variables())))
+
+        @override(Policy)
+        def get_weights(self, as_dict=False):
+            variables = self.variables()
+            if as_dict:
+                return {v.name: v.numpy() for v in variables}
+            return [v.numpy() for v in variables]
+
+        @override(Policy)
+        def set_weights(self, weights):
+            variables = self.variables()
+            assert len(weights) == len(variables), (len(weights),
+                                                    len(variables))
+            for v, w in zip(variables, weights):
+                v.assign(w)
+
+        @override(Policy)
+        def get_exploration_state(self):
+            return convert_to_numpy(self.exploration.get_state())
+
+        @override(Policy)
+        def is_recurrent(self):
+            return self._is_recurrent
+
+        @override(Policy)
+        def num_state_tensors(self):
+            return len(self._state_inputs)
+
+        @override(Policy)
+        def get_initial_state(self):
+            if hasattr(self, "model"):
+                return self.model.get_initial_state()
+            return []
+
+        @override(Policy)
+        def get_state(self):
+            state = super().get_state()
+            if self._optimizer and \
+                    len(self._optimizer.variables()) > 0:
+                state["_optimizer_variables"] = \
+                    self._optimizer.variables()
+            # Add exploration state.
+            state["_exploration_state"] = self.exploration.get_state()
+            return state
+
+        @override(Policy)
+        def set_state(self, state):
+            state = state.copy()  # shallow copy
+            # Set optimizer vars first.
+            optimizer_vars = state.get("_optimizer_variables", None)
+            if optimizer_vars and self._optimizer.variables():
+                logger.warning(
+                    "Cannot restore an optimizer's state for tf eager! Keras "
+                    "is not able to save the v1.x optimizers (from "
+                    "tf.compat.v1.train) since they aren't compatible with "
+                    "checkpoints.")
+                for opt_var, value in zip(self._optimizer.variables(),
+                                          optimizer_vars):
+                    opt_var.assign(value)
+            # Set exploration's state.
+            if hasattr(self, "exploration") and "_exploration_state" in state:
+                self.exploration.set_state(state=state["_exploration_state"])
+            # Then the Policy's (NN) weights.
+            super().set_state(state)
+
+        @override(Policy)
+        def export_checkpoint(self, export_dir):
+            raise NotImplementedError  # TODO: implement this
+
+        @override(Policy)
+        def export_model(self, export_dir):
+            raise NotImplementedError  # TODO: implement this
+
+        def variables(self):
+            """Return the list of all savable variables for this policy."""
+            if isinstance(self.model, tf.keras.Model):
+                return self.model.variables
+            else:
+                return self.model.variables()
+
+        def loss_initialized(self):
+            return self._loss_initialized
+
+        @with_lock
+        def _compute_actions_helper(self, input_dict, state_batches, episodes,
+                                    explore, timestep):
+            # Increase the tracing counter to make sure we don't re-trace too
+            # often. If eager_tracing=True, this counter should only get
+            # incremented during the @tf.function trace operations, never when
+            # calling the already traced function after that.
+            self._re_trace_counter += 1
 
             # Calculate RNN sequence lengths.
             batch_size = tree.flatten(input_dict[SampleBatch.OBS])[0].shape[0]
@@ -612,165 +793,31 @@ def build_eager_tf_policy(
 
             return actions, state_out, extra_fetches
 
-        @with_lock
-        @override(Policy)
-        def compute_log_likelihoods(
-                self,
-                actions,
-                obs_batch,
-                state_batches=None,
-                prev_action_batch=None,
-                prev_reward_batch=None,
-                actions_normalized=True,
-        ):
-            if action_sampler_fn and action_distribution_fn is None:
-                raise ValueError("Cannot compute log-prob/likelihood w/o an "
-                                 "`action_distribution_fn` and a provided "
-                                 "`action_sampler_fn`!")
+        def _learn_on_batch_helper(self, samples):
+            # Increase the tracing counter to make sure we don't re-trace too
+            # often. If eager_tracing=True, this counter should only get
+            # incremented during the @tf.function trace operations, never when
+            # calling the already traced function after that.
+            self._re_trace_counter += 1
 
-            seq_lens = tf.ones(len(obs_batch), dtype=tf.int32)
-            input_batch = SampleBatch(
-                {
-                    SampleBatch.CUR_OBS: tf.convert_to_tensor(obs_batch)
-                },
-                _is_training=False)
-            if prev_action_batch is not None:
-                input_batch[SampleBatch.PREV_ACTIONS] = \
-                    tf.convert_to_tensor(prev_action_batch)
-            if prev_reward_batch is not None:
-                input_batch[SampleBatch.PREV_REWARDS] = \
-                    tf.convert_to_tensor(prev_reward_batch)
-
-            # Exploration hook before each forward pass.
-            self.exploration.before_compute_actions(explore=False)
-
-            # Action dist class and inputs are generated via custom function.
-            if action_distribution_fn:
-                dist_inputs, dist_class, _ = action_distribution_fn(
-                    self,
-                    self.model,
-                    input_batch,
-                    explore=False,
-                    is_training=False)
-            # Default log-likelihood calculation.
-            else:
-                dist_inputs, _ = self.model(input_batch, state_batches,
-                                            seq_lens)
-                dist_class = self.dist_class
-
-            action_dist = dist_class(dist_inputs, self.model)
-
-            # Normalize actions if necessary.
-            if not actions_normalized and self.config["normalize_actions"]:
-                actions = normalize_action(actions, self.action_space_struct)
-
-            log_likelihoods = action_dist.logp(actions)
-
-            return log_likelihoods
-
-        @override(Policy)
-        def apply_gradients(self, gradients):
-            self._apply_gradients(
-                zip([(tf.convert_to_tensor(g) if g is not None else None)
-                     for g in gradients], self.model.trainable_variables()))
-
-        @override(Policy)
-        def get_exploration_state(self):
-            return convert_to_numpy(self.exploration.get_state())
-
-        @override(Policy)
-        def get_weights(self, as_dict=False):
-            variables = self.variables()
-            if as_dict:
-                return {v.name: v.numpy() for v in variables}
-            return [v.numpy() for v in variables]
-
-        @override(Policy)
-        def set_weights(self, weights):
-            variables = self.variables()
-            assert len(weights) == len(variables), (len(weights),
-                                                    len(variables))
-            for v, w in zip(variables, weights):
-                v.assign(w)
-
-        @override(Policy)
-        def get_state(self):
-            state = super().get_state()
-            if self._optimizer and \
-                    len(self._optimizer.variables()) > 0:
-                state["_optimizer_variables"] = \
-                    self._optimizer.variables()
-            # Add exploration state.
-            state["_exploration_state"] = self.exploration.get_state()
-            return state
-
-        @override(Policy)
-        def set_state(self, state):
-            state = state.copy()  # shallow copy
-            # Set optimizer vars first.
-            optimizer_vars = state.get("_optimizer_variables", None)
-            if optimizer_vars and self._optimizer.variables():
-                logger.warning(
-                    "Cannot restore an optimizer's state for tf eager! Keras "
-                    "is not able to save the v1.x optimizers (from "
-                    "tf.compat.v1.train) since they aren't compatible with "
-                    "checkpoints.")
-                for opt_var, value in zip(self._optimizer.variables(),
-                                          optimizer_vars):
-                    opt_var.assign(value)
-            # Set exploration's state.
-            if hasattr(self, "exploration") and "_exploration_state" in state:
-                self.exploration.set_state(state=state["_exploration_state"])
-            # Then the Policy's (NN) weights.
-            super().set_state(state)
-
-        def variables(self):
-            """Return the list of all savable variables for this policy."""
-            if isinstance(self.model, tf.keras.Model):
-                return self.model.variables
-            else:
-                return self.model.variables()
-
-        @override(Policy)
-        def is_recurrent(self):
-            return self._is_recurrent
-
-        @override(Policy)
-        def num_state_tensors(self):
-            return len(self._state_inputs)
-
-        @override(Policy)
-        def get_initial_state(self):
-            if hasattr(self, "model"):
-                return self.model.get_initial_state()
-            return []
-
-        def get_session(self):
-            return None  # None implies eager
-
-        def get_placeholder(self, ph):
-            raise ValueError(
-                "get_placeholder() is not allowed in eager mode. Try using "
-                "rllib.utils.tf_utils.make_tf_callable() to write "
-                "functions that work in both graph and eager mode.")
-
-        def loss_initialized(self):
-            return self._loss_initialized
-
-        @override(Policy)
-        def export_model(self, export_dir):
-            pass
-
-        @override(Policy)
-        def export_checkpoint(self, export_dir):
-            pass
+            with tf.variable_creator_scope(_disallow_var_creation):
+                grads_and_vars, _, stats = self._compute_gradients_helper(
+                    samples)
+            self._apply_gradients_helper(grads_and_vars)
+            return stats
 
         def _get_is_training_placeholder(self):
             return tf.convert_to_tensor(self._is_training)
 
         @with_lock
-        def _compute_gradients(self, samples):
+        def _compute_gradients_helper(self, samples):
             """Computes and returns grads as eager tensors."""
+
+            # Increase the tracing counter to make sure we don't re-trace too
+            # often. If eager_tracing=True, this counter should only get
+            # incremented during the @tf.function trace operations, never when
+            # calling the already traced function after that.
+            self._re_trace_counter += 1
 
             # Gather all variables for which to calculate losses.
             if isinstance(self.model, tf.keras.Model):
@@ -823,9 +870,15 @@ def build_eager_tf_policy(
                 grads = [g for g, _ in grads_and_vars]
 
             stats = self._stats(self, samples, grads)
-            return grads_and_vars, stats
+            return grads_and_vars, grads, stats
 
-        def _apply_gradients(self, grads_and_vars):
+        def _apply_gradients_helper(self, grads_and_vars):
+            # Increase the tracing counter to make sure we don't re-trace too
+            # often. If eager_tracing=True, this counter should only get
+            # incremented during the @tf.function trace operations, never when
+            # calling the already traced function after that.
+            self._re_trace_counter += 1
+
             if apply_gradients_fn:
                 if self.config["_tf_policy_handles_more_than_one_loss"]:
                     apply_gradients_fn(self, self._optimizers, grads_and_vars)

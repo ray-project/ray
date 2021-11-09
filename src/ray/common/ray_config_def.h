@@ -92,6 +92,14 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
+/// Maximum amount of lineage to keep in bytes. This includes the specs of all
+/// tasks that have previously already finished but that may be retried again.
+/// If we reach this limit, 50% of the current lineage will be evicted and
+/// objects that are still in scope will no longer be reconstructed if lost.
+/// Each task spec is on the order of 1KB but can be much larger if it has many
+/// inlined args.
+RAY_CONFIG(int64_t, max_lineage_bytes, 1024 * 1024 * 1024)
+
 /// Whether to re-populate plasma memory. This avoids memory allocation failures
 /// at runtime (SIGBUS errors creating new objects), however it will use more memory
 /// upfront and can slow down Ray startup.
@@ -102,6 +110,13 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
 RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
+
+// TODO (Alex): Remove this feature flag once scheduling class capping is
+// implemented.
+/// Whether to include function descriptors, and depth in the
+// scheduling class. / This causes tasks to be queued differently, so it may
+// effect scheduling / behavior.
+RAY_CONFIG(bool, complex_scheduling_class, false)
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.

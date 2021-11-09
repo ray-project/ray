@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from dataclasses import dataclass
 
 
@@ -7,6 +7,7 @@ class JobStatus(str, Enum):
     def __str__(self):
         return f"{self.value}"
 
+    DOES_NOT_EXIST = "DOES_NOT_EXIST"
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     STOPPED = "STOPPED"
@@ -31,6 +32,10 @@ class JobSubmitRequest:
     runtime_env: Dict[str, Any]
     # Command to start execution, ex: "python script.py"
     entrypoint: str
+    # Optional job_id to specify for the job. If the job_id is not specified,
+    # one will be generated. If a job with the same job_id already exists, it
+    # will be rejected.
+    job_id: Optional[str]
     # Metadata to pass in to the JobConfig.
     metadata: Dict[str, str]
 
@@ -38,6 +43,14 @@ class JobSubmitRequest:
 @dataclass
 class JobSubmitResponse:
     job_id: str
+
+
+# ==== Job Stop ====
+
+
+@dataclass
+class JobStopResponse:
+    stopped: bool
 
 
 # ==== Job Status ====
