@@ -318,12 +318,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///          should be running (or blocked) at once.
   uint64_t MaxRunningTasksPerSchedulingClass(SchedulingClass sched_cls_id) const;
 
-  /// Caclulate the next time a task can be scheduled in this scheduling class
-  /// when it goes above its capacity.
-  ///
-  /// \param sched_cls_info The (mutable) scheduling class info to be updated.
-  void UpdateSchedulingClassWaitTime(SchedulingClassInfo &sched_cls_info);
-
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;

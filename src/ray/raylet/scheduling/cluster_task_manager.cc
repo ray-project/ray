@@ -299,8 +299,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
     /// We cap the maximum running tasks of a scheduling class to avoid
     /// scheduling too many tasks of a single type/depth, when there are
     /// deeper/other functions that should be run. We need to apply back
-    /// pressure here because workers don't submit their lease requests until
-    /// dependencies are resolved.
+    /// pressure to limit the number of worker processes started in scenarios
+    /// with nested tasks.
     bool is_infeasible = false;
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
       auto &work = *work_it;
@@ -320,7 +320,12 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         if (get_time_ms_() < sched_cls_info.next_update_time) {
           // We're over capacity and it's not time to admit a new task yet.
           // Calculate the next time we should admit a new task.
-          UpdateSchedulingClassWaitTime(sched_cls_info);
+          int64_t current_capacity = sched_cls_info.running_tasks.size();
+          int64_t allowed_capacity = sched_cls_info.capacity;
+          int64_t exp = current_capacity - allowed_capacity;
+          int64_t wait_time = sched_cls_cap_interval_ms_ * (1L << exp);
+          sched_cls_info.next_update_time =
+            std::min(get_time_ms_() + wait_time, sched_cls_info.next_update_time);
           break;
         } else {
           // Force us to recalculate the next update time the next time a task
@@ -1473,18 +1478,6 @@ uint64_t ClusterTaskManager::MaxRunningTasksPerSchedulingClass(
     return std::numeric_limits<uint64_t>::max();
   }
   return static_cast<uint64_t>(std::round(total_cpus / cpu_req));
-}
-
-void ClusterTaskManager::UpdateSchedulingClassWaitTime(
-    SchedulingClassInfo &sched_cls_info) {
-  if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity) {
-    int64_t current_capacity = sched_cls_info.running_tasks.size();
-    int64_t allowed_capacity = sched_cls_info.capacity;
-    int64_t exp = current_capacity - allowed_capacity;
-    int64_t wait_time = sched_cls_cap_interval_ms_ * (1L << exp);
-    sched_cls_info.next_update_time =
-        std::min(get_time_ms_() + wait_time, sched_cls_info.next_update_time);
-  }
 }
 
 }  // namespace raylet
