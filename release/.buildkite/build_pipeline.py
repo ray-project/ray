@@ -160,6 +160,7 @@ NIGHTLY_TESTS = {
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
         SmokeTest("learning_tests"),
         SmokeTest("stress_tests"),
+        "performance_tests",
         "multi_gpu_learning_tests",
         "multi_gpu_with_lstm_learning_tests",
         "multi_gpu_with_attention_learning_tests",
