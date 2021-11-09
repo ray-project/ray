@@ -298,11 +298,6 @@ TEST(RayClusterModeTest, DependencyRefrenceTest) {
   EXPECT_TRUE(
       CheckRefCount({{object_id0, std::make_pair(1, 1)},
                      {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
-  r.Get();
-  r2->Get();
-  EXPECT_TRUE(
-      CheckRefCount({{object_id0, std::make_pair(1, 0)},
-                     {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
 }
 
 TEST(RayClusterModeTest, GetActorTest) {
