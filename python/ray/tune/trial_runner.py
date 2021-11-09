@@ -18,7 +18,7 @@ from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (DEBUG_METRICS, DEFAULT_METRIC, DONE,
                              TIME_THIS_ITER_S, RESULT_DUPLICATE,
                              SHOULD_CHECKPOINT)
-from ray.tune.syncer import CloudSyncer, get_cloud_syncer
+from ray.tune.syncer import CloudSyncer, get_cloud_syncer, SyncConfig
 from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
@@ -314,6 +314,7 @@ class TrialRunner:
         if self._local_checkpoint_dir:
             os.makedirs(self._local_checkpoint_dir, exist_ok=True)
 
+        sync_config = sync_config or SyncConfig()
         self._remote_checkpoint_dir = remote_checkpoint_dir
         self._syncer = get_cloud_syncer(
             local_checkpoint_dir, remote_checkpoint_dir, sync_config.syncer)
