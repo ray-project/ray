@@ -66,39 +66,6 @@ def test_actor_in_heterogeneous_image():
     ray.shutdown()
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
-def test_reuse_worker_with_resource_limit():
-    runtime_env = {
-        "container": {
-            "image": "rayproject/ray-worker-container:nightly-py36-cpu",
-        }
-    }
-    job_config = ray.job_config.JobConfig()
-    ray.init(
-        job_config=job_config,
-        _system_config={"worker_resource_limits_enabled": True})
-
-    @ray.remote
-    def get_pid():
-        import os
-        return os.getpid()
-
-    obj_ref = get_pid.options(
-        runtime_env=runtime_env, num_cpus=1,
-        memory=100 * 1024 * 1024).remote()
-    pid = ray.get(obj_ref)
-    obj_ref1 = get_pid.options(
-        runtime_env=runtime_env, num_cpus=1,
-        memory=100 * 1024 * 1024).remote()
-    pid1 = ray.get(obj_ref1)
-    assert pid == pid1
-    obj_ref2 = get_pid.options(
-        runtime_env=runtime_env, num_cpus=1, memory=50 * 1024 * 1024).remote()
-    pid2 = ray.get(obj_ref2)
-    assert pid != pid2
-    ray.shutdown()
-
-
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__, "-s"]))
