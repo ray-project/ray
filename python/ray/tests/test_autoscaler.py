@@ -58,8 +58,8 @@ class DrainNodeOutcome(str, Enum):
 class MockRpcException(grpc.RpcError):
     """Mock RpcError with a specified status code.
 
-    Note (Dmitri): Might be possible to do this already with the `grpc` module,
-    but how wasn't immediately obvious to me.
+    Note (Dmitri): It might be possible to do this already with standard tools
+    in the `grpc` module, but how wasn't immediately obvious to me.
     """
 
     def __init__(self, status_code: grpc.StatusCode):
