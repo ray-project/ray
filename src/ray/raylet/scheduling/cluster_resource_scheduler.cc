@@ -242,6 +242,8 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     return best_node;
   }
 
+  // If the local node is available, we should directly return it instead of
+  // going through the full hybrid policy since we don't want spillback.
   if (grant_or_reject &&
       IsSchedulable(resource_request, local_node_id_, GetLocalNodeResources())) {
     return local_node_id_;

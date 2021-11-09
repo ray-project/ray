@@ -1598,9 +1598,11 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
       return;
     }
 
+    // If resources are not enough due to normal tasks' preemption
+    // for gcs based actor scheduling, return a rejection
+    // with normal task resource usages so gcs can update
+    // its resource view of this raylet.
     if (is_actor_creation_task) {
-      // If resources are not enough due to normal tasks' preemption, return a rejection
-      // with normal task resource usages.
       ResourceSet normal_task_resources =
           cluster_task_manager_->CalcNormalTaskResources();
       RAY_LOG(DEBUG) << "Reject leasing as the raylet has no enough resources."
@@ -1619,15 +1621,6 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 
     send_reply_callback(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
   };
-
-  // GCS only requests actor lease when it thinks that the node has available resources.
-  // If it turns out to be not the case, we should reject immediately
-  // so GCS can update its resource view of this raylet.
-  if (is_actor_creation_task && !cluster_task_manager_->IsLocallySchedulable(task)) {
-    reply->set_rejected(true);
-    send_reply_callback_wrapper(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
-    return;
-  }
 
   cluster_task_manager_->QueueAndScheduleTask(task, true, reply,
                                               send_reply_callback_wrapper);
