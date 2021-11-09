@@ -201,11 +201,11 @@ class ServeController:
                 except Exception:
                     logger.exception("Exception updating deployment state.")
 
-                try:
-                    self._put_serve_snapshot()
-                except Exception:
-                    logger.exception("Exception putting serve snapshot.")
-                await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
+            try:
+                self._put_serve_snapshot()
+            except Exception:
+                logger.exception("Exception putting serve snapshot.")
+            await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
     def _put_serve_snapshot(self) -> None:
         val = dict()
