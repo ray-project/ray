@@ -152,15 +152,15 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
         workflow_data.inputs)
     if step_options.step_type == StepType.EVENT:
-        logger.info(f"DETECTED EVENT, type: {workflow_data.func_body}, inputs: {baked_inputs}")
+        logger.info(
+            f"DETECTED EVENT, type: {workflow_data.func_body}, inputs: {baked_inputs}"
+        )
         coordinator = events.get_or_create_manager()
         workflow_id = workflow_context.get_current_workflow_id()
         ref = coordinator.register_workflow_dependency.remote(
             workflow_id, workflow_data,
-workflow_context.get_workflow_step_context(), workflow.step_id,
-            baked_inputs
-
-        )
+            workflow_context.get_workflow_step_context(), workflow.step_id,
+            baked_inputs)
         ray.get(ref)
         raise EventsUnresolved([])
 

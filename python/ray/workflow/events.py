@@ -20,9 +20,8 @@ from typing import Any, Dict, List
 logger = logging.getLogger(__name__)
 
 
-def make_event(
-    event_listener_type: EventListenerType, args: List[Any], kwargs: Dict[str, Any]
-) -> Workflow[Event]:
+def make_event(event_listener_type: EventListenerType, args: List[Any],
+               kwargs: Dict[str, Any]) -> Workflow[Event]:
 
     step_options = WorkflowStepRuntimeOptions.make(step_type=StepType.EVENT)
 
@@ -31,8 +30,7 @@ def make_event(
 
     print("flattening args ", make_and_invoke_poll, args, kwargs)
     flattened_args = signature.flatten_args(
-        signature.extract_signature(event_listener_type), args, kwargs
-    )
+        signature.extract_signature(event_listener_type), args, kwargs)
 
     def prepare_inputs():
         ensure_ray_initialized()
@@ -55,15 +53,14 @@ def init_manager() -> None:
 
 def get_or_create_manager(warn_on_creation=False) -> "ActorHandle":
     try:
-        return ray.get_actor(EVENT_ACTOR_NAME, namespace=MANAGEMENT_ACTOR_NAMESPACE)
+        return ray.get_actor(
+            EVENT_ACTOR_NAME, namespace=MANAGEMENT_ACTOR_NAMESPACE)
     except ValueError:
         if warn_on_creation:
-            logger.warning(
-                "Cannot access workflow event coordinator. It "
-                "could be because "
-                "the workflow manager exited unexpectedly. A new "
-                "coordinator is being created."
-            )
+            logger.warning("Cannot access workflow event coordinator. It "
+                           "could be because "
+                           "the workflow manager exited unexpectedly. A new "
+                           "coordinator is being created.")
         handle = Manager.options(
             name=EVENT_ACTOR_NAME,
             namespace=MANAGEMENT_ACTOR_NAMESPACE,
@@ -101,9 +98,9 @@ class Manager:
         logger.info("PONG")
         pass
 
-    async def register_workflow_dependency(
-        self, workflow_id: str, event_data: WorkflowData, context, step_id, baked_inputs
-    ):
+    async def register_workflow_dependency(self, workflow_id: str,
+                                           event_data: WorkflowData, context,
+                                           step_id, baked_inputs):
         """Register that `workflow_id` depends on the step `event_data`'s result
         before it can continue to execute.
 
@@ -112,9 +109,8 @@ class Manager:
             event_data (WorkflowData): The information needed to begin to wait for the event.
         """
 
-        args, kwargs = await _resolve_args.remote(
-            event_data, context, step_id, baked_inputs
-        )
+        args, kwargs = await _resolve_args.remote(event_data, context, step_id,
+                                                  baked_inputs)
         func = event_data.func_body
 
         # Execute function

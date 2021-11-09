@@ -4,8 +4,13 @@ import ray
 from ray.workflow import events
 from ray.workflow import workflow_context
 from ray.workflow import serialization
-from ray.workflow.common import (Workflow, StepID, WorkflowRef,
-                                 WorkflowExecutionResult, StepType,)
+from ray.workflow.common import (
+    Workflow,
+    StepID,
+    WorkflowRef,
+    WorkflowExecutionResult,
+    StepType,
+)
 from ray.workflow import storage
 from ray.workflow import workflow_storage
 from ray.workflow.step_function import WorkflowStepFunction
