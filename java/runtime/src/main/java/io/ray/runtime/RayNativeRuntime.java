@@ -106,7 +106,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
             JobConfig.newBuilder()
                 .setNumJavaWorkersPerProcess(rayConfig.numWorkersPerProcess)
                 .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
-                .addAllCodeSearchPath(rayConfig.codeSearchPath);
+                .addAllCodeSearchPath(rayConfig.codeSearchPath)
+                .setRayNamespace(rayConfig.namespace);
         RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
         if (!rayConfig.workerEnv.isEmpty()) {
           // TODO(SongGuyang): Suppport complete runtime env interface for users.
@@ -238,6 +239,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     return nativeGetResourceIds();
   }
 
+  @Override
+  public String getNamespace() {
+    return nativeGetNamespace();
+  }
+
   private static native void nativeInitialize(
       int workerMode,
       String ndoeIpAddress,
@@ -263,6 +269,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static native void nativeSetCoreWorker(byte[] workerId);
 
   private static native Map<String, List<ResourceValue>> nativeGetResourceIds();
+
+  private static native String nativeGetNamespace();
 
   static class AsyncContext {
 

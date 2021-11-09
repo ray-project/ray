@@ -4,8 +4,8 @@ import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.runtime.serializer.MessagePackSerializer;
-import io.ray.serve.generated.BackendConfig;
-import io.ray.serve.generated.BackendLanguage;
+import io.ray.serve.generated.DeploymentConfig;
+import io.ray.serve.generated.DeploymentLanguage;
 import io.ray.serve.generated.DeploymentVersion;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
@@ -25,21 +25,21 @@ public class RayServeReplicaTest {
 
     try {
       String controllerName = "RayServeReplicaTest";
-      String backendTag = "b_tag";
+      String deploymentName = "b_tag";
       String replicaTag = "r_tag";
       String version = "v1";
 
       ActorHandle<DummyServeController> controllerHandle =
           Ray.actor(DummyServeController::new).setName(controllerName).remote();
 
-      BackendConfig.Builder backendConfigBuilder = BackendConfig.newBuilder();
-      backendConfigBuilder.setBackendLanguage(BackendLanguage.JAVA);
-      byte[] backendConfigBytes = backendConfigBuilder.build().toByteArray();
-      Object[] initArgs = new Object[] {backendTag, replicaTag, controllerName, new Object()};
+      DeploymentConfig.Builder deploymentConfigBuilder = DeploymentConfig.newBuilder();
+      deploymentConfigBuilder.setDeploymentLanguage(DeploymentLanguage.JAVA);
+      byte[] deploymentConfigBytes = deploymentConfigBuilder.build().toByteArray();
+      Object[] initArgs = new Object[] {deploymentName, replicaTag, controllerName, new Object()};
       byte[] initArgsBytes = MessagePackSerializer.encode(initArgs).getLeft();
 
       DeploymentInfo deploymentInfo = new DeploymentInfo();
-      deploymentInfo.setBackendConfig(backendConfigBytes);
+      deploymentInfo.setDeploymentConfig(deploymentConfigBytes);
       deploymentInfo.setDeploymentVersion(
           DeploymentVersion.newBuilder().setCodeVersion(version).build().toByteArray());
       deploymentInfo.setReplicaConfig(
@@ -48,7 +48,7 @@ public class RayServeReplicaTest {
       ActorHandle<RayServeWrappedReplica> backendHandle =
           Ray.actor(
                   RayServeWrappedReplica::new,
-                  backendTag,
+                  deploymentName,
                   replicaTag,
                   deploymentInfo,
                   controllerName)
@@ -60,7 +60,7 @@ public class RayServeReplicaTest {
       // handle request
       RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
       requestMetadata.setRequestId(RandomStringUtils.randomAlphabetic(10));
-      requestMetadata.setCallMethod("getBackendTag");
+      requestMetadata.setCallMethod("getDeploymentName");
       RequestWrapper.Builder requestWrapper = RequestWrapper.newBuilder();
 
       ObjectRef<Object> resultRef =
@@ -70,7 +70,7 @@ public class RayServeReplicaTest {
                   requestMetadata.build().toByteArray(),
                   requestWrapper.build().toByteArray())
               .remote();
-      Assert.assertEquals((String) resultRef.get(), backendTag);
+      Assert.assertEquals((String) resultRef.get(), deploymentName);
 
       // reconfigure
       ObjectRef<byte[]> versionRef =
