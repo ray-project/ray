@@ -1,3 +1,4 @@
+from enum import Enum
 import json
 import jsonschema
 import os
@@ -33,15 +34,70 @@ from ray.autoscaler.tags import TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, \
     NODE_KIND_WORKER, STATUS_UNINITIALIZED, TAG_RAY_CLUSTER_NAME
 from ray.autoscaler.node_provider import NodeProvider
 from ray._private.test_utils import RayTestTimeoutException
+
+import grpc
 import pytest
+
+
+class DrainNodeOutcome(str, Enum):
+    """Potential outcomes of DrainNode calls, each of which is handled
+    differently by the autoscaler.
+    """
+    # Return a reponse indicating all nodes were succesfully drained.
+    Succeeded = "Succeeded"
+    # Return response indicating at least one node failed to be drained.
+    NotAllDrained = "NotAllDrained"
+    # Return an unimplemented gRPC error, indicating an old GCS.
+    Unimplemented = "Unimplemented"
+    # Raise a generic unexpected RPC error.
+    GenericRpcError = "GenericRpcError"
+    # Raise a generic unexpected exception.
+    GenericException = "GenericException"
+
+
+class MockRpcException(grpc.RpcError):
+    """Mock RpcError with a specified status code.
+
+    Note (Dmitri): Might be possible to do this already with the `grpc` module,
+    but how wasn't immediately obvious to me.
+    """
+
+    def __init__(self, status_code: grpc.StatusCode):
+        self.status_code = status_code
+
+    def code(self):
+        return self.status_code
 
 
 class MockNodeInfoStub():
     """Mock for GCS node info stub used by autoscaler to drain Ray nodes.
+
+    Can simulate DrainNode failures via the `drain_node_outcome` parameter.
+    Comments in DrainNodeOutcome enum class indicate the behavior for each
+    outcome.
     """
 
-    def DrainNode(self, drain_node_request):
-        """Return a response indicating successful drain to the autoscaler."""
+    def __init__(self, drain_node_outcome=DrainNodeOutcome.Succeeded):
+        self.drain_node_outcome = drain_node_outcome
+        # Tracks how many times we've called DrainNode.
+        self.drain_node_call_count = 0
+        # Tracks how many times DrainNode returned a successful RPC response.
+        self.drain_node_reply_success = 0
+
+    def DrainNode(self, drain_node_request, timeout: int):
+        """Simulate NodeInfo stub's DrainNode call.
+
+        Outcome determined by self.drain_outcome.
+        """
+        self.drain_node_call_count += 1
+        if self.drain_node_outcome == DrainNodeOutcome.Unimplemented:
+            raise MockRpcException(status_code=grpc.StatusCode.UNIMPLEMENTED)
+        elif self.drain_node_outcome == DrainNodeOutcome.GenericRpcError:
+            # Any StatusCode besides UNIMPLEMENTED will do here.
+            raise MockRpcException(status_code=grpc.StatusCode.UNAVAILABLE)
+        elif self.drain_node_outcome == DrainNodeOutcome.GenericException:
+            raise Exception("DrainNode failed in some unexpected way.")
+
         node_ids_to_drain = [
             data_item.node_id
             for data_item in drain_node_request.drain_node_data
@@ -50,15 +106,73 @@ class MockNodeInfoStub():
         ok_gcs_status = gcs_service_pb2.GcsStatus(
             code=0, message="Yeah, it's fine.")
 
-        all_nodes_drained_status = gcs_service_pb2.DrainNodeStatus(
-            status=ok_gcs_status,
-            drain_node_status=[
-                gcs_service_pb2.DrainNodeStatus(node_id=node_id)
-                for node_id in node_ids_to_drain
-            ])
+        all_nodes_drained_status = [
+            gcs_service_pb2.DrainNodeStatus(node_id=node_id)
+            for node_id in node_ids_to_drain
+        ]
 
+        # All but the last.
+        not_all_drained_status = all_nodes_drained_status[:-1]
+
+        if self.drain_node_outcome == DrainNodeOutcome.Succeeded:
+            drain_node_status = all_nodes_drained_status
+        elif self.drain_node_outcome == DrainNodeOutcome.NotAllDrained:
+            drain_node_status = not_all_drained_status
+        else:
+            # Shouldn't land here.
+            assert False, "Possible drain node outcomes exhausted."
+
+        self.drain_node_reply_success += 1
         return gcs_service_pb2.DrainNodeReply(
-            drain_node_status=all_nodes_drained_status)
+            status=ok_gcs_status, drain_node_status=drain_node_status)
+
+
+def run_with_all_drain_node_outcomes(test_helper):
+    """Utility for running an autoscaler test function `test_helper` with
+    with various outcomes when calling the DrainNodeOutcome.
+
+    Assumptions on `test_helper`:
+        (1) Accepts the following args:
+                * A mock prometheus metrics object
+                * A mock node info stub
+        (2) Passes the mock objects into a StandardAutoscaler internally.
+        (3) The StandardAutoscaler terminates nodes at least once during
+            execution of `test_helper`.
+    """
+    for outcome in [
+            DrainNodeOutcome.Succeeded, DrainNodeOutcome.Unimplemented
+    ]:
+        # for outcome in DrainNodeOutcome:
+        time.sleep(1)
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+        mock_node_info_stub = MockNodeInfoStub(drain_node_outcome=outcome)
+        test_helper(mock_metrics, mock_node_info_stub)
+        # Assert that the DrainNode API was called. (The autoscaler attempted
+        # to terminate nodes during `test_helper`.)
+        assert mock_node_info_stub.drain_node_call_count > 0
+        if outcome == DrainNodeOutcome.Succeeded:
+            # No drain node exceptions.
+            assert mock_metrics.drain_node_exceptions.inc.call_count == 0
+            # Each drain node call succeeded.
+            assert (mock_node_info_stub.drain_node_reply_success ==
+                    mock_node_info_stub.drain_node_call_count)
+        elif outcome == DrainNodeOutcome.Unimplemented:
+            # All errors were supressed.
+            assert mock_metrics.drain_node_exceptions.inc.call_count == 0
+            # Every call failed.
+            assert mock_node_info_stub.drain_node_reply_success == 0
+        elif outcome in (DrainNodeOutcome.GenericRpcException,
+                         DrainNodeOutcome.GenericException):
+
+            # We encountered an exception.
+            assert mock_metrics.drain_node_exceptions.inc.call_count > 0
+            # Every call failed.
+            assert (mock_metrics.drain_node_exceptions.inc.call_count ==
+                    mock_node_info_stub.drain_node_call_count)
+            assert mock_node_info_stub.drain_node_reply_success == 0
+
+        elif outcome == DrainNodeOutcome.GenericException:
+            pass
 
 
 def mock_raylet_id() -> bytes:
@@ -1191,6 +1305,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(3)
         assert mock_metrics.started_nodes.inc.call_count == 0
         assert mock_metrics.stopped_nodes.inc.call_count == 0
+        assert mock_metrics.drain_node_exceptions.inc.call_count == 0
         assert len(runner.calls) == 0
         events = autoscaler.event_summarizer.summary()
         assert not events, events
@@ -1238,6 +1353,7 @@ class AutoscalingTest(unittest.TestCase):
             # The updates failed. Key thing is that the updates completed.
             self.waitForNodes(
                 2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UPDATE_FAILED})
+        assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
     def testScaleUp(self):
         self.ScaleUpHelper(disable_node_updaters=False)
@@ -1288,8 +1404,59 @@ class AutoscalingTest(unittest.TestCase):
         assert mock_metrics.stopped_nodes.inc.call_count == 10
         mock_metrics.started_nodes.inc.assert_called_with(5)
         assert mock_metrics.worker_create_node_time.observe.call_count == 5
+        assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
-    def testDynamicScaling(self):
+    # Parameterization functionality in the unittest module is not great.
+    # To test scale-down behavior, we parameterize the DynamicScaling test
+    # manually over outcomes for the DrainNode RPC call.
+    def testDynamicScaling1(self):
+        self.helperDynamicScaling(DrainNodeOutcome.Succeeded)
+
+    def testDynamicScaling2(self):
+        self.helperDynamicScaling(DrainNodeOutcome.NotAllDrained)
+
+    def testDynamicScaling3(self):
+        self.helperDynamicScaling(DrainNodeOutcome.Unimplemented)
+
+    def testDynamicScaling4(self):
+        self.helperDynamicScaling(DrainNodeOutcome.GenericRpcError)
+
+    def testDynamicScaling5(self):
+        self.helperDynamicScaling(DrainNodeOutcome.GenericException)
+
+    def helperDynamicScaling(self, drain_node_outcome: DrainNodeOutcome):
+        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
+        mock_node_info_stub = MockNodeInfoStub(drain_node_outcome)
+
+        # Run the core of the test logic.
+        self._helperDynamicScaling(mock_metrics, mock_node_info_stub)
+
+        # Make assertions about DrainNode error handling during scale-down.
+
+        # DrainNode call was made.
+        assert mock_node_info_stub.drain_node_call_count > 0
+        if drain_node_outcome == DrainNodeOutcome.Succeeded:
+            # No drain node exceptions.
+            assert mock_metrics.drain_node_exceptions.inc.call_count == 0
+            # Each drain node call succeeded.
+            assert (mock_node_info_stub.drain_node_reply_success ==
+                    mock_node_info_stub.drain_node_call_count)
+        elif drain_node_outcome == DrainNodeOutcome.Unimplemented:
+            # All errors were supressed.
+            assert mock_metrics.drain_node_exceptions.inc.call_count == 0
+            # Every call failed.
+            assert mock_node_info_stub.drain_node_reply_success == 0
+        elif drain_node_outcome in (DrainNodeOutcome.GenericRpcError,
+                                    DrainNodeOutcome.GenericException):
+
+            # We encountered an exception.
+            assert mock_metrics.drain_node_exceptions.inc.call_count > 0
+            # Every call failed.
+            assert (mock_metrics.drain_node_exceptions.inc.call_count ==
+                    mock_node_info_stub.drain_node_call_count)
+            assert mock_node_info_stub.drain_node_reply_success == 0
+
+    def _helperDynamicScaling(self, mock_metrics, mock_node_info_stub):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
@@ -1301,11 +1468,10 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD
         }, 1)
         lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, {})
-        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
-            MockNodeInfoStub(),
+            mock_node_info_stub,
             max_launch_batch=5,
             max_concurrent_launches=5,
             max_failures=0,
@@ -1701,6 +1867,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(10)
         assert autoscaler.pending_launches.value == 0
         mock_metrics.pending_nodes.set.assert_called_with(0)
+        assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
     def testUpdateThrottling(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -1805,6 +1972,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         self.waitForNodes(
             10, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
     def testMaxFailures(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -1826,6 +1994,7 @@ class AutoscalingTest(unittest.TestCase):
         assert mock_metrics.update_loop_exceptions.inc.call_count == 2
         with pytest.raises(Exception):
             autoscaler.update()
+        assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
     def testLaunchNewNodeOnOutOfBandTerminate(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -2235,6 +2404,7 @@ class AutoscalingTest(unittest.TestCase):
         assert ("Restarting 1 nodes of type "
                 "ray-legacy-worker-node-type (lost contact with raylet)." in
                 events), events
+        assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
     def testTerminateUnhealthyWorkers(self):
         """Test termination of unhealthy workers, when
@@ -2293,6 +2463,7 @@ class AutoscalingTest(unittest.TestCase):
         # No additional runner calls, since updaters were disabled.
         time.sleep(1)
         assert len(runner.calls) == num_calls
+        assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
     def testTerminateUnhealthyWorkers2(self):
         """Tests finer details of termination of unhealthy workers when
@@ -2346,6 +2517,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         # IPs pruned
         assert lm.last_heartbeat_time_by_ip == {}
+        assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
     def testExternalNodeScaler(self):
         config = SMALL_CLUSTER.copy()
@@ -3046,6 +3218,7 @@ MemAvailable:   33000000 kB
             "Unexpected node_ids"
 
         assert mock_metrics.stopped_nodes.inc.call_count == 1
+        assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
     def testProviderException(self):
         config_path = self.write_config(SMALL_CLUSTER)
@@ -3077,6 +3250,7 @@ MemAvailable:   33000000 kB
 
         self.waitFor(
             metrics_incremented, fail_msg="Expected metrics to update")
+        assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
     def testDefaultMinMaxWorkers(self):
         config = copy.deepcopy(MOCK_DEFAULT_CONFIG)

@@ -445,9 +445,8 @@ class StandardAutoscaler:
             }
             failed_to_drain = raylet_ids_to_drain - drained_raylet_ids
             if failed_to_drain:
-                # The exception will be caught and logged in the second
-                # `except` clause.
-                raise Exception(
+                self.prom_metrics.drain_node_exceptions.inc()
+                logger.error(
                     f"Failed to drain raylets with ids {failed_to_drain}.")
 
         # If we get a gRPC error with an UNIMPLEMENTED code, fail silently.
@@ -457,10 +456,11 @@ class StandardAutoscaler:
             # If the code is UNIMPLEMENTED, pass.
             if e.code() == grpc.StatusCode.UNIMPLEMENTED:
                 pass
-            # Otherwise, it's a plane old gRPC error and we should log it in
-            # the next `except` clause.
+            # Otherwise, it's a plane old gRPC error and we should log it.
             else:
-                raise e
+                self.prom_metrics.drain_node_exceptions.inc()
+                logger.exception(
+                    "Failed to drain Ray nodes. Traceback follows.")
         except Exception:
             # We don't need to interrupt the autoscaler update with an
             # exception, but we should log what went wrong and record the
