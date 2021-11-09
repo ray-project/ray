@@ -792,6 +792,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                     const ObjectID &object_id,
                                     const rpc::WorkerAddress &borrower_addr);
 
+  /// Internally decrease the local reference count for the ObjectID by one.
+  /// Note this requires `mutex_` lock is held.
+  void RemoveLocalReferenceInternal(const ObjectID &object_id,
+                                    std::vector<ObjectID> *deleted)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the
   /// object's owner.

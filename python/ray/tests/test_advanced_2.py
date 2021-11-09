@@ -770,14 +770,14 @@ from ray.experimental.internal_kv import _internal_kv_put
 ray.init(address="{address}", namespace="test")
 
 @ray.remote
-def normal_task(large):
+def normal_task(large1, large2):
     # Record the pid of this normal task.
     _internal_kv_put("NORMAL_TASK_PID", str(os.getpid()))
     time.sleep(60 * 60)
     return "normaltask"
 
 large = ray.put(np.zeros(100 * 2**10, dtype=np.int8))
-obj = normal_task.remote(large)
+obj = normal_task.remote(large, large)
 print(ray.get(obj))
 """
     driver_script = driver_template.format(
@@ -804,8 +804,7 @@ print(ray.get(obj))
     driver_proc.send_signal(signal.SIGTERM)
     # Sleep here to make sure raylet has triggered cleaning up
     # the idle workers.
-    time.sleep(10)
-    assert not psutil.pid_exists(normal_task_pid)
+    wait_for_condition(lambda: not psutil.pid_exists(normal_task_pid), 10)
 
 
 if __name__ == "__main__":

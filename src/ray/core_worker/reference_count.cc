@@ -248,15 +248,12 @@ void ReferenceCounter::SetNestedRefInUseRecursive(ReferenceTable::iterator inner
 }
 
 void ReferenceCounter::ReleaseAllLocalReferences() {
-  ReferenceTable all_local_refs;
-  {
-    absl::MutexLock lock(&mutex_);
-    /// A copy of object_id_refs_ to avoid iter invalidation
-    /// and mutex lock reentred.
-    all_local_refs = object_id_refs_;
-  }
-  for (auto &ref : all_local_refs) {
-    RemoveLocalReference(ref.first, nullptr);
+  absl::MutexLock lock(&mutex_);
+  for (auto &ref : object_id_refs_) {
+    /// Remove multiple times.
+    for (int i = ref.second.local_ref_count; i > 0; --i) {
+      RemoveLocalReferenceInternal(ref.first, nullptr);
+    }
   }
 }
 
@@ -266,6 +263,12 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
     return;
   }
   absl::MutexLock lock(&mutex_);
+  RemoveLocalReferenceInternal(object_id, deleted);
+}
+
+void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
+                                                    std::vector<ObjectID> *deleted) {
+  RAY_CHECK(!object_id.IsNil());
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
