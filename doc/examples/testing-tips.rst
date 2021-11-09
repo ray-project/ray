@@ -89,7 +89,8 @@ If writing an application for a cluster setting, you may want to mock a multi-no
 
 .. note::
 
-  Multi-node Ray Clusters are not supported on Windows.
+  On Windows, support for multi-node Ray clusters is currently experimental and untested.
+  If you run into issues please file a report at https://github.com/ray-project/ray/issues.
 
 .. code-block:: python
 
