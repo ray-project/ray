@@ -104,6 +104,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         try:
             job_id = self._job_manager.submit_job(
                 entrypoint=submit_request.entrypoint,
+                job_id=submit_request.job_id,
                 runtime_env=submit_request.runtime_env,
                 metadata=submit_request.metadata)
 
