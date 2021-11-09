@@ -494,6 +494,8 @@ def test_ray_status():
     ray.shutdown()
 
 
+@pytest.mark.xfail(ray.cluster_utils.cluster_not_supported,
+                   reason="cluster not supported")
 def test_ray_status_multinode():
     from ray.cluster_utils import Cluster
     cluster = Cluster()

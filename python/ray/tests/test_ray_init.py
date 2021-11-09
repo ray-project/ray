@@ -9,7 +9,7 @@ import ray
 import ray._private.services
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.client_builder import ClientContext
-from ray.cluster_utils import Cluster
+from ray.cluster_utils import Cluster, cluster_not_supported
 from ray._private.test_utils import run_string_as_driver
 from ray._raylet import ClientObjectRef
 from ray.util.client.worker import Worker
@@ -70,6 +70,7 @@ class TestRedisPassword:
             host=redis_ip, port=redis_port, password=password)
         assert redis_client.ping()
 
+    @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
     def test_redis_password_cluster(self, password, shutdown_only):
         @ray.remote
         def f():

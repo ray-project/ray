@@ -40,6 +40,8 @@ class C:
         return self.val
 
 
+@pytest.mark.xfail(ray.cluster_utils.cluster_not_supported,
+                   reason="cluster not supported")
 @pytest.fixture
 def init_and_serve_lazy():
     cluster = ray.cluster_utils.Cluster()

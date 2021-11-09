@@ -296,6 +296,7 @@ def test_pull_request_retry(shutdown_only):
     ray.get(driver.remote())
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_pull_bundles_admission_control(shutdown_only):
     cluster = Cluster()
     object_size = int(6e6)
@@ -329,6 +330,7 @@ def test_pull_bundles_admission_control(shutdown_only):
     ray.get(tasks)
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_pull_bundles_pinning(shutdown_only):
     cluster = Cluster()
     object_size = int(50e6)
@@ -353,6 +355,7 @@ def test_pull_bundles_pinning(shutdown_only):
     ray.get(foo.remote(*task_args))
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_pull_bundles_admission_control_dynamic(shutdown_only):
     # This test is the same as test_pull_bundles_admission_control, except that
     # the object store's capacity starts off higher and is later consumed
@@ -399,6 +402,7 @@ def test_pull_bundles_admission_control_dynamic(shutdown_only):
     del allocated
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_max_pinned_args_memory(shutdown_only):
     cluster = Cluster()
     cluster.add_node(
@@ -431,6 +435,7 @@ def test_max_pinned_args_memory(shutdown_only):
     ray.get(large_arg.remote(ref))
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_ray_get_task_args_deadlock(shutdown_only):
     cluster = Cluster()
     object_size = int(6e6)

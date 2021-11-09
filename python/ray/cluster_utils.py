@@ -13,6 +13,7 @@ from ray import ray_constants
 
 logger = logging.getLogger(__name__)
 
+cluster_not_supported = (os.name == "nt")
 
 class AutoscalingCluster:
     """Create a local autoscaling cluster for testing.
@@ -97,6 +98,8 @@ class Cluster:
             shutdown_at_exit (bool): If True, registers an exit hook
                 for shutting down all started processes.
         """
+        if cluster_not_supported:
+            raise RuntimeError("cannot use Cluster on this platform")
         self.head_node = None
         self.worker_nodes = set()
         self.redis_address = None

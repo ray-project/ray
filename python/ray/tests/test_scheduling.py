@@ -521,6 +521,8 @@ def test_pull_manager_at_capacity_reports(ray_start_cluster):
     wait_for_condition(lambda: not fetches_queued())
 
 
+@pytest.mark.xfail(ray.cluster_utils.cluster_not_supported,
+                   reason="cluster not supported")
 def build_cluster(num_cpu_nodes, num_gpu_nodes):
     cluster = ray.cluster_utils.Cluster()
     gpu_ids = [
