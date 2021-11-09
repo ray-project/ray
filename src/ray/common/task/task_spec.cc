@@ -104,6 +104,11 @@ void TaskSpecification::ComputeResources() {
     // Map the scheduling class descriptor to an integer for performance.
     sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
   }
+
+  /// Convert runtime_env_setup_failed_node_ids
+  for (const auto &node_id : message_->runtime_env_setup_failed_node_ids()) {
+    runtime_env_setup_failed_node_ids_.emplace(node_id);
+  }
 }
 
 // Task specification getter methods.
@@ -465,6 +470,10 @@ std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
   }
 
   return concurrency_groups;
+}
+
+bool TaskSpecification::HasRuntimeEnvFailureAtNode(const std::string &node_id) const {
+  return runtime_env_setup_failed_node_ids_.contains(node_id);
 }
 
 }  // namespace ray

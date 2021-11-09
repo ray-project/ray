@@ -147,12 +147,13 @@ class CoreWorkerDirectTaskSubmitter {
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Request a new worker from the raylet if no such requests are currently in
-  /// flight and there are tasks queued. If a raylet address is provided, then
-  /// the worker should be requested from the raylet at that address. Else, the
-  /// worker should be requested from the local raylet.
+  /// flight and there are tasks queued.
+  /// \param reply_last_time The RequestWorkerLeaseReply in the last time. If a raylet
+  /// address is provided in it, then the worker should be requested from the raylet at
+  /// that address. Else, the worker should be requested from the local raylet.
   void RequestNewWorkerIfNeeded(const SchedulingKey &task_queue_key,
-                                const rpc::Address *raylet_address = nullptr)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                                const rpc::RequestWorkerLeaseReply *reply_last_time =
+                                    nullptr) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Cancel a pending worker lease and retry until the cancellation succeeds
   /// (i.e., the raylet drops the request). This should be called when there

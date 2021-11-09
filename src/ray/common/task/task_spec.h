@@ -304,6 +304,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::string ConcurrencyGroupName() const;
 
+  bool HasRuntimeEnvFailureAtNode(const std::string &node_id) const;
+
  private:
   void ComputeResources();
 
@@ -315,6 +317,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
   SchedulingClass sched_cls_id_ = 0;
+
+  /// Generated from the PB field with the same name.
+  /// Converting from PB's list to set in order to boost searching performance.
+  /// Note: PB doesn't support set structure.
+  absl::flat_hash_set<std::string> runtime_env_setup_failed_node_ids_;
 
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.

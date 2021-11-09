@@ -82,7 +82,8 @@ bool ClusterTaskManager::SchedulePendingTasks() {
           placement_resources,
           /*requires_object_store_memory=*/false,
           task.GetTaskSpecification().IsActorCreationTask(),
-          /*force_spillback=*/false, &_unused, &is_infeasible);
+          /*force_spillback=*/false, &_unused, &is_infeasible,
+          task.GetTaskSpecification());
 
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
@@ -221,31 +222,37 @@ bool ClusterTaskManager::PoppedWorkerHandler(
       RAY_LOG(DEBUG) << "This node has available resources, but no worker processes "
                         "to grant the lease "
                      << task_id;
+      internal::UnscheduledWorkCause cause =
+          internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
+      // In case of runtime env creation failed, we'll try to reschedule it
+      // until maximum retry time is reached.
       if (status == PopWorkerStatus::RuntimeEnvCreationFailed) {
-        // In case of runtime env creation failed, we cancel this task
-        // directly and raise a `RuntimeEnvSetupError` exception to user
-        // eventually. The task will be removed from dispatch queue in
-        // `CancelTask`.
-        CancelTask(task_id, true);
-      } else {
-        // In other cases, set the work status `WAITING` to make this task
-        // could be re-dispatched.
-        internal::UnscheduledWorkCause cause =
-            internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
-        if (status == PopWorkerStatus::JobConfigMissing) {
-          cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
-        } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
-          cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_RATE_LIMITED;
-        } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
-          cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
-        } else {
-          RAY_LOG(FATAL) << "Unexpected state received for the empty pop worker. Status: "
-                         << status;
+        cause = internal::UnscheduledWorkCause::RUNTIME_ENV_SETUP_FAILED;
+        auto &task_spec = work->task.GetMutableTaskSpecification().GetMutableMessage();
+        auto &failed_nodes = task_spec.runtime_env_setup_failed_node_ids();
+        task_spec.add_runtime_env_setup_failed_node_ids(self_node_id_.Binary());
+
+        if (failed_nodes.size() > RayConfig::instance().runtime_env_max_retry_time()) {
+          // Cancel this task directly and raise a `RuntimeEnvSetupError` exception to
+          // user eventually. The task will be removed from dispatch queue in
+          // `CancelTask`.
+          CancelTask(task_id, /*runtime_env_setup_failed=*/true);
         }
-        work->SetStateWaiting(cause);
-        // Return here because we shouldn't remove task dependencies.
-        return dispatched;
+      } else if (status == PopWorkerStatus::JobConfigMissing) {
+        cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
+      } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
+        cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_RATE_LIMITED;
+      } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
+        cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
+      } else {
+        RAY_LOG(FATAL) << "Unexpected state received for the empty pop worker. Status: "
+                       << status;
       }
+      // Set the work status `WAITING` to make this task
+      // could be re-dispatched.
+      work->SetStateWaiting(cause);
+      // Return here because we shouldn't remove task dependencies.
+      return dispatched;
     } else if (not_detached_with_owner_failed) {
       // The task owner failed.
       // Just remove the task from dispatch queue.
@@ -412,7 +419,7 @@ bool ClusterTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &wor
   std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
       placement_resources,
       /*requires_object_store_memory=*/false, spec.IsActorCreationTask(),
-      /*force_spillback=*/false, &_unused, &is_infeasible);
+      /*force_spillback=*/false, &_unused, &is_infeasible, spec);
 
   if (is_infeasible || node_id_string == self_node_id_.Binary() ||
       node_id_string.empty()) {
@@ -581,7 +588,10 @@ void ReplyCancelled(std::shared_ptr<internal::Work> &work,
                     bool runtime_env_setup_failed) {
   auto reply = work->reply;
   auto callback = work->callback;
+  auto task_spec = work->task.GetTaskSpecification().GetMessage();
   reply->set_canceled(true);
+  reply->mutable_runtime_env_setup_failed_node_ids()->CopyFrom(
+      task_spec.runtime_env_setup_failed_node_ids());
   reply->set_runtime_env_setup_failed(runtime_env_setup_failed);
   callback();
 }
@@ -1051,7 +1061,7 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
         placement_resources,
         /*requires_object_store_memory=*/false,
         task.GetTaskSpecification().IsActorCreationTask(),
-        /*force_spillback=*/false, &_unused, &is_infeasible);
+        /*force_spillback=*/false, &_unused, &is_infeasible, task.GetTaskSpecification());
 
     // There is no node that has available resources to run the request.
     // Move on to the next shape.
@@ -1170,7 +1180,8 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
       node_info_ptr->node_manager_address());
   reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
-
+  reply->mutable_runtime_env_setup_failed_node_ids()->CopyFrom(
+      task_spec.GetMessage().runtime_env_setup_failed_node_ids());
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     reply->set_rejected(true);
   }
@@ -1332,7 +1343,8 @@ void ClusterTaskManager::SpillWaitingTasks() {
         placement_resources,
         /*requires_object_store_memory=*/true,
         task.GetTaskSpecification().IsActorCreationTask(),
-        /*force_spillback=*/force_spillback, &_unused, &is_infeasible);
+        /*force_spillback=*/force_spillback, &_unused, &is_infeasible,
+        task.GetTaskSpecification());
     if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);
       Spillback(node_id, *it);

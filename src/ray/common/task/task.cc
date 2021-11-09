@@ -37,6 +37,8 @@ const TaskExecutionSpecification &RayTask::GetTaskExecutionSpec() const {
 
 const TaskSpecification &RayTask::GetTaskSpecification() const { return task_spec_; }
 
+TaskSpecification &RayTask::GetMutableTaskSpecification() { return task_spec_; }
+
 void RayTask::IncrementNumForwards() { task_execution_spec_.IncrementNumForwards(); }
 
 const std::vector<rpc::ObjectReference> &RayTask::GetDependencies() const {

@@ -172,6 +172,12 @@ bool ClusterResourceScheduler::RemoveNode(const std::string &node_id_string) {
   return RemoveNode(node_id);
 }
 
+bool ClusterResourceScheduler::IsNodeAvailable(int64_t node_id,
+                                               const SchedulingContext &context) const {
+  return NodeAlive(node_id) &&
+         !context.task_spec.HasRuntimeEnvFailureAtNode(string_to_int_map_.Get(node_id));
+}
+
 int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
                                                 int64_t node_id,
                                                 const NodeResources &resources) const {
@@ -216,7 +222,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_
 
 int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     const ResourceRequest &resource_request, bool actor_creation, bool force_spillback,
-    int64_t *total_violations, bool *is_infeasible) {
+    int64_t *total_violations, bool *is_infeasible, const TaskSpecification &task_spec) {
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies.
   if (actor_creation && resource_request.IsEmpty()) {
@@ -230,7 +236,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
       for (size_t i = 0; i < nodes_.size(); ++i) {
         // TODO(iycheng): Here is there are a lot of nodes died, the
         // distribution might not be even.
-        if (NodeAlive(iter->first)) {
+        if (IsNodeAvailable(iter->first, {task_spec})) {
           best_node = iter->first;
           break;
         }
@@ -255,7 +261,10 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
       resource_request, local_node_id_, nodes_, spread_threshold, force_spillback,
-      force_spillback, [this](auto node_id) { return this->NodeAlive(node_id); });
+      force_spillback,
+      /*is_node_available=*/[this, &task_spec](auto node_id) {
+        return this->IsNodeAvailable(node_id, {task_spec});
+      });
   *is_infeasible = best_node_id == -1 ? true : false;
   if (!*is_infeasible) {
     // TODO (Alex): Support soft constraints if needed later.
@@ -272,11 +281,12 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
     const absl::flat_hash_map<std::string, double> &task_resources,
     bool requires_object_store_memory, bool actor_creation, bool force_spillback,
-    int64_t *total_violations, bool *is_infeasible) {
+    int64_t *total_violations, bool *is_infeasible, const TaskSpecification &task_spec) {
   ResourceRequest resource_request = ResourceMapToResourceRequest(
       string_to_int_map_, task_resources, requires_object_store_memory);
-  int64_t node_id = GetBestSchedulableNode(
-      resource_request, actor_creation, force_spillback, total_violations, is_infeasible);
+  int64_t node_id =
+      GetBestSchedulableNode(resource_request, actor_creation, force_spillback,
+                             total_violations, is_infeasible, task_spec);
 
   if (node_id == -1) {
     // This is not a schedulable node, so return empty string.

@@ -504,6 +504,9 @@ RAY_CONFIG(bool, scheduler_avoid_gpu_nodes, true)
 /// Whether to skip running local GC in runtime env.
 RAY_CONFIG(bool, runtime_env_skip_local_gc, false)
 
+/// Maximum time to retry task when runtime env setup failed.
+RAY_CONFIG(int32_t, runtime_env_max_retry_time, 2)
+
 /// Whether or not use TLS.
 RAY_CONFIG(bool, USE_TLS, false)
 

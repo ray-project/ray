@@ -36,6 +36,12 @@ namespace ray {
 
 using rpc::HeartbeatTableData;
 
+/// Detailed context when scheduling a task, could contains info about
+/// task/nodes/resources, used for additional scheduling policy.
+struct SchedulingContext {
+  const TaskSpecification &task_spec;
+};
+
 /// Class encapsulating the cluster resources and the logic to assign
 /// tasks to nodes based on the task's constraints and the available
 /// resources at those nodes.
@@ -120,7 +126,8 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///          return the ID of a node that can schedule the resource request.
   int64_t GetBestSchedulableNode(const ResourceRequest &resource_request,
                                  bool actor_creation, bool force_spillback,
-                                 int64_t *violations, bool *is_infeasible);
+                                 int64_t *violations, bool *is_infeasible,
+                                 const TaskSpecification &task_spec);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(const ResourceRequest &resource_request, int64_t
@@ -132,7 +139,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   std::string GetBestSchedulableNode(
       const absl::flat_hash_map<std::string, double> &resource_request,
       bool requires_object_store_memory, bool actor_creation, bool force_spillback,
-      int64_t *violations, bool *is_infeasible);
+      int64_t *violations, bool *is_infeasible, const TaskSpecification &task_spec);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.
@@ -398,6 +405,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
 
  private:
   bool NodeAlive(int64_t node_id) const;
+  bool IsNodeAvailable(int64_t node_id, const SchedulingContext &context) const;
   /// Init the information about which resources are unit_instance.
   void InitResourceUnitInstanceInfo();
 

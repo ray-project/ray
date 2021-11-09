@@ -56,6 +56,11 @@ class RayTask {
   /// \return The immutable specification for the task.
   const TaskSpecification &GetTaskSpecification() const;
 
+  /// Get the mutable specification for the task.
+  ///
+  /// \return The mutable specification for the task.
+  TaskSpecification &GetMutableTaskSpecification();
+
   /// Increment the number of times this task has been forwarded.
   void IncrementNumForwards();
 

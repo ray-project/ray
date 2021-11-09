@@ -465,7 +465,12 @@ void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogIfNeeded(
 }
 
 void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
-    const SchedulingKey &scheduling_key, const rpc::Address *raylet_address) {
+    const SchedulingKey &scheduling_key,
+    const rpc::RequestWorkerLeaseReply *reply_last_time) {
+  const rpc::Address *raylet_address = nullptr;
+  if (reply_last_time != nullptr) {
+    raylet_address = &reply_last_time->retry_at_raylet_address();
+  }
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
   if (scheduling_key_entry.pending_lease_requests.size() ==
@@ -514,7 +519,15 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   // same TaskID to request a worker
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
   resource_spec_msg.set_task_id(TaskID::FromRandom(job_id_).Binary());
-  const TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
+  TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
+
+  // Copy runtime env rescheduling context.
+  if (reply_last_time != nullptr) {
+    resource_spec.GetMutableMessage()
+        .mutable_runtime_env_setup_failed_node_ids()
+        ->CopyFrom(reply_last_time->runtime_env_setup_failed_node_ids());
+  }
+
   rpc::Address best_node_address;
   if (raylet_address == nullptr) {
     // If no raylet address is given, find the best worker for our next lease request.
@@ -570,7 +583,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           } else {
             // The raylet redirected us to a different raylet to retry at.
 
-            RequestNewWorkerIfNeeded(scheduling_key, &reply.retry_at_raylet_address());
+            RequestNewWorkerIfNeeded(scheduling_key, &reply);
           }
         } else if (lease_client != local_lease_client_) {
           // A lease request to a remote raylet failed. Retry locally if the lease is
