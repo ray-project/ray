@@ -88,9 +88,8 @@ class TestShellScriptExecution:
         assert job_manager.get_job_stderr(job_id) == b"error"
 
     def test_submit_ls_grep(self, job_manager):
-        job_id = job_manager.submit_job(
-            entrypoint=
-            f"ls {os.path.dirname(__file__)} | grep test_job_manager.py")
+        grep_cmd = f"ls {os.path.dirname(__file__)} | grep test_job_manager.py"
+        job_id = job_manager.submit_job(entrypoint=grep_cmd)
 
         wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id)
@@ -104,9 +103,8 @@ class TestShellScriptExecution:
         3) Job no hanging job supervisor actor
         4) Empty stdout
         """
-        job_id = job_manager.submit_job(
-            entrypoint=
-            f"python {_driver_script_path('script_with_exception.py')}")
+        run_cmd = f"python {_driver_script_path('script_with_exception.py')}"
+        job_id = job_manager.submit_job(entrypoint=run_cmd)
 
         wait_for_condition(
             check_job_failed, job_manager=job_manager, job_id=job_id)
@@ -203,9 +201,9 @@ class TestRuntimeEnv:
         actor failed to setup runtime_env.
         """
         with pytest.raises(RuntimeError):
+            run_cmd = f"python {_driver_script_path('override_env_var.py')}"
             job_id = job_manager.submit_job(
-                entrypoint=
-                f"python {_driver_script_path('override_env_var.py')}",
+                entrypoint=run_cmd,
                 runtime_env={"working_dir": "path_not_exist"})
 
             assert job_manager.get_job_status(job_id) == JobStatus.FAILED
