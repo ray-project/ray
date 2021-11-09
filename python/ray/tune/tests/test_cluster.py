@@ -235,8 +235,10 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
         },
         "checkpoint_freq": 2,
         "max_failures": 2,
-        "remote_checkpoint_dir": MOCK_REMOTE_DIR,
     }
+
+    if trainable_id == "__fake_durable":
+        kwargs["remote_checkpoint_dir"] = MOCK_REMOTE_DIR
 
     # Test recovery of trial that hasn't been checkpointed
     t = Trial(trainable_id, **kwargs)
@@ -287,8 +289,11 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
         "stopping_criterion": {
             "training_iteration": 3
         },
-        "remote_checkpoint_dir": MOCK_REMOTE_DIR,
     }
+
+    if trainable_id == "__fake_durable":
+        kwargs["remote_checkpoint_dir"] = MOCK_REMOTE_DIR
+
     t3 = Trial(trainable_id, **kwargs)
     runner.add_trial(t3)
     runner.step()  # Start trial
@@ -328,8 +333,10 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id,
         },
         "checkpoint_freq": 1,
         "max_failures": 1,
-        "remote_checkpoint_dir": MOCK_REMOTE_DIR,
     }
+
+    if trainable_id == "__fake_durable":
+        kwargs["remote_checkpoint_dir"] = MOCK_REMOTE_DIR
 
     trials = [Trial(trainable_id, **kwargs), Trial(trainable_id, **kwargs)]
     for t in trials:
@@ -377,8 +384,10 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
         },
         "checkpoint_freq": 2,
         "max_failures": 2,
-        "remote_checkpoint_dir": MOCK_REMOTE_DIR,
     }
+
+    if trainable_id == "__fake_durable":
+        kwargs["remote_checkpoint_dir"] = MOCK_REMOTE_DIR
 
     # The following patches only affect __fake_remote.
     def hide_remote_path(path_function):
@@ -446,8 +455,11 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir, trainable_id):
         },
         "checkpoint_freq": 1,
         "max_failures": 1,
-        "remote_checkpoint_dir": MOCK_REMOTE_DIR,
     }
+
+    if trainable_id == "__fake_durable":
+        kwargs["remote_checkpoint_dir"] = MOCK_REMOTE_DIR
+
     trials = [Trial(trainable_id, **kwargs), Trial(trainable_id, **kwargs)]
     for t in trials:
         runner.add_trial(t)

@@ -45,7 +45,13 @@ def wait_for_sync():
         syncer.wait()
 
 
-def set_sync_periods(sync_config):
+def validate_sync_config(sync_config: "SyncConfig"):
+    if sync_config.sync_to_driver is None:
+        # Per default, only sync to driver if not using cloud checkpointing
+        sync_config.sync_to_driver = not bool(sync_config.upload_dir)
+
+
+def set_sync_periods(sync_config: "SyncConfig"):
     """Sets sync periods from config."""
     global CLOUD_SYNC_PERIOD
     global NODE_SYNC_PERIOD
@@ -413,10 +419,6 @@ class SyncerCallback(Callback):
         if checkpoint.storage == Checkpoint.MEMORY:
             return
 
-        # Local import to avoid circular dependencies between syncer and
-        # trainable
-        from ray.tune.durable_trainable import DurableTrainable
-
         trial_syncer = self._get_trial_syncer(trial)
         # If the sync_function is False, syncing to driver is disabled.
         # In every other case (valid values include None, True Callable,
@@ -441,7 +443,7 @@ class SyncerCallback(Callback):
                         "Trial %s: Checkpoint sync skipped. "
                         "This should not happen.", trial)
             except TuneError as e:
-                if issubclass(trial.get_trainable_cls(), DurableTrainable):
+                if trial.uses_cloud_checkpointing:
                     # Even though rsync failed the trainable can restore
                     # from remote durable storage.
                     logger.error("Trial %s: Sync error - %s", trial, str(e))
@@ -450,7 +452,7 @@ class SyncerCallback(Callback):
                     # to then this checkpoint may have been lost, so we
                     # shouldn't track it with the checkpoint_manager.
                     raise e
-            if not issubclass(trial.get_trainable_cls(), DurableTrainable):
+            if not trial.uses_cloud_checkpointing:
                 if not os.path.exists(checkpoint.value):
                     raise TuneError("Trial {}: Checkpoint path {} not "
                                     "found after successful sync down.".format(

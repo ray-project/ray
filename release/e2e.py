@@ -375,7 +375,7 @@ def wheel_exists(ray_version, git_branch, git_commit):
 def commit_or_url(commit_or_url: str) -> str:
     if commit_or_url.startswith("http"):
         # Directly return the S3 url
-        if "s3-us-west-2.amazonaws" in commit_or_url:
+        if "s3" in commit_or_url and "amazonaws.com" in commit_or_url:
             return commit_or_url
         # Resolve the redirects for buildkite artifacts
         # This is needed because otherwise pip won't recognize the file name.
@@ -800,6 +800,20 @@ def create_or_find_app_config(
             logger.info(f"App config created with ID {app_config_id}")
 
     return app_config_id, app_config_name
+
+
+def run_bash_script(local_dir: str, bash_script: str):
+    previous_dir = os.getcwd()
+
+    bash_script_local_dir = os.path.dirname(bash_script)
+    file_name = os.path.basename(bash_script)
+
+    full_local_dir = os.path.join(local_dir, bash_script_local_dir)
+    os.chdir(full_local_dir)
+
+    subprocess.run("./" + file_name, shell=True, check=True)
+
+    os.chdir(previous_dir)
 
 
 def install_app_config_packages(app_config: Dict[Any, Any]):
@@ -1933,6 +1947,11 @@ def run_test(test_config_file: str,
             logger.error(
                 "Saving artifacts are not yet supported when running with "
                 "Anyscale connect.")
+
+    # Perform necessary driver side setup.
+    driver_setup_script = test_config.get("driver_setup", None)
+    if driver_setup_script:
+        run_bash_script(local_dir, driver_setup_script)
 
     result = run_test_config(
         local_dir,

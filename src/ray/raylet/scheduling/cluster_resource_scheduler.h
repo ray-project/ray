@@ -444,6 +444,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   bool last_report_object_pulls_queued_;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
 };
 
 }  // end namespace ray

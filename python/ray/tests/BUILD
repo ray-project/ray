@@ -221,6 +221,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_failure_3.py",
+    "test_chaos.py",
     "test_reference_counting_2.py",
   ],
   size = "large",
@@ -248,6 +249,16 @@ py_test_module_list(
   size = "large",
   extra_srcs = SRCS,
   tags = ["flaky-mac", "exclusive", "team:serve"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_runtime_env_conda.py"
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "post_wheel_build", "team:serve"],
   deps = ["//:ray_lib"],
 )
 
@@ -292,6 +303,14 @@ py_test(
     size = "small",
     srcs = SRCS + ["test_typing.py"] + glob(["typing_files"]),
     tags = ["exclusive", "team:core"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_job_manager",
+    size = "small",
+    srcs = SRCS + ["test_job_manager.py"] + glob(["subprocess_driver_scripts/**/*.py"]),
+    tags = ["exclusive", "team:serve"],
     deps = ["//:ray_lib"],
 )
 
