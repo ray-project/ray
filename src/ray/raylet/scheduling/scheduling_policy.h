@@ -75,11 +75,6 @@ class SchedulingPolicy {
   /// The threshold at which to switch from packing to spreading.
   const float spread_threshold_;
 
-  // The node to start round robin if it's spread scheduling.
-  // The index may be inaccurate when nodes are added or removed dynamically,
-  // but it should still be better than always scanning from 0 for spread scheduling.
-  size_t spread_scheduling_next_index_ = 0;
-
   enum class NodeFilter {
     /// Default scheduling.
     kAny,

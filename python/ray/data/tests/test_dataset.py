@@ -3413,18 +3413,11 @@ def test_random_shuffle_spread(ray_start_cluster):
     assert set(locations) == {node1_id, node2_id}
 
 
-@pytest.mark.parametrize("use_spread_resource_prefix", [False, True])
-def test_parquet_read_spread(ray_start_cluster, tmp_path,
-                             use_spread_resource_prefix):
+def test_parquet_read_spread(ray_start_cluster, tmp_path):
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"foo": 100},
-        num_cpus=(1 if use_spread_resource_prefix else 0),
-        _system_config={
-            "max_direct_call_object_size": 0,
-            "scheduler_spread_threshold": (1.0 if use_spread_resource_prefix
-                                           else 0.0)
-        })
+        _system_config={"max_direct_call_object_size": 0})
     cluster.add_node(resources={"bar:1": 100})
     cluster.add_node(resources={"bar:2": 100})
     cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
@@ -3449,10 +3442,7 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path,
     path2 = os.path.join(data_path, "test2.parquet")
     df2.to_parquet(path2)
 
-    ds = ray.data.read_parquet(
-        data_path,
-        _spread_resource_prefix=("bar:"
-                                 if use_spread_resource_prefix else None))
+    ds = ray.data.read_parquet(data_path, _spread_resource_prefix="bar:")
 
     # Force reads.
     blocks = ds.get_internal_block_refs()

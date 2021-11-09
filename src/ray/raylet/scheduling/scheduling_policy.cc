@@ -87,9 +87,9 @@ int64_t SchedulingPolicy::HybridPolicyWithFilter(
   bool best_is_available = false;
 
   // Step 2: Perform the round robin.
-  size_t round_index = spread_threshold_ == 0 ? spread_scheduling_next_index_ : 0;
-  for (size_t i = 0; i < round.size(); ++i, ++round_index) {
-    const auto &node_id = round[round_index % round.size()];
+  auto round_it = round.begin();
+  for (; round_it != round.end(); round_it++) {
+    const auto &node_id = *round_it;
     const auto &it = nodes_.find(node_id);
     RAY_CHECK(it != nodes_.end());
     const auto &node = it->second;
@@ -133,9 +133,6 @@ int64_t SchedulingPolicy::HybridPolicyWithFilter(
     }
 
     if (update_best_node) {
-      if (spread_threshold_ == 0) {
-        spread_scheduling_next_index_ = (round_index % round.size()) + 1;
-      }
       best_node_id = node_id;
       best_utilization_score = critical_resource_utilization;
       best_is_available = is_available;
