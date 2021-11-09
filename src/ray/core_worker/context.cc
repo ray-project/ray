@@ -21,8 +21,8 @@ namespace core {
 
 /// per-thread context for core worker.
 struct WorkerThreadContext {
-  WorkerThreadContext()
-      : current_task_id_(TaskID::ForFakeTask()), task_index_(0), put_counter_(0) {}
+  explicit WorkerThreadContext(const JobID &job_id)
+      : current_task_id_(TaskID::FromRandom(job_id)), task_index_(0), put_counter_(0) {}
 
   uint64_t GetNextTaskIndex() { return ++task_index_; }
 
@@ -292,9 +292,9 @@ bool WorkerContext::CurrentActorDetached() const {
   return is_detached_actor_;
 }
 
-WorkerThreadContext &WorkerContext::GetThreadContext() {
+WorkerThreadContext &WorkerContext::GetThreadContext() const {
   if (thread_context_ == nullptr) {
-    thread_context_ = std::make_unique<WorkerThreadContext>();
+    thread_context_ = std::make_unique<WorkerThreadContext>(current_job_id_);
   }
 
   return *thread_context_;

@@ -375,7 +375,7 @@ def wheel_exists(ray_version, git_branch, git_commit):
 def commit_or_url(commit_or_url: str) -> str:
     if commit_or_url.startswith("http"):
         # Directly return the S3 url
-        if "s3-us-west-2.amazonaws" in commit_or_url:
+        if "s3" in commit_or_url and "amazonaws.com" in commit_or_url:
             return commit_or_url
         # Resolve the redirects for buildkite artifacts
         # This is needed because otherwise pip won't recognize the file name.

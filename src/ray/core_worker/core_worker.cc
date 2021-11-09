@@ -642,7 +642,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           }
         }
       },
-      check_node_alive_fn, reconstruct_object_callback, push_error_callback));
+      check_node_alive_fn, reconstruct_object_callback, push_error_callback,
+      RayConfig::instance().max_lineage_bytes()));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -712,6 +713,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       rpc_address_, local_raylet_client_, core_worker_client_pool_, raylet_client_factory,
       std::move(lease_policy), memory_store_, task_manager_, local_raylet_id,
       RayConfig::instance().worker_lease_timeout_milliseconds(), actor_creator_,
+      worker_context_.GetCurrentJobID(),
       RayConfig::instance().max_tasks_in_flight_per_worker(),
       boost::asio::steady_timer(io_service_),
       RayConfig::instance().max_pending_lease_requests_per_scheduling_category());

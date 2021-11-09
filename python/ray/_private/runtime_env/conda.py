@@ -331,19 +331,23 @@ class CondaManager:
             # See https://github.com/ray-project/ray/issues/17086
             file_lock_name = "ray-conda-install.lock"
             with FileLock(os.path.join(self._resources_dir, file_lock_name)):
-                conda_yaml_file = os.path.join(self._resources_dir,
-                                               "environment.yml")
-                with open(conda_yaml_file, "w") as file:
-                    yaml.dump(conda_dict, file)
+                try:
+                    conda_yaml_file = os.path.join(self._resources_dir,
+                                                   "environment.yml")
+                    with open(conda_yaml_file, "w") as file:
+                        yaml.dump(conda_dict, file)
 
-                if conda_env_name in self._created_envs:
-                    logger.debug(f"Conda env {conda_env_name} already "
-                                 "created, skipping creation.")
-                else:
-                    create_conda_env(
-                        conda_yaml_file, prefix=conda_env_name, logger=logger)
-                    self._created_envs.add(conda_env_name)
-                os.remove(conda_yaml_file)
+                    if conda_env_name in self._created_envs:
+                        logger.debug(f"Conda env {conda_env_name} already "
+                                     "created, skipping creation.")
+                    else:
+                        create_conda_env(
+                            conda_yaml_file,
+                            prefix=conda_env_name,
+                            logger=logger)
+                        self._created_envs.add(conda_env_name)
+                finally:
+                    os.remove(conda_yaml_file)
 
                 if runtime_env.extensions.get("_inject_current_ray"):
                     _inject_ray_to_conda_site(
