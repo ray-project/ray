@@ -182,7 +182,6 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
 class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def setUp(self):
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
         ray.init(num_cpus=2)
 
         def MockTrainingFuncSync(config, checkpoint_dir=None):
@@ -218,7 +217,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
 
     def synchSetup(self, synch, param=None):
         if param is None:
-            param = [10, 20, 30]
+            param = [10, 20, 60]
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
@@ -252,14 +251,14 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
         self.assertTrue(
             any(
                 analysis.dataframe(metric="mean_accuracy", mode="max")
-                ["mean_accuracy"] != 33))
+                ["mean_accuracy"] != 63))
 
     def testSynchPass(self):
         analysis = self.synchSetup(True)
         self.assertTrue(
             all(
                 analysis.dataframe(metric="mean_accuracy", mode="max")[
-                    "mean_accuracy"] == 33))
+                    "mean_accuracy"] == 63))
 
     def testSynchPassLast(self):
         analysis = self.synchSetup(True, param=[30, 20, 10])
