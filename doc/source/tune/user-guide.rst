@@ -426,13 +426,10 @@ Let's take a look at an example:
         # sync our checkpoints via rsync
         sync_config=sync_config,
 
-        # we'll checkpoint every 10 iterations, keep the best five
-        # checkpoints (by AUC score, descending), and always checkpoint
-        # at the end of the last run!
+        # we'll keep the best five checkpoints at all times
+        # checkpoints (by AUC score, reported by the trainable, descending)
         checkpoint_score_attr="max-auc",
         keep_checkpoints_num=5,
-        checkpoint_freq=10,
-        checkpoint_at_end=True,
 
         # a very useful trick! this will resume from the last run specified by
         # sync_config (if one exists), otherwise it will start a new tuning run
