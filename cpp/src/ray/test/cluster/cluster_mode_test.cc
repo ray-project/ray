@@ -50,17 +50,6 @@ TEST(RayClusterModeTest, FullTest) {
   }
   ray::Init(config, cmd_argc, cmd_argv);
 
-  {
-    auto obj = ray::Put(std::string("aaa"));
-    auto r = ray::Task(GetVal).Remote(obj);
-    EXPECT_EQ(*r.Get(), "aaa");
-
-    auto obj1 = ray::Put(1);
-    auto obj2 = ray::Put(2);
-    auto r1 = ray::Task(Add).Remote(obj1, obj2);
-    EXPECT_EQ(*r1.Get(), 3);
-  }
-
   /// put and get object
   auto obj = ray::Put(12345);
   auto get_result = *(ray::Get(obj));
@@ -419,6 +408,17 @@ TEST(RayClusterModeTest, TaskWithPlacementGroup) {
                .Remote();
   EXPECT_EQ(*r.Get(), 1);
   ray::RemovePlacementGroup(placement_group.GetID());
+}
+
+TEST(RayClusterModeTest, ObjectRefArgsTest) {
+  auto obj = ray::Put(std::string("aaa"));
+  auto r = ray::Task(GetVal).Remote(obj);
+  EXPECT_EQ(*r.Get(), "aaa");
+
+  auto obj1 = ray::Put(1);
+  auto obj2 = ray::Put(2);
+  auto r1 = ray::Task(Add).Remote(obj1, obj2);
+  EXPECT_EQ(*r1.Get(), 3);
 }
 
 int main(int argc, char **argv) {

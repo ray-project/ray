@@ -116,6 +116,9 @@ std::vector<bool> AbstractRayRuntime::Wait(const std::vector<std::string> &ids,
 }
 
 rpc::Address GetOwnershipInfo(const std::string &object_id_str) {
+  if (ConfigInternal::Instance().run_mode == RunMode::SINGLE_PROCESS) {
+    return {};
+  }
   ray::internal::outer_object_id = object_id_str;
   auto object_id = ray::ObjectID::FromBinary(object_id_str);
   rpc::Address address;
