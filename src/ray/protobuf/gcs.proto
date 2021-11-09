@@ -108,7 +108,7 @@ message CreationTaskFailureContext {
   RayException creation_task_exception = 1;
 }
 
-//Indicates that this actor is marked as DEAD due to runtime environment setup failure.
+// Indicates that this actor is marked as DEAD due to runtime environment setup failure.
 message RuntimeEnvSetupFailureContext {
   // TODO(sang,lixin) Get this error message from agent.
   string error_message = 1;
@@ -179,7 +179,6 @@ message ActorTableData {
   // The actor's class name. This is necessary because the task spec's lifetime
   // is shorter than the ActorTableData.
   string class_name = 23;
-
   // Will only be set when state=DEAD. Offers detailed context of why this actor is dead.
   ActorDeathCause death_cause = 24;
 }
