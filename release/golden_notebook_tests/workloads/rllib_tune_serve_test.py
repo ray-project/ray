@@ -113,7 +113,8 @@ def train(smoke_test: bool) -> str:
         # TODO(jungong) : figure out which GCS upload_dir should be used here.
         sync_config=tune.SyncConfig(
             sync_to_driver=False,
-            sync_on_checkpoint=False),
+            sync_on_checkpoint=False,
+            upload_dir="gs://jun-riot-test/cuj-rl-ci/"),
         resume=None,
         stop={
             "training_iteration": 50,
@@ -165,10 +166,12 @@ class Corridor(object):
             return str(e)
 
 
-@ray.remote()
+@ray.remote
 def get_serve_url():
+    if "ANYSCALE_SESSION_DOMAIN" not in os.environ:
+        return "http://127.0.0.1:8000/corridor"
     return "https://" + \
-           os.environ['ANYSCALE_SESSION_DOMAIN'] + "/serve/corridor"
+           os.environ["ANYSCALE_SESSION_DOMAIN"] + "/serve/corridor"
 
 
 def deploy(ckpt_path: str):
