@@ -17,7 +17,7 @@ from ray.rllib import _register_all
 from ray import tune
 from ray.tune.integration.docker import DockerSyncer
 from ray.tune.integration.kubernetes import KubernetesSyncer
-from ray.tune.syncer import (CommandBasedClient, detect_sync_to_driver,
+from ray.tune.syncer import (CommandBasedClient, detect_cluster_syncer,
                              get_cloud_sync_client)
 
 
@@ -36,20 +36,6 @@ class TestSyncFunctionality(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     @patch("ray.tune.sync_client.S3_PREFIX", "test")
-    def testNoUploadDir(self):
-        """No Upload Dir is given."""
-        with self.assertRaises(AssertionError):
-            [trial] = tune.run(
-                "__fake",
-                name="foo",
-                max_failures=0,
-                stop={
-                    "training_iteration": 1
-                },
-                sync_config=tune.SyncConfig(
-                    **{"sync_to_cloud": "echo {source} {target}"})).trials
-
-    @patch("ray.tune.sync_client.S3_PREFIX", "test")
     def testCloudProperString(self):
         with self.assertRaises(ValueError):
             [trial] = tune.run(
@@ -61,7 +47,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 },
                 sync_config=tune.SyncConfig(**{
                     "upload_dir": "test",
-                    "sync_to_cloud": "ls {target}"
+                    "syncer": "ls {target}"
                 })).trials
 
         with self.assertRaises(ValueError):
@@ -74,7 +60,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 },
                 sync_config=tune.SyncConfig(**{
                     "upload_dir": "test",
-                    "sync_to_cloud": "ls {source}"
+                    "syncer": "ls {source}"
                 })).trials
 
         tmpdir = tempfile.mkdtemp()
@@ -90,7 +76,7 @@ class TestSyncFunctionality(unittest.TestCase):
             sync_config=tune.SyncConfig(
                 **{
                     "upload_dir": "test",
-                    "sync_to_cloud": "echo {source} {target} > " + logfile
+                    "syncer": "echo {source} {target} > " + logfile
                 })).trials
         with open(logfile) as f:
             lines = f.read()
@@ -101,7 +87,7 @@ class TestSyncFunctionality(unittest.TestCase):
         """Tests that invalid commands throw.."""
         with self.assertRaises(ValueError):
             # This raises ValueError because logger is init in safe zone.
-            sync_config = tune.SyncConfig(sync_to_driver="ls {target}")
+            sync_config = tune.SyncConfig(syncer="ls {target}")
             [trial] = tune.run(
                 "__fake",
                 name="foo",
@@ -114,7 +100,7 @@ class TestSyncFunctionality(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             # This raises ValueError because logger is init in safe zone.
-            sync_config = tune.SyncConfig(sync_to_driver="ls {source}")
+            sync_config = tune.SyncConfig(syncer="ls {source}")
             [trial] = tune.run(
                 "__fake",
                 name="foo",
@@ -126,8 +112,7 @@ class TestSyncFunctionality(unittest.TestCase):
 
         with patch.object(CommandBasedClient, "_execute") as mock_fn:
             with patch("ray.tune.syncer.get_node_ip_address") as mock_sync:
-                sync_config = tune.SyncConfig(
-                    sync_to_driver="echo {source} {target}")
+                sync_config = tune.SyncConfig(syncer="echo {source} {target}")
                 mock_sync.return_value = "0.0.0.0"
                 [trial] = tune.run(
                     "__fake",
@@ -148,8 +133,7 @@ class TestSyncFunctionality(unittest.TestCase):
             for filename in glob.glob(os.path.join(local, "*.json")):
                 shutil.copy(filename, remote)
 
-        sync_config = tune.SyncConfig(
-            upload_dir=tmpdir2, sync_to_cloud=sync_func)
+        sync_config = tune.SyncConfig(upload_dir=tmpdir2, syncer=sync_func)
         [trial] = tune.run(
             "__fake",
             name="foo",
@@ -186,7 +170,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 pickle.dump(count, fp)
 
         sync_config = tune.SyncConfig(
-            upload_dir="test", sync_to_cloud=counter, cloud_sync_period=1)
+            upload_dir="test", syncer=counter, sync_period=1)
         # This was originally set to 0.5
         os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
         self.addCleanup(
@@ -217,8 +201,7 @@ class TestSyncFunctionality(unittest.TestCase):
                 print("writing to", f.name)
                 f.write(source)
 
-        sync_config = tune.SyncConfig(
-            sync_to_driver=sync_func_driver, node_sync_period=5)
+        sync_config = tune.SyncConfig(syncer=sync_func_driver, sync_period=5)
 
         [trial] = tune.run(
             "__fake",
@@ -233,7 +216,7 @@ class TestSyncFunctionality(unittest.TestCase):
 
         with patch("ray.tune.syncer.get_node_ip_address") as mock_sync:
             mock_sync.return_value = "0.0.0.0"
-            sync_config = tune.SyncConfig(sync_to_driver=sync_func_driver)
+            sync_config = tune.SyncConfig(syncer=sync_func_driver)
             [trial] = tune.run(
                 "__fake",
                 name="foo",
@@ -252,7 +235,7 @@ class TestSyncFunctionality(unittest.TestCase):
         def sync_func(source, target):
             pass
 
-        sync_config = tune.SyncConfig(sync_to_driver=sync_func)
+        sync_config = tune.SyncConfig(syncer=sync_func)
 
         with patch.object(CommandBasedClient, "_execute") as mock_sync:
             [trial] = tune.run(
@@ -367,18 +350,19 @@ class TestSyncFunctionality(unittest.TestCase):
             with open(aws_file, "wt") as fp:
                 yaml.safe_dump(aws_conf, fp)
 
-            kubernetes_syncer = detect_sync_to_driver(None, kubernetes_file)
+            kubernetes_syncer = detect_cluster_syncer(None, kubernetes_file)
             self.assertTrue(issubclass(kubernetes_syncer, KubernetesSyncer))
             self.assertEqual(kubernetes_syncer._namespace, "test_ray")
 
-            docker_syncer = detect_sync_to_driver(None, docker_file)
+            docker_syncer = detect_cluster_syncer(None, docker_file)
             self.assertTrue(issubclass(docker_syncer, DockerSyncer))
 
-            aws_syncer = detect_sync_to_driver(None, aws_file)
+            aws_syncer = detect_cluster_syncer(None, aws_file)
             self.assertEqual(aws_syncer, None)
 
             # Should still return DockerSyncer, since it was passed explicitly
-            syncer = detect_sync_to_driver(DockerSyncer, kubernetes_file)
+            syncer = detect_cluster_syncer(
+                tune.SyncConfig(syncer=DockerSyncer), kubernetes_file)
             self.assertTrue(issubclass(syncer, DockerSyncer))
 
 

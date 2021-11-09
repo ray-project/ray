@@ -189,10 +189,10 @@ class TrialRunner:
         remote_checkpoint_dir (str): Remote path where
             global checkpoints are stored and restored from. Used
             if `resume` == REMOTE.
+        sync_config (SyncConfig): See `tune.py:run`.
         stopper: Custom class for stopping whole experiments. See
             ``Stopper``.
         resume (str|False): see `tune.py:run`.
-        sync_to_cloud (func|str): See `tune.py:run`.
         server_port (int): Port number for launching TuneServer.
         fail_fast (bool | str): Finishes as soon as a trial fails if True.
             If fail_fast='raise' provided, Tune will automatically
@@ -206,6 +206,11 @@ class TrialRunner:
         callbacks (list): List of callbacks that will be called at different
             times in the training loop. Must be instances of the
             ``ray.tune.trial_runner.Callback`` class.
+        metric (str): Metric used to check received results. If a result is
+            reported without this metric, an error will be raised. The error
+            can be omitted by not providing a metric or by setting the env
+            variable ``TUNE_DISABLE_STRICT_METRIC_CHECKING=0``
+
     """
 
     CKPT_FILE_TMPL = "experiment_state-{}.json"
@@ -214,21 +219,23 @@ class TrialRunner:
     ]
     RAISE = "RAISE"
 
-    def __init__(self,
-                 search_alg=None,
-                 scheduler=None,
-                 local_checkpoint_dir=None,
-                 remote_checkpoint_dir=None,
-                 sync_config=None,
-                 stopper=None,
-                 resume=False,
-                 server_port=None,
-                 fail_fast=False,
-                 checkpoint_period=None,
-                 trial_executor=None,
-                 callbacks=None,
-                 metric=None,
-                 driver_sync_trial_checkpoints=False):
+    def __init__(
+            self,
+            search_alg=None,
+            scheduler=None,
+            local_checkpoint_dir=None,
+            remote_checkpoint_dir=None,
+            sync_config=None,
+            stopper=None,
+            resume=False,
+            server_port=None,
+            fail_fast=False,
+            checkpoint_period=None,
+            trial_executor=None,
+            callbacks=None,
+            metric=None,
+            # Deprecate on next refactor
+            driver_sync_trial_checkpoints=False):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()

@@ -44,7 +44,6 @@ import time
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 import ray
-from ray.tune.syncer import NodeSyncer, detect_sync_to_driver, get_node_syncer
 from ray.tune.trial_runner import _find_newest_ckpt
 from ray.tune.utils.serialization import TuneFunctionDecoder
 
@@ -391,22 +390,6 @@ def run_resume_flow(
 
 # Download data from remote nodes
 
-_trial_node_syncers = {}
-
-
-def get_trial_node_syncer(trial: TrialStub, tmpdir: str) -> NodeSyncer:
-    global _trial_node_syncers
-
-    if trial not in _trial_node_syncers:
-        optional_cloud_syncer = detect_sync_to_driver(sync_to_driver=True)
-        node_syncer = get_node_syncer(
-            tmpdir,
-            remote_dir=trial.local_dir,
-            sync_function=optional_cloud_syncer)
-        _trial_node_syncers[trial] = node_syncer
-
-    return _trial_node_syncers[trial]
-
 
 def fetch_remote_directory_content(
         node_ip: str,
@@ -483,24 +466,8 @@ def fetch_trial_node_dirs_to_tmp_dir(
 
         else:
             # Trial was run on remote node
-            node_syncer = get_trial_node_syncer(trial, tmpdir)
-            node_syncer.set_worker_ip(trial.node_ip)
-            if not node_syncer.sync_down():
-                print(
-                    f"WARNING: Could not sync remote experiment dir for trial "
-                    f"{trial} from {trial.hostname} ({trial.node_ip}) "
-                    f"to {tmpdir}.")
-            print("Synced remote node experiment dir from", trial.hostname,
-                  "to", tmpdir, "for trial", trial.trial_id)
-
-            if not os.listdir(tmpdir):
-                print(f"Synced directory is empty: {tmpdir}, trying "
-                      f"function-based sync instead...")
-
-                fetch_remote_directory_content(
-                    trial.node_ip,
-                    remote_dir=trial.local_dir,
-                    local_dir=tmpdir)
+            fetch_remote_directory_content(
+                trial.node_ip, remote_dir=trial.local_dir, local_dir=tmpdir)
 
         dirmap[trial] = tmpdir
 

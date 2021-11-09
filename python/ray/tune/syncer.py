@@ -44,12 +44,6 @@ def wait_for_sync():
         syncer.wait()
 
 
-def validate_sync_config(sync_config: "SyncConfig"):
-    if sync_config.sync_to_driver is None:
-        # Per default, only sync to driver if not using cloud checkpointing
-        sync_config.sync_to_driver = not bool(sync_config.upload_dir)
-
-
 def set_sync_periods(sync_config: "SyncConfig"):
     """Sets sync periods from config."""
     global CLOUD_SYNC_PERIOD
@@ -515,24 +509,41 @@ class SyncerCallback(Callback):
         self._sync_trial_checkpoint(trial, checkpoint)
 
 
-def detect_sync_to_driver(
-        sync_config: SyncConfig,
-        cluster_config_file: str = "~/ray_bootstrap_config.yaml"):
+def detect_cluster_syncer(
+        sync_config: Optional[SyncConfig],
+        cluster_config_file: str = "~/ray_bootstrap_config.yaml"
+) -> Union[bool, Type, NodeSyncer]:
+    """Detect cluster Syncer given SyncConfig.
+
+    Returns False if cloud checkpointing is enabled (when upload dir is
+    set).
+
+    Else, returns sync config syncer if manually specified.
+
+    Else, detects cluster environment (e.g. Docker, Kubernetes) and returns
+    syncer accordingly.
+
+    """
     from ray.tune.integration.docker import DockerSyncer
+
+    sync_config = sync_config or SyncConfig()
 
     if bool(sync_config.upload_dir):
         # No sync to driver for cloud checkpointing
         return False
 
-    sync_to_driver = sync_config.syncer
+    _syncer = sync_config.syncer
 
-    if isinstance(sync_to_driver, Type):
-        return sync_to_driver
+    if _syncer == "auto":
+        _syncer = None
+
+    if isinstance(_syncer, Type):
+        return _syncer
 
     # Else: True or None. Auto-detect.
     cluster_config_file = os.path.expanduser(cluster_config_file)
     if not os.path.exists(cluster_config_file):
-        return sync_to_driver
+        return _syncer
 
     with open(cluster_config_file, "rt") as fp:
         config = yaml.safe_load(fp.read())
@@ -541,7 +552,7 @@ def detect_sync_to_driver(
         logger.debug(
             "Detected docker autoscaling environment. Using `DockerSyncer` "
             "as sync client. If this is not correct or leads to errors, "
-            "please pass a `sync_to_driver` parameter in the `SyncConfig` to "
+            "please pass a `syncer` parameter in the `SyncConfig` to "
             "`tune.run().` to manually configure syncing behavior.")
         return DockerSyncer
 
@@ -561,8 +572,8 @@ def detect_sync_to_driver(
             f"Detected Ray autoscaling environment on Kubernetes. Using "
             f"`NamespacedKubernetesSyncer` with namespace `{namespace}` "
             f"as sync client. If this is not correct or leads to errors, "
-            f"please pass a `sync_to_driver` parameter in the `SyncConfig` "
+            f"please pass a `syncer` parameter in the `SyncConfig` "
             f"to `tune.run()` to manually configure syncing behavior..")
         return NamespacedKubernetesSyncer(namespace)
 
-    return sync_to_driver
+    return _syncer
