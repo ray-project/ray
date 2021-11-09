@@ -1280,10 +1280,10 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
             if threads_stopped.is_set():
                 return
 
-            entity_id, error_data = worker.gcs_subscriber.poll_error()
-            if entity_id is None or error_data is None:
+            _, error_data = worker.gcs_subscriber.poll_error()
+            if error_data is None:
                 continue
-            if entity_id not in [
+            if error_data.job_id not in [
                     worker.current_job_id.binary(),
                     JobID.nil().binary(),
             ]:
