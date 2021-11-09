@@ -195,10 +195,12 @@ def test_serve_endpoint(serve_url):
 
     data = {"state": 1}
     resp = sess.post(resp.url, json=data)
+    print(str(resp))  # DEBUG
     print(resp.json())
 
     data = {"state": 3}
     resp = sess.post(resp.url, json=data)
+    print(str(resp))  # DEBUG
     print(resp.json())
 
 
