@@ -715,9 +715,15 @@ void GcsActorManager::OnWorkerDead(
       "Worker ", worker_id.Hex(), " on node ", node_id.Hex(),
       " exits, type=", rpc::WorkerExitType_Name(disconnect_type),
       ", has creation_task_exception = ", (creation_task_exception != nullptr));
+  std::shared_ptr<rpc::ActorDeathCause> death_cause = nullptr;
   if (creation_task_exception != nullptr) {
     absl::StrAppend(&message, " Formatted creation task exception: ",
                     creation_task_exception->formatted_exception_string());
+
+    death_cause = std::make_shared<rpc::ActorDeathCause>();
+    death_cause->mutable_creation_task_failure_context()
+        ->mutable_creation_task_exception()
+        ->CopyFrom(*creation_task_exception);
   }
   if (disconnect_type == rpc::WorkerExitType::INTENDED_EXIT ||
       disconnect_type == rpc::WorkerExitType::IDLE_EXIT) {
@@ -769,7 +775,7 @@ void GcsActorManager::OnWorkerDead(
 
   // Otherwise, try to reconstruct the actor that was already created or in the creation
   // process.
-  ReconstructActor(actor_id, /*need_reschedule=*/need_reconstruct);
+  ReconstructActor(actor_id, /*need_reschedule=*/need_reconstruct, death_cause);
 }
 
 void GcsActorManager::OnNodeDead(const NodeID &node_id) {
