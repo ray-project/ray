@@ -115,7 +115,7 @@ class TorchPolicy(Policy):
             get_batch_divisibility_req: Optional callable that returns the
                 divisibility requirement for sample batches given the Policy.
         """
-        self.framework = "torch"
+        self.framework = config["framework"] = "torch"
         super().__init__(observation_space, action_space, config)
 
         # Create multi-GPU model towers, if necessary.
