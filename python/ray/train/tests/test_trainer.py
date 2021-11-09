@@ -807,23 +807,25 @@ def test_worker_failure_local_rank(ray_start_2_cpus):
 def test_worker_start_failure(ray_start_2_cpus):
     test_config = TestConfig()
 
-    trainer = Trainer(test_config, num_workers=2)
-
-    restart = trainer._executor._restart
-
     def init_hook():
         pass
 
     def init_hook_fail():
         ray.actor.exit_actor()
 
-    def restart_patched(self):
-        self._initialization_hook = init_hook
-        restart()
+    class TestBackendExecutor(BackendExecutor):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
 
-    with patch.object(BackendExecutor, "_restart", restart_patched):
+        def _restart(self):
+            self._initialization_hook = init_hook
+            super()._restart()
+
+    with patch.object(ray.train.trainer, "BackendExecutor",
+                      TestBackendExecutor):
+        trainer = Trainer(test_config, num_workers=2)
         trainer.start(initialization_hook=init_hook_fail)
-        assert len(trainer._executor.worker_group) == 2
+        assert len(ray.get(trainer._executor.get_worker_group.remote())) == 2
 
 
 def test_max_failures(ray_start_2_cpus):
@@ -1137,7 +1139,7 @@ def test_dataset_fault_tolerance(ray_start_4_cpus):
     test_config = TestConfig()
 
     def train_func():
-        return 1
+        return train.get_dataset_shard()
 
     def train_actor_failure():
         import sys
@@ -1153,8 +1155,9 @@ def test_dataset_fault_tolerance(ray_start_4_cpus):
                 return_value=dataset_splits) as mock_method:
             trainer = Trainer(test_config, num_workers=2)
             trainer.start()
-            trainer.run(train_func, dataset=dataset)
-            mock_method.assert_called_once()
+            result = trainer.run(train_func, dataset=dataset)
+            for worker_shard, input_shard in zip(result, dataset_splits):
+                assert worker_shard.take() == input_shard.take()
 
 
 @pytest.mark.parametrize("resource", ["CPU", "GPU", "extra"])
