@@ -56,6 +56,12 @@ def _import_readonly(provider_config):
     return ReadOnlyNodeProvider
 
 
+def _import_fake_docker(provider_config):
+    from ray.autoscaler._private.fake_docker.node_provider import \
+        FakeDockerProvider
+    return FakeDockerProvider
+
+
 def _import_fake_multinode(provider_config):
     from ray.autoscaler._private.fake_multi_node.node_provider import \
         FakeMultiNodeProvider
@@ -123,6 +129,7 @@ def _import_external(provider_config):
 
 _NODE_PROVIDERS = {
     "local": _import_local,
+    "fake_docker": _import_fake_docker,
     "fake_multinode": _import_fake_multinode,
     "readonly": _import_readonly,
     "aws": _import_aws,
