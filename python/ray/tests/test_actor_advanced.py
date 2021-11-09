@@ -1344,27 +1344,22 @@ def test_get_actor_race_condition(shutdown_only):
                 actor = ray.get_actor(name)
             except Exception:
                 print("Get failed, trying to create", name)
-                actor = Actor.options(name=name).remote()
+                actor = Actor.options(name=name, lifetime="detached").remote()
         except Exception:
-            print("Someone else created it, trying to get", name)
+            print("Someone else created it, trying to get")
             actor = ray.get_actor(name)
-        return ray.get(actor.ping.remote())
+        result = ray.get(actor.ping.remote())
+        return result
 
     def do_run(name, concurrency=4):
         name = "actor_" + str(name)
         tasks = [getter.remote(name) for _ in range(concurrency)]
         result = ray.get(tasks)
-        try:
-            ray.kill(ray.get_actor(name))  # Cleanup
-        except Exception:
-            pass
+        ray.kill(ray.get_actor(name))  # Cleanup
         return result
 
     for i in range(50):
-        # TODO(sang): Currently increasing concurrency
-        # to 8 will make test flaky due to this issue
-        # https://github.com/ray-project/ray/issues/20129
-        CONCURRENCY = 4
+        CONCURRENCY = 8
         results = do_run(i, concurrency=CONCURRENCY)
         assert ["ok"] * CONCURRENCY == results
 
