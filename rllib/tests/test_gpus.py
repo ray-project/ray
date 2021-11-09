@@ -1,7 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.trainer.pg import PGTrainer, DEFAULT_CONFIG
+from ray.rllib.agents.pg import PGTrainer, DEFAULT_CONFIG
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import framework_iterator
 from ray import tune

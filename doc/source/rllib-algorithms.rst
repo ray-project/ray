@@ -347,7 +347,7 @@ Policy Gradients
 ----------------
 |pytorch| |tensorflow|
 `[paper] <https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation.pdf>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/trainer/pg/pg_trainer.py>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg.py>`__
 We include a vanilla policy gradients implementation as an example algorithm.
 
 .. figure:: a2c-arch.svg
@@ -358,7 +358,7 @@ Tuned examples: `CartPole-v0 <https://github.com/ray-project/ray/blob/master/rll
 
 **PG-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/trainer/pg/default_config.py
+.. literalinclude:: ../../rllib/agents/pg/default_config.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

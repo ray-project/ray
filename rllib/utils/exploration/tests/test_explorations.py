@@ -8,7 +8,7 @@ import ray.rllib.agents.ddpg as ddpg
 import ray.rllib.agents.ddpg.td3 as td3
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.impala as impala
-import ray.rllib.trainer.pg as pg
+import ray.rllib.agents.pg as pg
 import ray.rllib.agents.ppo as ppo
 import ray.rllib.agents.sac as sac
 from ray.rllib.utils import check, framework_iterator

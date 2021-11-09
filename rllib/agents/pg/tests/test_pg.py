@@ -2,7 +2,7 @@ import numpy as np
 import unittest
 
 import ray
-import ray.rllib.trainer.pg as pg
+import ray.rllib.agents.pg as pg
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical

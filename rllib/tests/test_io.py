@@ -11,7 +11,7 @@ import unittest
 import ray
 from ray.tune.registry import register_env, register_input, \
     registry_get_input, registry_contains_input
-from ray.rllib.trainer.pg import PGTrainer
+from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.offline import IOContext, JsonWriter, JsonReader, InputReader, \
     ShuffledInput

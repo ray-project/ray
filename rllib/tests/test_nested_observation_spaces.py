@@ -7,7 +7,7 @@ import unittest
 
 import ray
 from ray.rllib.agents.a3c import A2CTrainer
-from ray.rllib.trainer.pg import PGTrainer
+from ray.rllib.agents.pg import PGTrainer
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.vector_env import VectorEnv
