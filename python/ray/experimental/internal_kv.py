@@ -1,5 +1,5 @@
 from typing import List, Union, Optional, Tuple, Any, Dict
-import cloudpickle as pickle
+import ray.cloudpickle as pickle
 
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.gcs_utils import GcsClient
