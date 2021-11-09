@@ -127,54 +127,6 @@ class MockNodeInfoStub():
             status=ok_gcs_status, drain_node_status=drain_node_status)
 
 
-def run_with_all_drain_node_outcomes(test_helper):
-    """Utility for running an autoscaler test function `test_helper` with
-    with various outcomes when calling the DrainNodeOutcome.
-
-    Assumptions on `test_helper`:
-        (1) Accepts the following args:
-                * A mock prometheus metrics object
-                * A mock node info stub
-        (2) Passes the mock objects into a StandardAutoscaler internally.
-        (3) The StandardAutoscaler terminates nodes at least once during
-            execution of `test_helper`.
-    """
-    for outcome in [
-            DrainNodeOutcome.Succeeded, DrainNodeOutcome.Unimplemented
-    ]:
-        # for outcome in DrainNodeOutcome:
-        time.sleep(1)
-        mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
-        mock_node_info_stub = MockNodeInfoStub(drain_node_outcome=outcome)
-        test_helper(mock_metrics, mock_node_info_stub)
-        # Assert that the DrainNode API was called. (The autoscaler attempted
-        # to terminate nodes during `test_helper`.)
-        assert mock_node_info_stub.drain_node_call_count > 0
-        if outcome == DrainNodeOutcome.Succeeded:
-            # No drain node exceptions.
-            assert mock_metrics.drain_node_exceptions.inc.call_count == 0
-            # Each drain node call succeeded.
-            assert (mock_node_info_stub.drain_node_reply_success ==
-                    mock_node_info_stub.drain_node_call_count)
-        elif outcome == DrainNodeOutcome.Unimplemented:
-            # All errors were supressed.
-            assert mock_metrics.drain_node_exceptions.inc.call_count == 0
-            # Every call failed.
-            assert mock_node_info_stub.drain_node_reply_success == 0
-        elif outcome in (DrainNodeOutcome.GenericRpcException,
-                         DrainNodeOutcome.GenericException):
-
-            # We encountered an exception.
-            assert mock_metrics.drain_node_exceptions.inc.call_count > 0
-            # Every call failed.
-            assert (mock_metrics.drain_node_exceptions.inc.call_count ==
-                    mock_node_info_stub.drain_node_call_count)
-            assert mock_node_info_stub.drain_node_reply_success == 0
-
-        elif outcome == DrainNodeOutcome.GenericException:
-            pass
-
-
 def mock_raylet_id() -> bytes:
     """Random raylet id to pass to load_metrics.update.
     """
