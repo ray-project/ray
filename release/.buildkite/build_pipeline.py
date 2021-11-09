@@ -79,6 +79,7 @@ CORE_NIGHTLY_TESTS = {
         "shuffle_data_loader",
         "dask_on_ray_1tb_sort",
         "many_nodes_actor_test",
+        SmokeTest("threaded_actors_stress_test"),
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",
@@ -92,6 +93,10 @@ CORE_NIGHTLY_TESTS = {
         "shuffle_data_loader",
         "pipelined_training_50_gb",
         "pipelined_ingestion_1500_gb_15_windows",
+    ],
+    "~/ray/release/nightly_tests/chaos_test.yaml": [
+        "chaos_many_actors",
+        "chaos_many_tasks_no_object_store",
     ],
 }
 
@@ -108,6 +113,7 @@ NIGHTLY_TESTS = {
         "dask_on_ray_large_scale_test_no_spilling",
         "dask_on_ray_large_scale_test_spilling",
         "pg_autoscaling_regression_test",
+        "threaded_actors_stress_test",
     ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("actor_deaths"),
@@ -122,6 +128,10 @@ NIGHTLY_TESTS = {
         SmokeTest("pbt"),
         # SmokeTest("serve"),
         # SmokeTest("serve_failure"),
+    ],
+    "~/ray/release/nightly_tests/chaos_test.yaml": [
+        "chaos_dask_on_ray_large_scale_test_no_spilling",
+        "chaos_dask_on_ray_large_scale_test_spilling",
     ],
     "~/ray/release/microbenchmark/microbenchmark.yaml": [
         "microbenchmark",
@@ -158,6 +168,7 @@ NIGHTLY_TESTS = {
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
         SmokeTest("learning_tests"),
         SmokeTest("stress_tests"),
+        "performance_tests",
         "multi_gpu_learning_tests",
         "multi_gpu_with_lstm_learning_tests",
         "multi_gpu_with_attention_learning_tests",
