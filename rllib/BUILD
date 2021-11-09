@@ -637,12 +637,12 @@ py_test(
     srcs = ["agents/mbmpo/tests/test_mbmpo.py"]
 )
 
-# PGTrainer (already moved to new `rllib.trainer` dir)
+# PGTrainer
 py_test(
     name = "test_pg",
     tags = ["team:ml", "trainers_dir"],
     size = "medium",
-    srcs = ["trainer/pg/tests/test_pg.py"]
+    srcs = ["agents/pg/tests/test_pg.py"]
 )
 
 # PPOTrainer

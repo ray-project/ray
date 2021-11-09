@@ -592,7 +592,7 @@ class Trainer(Trainable):
     def __init__(self,
                  config: Optional[PartialTrainerConfigDict] = None,
                  env: Optional[Union[str, EnvType]] = None,
-                 logger_creator: Callable[[], Logger] = None,
+                 logger_creator: Optional[Callable[[], Logger]] = None,
                  remote_checkpoint_dir: Optional[str] = None,
                  sync_function_tpl: Optional[str] = None):
         """Initializes a Trainer instance.
@@ -666,8 +666,8 @@ class Trainer(Trainable):
 
         # Setup our config: Merge the user-supplied config (which could
         # be a partial config dict with the class' default).
-        self.config = self.merge_trainer_configs(self._default_config, config,
-                                                 self._allow_unknown_configs)
+        self.config = self.merge_trainer_configs(
+            self.get_default_config(), config, self._allow_unknown_configs)
 
         # Setup the "env creator" callable.
         env = self._env_id
@@ -761,6 +761,9 @@ class Trainer(Trainable):
             self._init(self.config, self.env_creator)
         # New design: Override `setup` (as indented by Trainable)
         # and do or don't call super().setup() from within your override.
+        # By default, `setup` should create both worker sets: "rollout workers"
+        # for collecting samples for training and - if applicable - "evaluation
+        # workers".
         except NotImplementedError:
             # - Create rollout workers here automatically.
             # - Run the execution plan to create the local iterator to `next()`
@@ -834,8 +837,16 @@ class Trainer(Trainable):
         pass
 
     @override(Trainable)
-    def step(self):
+    def step(self) -> ResultDict:
+        """Implements the main `Trainer.train()` logic.
 
+        Attempts to perform a single training step up to n times. Thereby
+        catches RayErrors resulting from worker failures. After n attempts,
+        fails gracefully.
+
+        Returns:
+            The results dict with stats/infos on sampling and training.
+        """
         result = None
         for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
             # Try to train one step.
@@ -870,7 +881,10 @@ class Trainer(Trainable):
 
         return result
 
-    def _step_attempt(self):
+    def _step_attempt(self) -> ResultDict:
+        """Attempt a single training step, including an evaluation run, if necessary.
+        """
+
         # self._iteration gets incremented after this function returns,
         # meaning that e. g. the first time this function is called,
         # self._iteration will be 0.
