@@ -13,9 +13,9 @@
 // limitations under the License.
 
 #include "ray/common/status.h"
-#include "ray/common/grpc_util.h"
 
 #include "gtest/gtest.h"
+#include "ray/common/grpc_util.h"
 
 namespace ray {
 class StatusTest : public ::testing::Test {};

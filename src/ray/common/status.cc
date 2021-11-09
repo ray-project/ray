@@ -27,11 +27,12 @@
 // Adapted from Apache Arrow, Apache Kudu, TensorFlow
 
 #include "ray/common/status.h"
-#include "absl/container/flat_hash_map.h"
 
 #include <assert.h>
 
 #include <boost/system/error_code.hpp>
+
+#include "absl/container/flat_hash_map.h"
 
 namespace ray {
 
