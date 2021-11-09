@@ -22,9 +22,9 @@ PiResult = namedtuple("PiResult", ["samples", "pi"])
 
 @ray.remote(num_cpus=1)
 class PiCalculator:
-    def __init__(self):
+    def __init__(self, metadata):
         # -- Read only variables --
-        self.metadata = {"meta": 1}
+        self.metadata = metadata
         self.sample_batch = 1000000
         # -- Variables that are accessed by mulitple threads --
         self.lock = threading.Lock()
@@ -69,14 +69,24 @@ class PiCalculator:
         return result
 
 
-def start_actors(num_actors):
+def start_actors(num_actors, num_nodes):
     """Create actors and run the computation loop.
     """
     num_actors = int(num_actors)
     start = time.time()
+    nodes = []
+    while len(nodes) < num_nodes:
+        nodes = [
+            next((r for r in n["Resources"] if "node" in r), None)
+            for n in ray.nodes() if n["Alive"]
+        ]
+        nodes = [n for n in nodes if n is not None]
     pi_actors = [
-        PiCalculator.options(max_concurrency=10).remote()
-        for _ in range(num_actors)
+        PiCalculator.options(resources={
+            n: 0.01
+        }, max_concurrency=10).remote({
+            "meta": 1
+        }) for n in nodes for _ in range(num_actors)
     ]
     ray.get([actor.ready.remote() for actor in pi_actors])
     print(f"Took {time.time() - start} to create {num_actors} actors")
@@ -106,13 +116,15 @@ def main():
     ray.init(address="auto")
     args, unknown = parse_script_args()
     num_cpus = ray.cluster_resources()["CPU"]
+    num_nodes = len([1 for n in ray.nodes() if n["Alive"]])
+    print(f"Total number of actors: {num_cpus}, nodes: {num_nodes}")
     monitor_actor = monitor_memory_usage()
 
     start = time.time()
     while time.time() - start < args.test_runtime:
         # Step 1: Create actors and start computation loop.
         print("Create actors.")
-        actors = start_actors(num_cpus)
+        actors = start_actors(num_cpus, num_nodes)
 
         # Step 2: Get the pi result from actors.
         compute_start = time.time()
