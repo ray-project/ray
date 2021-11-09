@@ -448,21 +448,20 @@ def test_put_error2(ray_start_object_store_memory):
     # get_error_message(ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR, 1)
 
 
-@pytest.mark.skip("Publish happeds before we subscribe it")
-def test_version_mismatch(error_pubsub, shutdown_only):
+def test_version_mismatch(ray_start_cluster):
     ray_version = ray.__version__
-    ray.__version__ = "fake ray version"
+    try:
+        cluster = ray_start_cluster
+        cluster.add_node(num_cpus=1)
 
-    ray.init(num_cpus=1)
-    p = error_pubsub
+        # Test the driver.
+        ray.__version__ = "fake ray version"
+        with pytest.raises(RuntimeError):
+            ray.init(address="auto")
 
-    errors = get_error_message(p, 1, ray_constants.VERSION_MISMATCH_PUSH_ERROR)
-    assert False, errors
-    assert len(errors) == 1
-    assert errors[0].type == ray_constants.VERSION_MISMATCH_PUSH_ERROR
-
-    # Reset the version.
-    ray.__version__ = ray_version
+    finally:
+        # Reset the version.
+        ray.__version__ = ray_version
 
 
 def test_export_large_objects(ray_start_regular, error_pubsub):
