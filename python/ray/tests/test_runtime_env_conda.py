@@ -12,23 +12,6 @@ if not os.environ.get("CI"):
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
 
-@pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
-def start_cluster(ray_start_cluster, request):
-    assert request.param in {"ray_client", "no_ray_client"}
-    use_ray_client: bool = request.param == "ray_client"
-
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4)
-    if use_ray_client:
-        cluster.head_node._ray_params.ray_client_server_port = "10004"
-        cluster.head_node.start_ray_client_server()
-        address = "ray://localhost:10004"
-    else:
-        address = cluster.address
-
-    yield cluster, address
-
-
 def check_local_files_gced(cluster):
     for node in cluster.list_all_nodes():
         for subdir in ["conda"]:
