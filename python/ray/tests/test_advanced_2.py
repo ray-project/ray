@@ -758,7 +758,8 @@ def test_max_call_tasks(ray_start_regular):
 #   3. After the normal task being reconstructed, we send a SIGTERM to the
 #      driver to make it offline and expects Ray collects the idle workers for
 #      the previous nomral task.
-def test_whether_worker_leaked_when_task_finished_with_errors(ray_start_regular):
+def test_whether_worker_leaked_when_task_finished_with_errors(
+        ray_start_regular):
     driver_template = """
 import ray
 import os
@@ -785,7 +786,7 @@ print(ray.get(obj))
     driver_proc = run_string_as_driver_nonblocking(driver_script)
     try:
         driver_proc.wait(10)
-    except Exception as e:
+    except Exception:
         pass
 
     wait_for_condition(lambda: _internal_kv_exists("NORMAL_TASK_PID"), 10)
@@ -799,8 +800,8 @@ print(ray.get(obj))
         curr_pid_bytes = _internal_kv_get("NORMAL_TASK_PID")
         return curr_pid_bytes is not None \
             and int(curr_pid_bytes) != normal_task_pid
-    wait_for_condition(lambda: normal_task_was_reconstructed(), 10)
 
+    wait_for_condition(lambda: normal_task_was_reconstructed(), 10)
     driver_proc.send_signal(signal.SIGTERM)
     # Sleep here to make sure raylet has triggered cleaning up
     # the idle workers.
