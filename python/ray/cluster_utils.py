@@ -29,6 +29,8 @@ class AutoscalingCluster:
             head_resources: resources of the head node, including CPU.
             worker_node_types: autoscaler node types config for worker nodes.
         """
+        self._head_resources = head_resources
+
         base_config = yaml.safe_load(
             open(
                 os.path.join(
@@ -40,14 +42,13 @@ class AutoscalingCluster:
             "node_config": {},
             "max_workers": 0,
         }
-        self._head_resources = head_resources
-        self._config = base_config
-        self._process = None
-
         # For testing only: `terminate_node` will not stop Ray node processes
         # if True.
         base_config["provider"][
             "_leave_termination_to_drain_api"] = _leave_termination_to_drain_api
+        self._config = base_config
+
+        self._process = None
 
     def start(self):
         """Start the cluster.
