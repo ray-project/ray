@@ -9,7 +9,7 @@ import pytest
 import numpy as np
 
 import ray
-from ray.tune import (run, Trainable, sample_from, Analysis,
+from ray.tune import (run, Trainable, sample_from,
                       ExperimentAnalysis, grid_search)
 from ray.tune.result import DEBUG_METRICS
 from ray.tune.utils.mock import MyTrainableClass
@@ -184,6 +184,7 @@ class AnalysisSuite(unittest.TestCase):
         ray.shutdown()
 
     def setUp(self):
+        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "1"
         self.test_dir = tempfile.mkdtemp()
         self.num_samples = 10
         self.metric = "episode_reward_mean"
@@ -206,13 +207,13 @@ class AnalysisSuite(unittest.TestCase):
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def testDataframe(self):
-        analysis = Analysis(self.test_dir)
+        analysis = ExperimentAnalysis(self.test_dir)
         df = analysis.dataframe(self.metric, mode="max")
         self.assertTrue(isinstance(df, pd.DataFrame))
         self.assertEqual(df.shape[0], self.num_samples * 2)
 
     def testBestLogdir(self):
-        analysis = Analysis(self.test_dir)
+        analysis = ExperimentAnalysis(self.test_dir)
         logdir = analysis.get_best_logdir(self.metric, mode="max")
         self.assertTrue(logdir.startswith(self.test_dir))
         logdir2 = analysis.get_best_logdir(self.metric, mode="min")
@@ -220,7 +221,7 @@ class AnalysisSuite(unittest.TestCase):
         self.assertNotEqual(logdir, logdir2)
 
     def testBestConfigIsLogdir(self):
-        analysis = Analysis(self.test_dir)
+        analysis = ExperimentAnalysis(self.test_dir)
         for metric, mode in [(self.metric, "min"), (self.metric, "max")]:
             logdir = analysis.get_best_logdir(metric, mode=mode)
             best_config = analysis.get_best_config(metric, mode=mode)
