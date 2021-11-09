@@ -625,7 +625,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           if (spec.IsActorTask()) {
             auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
             actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
-            direct_actor_submitter_->SubmitTask(spec);
+            RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
           } else {
             RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
           }
@@ -1018,7 +1018,7 @@ void CoreWorker::InternalHeartbeat() {
 
   for (auto &spec : tasks_to_resubmit) {
     if (spec.IsActorTask()) {
-      direct_actor_submitter_->SubmitTask(spec);
+      RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
     } else {
       RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
     }
@@ -1997,7 +1997,7 @@ std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
   } else {
     returned_refs = task_manager_->AddPendingTask(
         rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
-    direct_actor_submitter_->SubmitTask(task_spec);
+    RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
   return {std::move(returned_refs)};
 }

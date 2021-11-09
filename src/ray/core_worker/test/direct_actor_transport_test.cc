@@ -587,14 +587,14 @@ TEST_F(DirectActorSubmitterTest, TestPendingTasks) {
 
   // Submit number of `max_pending_calls` tasks would be OK.
   for (int32_t i = 0; i < max_pending_calls; i++) {
-    ASSERT_FALSE(submitter_.FullOfPendingTasks(actor_id));
+    ASSERT_FALSE(submitter_.PendingTasksFull(actor_id));
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
     ASSERT_TRUE(submitter_.SubmitTask(task).ok());
     ASSERT_EQ(1, io_context.run_one());
   }
 
   // Then the queue should be full.
-  ASSERT_TRUE(submitter_.FullOfPendingTasks(actor_id));
+  ASSERT_TRUE(submitter_.PendingTasksFull(actor_id));
 
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
   submitter_.ConnectActor(actor_id, addr, 0);
@@ -602,18 +602,18 @@ TEST_F(DirectActorSubmitterTest, TestPendingTasks) {
 
   // After task 0 reply comes, the queue turn to not full.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK(), 0));
-  ASSERT_FALSE(submitter_.FullOfPendingTasks(actor_id));
+  ASSERT_FALSE(submitter_.PendingTasksFull(actor_id));
 
   // We can submit task 10, but after that the queue is full.
   auto task = CreateActorTaskHelper(actor_id, worker_id, 10);
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
-  ASSERT_TRUE(submitter_.FullOfPendingTasks(actor_id));
+  ASSERT_TRUE(submitter_.PendingTasksFull(actor_id));
 
   // All the replies comes, the queue shouble be empty.
   while (!worker_client_->callbacks.empty()) {
     ASSERT_TRUE(worker_client_->ReplyPushTask());
   }
-  ASSERT_FALSE(submitter_.FullOfPendingTasks(actor_id));
+  ASSERT_FALSE(submitter_.PendingTasksFull(actor_id));
 }
 
 class MockDependencyWaiter : public DependencyWaiter {
@@ -772,6 +772,33 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
   ASSERT_TRUE(WaitForCondition(condition_func, 10 * 1000));
 
   StopIOService();
+}
+
+class Message {
+ public:
+  Message() {}
+  virtual ~Message() {}
+  Message(const Message &m) { RAY_LOG(INFO) << "copy constructor"; }
+  Message(Message &&m) { RAY_LOG(INFO) << "move constructor"; }
+};
+
+std::optional<std::vector<Message>> Foo() {
+  std::vector<Message> vec;
+  vec.push_back(Message());
+  RAY_LOG(INFO) << "1";
+  return {std::move(vec)};
+}
+
+std::vector<Message> Bar() {
+  std::vector<Message> vec;
+  vec.push_back(Message());
+  RAY_LOG(INFO) << "2";
+  return vec;
+}
+
+TEST(TestCopy, Test) {
+  Foo();
+  Bar();
 }
 
 }  // namespace core
