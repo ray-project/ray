@@ -861,12 +861,12 @@ class Dataset(Generic[T]):
 
         Returns:
             If the input dataset is a simple dataset then the output is
-            a tuple of (agg1, agg2, ...) where each tuple element is
+            a tuple of ``(agg1, agg2, ...)`` where each tuple element is
             the corresponding aggregation result.
             If the input dataset is an Arrow dataset then the output is
-            an ArrowRow where each column is the corresponding
+            an ``ArrowRow`` where each column is the corresponding
             aggregation result.
-            If the dataset is empty, return None.
+            If the dataset is empty, return ``None``.
         """
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
@@ -957,6 +957,7 @@ class Dataset(Generic[T]):
 
     def _aggregate_on(self, agg_cls: type, on: AggregateOnT, *args, **kwargs):
         """Helper for aggregating on a particular subset of the dataset.
+
         This validates the `on` argument, and converts a list of column names
         or lambdas to a multi-aggregation. A null `on` results in a
         multi-aggregation on all columns for an Arrow Dataset, and a single
@@ -983,16 +984,49 @@ class Dataset(Generic[T]):
     def sum(self, on: AggregateOnT = None) -> U:
         """Compute sum over entire dataset.
 
+        This is a blocking operation.
+
         Examples:
             >>> ray.data.range(100).sum()
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).sum(lambda x: x[1])
             >>> ray.data.range_arrow(100).sum("value")
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).sum(["A", "B"])
 
         Args:
-            on: The data to sum on.
-                It can be the column name for Arrow dataset.
+            on: The data subset on which to compute the sum.
+
+                - For a simple dataset: it can be a callable or a list thereof,
+                  and the default is to return a scalar sum of all rows.
+                - For an Arrow dataset: it can be a column name or a list
+                  thereof, and the default is to return an ``ArrowRow``
+                  containing the column-wise sum of all columns.
 
         Returns:
             The sum result.
+
+            For a simple dataset, the output is:
+
+            - ``on=None``: a scalar representing the sum of all rows,
+            - ``on=callable``: a scalar representing the sum of the outputs of
+              the callable called on each row,
+            - ``on=[callable_1, ..., calalble_n]``: a tuple of
+              ``(sum_1, ..., sum_n)`` representing the sum of the outputs of
+              the corresponding callables called on each row.
+
+            For an Arrow dataset, the output is:
+
+            - ``on=None``: an ArrowRow containing the column-wise sum of all
+              columns,
+            - ``on="col"``: a scalar representing the sum of all items in
+              column ``"col"``,
+            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+              containing the column-wise sum of the provided columns.
+
+            If the dataset is empty, then the output is 0.
         """
         ret = self._aggregate_on(Sum, on)
         if ret is None:
@@ -1005,16 +1039,49 @@ class Dataset(Generic[T]):
     def min(self, on: AggregateOnT = None) -> U:
         """Compute minimum over entire dataset.
 
+        This is a blocking operation.
+
         Examples:
             >>> ray.data.range(100).min()
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).min(lambda x: x[1])
             >>> ray.data.range_arrow(100).min("value")
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).min(["A", "B"])
 
         Args:
-            on: The data to min on.
-                It can be the column name for Arrow dataset.
+            on: The data subset on which to compute the min.
+
+                - For a simple dataset: it can be a callable or a list thereof,
+                  and the default is to return a scalar min of all rows.
+                - For an Arrow dataset: it can be a column name or a list
+                  thereof, and the default is to return an ``ArrowRow``
+                  containing the column-wise min of all columns.
 
         Returns:
             The min result.
+
+            For a simple dataset, the output is:
+
+            - ``on=None``: a scalar representing the min of all rows,
+            - ``on=callable``: a scalar representing the min of the outputs
+              of the callable called on each row,
+            - ``on=[callable_1, ..., calalble_n]``: a tuple of
+              ``(min_1, ..., min_n)`` representing the min of the outputs
+              of the corresponding callables called on each row.
+
+            For an Arrow dataset, the output is:
+
+            - ``on=None``: an ``ArrowRow`` containing the column-wise min of
+              all columns,
+            - ``on="col"``: a scalar representing the min of all items in
+              column ``"col"``,
+            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+              containing the column-wise min of the provided columns.
+
+            If the dataset is empty, then a ``ValueError`` is raised.
         """
         ret = self._aggregate_on(Min, on)
         if ret is None:
@@ -1027,16 +1094,49 @@ class Dataset(Generic[T]):
     def max(self, on: AggregateOnT = None) -> U:
         """Compute maximum over entire dataset.
 
+        This is a blocking operation.
+
         Examples:
             >>> ray.data.range(100).max()
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).max(lambda x: x[1])
             >>> ray.data.range_arrow(100).max("value")
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).max(["A", "B"])
 
         Args:
-            on: The data to max on.
-                It can be the column name for Arrow dataset.
+            on: The data subset on which to compute the max.
+
+                - For a simple dataset: it can be a callable or a list thereof,
+                  and the default is to return a scalar max of all rows.
+                - For an Arrow dataset: it can be a column name or a list
+                  thereof, and the default is to return an ``ArrowRow``
+                  containing the column-wise max of all columns.
 
         Returns:
             The max result.
+
+            For a simple dataset, the output is:
+
+            - ``on=None``: a scalar representing the max of all rows,
+            - ``on=callable``: a scalar representing the max of the outputs of
+              the callable called on each row,
+            - ``on=[callable_1, ..., calalble_n]``: a tuple of
+              ``(max_1, ..., max_n)`` representing the max of the outputs of
+              the corresponding callables called on each row.
+
+            For an Arrow dataset, the output is:
+
+            - ``on=None``: an ``ArrowRow`` containing the column-wise max of
+              all columns,
+            - ``on="col"``: a scalar representing the max of all items in
+              column ``"col"``,
+            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+              containing the column-wise max of the provided columns.
+
+            If the dataset is empty, then a ``ValueError`` is raised.
         """
         ret = self._aggregate_on(Max, on)
         if ret is None:
@@ -1049,16 +1149,49 @@ class Dataset(Generic[T]):
     def mean(self, on: AggregateOnT = None) -> U:
         """Compute mean over entire dataset.
 
+        This is a blocking operation.
+
         Examples:
             >>> ray.data.range(100).mean()
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).mean(lambda x: x[1])
             >>> ray.data.range_arrow(100).mean("value")
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).mean(["A", "B"])
 
         Args:
-            on: The data to mean on.
-                It can be the column name for Arrow dataset.
+            on: The data subset on which to compute the mean.
+
+                - For a simple dataset: it can be a callable or a list thereof,
+                  and the default is to return a scalar mean of all rows.
+                - For an Arrow dataset: it can be a column name or a list
+                  thereof, and the default is to return an ``ArrowRow``
+                  containing the column-wise mean of all columns.
 
         Returns:
             The mean result.
+
+            For a simple dataset, the output is:
+
+            - ``on=None``: a scalar representing the mean of all rows,
+            - ``on=callable``: a scalar representing the mean of the outputs
+              of the callable called on each row,
+            - ``on=[callable_1, ..., calalble_n]``: a tuple of
+              ``(mean_1, ..., mean_n)`` representing the mean of the outputs
+              of the corresponding callables called on each row.
+
+            For an Arrow dataset, the output is:
+
+            - ``on=None``: an ``ArrowRow`` containing the column-wise mean of
+              all columns,
+            - ``on="col"``: a scalar representing the mean of all items in
+              column ``"col"``,
+            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+              containing the column-wise mean of the provided columns.
+
+            If the dataset is empty, then a ``ValueError`` is raised.
         """
         ret = self._aggregate_on(Mean, on)
         if ret is None:
@@ -1071,9 +1204,17 @@ class Dataset(Generic[T]):
     def std(self, on: AggregateOnT = None, ddof: int = 1) -> U:
         """Compute standard deviation over entire dataset.
 
+        This is a blocking operation.
+
         Examples:
             >>> ray.data.range(100).std()
-            >>> ray.data.range_arrow(100).std("value")
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).std(lambda x: x[1])
+            >>> ray.data.range_arrow(100).std("value", ddof=0)
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).std(["A", "B"])
 
         NOTE: This uses Welford's online method for an accumulator-style
         computation of the standard deviation. This method was chosen due to
@@ -1084,13 +1225,38 @@ class Dataset(Generic[T]):
         https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
 
         Args:
-            on: The data on which to compute the standard deviation.
-                It can be the column name for Arrow dataset.
+            on: The data subset on which to compute the std.
+
+                - For a simple dataset: it can be a callable or a list thereof,
+                  and the default is to return a scalar std of all rows.
+                - For an Arrow dataset: it can be a column name or a list
+                  thereof, and the default is to return an ``ArrowRow``
+                  containing the column-wise std of all columns.
             ddof: Delta Degrees of Freedom. The divisor used in calculations
-                is N - ddof, where N represents the number of elements.
+                is ``N - ddof``, where ``N`` represents the number of elements.
 
         Returns:
             The standard deviation result.
+
+            For a simple dataset, the output is:
+
+            - ``on=None``: a scalar representing the std of all rows,
+            - ``on=callable``: a scalar representing the std of the outputs of
+              the callable called on each row,
+            - ``on=[callable_1, ..., calalble_n]``: a tuple of
+              ``(std_1, ..., std_n)`` representing the std of the outputs of
+              the corresponding callables called on each row.
+
+            For an Arrow dataset, the output is:
+
+            - ``on=None``: an ``ArrowRow`` containing the column-wise std of
+              all columns,
+            - ``on="col"``: a scalar representing the std of all items in
+              column ``"col"``,
+            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+              containing the column-wise std of the provided columns.
+
+            If the dataset is empty, then a ``ValueError`` is raised.
         """
         ret = self._aggregate_on(Std, on, ddof=ddof)
         if ret is None:
