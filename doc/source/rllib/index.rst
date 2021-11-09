@@ -4,66 +4,141 @@
 
 .. _rllib-index:
 
-RLlib: Scalable Reinforcement Learning
-======================================
+RLlib: Industry-Grade Reinforcement Learning with TF and Torch
+==============================================================
 
-RLlib is an open-source library for reinforcement learning that offers both high scalability and a unified API for a variety of applications. RLlib natively supports TensorFlow, TensorFlow Eager, and PyTorch, but most of its internals are framework agnostic.
+.. figure:: ../images/rllib/rllib-index-header.svg
 
-.. image:: rllib-stack.svg
+**RLlib** is an open-source library for reinforcement learning (RL), offering support for
+production-level, highly distributed RL workloads while maintaining
+unified and simple APIs for a large variety of industry applications.
+Whether you would like to train your agents in a multi-agent setup,
+purely from offline (historic) datasets, or using externally
+connected simulators, RLlib offers a simple solution for each of your decision
+making needs.
 
-To get started, take a look over the `custom env example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ and the `API documentation <rllib-toc.html>`__. If you're looking to develop custom algorithms with RLlib, also check out `concepts and custom algorithms <rllib-concepts.html>`__.
+You **don't need** to be an **RL expert**, nor do you need to
+learn Ray or any of its other libraries in order to get started with RLlib.
+If you either have your problem defined and coded in python as an
+"`RL environment <https://github.com/openai/gym>`_" or are in possession of pre-recorded
+(historic) data to learn from, you should be up and running with RLlib in a day.
+
+RLlib is already used in production by industry leaders from many different verticals,
+such as manufacturing, logistics, finance, gaming, automakers, robotics, and lots of others.
 
 RLlib in 60 seconds
 -------------------
 
-The following is a whirlwind overview of RLlib. For a more in-depth guide, see also the `full table of contents <rllib-toc.html>`__ and `RLlib blog posts <rllib-examples.html#blog-posts>`__. You may also want to skim the `list of built-in algorithms <rllib-toc.html#algorithms>`__. Look out for the |tensorflow| and |pytorch| icons to see which algorithms are `available <rllib-toc.html#algorithms>`__ for each framework.
+It'll only take a few steps to get your first RLlib workload up and running on your laptop:
 
-Running RLlib
-~~~~~~~~~~~~~
+**TensorFlow or PyTorch**:
 
-RLlib has extra dependencies on top of ``ray``. You'll need to install either `PyTorch <http://pytorch.org/>`__ or `TensorFlow <https://www.tensorflow.org>`__ as well as a couple of other dependencies:
-
-.. code-block:: bash
-
-  # Note: You will only need either `torch` or `tensorflow`, but feel free to install both:
-  pip install "ray[rllib]" pandas tensorflow torch
-
-Then, you can try out training in the following equivalent ways:
+RLlib does not automatically install a deep-learning framework, but supports
+TensorFlow (both 1.x with static-graph and 2.x with eager mode) as well as
+PyTorch. Depending on your needs, make sure to install either TensorFlow or
+PyTorch (or both as shown below):
 
 .. code-block:: bash
 
-  rllib train --run=PPO --env=CartPole-v0  # -v [-vv] for verbose,
-                                           # --config='{"framework": "tf2", "eager_tracing": true}' for eager,
-                                           # --torch to use PyTorch OR --config='{"framework": "torch"}'
+    $ conda create -n rllib python=3.8
+    $ conda activate rllib
+    $ pip install "ray[rllib]" tensorflow torch
 
-.. code-block:: python
-
-  from ray import tune
-  from ray.rllib.agents.ppo import PPOTrainer
-  tune.run(PPOTrainer, config={"env": "CartPole-v0"})  # "log_level": "INFO" for verbose,
-                                                       # "framework": "tfe"/"tf2" for eager,
-                                                       # "framework": "torch" for PyTorch
-
-If you run into issues, be sure to check you're using the correct RLlib executable with ``which rllib``.
-
-Finally, if you'd like to pause the ``CartPole-v0`` example and restart some other time, you can do so with ``CTRL+C``, and you'll see something like the following:
+To be able to run our Atari examples we well, you should also install:
 
 .. code-block:: bash
 
-  2021-10-27 17:40:20,804 WARNING tune.py:622 -- Experiment has been interrupted, but the most recent state was saved.You can continue running this experiment by passing `resume=True` to `tune.run()`
+    $ pip install "gym[atari]" "gym[accept-rom-license]" atari_py
 
-You can read more here about RLlib's deep integration with Ray Tune, and how this allows you to save model checkpoints as you train so your progress is never lost.
+After these quick pip installs, you can start coding against RLlib.
 
-Next, we'll cover three key concepts in RLlib: Policies, Samples, and Trainers.
+Here is an example of running a PPO Trainer on the "`Taxi domain <https://gym.openai.com/envs/Taxi-v3/>`_"
+for a few training iterations, then perform a single evaluation loop
+(with rendering enabled):
+
+.. literalinclude:: ../../../rllib/examples/documentation/rllib_in_60s.py
+    :language: python
+    :start-after: __rllib-in-60s-begin__
+    :end-before: __rllib-in-60s-end__
+
+Feature Overview
+----------------
+
+The following is a summary of RLlib's most striking features (for an in-depth overview, check out our `documentation <http://docs.ray.io/en/master/rllib.html>`_).
+
+In particular, RLlib offers and supports:
+
+|tf-and-torch| The most **popular deep-learning frameworks**: PyTorch and TensorFlow (tf1.x/2.x static-graph/eager/traced).
+
+|distributed-learning| **Highly distributed learning**: Our RLlib algorithms (such as our "PPO" or "IMPALA") allow you to set the ``num_workers`` config parameter, such that your workloads can run on 100s of CPUs/nodes thus parallelizing and speeding up learning.
+
+**Vectorized (batched) environments**: RLlib auto-vectorizes your (custom) gym.Env classes such that RLlib environment workers can batch and thus significantly speedup the action computing model forward passes.
+
+|multi-agent| **Multi-agent RL** (MARL): Convert your (custom) gym.Env into a multi-agent one via a few simple steps and start training your agents in any of the following possible setups:
+
+   a) Cooperative with shared or separate policies and/or value functions.
+
+   b) Adversarial scenarios using self-play and league-based training.
+
+   c) Independent learning of neutral/co-existing agents.
+
+|external-simulator| **External simulators** connecting to RLlib from the outside (e.g. via http(s)): Don't have your simulation running as a gym.Env in python? No problem, RLlib supports an external environment API and comes with a pluggable, off-the-shelve client/server setup that allows you to run 100s of independent simulators on the "outside" (e.g. a Windows cloud) connecting to a central RLlib PolicyServer that learns and serves actions. Alternatively, actions can be computed on the client side to save on network traffic.
+
+**Offline (batch) RL and imitation learning (behavior cloning)** using historic data: If you don't have a simulator for your particular problem, but tons of historic data recorded by a legacy (maybe non-RL/ML system), this branch of reinforcement learning is for you! RLlib's comes with several offline RL algorithms (*CQL*, *MARWIL*, and *DQfD*), allowing you to either purely behavior-clone the historic system (the one that recorded your historic data) or learn how to improve over that system.
+
+In-Depth Documentation
+----------------------
+
+For an in-depth overview of RLlib and everything it has to offer, including
+hand-on tutorials of important industry use cases and workflows, head over to
+our `documentation pages <https://docs.ray.io/en/master/rllib.html>`_.
+
+
+Customizations
+--------------
+
+RLlib provides ways to customize any aspect of your training- and experimental workflows.
+For example, you may code your own `environments <../rllib-env.html#configuring-environments>`__
+in python using openAI gym or DeepMind's OpenSpiel APIs, provide a custom
+`TensorFlow/Keras- <../rllib-models.html#tensorflow-models>`__ or ,
+`Torch model <../rllib-models.html#torch-models>`_, write your own
+`policy- and loss definitions <../rllib-concepts.html#policies>`__, define
+custom `exploratory behavior <../rllib-training.htmlexploration-api>`_, and many other things.
+Via mapping one or more agents in your environments to (one or more) policies, multi-agent
+RL (MARL) becomes an easy-to-use low-level primitive for our users.
+
+.. figure:: ../images/rllib/rllib-stack.svg
+    :align: left
+
+    **RLlib's API stack:** Built on top of Ray, RLlib offers off-the-shelf, highly distributed
+    algorithms, policies, loss functions, and default models (including the option to
+    auto-wrap a neural network with an LSTM or an attention net). Furthermore, our library
+    comes with a built-in Server/Client setup, allowing you to connect
+    hundreds of external simulators (clients) via the network to an RLlib server process,
+    which provides learning functionality and serves action queries. User customizations
+    are realized via sub-classing the existing abstractions and - by overriding certain
+    methods in those sub-classes - define custom behavior.
+
+
 
 Policies
 ~~~~~~~~
 
-`Policies <rllib-concepts.html#policies>`__ are a core concept in RLlib. In a nutshell, policies are Python classes that define how an agent acts in an environment. `Rollout workers <rllib-concepts.html#policy-evaluation>`__ query the policy to determine agent actions. In a `gym <rllib-env.html#openai-gym>`__ environment, there is a single agent and policy. In `vector envs <rllib-env.html#vectorized>`__, policy inference is for multiple agents at once, and in `multi-agent <rllib-env.html#multi-agent-and-hierarchical>`__, there may be multiple policies, each controlling one or more agents:
+`Policies <rllib-concepts.html#policies>`__ are a core concept in RLlib. In a nutshell, policies are
+Python classes that define how an agent acts in an environment.
+`Rollout workers <rllib-concepts.html#policy-evaluation>`__ query the policy to determine agent actions.
+In a `gym <rllib-env.html#openai-gym>`__ environment, there is a single agent and policy.
+In `vector envs <rllib-env.html#vectorized>`__, policy inference is for multiple agents at once,
+and in `multi-agent <rllib-env.html#multi-agent-and-hierarchical>`__, there may be multiple policies,
+each controlling one or more agents:
 
 .. image:: multi-flat.svg
 
-Policies can be implemented using `any framework <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py>`__. However, for TensorFlow and PyTorch, RLlib has `build_tf_policy <rllib-concepts.html#building-policies-in-tensorflow>`__ and `build_torch_policy <rllib-concepts.html#building-policies-in-pytorch>`__ helper functions that let you define a trainable policy with a functional-style API, for example:
+Policies can be implemented using `any framework <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py>`__.
+However, for TensorFlow and PyTorch, RLlib has
+`build_tf_policy <rllib-concepts.html#building-policies-in-tensorflow>`__ and
+`build_torch_policy <rllib-concepts.html#building-policies-in-pytorch>`__ helper functions that let you
+define a trainable policy with a functional-style API, for example:
 
 .. code-block:: python
 
@@ -115,29 +190,21 @@ RLlib `Trainer classes <rllib-concepts.html#trainers>`__ coordinate the distribu
 
 RLlib uses `Ray actors <actors.html>`__ to scale training from a single core to many thousands of cores in a cluster. You can `configure the parallelism <rllib-training.html#specifying-resources>`__ used for training by changing the ``num_workers`` parameter. Check out our `scaling guide <rllib-training.html#scaling-guide>`__ for more details here.
 
-Application Support
-~~~~~~~~~~~~~~~~~~~
-
-Beyond environments defined in Python, RLlib supports batch training on `offline datasets <rllib-offline.html>`__, and also provides a variety of integration strategies for `external applications <rllib-env.html#external-agents-and-applications>`__.
-
-Customization
-~~~~~~~~~~~~~
-
-RLlib provides ways to customize almost all aspects of training, including
-`neural network models <rllib-models.html#tensorflow-models>`__,
-`action distributions <rllib-models.html#custom-action-distributions>`__,
-`policy definitions <rllib-concepts.html#policies>`__:
-the `environment <rllib-env.html#configuring-environments>`__,
-and the `sample collection process <rllib-sample-collection.html>`__
-
-.. image:: rllib-components.svg
 
 To learn more, proceed to the `table of contents <rllib-toc.html>`__.
 
-.. |tensorflow| image:: tensorflow.png
+.. |tf-and-torch| image:: ../images/rllib/rllib-index-tf-and-torch.svg
     :class: inline-figure
-    :width: 24
+    :width: 80
 
-.. |pytorch| image:: pytorch.png
+.. |distributed-learning| image:: ../images/rllib/rllib-index-distributed-learning.svg
     :class: inline-figure
-    :width: 24
+    :width: 100
+
+.. |multi-agent| image:: ../images/rllib/rllib-index-multi-agent.svg
+    :class: inline-figure
+    :width: 120
+
+.. |external-simulator| image:: ../images/rllib/rllib-index-external-simulator.svg
+    :class: inline-figure
+    :width: 120
