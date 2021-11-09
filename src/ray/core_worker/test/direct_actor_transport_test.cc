@@ -135,7 +135,7 @@ TEST_F(DirectActorSubmitterTest, TestSubmitTask) {
 
   auto task = CreateActorTaskHelper(actor_id, worker_id, 0);
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   submitter_.ConnectActor(actor_id, addr, 0);
@@ -143,7 +143,7 @@ TEST_F(DirectActorSubmitterTest, TestSubmitTask) {
 
   task = CreateActorTaskHelper(actor_id, worker_id, 1);
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
 
   EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _))
@@ -172,7 +172,7 @@ TEST_F(DirectActorSubmitterTest, TestQueueingWarning) {
   for (int i = 0; i < 7500; i++) {
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
     ASSERT_TRUE(submitter_.SubmitTask(task).ok());
-    ASSERT_EQ(1, io_context.run_one());
+    ASSERT_EQ(1, io_context.poll_one());
     worker_client_->acked_seqno = i;
   }
   ASSERT_EQ(last_queue_warning_, 0);
@@ -180,7 +180,7 @@ TEST_F(DirectActorSubmitterTest, TestQueueingWarning) {
   for (int i = 7500; i < 15000; i++) {
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
     ASSERT_TRUE(submitter_.SubmitTask(task).ok());
-    ASSERT_EQ(1, io_context.run_one());
+    ASSERT_EQ(1, io_context.poll_one());
     /* no ack */
   }
   ASSERT_EQ(last_queue_warning_, 5000);
@@ -188,7 +188,7 @@ TEST_F(DirectActorSubmitterTest, TestQueueingWarning) {
   for (int i = 15000; i < 35000; i++) {
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
     ASSERT_TRUE(submitter_.SubmitTask(task).ok());
-    ASSERT_EQ(1, io_context.run_one());
+    ASSERT_EQ(1, io_context.poll_one());
     /* no ack */
   }
   ASSERT_EQ(last_queue_warning_, 20000);
@@ -216,9 +216,9 @@ TEST_F(DirectActorSubmitterTest, TestDependencies) {
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.
   ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Put the dependencies in the store in the same order as task submission.
@@ -252,9 +252,9 @@ TEST_F(DirectActorSubmitterTest, TestOutOfOrderDependencies) {
   // Neither task can be submitted yet because they are still waiting on
   // dependencies.
   ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_EQ(worker_client_->callbacks.size(), 0);
 
   // Put the dependencies in the store in the opposite order of task
@@ -282,9 +282,9 @@ TEST_F(DirectActorSubmitterTest, TestActorDead) {
   auto task2 = CreateActorTaskHelper(actor_id, worker_id, 1);
   task2.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
   ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
   // Simulate the actor dying. All in-flight tasks should get failed.
@@ -318,11 +318,11 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   auto task4 = CreateActorTaskHelper(actor_id, worker_id, 3);
   // Submit three tasks.
   ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
 
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(1);
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _, _, _)).Times(1);
@@ -342,7 +342,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   addr.set_port(1);
   submitter_.ConnectActor(actor_id, addr, 1);
   ASSERT_TRUE(submitter_.SubmitTask(task4).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   ASSERT_TRUE(worker_client_->callbacks.empty());
   // Actor counter restarts at 0 after the actor is restarted.
@@ -366,11 +366,11 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartRetry) {
   auto task4 = CreateActorTaskHelper(actor_id, worker_id, 3);
   // Submit three tasks.
   ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
 
   // All tasks will eventually finish.
   EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _)).Times(4);
@@ -395,12 +395,12 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartRetry) {
   submitter_.ConnectActor(actor_id, addr, 1);
   // A new task is submitted.
   ASSERT_TRUE(submitter_.SubmitTask(task4).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   // Tasks 2 and 3 get retried.
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   while (!worker_client_->callbacks.empty()) {
     ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   }
@@ -425,11 +425,11 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 2);
   // Submit three tasks.
   ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   // All tasks will eventually finish.
   EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _)).Times(3);
 
@@ -451,7 +451,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
   // Retry task 2 manually (simulating task_finisher and SendPendingTask's behavior)
   // Retry task 3 should happen via event loop
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
 
   // Both task2 and task3 should be submitted.
   ASSERT_EQ(worker_client_->callbacks.size(), 2);
@@ -477,7 +477,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   auto task = CreateActorTaskHelper(actor_id, worker_id, 0);
   // Submit a task.
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task.TaskId(), _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
@@ -488,7 +488,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 1);
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task.TaskId(), _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
@@ -498,7 +498,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 2);
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task.TaskId(), _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
@@ -508,7 +508,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 3);
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(1, io_context.poll_one());
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task.TaskId(), _, _)).Times(0);
   ASSERT_FALSE(worker_client_->ReplyPushTask(Status::OK()));
 
@@ -532,7 +532,7 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   task = CreateActorTaskHelper(actor_id, worker_id, 4);
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(task.TaskId(), _, _, _, _)).Times(1);
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_EQ(0, io_context.poll_one());
 }
 
 TEST_F(DirectActorSubmitterTest, TestActorRestartFailInflightTasks) {
@@ -552,12 +552,15 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartFailInflightTasks) {
   auto task3 = CreateActorTaskHelper(actor_id, worker_id, 1);
   // Submit a task.
   ASSERT_TRUE(submitter_.SubmitTask(task1).ok());
+  ASSERT_EQ(1, io_context.poll_one());
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(1);
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
 
   // Submit 2 tasks.
   ASSERT_TRUE(submitter_.SubmitTask(task2).ok());
+  ASSERT_EQ(1, io_context.poll_one());
   ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
+  ASSERT_EQ(1, io_context.poll_one());
   // Actor failed, but the task replies are delayed (or in some scenarios, lost).
   // We should still be able to fail the inflight tasks.
   EXPECT_CALL(*task_finisher_, PendingTaskFailed(task2.TaskId(), _, _, _, _)).Times(1);
@@ -590,7 +593,7 @@ TEST_F(DirectActorSubmitterTest, TestPendingTasks) {
     ASSERT_FALSE(submitter_.PendingTasksFull(actor_id));
     auto task = CreateActorTaskHelper(actor_id, worker_id, i);
     ASSERT_TRUE(submitter_.SubmitTask(task).ok());
-    ASSERT_EQ(1, io_context.run_one());
+    ASSERT_EQ(1, io_context.poll_one());
   }
 
   // Then the queue should be full.
