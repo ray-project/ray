@@ -679,7 +679,6 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
     "ray_start_regular", [{
         "_system_config": {
             "metrics_report_interval_ms": 1000,
-            "complex_scheduling_class": True
         }
     }],
     indirect=True)
