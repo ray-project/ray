@@ -18,7 +18,8 @@ import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_utils import GcsClient, GcsPublisher
+from ray._private.gcs_utils import GcsClient, GcsPublisher, \
+    get_gcs_address_from_redis
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
@@ -382,6 +383,9 @@ if __name__ == "__main__":
             gcs_publisher = None
             if args.gcs_address:
                 gcs_publisher = GcsPublisher(args.gcs_address)
+            elif os.environ.get("RAY_gcs_grpc_based_pubsub") == "true":
+                gcs_publisher = GcsPublisher(
+                    address=get_gcs_address_from_redis(redis_client))
             traceback_str = ray._private.utils.format_error_message(
                 traceback.format_exc())
             message = (

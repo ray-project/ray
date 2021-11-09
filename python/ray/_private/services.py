@@ -1919,6 +1919,7 @@ def start_monitor(redis_address,
 
     Args:
         redis_address (str): The address that the Redis server is listening on.
+        gcs_address (str): The address of GCS server.
         logs_dir(str): The path to the log directory.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.

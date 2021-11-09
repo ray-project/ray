@@ -1,7 +1,6 @@
 """Autoscaler monitoring loop daemon."""
 
 import argparse
-import logging
 import logging.handlers
 import os
 import sys
@@ -35,7 +34,8 @@ from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.ray_constants as ray_constants
 from ray._private.ray_logging import setup_component_logger
-from ray._private.gcs_utils import GcsClient
+from ray._private.gcs_utils import GcsClient, GcsPublisher, \
+    get_gcs_address_from_redis
 from ray.experimental.internal_kv import _initialize_internal_kv, \
     _internal_kv_put, _internal_kv_initialized, _internal_kv_get, \
     _internal_kv_del
@@ -401,9 +401,17 @@ class Monitor:
             _internal_kv_put(DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
         redis_client = ray._private.services.create_redis_client(
             self.redis_address, password=self.redis_password)
+        if args.gcs_address:
+            gcs_publisher = GcsPublisher(address=args.gcs_address)
+        elif os.environ.get("RAY_gcs_grpc_based_pubsub") == "true":
+            gcs_publisher = GcsPublisher(
+                address=get_gcs_address_from_redis(redis_client))
         from ray._private.utils import publish_error_to_driver
-        publish_error_to_driver(redis_client, ray_constants.MONITOR_DIED_ERROR,
-                                message)
+        publish_error_to_driver(
+            ray_constants.MONITOR_DIED_ERROR,
+            message,
+            redis_client=redis_client,
+            gcs_publisher=gcs_publisher)
 
     def _signal_handler(self, sig, frame):
         self._handle_failure(f"Terminated with signal {sig}\n" +

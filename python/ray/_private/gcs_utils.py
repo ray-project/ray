@@ -217,6 +217,7 @@ class GcsPublisher:
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
 
     def publish_error(self, key_id: bytes, error_info: ErrorTableData) -> None:
+        """Publishes error info to GCS."""
         msg = pubsub_pb2.PubMessage(
             channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
             key_id=key_id,
@@ -252,6 +253,7 @@ class GcsSubscriber:
         self._close = threading.Event()
 
     def subscribe_error(self) -> None:
+        """Starts a subscription for error info"""
         with self._lock:
             if self._close.is_set():
                 return
@@ -266,6 +268,7 @@ class GcsSubscriber:
             self._subscribed_error = True
 
     def poll_error(self, timeout=None) -> Tuple[bytes, ErrorTableData]:
+        """Polls for new error messages."""
         with self._lock:
             if self._close.is_set():
                 return
@@ -276,6 +279,8 @@ class GcsSubscriber:
                 req = gcs_service_pb2.GcsSubscriberPollRequest(
                     subscriber_id=self._subscriber_id)
                 fut = self._stub.GcsSubscriberPoll.future(req, timeout=timeout)
+                # Wait for result to become available, or cancel if the
+                # subscriber has closed.
                 while True:
                     try:
                         fut.result(timeout=1)
@@ -285,11 +290,11 @@ class GcsSubscriber:
                         # and return from polling.
                         if self._close.is_set():
                             fut.cancel()
-                            break
+                            return None, None
                         # GRPC has not replied, continue waiting.
                         continue
                     except Exception:
-                        # GRPC error
+                        # GRPC error, including deadline exceeded.
                         raise
                 if fut.done():
                     for msg in fut.result().pub_messages:
@@ -301,7 +306,8 @@ class GcsSubscriber:
             return self._errors.popleft()
 
     def close(self) -> None:
-        # Terminate inflight pollings and prevent future requests.
+        """Closes the subscriber and its active subscriptions."""
+        # Mark close to terminate inflight polling and prevent future requests.
         self._close.set()
         with self._lock:
             if not self._stub:
@@ -314,7 +320,10 @@ class GcsSubscriber:
                     channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
                     unsubscribe_message={})
                 req.commands.append(cmd)
-            self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+            try:
+                self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+            except Exception:
+                pass
             self._stub = None
 
 
@@ -331,6 +340,7 @@ class GcsAioPublisher:
 
     async def publish_error(self, key_id: bytes,
                             error_info: ErrorTableData) -> None:
+        """Publishes error info to GCS."""
         msg = pubsub_pb2.PubMessage(
             channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
             key_id=key_id,
@@ -357,6 +367,7 @@ class GcsAioSubscriber:
         self._errors = deque()
 
     async def subscribe_error(self) -> None:
+        """Starts a subscription for error info"""
         cmd = pubsub_pb2.Command(
             channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
             subscribe_message={})
@@ -366,6 +377,7 @@ class GcsAioSubscriber:
         self._subscribed_error = True
 
     async def poll_error(self, timeout=None) -> Tuple[bytes, ErrorTableData]:
+        """Polls for new error messages."""
         if not self._subscribed_error:
             self.subscribe_error()
 
@@ -389,6 +401,7 @@ class GcsAioSubscriber:
         return error_info
 
     async def close(self) -> None:
+        """Closes the subscriber and its active subscriptions."""
         req = gcs_service_pb2.GcsSubscriberCommandBatchRequest(
             subscriber_id=self._subscriber_id, commands=[])
         if self._subscribed_error:
@@ -396,5 +409,8 @@ class GcsAioSubscriber:
                 channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
                 unsubscribe_message={})
             req.commands.append(cmd)
-        await self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+        try:
+            await self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+        except Exception:
+            pass
         self._subscribed_error = False

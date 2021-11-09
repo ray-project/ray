@@ -1252,7 +1252,7 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
     """Listen to error messages in the background on the driver.
 
     This runs in a separate thread on the driver and pushes (error, time)
-    tuples to the output queue.
+    tuples to be published.
 
     Args:
         worker: The worker class that this thread belongs to.
@@ -1265,7 +1265,6 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
     # gcs_subscriber.poll_error() will still be processed in the loop.
 
     # Really we should just subscribe to the errors for this specific job.
-    # However, currently all errors seem to be published on the same channel.
     worker.gcs_subscriber.subscribe_error()
 
     try:
@@ -1277,14 +1276,14 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
                 logger.warning(error_message.decode())
 
         while True:
-            # Exit if we received a signal that we should stop.
+            # Exit if received a signal that the thread should stop.
             if threads_stopped.is_set():
                 return
 
-            msg_id, error_data = worker.gcs_subscriber.poll_error()
-            if msg_id is None and error_data is None:
+            entity_id, error_data = worker.gcs_subscriber.poll_error()
+            if entity_id is None or error_data is None:
                 continue
-            if msg_id not in [
+            if entity_id not in [
                     worker.current_job_id.binary(),
                     JobID.nil().binary(),
             ]:

@@ -66,11 +66,16 @@ def test_publish_error_to_driver(ray_start_regular, error_pubsub):
     address = address_info["redis_address"]
     redis_client = ray._private.services.create_redis_client(
         address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+    gcs_publisher = None
+    if os.environ.get("RAY_gcs_grpc_based_pubsub") == "true":
+        gcs_publisher = gcs_utils.GcsPublisher(
+            address=gcs_utils.get_gcs_address_from_redis(redis_client))
     error_message = "Test error message"
     ray._private.utils.publish_error_to_driver(
         ray_constants.DASHBOARD_AGENT_DIED_ERROR,
         error_message,
-        redis_client=redis_client)
+        redis_client=redis_client,
+        gcs_publisher=gcs_publisher)
     errors = get_error_message(error_pubsub, 1,
                                ray_constants.DASHBOARD_AGENT_DIED_ERROR)
     assert errors[0].type == ray_constants.DASHBOARD_AGENT_DIED_ERROR

@@ -235,6 +235,9 @@ if __name__ == "__main__":
         gcs_publisher = None
         if args.gcs_address:
             gcs_publisher = gcs_utils.GcsPublisher(address=args.gcs_address)
+        elif os.environ.get("RAY_gcs_grpc_based_pubsub") == "true":
+            gcs_publisher = gcs_utils.GcsPublisher(
+                address=gcs_utils.get_gcs_address_from_redis(redis_client))
         traceback_str = ray._private.utils.format_error_message(
             traceback.format_exc())
         message = f"The dashboard on node {platform.uname()[1]} " \

@@ -126,12 +126,14 @@ def publish_error_to_driver(error_type,
     backend processes.
 
     Args:
-        client: The redis / GCS publisher client to use.
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
         job_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
+        redis_client: The redis client to use.
+        gcs_publisher: The GCS publisher to use. If specified, ignores
+            redis_client.
     """
     if job_id is None:
         job_id = ray.JobID.nil()
@@ -139,10 +141,10 @@ def publish_error_to_driver(error_type,
     error_data = gcs_utils.construct_error_message(job_id, error_type, message,
                                                    time.time())
     if gcs_publisher:
-        gcs_publisher.publish_error(job_id.hex(), error_data)
+        gcs_publisher.publish_error(job_id.binary(), error_data)
     elif redis_client:
         pubsub_msg = gcs_utils.PubSubMessage()
-        pubsub_msg.id = job_id.hex()
+        pubsub_msg.id = job_id.binary()
         pubsub_msg.data = error_data.SerializeToString()
         redis_client.publish("ERROR_INFO:" + job_id.hex(),
                              pubsub_msg.SerializeToString())
