@@ -369,15 +369,32 @@ class Dataset(Generic[T]):
         reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
         reduce_out = [
             reduce_task.remote(*s.get_internal_block_refs()) for s in splits
+            if s.num_blocks() > 0
         ]
         del splits  # Early-release memory.
         new_blocks, new_metadata = zip(*reduce_out)
-        reduce_bar.block_until_complete(list(new_blocks))
-        new_metadata = ray.get(list(new_metadata))
+        new_blocks, new_metadata = list(new_blocks), list(new_metadata)
+        new_metadata = reduce_bar.fetch_until_complete(new_metadata)
         reduce_bar.close()
 
-        return Dataset(
-            BlockList(list(new_blocks), list(new_metadata)), self._epoch)
+        # Handle empty blocks.
+        if len(new_blocks) < num_blocks:
+            from ray.data.impl.arrow_block import ArrowBlockBuilder
+            from ray.data.impl.simple_block import SimpleBlockBuilder
+
+            num_empties = num_blocks - len(new_blocks)
+            builder = (ArrowBlockBuilder()
+                       if self._is_arrow_dataset() else SimpleBlockBuilder())
+            empty_block = builder.build()
+            empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
+                input_files=None)
+            empty_blocks, empty_metadata = zip(*[(ray.put(empty_block),
+                                                  empty_meta)
+                                                 for _ in range(num_empties)])
+            new_blocks += empty_blocks
+            new_metadata += empty_metadata
+
+        return Dataset(BlockList(new_blocks, new_metadata), self._epoch)
 
     def random_shuffle(
             self,
