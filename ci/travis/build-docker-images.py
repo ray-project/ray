@@ -26,6 +26,7 @@ DOCKER_HUB_DESCRIPTION = {
                  "https://hub.docker.com/r/rayproject/ray"),
     "ray": "Official Docker Images for Ray, the distributed computing API.",
     "ray-ml": "Developer ready Docker Image for Ray.",
+    "ray-worker-container": "Internal Image for CI test",
 }
 
 PY_MATRIX = {
