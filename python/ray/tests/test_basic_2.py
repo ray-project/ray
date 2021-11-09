@@ -732,7 +732,8 @@ def test_use_dynamic_function_and_class():
     key_func = (
         b"RemoteFunction:" + ray.worker.global_worker.current_job_id.binary() +
         b":" + f._function_descriptor.function_id.binary())
-    assert internal_kv._internal_kv_exists(key_func, namespace=KV_NAMESPACE_FUNCTION_TABLE)
+    assert internal_kv._internal_kv_exists(
+        key_func, namespace=KV_NAMESPACE_FUNCTION_TABLE)
     foo_actor = Foo.remote()
 
     assert ray.get(foo_actor.foo.remote()) == "OK"
@@ -743,7 +744,8 @@ def test_use_dynamic_function_and_class():
         b"ActorClass:" + ray.worker.global_worker.current_job_id.binary() +
         b":" +
         foo_actor._ray_actor_creation_function_descriptor.function_id.binary())
-    assert internal_kv._internal_kv_exists(key_cls, namespace=KV_NAMESPACE_FUNCTION_TABLE)
+    assert internal_kv._internal_kv_exists(
+        key_cls, namespace=KV_NAMESPACE_FUNCTION_TABLE)
 
 
 if __name__ == "__main__":

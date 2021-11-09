@@ -60,7 +60,7 @@ from ray._private.utils import check_oversized_function
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
     _internal_kv_initialized, _initialize_internal_kv, \
-    _internal_kv_reset, _internal_kv_put, _internal_kv_mput
+    _internal_kv_reset, _internal_kv_put
 from ray._private.client_mode_hook import client_mode_hook
 
 SCRIPT_MODE = 0
@@ -406,12 +406,13 @@ class Worker:
                                      "function", self)
 
             # Run the function on all workers.
-            _internal_kv_mput(
-                key, {
+            _internal_kv_put(
+                key,
+                pickle.dumps({
                     "job_id": self.current_job_id.binary(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
-                },
+                }),
                 True,
                 namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
             self.redis_client.rpush("Exports", key)

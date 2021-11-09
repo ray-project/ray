@@ -7,7 +7,7 @@ import redis
 import ray
 from ray import ray_constants
 from ray import cloudpickle as pickle
-from ray.experimental.internal_kv import _internal_kv_mget
+from ray.experimental.internal_kv import _internal_kv_get
 import ray._private.profiling as profiling
 import logging
 
@@ -93,16 +93,14 @@ class ImportThread:
     def _get_import_info_for_collision_detection(self, key):
         """Retrieve the collision identifier, type, and name of the import."""
         if key.startswith(b"RemoteFunction"):
-            collision_identifier, function_name = _internal_kv_mget(
-                key, ["collision_identifier", "function_name"],
-                namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+            collision_identifier, function_name = self._internal_kv_mget(
+                key, ["collision_identifier", "function_name"])
             return (collision_identifier,
                     ray._private.utils.decode(function_name.encode()),
                     "remote function")
         elif key.startswith(b"ActorClass"):
-            collision_identifier, class_name = _internal_kv_mget(
-                key, ["collision_identifier", "class_name"],
-                namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+            collision_identifier, class_name = self._internal_kv_mget(
+                key, ["collision_identifier", "class_name"])
             return collision_identifier, ray._private.utils.decode(
                 class_name.encode()), "actor"
 
@@ -162,9 +160,8 @@ class ImportThread:
 
     def fetch_and_execute_function_to_run(self, key):
         """Run on arbitrary function on the worker."""
-        (job_id, serialized_function) = _internal_kv_mget(
-            key, ["job_id", "function"],
-            namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+        (job_id, serialized_function) = self._internal_kv_mget(
+            key, ["job_id", "function"])
 
         if self.worker.mode == ray.SCRIPT_MODE:
             return
@@ -191,3 +188,12 @@ class ImportThread:
                 ray_constants.FUNCTION_TO_RUN_PUSH_ERROR,
                 traceback_str,
                 job_id=ray.JobID(job_id))
+
+    def _internal_kv_mget(self, key, fields):
+        vals = _internal_kv_get(
+            key, namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+        if vals is None:
+            vals = {}
+        else:
+            vals = pickle.loads(vals)
+        return (vals.get(field) for field in fields)

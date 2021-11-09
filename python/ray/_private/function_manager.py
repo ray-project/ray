@@ -24,7 +24,7 @@ from ray._private.utils import (
     ensure_str,
     format_error_message,
 )
-from ray.experimental.internal_kv import (_internal_kv_mput, _internal_kv_mget,
+from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists)
 from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 from ray.util.inspect import (
@@ -156,30 +156,33 @@ class FunctionActorManager:
                + remote_function._function_descriptor.function_id.binary())
         if _internal_kv_exists(key, namespace=KV_NAMESPACE_FUNCTION_TABLE):
             return
-        _internal_kv_mput(
-            key, {
-                "job_id": self._worker.current_job_id.binary(),
-                "function_id": remote_function._function_descriptor.
-                function_id.binary(),
-                "function_name": remote_function._function_name,
-                "module": function.__module__,
-                "function": pickled_function,
-                "collision_identifier": self.compute_collision_identifier(
-                    function),
-                "max_calls": remote_function._max_calls
-            },
-            namespace=KV_NAMESPACE_FUNCTION_TABLE)
+        val = pickle.dumps({
+            "job_id": self._worker.current_job_id.binary(),
+            "function_id": remote_function._function_descriptor.function_id.
+            binary(),
+            "function_name": remote_function._function_name,
+            "module": function.__module__,
+            "function": pickled_function,
+            "collision_identifier": self.compute_collision_identifier(
+                function),
+            "max_calls": remote_function._max_calls
+        })
+        _internal_kv_put(key, val, namespace=KV_NAMESPACE_FUNCTION_TABLE)
         self._worker.redis_client.rpush("Exports", key)
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
+        vals = _internal_kv_get(key, namespace=KV_NAMESPACE_FUNCTION_TABLE)
+        if vals is None:
+            vals = {}
+        else:
+            vals = pickle.loads(vals)
+        fields = [
+            "job_id", "function_id", "function_name", "function", "module",
+            "max_calls"
+        ]
         (job_id_str, function_id_str, function_name, serialized_function,
-         module, max_calls) = _internal_kv_mget(
-             key, [
-                 "job_id", "function_id", "function_name", "function",
-                 "module", "max_calls"
-             ],
-             namespace=KV_NAMESPACE_FUNCTION_TABLE)
+         module, max_calls) = (vals.get(field) for field in fields)
 
         if ray_constants.ISOLATE_EXPORTS and \
                 job_id_str != self._worker.current_job_id.binary():
@@ -362,8 +365,10 @@ class FunctionActorManager:
         """
         # We set the driver ID here because it may not have been available when
         # the actor class was defined.
-        _internal_kv_mput(
-            key, actor_class_info, namespace=KV_NAMESPACE_FUNCTION_TABLE)
+        _internal_kv_put(
+            key,
+            pickle.dumps(actor_class_info),
+            namespace=KV_NAMESPACE_FUNCTION_TABLE)
         self._worker.redis_client.rpush("Exports", key)
 
     def export_actor_class(self, Class, actor_creation_function_descriptor,
@@ -538,11 +543,16 @@ class FunctionActorManager:
                 time.sleep(0.001)
 
         # Fetch raw data from GCS.
+        vals = _internal_kv_get(key, namespace=KV_NAMESPACE_FUNCTION_TABLE)
+        fields = [
+            "job_id", "class_name", "module", "class", "actor_method_names"
+        ]
+        if vals is None:
+            vals = {}
+        else:
+            vals = pickle.loads(vals)
         (job_id_str, class_name, module, pickled_class,
-         actor_method_names) = _internal_kv_mget(
-             key,
-             ["job_id", "class_name", "module", "class", "actor_method_names"],
-             namespace=KV_NAMESPACE_FUNCTION_TABLE)
+         actor_method_names) = (vals.get(field) for field in fields)
 
         class_name = ensure_str(class_name)
         module_name = ensure_str(module)
