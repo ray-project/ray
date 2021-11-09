@@ -1627,7 +1627,8 @@ TEST(DistributedReferenceCountTest, TestForeignOwner) {
   ASSERT_FALSE(caller->rc_.HasReference(inner_id));
   // Caller receives the owner's message, but inner_id is still in scope
   // because caller has a reference to return_id.
-  caller->HandleSubmittedTaskFinished(return_id, ObjectID::Nil(), {{return_id, {inner_id}}});
+  caller->HandleSubmittedTaskFinished(return_id, ObjectID::Nil(),
+                                      {{return_id, {inner_id}}});
   ASSERT_TRUE(caller->rc_.HasReference(inner_id));
 
   //
