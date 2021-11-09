@@ -1,4 +1,4 @@
-from typing import Optional, Set
+from typing import Optional, Set, Tuple
 
 import click
 import copy
@@ -34,6 +34,7 @@ from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
+from ray.dashboard.modules.job.sdk import JobSubmissionClient
 from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
@@ -1924,6 +1925,93 @@ def cpp(show_library_path, generate_bazel_project_template_to, log_style,
             cf.bold(
                 f"    cd {os.path.abspath(generate_bazel_project_template_to)}"
                 " && bash run.sh"))
+
+
+@cli.group()
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+)
+@click.pass_context
+def job(ctx, address: Optional[str]):
+    if address is None:
+        if "RAY_ADDRESS" not in os.environ:
+            raise ValueError(
+                "Address must be specified using either the --address flag "
+                "or RAY_ADDRESS environment variable.")
+        address = os.environ["RAY_ADDRESS"]
+
+    ctx.obj = JobSubmissionClient(address)
+
+
+@job.command("submit")
+@click.option(
+    "--job-id",
+    type=str,
+    default=None,
+    required=False,
+)
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+)
+@click.option(
+    "--working-dir",
+    type=str,
+    default=None,
+    required=False,
+)
+@click.argument("entrypoint", nargs=-1, required=True)
+@click.pass_obj
+def job_submit(client: JobSubmissionClient, job_id: Optional[str],
+               address: Optional[str], working_dir: Optional[str],
+               entrypoint: Tuple[str]):
+    """Submits a job to be run on the cluster.
+
+    Example:
+        >>> ray job submit -- python my_script.py --arg=val
+    """
+
+    runtime_env = {}
+    if working_dir is not None:
+        runtime_env["working_dir"] = working_dir
+
+    job_id = client.submit_job(
+        entrypoint=" ".join(entrypoint),
+        job_id=job_id,
+        runtime_env=runtime_env)
+    logger.info(f"Job submitted successfully: {job_id}.")
+    logger.info(
+        f"Query the status of the job using: `ray job status {job_id}`.")
+
+
+@job.command("status")
+@click.argument("job-id", type=str)
+@click.pass_obj
+def job_status(client: JobSubmissionClient, job_id: str):
+    """Queries for the current status of a job.
+
+    Example:
+        >>> ray job status <my_job_id>
+    """
+    logger.info(f"Job status for '{job_id}': {client.get_job_status(job_id)}")
+
+
+@job.command("stop")
+@click.argument("job-id", type=str)
+@click.pass_obj
+def job_stop(client: JobSubmissionClient, job_id: str):
+    """Attempts to stop a job.
+
+    Example:
+        >>> ray job stop <my_job_id>
+    """
+    # TODO(edoakes): should we wait for the job to exit afterwards?
+    client.stop_job(job_id)
 
 
 def add_command_alias(command, name, hidden):

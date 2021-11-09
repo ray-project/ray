@@ -51,7 +51,7 @@ class JobSubmissionClient:
             return None
         else:
             response = r.json()
-            logger.info(f"Got response: {response}.")
+            logger.debug(f"Got response: {response}.")
             return response_type(**response)
 
     def _package_exists(self, package_uri: str) -> bool:
