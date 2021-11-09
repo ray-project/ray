@@ -112,8 +112,12 @@ class FakeMultiNodeProvider(NodeProvider):
 
     def terminate_node(self, node_id):
         node = self._nodes.pop(node_id)["node"]
-        # Kill Ray processes unless disabled for testing.
-        if not self._leave_termination_to_drain_api:
+        # Kill Ray processes here, unless that's disabled for testing.
+        if self._leave_termination_to_drain_api:
+            logger.warning("FakeMultiNodeProvider:"
+                           f" Leaving termination of node {node_id} to the"
+                           " DrainNode API.")
+        else:
             node.kill_all_processes(check_alive=False, allow_graceful=True)
 
     @staticmethod
