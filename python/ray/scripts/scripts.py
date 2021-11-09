@@ -1927,7 +1927,7 @@ def cpp(show_library_path, generate_bazel_project_template_to, log_style,
                 " && bash run.sh"))
 
 
-@cli.group()
+@cli.group(hidden=True)
 @click.option(
     "--address",
     type=str,
