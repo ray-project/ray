@@ -166,12 +166,15 @@ class Corridor(object):
             return str(e)
 
 
+# Remote function for getting serve URL from the remote head node.
 @ray.remote
 def get_serve_url():
     if "ANYSCALE_SESSION_DOMAIN" not in os.environ:
         return "http://127.0.0.1:8000/corridor"
-    return "https://" + \
-           os.environ["ANYSCALE_SESSION_DOMAIN"] + "/serve/corridor"
+    from anyscale import AnyscaleSDK
+    sdk = AnyscaleSDK(auth_token=os.environ.get("ANYSCALE_CLI_TOKEN"))
+    return sdk.get_session(
+        os.environ.get("ANYSCALE_SESSION_ID")).result.ray_dashboard_url
 
 
 def deploy(ckpt_path: str):
