@@ -729,9 +729,7 @@ cdef execute_task(
             exit.is_ray_terminate = True
             raise exit
 
-# return a LocalMemoryBuffer containing a protobuf-serialized RayException
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
-    # RayError.to_bytes() returns a PB-serialized RayException
     cdef bytes py_bytes = ray_error.to_bytes()
     return make_shared[LocalMemoryBuffer](
         <uint8_t*>py_bytes, len(py_bytes), True)
