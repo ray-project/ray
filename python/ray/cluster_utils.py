@@ -12,6 +12,8 @@ from ray import ray_constants
 
 logger = logging.getLogger(__name__)
 
+TEST_DISABLE_TERMINATION_FIELD = "_leave_termination_to_drain_api"
+
 
 class AutoscalingCluster:
     """Create a local autoscaling cluster for testing.
@@ -45,7 +47,7 @@ class AutoscalingCluster:
         # For testing only: `terminate_node` will not stop Ray node processes
         # if True.
         base_config["provider"][
-            "_leave_termination_to_drain_api"] = _leave_termination_to_drain_api
+            TEST_DISABLE_TERMINATION_FIELD] = _leave_termination_to_drain_api
         self._config = base_config
 
         self._process = None
