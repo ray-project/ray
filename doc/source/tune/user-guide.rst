@@ -300,7 +300,7 @@ Let's cover how to configure your checkpoints storage location, checkpointing fr
 A simple (cloud) checkpointing example
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Cloud storage-backed Tune checkpointing is the recommended best practice for both performance and reliability reasons. rsync-based checkpointing is also incompatible with Ray on Kubernetes. If you'd rather checkpoint locally or use rsync based checkpointing, see here.
+Cloud storage-backed Tune checkpointing is the recommended best practice for both performance and reliability reasons. It also enables checkpointing if using Ray on Kubernetes, which does not work out of the box with rsync-based sync, which relies on SSH. If you'd rather checkpoint locally or use rsync based checkpointing, see here.
 
 Prequisities to use cloud checkpointing in Ray Tune for the example below:
 
@@ -338,14 +338,9 @@ Let's assume for this example you're running this script from your laptop, and c
         sync_to_driver=False  # recommended for performance when using cloud checkpointing 
     )
 
-    # here we wrap our Ray model (or custom training func) with a couple of things:
-    # 1) with_parameters() ensures when we checkpoint, weights are saved (not just hyperparameters)
-    # 2) durable() ensures that this trainer can be saved to cloud storage (ie: S3)
-    durable_trainer_with_params = tune.with_parameters(tune.durable(my_trainable))
-
     # this starts the run!
     tune.run(
-        durable_trainer_with_params,
+        my_trainable,
 
         # name of your experiment 
         name="my-tune-exp",
