@@ -95,7 +95,7 @@ class JobStatusStorageClient:
     def get_status(self, job_id: str) -> JobStatus:
         pickled_status = _internal_kv_get(
             self.JOB_STATUS_KEY.format(job_id=job_id),
-                    namespace=ray_constants.KV_NAMESPACE_JOB))
+            namespace=ray_constants.KV_NAMESPACE_JOB)
         if pickled_status is None:
             return JobStatus.DOES_NOT_EXIST
         else:
