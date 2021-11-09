@@ -1,7 +1,9 @@
 import copy
+import json
 import logging
 import os
 import subprocess
+from typing import Dict, Optional
 
 import yaml
 from ray.autoscaler.node_provider import NodeProvider
@@ -35,23 +37,49 @@ DOCKER_NODE_SKELETON = {
 
 DOCKER_HEAD_CMD = ("bash -c \"sleep 1 && ray start --head --port=6379 "
                    "--object-manager-port=8076 --dashboard-host 0.0.0.0 "
-                   "--num-cpus {num_cpus} && sleep 1000000\"")
+                   "--num-cpus {num_cpus} "
+                   "--num-gpus {num_gpus} "
+                   "--resources '{resources}' "
+                   "&& sleep 1000000\"")
 
-DOCKER_WORKER_CMD = (
-    f"bash -c \"sleep 1 && ray start --address={FAKE_HEAD_NODE_ID}:6379 "
-    "--object-manager-port=8076 --num-cpus {num_cpus} && sleep 1000000\"")
+DOCKER_WORKER_CMD = ("bash -c \"sleep 1 && "
+                     "{env_vars} "
+                     f"ray start --address={FAKE_HEAD_NODE_ID}:6379 "
+                     "--object-manager-port=8076 "
+                     "--num-cpus {num_cpus} "
+                     "--num-gpus {num_gpus} "
+                     "--resources '{resources}' "
+                     "&& sleep 1000000\"")
 
 
-def create_node_spec(head: bool, docker_image: str, mounted_cluster_dir: str,
-                     mounted_node_dir: str):
+def create_node_spec(head: bool,
+                     docker_image: str,
+                     mounted_cluster_dir: str,
+                     mounted_node_dir: str,
+                     num_cpus: int = 2,
+                     num_gpus: int = 0,
+                     resources: Optional[Dict] = None,
+                     env_vars: Optional[Dict] = None):
     node_spec = copy.deepcopy(DOCKER_NODE_SKELETON)
     node_spec["image"] = docker_image
 
+    resources = resources or {}
+    if env_vars:
+        env_vars_str = " ".join(f"{k}='{v}'" for k, v in env_vars.items())
+    else:
+        env_vars_str = ""
+
+    resources_kwargs = dict(
+        env_vars=env_vars_str,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        resources=json.dumps(resources, indent=None))
+
     if head:
-        node_spec["command"] = DOCKER_HEAD_CMD.format(num_cpus=4)
+        node_spec["command"] = DOCKER_HEAD_CMD.format(**resources_kwargs)
         node_spec["ports"] = [6379, 8265, 10001]
     else:
-        node_spec["command"] = DOCKER_WORKER_CMD.format(num_cpus=4)
+        node_spec["command"] = DOCKER_WORKER_CMD.format(**resources_kwargs)
 
     node_spec["volumes"] = [
         f"{mounted_cluster_dir}:/cluster/shared",
@@ -75,6 +103,7 @@ class FakeDockerProvider(NodeProvider):
                 "FakeDockerProvider requires ray to be started with "
                 "RAY_FAKE_DOCKER=1 ray start ...")
 
+        self._project_name = "fake_docker"  # Todo
         self._docker_image = "rayproject/ray:nightly"  # Todo
 
         # subdirs:
@@ -89,6 +118,9 @@ class FakeDockerProvider(NodeProvider):
                                      FAKE_HEAD_NODE_ID)
         os.makedirs(head_node_dir, mode=0o755, exist_ok=True)
 
+        # Todo
+        resources = {"CPU": 4, "GPU": 0}
+
         self._nodes = {
             FAKE_HEAD_NODE_ID: {
                 "tags": {
@@ -102,7 +134,14 @@ class FakeDockerProvider(NodeProvider):
                     docker_image=self._docker_image,
                     mounted_cluster_dir=self._mounted_cluster_dir,
                     mounted_node_dir=head_node_dir,
-                )
+                    num_cpus=resources.pop("CPU", 0),
+                    num_gpus=resources.pop("GPU", 0),
+                    resources=resources,
+                    env_vars={
+                        "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
+                        "RAY_OVERRIDE_RESOURCES": json.dumps(
+                            resources, indent=None),
+                    })
             },
         }
         self._docker_compose_config_path = \
@@ -126,10 +165,12 @@ class FakeDockerProvider(NodeProvider):
         with open(self._docker_compose_config_path, "wt") as f:
             yaml.safe_dump(config, f)
 
-        update = subprocess.check_output([
+        update = subprocess.check_call([
             "docker-compose",
             "-f",
             self._docker_compose_config_path,
+            "-p",
+            self._project_name,
             "up",
             "-d",
             "--remove-orphans",
@@ -158,10 +199,16 @@ class FakeDockerProvider(NodeProvider):
         return self._nodes[node_id]["tags"]
 
     def external_ip(self, node_id):
-        return node_id
+        return self.internal_ip(node_id)
 
     def internal_ip(self, node_id):
-        return node_id
+        cmd = [
+            "docker", "inspect", "-f", "\"{{ .NetworkSettings.Networks"
+            f".{self._project_name}_ray_local.IPAddress"
+            " }}\"", f"{self._project_name}_{node_id}_1"
+        ]
+        ip_address = subprocess.check_output(cmd)
+        return ip_address
 
     def set_node_tags(self, node_id, tags):
         raise AssertionError("Readonly node provider cannot be updated")
@@ -172,21 +219,6 @@ class FakeDockerProvider(NodeProvider):
 
         node_dir = os.path.join(self._volume_dir, "nodes", next_id)
         os.makedirs(node_dir, mode=0o755, exist_ok=True)
-
-        # ray_params = ray._private.parameter.RayParams(
-        #     min_worker_port=0,
-        #     max_worker_port=0,
-        #     dashboard_port=None,
-        #     num_cpus=resources.pop("CPU", 0),
-        #     num_gpus=resources.pop("GPU", 0),
-        #     object_store_memory=resources.pop("object_store_memory", None),
-        #     resources=resources,
-        #     redis_address="{}:6379".format(
-        #         ray._private.services.get_node_ip_address()),
-        #     env_vars={
-        #         "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
-        #         "RAY_OVERRIDE_RESOURCES": json.dumps(resources),
-        #     })
 
         self._nodes[next_id] = {
             "tags": {
@@ -200,7 +232,14 @@ class FakeDockerProvider(NodeProvider):
                 docker_image=self._docker_image,
                 mounted_cluster_dir=self._mounted_cluster_dir,
                 mounted_node_dir=node_dir,
-            )
+                num_cpus=resources.pop("CPU", 0),
+                num_gpus=resources.pop("GPU", 0),
+                resources=resources,
+                env_vars={
+                    "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
+                    "RAY_OVERRIDE_RESOURCES": json.dumps(
+                        resources, indent=None),
+                })
         }
         self._update_docker_compose_config()
 
