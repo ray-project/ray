@@ -495,7 +495,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
           foreign_owner_already_monitoring(false),
           owner_address(owner_address),
           pinned_at_raylet_id(pinned_at_raylet_id),
-          is_reconstructable(is_reconstructable) {}
+          is_reconstructable(is_reconstructable),
+          pending_creation(!pinned_at_raylet_id.has_value()) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.

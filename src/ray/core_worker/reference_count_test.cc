@@ -236,14 +236,16 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
   void Publish(const rpc::PubMessage &pub_message) {
     auto maybe_subscribers = directory_->GetSubscriberIdsByKeyId(pub_message.key_id());
     const auto oid = ObjectID::FromBinary(pub_message.key_id());
-    RAY_CHECK(maybe_subscribers.has_value());
-    for (const auto &subscriber_id : maybe_subscribers.value().get()) {
-      const auto id = GenerateID(publisher_id_, subscriber_id);
-      const auto it = subscription_callback_map_->find(id);
-      RAY_CHECK(it != subscription_callback_map_->end());
-      const auto callback_it = it->second.find(oid);
-      RAY_CHECK(callback_it != it->second.end());
-      callback_it->second(pub_message);
+    if (maybe_subscribers.has_value()) {
+      for (const auto &subscriber_id : maybe_subscribers.value().get()) {
+        const auto id = GenerateID(publisher_id_, subscriber_id);
+        const auto it = subscription_callback_map_->find(id);
+        if (it != subscription_callback_map_->end()) {
+          const auto callback_it = it->second.find(oid);
+          RAY_CHECK(callback_it != it->second.end());
+          callback_it->second(pub_message);
+        }
+      }
     }
   }
 
@@ -1625,7 +1627,7 @@ TEST(DistributedReferenceCountTest, TestForeignOwner) {
   ASSERT_FALSE(caller->rc_.HasReference(inner_id));
   // Caller receives the owner's message, but inner_id is still in scope
   // because caller has a reference to return_id.
-  caller->HandleSubmittedTaskFinished(ObjectID::Nil(), {{return_id, {inner_id}}});
+  caller->HandleSubmittedTaskFinished(return_id, ObjectID::Nil(), {{return_id, {inner_id}}});
   ASSERT_TRUE(caller->rc_.HasReference(inner_id));
 
   //
@@ -1641,7 +1643,7 @@ TEST(DistributedReferenceCountTest, TestForeignOwner) {
   owner->ExecuteTaskWithArg(return_id, inner_id, caller->address_);
   auto refs2 = owner->FinishExecutingTask(return_id, return_id2);
   // owner merges ref count into the caller.
-  caller->HandleSubmittedTaskFinished(return_id, {}, owner->address_, refs2);
+  caller->HandleSubmittedTaskFinished(return_id2, return_id, {}, owner->address_, refs2);
   ASSERT_FALSE(caller->rc_.HasReference(inner_id));
   ASSERT_FALSE(owner->rc_.HasReference(return_id));
   ASSERT_FALSE(caller->rc_.HasReference(return_id));
