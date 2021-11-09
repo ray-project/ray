@@ -16,6 +16,7 @@ from collections import (
 import ray
 import ray._private.profiling as profiling
 from ray import ray_constants
+from ray._private.client_mode_hook import disable_client_hook
 from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray._private.utils import (
@@ -154,25 +155,27 @@ class FunctionActorManager:
                                  "remote function", self._worker)
         key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
                + remote_function._function_descriptor.function_id.binary())
-        if _internal_kv_exists(key, namespace=KV_NAMESPACE_FUNCTION_TABLE):
-            return
-        val = pickle.dumps({
-            "job_id": self._worker.current_job_id.binary(),
-            "function_id": remote_function._function_descriptor.function_id.
-            binary(),
-            "function_name": remote_function._function_name,
-            "module": function.__module__,
-            "function": pickled_function,
-            "collision_identifier": self.compute_collision_identifier(
-                function),
-            "max_calls": remote_function._max_calls
-        })
-        _internal_kv_put(key, val, namespace=KV_NAMESPACE_FUNCTION_TABLE)
+        with disable_client_hook():
+            if _internal_kv_exists(key, namespace=KV_NAMESPACE_FUNCTION_TABLE):
+                return
+            val = pickle.dumps({
+                "job_id": self._worker.current_job_id.binary(),
+                "function_id": remote_function._function_descriptor.function_id.
+                binary(),
+                "function_name": remote_function._function_name,
+                "module": function.__module__,
+                "function": pickled_function,
+                "collision_identifier": self.compute_collision_identifier(
+                    function),
+                "max_calls": remote_function._max_calls
+            })
+            _internal_kv_put(key, val, namespace=KV_NAMESPACE_FUNCTION_TABLE)
         self._worker.redis_client.rpush("Exports", key)
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
-        vals = _internal_kv_get(key, namespace=KV_NAMESPACE_FUNCTION_TABLE)
+        with disable_client_hook():
+            vals = _internal_kv_get(key, namespace=KV_NAMESPACE_FUNCTION_TABLE)
         if vals is None:
             vals = {}
         else:
@@ -365,10 +368,11 @@ class FunctionActorManager:
         """
         # We set the driver ID here because it may not have been available when
         # the actor class was defined.
-        _internal_kv_put(
-            key,
-            pickle.dumps(actor_class_info),
-            namespace=KV_NAMESPACE_FUNCTION_TABLE)
+        with disable_client_hook():
+            _internal_kv_put(
+                key,
+                pickle.dumps(actor_class_info),
+                namespace=KV_NAMESPACE_FUNCTION_TABLE)
         self._worker.redis_client.rpush("Exports", key)
 
     def export_actor_class(self, Class, actor_creation_function_descriptor,
@@ -543,7 +547,8 @@ class FunctionActorManager:
                 time.sleep(0.001)
 
         # Fetch raw data from GCS.
-        vals = _internal_kv_get(key, namespace=KV_NAMESPACE_FUNCTION_TABLE)
+        with disable_client_hook():
+            vals = _internal_kv_get(key, namespace=KV_NAMESPACE_FUNCTION_TABLE)
         fields = [
             "job_id", "class_name", "module", "class", "actor_method_names"
         ]

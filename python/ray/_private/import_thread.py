@@ -8,6 +8,7 @@ import ray
 from ray import ray_constants
 from ray import cloudpickle as pickle
 from ray.experimental.internal_kv import _internal_kv_get
+from ray._private.client_mode_hook import disable_client_hook
 import ray._private.profiling as profiling
 import logging
 
@@ -190,10 +191,11 @@ class ImportThread:
                 job_id=ray.JobID(job_id))
 
     def _internal_kv_mget(self, key, fields):
-        vals = _internal_kv_get(
-            key, namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
-        if vals is None:
-            vals = {}
-        else:
-            vals = pickle.loads(vals)
-        return (vals.get(field) for field in fields)
+        with disable_client_hook():
+            vals = _internal_kv_get(
+                key, namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+            if vals is None:
+                vals = {}
+            else:
+                vals = pickle.loads(vals)
+            return (vals.get(field) for field in fields)
