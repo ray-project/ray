@@ -64,6 +64,10 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
                 with open(path, "rb") as fp:
                     self.large_object, self.iter, self.a = pickle.load(fp)
 
+            def reset_config(self, new_config):
+                self.a = new_config["a"]
+                return True
+
         class CustomExecutor(RayTrialExecutor):
             def save(self, *args, **kwargs):
                 checkpoint = super(CustomExecutor, self).save(*args, **kwargs)
@@ -121,6 +125,10 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
             def load_checkpoint(self, path):
                 with open(path, "rb") as fp:
                     self.iter, self.a = pickle.load(fp)
+
+            def reset_config(self, new_config):
+                self.a = new_config["a"]
+                return True
 
         from ray.tune.callback import Callback
 
@@ -341,6 +349,12 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
                                                "model.mock")
                 with open(checkpoint_path, "rb") as fp:
                     self.a, self.b, self.iter = pickle.load(fp)
+
+            def reset_config(self, new_config):
+                self.a = new_config["a"]
+                self.b = new_config["b"]
+                self.c = new_config["c"]
+                return True
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
