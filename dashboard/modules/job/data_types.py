@@ -32,7 +32,9 @@ class JobSubmitRequest:
     runtime_env: Dict[str, Any]
     # Command to start execution, ex: "python script.py"
     entrypoint: str
-    # Optional job_id to specify for the job.
+    # Optional job_id to specify for the job. If the job_id is not specified,
+    # one will be generated. If a job with the same job_id already exists, it
+    # will be rejected.
     job_id: Optional[str]
     # Metadata to pass in to the JobConfig.
     metadata: Dict[str, str]
