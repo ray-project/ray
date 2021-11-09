@@ -21,7 +21,7 @@ def make_kv_store(checkpoint_path, namespace):
         if parsed_url.scheme not in {"gcs", "s3", "file", "custom"}:
             raise ValueError(
                 f"Checkpoint must be one of `{DEFAULT_CHECKPOINT_PATH}`, "
-                "`file://path...`, `s3://path...` or "
+                "`file://path...`, `gcs://path...`, `s3://path...`, or "
                 "`custom://my_module.ClassName?arg1=val1`. But it is "
                 f"{checkpoint_path}")
 
