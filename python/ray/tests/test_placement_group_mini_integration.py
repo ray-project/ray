@@ -15,16 +15,14 @@ from ray._private.test_utils import wait_for_condition
 from ray.util.placement_group import (placement_group, remove_placement_group)
 
 
-@pytest.mark.parametrize("execution_number", range(3))
-def test_placement_group_remove_stress(ray_start_cluster, execution_number):
+def run_mini_integration_test(cluster, pg_removal=True, num_pgs=999):
     # This test checks the race condition between remove / creation.
     # This test shouldn't be flaky. If it fails on the last ray.get
     # that highly likely indicates a real bug.
     # It also runs 3 times to make sure the test consistently passes.
     # When 999 resource quantity is used, it fails about every other time
     # when the test was written.
-    cluster = ray_start_cluster
-    resource_quantity = 999
+    resource_quantity = num_pgs
     num_nodes = 5
     custom_resources = {"pg_custom": resource_quantity}
     # Create pg that uses 1 resource of cpu & custom resource.
@@ -61,12 +59,14 @@ def test_placement_group_remove_stress(ray_start_cluster, execution_number):
         pgs_removed = []
         pgs_unremoved = []
         # Randomly choose placement groups to remove.
-        print("removing pgs")
+        if pg_removal:
+            print("removing pgs")
         for pg in pgs:
-            if random() < .5:
+            if random() < .5 and pg_removal:
                 pgs_removed.append(pg)
             else:
                 pgs_unremoved.append(pg)
+        print(len(pgs_unremoved))
 
         tasks = []
         # Randomly schedule tasks or actors on placement groups that
@@ -78,8 +78,9 @@ def test_placement_group_remove_stress(ray_start_cluster, execution_number):
                         placement_group=pg,
                         placement_group_bundle_index=i).remote())
         # Remove the rest of placement groups.
-        for pg in pgs_removed:
-            remove_placement_group(pg)
+        if pg_removal:
+            for pg in pgs_removed:
+                remove_placement_group(pg)
         ray.get(tasks)
         # Since placement groups are scheduled, remove them.
         for pg in pgs_unremoved:
@@ -89,7 +90,7 @@ def test_placement_group_remove_stress(ray_start_cluster, execution_number):
     for _ in range(3):
         pg_launchers.append(pg_launcher.remote(num_pg // 3))
 
-    ray.get(pg_launchers, timeout=120)
+    ray.get(pg_launchers, timeout=240)
     ray.shutdown()
     ray.init(address=cluster.address)
 
@@ -107,6 +108,24 @@ def test_placement_group_remove_stress(ray_start_cluster, execution_number):
         return True
 
     wait_for_condition(wait_for_resource_recovered)
+
+
+@pytest.mark.parametrize("execution_number", range(1))
+def test_placement_group_create_only(ray_start_cluster, execution_number):
+    """PG mini integration test without remove_placement_group
+
+    When there are failures, this will help identifying if issues are
+    from removal or not.
+    """
+    run_mini_integration_test(ray_start_cluster, pg_removal=False, num_pgs=333)
+
+
+@pytest.mark.parametrize("execution_number", range(3))
+def test_placement_group_remove_stress(ray_start_cluster, execution_number):
+    """Full PG mini integration test that runs many
+        concurrent remove_placement_group
+    """
+    run_mini_integration_test(ray_start_cluster, pg_removal=True, num_pgs=999)
 
 
 if __name__ == "__main__":
