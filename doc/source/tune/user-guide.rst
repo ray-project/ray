@@ -358,7 +358,7 @@ Let's assume for this example you're running this script from your laptop, and c
         sync_config=sync_config,
 
         # we'll checkpoint every 10 iterations, keep the best five
-        # checkpoints (by AUC score, descending), and always checkpoint
+        # checkpoints (by AUC score, reported by the trainable, descending), and always checkpoint
         # at the end of the last run!
         checkpoint_score_attr="max-auc",
         keep_checkpoints_num=5,
