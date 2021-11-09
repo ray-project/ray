@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 FAKE_HEAD_NODE_ID = "fffffffffffffffffffffffffffffffffffffffffffffffffff00000"
 FAKE_HEAD_NODE_TYPE = "ray.head.default"
 
+TEST_DISABLE_TERMINATION_FIELD = "_leave_termination_to_drain_api"
+
 
 class FakeMultiNodeProvider(NodeProvider):
     """A node provider that implements multi-node on a single machine.
@@ -44,7 +46,7 @@ class FakeMultiNodeProvider(NodeProvider):
         # For testing only: `terminate_node` will not stop Ray node processes
         # if True.
         self._leave_termination_to_drain_api = self.provider_config.get(
-            "_leave_termination_to_drain_api", False)
+            TEST_DISABLE_TERMINATION_FIELD, False)
 
     def _next_hex_node_id(self):
         self._next_node_id += 1

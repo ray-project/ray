@@ -7,12 +7,12 @@ import tempfile
 import time
 
 import ray
+from ray.autoscaler._private.\
+    fake_multi_node.node_provider import TEST_DISABLE_TERMINATION_FIELD
 import ray._private.services
 from ray import ray_constants
 
 logger = logging.getLogger(__name__)
-
-TEST_DISABLE_TERMINATION_FIELD = "_leave_termination_to_drain_api"
 
 
 class AutoscalingCluster:
