@@ -57,16 +57,31 @@ def check_subprocess_cleaned(pid):
     return psutil.pid_exists(pid) is False
 
 
+def test_pass_job_id(job_manager):
+    job_id = "my_custom_id"
+
+    returned_id = job_manager.submit_job(
+        entrypoint="echo hello", job_id=job_id)
+    assert returned_id == job_id
+
+    wait_for_condition(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id)
+
+    # Check that the same job_id is rejected.
+    with pytest.raises(RuntimeError):
+        job_manager.submit_job(entrypoint="echo hello", job_id=job_id)
+
+
 class TestShellScriptExecution:
     def test_submit_basic_echo(self, job_manager):
-        job_id = job_manager.submit_job("echo hello")
+        job_id = job_manager.submit_job(entrypoint="echo hello")
 
         wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id)
         assert job_manager.get_job_stdout(job_id) == b"hello"
 
     def test_submit_stderr(self, job_manager):
-        job_id = job_manager.submit_job("echo error 1>&2")
+        job_id = job_manager.submit_job(entrypoint="echo error 1>&2")
 
         wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id)
@@ -74,6 +89,7 @@ class TestShellScriptExecution:
 
     def test_submit_ls_grep(self, job_manager):
         job_id = job_manager.submit_job(
+            entrypoint=
             f"ls {os.path.dirname(__file__)} | grep test_job_manager.py")
 
         wait_for_condition(
@@ -89,6 +105,7 @@ class TestShellScriptExecution:
         4) Empty stdout
         """
         job_id = job_manager.submit_job(
+            entrypoint=
             f"python {_driver_script_path('script_with_exception.py')}")
 
         wait_for_condition(
@@ -101,7 +118,7 @@ class TestShellScriptExecution:
 
     def test_submit_with_s3_runtime_env(self, job_manager):
         job_id = job_manager.submit_job(
-            "python script.py",
+            entrypoint="python script.py",
             runtime_env={"working_dir": "s3://runtime-env-test/script.zip"})
 
         wait_for_condition(
@@ -120,7 +137,7 @@ class TestRuntimeEnv:
         driver script.
         """
         job_id = job_manager.submit_job(
-            "echo $TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR",
+            entrypoint="echo $TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR",
             runtime_env={
                 "env_vars": {
                     "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "233"
@@ -134,7 +151,7 @@ class TestRuntimeEnv:
     def test_multiple_runtime_envs(self, job_manager):
         # Test that you can run two jobs in different envs without conflict.
         job_id_1 = job_manager.submit_job(
-            f"python {_driver_script_path('print_runtime_env.py')}",
+            entrypoint=f"python {_driver_script_path('print_runtime_env.py')}",
             runtime_env={
                 "env_vars": {
                     "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_1_VAR"
@@ -148,7 +165,7 @@ class TestRuntimeEnv:
         ) == b"{'env_vars': {'TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR': 'JOB_1_VAR'}}"  # noqa: E501
 
         job_id_2 = job_manager.submit_job(
-            f"python {_driver_script_path('print_runtime_env.py')}",
+            entrypoint=f"python {_driver_script_path('print_runtime_env.py')}",
             runtime_env={
                 "env_vars": {
                     "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_2_VAR"
@@ -166,7 +183,7 @@ class TestRuntimeEnv:
         if user provided runtime_env in both driver script and submit()
         """
         job_id = job_manager.submit_job(
-            f"python {_driver_script_path('override_env_var.py')}",
+            entrypoint=f"python {_driver_script_path('override_env_var.py')}",
             runtime_env={
                 "env_vars": {
                     "TEST_SUBPROCESS_JOB_CONFIG_ENV_VAR": "JOB_1_VAR"
@@ -187,6 +204,7 @@ class TestRuntimeEnv:
         """
         with pytest.raises(RuntimeError):
             job_id = job_manager.submit_job(
+                entrypoint=
                 f"python {_driver_script_path('override_env_var.py')}",
                 runtime_env={"working_dir": "path_not_exist"})
 
@@ -205,7 +223,7 @@ class TestRuntimeEnv:
             "\"")
 
         # Check that we default to only the job ID.
-        job_id = job_manager.submit_job(print_metadata_cmd)
+        job_id = job_manager.submit_job(entrypoint=print_metadata_cmd)
 
         wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id)
@@ -215,7 +233,8 @@ class TestRuntimeEnv:
 
         # Check that we can pass custom metadata.
         job_id = job_manager.submit_job(
-            print_metadata_cmd, metadata={
+            entrypoint=print_metadata_cmd,
+            metadata={
                 "key1": "val1",
                 "key2": "val2"
             })
@@ -243,7 +262,8 @@ class TestAsyncAPI:
                              "do echo 'Waiting...' && sleep 1; "
                              "done")
         job_id = job_manager.submit_job(
-            wait_for_file_cmd, _start_signal_actor=_start_signal_actor)
+            entrypoint=wait_for_file_cmd,
+            _start_signal_actor=_start_signal_actor)
 
         for _ in range(10):
             time.sleep(0.1)

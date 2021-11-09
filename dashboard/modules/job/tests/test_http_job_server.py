@@ -42,6 +42,12 @@ def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
     return status == JobStatus.STOPPED
 
 
+def _check_job_does_not_exist(client: JobSubmissionClient,
+                              job_id: str) -> bool:
+    status = client.get_job_status(job_id)
+    return status == JobStatus.DOES_NOT_EXIST
+
+
 @pytest.fixture(
     scope="function",
     params=["no_working_dir", "local_working_dir", "s3_working_dir"])
@@ -225,6 +231,26 @@ def test_job_metadata(job_sdk_client):
         "key1": "val1",
         "key2": "val2"
     })
+
+
+def test_pass_job_id(job_sdk_client):
+    client = job_sdk_client
+
+    job_id = "my_custom_id"
+    returned_id = client.submit_job(entrypoint="echo hello", job_id=job_id)
+
+    assert returned_id == job_id
+    wait_for_condition(_check_job_succeeded, client=client, job_id=returned_id)
+
+    # Test that a duplicate job_id is rejected.
+    with pytest.raises(Exception, match=f"{job_id} already exists"):
+        returned_id = client.submit_job(entrypoint="echo hello", job_id=job_id)
+
+
+def test_nonexistent_job(job_sdk_client):
+    client = job_sdk_client
+
+    _check_job_does_not_exist(client, "nonexistent_job")
 
 
 if __name__ == "__main__":
