@@ -397,8 +397,8 @@ def test_job_level_gc(start_cluster, option: str, source: str):
         ray.init(address, runtime_env={"py_modules": [source]})
 
     # For a local directory, the package should be in the GCS.
-    # For an S3 URI, there should be nothing in the GCS because
-    # it will be downloaded from S3 directly on each node.
+    # For a remote URI, there should be nothing in the GCS because
+    # it will be downloaded from the remote location directly on each node.
     if source in REMOTE_URIS:
         assert check_internal_kv_gced()
     else:
@@ -414,7 +414,7 @@ def test_job_level_gc(start_cluster, option: str, source: str):
     actors = [A.remote() for _ in range(num_cpus)]
     ray.get([a.test_import.remote() for a in actors])
 
-    if source == S3_PACKAGE_URI:
+    if source in REMOTE_URIS:
         assert check_internal_kv_gced()
     else:
         assert not check_internal_kv_gced()
@@ -480,8 +480,8 @@ def test_detached_actor_gc(start_cluster, option: str, source: str):
             address, namespace="test", runtime_env={"py_modules": [source]})
 
     # For a local directory, the package should be in the GCS.
-    # For an S3 URI, there should be nothing in the GCS because
-    # it will be downloaded from S3 directly on each node.
+    # For a remote URI, there should be nothing in the GCS because
+    # it will be downloaded from the remote location directly on each node.
     if source in REMOTE_URIS:
         assert check_internal_kv_gced()
     else:
@@ -496,7 +496,7 @@ def test_detached_actor_gc(start_cluster, option: str, source: str):
     a = A.options(name="test", lifetime="detached").remote()
     ray.get(a.test_import.remote())
 
-    if source == S3_PACKAGE_URI:
+    if source in REMOTE_URIS:
         assert check_internal_kv_gced()
     else:
         assert not check_internal_kv_gced()
@@ -506,7 +506,7 @@ def test_detached_actor_gc(start_cluster, option: str, source: str):
 
     ray.init(address, namespace="test")
 
-    if source == S3_PACKAGE_URI:
+    if source in REMOTE_URIS:
         assert check_internal_kv_gced()
     else:
         assert not check_internal_kv_gced()
