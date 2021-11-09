@@ -20,8 +20,6 @@ from ray.experimental.internal_kv import (
 )
 from ray.dashboard.modules.job.data_types import JobStatus
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
-# Used in testing only to cover job status under concurrency
-from ray._private.test_utils import SignalActor
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +36,8 @@ class JobLogStorageClient:
     """
     Disk storage for stdout / stderr of driver script logs.
     """
-    JOB_LOGS_STDOUT_KEY = "_ray_internal_job_logs_{job_id}.out"
-    JOB_LOGS_STDERR_KEY = "_ray_internal_job_logs_{job_id}.err"
+    JOB_LOGS_STDOUT_KEY = "job-driver-{job_id}.out"
+    JOB_LOGS_STDERR_KEY = "job-driver-{job_id}.err"
 
     def get_stdout(self, job_id: str):
         stdout_file, _ = self.get_log_file_paths(job_id)
@@ -95,8 +93,10 @@ class JobStatusStorageClient:
     def get_status(self, job_id: str) -> JobStatus:
         pickled_status = _internal_kv_get(
             self.JOB_STATUS_KEY.format(job_id=job_id))
-        assert pickled_status is not None, f"Status not found for {job_id}"
-        return pickle.loads(pickled_status)
+        if pickled_status is None:
+            return JobStatus.DOES_NOT_EXIST
+        else:
+            return pickle.loads(pickled_status)
 
 
 class JobSupervisor:
@@ -195,7 +195,7 @@ class JobSupervisor:
             self,
             entrypoint_cmd: str,
             # Signal actor used in testing to capture PENDING -> RUNNING cases
-            _start_signal_actor: Optional[SignalActor] = None):
+            _start_signal_actor: Optional[ActorHandle] = None):
         """
         Stop and start both happen asynchrously, coordinated by asyncio event
         and coroutine, respectively.
@@ -309,10 +309,12 @@ class JobManager:
                 "Cannot found the node dictionary for current node.")
 
     def submit_job(self,
+                   *,
                    entrypoint: str,
+                   job_id: Optional[str] = None,
                    runtime_env: Optional[Dict[str, Any]] = None,
                    metadata: Optional[Dict[str, str]] = None,
-                   _start_signal_actor: Optional[SignalActor] = None) -> str:
+                   _start_signal_actor: Optional[ActorHandle] = None) -> str:
         """
         Job execution happens asynchronously.
 
@@ -343,10 +345,15 @@ class JobManager:
             job_id: Generated uuid for further job management. Only valid
                 within the same ray cluster.
         """
-        job_id = str(uuid4())
-        self._status_client.put_status(job_id, JobStatus.PENDING)
-        supervisor = None
+        if job_id is None:
+            job_id = str(uuid4())
+        elif self._status_client.get_status(
+                job_id) != JobStatus.DOES_NOT_EXIST:
+            raise RuntimeError(f"Job {job_id} already exists.")
 
+        self._status_client.put_status(job_id, JobStatus.PENDING)
+
+        supervisor = None
         try:
             logger.debug(
                 f"Submitting job with generated internal job_id: {job_id}")
