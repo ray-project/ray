@@ -7,10 +7,13 @@ import numpy as np
 import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Type, TYPE_CHECKING
 
+from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, \
+    OverrideToImplementCustomLogic
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -403,6 +406,25 @@ class Policy(metaclass=ABCMeta):
         # The default implementation just returns the same, unaltered batch.
         return sample_batch
 
+    @ExperimentalAPI
+    @OverrideToImplementCustomLogic
+    def loss(self, model: ModelV2, dist_class: ActionDistribution,
+             train_batch: SampleBatch) -> Union[TensorType, List[TensorType]]:
+        """Loss function for this Policy.
+
+        Override this method in order to implement custom loss computations.
+
+        Args:
+            model: The model to calculate the loss(es).
+            dist_class: The action distribution class to sample actions
+                from the model's outputs.
+            train_batch: The input batch on which to calculate the loss.
+
+        Returns:
+            Either a single loss tensor or a list of loss tensors.
+        """
+        raise NotImplementedError
+
     @DeveloperAPI
     def learn_on_batch(self, samples: SampleBatch) -> Dict[str, TensorType]:
         """Perform one learning update, given `samples`.
@@ -619,8 +641,8 @@ class Policy(metaclass=ABCMeta):
         """Called on an update to global vars.
 
         Args:
-            global_vars (Dict[str, TensorType]): Global variables by str key,
-                broadcast from the driver.
+            global_vars: Global variables by str key, broadcast from the
+                driver.
         """
         # Store the current global time step (sum over all policies' sample
         # steps).
@@ -631,7 +653,7 @@ class Policy(metaclass=ABCMeta):
         """Export Policy checkpoint to local directory.
 
         Args:
-            export_dir (str): Local writable directory.
+            export_dir: Local writable directory.
         """
         raise NotImplementedError
 
@@ -645,8 +667,8 @@ class Policy(metaclass=ABCMeta):
         implementations for more details.
 
         Args:
-            export_dir (str): Local writable directory.
-            onnx (int): If given, will export model in ONNX format. The
+            export_dir: Local writable directory.
+            onnx: If given, will export model in ONNX format. The
                 value of this parameter set the ONNX OpSet version to use.
         """
         raise NotImplementedError
@@ -820,10 +842,7 @@ class Policy(metaclass=ABCMeta):
         train_batch.count = self._dummy_batch.count
         # Call the loss function, if it exists.
         if self._loss is not None:
-            self._loss(
-                model=self.model,
-                dist_class=self.dist_class,
-                train_batch=train_batch)
+            self._loss(self, self.model, self.dist_class, train_batch)
         # Call the stats fn, if given.
         if stats_fn is not None:
             stats_fn(self, train_batch)

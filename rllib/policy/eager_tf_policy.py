@@ -326,8 +326,12 @@ def build_eager_tf_policy(
             self._re_trace_counter = 0
 
             self._loss_initialized = False
-            self._loss = loss_fn.__get__(self, self.__class__) if loss_fn \
-                else self.loss
+            if loss_fn is not None:
+                self._loss = loss_fn
+            elif self.loss.__func__.__qualname__ != "TorchPolicy.loss":
+                self._loss = staticmethod(self.loss)
+            else:
+                self._loss = None
 
             self.batch_divisibility_req = get_batch_divisibility_req(self) if \
                 callable(get_batch_divisibility_req) else \
@@ -829,10 +833,7 @@ def build_eager_tf_policy(
             # Calculate the loss(es) inside a tf GradientTape.
             with tf.GradientTape(persistent=compute_gradients_fn is not None) \
                     as tape:
-                losses = self._loss(
-                    model=self.model,
-                    dist_class=self.dist_class,
-                    train_batch=samples)
+                losses = self._loss(self, self.model, self.dist_class, samples)
             losses = force_list(losses)
 
             # User provided a compute_gradients_fn.
