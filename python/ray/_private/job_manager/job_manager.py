@@ -36,8 +36,8 @@ class JobLogStorageClient:
     """
     Disk storage for stdout / stderr of driver script logs.
     """
-    JOB_LOGS_STDOUT_KEY = "_ray_internal_job_logs_{job_id}.out"
-    JOB_LOGS_STDERR_KEY = "_ray_internal_job_logs_{job_id}.err"
+    JOB_LOGS_STDOUT_KEY = "job-driver-{job_id}.out"
+    JOB_LOGS_STDERR_KEY = "job-driver-{job_id}.err"
 
     def get_stdout(self, job_id: str):
         stdout_file, _ = self.get_log_file_paths(job_id)
