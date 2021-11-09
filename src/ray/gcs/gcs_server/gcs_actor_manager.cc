@@ -941,7 +941,7 @@ void GcsActorManager::OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
   // TODO(sang, lixin) 1. Make this message more friendly 2. Show this message in
   // object.get()'s error.
   death_cause->mutable_runtime_env_setup_failure_context()->set_error_message(
-      "RuntimeEnv setup failed!");
+      "Cannot create an actor because the associated runtime env couldn't be created.");
   // If there is runtime env failure, mark this actor as dead immediately.
   ReconstructActor(actor->GetActorID(), /*need_reschedule=*/false, death_cause);
 }
