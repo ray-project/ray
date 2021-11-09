@@ -308,16 +308,16 @@ Your ``my_trainable`` is either a:
 
    1. **Model with an existing Ray integration**
    
-      * XGBoost (`example <https://github.com/ray-project/xgboost_ray#hyperparameter-tuning>`_)
-      * Pytorch (`example <https://docs.ray.io/en/latest/tune/tutorials/tune-pytorch-lightning.html#putting-it-together>`_)
-      * Pytorch Lightning (`example <https://github.com/ray-project/ray_lightning#hyperparameter-tuning-with-ray-tune>`_)
-      * Keras (`example <https://docs.ray.io/en/latest/tune/examples/tune_mnist_keras.html>`_)
-      * Tensorflow (`example <https://docs.ray.io/en/latest/raysgd/raysgd_tensorflow.html#tftrainer-example>`_)
-      * LightGBM (`example <https://docs.ray.io/en/latest/lightgbm-ray.html#hyperparameter-tuning>`_)
+      * XGBoost (:ref:`example <xgboost-ray-tuning>`)
+      * Pytorch (:ref:`example <tune-pytorch-lightning>`)
+      * Pytorch Lightning (:ref:`example <ray-lightning-tuning>`)
+      * Keras (:doc:`example </tune/examples/tune_mnist_keras>`)
+      * Tensorflow (:ref:`example <ray-train-tftrainer-example>`)
+      * LightGBM (:ref:`example <lightgbm-ray-tuning>`)
   
    2. **Custom training function**
    
-      * All this means is that your function has to expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir``. See this example, it's quite simple to do.
+      * All this means is that your function has to expose a ``checkpoint_dir`` argument in the function signature, and call ``tune.checkpoint_dir``. See :doc:`this example </tune/examples/custom_func_checkpointing>`, it's quite simple to do.
 
 Let's assume for this example you're running this script from your laptop, and connecting to your remote Ray cluster via ``ray.init()``, making your script on your laptop the "driver".
 
@@ -353,7 +353,7 @@ Let's assume for this example you're running this script from your laptop, and c
         sync_config=sync_config,
 
         # we'll checkpoint every 10 iterations, keep the best five
-        # checkpoints (by AUC score, descending), and always checkpoint
+        # checkpoints (by AUC score, reported by the trainable, descending), and always checkpoint
         # at the end of the last run!
         checkpoint_score_attr="max-auc",
         keep_checkpoints_num=5,
@@ -449,7 +449,7 @@ Distributed Checkpointing
 
 On a multinode cluster, Tune automatically creates a copy of all trial checkpoints on the head node. This requires the Ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>` and also requires rsync to be installed.
 
-Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing (or use a Ray built-in model type described here).
+Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing (or use a model type with a built-in Ray Tune integration as described here). See :doc:`/tune/examples/custom_func_checkpointing` for an example.
 
 If you are running Ray Tune on Kubernetes, you should usually use a
 :func:`DurableTrainable <ray.tune.durable>` or a shared filesystem for checkpoint sharing.
