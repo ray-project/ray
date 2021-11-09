@@ -4,7 +4,5 @@ package io.ray.serve.poll;
 public enum LongPollNamespace {
   REPLICA_HANDLES,
 
-  BACKEND_CONFIGS,
-
   ROUTE_TABLE;
 }

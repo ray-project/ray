@@ -9,7 +9,7 @@ public class DeploymentInfo implements Serializable {
 
   private String name;
 
-  private String backendDef;
+  private String deploymentDef;
 
   private Object[] initArgs;
 
@@ -28,12 +28,12 @@ public class DeploymentInfo implements Serializable {
     return this;
   }
 
-  public String getBackendDef() {
-    return backendDef;
+  public String getDeploymentDef() {
+    return deploymentDef;
   }
 
-  public DeploymentInfo setBackendDef(String backendDef) {
-    this.backendDef = backendDef;
+  public DeploymentInfo setDeploymentDef(String deploymentDef) {
+    this.deploymentDef = deploymentDef;
     return this;
   }
 

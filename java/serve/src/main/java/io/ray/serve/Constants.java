@@ -6,7 +6,7 @@ import java.util.List;
 /** Ray Serve common constants. */
 public class Constants {
 
-  /** Name of backend reconfiguration method implemented by user. */
+  /** Name of deployment reconfiguration method implemented by user. */
   public static final String RECONFIGURE_METHOD = "reconfigure";
 
   /** Default histogram buckets for latency tracker. */

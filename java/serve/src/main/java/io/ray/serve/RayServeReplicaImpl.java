@@ -10,15 +10,9 @@ import io.ray.runtime.serializer.MessagePackSerializer;
 import io.ray.serve.api.Serve;
 import io.ray.serve.generated.RequestMetadata;
 import io.ray.serve.generated.RequestWrapper;
-import io.ray.serve.poll.KeyListener;
-import io.ray.serve.poll.KeyType;
-import io.ray.serve.poll.LongPollClient;
-import io.ray.serve.poll.LongPollNamespace;
 import io.ray.serve.util.LogUtil;
 import io.ray.serve.util.ReflectUtil;
 import java.lang.reflect.Method;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,8 +42,6 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
   private Gauge numProcessingItems;
 
-  private LongPollClient longPollClient;
-
   private DeploymentVersion version;
 
   private boolean isDeleted = false;
@@ -68,16 +60,8 @@ public class RayServeReplicaImpl implements RayServeReplica {
     this.callable = callable;
     this.config = deploymentConfig;
     this.version = version;
-
     this.checkHealthMethod = getRunnerMethod(Constants.CHECK_HEALTH_METHOD, null, true);
     this.callMethod = getRunnerMethod(Constants.CALL_METHOD, new Object[] {new Object()}, true);
-
-    Map<KeyType, KeyListener> keyListeners = new HashMap<>();
-    keyListeners.put(
-        new KeyType(LongPollNamespace.BACKEND_CONFIGS, deploymentName),
-        newConfig -> updateDeploymentConfigs(newConfig));
-    this.longPollClient = new LongPollClient(actorHandle, keyListeners);
-    this.longPollClient.start();
     registerMetrics();
   }
 
@@ -86,12 +70,12 @@ public class RayServeReplicaImpl implements RayServeReplica {
         () ->
             requestCounter =
                 Metrics.count()
-                    .name(RayServeMetrics.SERVE_BACKEND_REQUEST_COUNTER.getName())
-                    .description(RayServeMetrics.SERVE_BACKEND_REQUEST_COUNTER.getDescription())
+                    .name(RayServeMetrics.SERVE_DEPLOYMENT_REQUEST_COUNTER.getName())
+                    .description(RayServeMetrics.SERVE_DEPLOYMENT_REQUEST_COUNTER.getDescription())
                     .unit("")
                     .tags(
                         ImmutableMap.of(
-                            RayServeMetrics.TAG_BACKEND,
+                            RayServeMetrics.TAG_DEPLOYMENT,
                             deploymentName,
                             RayServeMetrics.TAG_REPLICA,
                             replicaTag))
@@ -101,12 +85,12 @@ public class RayServeReplicaImpl implements RayServeReplica {
         () ->
             errorCounter =
                 Metrics.count()
-                    .name(RayServeMetrics.SERVE_BACKEND_ERROR_COUNTER.getName())
-                    .description(RayServeMetrics.SERVE_BACKEND_ERROR_COUNTER.getDescription())
+                    .name(RayServeMetrics.SERVE_DEPLOYMENT_ERROR_COUNTER.getName())
+                    .description(RayServeMetrics.SERVE_DEPLOYMENT_ERROR_COUNTER.getDescription())
                     .unit("")
                     .tags(
                         ImmutableMap.of(
-                            RayServeMetrics.TAG_BACKEND,
+                            RayServeMetrics.TAG_DEPLOYMENT,
                             deploymentName,
                             RayServeMetrics.TAG_REPLICA,
                             replicaTag))
@@ -116,12 +100,12 @@ public class RayServeReplicaImpl implements RayServeReplica {
         () ->
             restartCounter =
                 Metrics.count()
-                    .name(RayServeMetrics.SERVE_BACKEND_REPLICA_STARTS.getName())
-                    .description(RayServeMetrics.SERVE_BACKEND_REPLICA_STARTS.getDescription())
+                    .name(RayServeMetrics.SERVE_DEPLOYMENT_REPLICA_STARTS.getName())
+                    .description(RayServeMetrics.SERVE_DEPLOYMENT_REPLICA_STARTS.getDescription())
                     .unit("")
                     .tags(
                         ImmutableMap.of(
-                            RayServeMetrics.TAG_BACKEND,
+                            RayServeMetrics.TAG_DEPLOYMENT,
                             deploymentName,
                             RayServeMetrics.TAG_REPLICA,
                             replicaTag))
@@ -131,14 +115,14 @@ public class RayServeReplicaImpl implements RayServeReplica {
         () ->
             processingLatencyTracker =
                 Metrics.histogram()
-                    .name(RayServeMetrics.SERVE_BACKEND_PROCESSING_LATENCY_MS.getName())
+                    .name(RayServeMetrics.SERVE_DEPLOYMENT_PROCESSING_LATENCY_MS.getName())
                     .description(
-                        RayServeMetrics.SERVE_BACKEND_PROCESSING_LATENCY_MS.getDescription())
+                        RayServeMetrics.SERVE_DEPLOYMENT_PROCESSING_LATENCY_MS.getDescription())
                     .unit("")
                     .boundaries(Constants.DEFAULT_LATENCY_BUCKET_MS)
                     .tags(
                         ImmutableMap.of(
-                            RayServeMetrics.TAG_BACKEND,
+                            RayServeMetrics.TAG_DEPLOYMENT,
                             deploymentName,
                             RayServeMetrics.TAG_REPLICA,
                             replicaTag))
@@ -153,7 +137,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
                     .unit("")
                     .tags(
                         ImmutableMap.of(
-                            RayServeMetrics.TAG_BACKEND,
+                            RayServeMetrics.TAG_DEPLOYMENT,
                             deploymentName,
                             RayServeMetrics.TAG_REPLICA,
                             replicaTag))
@@ -320,7 +304,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
     } catch (NoSuchMethodException e) {
       String errMsg =
           LogUtil.format(
-              "user_config specified but backend {} missing {} method",
+              "userConfig specified but deployment {} missing {} method",
               deploymentName,
               Constants.RECONFIGURE_METHOD);
       LOGGER.error(errMsg);
@@ -341,15 +325,6 @@ public class RayServeReplicaImpl implements RayServeReplica {
           deploymentName,
           userConfig);
     }
-  }
-
-  /**
-   * Update backend configs.
-   *
-   * @param newConfig the new configuration of backend
-   */
-  private void updateDeploymentConfigs(Object newConfig) {
-    config = (DeploymentConfig) newConfig;
   }
 
   public DeploymentVersion getVersion() {

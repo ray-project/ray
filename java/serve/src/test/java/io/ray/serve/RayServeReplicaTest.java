@@ -37,9 +37,9 @@ public class RayServeReplicaTest {
               .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
-              .setBackendDef(DummyBackendReplica.class.getName());
+              .setDeploymentDef(DummyReplica.class.getName());
 
-      ActorHandle<RayServeWrappedReplica> backendHandle =
+      ActorHandle<RayServeWrappedReplica> replicHandle =
           Ray.actor(
                   RayServeWrappedReplica::new,
                   deploymentInfo,
@@ -49,7 +49,7 @@ public class RayServeReplicaTest {
               .remote();
 
       // ready
-      Assert.assertTrue(backendHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
+      Assert.assertTrue(replicHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // handle request
       RequestMetadata.Builder requestMetadata = RequestMetadata.newBuilder();
@@ -58,7 +58,7 @@ public class RayServeReplicaTest {
       RequestWrapper.Builder requestWrapper = RequestWrapper.newBuilder();
 
       ObjectRef<Object> resultRef =
-          backendHandle
+          replicHandle
               .task(
                   RayServeWrappedReplica::handleRequest,
                   requestMetadata.build().toByteArray(),
@@ -68,12 +68,12 @@ public class RayServeReplicaTest {
 
       // reconfigure
       ObjectRef<Object> versionRef =
-          backendHandle.task(RayServeWrappedReplica::reconfigure, (Object) null).remote();
+          replicHandle.task(RayServeWrappedReplica::reconfigure, (Object) null).remote();
       Assert.assertEquals(((DeploymentVersion) versionRef.get()).getCodeVersion(), version);
 
-      backendHandle.task(RayServeWrappedReplica::reconfigure, new Object()).remote().get();
+      replicHandle.task(RayServeWrappedReplica::reconfigure, new Object()).remote().get();
       resultRef =
-          backendHandle
+          replicHandle
               .task(
                   RayServeWrappedReplica::handleRequest,
                   requestMetadata.build().toByteArray(),
@@ -81,12 +81,12 @@ public class RayServeReplicaTest {
               .remote();
       Assert.assertEquals((String) resultRef.get(), "1");
 
-      backendHandle
+      replicHandle
           .task(RayServeWrappedReplica::reconfigure, ImmutableMap.of("value", "100"))
           .remote()
           .get();
       resultRef =
-          backendHandle
+          replicHandle
               .task(
                   RayServeWrappedReplica::handleRequest,
                   requestMetadata.build().toByteArray(),
@@ -95,12 +95,12 @@ public class RayServeReplicaTest {
       Assert.assertEquals((String) resultRef.get(), "101");
 
       // get version
-      versionRef = backendHandle.task(RayServeWrappedReplica::getVersion).remote();
+      versionRef = replicHandle.task(RayServeWrappedReplica::getVersion).remote();
       Assert.assertEquals(((DeploymentVersion) versionRef.get()).getCodeVersion(), version);
 
       // prepare for shutdown
       ObjectRef<Boolean> shutdownRef =
-          backendHandle.task(RayServeWrappedReplica::prepareForShutdown).remote();
+          replicHandle.task(RayServeWrappedReplica::prepareForShutdown).remote();
       Assert.assertTrue(shutdownRef.get());
 
     } finally {

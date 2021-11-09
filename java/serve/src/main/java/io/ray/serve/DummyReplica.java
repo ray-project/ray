@@ -3,7 +3,7 @@ package io.ray.serve;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class DummyBackendReplica {
+public class DummyReplica {
 
   private AtomicInteger counter = new AtomicInteger();
 

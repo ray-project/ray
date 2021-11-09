@@ -19,7 +19,7 @@ public class Serve {
   /**
    * Set replica information to global context.
    *
-   * @param deploymentName backend tag
+   * @param deploymentName deployment name
    * @param replicaTag replica tag
    * @param controllerName the controller actor's name
    * @param servableObject the servable object of the specified replica.
@@ -42,7 +42,7 @@ public class Serve {
   public static ReplicaContext getReplicaContext() {
     if (INTERNAL_REPLICA_CONTEXT == null) {
       throw new RayServeException(
-          "`Serve.getReplicaContext()` may only be called from within a Ray Serve backend.");
+          "`Serve.getReplicaContext()` may only be called from within a Ray Serve deployment.");
     }
     return INTERNAL_REPLICA_CONTEXT;
   }

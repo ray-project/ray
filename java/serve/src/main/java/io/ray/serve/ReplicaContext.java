@@ -1,6 +1,6 @@
 package io.ray.serve;
 
-/** Stores data for Serve API calls from within the user's backend code. */
+/** Stores data for Serve API calls from within deployments. */
 public class ReplicaContext {
 
   private String deploymentName;

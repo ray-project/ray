@@ -23,12 +23,12 @@ public class RayServeWrappedReplica implements RayServeReplica {
 
   private DeploymentInfo deploymentInfo;
 
-  private RayServeReplicaImpl backend;
+  private RayServeReplicaImpl replica;
 
   public RayServeWrappedReplica(
       String deploymentName,
       String replicaTag,
-      String backendDef,
+      String deploymentDef,
       byte[] initArgsbytes,
       byte[] deploymentConfigBytes,
       byte[] deploymentVersionBytes,
@@ -57,7 +57,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
             .setName(deploymentName)
             .setDeploymentConfig(deploymentConfig)
             .setDeploymentVersion(ServeProtoUtil.parseDeploymentVersion(deploymentVersionBytes))
-            .setBackendDef(backendDef)
+            .setDeploymentDef(deploymentDef)
             .setInitArgs(initArgs),
         replicaTag,
         controllerName,
@@ -79,15 +79,15 @@ public class RayServeWrappedReplica implements RayServeReplica {
       String controllerName,
       RayServeConfig rayServeConfig) {
     try {
-      // Set the controller name so that Serve.connect() in the user's backend code will connect to
-      // the instance that this backend is running in.
+      // Set the controller name so that Serve.connect() in the user's code will connect to the
+      // instance that this deployment is running in.
       Serve.setInternalReplicaContext(deploymentInfo.getName(), replicaTag, controllerName, null);
       Serve.getReplicaContext().setRayServeConfig(rayServeConfig);
 
-      // Instantiate the object defined by backendDef.
-      Class backendClass = Class.forName(deploymentInfo.getBackendDef());
+      // Instantiate the object defined by deploymentDef.
+      Class deploymentClass = Class.forName(deploymentInfo.getDeploymentDef());
       Object callable =
-          ReflectUtil.getConstructor(backendClass, deploymentInfo.getInitArgs())
+          ReflectUtil.getConstructor(deploymentClass, deploymentInfo.getInitArgs())
               .newInstance(deploymentInfo.getInitArgs());
       Serve.getReplicaContext().setServableObject(callable);
 
@@ -101,7 +101,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
       enableMetrics(deploymentInfo.getConfig());
 
       // Construct worker replica.
-      this.backend =
+      this.replica =
           new RayServeReplicaImpl(
               callable,
               deploymentInfo.getDeploymentConfig(),
@@ -155,14 +155,14 @@ public class RayServeWrappedReplica implements RayServeReplica {
    * @param requestMetadata the real type is byte[] if this invocation is cross-language. Otherwise,
    *     the real type is {@link io.ray.serve.generated.RequestMetadata}.
    * @param requestArgs The input parameters of the specified method of the object defined by
-   *     backendDef. The real type is serialized {@link io.ray.serve.generated.RequestWrapper} if
+   *     deploymentDef. The real type is serialized {@link io.ray.serve.generated.RequestWrapper} if
    *     this invocation is cross-language. Otherwise, the real type is Object[].
    * @return the result of request being processed
    */
   @Override
   public Object handleRequest(Object requestMetadata, Object requestArgs) {
     boolean isCrossLanguage = requestMetadata instanceof byte[];
-    return backend.handleRequest(
+    return replica.handleRequest(
         isCrossLanguage
             ? ServeProtoUtil.parseRequestMetadata((byte[]) requestMetadata)
             : (RequestMetadata) requestMetadata,
@@ -176,7 +176,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
    */
   @Override
   public boolean checkHealth() {
-    return backend.checkHealth();
+    return replica.checkHealth();
   }
 
   /**
@@ -186,7 +186,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
    */
   @Override
   public boolean prepareForShutdown() {
-    return backend.prepareForShutdown();
+    return replica.prepareForShutdown();
   }
 
   /**
@@ -199,7 +199,7 @@ public class RayServeWrappedReplica implements RayServeReplica {
   @Override
   public Object reconfigure(Object userConfig) {
     DeploymentVersion deploymentVersion =
-        backend.reconfigure(
+        replica.reconfigure(
             deploymentInfo.getDeploymentConfig().isCrossLanguage() && userConfig != null
                 ? MessagePackSerializer.decode((byte[]) userConfig, Object.class)
                 : userConfig);
@@ -215,13 +215,13 @@ public class RayServeWrappedReplica implements RayServeReplica {
    *     DeploymentVersion is serialized to protobuf byte[].
    */
   public Object getVersion() {
-    DeploymentVersion deploymentVersion = backend.getVersion();
+    DeploymentVersion deploymentVersion = replica.getVersion();
     return deploymentInfo.getDeploymentConfig().isCrossLanguage()
         ? ServeProtoUtil.toProtobuf(deploymentVersion).toByteArray()
         : deploymentVersion;
   }
 
   public Object getCallable() {
-    return backend.getCallable();
+    return replica.getCallable();
   }
 }

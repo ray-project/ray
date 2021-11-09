@@ -40,7 +40,7 @@ public class RouterTest {
               .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
-              .setBackendDef("io.ray.serve.ReplicaContext")
+              .setDeploymentDef("io.ray.serve.ReplicaContext")
               .setInitArgs(initArgs);
 
       ActorHandle<RayServeWrappedReplica> replicaHandle =

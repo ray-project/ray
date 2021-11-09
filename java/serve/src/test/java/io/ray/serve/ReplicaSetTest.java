@@ -18,17 +18,6 @@ public class ReplicaSetTest {
   private String deploymentName = "ReplicaSetTest";
 
   @Test
-  public void setMaxConcurrentQueriesTest() {
-    ReplicaSet replicaSet = new ReplicaSet(deploymentName);
-    io.ray.serve.generated.DeploymentConfig.Builder builder =
-        io.ray.serve.generated.DeploymentConfig.newBuilder();
-    builder.setMaxConcurrentQueries(200);
-
-    replicaSet.setMaxConcurrentQueries(builder.build());
-    Assert.assertEquals(replicaSet.getMaxConcurrentQueries(), 200);
-  }
-
-  @Test
   public void updateWorkerReplicasTest() {
     ReplicaSet replicaSet = new ReplicaSet(deploymentName);
     ActorSet.Builder builder = ActorSet.newBuilder();
@@ -66,7 +55,7 @@ public class ReplicaSetTest {
               .setName(deploymentName)
               .setDeploymentConfig(deploymentConfig)
               .setDeploymentVersion(new DeploymentVersion(version))
-              .setBackendDef("io.ray.serve.ReplicaContext")
+              .setDeploymentDef("io.ray.serve.ReplicaContext")
               .setInitArgs(initArgs);
 
       ActorHandle<RayServeWrappedReplica> replicaHandle =
