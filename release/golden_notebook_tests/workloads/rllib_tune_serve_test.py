@@ -103,7 +103,7 @@ TRAINER_CFG = {
 
 def train(smoke_test: bool) -> str:
     print("Training automatically with Ray Tune")
-    epoch = datetime.now().strftime('%Y%m%d-%H%M')
+    epoch = datetime.now().strftime("%Y%m%d-%H%M")
     results = tune.run(
         tune.durable(APPOTrainer),
         name=f"CUJ-RL-{epoch}",
@@ -134,7 +134,7 @@ class Corridor(object):
     def __init__(self, ckpt_path):
         config = appo.DEFAULT_CONFIG.copy()
         config.update(TRAINER_CFG)
-        config['num_workers'] = 0
+        config["num_workers"] = 0
 
         agent = appo.APPOTrainer(config=config, env=MysteriousCorridor)
         agent.restore(ckpt_path)
@@ -153,7 +153,7 @@ class Corridor(object):
         body = await request.body()
         try:
             data = json.loads(body.decode("utf-8"))
-        except ValueError as e:
+        except ValueError:
             # Can't parse body as json data.
             return "can't decode: " + body.decode("utf-8")
 
