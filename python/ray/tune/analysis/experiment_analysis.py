@@ -783,8 +783,16 @@ class ExperimentAnalysis(Analysis):
             _trial_paths = [
                 checkpoint["logdir"] for checkpoint in self._checkpoints
             ]
-            self.trials = load_trials_from_experiment_checkpoint(
-                self._experiment_state, stub=True)
+            try:
+                self.trials = load_trials_from_experiment_checkpoint(
+                    self._experiment_state, stub=True)
+            except Exception as e:
+                logger.warning(
+                    f"Could not load trials from experiment checkpoint. "
+                    f"This means your experiment checkpoint is likely faulty "
+                    f"or incomplete, and you won't have access to all "
+                    f"analysis methods. "
+                    f"Observed error: {e}")
 
         if not _trial_paths:
             raise TuneError("No trials found.")
