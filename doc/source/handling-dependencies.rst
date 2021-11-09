@@ -1,6 +1,6 @@
-.. _dependency_management:
+.. _handling_dependencies:
 
-Dependency Management
+Handling Dependencies
 =====================
 
 Your Ray project may depend on environment variables, local files, and Python packages.
