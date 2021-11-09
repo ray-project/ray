@@ -513,7 +513,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
   // same TaskID to request a worker
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
-  resource_spec_msg.set_task_id(TaskID::ForFakeTask().Binary());
+  resource_spec_msg.set_task_id(TaskID::FromRandom(job_id_).Binary());
   const TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
   rpc::Address best_node_address;
   if (raylet_address == nullptr) {

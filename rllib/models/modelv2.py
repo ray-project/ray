@@ -243,6 +243,11 @@ class ModelV2:
         with self.context():
             res = self.forward(restored, state or [], seq_lens)
 
+        if isinstance(input_dict, SampleBatch):
+            input_dict.accessed_keys = restored.accessed_keys - {"obs_flat"}
+            input_dict.deleted_keys = restored.deleted_keys
+            input_dict.added_keys = restored.added_keys - {"obs_flat"}
+
         if ((not isinstance(res, list) and not isinstance(res, tuple))
                 or len(res) != 2):
             raise ValueError(
