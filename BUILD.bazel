@@ -1331,6 +1331,19 @@ cc_test(
 )
 
 cc_test(
+    name = "status_test",
+    size = "small",
+    srcs = [
+    "src/ray/common/test/status_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "publisher_test",
     size = "small",
     srcs = ["src/ray/pubsub/test/publisher_test.cc"],
