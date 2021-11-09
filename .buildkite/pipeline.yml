@@ -323,7 +323,7 @@
     # And we save this image to a tarball, so that we can load it to podman image storage in the
     # nested-container which run tests. And in this nested-container, Raylet will start ray worker
     # process in double-nested-container.
-    - python ./ci/travis/build-docker-images.py --py-versions py36 --build-type BUILDKITE --only-build-worker-container
+    - python ./ci/travis/build-docker-images.py --py-versions py36 --device-types cpu --build-type BUILDKITE --only-build-worker-container
     - mkdir /ray-mount/containers
     - docker save -o /ray-mount/containers/images.tar rayproject/ray-worker-container:nightly-py36-cpu
     - docker run --rm --privileged -v /ray/containers:/var/lib/containers -v /ray:/ray --entrypoint /bin/bash
