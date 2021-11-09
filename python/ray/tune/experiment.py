@@ -206,7 +206,7 @@ class Experiment:
             spec["config"]["env"] = spec["env"]
             del spec["env"]
 
-        if "sync_config" in spec:
+        if "sync_config" in spec and isinstance(spec["sync_config"], dict):
             spec["sync_config"] = SyncConfig(**spec["sync_config"])
 
         spec = copy.deepcopy(spec)

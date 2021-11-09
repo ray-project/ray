@@ -506,9 +506,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, trainable_id):
         run=trainable_id,
         stop=dict(training_iteration=3),
         local_dir=local_dir,
-        upload_dir=upload_dir,
-        sync_to_driver=use_default_sync,
-    )
+        sync_config=dict(upload_dir=upload_dir, syncer=use_default_sync))
 
     exp1_args = base_dict
     exp2_args = dict(base_dict.items(), local_dir=dirpath, checkpoint_freq=1)
