@@ -341,6 +341,12 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetResourceIds(JNIEnv *env, jclass) {
       env, resource_mapping, std::move(key_converter), std::move(value_converter));
 }
 
+JNIEXPORT jstring JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeGetNamespace(JNIEnv *env, jclass) {
+  return env->NewStringUTF(
+      CoreWorkerProcess::GetCoreWorker().GetJobConfig().ray_namespace().c_str());
+}
+
 #ifdef __cplusplus
 }
 #endif

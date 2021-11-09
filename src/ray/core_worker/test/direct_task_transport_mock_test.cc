@@ -43,7 +43,7 @@ class DirectTaskTransportTest : public ::testing::Test {
         std::make_shared<CoreWorkerMemoryStore>(), task_finisher,
         NodeID::Nil(), /* local_raylet_id */
         0,             /* lease_timeout_ms */
-        actor_creator);
+        actor_creator, JobID::Nil() /* job_id */);
   }
 
   TaskSpecification GetCreatingTaskSpec(const ActorID &actor_id) {
