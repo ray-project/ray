@@ -62,7 +62,8 @@
 
   cluster:
     app_config: rllib_tune_serve_app_config.yaml
-    compute_template: compute_tpl.yaml
+    compute_template: compute_tpl_gcp.yaml
+    cloud_id: cld_k8WcxPgjUtSE8RVmfZpTLuKM  # anyscale_k8s_gcp_cloud
 
   run:
     use_connect: True
