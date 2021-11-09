@@ -352,7 +352,6 @@ class Dataset(Generic[T]):
 
         # Compute the (n-1) indices needed for an equal split of the data.
         count = self.count()
-        num_blocks = min(num_blocks, count)
         indices = []
         cur_idx = 0
         for _ in range(num_blocks - 1):
