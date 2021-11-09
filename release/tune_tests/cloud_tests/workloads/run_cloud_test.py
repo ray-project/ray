@@ -5,9 +5,8 @@ This script provides utilities and end to end tests for cloud checkpointing.
 We are considering several scenarios depending on the combination of the
 following Tune properties:
 
-sync_to_driver
+syncer ("auto" or None)
 upload_dir
-DurableTrainable
 
 Generally the flow is as follows:
 
@@ -18,7 +17,7 @@ Depending on the combination of the run properties above, we expect different
 results between the two runs and after the second run.
 
 For instance, we sometimes expect all checkpoints to be synced to the driver
-(sync_to_driver=True), and sometimes not (sync_to_driver=False).
+(syncer="auto" and no upload dir), and sometimes not (syncer=None).
 
 We also ensure that checkpoints are properly deleted.
 
@@ -195,21 +194,17 @@ def wait_for_nodes(num_nodes: int,
 
 
 def start_run(
-        sync_to_driver: bool,
+        no_syncer: bool,
         upload_dir: Optional[str] = None,
-        durable: bool = False,
         experiment_name: str = "cloud_test",
         indicator_file: str = "/tmp/tune_cloud_indicator",
 ) -> subprocess.Popen:
     args = []
-    if sync_to_driver:
-        args.append("--sync-to-driver")
+    if no_syncer:
+        args.append("--no-syncer")
 
     if upload_dir:
         args.extend(["--upload-dir", upload_dir])
-
-    if durable:
-        args.append("--durable")
 
     if experiment_name:
         args.extend(["--experiment-name", experiment_name])
@@ -290,15 +285,13 @@ def run_tune_script_for_time(
         run_time: int,
         experiment_name: str,
         indicator_file: str,
-        sync_to_driver: bool,
+        no_syncer: bool,
         upload_dir: Optional[str],
-        durable: bool,
 ):
     # Start run
     process = start_run(
-        sync_to_driver=sync_to_driver,
+        no_syncer=no_syncer,
         upload_dir=upload_dir,
-        durable=durable,
         experiment_name=experiment_name,
         indicator_file=indicator_file,
     )
@@ -320,9 +313,8 @@ def run_tune_script_for_time(
 def run_resume_flow(
         experiment_name: str,
         indicator_file: str,
-        sync_to_driver: bool,
+        no_syncer: bool,
         upload_dir: Optional[str],
-        durable: bool,
         first_run_time: int = 33,
         second_run_time: int = 33,
         before_experiments_callback: Optional[Callable[[], None]] = None,
@@ -357,9 +349,8 @@ def run_resume_flow(
         run_time=first_run_time,
         experiment_name=experiment_name,
         indicator_file=indicator_file,
-        sync_to_driver=sync_to_driver,
+        no_syncer=no_syncer,
         upload_dir=upload_dir,
-        durable=durable,
     )
 
     # Before we restart, run a couple of checks
@@ -377,9 +368,8 @@ def run_resume_flow(
         run_time=second_run_time,
         experiment_name=experiment_name,
         indicator_file=indicator_file,
-        sync_to_driver=sync_to_driver,
+        no_syncer=no_syncer,
         upload_dir=upload_dir,
-        durable=durable,
     )
 
     if after_experiments_callback:
@@ -753,9 +743,8 @@ def test_no_sync_down():
     """
     No down syncing, so:
 
-        sync_to_driver=False
+        syncer=None
         upload_dir=None
-        no durable_trainable
 
     Expected results after first checkpoint:
 
@@ -844,9 +833,8 @@ def test_no_sync_down():
     run_resume_flow(
         experiment_name=experiment_name,
         indicator_file=indicator_file,
-        sync_to_driver=False,
+        no_syncer=True,
         upload_dir=None,
-        durable=False,
         first_run_time=45,
         second_run_time=45,
         between_experiments_callback=between_experiments,
@@ -857,9 +845,8 @@ def test_ssh_sync():
     """
     SSH syncing, so:
 
-        sync_to_driver=True
+        syncer="auto"
         upload_dir=None
-        no durable_trainable
 
     Expected results after first checkpoint:
 
@@ -938,9 +925,8 @@ def test_ssh_sync():
     run_resume_flow(
         experiment_name=experiment_name,
         indicator_file=indicator_file,
-        sync_to_driver=True,
+        no_syncer=False,
         upload_dir=None,
-        durable=False,
         first_run_time=55,  # More time because of SSH syncing
         second_run_time=55,
         between_experiments_callback=between_experiments,
@@ -951,9 +937,8 @@ def test_durable_upload(bucket: str):
     """
     Sync trial and experiment checkpoints to cloud, so:
 
-        sync_to_driver=False
+        syncer="auto"
         upload_dir="s3://"
-        durable_trainable
 
     Expected results after first checkpoint:
 
@@ -1066,9 +1051,8 @@ def test_durable_upload(bucket: str):
     run_resume_flow(
         experiment_name=experiment_name,
         indicator_file=indicator_file,
-        sync_to_driver=False,
+        no_syncer=False,
         upload_dir=bucket,
-        durable=True,
         first_run_time=45,
         second_run_time=45,
         before_experiments_callback=before_experiments,
