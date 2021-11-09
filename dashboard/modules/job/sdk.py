@@ -113,7 +113,9 @@ class JobSubmissionClient:
                 runtime_env["working_dir"] = package_uri
 
     def submit_job(self,
+                   *,
                    entrypoint: str,
+                   job_id: Optional[str] = None,
                    runtime_env: Optional[Dict[str, Any]] = None,
                    metadata: Optional[Dict[str, str]] = None) -> str:
         runtime_env = runtime_env or {}
@@ -121,7 +123,10 @@ class JobSubmissionClient:
 
         self._upload_working_dir_if_needed(runtime_env)
         req = JobSubmitRequest(
-            entrypoint=entrypoint, runtime_env=runtime_env, metadata=metadata)
+            entrypoint=entrypoint,
+            job_id=job_id,
+            runtime_env=runtime_env,
+            metadata=metadata)
         resp = self._do_request(
             "POST",
             JOBS_API_ROUTE_SUBMIT,

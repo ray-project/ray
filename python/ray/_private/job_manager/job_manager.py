@@ -93,8 +93,10 @@ class JobStatusStorageClient:
     def get_status(self, job_id: str) -> JobStatus:
         pickled_status = _internal_kv_get(
             self.JOB_STATUS_KEY.format(job_id=job_id))
-        assert pickled_status is not None, f"Status not found for {job_id}"
-        return pickle.loads(pickled_status)
+        if pickled_status is None:
+            return JobStatus.DOES_NOT_EXIST
+        else:
+            return pickle.loads(pickled_status)
 
 
 class JobSupervisor:
@@ -307,7 +309,9 @@ class JobManager:
                 "Cannot found the node dictionary for current node.")
 
     def submit_job(self,
+                   *,
                    entrypoint: str,
+                   job_id: Optional[str] = None,
                    runtime_env: Optional[Dict[str, Any]] = None,
                    metadata: Optional[Dict[str, str]] = None,
                    _start_signal_actor: Optional[ActorHandle] = None) -> str:
@@ -341,10 +345,15 @@ class JobManager:
             job_id: Generated uuid for further job management. Only valid
                 within the same ray cluster.
         """
-        job_id = str(uuid4())
-        self._status_client.put_status(job_id, JobStatus.PENDING)
-        supervisor = None
+        if job_id is None:
+            job_id = str(uuid4())
+        elif self._status_client.get_status(
+                job_id) != JobStatus.DOES_NOT_EXIST:
+            raise RuntimeError(f"Job {job_id} already exists.")
 
+        self._status_client.put_status(job_id, JobStatus.PENDING)
+
+        supervisor = None
         try:
             logger.debug(
                 f"Submitting job with generated internal job_id: {job_id}")
