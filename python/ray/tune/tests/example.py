@@ -30,6 +30,7 @@ def training_function(config):
 
 analysis = tune.run(
     training_function,
+    local_dir="./ray_results",  # log results for tensorboard
     config={
         "alpha": tune.grid_search([0.001, 0.01, 0.1]),
         "beta": tune.choice([1, 2, 3])
