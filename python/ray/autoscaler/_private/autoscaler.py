@@ -425,7 +425,7 @@ class StandardAutoscaler:
             for ip in connected_node_ips
         }
 
-        logger.info(f"Draining len({raylet_ids_to_drain}) raylet(s).")
+        logger.info(f"Draining {len(raylet_ids_to_drain)} raylet(s).")
         try:
             request = gcs_service_pb2.DrainNodeRequest(drain_node_data=[
                 gcs_service_pb2.DrainNodeData(node_id=raylet_id)
