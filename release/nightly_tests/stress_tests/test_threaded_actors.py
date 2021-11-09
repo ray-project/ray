@@ -118,7 +118,7 @@ def main():
     ray.init(address="auto")
     args, unknown = parse_script_args()
     num_cpus = ray.cluster_resources()["CPU"]
-    num_nodes = len([1 for n in ray.nodes() if n["Alive"]])
+    num_nodes = sum(1 for n in ray.nodes() if n["Alive"])
     print(f"Total number of actors: {num_cpus}, nodes: {num_nodes}")
     monitor_actor = monitor_memory_usage()
 
