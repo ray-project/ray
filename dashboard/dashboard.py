@@ -229,6 +229,17 @@ if __name__ == "__main__":
         loop = asyncio.get_event_loop()
         loop.run_until_complete(dashboard.run())
     except Exception as e:
+        traceback_str = ray._private.utils.format_error_message(
+            traceback.format_exc())
+        message = f"The dashboard on node {platform.uname()[1]} " \
+                  f"failed with the following " \
+                  f"error:\n{traceback_str}"
+        if isinstance(e, FrontendNotFoundError):
+            logger.warning(message)
+        else:
+            logger.error(message)
+            raise e
+
         # Something went wrong, so push an error to all drivers.
         redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
@@ -238,19 +249,9 @@ if __name__ == "__main__":
         elif os.environ.get("RAY_gcs_grpc_based_pubsub") == "true":
             gcs_publisher = gcs_utils.GcsPublisher(
                 address=gcs_utils.get_gcs_address_from_redis(redis_client))
-        traceback_str = ray._private.utils.format_error_message(
-            traceback.format_exc())
-        message = f"The dashboard on node {platform.uname()[1]} " \
-                  f"failed with the following " \
-                  f"error:\n{traceback_str}"
         ray._private.utils.publish_error_to_driver(
             redis_client,
             ray_constants.DASHBOARD_DIED_ERROR,
             message,
             redis_client=redis_client,
             gcs_publisher=gcs_publisher)
-        if isinstance(e, FrontendNotFoundError):
-            logger.warning(message)
-        else:
-            logger.error(message)
-            raise e

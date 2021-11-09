@@ -206,6 +206,8 @@ class GcsClient:
 
 
 class GcsPublisher:
+    """Publisher to GCS."""
+
     def __init__(self, address: str = None, channel: grpc.Channel = None):
         if address:
             assert channel is None, \
@@ -227,7 +229,7 @@ class GcsPublisher:
 
 
 class GcsSubscriber:
-    """Subscribes to GCS. Thread safe."""
+    """Subscriber to GCS. Thread safe."""
 
     def __init__(
             self,
@@ -328,6 +330,8 @@ class GcsSubscriber:
 
 
 class GcsAioPublisher:
+    """Publisher to GCS. Uses async io."""
+
     def __init__(self, address: str = None, channel: grpc.aio.Channel = None):
         if address:
             assert channel is None, \
@@ -350,6 +354,8 @@ class GcsAioPublisher:
 
 
 class GcsAioSubscriber:
+    """Subscriber to GCS. Uses async io."""
+
     def __init__(self, address: str = None, channel: grpc.aio.Channel = None):
         if address:
             assert channel is None, \

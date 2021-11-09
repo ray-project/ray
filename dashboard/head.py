@@ -43,8 +43,8 @@ GRPC_CHANNEL_OPTIONS = (
 async def get_gcs_address_with_retry(redis_client) -> str:
     while True:
         try:
-            gcs_address = await redis_client.get(
-                dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
+            gcs_address = (await redis_client.get(
+                dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)).decode()
             if not gcs_address:
                 raise Exception("GCS address not found.")
             logger.info("Connect to GCS at %s", gcs_address)

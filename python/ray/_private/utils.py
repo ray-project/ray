@@ -149,7 +149,8 @@ def publish_error_to_driver(error_type,
         redis_client.publish("ERROR_INFO:" + job_id.hex(),
                              pubsub_msg.SerializeToString())
     else:
-        raise "One of redis_client and gcs_publisher needs to be specified!"
+        raise ValueError(
+            "One of redis_client and gcs_publisher needs to be specified!")
 
 
 def random_string():

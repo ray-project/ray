@@ -293,8 +293,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             self._dashboard_head.gcs_subscriber.subscribe_error()
 
             while True:
-                _, error_data = self._dashboard_head.gcs_subscriber.poll_error(
-                )
+                _, error_data = await \
+                    self._dashboard_head.gcs_subscriber.poll_error()
                 try:
                     process_error(error_data)
                 except Exception:

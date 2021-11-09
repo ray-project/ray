@@ -401,6 +401,7 @@ class Monitor:
             _internal_kv_put(DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
         redis_client = ray._private.services.create_redis_client(
             self.redis_address, password=self.redis_password)
+        gcs_publisher = None
         if args.gcs_address:
             gcs_publisher = GcsPublisher(address=args.gcs_address)
         elif os.environ.get("RAY_gcs_grpc_based_pubsub") == "true":
