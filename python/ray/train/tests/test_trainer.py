@@ -1180,12 +1180,20 @@ def test_resources(ray_start_4_cpus_4_gpus_4_extra, resource, num_requested):
     wait_for_condition(
         lambda: ray.available_resources().get(resource, 0) == original)
 
-
 def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
+    class CudaTestBackend(TestBackend):
+        share_cuda_visible_devices = True
+
+    class CudaTestConfig(TestConfig):
+        @property
+        def backend_cls(self):
+            return CudaTestBackend
+
+
     # GPUs should not be requested if `use_gpu` is False.
     with pytest.raises(ValueError):
         Trainer(
-            TestConfig(),
+            CudaTestConfig(),
             num_workers=2,
             use_gpu=False,
             resources_per_worker={"GPU": 1})
@@ -1193,7 +1201,7 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     # GPUs should not be set to 0 if `use_gpu` is True.
     with pytest.raises(ValueError):
         Trainer(
-            TestConfig(),
+            CudaTestConfig(),
             num_workers=2,
             use_gpu=True,
             resources_per_worker={"GPU": 0})
@@ -1201,18 +1209,15 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     def get_resources():
         return os.environ["CUDA_VISIBLE_DEVICES"]
 
-    # TODO(matt): This needs to be set on the BackendExecutor
-    os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
-
     # 0 GPUs will be requested and should not raise an error.
-    trainer = Trainer(TestConfig(), num_workers=2, use_gpu=False)
+    trainer = Trainer(CudaTestConfig(), num_workers=2, use_gpu=False)
     trainer.start()
     result = trainer.run(get_resources)
     assert result == ["", ""]
     trainer.shutdown()
 
     # 1 GPU will be requested and should not raise an error.
-    trainer = Trainer(TestConfig(), num_workers=2, use_gpu=True)
+    trainer = Trainer(CudaTestConfig(), num_workers=2, use_gpu=True)
     trainer.start()
     result = trainer.run(get_resources)
     assert result == ["0,1", "0,1"]
@@ -1220,7 +1225,7 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
 
     # Partial GPUs should not raise an error.
     trainer = Trainer(
-        TestConfig(),
+        CudaTestConfig(),
         num_workers=2,
         use_gpu=True,
         resources_per_worker={"GPU": 0.1})
@@ -1231,7 +1236,7 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
 
     # Multiple GPUs should not raise an error.
     trainer = Trainer(
-        TestConfig(),
+        CudaTestConfig(),
         num_workers=2,
         use_gpu=True,
         resources_per_worker={"GPU": 2})
