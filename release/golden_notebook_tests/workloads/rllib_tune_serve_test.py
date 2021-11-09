@@ -7,6 +7,7 @@ import json
 import os
 import requests
 import time
+from urllib import parse
 
 import gym
 from gym.spaces import Discrete, Box
@@ -182,7 +183,9 @@ def deploy(ckpt_path: str):
     Corridor.deploy(ckpt_path)
     print("Corridor service deployed!")
 
-    serve_url = ray.get(get_serve_url.remote())
+    dashboard_url = ray.get(get_serve_url.remote())
+    p = parse.urlparse(dashboard_url)._replace(path="/serve/corridor")
+    serve_url = parse.urlunparse(p)
     print(f"You can query the model at: {serve_url}")
 
     return serve_url
@@ -195,12 +198,10 @@ def test_serve_endpoint(serve_url):
 
     data = {"state": 1}
     resp = sess.post(resp.url, json=data)
-    print("111: ", str(resp.content))  # DEBUG
     print(resp.json())
 
     data = {"state": 3}
     resp = sess.post(resp.url, json=data)
-    print("222: ", str(resp.content))  # DEBUG
     print(resp.json())
 
 
