@@ -19,7 +19,10 @@ class AutoscalingCluster:
     See test_autoscaler_fake_multinode.py for an end-to-end example.
     """
 
-    def __init__(self, head_resources: dict, worker_node_types: dict):
+    def __init__(self,
+                 head_resources: dict,
+                 worker_node_types: dict,
+                 _leave_termination_to_drain_api: bool = False):
         """Create the cluster.
 
         Args:
@@ -40,6 +43,11 @@ class AutoscalingCluster:
         self._head_resources = head_resources
         self._config = base_config
         self._process = None
+
+        # For testing only: `terminate_node` will not stop Ray node processes
+        # if True.
+        base_config["provider"][
+            "_leave_termination_to_drain_api"] = _leave_termination_to_drain_api
 
     def start(self):
         """Start the cluster.

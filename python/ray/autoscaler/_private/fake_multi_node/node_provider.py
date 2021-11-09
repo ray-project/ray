@@ -41,6 +41,11 @@ class FakeMultiNodeProvider(NodeProvider):
         }
         self._next_node_id = 0
 
+        # For testing only: `terminate_node` will not stop Ray node processes
+        # if True.
+        self._leave_termination_to_drain_api = self.provider_config.get(
+            "_leave_termination_to_drain_api", False)
+
     def _next_hex_node_id(self):
         self._next_node_id += 1
         base = "fffffffffffffffffffffffffffffffffffffffffffffffffff"
@@ -107,7 +112,9 @@ class FakeMultiNodeProvider(NodeProvider):
 
     def terminate_node(self, node_id):
         node = self._nodes.pop(node_id)["node"]
-        node.kill_all_processes(check_alive=False, allow_graceful=True)
+        # Kill Ray processes unless disabled for testing.
+        if not self._leave_termination_to_drain_api:
+            node.kill_all_processes(check_alive=False, allow_graceful=True)
 
     @staticmethod
     def bootstrap_config(cluster_config):
