@@ -23,6 +23,7 @@ class FaultInjectEnv(gym.Env):
         ...    EnvContext({"bad_indices": [1, 2]},
         ...               worker_index=1, num_workers=3))
     """
+
     def __init__(self, config):
         self.env = gym.make("CartPole-v0")
         self.action_space = self.env.action_space
@@ -34,9 +35,8 @@ class FaultInjectEnv(gym.Env):
 
     def step(self, action):
         if self.config.worker_index in self.config["bad_indices"]:
-            raise ValueError(
-                "This is a simulated error from "
-                f"worker-idx={self.config.worker_index}.")
+            raise ValueError("This is a simulated error from "
+                             f"worker-idx={self.config.worker_index}.")
         return self.env.step(action)
 
 

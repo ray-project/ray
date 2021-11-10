@@ -1746,6 +1746,7 @@ class Trainer(Trainable):
         """Subclasses should override this to declare their default config."""
         return {}
 
+    @ExperimentalAPI
     @classmethod
     def get_default_config(cls) -> TrainerConfigDict:
         return cls._default_config or COMMON_CONFIG
@@ -1953,7 +1954,23 @@ class Trainer(Trainable):
                 "`evaluation_num_episodes` ({}) must be an int and "
                 ">0!".format(config["evaluation_num_episodes"]))
 
-    def validate_env(self, env, env_context):
+    @ExperimentalAPI
+    @staticmethod
+    def validate_env(env: EnvType, env_context: EnvContext) -> None:
+        """Env validator function for this Trainer class.
+
+        Override this in child classes to define custom validation
+        behavior.
+
+        Args:
+            env: The (sub-)environment to validate. This is normally a
+                single sub-environment (e.g. a gym.Env) within a vectorized
+                setup.
+            env_context: The EnvContext to configure the environment.
+
+        Raises:
+            Exception in case something is wrong with the given environment.
+        """
         pass
 
     def _try_recover(self):

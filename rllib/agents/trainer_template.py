@@ -1,5 +1,3 @@
-import concurrent.futures
-from functools import partial
 import logging
 from typing import Callable, Iterable, List, Optional, Type, Union
 
