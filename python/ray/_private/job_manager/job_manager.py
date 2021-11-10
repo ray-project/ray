@@ -20,8 +20,6 @@ from ray.experimental.internal_kv import (
 )
 from ray.dashboard.modules.job.data_types import JobStatus
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
-# Used in testing only to cover job status under concurrency
-from ray._private.test_utils import SignalActor
 
 logger = logging.getLogger(__name__)
 
@@ -38,44 +36,23 @@ class JobLogStorageClient:
     """
     Disk storage for stdout / stderr of driver script logs.
     """
-    JOB_LOGS_STDOUT_KEY = "_ray_internal_job_logs_{job_id}.out"
-    JOB_LOGS_STDERR_KEY = "_ray_internal_job_logs_{job_id}.err"
+    JOB_LOGS_PATH = "job-driver-{job_id}.log"
 
-    def get_stdout(self, job_id: str):
-        stdout_file, _ = self.get_log_file_paths(job_id)
+    def get_logs(self, job_id: str):
         try:
-            with open(stdout_file, "rb") as f:
-                return f.read().rstrip()
+            with open(self.get_log_file_path(job_id), "r") as f:
+                return f.read()
         except FileNotFoundError:
-            return b"No stdout log available yet."
+            return ""
 
-    def get_stderr(self, job_id: str):
-        _, stderr_file = self.get_log_file_paths(job_id)
-        try:
-            with open(stderr_file, "rb") as f:
-                return f.read().rstrip()
-        except FileNotFoundError:
-            return b"No stderr log available yet."
-
-    def get_log_file_paths(self, job_id: str) -> Tuple[str, str]:
+    def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
         """
-        Get file paths to logs of given job. Example:
-
-        stdout:
-            /tmp/ray/session_date/logs/jobs/_ray_internal_job_logs_{job_id}.out
-        stderr:
-            /tmp/ray/session_date/logs/jobs/_ray_internal_job_logs_{job_id}.err
+        Get the file path to the logs of a given job. Example:
+            /tmp/ray/session_date/logs/job-driver-{job_id}.log
         """
-        session_dir = ray.worker._global_node.get_session_dir_path()
-        jobs_log_dir = os.path.join(session_dir + "/logs/jobs")
-        if not os.path.exists(jobs_log_dir):
-            os.mkdir(jobs_log_dir)
-
-        stdout_file_name = f"{self.JOB_LOGS_STDOUT_KEY.format(job_id=job_id)}"
-        stderr_file_name = f"{self.JOB_LOGS_STDERR_KEY.format(job_id=job_id)}"
-
-        return (os.path.join(jobs_log_dir, stdout_file_name),
-                os.path.join(jobs_log_dir, stderr_file_name))
+        return os.path.join(
+            ray.worker._global_node.get_logs_dir_path(),
+            self.JOB_LOGS_PATH.format(job_id=job_id))
 
 
 class JobStatusStorageClient:
@@ -95,8 +72,10 @@ class JobStatusStorageClient:
     def get_status(self, job_id: str) -> JobStatus:
         pickled_status = _internal_kv_get(
             self.JOB_STATUS_KEY.format(job_id=job_id))
-        assert pickled_status is not None, f"Status not found for {job_id}"
-        return pickle.loads(pickled_status)
+        if pickled_status is None:
+            return JobStatus.DOES_NOT_EXIST
+        else:
+            return pickle.loads(pickled_status)
 
 
 class JobSupervisor:
@@ -130,8 +109,8 @@ class JobSupervisor:
         """
         pass
 
-    async def _exec_entrypoint_cmd(self, entrypoint_cmd: str, stdout_path: str,
-                                   stderr_path: str) -> subprocess.Popen:
+    async def _exec_entrypoint_cmd(self, entrypoint_cmd: str,
+                                   logs_path: str) -> subprocess.Popen:
         """
         Runs a command as a child process, streaming stderr & stdout to given
         log files.
@@ -142,22 +121,19 @@ class JobSupervisor:
 
         Args:
             entrypoint_cmd: Driver command to execute in subprocess.
-            stdout_path: File path on head node's local disk to store driver
-                command's stdout.
-            stderr_path: File path on head node's local disk to store driver
-                command's stderr.
+            logs_path: File path on head node's local disk to store driver
+                command's stdout & stderr.
         Returns:
             child_process: Child process that runs the driver command. Can be
                 terminated or killed upon user calling stop().
         """
-        with open(stdout_path, "a+") as stdout, open(stderr_path,
-                                                     "a+") as stderr:
+        with open(logs_path, "w") as logs_file:
             child_process = subprocess.Popen(
                 entrypoint_cmd,
                 shell=True,
                 start_new_session=True,
-                stdout=stdout,
-                stderr=stderr)
+                stdout=logs_file,
+                stderr=subprocess.STDOUT)
             parent_pid = os.getpid()
             # Create new pgid with new subprocess to execute driver command
             child_pid = child_process.pid
@@ -195,7 +171,7 @@ class JobSupervisor:
             self,
             entrypoint_cmd: str,
             # Signal actor used in testing to capture PENDING -> RUNNING cases
-            _start_signal_actor: Optional[SignalActor] = None):
+            _start_signal_actor: Optional[ActorHandle] = None):
         """
         Stop and start both happen asynchrously, coordinated by asyncio event
         and coroutine, respectively.
@@ -226,10 +202,9 @@ class JobSupervisor:
             os.environ[ray_constants.
                        RAY_ADDRESS_ENVIRONMENT_VARIABLE] = ray_redis_address
 
-            stdout_path, stderr_path = self._log_client.get_log_file_paths(
-                self._job_id)
+            log_path = self._log_client.get_log_file_path(self._job_id)
             child_process = await self._exec_entrypoint_cmd(
-                entrypoint_cmd, stdout_path, stderr_path)
+                entrypoint_cmd, log_path)
 
             polling_task = create_task(self._polling(child_process))
             finished, _ = await asyncio.wait(
@@ -309,10 +284,12 @@ class JobManager:
                 "Cannot found the node dictionary for current node.")
 
     def submit_job(self,
+                   *,
                    entrypoint: str,
+                   job_id: Optional[str] = None,
                    runtime_env: Optional[Dict[str, Any]] = None,
                    metadata: Optional[Dict[str, str]] = None,
-                   _start_signal_actor: Optional[SignalActor] = None) -> str:
+                   _start_signal_actor: Optional[ActorHandle] = None) -> str:
         """
         Job execution happens asynchronously.
 
@@ -343,10 +320,15 @@ class JobManager:
             job_id: Generated uuid for further job management. Only valid
                 within the same ray cluster.
         """
-        job_id = str(uuid4())
-        self._status_client.put_status(job_id, JobStatus.PENDING)
-        supervisor = None
+        if job_id is None:
+            job_id = str(uuid4())
+        elif self._status_client.get_status(
+                job_id) != JobStatus.DOES_NOT_EXIST:
+            raise RuntimeError(f"Job {job_id} already exists.")
 
+        self._status_client.put_status(job_id, JobStatus.PENDING)
+
+        supervisor = None
         try:
             logger.debug(
                 f"Submitting job with generated internal job_id: {job_id}")
@@ -421,8 +403,5 @@ class JobManager:
 
         return self._status_client.get_status(job_id)
 
-    def get_job_stdout(self, job_id: str) -> bytes:
-        return self._log_client.get_stdout(job_id)
-
-    def get_job_stderr(self, job_id: str) -> bytes:
-        return self._log_client.get_stderr(job_id)
+    def get_job_logs(self, job_id: str) -> bytes:
+        return self._log_client.get_logs(job_id)
