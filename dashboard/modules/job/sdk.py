@@ -2,7 +2,7 @@ import dataclasses
 import logging
 from pathlib import Path
 import tempfile
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import requests
 
@@ -150,10 +150,10 @@ class JobSubmissionClient:
             response_type=JobStatusResponse)
         return resp.job_status
 
-    def get_job_logs(self, job_id: str) -> Tuple[str, str]:
+    def get_job_logs(self, job_id: str) -> str:
         resp = self._do_request(
             "GET",
             JOBS_API_ROUTE_LOGS,
             params={"job_id": job_id},
             response_type=JobLogsResponse)
-        return resp.stdout, resp.stderr
+        return resp.logs
