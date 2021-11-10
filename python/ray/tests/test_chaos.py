@@ -40,9 +40,7 @@ def assert_no_system_failure(p, total_lines, timeout):
         },
     }],
     indirect=True)
-def test_chaos_task_retry(ray_start_chaos_cluster, log_pubsub):
-    p = log_pubsub
-
+def test_chaos_task_retry(ray_start_chaos_cluster):
     # Chaos testing.
     @ray.remote(max_retries=-1)
     def task():
