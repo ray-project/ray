@@ -283,6 +283,7 @@ class ProxyManager():
 
         proc = start_ray_client_server(
             self.redis_address,
+            self.node.node_ip_address,
             specific_server.port,
             stdout_file=output,
             stderr_file=error,
