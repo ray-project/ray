@@ -1927,15 +1927,7 @@ def cpp(show_library_path, generate_bazel_project_template_to, log_style,
                 " && bash run.sh"))
 
 
-@cli.group(hidden=True)
-@click.option(
-    "--address",
-    type=str,
-    default=None,
-    required=False,
-)
-@click.pass_context
-def job(ctx, address: Optional[str]):
+def _get_sdk_client(address: Optional[str]) -> JobSubmissionClient:
     if address is None:
         if "RAY_ADDRESS" not in os.environ:
             raise ValueError(
@@ -1943,18 +1935,23 @@ def job(ctx, address: Optional[str]):
                 "or RAY_ADDRESS environment variable.")
         address = os.environ["RAY_ADDRESS"]
 
-    ctx.obj = JobSubmissionClient(address)
+    return JobSubmissionClient(address)
+
+
+@cli.group(hidden=True)
+def job():
+    pass
 
 
 @job.command("submit")
 @click.option(
-    "--job-id",
+    "--address",
     type=str,
     default=None,
     required=False,
 )
 @click.option(
-    "--address",
+    "--job-id",
     type=str,
     default=None,
     required=False,
@@ -1966,15 +1963,14 @@ def job(ctx, address: Optional[str]):
     required=False,
 )
 @click.argument("entrypoint", nargs=-1, required=True)
-@click.pass_obj
-def job_submit(client: JobSubmissionClient, job_id: Optional[str],
-               address: Optional[str], working_dir: Optional[str],
-               entrypoint: Tuple[str]):
+def job_submit(address: Optional[str], job_id: Optional[str],
+               working_dir: Optional[str], entrypoint: Tuple[str]):
     """Submits a job to be run on the cluster.
 
     Example:
         >>> ray job submit -- python my_script.py --arg=val
     """
+    client = _get_sdk_client(address)
 
     runtime_env = {}
     if working_dir is not None:
@@ -1990,27 +1986,40 @@ def job_submit(client: JobSubmissionClient, job_id: Optional[str],
 
 
 @job.command("status")
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+)
 @click.argument("job-id", type=str)
 @click.pass_obj
-def job_status(client: JobSubmissionClient, job_id: str):
+def job_status(address: Optional[str], job_id: str):
     """Queries for the current status of a job.
 
     Example:
         >>> ray job status <my_job_id>
     """
+    client = _get_sdk_client(address)
     logger.info(f"Job status for '{job_id}': {client.get_job_status(job_id)}")
 
 
 @job.command("stop")
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+)
 @click.argument("job-id", type=str)
-@click.pass_obj
-def job_stop(client: JobSubmissionClient, job_id: str):
+def job_stop(address: Optional[str], job_id: str):
     """Attempts to stop a job.
 
     Example:
         >>> ray job stop <my_job_id>
     """
     # TODO(edoakes): should we wait for the job to exit afterwards?
+    client = _get_sdk_client(address)
     client.stop_job(job_id)
 
 
