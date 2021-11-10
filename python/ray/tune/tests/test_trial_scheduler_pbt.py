@@ -217,7 +217,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
 
     def synchSetup(self, synch, param=None):
         if param is None:
-            param = [10, 20, 60]
+            param = [10, 20, 40]
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
@@ -251,14 +251,14 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
         self.assertTrue(
             any(
                 analysis.dataframe(metric="mean_accuracy", mode="max")
-                ["mean_accuracy"] != 63))
+                ["mean_accuracy"] != 43))
 
     def testSynchPass(self):
         analysis = self.synchSetup(True)
         self.assertTrue(
             all(
                 analysis.dataframe(metric="mean_accuracy", mode="max")[
-                    "mean_accuracy"] == 63))
+                    "mean_accuracy"] == 43))
 
     def testSynchPassLast(self):
         analysis = self.synchSetup(True, param=[30, 20, 10])
