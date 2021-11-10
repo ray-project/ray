@@ -11,6 +11,7 @@ python:
   conda_packages: []
 
 post_build_cmds:
+  - pip uninstall -y ray || true
   # Needed for gsutil authentication
   - printf "[GoogleCompute]\nservice_account = default\n" > /home/ray/.boto
   # Install Ray
