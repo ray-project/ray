@@ -126,12 +126,15 @@ def auto_reconnect(f):
                 return f(self, *args, **kwargs)
             except grpc.RpcError as e:
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
-                    logger.error(f"Failed to send request to gcs, reconnect. Error {e}")
+                    logger.error(
+                        f"Failed to send request to gcs, reconnect. Error {e}")
                     self._connect()
                     time.sleep(1)
                     continue
                 raise e
+
     return wrapper
+
 
 class GcsClient:
     MAX_MESSAGE_LENGTH = 512 * 1024 * 1024  # 512MB
@@ -154,8 +157,10 @@ class GcsClient:
                 from ray._private.utils import init_grpc_channel
                 gcs_address = self._get_gcs_address()
                 logger.debug(f"Connecting to gcs address: {gcs_address}")
-                self._channel = init_grpc_channel(gcs_address, options=self._options)
-                self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(self._channel)
+                self._channel = init_grpc_channel(
+                    gcs_address, options=self._options)
+                self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(
+                    self._channel)
                 return
             except Exception as e:
                 logger.error(f"Connecting to GCS failed with error: {e}")
@@ -225,8 +230,10 @@ class GcsClient:
         def get_gcs_address():
             gcs_address = redis_cli.get("GcsServerAddress")
             if gcs_address is None:
-                raise RuntimeError("Failed to look up gcs address through redis")
+                raise RuntimeError(
+                    "Failed to look up gcs address through redis")
             return gcs_address
+
         return GcsClient(get_gcs_address)
 
     @staticmethod
