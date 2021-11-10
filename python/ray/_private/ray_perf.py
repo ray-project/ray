@@ -291,8 +291,9 @@ def main(results=None):
 
     def placement_group_create_removal(num_pgs):
         pgs = [
-            ray.util.placement_group(bundles=[{"custom": 0.001} for _ in range(NUM_BUNDLES)]) 
-                for _ in range(num_pgs)
+            ray.util.placement_group(bundles=[{
+                "custom": 0.001
+            } for _ in range(NUM_BUNDLES)]) for _ in range(num_pgs)
         ]
         [pg.wait(timeout_seconds=30) for pg in pgs]
         # Include placement group removal here to clean up.
@@ -303,10 +304,8 @@ def main(results=None):
         for pg in pgs:
             ray.util.remove_placement_group(pg)
 
-    results += timeit(
-        "placement group create/removal",
-        lambda: placement_group_create_removal(NUM_PGS),
-        NUM_PGS)
+    results += timeit("placement group create/removal",
+                      lambda: placement_group_create_removal(NUM_PGS), NUM_PGS)
     ray.shutdown()
 
     client_microbenchmark_main(results)
