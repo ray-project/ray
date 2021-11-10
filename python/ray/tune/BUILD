@@ -12,6 +12,7 @@
 # "soft_imports": Tests checking whether Tune runs without any of its soft dependencies.
 # "pytorch": Test uses PyTorch.
 # "tensorflow": Test uses TensorFlow.
+# "tests_dir_A-Z": Tags to spread out tests. Make sure you tag your newly added tests with this.
 # --------------------------------------------------------------------
 py_test(
     name = "test_actor_reuse",
