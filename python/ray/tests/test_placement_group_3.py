@@ -709,9 +709,7 @@ def test_fractional_resources_handle_correct(ray_start_cluster):
     ray.init(address=cluster.address)
 
     bundles = [{"CPU": 0.01} for _ in range(5)]
-    pg = placement_group(
-        bundles,
-        strategy="SPREAD")
+    pg = placement_group(bundles, strategy="SPREAD")
 
     ray.get(pg.ready(), timeout=10)
 
