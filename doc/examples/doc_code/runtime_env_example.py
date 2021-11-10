@@ -49,10 +49,18 @@ def f():
     pass
 
 @ray.remote
-class Actor:
+class A:
     pass
 
 # __per_task_per_actor_start__
 f.options(runtime_env=runtime_env).remote()
-Actor.options(runtime_env=runtime_env).remote()
+actor = A.options(runtime_env=runtime_env).remote()
+
+@ray.remote(runtime_env=runtime_env)
+def g():
+    pass
+
+@ray.remote(runtime_env=runtime_env)
+class B:
+    pass
 # __per_task_per_actor_end__
