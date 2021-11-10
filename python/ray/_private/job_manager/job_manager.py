@@ -60,20 +60,16 @@ class JobLogStorageClient:
         Get file paths to logs of given job. Example:
 
         stdout:
-            /tmp/ray/session_date/logs/jobs/_ray_internal_job_logs_{job_id}.out
+            /tmp/ray/session_date/logs/job-driver-{job_id}.out
         stderr:
-            /tmp/ray/session_date/logs/jobs/_ray_internal_job_logs_{job_id}.err
+            /tmp/ray/session_date/logs/job-driver-{job_id}.err
         """
-        session_dir = ray.worker._global_node.get_session_dir_path()
-        jobs_log_dir = os.path.join(session_dir + "/logs/jobs")
-        if not os.path.exists(jobs_log_dir):
-            os.mkdir(jobs_log_dir)
-
+        logs_dir = ray.worker._global_node.get_logs_dir_path()
         stdout_file_name = f"{self.JOB_LOGS_STDOUT_KEY.format(job_id=job_id)}"
         stderr_file_name = f"{self.JOB_LOGS_STDERR_KEY.format(job_id=job_id)}"
 
-        return (os.path.join(jobs_log_dir, stdout_file_name),
-                os.path.join(jobs_log_dir, stderr_file_name))
+        return (os.path.join(logs_dir, stdout_file_name),
+                os.path.join(logs_dir, stderr_file_name))
 
 
 class JobStatusStorageClient:
