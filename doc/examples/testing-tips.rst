@@ -87,6 +87,11 @@ Tip 4: Create a mini-cluster with ``ray.cluster_utils.Cluster``
 
 If writing an application for a cluster setting, you may want to mock a multi-node Ray cluster. This can be done with the ``ray.cluster_utils.Cluster`` utility.
 
+.. note::
+
+  On Windows, support for multi-node Ray clusters is currently experimental and untested.
+  If you run into issues please file a report at https://github.com/ray-project/ray/issues.
+
 .. code-block:: python
 
     from ray.cluster_utils import Cluster
