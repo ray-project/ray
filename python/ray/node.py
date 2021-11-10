@@ -18,6 +18,7 @@ from typing import Optional, Dict
 from collections import defaultdict
 
 import ray
+from ray._private.client_mode_hook import disable_client_hook
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
@@ -212,25 +213,26 @@ class Node:
         # Start processes.
         if head:
             self.start_head_processes()
-            ray.experimental.internal_kv._internal_kv_put(
-                "session_name",
-                self.session_name,
-                namespace=ray_constants.KV_NAMESPACE_SESSION)
-            ray.experimental.internal_kv._internal_kv_put(
-                "session_dir",
-                self._session_dir,
-                namespace=ray_constants.KV_NAMESPACE_SESSION)
-            ray.experimental.internal_kv._internal_kv_put(
-                "temp_dir",
-                self._temp_dir,
-                namespace=ray_constants.KV_NAMESPACE_SESSION)
-            # Add tracing_startup_hook to redis / internal kv manually
-            # since internal kv is not yet initialized.
-            if ray_params.tracing_startup_hook:
+            with disable_client_hook():
                 ray.experimental.internal_kv._internal_kv_put(
-                    "tracing_startup_hook",
-                    ray_params.tracing_startup_hook,
-                    namespace=ray_constants.KV_NAMESPACE_TRACING)
+                    "session_name",
+                    self.session_name,
+                    namespace=ray_constants.KV_NAMESPACE_SESSION)
+                ray.experimental.internal_kv._internal_kv_put(
+                    "session_dir",
+                    self._session_dir,
+                    namespace=ray_constants.KV_NAMESPACE_SESSION)
+                ray.experimental.internal_kv._internal_kv_put(
+                    "temp_dir",
+                    self._temp_dir,
+                    namespace=ray_constants.KV_NAMESPACE_SESSION)
+                # Add tracing_startup_hook to redis / internal kv manually
+                # since internal kv is not yet initialized.
+                if ray_params.tracing_startup_hook:
+                    ray.experimental.internal_kv._internal_kv_put(
+                        "tracing_startup_hook",
+                        ray_params.tracing_startup_hook,
+                        namespace=ray_constants.KV_NAMESPACE_TRACING)
 
         if not connect_only:
             self.start_ray_processes()
@@ -754,10 +756,11 @@ class Node:
                 process_info,
             ]
             self.initialize_internal_kv()
-            ray.experimental.internal_kv._internal_kv_put(
-                "webui:url",
-                self._webui_url,
-                namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+            with disable_client_hook():
+                ray.experimental.internal_kv._internal_kv_put(
+                    "webui:url",
+                    self._webui_url,
+                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
 
     def start_gcs_server(self):
         """Start the gcs server.
@@ -785,9 +788,9 @@ class Node:
             try:
                 self.initialize_internal_kv()
                 break
-            except Exception:
+            except Exception as e:
                 time.sleep(1)
-                logger.debug("Waiting for gcs up")
+                logger.error(f"Waiting for gcs up {e}")
 
     def start_raylet(self,
                      plasma_directory,
@@ -1279,8 +1282,9 @@ class Node:
         for i in range(num_retries):
             try:
                 self.initialize_internal_kv()
-                result = ray.experimental.internal_kv._internal_kv_get(
-                    key, namespace=namespace)
+                with disable_client_hook():
+                    result = ray.experimental.internal_kv._internal_kv_get(
+                        key, namespace=namespace)
             except Exception:
                 ray.experimental.internal_kv._internal_kv_reset()
                 self.initialize_internal_kv()

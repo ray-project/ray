@@ -1,7 +1,9 @@
 from ray.core.generated.common_pb2 import ErrorType
 import enum
 import logging
-from typing import List
+from typing import List, Callable, Union
+import time
+import grpc
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated.gcs_pb2 import (
@@ -117,20 +119,49 @@ class GcsCode(enum.IntEnum):
     NotFound = 17
 
 
+def auto_reconnect(f):
+    def wrapper(self, *args, **kwargs):
+        while True:
+            try:
+                return f(self, *args, **kwargs)
+            except grpc.RpcError as e:
+                if e.code() == grpc.StatusCode.UNAVAILABLE:
+                    logger.error(f"Failed to send request to gcs, reconnect. Error {e}")
+                    self._connect()
+                    time.sleep(1)
+                    continue
+                raise e
+    return wrapper
+
 class GcsClient:
     MAX_MESSAGE_LENGTH = 512 * 1024 * 1024  # 512MB
 
-    def __init__(self, address):
-        from ray._private.utils import init_grpc_channel
-        logger.debug(f"Connecting to gcs address: {address}")
-        options = [("grpc.enable_http_proxy",
-                    0), ("grpc.max_send_message_length",
-                         GcsClient.MAX_MESSAGE_LENGTH),
-                   ("grpc.max_receive_message_length",
-                    GcsClient.MAX_MESSAGE_LENGTH)]
-        channel = init_grpc_channel(address, options=options)
-        self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(channel)
+    def __init__(self, gcs_address: Union[Callable, str]):
+        self._options = [("grpc.enable_http_proxy",
+                          0), ("grpc.max_send_message_length",
+                               GcsClient.MAX_MESSAGE_LENGTH),
+                         ("grpc.max_receive_message_length",
+                          GcsClient.MAX_MESSAGE_LENGTH)]
+        if isinstance(gcs_address, str):
+            self._get_gcs_address = lambda: gcs_address
+        else:
+            self._get_gcs_address = gcs_address
+        self._connect()
 
+    def _connect(self):
+        while True:
+            try:
+                from ray._private.utils import init_grpc_channel
+                gcs_address = self._get_gcs_address()
+                logger.debug(f"Connecting to gcs address: {gcs_address}")
+                self._channel = init_grpc_channel(gcs_address, options=self._options)
+                self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(self._channel)
+                return
+            except Exception as e:
+                logger.error(f"Connecting to GCS failed with error: {e}")
+                time.sleep(1)
+
+    @auto_reconnect
     def internal_kv_get(self, key: bytes) -> bytes:
         logger.debug(f"internal_kv_get {key}")
         req = gcs_service_pb2.InternalKVGetRequest(key=key)
@@ -143,6 +174,7 @@ class GcsClient:
             raise RuntimeError(f"Failed to get value for key {key} "
                                f"due to error {reply.status.message}")
 
+    @auto_reconnect
     def internal_kv_put(self, key: bytes, value: bytes,
                         overwrite: bool) -> int:
         logger.debug(f"internal_kv_put {key} {value} {overwrite}")
@@ -155,6 +187,7 @@ class GcsClient:
             raise RuntimeError(f"Failed to put value {value} to key {key} "
                                f"due to error {reply.status.message}")
 
+    @auto_reconnect
     def internal_kv_del(self, key: bytes) -> int:
         logger.debug(f"internal_kv_del {key}")
         req = gcs_service_pb2.InternalKVDelRequest(key=key)
@@ -165,6 +198,7 @@ class GcsClient:
             raise RuntimeError(f"Failed to delete key {key} "
                                f"due to error {reply.status.message}")
 
+    @auto_reconnect
     def internal_kv_exists(self, key: bytes) -> bool:
         logger.debug(f"internal_kv_exists {key}")
         req = gcs_service_pb2.InternalKVExistsRequest(key=key)
@@ -175,6 +209,7 @@ class GcsClient:
             raise RuntimeError(f"Failed to check existence of key {key} "
                                f"due to error {reply.status.message}")
 
+    @auto_reconnect
     def internal_kv_keys(self, prefix: bytes) -> List[bytes]:
         logger.debug(f"internal_kv_keys {prefix}")
         req = gcs_service_pb2.InternalKVKeysRequest(prefix=prefix)
@@ -187,10 +222,12 @@ class GcsClient:
 
     @staticmethod
     def create_from_redis(redis_cli):
-        gcs_address = redis_cli.get("GcsServerAddress")
-        if gcs_address is None:
-            raise RuntimeError("Failed to look up gcs address through redis")
-        return GcsClient(gcs_address.decode())
+        def get_gcs_address():
+            gcs_address = redis_cli.get("GcsServerAddress")
+            if gcs_address is None:
+                raise RuntimeError("Failed to look up gcs address through redis")
+            return gcs_address
+        return GcsClient(get_gcs_address)
 
     @staticmethod
     def connect_to_gcs_by_redis_address(redis_address, redis_password):
