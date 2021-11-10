@@ -4,14 +4,14 @@ import logging
 import os
 from pathlib import Path
 import sys
-from typing import Any, Dict, List, Optional, Set, Union, Tuple
+from typing import Any, Dict, List, Optional, Set, Union
 import yaml
 
 import ray
 from ray.core.generated.common_pb2 import RuntimeEnv
-from ray._private.runtime_env.plugin import (RuntimeEnvPlugin,
-                                             build_proto_plugin_runtime_env,
-                                             parse_proto_plugin_runtime_env)
+from ray._private.runtime_env.plugin import (
+    RuntimeEnvPlugin, build_proto_plugin_runtime_env,
+    parse_proto_plugin_runtime_env, encode_plugin_uri)
 from ray._private.runtime_env.pip import (build_proto_pip_runtime_env,
                                           parse_proto_pip_runtime_env)
 from ray._private.runtime_env.conda import (build_proto_conda_runtime_env,
@@ -23,17 +23,6 @@ from google.protobuf import json_format
 from ray._private.runtime_env import conda
 
 logger = logging.getLogger(__name__)
-
-
-def _encode_plugin_uri(plugin: str, uri: str) -> str:
-    return plugin + "|" + uri
-
-
-def _decode_plugin_uri(plugin_uri: str) -> Tuple[str, str]:
-    if "|" not in plugin_uri:
-        raise ValueError(
-            f"Plugin URI must be of the form 'plugin|uri', not {plugin_uri}")
-    return tuple(plugin_uri.split("|", 2))
 
 
 def validate_uri(uri: str):
@@ -362,14 +351,14 @@ class ParsedRuntimeEnv(dict):
         plugin_uris = []
         if "working_dir" in self:
             plugin_uris.append(
-                _encode_plugin_uri("working_dir", self["working_dir"]))
+                encode_plugin_uri("working_dir", self["working_dir"]))
         if "py_modules" in self:
             for uri in self["py_modules"]:
-                plugin_uris.append(_encode_plugin_uri("py_modules", uri))
+                plugin_uris.append(encode_plugin_uri("py_modules", uri))
         if "conda" or "pip" in self:
             uri = conda.get_uri(self)
             if uri is not None:
-                plugin_uris.append(_encode_plugin_uri("conda", uri))
+                plugin_uris.append(encode_plugin_uri("conda", uri))
 
         return plugin_uris
 
@@ -421,14 +410,6 @@ class ParsedRuntimeEnv(dict):
             json.loads(
                 json_format.MessageToJson(self.get_proto_runtime_env())),
             sort_keys=True)
-
-
-def get_conda_uri_from_pb(runtime_env: RuntimeEnv):
-    for uri in runtime_env.uris:
-        key, value = _decode_plugin_uri(uri)
-        if key == "conda":
-            return value
-    return None
 
 
 def override_task_or_actor_runtime_env(

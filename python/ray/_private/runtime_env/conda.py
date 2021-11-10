@@ -18,9 +18,11 @@ from ray.core.generated.common_pb2 import RuntimeEnv
 from ray._private.runtime_env.conda_utils import (
     get_conda_activate_commands, create_conda_env, delete_conda_env)
 from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import decode_plugin_uri_from_pb
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url, try_to_create_directory)
 from ray._private.runtime_env.packaging import Protocol, parse_uri
+from google.protobuf import json_format
 
 default_logger = logging.getLogger(__name__)
 
@@ -291,9 +293,7 @@ class CondaManager:
 
     def setup(self,
               runtime_env: RuntimeEnv,
-              serialized_runtime_env: str,
               context: RuntimeEnvContext,
-              uri: str,
               logger: Optional[logging.Logger] = default_logger):
         if not runtime_env.HasField(
                 "conda_runtime_env") and not runtime_env.HasField(
@@ -301,13 +301,14 @@ class CondaManager:
             return
 
         logger.debug("Setting up conda or pip for runtime_env: "
-                     f"{serialized_runtime_env}")
+                     f"{json_format.MessageToJson(runtime_env)}")
 
         if runtime_env.conda_runtime_env.HasField("conda_env_name"):
             conda_env_name = runtime_env.conda_runtime_env.conda_env_name
         else:
             conda_dict = get_conda_dict(runtime_env, self._resources_dir)
-            protocol, hash = parse_uri(uri)
+            protocol, hash = parse_uri(
+                decode_plugin_uri_from_pb(runtime_env, "conda"))
             conda_env_name = self._get_path_from_hash(hash)
             assert conda_dict is not None
 
@@ -322,8 +323,8 @@ class CondaManager:
             conda_dict = inject_dependencies(conda_dict, _current_py_version(),
                                              extra_pip_dependencies)
 
-            logger.info(
-                f"Setting up conda environment with {serialized_runtime_env}")
+            logger.info("Setting up conda environment with "
+                        f"{json_format.MessageToJson(runtime_env)}")
 
             # It is not safe for multiple processes to install conda envs
             # concurrently, even if the envs are different, so use a global

@@ -6,8 +6,6 @@ import logging
 import os
 import time
 from typing import Dict, Set
-from ray._private.runtime_env.validation import (_decode_plugin_uri,
-                                                 get_conda_uri_from_pb)
 from ray._private.utils import import_attr
 
 from ray.core.generated import runtime_env_agent_pb2
@@ -26,6 +24,7 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.py_modules import PyModulesManager
 from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
+from ray._private.runtime_env.plugin import decode_plugin_uri
 
 logger = logging.getLogger(__name__)
 
@@ -106,11 +105,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 context = RuntimeEnvContext(
                     env_vars=dict(runtime_env.env_vars))
                 self._conda_manager.setup(
-                    runtime_env,
-                    serialized_runtime_env,
-                    context,
-                    get_conda_uri_from_pb(runtime_env),
-                    logger=per_job_logger)
+                    runtime_env, context, logger=per_job_logger)
                 self._py_modules_manager.setup(
                     runtime_env, context, logger=per_job_logger)
                 self._working_dir_manager.setup(
@@ -215,7 +210,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 if env in self._env_cache:
                     del self._env_cache[env]
 
-            plugin, uri = _decode_plugin_uri(plugin_uri)
+            plugin, uri = decode_plugin_uri(plugin_uri)
             if plugin == "working_dir":
                 if not self._working_dir_manager.delete_uri(uri):
                     failed_uris.append(uri)

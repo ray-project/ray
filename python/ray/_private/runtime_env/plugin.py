@@ -1,5 +1,6 @@
 from abc import ABC, abstractstaticmethod
 
+from typing import Tuple
 from ray.util.annotations import DeveloperAPI
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray.core.generated.common_pb2 import RuntimeEnv
@@ -25,6 +26,25 @@ def parse_proto_plugin_runtime_env(runtime_env: RuntimeEnv,
         for plugin in runtime_env.py_plugin_runtime_env.plugins:
             runtime_env_dict["plugins"][plugin.class_path] = dict(
                 json.loads(plugin.config))
+
+
+def encode_plugin_uri(plugin: str, uri: str) -> str:
+    return plugin + "|" + uri
+
+
+def decode_plugin_uri(plugin_uri: str) -> Tuple[str, str]:
+    if "|" not in plugin_uri:
+        raise ValueError(
+            f"Plugin URI must be of the form 'plugin|uri', not {plugin_uri}")
+    return tuple(plugin_uri.split("|", 2))
+
+
+def decode_plugin_uri_from_pb(runtime_env: RuntimeEnv, plugin: str):
+    for uri in runtime_env.uris:
+        key, value = decode_plugin_uri(uri)
+        if key == plugin:
+            return value
+    return None
 
 
 @DeveloperAPI
