@@ -336,7 +336,6 @@ def test_multi_node(start_cluster, option: str, source: str):
     assert len(set(ray.get(object_refs))) == NUM_NODES
 
 
-
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_exclusion(start_cluster, tmp_working_dir, option):

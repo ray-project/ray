@@ -162,7 +162,6 @@ class APIHead(dashboard_utils.DashboardHeadModule):
 
         serve_keys = _internal_kv_list(
             SERVE_CONTROLLER_NAME, namespace=ray_constants.KV_NAMESPACE_SERVE)
-        print("DBG:", serve_keys)
         serve_snapshot_keys = filter(lambda k: SERVE_SNAPSHOT_KEY in str(k),
                                      serve_keys)
 

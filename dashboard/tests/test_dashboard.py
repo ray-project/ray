@@ -222,7 +222,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
             assert dump_info["result"] is True
             break
         except (AssertionError, requests.exceptions.ConnectionError) as e:
-            print("Retry because of %s", e)
+            logger.info("Retry because of %s", e)
         finally:
             if time.time() > start_time + timeout_seconds:
                 raise Exception("Timed out while testing.")
