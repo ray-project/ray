@@ -55,6 +55,7 @@ ClusterTaskManager::ClusterTaskManager(
       max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes),
       get_time_ms_(get_time_ms),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
+      sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()),
       metric_tasks_queued_(0),
       metric_tasks_dispatched_(0),
       metric_tasks_spilled_(0) {}
@@ -324,6 +325,12 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           int64_t allowed_capacity = sched_cls_info.capacity;
           int64_t exp = current_capacity - allowed_capacity;
           int64_t wait_time = sched_cls_cap_interval_ms_ * (1L << exp);
+          if (wait_time > sched_cls_cap_max_ms_) {
+            wait_time = sched_cls_cap_max_ms_;
+            RAY_LOG(WARNING) << "Starting too many worker processes for a single type of "
+                                "task. Worker process startup is being throttled.";
+          }
+
           sched_cls_info.next_update_time =
               std::min(get_time_ms_() + wait_time, sched_cls_info.next_update_time);
           break;

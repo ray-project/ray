@@ -437,6 +437,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// The initial interval before the cap on the number of worker processes is increased.
   const int64_t sched_cls_cap_interval_ms_;
 
+  const int64_t sched_cls_cap_max_ms_;
+
   /// Metrics collected since the last report.
   uint64_t metric_tasks_queued_;
   uint64_t metric_tasks_dispatched_;

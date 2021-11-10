@@ -115,6 +115,10 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// class.
 RAY_CONFIG(int64_t, worker_cap_initial_backoff_delay_ms, 1000)
 
+/// After reaching the worker cap, the backoff delay will grow exponentially,
+/// until it hits a maximum delay.
+RAY_CONFIG(int64_t, worker_cap_max_backoff_delay_ms, 1000 * 10)
+
 /// The fraction of resource utilization on a node after which the scheduler starts
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
