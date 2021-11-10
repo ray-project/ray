@@ -235,6 +235,9 @@ class Trial:
         The args here take the same meaning as the command line flags defined
         in ray.tune.config_parser.
         """
+        # If this is set, trainables are not validated or looked up.
+        # This can be used e.g. to initialize Trial objects from checkpoints
+        # without loading the trainable first.
         self.stub = stub
 
         if not self.stub:
