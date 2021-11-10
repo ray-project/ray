@@ -15,27 +15,13 @@ from ray._private.test_utils import wait_for_condition
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 
+# This test requires you have AWS credentials set up (any AWS credentials will
+# do, this test only accesses a public bucket).
+
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
 S3_PACKAGE_URI = "s3://runtime-env-test/remote_runtime_env.zip"
-
-
-@pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
-def start_cluster(ray_start_cluster, request):
-    assert request.param in {"ray_client", "no_ray_client"}
-    use_ray_client: bool = request.param == "ray_client"
-
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4)
-    if use_ray_client:
-        cluster.head_node._ray_params.ray_client_server_port = "10003"
-        cluster.head_node.start_ray_client_server()
-        address = "ray://localhost:10003"
-    else:
-        address = cluster.address
-
-    yield cluster, address
 
 
 @pytest.fixture(scope="function")
@@ -385,7 +371,6 @@ def test_job_level_gc(start_cluster, option: str, source: str):
     if option == "working_dir":
         ray.init(address, runtime_env={"working_dir": source})
     elif option == "py_modules":
-        pytest.skip("py_modules GC not implemented.")
         if source != S3_PACKAGE_URI:
             source = str(Path(source) / "test_module")
         ray.init(address, runtime_env={"py_modules": [source]})
@@ -467,7 +452,6 @@ def test_detached_actor_gc(start_cluster, option: str, source: str):
         ray.init(
             address, namespace="test", runtime_env={"working_dir": source})
     elif option == "py_modules":
-        pytest.skip("py_modules GC not implemented.")
         if source != S3_PACKAGE_URI:
             source = str(Path(source) / "test_module")
         ray.init(

@@ -1,0 +1,18 @@
+<<<<<<< HEAD:release/nightly_tests/placement_group_tests/app_config_grpc.yaml
+base_image: "anyscale/ray:nightly-py37"
+env_vars: {"RAY_grpc_based_resource_broadcast": "true", "RAY_event_log_reporter_enabled": "true"}
+=======
+base_image: "anyscale/ray-ml:pinned-nightly-py37"
+env_vars: {}
+>>>>>>> 790e22f9ad29ff462b55b8c2769a49f7b8f639e3:release/nightly_tests/chaos_test/app_config.yaml
+debian_packages: []
+
+python:
+  pip_packages: []
+  conda_packages: []
+
+post_build_cmds:
+  - pip uninstall -y ray
+  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install -U ray[default]
+  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

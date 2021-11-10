@@ -27,7 +27,7 @@ class TestCQL(unittest.TestCase):
 
         # Learns from a historic-data file.
         # To generate this data, first run:
-        # $ ./train.py --run=SAC --env=Pendulum-v0 \
+        # $ ./train.py --run=SAC --env=Pendulum-v1 \
         #   --stop='{"timesteps_total": 50000}' \
         #   --config='{"output": "/tmp/out"}'
         rllib_dir = Path(__file__).parent.parent.parent.parent
@@ -37,7 +37,7 @@ class TestCQL(unittest.TestCase):
                                               os.path.isfile(data_file)))
 
         config = cql.CQL_DEFAULT_CONFIG.copy()
-        config["env"] = "Pendulum-v0"
+        config["env"] = "Pendulum-v1"
         config["input"] = [data_file]
 
         # In the files, we use here for testing, actions have already
@@ -66,7 +66,7 @@ class TestCQL(unittest.TestCase):
         num_iterations = 4
 
         # Test for tf/torch frameworks.
-        for fw in framework_iterator(config):
+        for fw in framework_iterator(config, with_eager_tracing=True):
             trainer = cql.CQLTrainer(config=config)
             for i in range(num_iterations):
                 results = trainer.train()

@@ -15,7 +15,7 @@ atari-impala:
     stop:
         time_total_s: 3600
     config:
-        framework: tf
+        frameworks: [ "tf" ]
         num_gpus: 1
         num_cpus_for_driver: 0
         rollout_fragment_length: 50

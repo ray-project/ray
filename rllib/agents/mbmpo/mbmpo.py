@@ -33,7 +33,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
-from ray.rllib.utils.torch_ops import convert_to_torch_tensor
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import EnvType, TrainerConfigDict
 from ray.util.iter import from_actors, LocalIterator
 

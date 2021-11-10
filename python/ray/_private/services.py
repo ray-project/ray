@@ -190,7 +190,7 @@ def find_redis_address(address=None):
     # /usr/local/lib/python3.8/dist-packages/ray/core/src/ray/raylet/raylet
     # --redis_address=123.456.78.910 --node_ip_address=123.456.78.910
     # --raylet_socket_name=... --store_socket_name=... --object_manager_port=0
-    # --min_worker_port=10000 --max_worker_port=10999
+    # --min_worker_port=10000 --max_worker_port=19999
     # --node_manager_port=58578 --redis_port=6379
     # --maximum_startup_concurrency=8
     # --static_resource_list=node:123.456.78.910,1.0,object_store_memory,66
@@ -1959,6 +1959,7 @@ def start_monitor(redis_address,
 
 def start_ray_client_server(
         redis_address,
+        ray_client_server_ip,
         ray_client_server_port,
         stdout_file=None,
         stderr_file=None,
@@ -1970,6 +1971,8 @@ def start_ray_client_server(
     """Run the server process of the Ray client.
 
     Args:
+        redis_address: The address of the redis server.
+        ray_client_server_ip: Host IP the Ray client server listens on.
         ray_client_server_port (int): Port the Ray client server listens on.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
@@ -1987,12 +1990,15 @@ def start_ray_client_server(
     setup_worker_path = os.path.join(root_ray_dir, "workers",
                                      ray_constants.SETUP_WORKER_FILENAME)
 
+    ray_client_server_host = \
+        "127.0.0.1" if ray_client_server_ip == "127.0.0.1" else "0.0.0.0"
     command = [
         sys.executable,
         setup_worker_path,
         "-m",
         "ray.util.client.server",
         f"--redis-address={redis_address}",
+        f"--host={ray_client_server_host}",
         f"--port={ray_client_server_port}",
         f"--mode={server_type}",
         f"--language={Language.Name(Language.PYTHON)}",
