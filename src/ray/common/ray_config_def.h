@@ -90,7 +90,7 @@ RAY_CONFIG(int64_t, free_objects_period_milliseconds, 1000)
 /// to -1.
 RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
-RAY_CONFIG(bool, lineage_pinning_enabled, false)
+RAY_CONFIG(bool, lineage_pinning_enabled, true)
 
 /// Maximum amount of lineage to keep in bytes. This includes the specs of all
 /// tasks that have previously already finished but that may be retried again.
