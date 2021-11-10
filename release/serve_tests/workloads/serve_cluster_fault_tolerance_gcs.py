@@ -50,7 +50,7 @@ def main():
     if smoke_test == "1":
         checkpoint_path = "file://checkpoint.db"
     else:
-        checkpoint_path = "gs://kazi_test/fault-tolerant-test-checkpoint"  # noqa: E501
+        checkpoint_path = "gs://kazi_test/test/fault-tolerant-test-checkpoint"  # noqa: E501
 
     _, cluster = setup_local_single_node_cluster(
         1, checkpoint_path=checkpoint_path, namespace=namespace)
