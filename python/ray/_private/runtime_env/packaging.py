@@ -42,6 +42,7 @@ class Protocol(Enum):
     GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
     CONDA = "conda", "For conda environments installed locally on each node."
+    HTTPS = "https", "Remote https path, assumes everything packed in one zip file."
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
