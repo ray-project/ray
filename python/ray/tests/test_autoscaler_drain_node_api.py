@@ -39,25 +39,15 @@ def test_drain_api(shutdown_only):
         def f():
             print("gpu ok")
 
-        # Triggers the addition of a CPU node.
-        @ray.remote(num_cpus=3)
-        def g():
-            print("cpu ok")
-
         ray.get(f.remote())
-        ray.get(g.remote())
 
         # Verify scale-up
-        resources = ray.cluster_resources()
-        assert resources["CPU"] == 8
-        assert resources["GPU"] == 1
+        assert ray.cluster_resources().get("GPU", 0) == 1
         # Sleep for double the idle timeout of 6 seconds.
         time.sleep(12)
 
         # Verify scale-down
-        resources = ray.cluster_resources()
-        assert resources["CPU"] == 2
-        assert resources.get("GPU", 0) == 0
+        assert ray.cluster_resources().get("GPU", 0) == 0
 
         # Check that no errors were raised while draining nodes.
         # (Logic copied from test_failure4::test_gcs_drain.)
