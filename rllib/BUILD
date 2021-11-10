@@ -40,6 +40,10 @@
 # starting letter of the test name (e.g. "examples_A", or "tests_dir_F") for
 # split-up purposes in buildkite.
 
+# Note: There is a special directory in examples: "documentation" which contains
+# all code that is linked to from within the RLlib docs. This code is tested
+# separately via the "documentation" tag.
+
 # Additional tags are:
 # - "team:ml": Indicating that all tests in this file are the responsibility of
 #   the ML Team.
@@ -1617,7 +1621,7 @@ py_test(
 )
 
 # --------------------------------------------------------------------
-# examples/ directory
+# examples/ directory (excluding examples/documentation/...)
 #
 # Tag: examples, examples_[A-Z]
 #
@@ -2699,4 +2703,20 @@ py_test(
     tags = ["team:ml", "examples", "examples_U"],
     size = "small",
     srcs = ["contrib/bandits/examples/tune_LinUCB_train_recommendation.py"],
+)
+
+# --------------------------------------------------------------------
+# examples/documentation directory
+#
+# Tag: documentation
+#
+# NOTE: Add tests alphabetically into this list.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "examples/documentation/rllib_in_60s",
+    main = "examples/documentation/rllib_in_60s.py",
+    tags = ["team:ml", "documentation"],
+    size = "medium",
+    srcs = ["examples/documentation/rllib_in_60s.py"],
 )

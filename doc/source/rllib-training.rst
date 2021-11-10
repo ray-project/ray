@@ -608,6 +608,8 @@ Custom metrics can be accessed and visualized like any other training result:
 
 .. image:: custom_metric.png
 
+.. _exploration-api:
+
 Customizing Exploration Behavior
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

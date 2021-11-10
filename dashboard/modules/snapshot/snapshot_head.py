@@ -8,9 +8,9 @@ from ray.core.generated import gcs_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.experimental.internal_kv import (_internal_kv_initialized,
                                           _internal_kv_get, _internal_kv_list)
-from ray._private.job_manager import (JOB_ID_METADATA_KEY,
-                                      JobStatusStorageClient)
 import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.modules.job.common import (JobStatusStorageClient,
+                                              JOB_ID_METADATA_KEY)
 
 import json
 import aiohttp.web
