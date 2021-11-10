@@ -10,7 +10,7 @@ from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
 from ray.train.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV, \
-    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV
+    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV, TRAIN_ENABLE_WORKER_SPREAD_ENV
 from ray.train.session import TrainingResult
 from ray.train.session import init_session, get_session, shutdown_session
 from ray.train.utils import RayDataset
