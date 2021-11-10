@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 cluster_not_supported = (os.name == "nt")
 
+
 class AutoscalingCluster:
     """Create a local autoscaling cluster for testing.
 

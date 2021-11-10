@@ -9,8 +9,8 @@ import json
 import time
 
 import ray
-from ray.cluster_utils import (
-    Cluster, AutoscalingCluster, cluster_not_supported)
+from ray.cluster_utils import (Cluster, AutoscalingCluster,
+                               cluster_not_supported)
 from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
 from ray._private.test_utils import (init_error_pubsub, setup_tls,
                                      teardown_tls, get_and_run_node_killer)

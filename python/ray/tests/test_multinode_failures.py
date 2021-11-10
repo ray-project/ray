@@ -13,6 +13,7 @@ from ray._private.test_utils import RayTestTimeoutException, get_other_nodes
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 @pytest.fixture(params=[(1, 4), (4, 4)])
 def ray_start_workers_separate_multinode(request):
     num_nodes = request.param[0]

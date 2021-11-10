@@ -6,7 +6,7 @@ import time
 import warnings
 
 import ray
-from ray.cluster_utils import Cluster
+from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.exceptions import GetTimeoutError
 
 if (multiprocessing.cpu_count() < 40
