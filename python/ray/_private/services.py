@@ -931,7 +931,7 @@ def start_redis(node_ip_address,
                         break
                     except socket.error as e:
                         if e.errno == errno.EADDRINUSE:
-                            port += 1
+                            port += random.randint(1, 100)
                             num_choices -= 1
                 a_socket.close()
             else:
