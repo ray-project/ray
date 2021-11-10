@@ -97,7 +97,7 @@ if __name__ == "__main__":
 
     while num_episodes < args.num_episodes_during_inference:
         # Compute an action (`a`).
-        a, state_out, _ = trainer.compute_single_action(
+        a = trainer.compute_single_action(
             observation=obs,
             explore=args.explore_during_inference,
             policy_id="default_policy",  # <- default value
