@@ -150,13 +150,15 @@ def test_basic(ray_start_with_dashboard):
     # Check redis keys are set.
     logger.info("Check redis keys are set.")
     dashboard_address = ray.experimental.internal_kv._internal_kv_get(
-        ray_constants.REDIS_KEY_DASHBOARD)
+        ray_constants.REDIS_KEY_DASHBOARD,
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
     assert dashboard_address is not None
     dashboard_rpc_address = ray.experimental.internal_kv._internal_kv_get(
-        dashboard_consts.REDIS_KEY_DASHBOARD_RPC)
+        dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
     assert dashboard_rpc_address is not None
     key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
-    agent_ports = ray.experimental.internal_kv._internal_kv_get(key)
+    agent_ports = ray.experimental.internal_kv._internal_kv_get(key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
     assert agent_ports is not None
 
 
@@ -636,7 +638,8 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         time.sleep(1)
         try:
             dashboard_url = ray.experimental.internal_kv._internal_kv_get(
-                ray_constants.REDIS_KEY_DASHBOARD)
+                ray_constants.REDIS_KEY_DASHBOARD,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
             if dashboard_url:
                 new_port = int(dashboard_url.split(b":")[-1])
                 assert new_port > int(port)
