@@ -1,4 +1,5 @@
-from typing import (Callable, Dict, List, TYPE_CHECKING, Type, Union, Optional)
+from typing import (Any, Callable, Dict, List, TYPE_CHECKING, Type, Union,
+                    Optional)
 
 import distutils
 import logging
@@ -43,6 +44,52 @@ def set_sync_periods(sync_config: "SyncConfig"):
     """Sets sync period from config."""
     global SYNC_PERIOD
     SYNC_PERIOD = int(sync_config.sync_period)
+
+
+def validate_sync_config(sync_config: "SyncConfig"):
+    if sync_config.node_sync_period >= 0 or sync_config.cloud_sync_period >= 0:
+        # Until fully deprecated, try to consolidate
+        if (sync_config.node_sync_period >= 0
+                and sync_config.cloud_sync_period >= 0):
+            sync_period = min(sync_config.node_sync_period,
+                              sync_config.cloud_sync_period)
+        else:
+            sync_period = max(sync_config.node_sync_period,
+                              sync_config.cloud_sync_period)
+
+        sync_config.sync_period = sync_period
+        sync_config.node_sync_period = -1
+        sync_config.cloud_sync_period = -1
+
+        logger.warning(
+            "DeprecationWarning: "
+            "The `node_sync_period` and "
+            "`cloud_sync_period` properties of `tune.SyncConfig` are "
+            "deprecated. Pass the `sync_period` property instead. "
+            "\nFor now, the lower of the two values (if provided) will "
+            f"be used as the sync_period. This value is: {sync_period}")
+
+    if sync_config.sync_to_cloud or sync_config.sync_to_driver:
+        if bool(sync_config.upload_dir):
+            syncer = sync_config.sync_to_cloud
+            help = "set"
+        else:
+            syncer = sync_config.sync_to_driver
+            help = "not set"
+
+        sync_config.syncer = syncer
+        sync_config.sync_to_cloud = None
+        sync_config.sync_to_driver = None
+
+        logger.warning(
+            "DeprecationWarning: "
+            "The `sync_to_cloud` and `sync_to_driver` properties of "
+            "`tune.SyncConfig` are deprecated. Pass the `syncer` property "
+            "instead. Presence of an `upload_dir` decides if checkpoints "
+            "are synced to cloud or not. Syncing to driver is "
+            "automatically disabled if an `upload_dir` is given."
+            f"\nFor now, as the upload dir is {help}, the respective "
+            f"syncer is used. This value is: {syncer}")
 
 
 def log_sync_template(options=""):
@@ -111,21 +158,14 @@ class SyncConfig:
     sync_on_checkpoint: bool = True
     sync_period: int = 300
 
-    def __new__(cls, *args, **kwargs):
-        if "node_sync_period" in kwargs or "cloud_sync_period" in kwargs:
-            raise DeprecationWarning(
-                "DeprecationWarning: The `node_sync_period` and "
-                "`cloud_sync_period` properties of `tune.SyncConfig` are "
-                "deprecated. Pass the `sync_period` property instead.")
+    # Deprecated arguments
+    sync_to_cloud: Any = None
+    sync_to_driver: Any = None
+    node_sync_period: int = -1
+    cloud_sync_period: int = -1
 
-        if "sync_to_cloud" in kwargs or "sync_to_driver" in kwargs:
-            raise DeprecationWarning(
-                "The `sync_to_cloud` and `sync_to_driver` properties of "
-                "`tune.SyncConfig` are deprecated. Pass the `syncer` property "
-                "instead. Presence of an `upload_dir` decides if checkpoints "
-                "are synced to cloud or not. Syncing to driver is "
-                "automatically disabled if an `upload_dir` is given.")
-        return super(SyncConfig, cls).__new__(cls)
+    def __post_init__(self):
+        validate_sync_config(self)
 
 
 class Syncer:
