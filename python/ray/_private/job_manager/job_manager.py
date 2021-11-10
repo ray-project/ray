@@ -48,15 +48,11 @@ class JobLogStorageClient:
     def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
         """
         Get the file path to the logs of a given job. Example:
-            /tmp/ray/session_date/logs/jobs/job-driver-{job_id}.log
+            /tmp/ray/session_date/logs/job-driver-{job_id}.log
         """
-        session_dir = ray.worker._global_node.get_session_dir_path()
-        jobs_log_dir = os.path.join(session_dir + "/logs/jobs")
-        if not os.path.exists(jobs_log_dir):
-            os.mkdir(jobs_log_dir)
-
-        file_name = self.JOB_LOGS_PATH.format(job_id=job_id)
-        return os.path.join(jobs_log_dir, file_name)
+        return os.path.join(
+            ray.worker._global_node.get_logs_dir_path(),
+            self.JOB_LOGS_PATH.format(job_id=job_id))
 
 
 class JobStatusStorageClient:
