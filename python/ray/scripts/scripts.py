@@ -547,6 +547,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external)
+    if not head and workerless:
+        raise ValueError("workerless can only be set on the head node.")
     if head:
         # Use default if port is none, allocate an available port if port is 0
         if port is None:
