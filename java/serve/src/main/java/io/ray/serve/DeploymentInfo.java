@@ -1,38 +1,75 @@
 package io.ray.serve;
 
 import java.io.Serializable;
+import java.util.Map;
 
 public class DeploymentInfo implements Serializable {
 
-  private static final long serialVersionUID = -4198364411759931955L;
+  private static final long serialVersionUID = -7132135316463505391L;
 
-  private byte[] deploymentConfig;
+  private String name;
 
-  private ReplicaConfig replicaConfig;
+  private String deploymentDef;
 
-  private byte[] deploymentVersion;
+  private Object[] initArgs;
 
-  public byte[] getDeploymentConfig() {
+  private DeploymentConfig deploymentConfig;
+
+  private DeploymentVersion deploymentVersion;
+
+  private Map<String, String> config;
+
+  public String getName() {
+    return name;
+  }
+
+  public DeploymentInfo setName(String name) {
+    this.name = name;
+    return this;
+  }
+
+  public String getDeploymentDef() {
+    return deploymentDef;
+  }
+
+  public DeploymentInfo setDeploymentDef(String deploymentDef) {
+    this.deploymentDef = deploymentDef;
+    return this;
+  }
+
+  public Object[] getInitArgs() {
+    return initArgs;
+  }
+
+  public DeploymentInfo setInitArgs(Object[] initArgs) {
+    this.initArgs = initArgs;
+    return this;
+  }
+
+  public DeploymentConfig getDeploymentConfig() {
     return deploymentConfig;
   }
 
-  public void setDeploymentConfig(byte[] deploymentConfig) {
+  public DeploymentInfo setDeploymentConfig(DeploymentConfig deploymentConfig) {
     this.deploymentConfig = deploymentConfig;
+    return this;
   }
 
-  public ReplicaConfig getReplicaConfig() {
-    return replicaConfig;
-  }
-
-  public void setReplicaConfig(ReplicaConfig replicaConfig) {
-    this.replicaConfig = replicaConfig;
-  }
-
-  public byte[] getDeploymentVersion() {
+  public DeploymentVersion getDeploymentVersion() {
     return deploymentVersion;
   }
 
-  public void setDeploymentVersion(byte[] deploymentVersion) {
+  public DeploymentInfo setDeploymentVersion(DeploymentVersion deploymentVersion) {
     this.deploymentVersion = deploymentVersion;
+    return this;
+  }
+
+  public Map<String, String> getConfig() {
+    return config;
+  }
+
+  public DeploymentInfo setConfig(Map<String, String> config) {
+    this.config = config;
+    return this;
   }
 }
