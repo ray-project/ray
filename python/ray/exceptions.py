@@ -365,8 +365,7 @@ class OwnerDiedError(ObjectLostError):
 
 
 class ObjectReconstructionFailedError(ObjectLostError):
-    """Indicates that the owner of the object has died while there is still a
-    reference to the object.
+    """Indicates that the object cannot be reconstructed.
 
     Attributes:
         object_ref_hex: Hex ID of the object.
@@ -375,7 +374,40 @@ class ObjectReconstructionFailedError(ObjectLostError):
     def __str__(self):
         return self._base_str() + "\n\n" + (
             "The object cannot be reconstructed "
-            "because the maximum number of task retries has been exceeded.")
+            "because it was created by an actor, ray.put() call, or its "
+            "ObjectRef was created by a different worker.")
+
+
+class ObjectReconstructionFailedMaxAttemptsExceededError(ObjectLostError):
+    """Indicates that the object cannot be reconstructed because the maximum
+    number of task retries has been exceeded.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return self._base_str() + "\n\n" + (
+            "The object cannot be reconstructed "
+            "because the maximum number of task retries has been exceeded. "
+            "To prevent this error, set "
+            "`@ray.remote(max_retries=<num retries>)` (default 3).")
+
+
+class ObjectReconstructionFailedLineageEvictedError(ObjectLostError):
+    """Indicates that the object cannot be reconstructed because its lineage
+    was evicted due to memory pressure.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return self._base_str() + "\n\n" + (
+            "The object cannot be reconstructed because its lineage has been "
+            "evicted to reduce memory pressure. "
+            "To prevent this error, set the environment variable "
+            "RAY_max_lineage_bytes=<bytes> (default 1GB) during `ray start`.")
 
 
 class GetTimeoutError(RayError):
@@ -413,6 +445,8 @@ RAY_EXCEPTION_TYPES = [
     ObjectLostError,
     ReferenceCountingAssertionError,
     ObjectReconstructionFailedError,
+    ObjectReconstructionFailedMaxAttemptsExceededError,
+    ObjectReconstructionFailedLineageEvictedError,
     OwnerDiedError,
     GetTimeoutError,
     AsyncioActorExit,
