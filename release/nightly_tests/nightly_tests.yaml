@@ -364,4 +364,5 @@
 
   run:
     timeout: 1200
+    prepare: python wait_cluster.py 5 600
     script: python placement_group_tests/placement_group_performance_test.py
