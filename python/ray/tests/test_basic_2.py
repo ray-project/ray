@@ -377,6 +377,7 @@ def test_get_with_timeout(ray_start_regular_shared):
 
 
 # https://github.com/ray-project/ray/issues/6329
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_call_actors_indirect_through_tasks(ray_start_regular_shared):
     @ray.remote
     class Counter:

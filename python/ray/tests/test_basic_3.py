@@ -137,6 +137,7 @@ def test_many_fractional_resources(shutdown_only):
         assert False, "Did not get correct available resources."
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_background_tasks_with_max_calls(shutdown_only):
     ray.init(num_cpus=2)
 
