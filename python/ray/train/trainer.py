@@ -137,7 +137,7 @@ class Trainer:
 
         if not ray.is_initialized():
             ray.init()
-        # Assign backend executor to head node.
+        # Assign BackendExecutor to head node.
         remote_executor = force_on_current_node(remote_executor)
 
         self._executor = remote_executor.remote(
@@ -774,15 +774,16 @@ def _create_tune_trainable(train_func, dataset, backend, num_workers, use_gpu,
         def default_resource_request(cls,
                                      config: Dict) -> PlacementGroupFactory:
             node_resource_key = get_current_node_resource_key()
-            head_bundle = [{"CPU": 1}, {node_resource_key: 0.01}]  # driver
+            trainer_bundle = [{"CPU": 1}]
+            backend_executor_bundle = [{node_resource_key: 0.01}]
             worker_resources = {"CPU": 1, "GPU": int(use_gpu)}
-            worker_resources_extra = {} if resources_per_worker is None else\
+            worker_resources_extra = {} if resources_per_worker is None else \
                 resources_per_worker
             worker_bundles = [{
                 **worker_resources,
                 **worker_resources_extra
             } for _ in range(num_workers)]
-            bundles = head_bundle + worker_bundles
+            bundles = trainer_bundle + backend_executor_bundle + worker_bundles
             return PlacementGroupFactory(bundles, strategy="PACK")
 
     return TrainTrainable

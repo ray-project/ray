@@ -86,6 +86,14 @@ py_test(
 )
 
 py_test(
+    name = "test_examples",
+    size = "large",
+    srcs = ["tests/test_examples.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_gpu",
     size = "large",
     srcs = ["tests/test_gpu.py"],
