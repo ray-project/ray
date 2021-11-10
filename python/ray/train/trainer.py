@@ -24,7 +24,8 @@ from ray.train.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
 # Ray Train should be usable even if Tune is not installed.
 from ray.train.utils import construct_path
 from ray.train.worker_group import WorkerGroup
-from ray.util.ml_utils.node import force_on_current_node
+from ray.util.ml_utils.node import force_on_current_node, \
+    get_current_node_resource_key
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -133,7 +134,12 @@ class Trainer:
                     "`resources_per_worker.")
 
         remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
+
+        if not ray.is_initialized():
+            ray.init()
+        # Assign backend executor to head node.
         remote_executor = force_on_current_node(remote_executor)
+
         self._executor = remote_executor.remote(
             backend_config=backend_config,
             num_workers=num_workers,
@@ -767,7 +773,8 @@ def _create_tune_trainable(train_func, dataset, backend, num_workers, use_gpu,
         @classmethod
         def default_resource_request(cls,
                                      config: Dict) -> PlacementGroupFactory:
-            head_bundle = [{"CPU": 1}]  # driver
+            node_resource_key = get_current_node_resource_key()
+            head_bundle = [{"CPU": 1}, {node_resource_key: 0.01}]  # driver
             worker_resources = {"CPU": 1, "GPU": int(use_gpu)}
             worker_resources_extra = {} if resources_per_worker is None else\
                 resources_per_worker
