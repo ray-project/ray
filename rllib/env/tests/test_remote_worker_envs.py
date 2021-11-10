@@ -31,7 +31,7 @@ tune.register_env("pistonball",
 class TestRemoteWorkerEnvSetting(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -47,6 +47,8 @@ class TestRemoteWorkerEnvSetting(unittest.TestCase):
         trainer = pg.PGTrainer(config=config)
         print(trainer.train())
         trainer.stop()
+
+        return#TODO
 
         # Using tune.register.
         config["env"] = "cartpole"
