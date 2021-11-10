@@ -94,6 +94,7 @@ if __name__ == "__main__":
     obs = env.reset()
 
     num_episodes = 0
+    episode_reward = 0.0
 
     while num_episodes < args.num_episodes_during_inference:
         # Compute an action (`a`).
@@ -104,9 +105,12 @@ if __name__ == "__main__":
         )
         # Send the computed action `a` to the env.
         obs, reward, done, _ = env.step(a)
+        episode_reward += reward
         # Is the episode `done`? -> Reset.
         if done:
+            print(f"Episode done: Total reward = {episode_reward}")
             obs = env.reset()
             num_episodes += 1
+            episode_reward = 0.0
 
     ray.shutdown()
