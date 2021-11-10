@@ -18,8 +18,7 @@ runtime_env = {
             "pip": ["pendulum", "ray[serve]"]
         }]
     },
-    "env_vars": {"TF_WARNINGS": "none"},
-    "_inject_current_ray": False
+    "env_vars": {"TF_WARNINGS": "none"}
 }
 # __runtime_env_conda_def_end__
 
