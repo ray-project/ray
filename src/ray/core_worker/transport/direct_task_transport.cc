@@ -582,7 +582,6 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                          /*error=*/false, resources_copy);
           } else {
             // The raylet redirected us to a different raylet to retry at.
-
             RequestNewWorkerIfNeeded(scheduling_key, &reply);
           }
         } else if (lease_client != local_lease_client_) {
