@@ -921,10 +921,19 @@ def start_redis(node_ip_address,
         if port is None:
             default_port = ray_constants.DEFAULT_PORT
             if sys.platform == "win32":
-                length = 100
-                redis_port_lower_bound = default_port - length
-                redis_port_upper_bound = default_port + length
-                port = new_port(redis_port_lower_bound, redis_port_upper_bound)
+                port = default_port
+                num_choices = 200
+                a_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                while num_choices > 0:
+                    location = (node_ip_address, port)
+                    try:
+                        a_socket.bind(location)
+                        break
+                    except socket.error as e:
+                        if e.errno == errno.EADDRINUSE:
+                            port += 1
+                            num_choices -= 1
+                a_socket.close()
             else:
                 port = default_port
             num_retries = 20
