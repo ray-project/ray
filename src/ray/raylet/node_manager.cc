@@ -1584,25 +1584,15 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     worker_pool_.PrestartWorkers(task_spec, request.backlog_size(), available_cpus);
   }
 
-  if (!request.grant_or_reject()) {
-    cluster_task_manager_->QueueAndScheduleTask(task, false, reply, send_reply_callback);
-    return;
-  }
-
   auto send_reply_callback_wrapper = [this, is_actor_creation_task, actor_id, reply,
                                       send_reply_callback](
                                          Status status, std::function<void()> success,
                                          std::function<void()> failure) {
-    if (!reply->rejected()) {
-      send_reply_callback(status, success, failure);
-      return;
-    }
-
     // If resources are not enough due to normal tasks' preemption
-    // for gcs based actor scheduling, return a rejection
-    // with normal task resource usages so gcs can update
+    // for GCS based actor scheduling, return a rejection
+    // with normal task resource usages so GCS can update
     // its resource view of this raylet.
-    if (is_actor_creation_task) {
+    if (reply->rejected() && is_actor_creation_task) {
       ResourceSet normal_task_resources =
           cluster_task_manager_->CalcNormalTaskResources();
       RAY_LOG(DEBUG) << "Reject leasing as the raylet has no enough resources."
@@ -1619,10 +1609,10 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
       resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
     }
 
-    send_reply_callback(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
+    send_reply_callback(status, success, failure);
   };
 
-  cluster_task_manager_->QueueAndScheduleTask(task, true, reply,
+  cluster_task_manager_->QueueAndScheduleTask(task, request.grant_or_reject(), reply,
                                               send_reply_callback_wrapper);
 }
 

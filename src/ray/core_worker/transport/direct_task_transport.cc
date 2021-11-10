@@ -558,9 +558,10 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             RequestNewWorkerIfNeeded(scheduling_key);
           } else if (reply.rejected()) {
             RAY_LOG(DEBUG) << "Lease rejected " << task_id;
-            // It might happen when the home raylet has a stale view
+            // It might happen when the first raylet has a stale view
             // of the spillback raylet resources.
-            // Retry it since the resource view may be refreshed.
+            // Retry the request at the first raylet since the resource view may be
+            // refreshed.
             RAY_CHECK(is_spillback);
             RequestNewWorkerIfNeeded(scheduling_key);
           } else if (!reply.worker_address().raylet_id().empty()) {

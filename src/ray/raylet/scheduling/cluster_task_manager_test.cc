@@ -614,6 +614,61 @@ TEST_F(ClusterTaskManagerTest, ResourceTakenWhileResolving) {
   AssertNoLeaks();
 }
 
+TEST_F(ClusterTaskManagerTest, TestGrantOrReject) {
+  std::shared_ptr<MockWorker> worker1 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
+  std::shared_ptr<MockWorker> worker2 =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1235);
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker1));
+  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker2));
+
+  int num_callbacks = 0;
+  auto callback = [&](Status, std::function<void()>, std::function<void()>) {
+    num_callbacks++;
+  };
+
+  auto remote_node_id = NodeID::FromRandom();
+  AddNode(remote_node_id, 8);
+
+  auto task1 = CreateTask({{ray::kCPU_ResourceLabel, 5}});
+  rpc::RequestWorkerLeaseReply local_reply;
+  task_manager_.QueueAndScheduleTask(task1, /*grant_or_reject=*/false, &local_reply,
+                                     callback);
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 1);
+  // The first task was dispatched.
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  auto task2 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
+  rpc::RequestWorkerLeaseReply spillback_reply;
+  task_manager_.QueueAndScheduleTask(task2, /*grant_or_reject=*/false, &spillback_reply,
+                                     callback);
+  pool_.TriggerCallbacks();
+  // The second task was spilled.
+  ASSERT_EQ(num_callbacks, 2);
+  ASSERT_EQ(spillback_reply.retry_at_raylet_address().raylet_id(),
+            remote_node_id.Binary());
+  ASSERT_EQ(leased_workers_.size(), 1);
+  ASSERT_EQ(pool_.workers.size(), 1);
+
+  auto task3 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
+  task_manager_.QueueAndScheduleTask(task3, /*grant_or_reject=*/true, &local_reply,
+                                     callback);
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(num_callbacks, 3);
+  // The third task was dispatched.
+  ASSERT_EQ(leased_workers_.size(), 2);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  while (!leased_workers_.empty()) {
+    RayTask finished_task;
+    task_manager_.TaskFinished(leased_workers_.begin()->second, &finished_task);
+    leased_workers_.erase(leased_workers_.begin());
+  }
+  AssertNoLeaks();
+}
+
 TEST_F(ClusterTaskManagerTest, TestSpillAfterAssigned) {
   /*
     Test the race condition in which a task is assigned to the local node, but

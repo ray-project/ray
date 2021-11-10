@@ -101,15 +101,12 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
-  ///  In legacy mode, see `GetBestSchedulableNodeLegacy` for a description of the policy.
   ///
   ///  \param resource_request: Task to be scheduled.
   ///  \param actor_creation: True if this is an actor creation task.
   ///  \param force_spillback: For non-actor creation requests, pick a remote
   ///  feasible node. If this is false, then the task may be scheduled to the
   ///  local node.
-  ///  \param grant_or_reject: True if we we should either grant or reject the request
-  ///                          but no spillback.
   ///  \param violations: The number of soft constraint violations associated
   ///                     with the node returned by this function (assuming
   ///                     a node that can schedule resource_request is found).
@@ -120,8 +117,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///          return the ID of a node that can schedule the resource request.
   int64_t GetBestSchedulableNode(const ResourceRequest &resource_request,
                                  bool actor_creation, bool force_spillback,
-                                 bool grant_or_reject, int64_t *violations,
-                                 bool *is_infeasible);
+                                 int64_t *violations, bool *is_infeasible);
 
   /// Similar to
   ///    int64_t GetBestSchedulableNode(...)
@@ -132,7 +128,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   std::string GetBestSchedulableNode(
       const absl::flat_hash_map<std::string, double> &resource_request,
       bool requires_object_store_memory, bool actor_creation, bool force_spillback,
-      bool grant_or_reject, int64_t *violations, bool *is_infeasible);
+      int64_t *violations, bool *is_infeasible);
 
   /// Return resources associated to the given node_id in ret_resources.
   /// If node_id not found, return false; otherwise return true.

@@ -212,7 +212,7 @@ bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_req
 
 int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     const ResourceRequest &resource_request, bool actor_creation, bool force_spillback,
-    bool grant_or_reject, int64_t *total_violations, bool *is_infeasible) {
+    int64_t *total_violations, bool *is_infeasible) {
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies.
   if (actor_creation && resource_request.IsEmpty()) {
@@ -242,13 +242,6 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     return best_node;
   }
 
-  // If the local node is available, we should directly return it instead of
-  // going through the full hybrid policy since we don't want spillback.
-  if (grant_or_reject &&
-      IsSchedulable(resource_request, local_node_id_, GetLocalNodeResources())) {
-    return local_node_id_;
-  }
-
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = scheduling_policy_->HybridPolicy(
@@ -270,12 +263,11 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
     const absl::flat_hash_map<std::string, double> &task_resources,
     bool requires_object_store_memory, bool actor_creation, bool force_spillback,
-    bool grant_or_reject, int64_t *total_violations, bool *is_infeasible) {
+    int64_t *total_violations, bool *is_infeasible) {
   ResourceRequest resource_request = ResourceMapToResourceRequest(
       string_to_int_map_, task_resources, requires_object_store_memory);
-  int64_t node_id =
-      GetBestSchedulableNode(resource_request, actor_creation, force_spillback,
-                             grant_or_reject, total_violations, is_infeasible);
+  int64_t node_id = GetBestSchedulableNode(
+      resource_request, actor_creation, force_spillback, total_violations, is_infeasible);
 
   if (node_id == -1) {
     // This is not a schedulable node, so return empty string.

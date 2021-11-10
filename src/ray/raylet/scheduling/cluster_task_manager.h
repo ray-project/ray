@@ -298,6 +298,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   // queue.
   void SpillWaitingTasks();
 
+  /// Helper method to get the best node for running the task.
+  std::string GetBestSchedulableNode(const internal::Work &work,
+                                     bool requires_object_store_memory,
+                                     bool force_spillback, bool *is_infeasible);
+
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
