@@ -630,7 +630,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                     f" command to `ray start`.")
 
         node = ray.node.Node(
-            ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block)
+            ray_params, head=True, shutdown_at_exit=block, spawn_reaper=block,
+            workerless=workerless)
 
         redis_address = node.redis_address
         if temp_dir is None:
