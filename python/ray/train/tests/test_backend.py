@@ -1,20 +1,22 @@
+import math
 import os
 import time
-
-import pytest
 from unittest.mock import patch
 
-import ray
-from ray.cluster_utils import Cluster
-import ray.train as train
-from ray.train.backends.backend import BackendConfig, BackendExecutor
-from ray.train.backends.tensorflow import TensorflowConfig
-from ray.train.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
-from ray.train.worker_group import WorkerGroup
-from ray.train.backends.torch import TorchConfig
+import pytest
 
+import ray
+import ray.train as train
+from ray.cluster_utils import Cluster
 from ray.train.backends.backend import Backend, \
     InactiveWorkerGroupError, TrainBackendError, TrainingWorkerError
+from ray.train.backends.backend import BackendConfig, BackendExecutor
+from ray.train.backends.tensorflow import TensorflowConfig
+from ray.train.backends.torch import TorchConfig
+from ray.train.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV, \
+    TRAIN_ENABLE_WORKER_SPREAD_ENV
+from ray.train.worker_group import WorkerGroup
+from ray.util.placement_group import get_current_placement_group
 
 
 @pytest.fixture
@@ -23,6 +25,20 @@ def ray_start_2_cpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_4_node_4_cpu():
+    cluster = Cluster()
+    for _ in range(4):
+        cluster.add_node(num_cpus=4)
+
+    ray.init(address=cluster.address)
+
+    yield
+
+    ray.shutdown()
+    cluster.shutdown()
 
 
 @pytest.fixture
@@ -391,6 +407,67 @@ def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results,
     results = e.finish_training()
     results.sort()
     assert results == expected_results
+
+
+def get_node_id_set():
+    node_id_set = set()
+    for actor_info in ray.state.actors().values():
+        node_id = actor_info["Address"]["NodeID"]
+        node_id_set.add(node_id)
+    return node_id_set
+
+
+@pytest.mark.parametrize("num_workers", [3, 4, 5])
+def test_placement_group_pack(ray_4_node_4_cpu, num_workers):
+    """Tests that workers are packed on nodes."""
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=num_workers)
+    e.start()
+    node_id_set = get_node_id_set()
+    assert len(node_id_set) == math.ceil(num_workers / 4)
+
+
+@pytest.mark.parametrize("num_workers", [3, 4, 5])
+def test_placement_group_spread(ray_4_node_4_cpu, num_workers):
+    """Tests that workers are spread across nodes."""
+    os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV] = "1"
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=num_workers)
+    e.start()
+    node_id_set = get_node_id_set()
+    assert len(node_id_set) == min(num_workers, 4)
+
+
+@pytest.mark.parametrize("placement_group_capture_child_tasks", [True, False])
+def test_placement_group_parent(ray_4_node_4_cpu, tmp_path,
+                                placement_group_capture_child_tasks):
+    """Tests that parent placement group will be used."""
+    num_workers = 2
+    bundle = {"CPU": 1}
+    bundles = [bundle.copy() for _ in range(num_workers + 1)]
+    placement_group = ray.util.placement_group(bundles)
+
+    def train_func():
+        return get_current_placement_group().id
+
+    @ray.remote
+    def test():
+        config = TestConfig()
+        e = BackendExecutor(config, num_workers=2)
+        e.start()
+        e.start_training(train_func, run_dir=tmp_path)
+        return e.finish_training()
+
+    results_future = test.options(
+        placement_group=placement_group,
+        placement_group_capture_child_tasks=placement_group_capture_child_tasks
+    ).remote()
+    results = ray.get(results_future)
+    for worker_result in results:
+        if placement_group_capture_child_tasks:
+            assert worker_result == placement_group.id
+        else:
+            assert worker_result != placement_group.id
 
 
 if __name__ == "__main__":
