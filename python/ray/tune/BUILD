@@ -803,7 +803,7 @@ py_test(
 )
 
 py_test(
-    name = "c",
+    name = "tf_mnist_example",
     size = "medium",
     srcs = ["examples/tf_mnist_example.py"],
     deps = [":tune_lib"],
