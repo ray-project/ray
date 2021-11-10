@@ -183,7 +183,7 @@ class MockRayletClient : public WorkerLeaseInterface {
       const int64_t backlog_size) override {
     num_workers_requested += 1;
     if (grant_or_reject) {
-      num_grant_or_reject_leases += 1;
+      num_grant_or_reject_leases_requested += 1;
     }
     callbacks.push_back(callback);
   }
@@ -255,7 +255,7 @@ class MockRayletClient : public WorkerLeaseInterface {
 
   ~MockRayletClient() {}
 
-  int num_grant_or_reject_leases = 0;
+  int num_grant_or_reject_leases_requested = 0;
   int num_workers_requested = 0;
   int num_workers_returned = 0;
   int num_workers_disconnected = 0;
@@ -1114,7 +1114,7 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
-  ASSERT_EQ(raylet_client->num_grant_or_reject_leases, 0);
+  ASSERT_EQ(raylet_client->num_grant_or_reject_leases_requested, 0);
   ASSERT_EQ(raylet_client->num_workers_requested, 1);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
@@ -1126,7 +1126,7 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
   ASSERT_EQ(remote_lease_clients.count(7777), 1);
   ASSERT_EQ(remote_lease_clients[7777]->num_workers_requested, 1);
   // Confirm that the spillback lease request has grant_or_reject set to true.
-  ASSERT_EQ(remote_lease_clients[7777]->num_grant_or_reject_leases, 1);
+  ASSERT_EQ(remote_lease_clients[7777]->num_grant_or_reject_leases_requested, 1);
   // Confirm that lease policy is not consulted on spillback.
   ASSERT_EQ(lease_policy->num_lease_policy_consults, 1);
   ASSERT_FALSE(raylet_client->GrantWorkerLease("remote", 1234, NodeID::Nil()));
@@ -1140,7 +1140,7 @@ TEST(DirectTaskTransportTest, TestSpillbackRoundTrip) {
       remote_lease_clients[7777]->GrantWorkerLease("remote", 1234, NodeID::Nil()));
 
   // The worker is returned to the local node.
-  ASSERT_EQ(raylet_client->num_grant_or_reject_leases, 0);
+  ASSERT_EQ(raylet_client->num_grant_or_reject_leases_requested, 0);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
   ASSERT_TRUE(raylet_client->GrantWorkerLease("local", 1234, NodeID::Nil()));
   ASSERT_TRUE(worker_client->ReplyPushTask());
