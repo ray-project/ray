@@ -248,7 +248,7 @@ The checkpoint path argument accepts the following format:
 
 - ``file://local_file_path``
 - ``s3://bucket/path``
-- ``gcs://bucket/path``
+- ``gs://bucket/path``
 - ``custom://importable.custom_python.Class/path``
 
 While we have native support for on disk, AWS S3, and Google Cloud Storage (GCS), there is no reason we cannot support more.
