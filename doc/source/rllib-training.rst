@@ -403,6 +403,7 @@ First, install the dependencies:
 
 .. code-block:: python
 
+    # the "Pong-v0" environment requires a few special versions of gym
     pip install "ray[rllib]" tensorflow torch "gym[atari]" "gym[accept-rom-license]" atari_py
 
 Then for the code:
