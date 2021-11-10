@@ -68,8 +68,8 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             The PPO loss tensor given the input batch.
         """
 
-        logits, state = self.model(train_batch)
-        curr_action_dist = self.dist_class(logits, self.model)
+        logits, state = model(train_batch)
+        curr_action_dist = dist_class(logits, model)
 
         # RNN case: Mask away 0-padded chunks at end of time axis.
         if state:
@@ -78,7 +78,7 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             mask = sequence_mask(
                 train_batch[SampleBatch.SEQ_LENS],
                 max_seq_len,
-                time_major=self.model.is_time_major())
+                time_major=model.is_time_major())
             mask = torch.reshape(mask, [-1])
             num_valid = torch.sum(mask)
 
@@ -90,8 +90,8 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             mask = None
             reduce_mean_valid = torch.mean
 
-        prev_action_dist = self.dist_class(
-            train_batch[SampleBatch.ACTION_DIST_INPUTS], self.model)
+        prev_action_dist = dist_class(
+            train_batch[SampleBatch.ACTION_DIST_INPUTS], model)
 
         logp_ratio = torch.exp(
             curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
@@ -112,7 +112,7 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
         # Compute a value function loss.
         if self.config["use_critic"]:
             prev_value_fn_out = train_batch[SampleBatch.VF_PREDS]
-            value_fn_out = self.model.value_function()
+            value_fn_out = model.value_function()
             vf_loss1 = torch.pow(
                 value_fn_out - train_batch[Postprocessing.VALUE_TARGETS], 2.0)
             vf_clipped = prev_value_fn_out + torch.clamp(
@@ -133,14 +133,14 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
 
         # Store values for stats function in model (tower), such that for
         # multi-GPU, we do not override them during the parallel loss phase.
-        self.model.tower_stats["total_loss"] = total_loss
-        self.model.tower_stats["mean_policy_loss"] = mean_policy_loss
-        self.model.tower_stats["mean_vf_loss"] = mean_vf_loss
-        self.model.tower_stats["vf_explained_var"] = explained_variance(
+        model.tower_stats["total_loss"] = total_loss
+        model.tower_stats["mean_policy_loss"] = mean_policy_loss
+        model.tower_stats["mean_vf_loss"] = mean_vf_loss
+        model.tower_stats["vf_explained_var"] = explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
-            self.model.value_function())
-        self.model.tower_stats["mean_entropy"] = mean_entropy
-        self.model.tower_stats["mean_kl_loss"] = mean_kl_loss
+            model.value_function())
+        model.tower_stats["mean_entropy"] = mean_entropy
+        model.tower_stats["mean_kl_loss"] = mean_kl_loss
 
         return total_loss
 
