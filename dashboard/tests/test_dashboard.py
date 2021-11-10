@@ -23,7 +23,6 @@ from ray._private.test_utils import (
     run_string_as_driver, wait_until_succeeded_without_exception)
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
-from ray.ray_constants import KV_NAMESPACE_AUTOSCALER
 from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
@@ -222,7 +221,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
             assert dump_info["result"] is True
             break
         except (AssertionError, requests.exceptions.ConnectionError) as e:
-            print("Retry because of %s", e)
+            logger.info("Retry because of %s", e)
         finally:
             if time.time() > start_time + timeout_seconds:
                 raise Exception("Timed out while testing.")
@@ -480,11 +479,9 @@ def test_get_cluster_status(ray_start_with_dashboard):
     gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     ray.experimental.internal_kv._internal_kv_put(
-        DEBUG_AUTOSCALING_STATUS_LEGACY,
-        "hello",
-        namespace=KV_NAMESPACE_AUTOSCALER)
-    ray.experimental.internal_kv._internal_kv_put(
-        DEBUG_AUTOSCALING_ERROR, "world", namespace=KV_NAMESPACE_AUTOSCALER)
+        DEBUG_AUTOSCALING_STATUS_LEGACY, "hello")
+    ray.experimental.internal_kv._internal_kv_put(DEBUG_AUTOSCALING_ERROR,
+                                                  "world")
 
     response = requests.get(f"{webui_url}/api/cluster_status")
     response.raise_for_status()

@@ -284,12 +284,6 @@ KV_NAMESPACE_DASHBOARD = "dashboard"
 KV_NAMESPACE_SESSION = "session"
 KV_NAMESPACE_TRACING = "tracing"
 KV_NAMESPACE_PDB = "ray_pdb"
-
-# TODO: Set namespace for autoscaler
-# This will break backward compatibility between versions, where old version
-# autoscaler won't be able to scale up new version ray since the key will be
-# different with namespace.
-KV_NAMESPACE_AUTOSCALER = None
 KV_NAMESPACE_HEALTHCHECK = "healthcheck"
 KV_NAMESPACE_JOB = "job"
 # TODO: Set package for runtime env
