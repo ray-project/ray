@@ -123,7 +123,13 @@ public class RayConfig {
 
     // Namespace of this job.
     String localNamespace = config.getString("ray.job.namespace");
-    namespace = StringUtils.isEmpty(localNamespace) ? UUID.randomUUID().toString() : localNamespace;
+    if (workerMode == WorkerType.DRIVER) {
+      namespace =
+          StringUtils.isEmpty(localNamespace) ? UUID.randomUUID().toString() : localNamespace;
+    } else {
+      /// We shouldn't set it for worker.
+      namespace = null;
+    }
 
     // jvm options for java workers of this job.
     jvmOptionsForJavaWorker = config.getStringList("ray.job.jvm-options");

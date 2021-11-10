@@ -284,8 +284,9 @@ def test_worker_startup_count(ray_start_cluster):
         return None
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
+    timeout_limit = 40 if sys.platform == "win32" else 10
     start = time.time()
-    wait_for_condition(lambda: get_num_workers() == 16)
+    wait_for_condition(lambda: get_num_workers() == 16, timeout=timeout_limit)
     time_waited = time.time() - start
     print(f"Waited {time_waited} for debug_state.txt to be updated")
 
@@ -321,10 +322,12 @@ def test_function_unique_export(ray_start_regular):
 @pytest.mark.skipif(
     sys.platform not in ["win32", "darwin"],
     reason="Only listen on localhost by default on mac and windows.")
-def test_listen_on_localhost(ray_start_regular):
+@pytest.mark.parametrize("start_ray", ["ray_start_regular", "call_ray_start"])
+def test_listen_on_localhost(start_ray, request):
     """All ray processes should listen on localhost by default
        on mac and windows to prevent security popups.
     """
+    request.getfixturevalue(start_ray)
 
     process_infos = []
     for proc in psutil.process_iter(["name", "cmdline"]):
@@ -346,6 +349,53 @@ def test_listen_on_localhost(ray_start_regular):
                     continue
                 # ip can be 127.0.0.1 or ::127.0.0.1
                 assert "127.0.0.1" in connection.laddr.ip
+
+
+def test_job_id_consistency(ray_start_regular):
+    @ray.remote
+    def foo():
+        return "bar"
+
+    @ray.remote
+    class Foo:
+        def ping(self):
+            return "pong"
+
+    @ray.remote
+    def verify_job_id(job_id, new_thread):
+        def verify():
+            current_task_id = ray.runtime_context.get_runtime_context().task_id
+            assert job_id == current_task_id.job_id()
+            obj1 = foo.remote()
+            assert job_id == obj1.job_id()
+            obj2 = ray.put(1)
+            assert job_id == obj2.job_id()
+            a = Foo.remote()
+            assert job_id == a._actor_id.job_id
+            obj3 = a.ping.remote()
+            assert job_id == obj3.job_id()
+
+        if not new_thread:
+            verify()
+        else:
+            exc = []
+
+            def run():
+                try:
+                    verify()
+                except BaseException as e:
+                    exc.append(e)
+
+            import threading
+            t = threading.Thread(target=run)
+            t.start()
+            t.join()
+            if len(exc) > 0:
+                raise exc[0]
+
+    job_id = ray.runtime_context.get_runtime_context().job_id
+    ray.get(verify_job_id.remote(job_id, False))
+    ray.get(verify_job_id.remote(job_id, True))
 
 
 if __name__ == "__main__":
