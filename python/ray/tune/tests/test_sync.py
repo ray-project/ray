@@ -6,6 +6,7 @@ import sys
 import tempfile
 import time
 import unittest
+import warnings
 from unittest.mock import patch
 import yaml
 
@@ -38,42 +39,42 @@ class TestSyncFunctionality(unittest.TestCase):
     def testSyncConfigDeprecation(self):
         from ray.tune.syncer import logger
 
-        with self.assertLogs(logger, level="WARNING") as cm:
+        with self.assertWarnsRegex(
+                DeprecationWarning, expected_regex="sync_period"):
             sync_conf = tune.SyncConfig(
                 node_sync_period=4, cloud_sync_period=8)
-            self.assertIn("sync_period", cm.output[0])
             self.assertEqual(sync_conf.sync_period, 4)
 
-        with self.assertLogs(logger, level="WARNING") as cm:
+        with self.assertWarnsRegex(
+                DeprecationWarning, expected_regex="sync_period"):
             sync_conf = tune.SyncConfig(node_sync_period=4)
-            self.assertIn("sync_period", cm.output[0])
             self.assertEqual(sync_conf.sync_period, 4)
 
-        with self.assertLogs(logger, level="WARNING") as cm:
+        with self.assertWarnsRegex(
+                DeprecationWarning, expected_regex="sync_period"):
             sync_conf = tune.SyncConfig(cloud_sync_period=8)
-            self.assertIn("sync_period", cm.output[0])
             self.assertEqual(sync_conf.sync_period, 8)
 
-        with self.assertLogs(logger, level="WARNING") as cm:
+        with self.assertWarnsRegex(
+                DeprecationWarning, expected_regex="syncer"):
             sync_conf = tune.SyncConfig(
                 sync_to_driver="a", sync_to_cloud="b", upload_dir=None)
-            self.assertIn("syncer", cm.output[0])
             self.assertEqual(sync_conf.syncer, "a")
 
-        with self.assertLogs(logger, level="WARNING") as cm:
+        with self.assertWarnsRegex(
+                DeprecationWarning, expected_regex="syncer"):
             sync_conf = tune.SyncConfig(
                 sync_to_driver="a", sync_to_cloud="b", upload_dir="c")
-            self.assertIn("syncer", cm.output[0])
             self.assertEqual(sync_conf.syncer, "b")
 
-        with self.assertLogs(logger, level="WARNING") as cm:
+        with self.assertWarnsRegex(
+                DeprecationWarning, expected_regex="syncer"):
             sync_conf = tune.SyncConfig(sync_to_cloud="b", upload_dir=None)
-            self.assertIn("syncer", cm.output[0])
             self.assertEqual(sync_conf.syncer, None)
 
-        with self.assertLogs(logger, level="WARNING") as cm:
+        with self.assertWarnsRegex(
+                DeprecationWarning, expected_regex="syncer"):
             sync_conf = tune.SyncConfig(sync_to_driver="a", upload_dir="c")
-            self.assertIn("syncer", cm.output[0])
             self.assertEqual(sync_conf.syncer, None)
 
     @patch("ray.tune.sync_client.S3_PREFIX", "test")
