@@ -49,8 +49,12 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
                                sample_batch,
                                other_agent_batches=None,
                                episode=None):
-        return compute_gae_for_sample_batch(self, sample_batch,
-                                            other_agent_batches, episode)
+        # Do all post-processing always with no_grad().
+        # Not using this here will introduce a memory leak
+        # in torch (issue #6962).
+        with torch.no_grad():
+            return compute_gae_for_sample_batch(
+                self, sample_batch, other_agent_batches, episode)
 
     # TODO: Add method to Policy base class (as the new way of defining loss
     #  functions (instead of passing 'loss` to the super's constructor)).
