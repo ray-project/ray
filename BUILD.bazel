@@ -1334,7 +1334,8 @@ cc_test(
     name = "status_test",
     size = "small",
     srcs = [
-    "src/ray/common/test/status_test.cc"],
+        "src/ray/common/test/status_test.cc",
+    ],
     copts = COPTS,
     tags = ["team:core"],
     deps = [
