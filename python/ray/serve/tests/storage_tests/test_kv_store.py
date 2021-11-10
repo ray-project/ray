@@ -1,6 +1,6 @@
 import os
-import tempfile
 import sys
+import tempfile
 from typing import Optional
 
 import pytest
@@ -155,11 +155,13 @@ def test_make_kv_store(serve_instance):
 
     store = make_kv_store(
         f"custom://{module_name}.MyCustomStorageCls?arg1=val1&arg2=val2",
-        namespace=namespace)
+        namespace=namespace,
+    )
     assert store.namespace == namespace
     assert store.kwargs == {"arg1": "val1", "arg2": "val2"}
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

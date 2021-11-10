@@ -221,8 +221,8 @@ Ray cluster and re-deploys all Serve deployments into that cluster.
   the long term roadmap and being actively worked on.
 
 Ray Serve added an experimental feature to help recovering the state.
-This features enables Serve to write all your deployment configuration and code into a storage location. 
-Upon Ray cluster failure and restarts, you can simply call Serve to reconstruct the state. 
+This features enables Serve to write all your deployment configuration and code into a storage location.
+Upon Ray cluster failure and restarts, you can simply call Serve to reconstruct the state.
 
 Here is how to use it:
 
@@ -237,7 +237,7 @@ You can use both the start argument and the CLI to specify it:
 
     serve.start(_checkpoint_path=...)
 
-or 
+or
 
 .. code-block:: shell
 
