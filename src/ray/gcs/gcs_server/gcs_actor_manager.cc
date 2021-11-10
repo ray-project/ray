@@ -397,11 +397,10 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
     // This actor is owned. Send a long polling request to the actor's
     // owner to determine when the actor should be removed.
     PollOwnerForActorOutOfScope(actor);
-  } else {
-    // If it's a detached actor, we need to register the runtime env it used to GC.
-    runtime_env_manager_.AddURIReference(actor->GetActorID().Hex(),
-                                         request.task_spec().runtime_env());
   }
+
+  runtime_env_manager_.AddURIReference(actor->GetActorID().Hex(),
+                                       request.task_spec().runtime_env());
 
   // The backend storage is supposed to be reliable, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
@@ -628,11 +627,12 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   // Clean up the client to the actor's owner, if necessary.
   if (!actor->IsDetached()) {
     RemoveActorFromOwner(actor);
-  } else {
-    runtime_env_manager_.RemoveURIReference(actor->GetActorID().Hex());
   }
 
+  runtime_env_manager_.RemoveURIReference(actor->GetActorID().Hex());
+
   RemoveActorNameFromRegistry(actor);
+
   // The actor is already dead, most likely due to process or node failure.
   if (actor->GetState() == rpc::ActorTableData::DEAD) {
     RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << "has been dead,"

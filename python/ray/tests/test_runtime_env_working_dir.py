@@ -314,7 +314,10 @@ def test_s3_uri(start_cluster, option, per_task_actor):
     "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
 def test_multi_node(start_cluster, option: str, source: str):
     """Tests that the working_dir is propagated across multi-node clusters."""
-    NUM_NODES = 3
+    # TODO(architkulkarni): Currently all nodes in cluster_utils share the same
+    # session directory, which isn't the case for real world clusters. Once
+    # this is fixed, we should test GC with NUM_NODES > 1 here.
+    NUM_NODES = 1
     cluster, address = start_cluster
     for _ in range(NUM_NODES - 1):  # Head node already added.
         cluster.add_node(num_cpus=1)
@@ -363,7 +366,10 @@ def check_local_files_gced(cluster):
     "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
 def test_job_level_gc(start_cluster, option: str, source: str):
     """Tests that job-level working_dir is GC'd when the job exits."""
-    NUM_NODES = 3
+    # TODO(architkulkarni): Currently all nodes in cluster_utils share the same
+    # session directory, which isn't the case for real world clusters. Once
+    # this is fixed, we should test GC with NUM_NODES > 1 here.
+    NUM_NODES = 1
     cluster, address = start_cluster
     for _ in range(NUM_NODES - 1):  # Head node already added.
         cluster.add_node(num_cpus=1)
@@ -407,13 +413,14 @@ def test_job_level_gc(start_cluster, option: str, source: str):
     wait_for_condition(lambda: check_local_files_gced(cluster))
 
 
-# TODO(edoakes): fix this bug and enable test.
-@pytest.mark.skip("Currently failing.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_actor_level_gc(start_cluster, option: str):
     """Tests that actor-level working_dir is GC'd when the actor exits."""
-    NUM_NODES = 3
+    # TODO(architkulkarni): Currently all nodes in cluster_utils share the same
+    # session directory, which isn't the case for real world clusters. Once
+    # this is fixed, we should test GC with NUM_NODES > 1 here.
+    NUM_NODES = 1
     cluster, address = start_cluster
     for _ in range(NUM_NODES - 1):  # Head node already added.
         cluster.add_node(num_cpus=1)
@@ -423,20 +430,20 @@ def test_actor_level_gc(start_cluster, option: str):
     @ray.remote
     class A:
         def check(self):
-            assert "test_module" in os.listdir()
+            import test_module
+            test_module.one()
 
     if option == "working_dir":
         A = A.options(runtime_env={"working_dir": S3_PACKAGE_URI})
     else:
         A = A.options(runtime_env={"py_modules": [S3_PACKAGE_URI]})
 
-    actors = [A.remote() for _ in range(5)]
+    NUM_ACTORS = 5
+    actors = [A.remote() for _ in range(NUM_ACTORS)]
     ray.get([a.check.remote() for a in actors])
-
-    assert not check_local_files_gced(cluster)
-
-    [ray.kill(a) for a in actors]
-
+    for i in range(5):
+        assert not check_local_files_gced(cluster)
+        ray.kill(actors[i])
     wait_for_condition(lambda: check_local_files_gced(cluster))
 
 
