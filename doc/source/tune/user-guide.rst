@@ -364,7 +364,7 @@ Let's assume for this example you're running this script from your laptop, and c
 
 In this example, checkpoints will be saved:
 
-* **Locally**: not saved! we set ``sync_to_driver=False``, so nothing will be sync'd to the driver (your laptop)
+* **Locally**: not saved! Nothing will be sync'd to the driver (your laptop) automatically
 * **S3**: ``s3://my-checkpoints-bucket/path/my-tune-exp/<trial_name>/checkpoint_<step>``
 * **On head node**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node, due to ``sync_to_driver=False``)
 * **On workers nodes**: ``~/ray-results/my-tune-exp/<trial_name>/checkpoint_<step>`` (but only for trials done on that node)
