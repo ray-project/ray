@@ -2447,9 +2447,9 @@ TEST_F(ReferenceCountLineageEnabledTest, TestEvictLineage) {
       });
 
   // ID1 depends on ID0.
-  rc->UpdateSubmittedTaskReferences({ids[0]});
-  rc->UpdateFinishedTaskReferences({ids[0]}, /*release_lineage=*/false, empty_borrower,
-                                   empty_refs, nullptr);
+  rc->UpdateSubmittedTaskReferences({ids[1]}, {ids[0]});
+  rc->UpdateFinishedTaskReferences({ids[1]}, {ids[0]}, /*release_lineage=*/false,
+                                   empty_borrower, empty_refs, nullptr);
   rc->AddLocalReference(ids[1], "");
   rc->AddLocalReference(ids[2], "");
 
