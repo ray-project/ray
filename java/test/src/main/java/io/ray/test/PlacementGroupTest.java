@@ -221,24 +221,6 @@ public class PlacementGroupTest extends BaseTest {
   }
 
   @Test(groups = {"cluster"})
-  public void testCompatibleForPreviousApi() {
-    String pgName = "named_placement_group";
-    List<Map<String, Double>> bundles = new ArrayList<>();
-    for (int i = 0; i < 1; i++) {
-      Map<String, Double> bundle = new HashMap<>();
-      bundle.put("CPU", 1.0);
-      bundles.add(bundle);
-    }
-    PlacementGroup placementGroup =
-        Ray.createPlacementGroup(pgName, bundles, PlacementStrategy.PACK);
-    Assert.assertTrue(placementGroup.wait(60));
-    // Make sure we can get it by name successfully.
-    PlacementGroup resPlacementGroup = Ray.getPlacementGroup(pgName);
-    Assert.assertNotNull(resPlacementGroup);
-    Assert.assertEquals(resPlacementGroup.getBundles().size(), 1);
-  }
-
-  @Test(groups = {"cluster"})
   public void testPlacementGroupForNormalTask() {
     // Create a placement group with non-exist resources.
     String pgName = "named_placement_group";
