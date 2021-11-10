@@ -141,7 +141,7 @@ def publish_error_to_driver(error_type,
     error_data = gcs_utils.construct_error_message(job_id, error_type, message,
                                                    time.time())
     if gcs_publisher:
-        gcs_publisher.publish_error(job_id.hex(), error_data)
+        gcs_publisher.publish_error(job_id.hex().encode(), error_data)
     elif redis_client:
         pubsub_msg = gcs_utils.PubSubMessage()
         pubsub_msg.id = job_id.binary()
