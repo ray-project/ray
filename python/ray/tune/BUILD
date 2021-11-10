@@ -186,7 +186,7 @@ py_test(
     size = "medium",
     srcs = ["tests/test_ray_trial_executor.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive". "tests_dir_R"],
+    tags = ["team:ml", "exclusive", "tests_dir_R"],
 )
 
 py_test(
