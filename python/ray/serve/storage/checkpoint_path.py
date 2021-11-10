@@ -18,7 +18,7 @@ def make_kv_store(checkpoint_path, namespace):
         return RayInternalKVStore(namespace)
     else:
         parsed_url = urlparse(checkpoint_path)
-        if parsed_url.scheme not in {"gcs", "s3", "file", "custom"}:
+        if parsed_url.scheme not in {"gs", "s3", "file", "custom"}:
             raise ValueError(
                 f"Checkpoint must be one of `{DEFAULT_CHECKPOINT_PATH}`, "
                 "`file://path...`, `gs://path...`, `s3://path...`, or "
