@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 PiResult = namedtuple("PiResult", ["samples", "pi"])
 
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=0)
 class PiCalculator:
     def __init__(self, metadata):
         # -- Read only variables --
@@ -101,7 +101,7 @@ def start_actors(num_actors, num_nodes):
 def parse_script_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--kill-interval_s", type=float, default=60)
-    parser.add_argument("--test-runtime", type=float, default=3600)
+    parser.add_argument("--test-runtime", type=float, default=3000)
     return parser.parse_known_args()
 
 
