@@ -756,14 +756,17 @@ class Trainer(Trainable):
         # point.
         self.workers = None
         self.train_exec_impl = None
-        # Old design: Override `_init`
+
+        # Old design: Override `Trainer._init` (or use `build_trainer()`, which
+        # will do this for you).
         try:
             self._init(self.config, self.env_creator)
-        # New design: Override `setup` (as indented by Trainable)
+        # New design: Override `Trainable.setup()` (as indented by Trainable)
         # and do or don't call super().setup() from within your override.
         # By default, `setup` should create both worker sets: "rollout workers"
         # for collecting samples for training and - if applicable - "evaluation
         # workers".
+        # TODO: Deprecate _init and remove this try/except block.
         except NotImplementedError:
             # - Create rollout workers here automatically.
             # - Run the execution plan to create the local iterator to `next()`
@@ -807,8 +810,7 @@ class Trainer(Trainable):
             self.evaluation_workers = self._make_workers(
                 env_creator=self.env_creator,
                 validate_env=None,
-                # TODO: Replace with self.get_default_policy_class(),
-                policy_class=self._policy_class,
+                policy_class=self.get_default_policy_class(self.config),
                 config=evaluation_config,
                 num_workers=self.config["evaluation_num_workers"])
 
@@ -834,7 +836,7 @@ class Trainer(Trainable):
         the Trainer sub-class does not override `_init()` and create it's
         own WorkerSet in `_init()`.
         """
-        pass
+        return getattr(self, "_policy_class", None)
 
     @override(Trainable)
     def step(self) -> ResultDict:
