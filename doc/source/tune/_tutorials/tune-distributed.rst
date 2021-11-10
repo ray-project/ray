@@ -270,6 +270,9 @@ Note that we adjusted the sync period in the example above. Setting this to a lo
 checkpoints from remote nodes more often. This will lead to more robust trial recovery,
 but it will also lead to more synchronization overhead (as SHH is usually slow).
 
+As in the first case, the driver (on the head node) will have access to all checkpoints locally
+for further processing.
+
 
 .. _tune-distributed-spot:
 
