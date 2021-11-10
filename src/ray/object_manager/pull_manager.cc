@@ -403,7 +403,7 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   it->second.spilled_url = spilled_url;
   it->second.spilled_node_id = spilled_node_id;
   it->second.pending_object_creation = pending_creation;
-  if (!it->second.object_size_set && !pending_creation) {
+  if (!it->second.object_size_set) {
     // The object has been created. We can now read the object size and check
     // whether we have available space for the object.
     it->second.object_size = object_size;

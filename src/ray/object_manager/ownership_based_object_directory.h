@@ -95,7 +95,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
     // The node id that spills the object to the disk.
     // It will be Nil if it uses a distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
-    bool pending_creation = false;
+    bool pending_creation = true;
     /// The size of the object.
     size_t object_size = 0;
     /// This flag will get set to true if received any notification of the object.
