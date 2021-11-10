@@ -162,12 +162,12 @@ public final class Ray extends RayCall {
    * name specified.
    *
    * @param name The name of the named actor.
-   * @return an ActorHandle to the actor if the actor of specified name exists or an
-   *     Optional.empty()
+   * @return an ActorHandle to the actor if the actor of specified name exists in current namespace
+   *     or an Optional.empty()
    * @throws RayException An exception is raised if timed out.
    */
   public static <T extends BaseActorHandle> Optional<T> getActor(String name) {
-    return internal().getActor(name, false);
+    return internal().getActor(name);
   }
 
   /**
