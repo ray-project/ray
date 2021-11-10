@@ -749,8 +749,9 @@ class Trainer(Trainable):
         # Evaluation setup.
         self.evaluation_workers = None
         self.evaluation_metrics = {}
-        # Do automatic evaluation from time to time.
-        if self.config.get("evaluation_interval"):
+        # User would like to setup a separate evaluation worker set.
+        if self.config.get("evaluation_num_workers", 0) > 0 or \
+                self.config.get("evaluation_interval"):
             # Update env_config with evaluation settings:
             extra_config = copy.deepcopy(self.config["evaluation_config"])
             # Assert that user has not unset "in_evaluation".
@@ -1757,11 +1758,12 @@ class Trainer(Trainable):
         if config["evaluation_num_workers"] > 0 and \
                 not config["evaluation_interval"]:
             logger.warning(
-                "You have specified {} evaluation workers, but no evaluation "
-                "interval! Will set the interval to 1 (each `train()` call). "
-                "If this is too frequent, set `evaluation_interval` to some "
-                "larger value.".format(config["evaluation_num_workers"]))
-            config["evaluation_interval"] = 1
+                f"You have specified {config['evaluation_num_workers']} "
+                "evaluation workers, but your `evaluation_interval` is None! "
+                "Therefore, evaluation will not occur automatically with each"
+                " call to `Trainer.train()`. Instead, you will have to call "
+                "`Trainer.evaluate()` manually in order to trigger an "
+                "evaluation run.")
         # If `evaluation_num_workers=0` and
         # `evaluation_parallel_to_training=True`, warn that you need
         # at least one remote eval worker for parallel training and
