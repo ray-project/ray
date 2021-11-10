@@ -366,6 +366,12 @@ def debug(address):
     default=False,
     help="provide this argument for the head node")
 @click.option(
+    "--workerless",
+    is_flag=True,
+    default=False,
+    help="provide this argument for the head node. If set,"
+         "the head node will not start raylet.")
+@click.option(
     "--include-dashboard",
     default=None,
     type=bool,
@@ -474,7 +480,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
           min_worker_port, max_worker_port, worker_port_list,
           ray_client_server_port, memory, object_store_memory,
-          redis_max_memory, num_cpus, num_gpus, resources, head,
+          redis_max_memory, num_cpus, num_gpus, resources, head, workerless,
           include_dashboard, dashboard_host, dashboard_port,
           dashboard_agent_listen_port, block, plasma_directory,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
