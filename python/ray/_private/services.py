@@ -1959,6 +1959,7 @@ def start_monitor(redis_address,
 
 def start_ray_client_server(
         redis_address,
+        ray_client_server_ip,
         ray_client_server_port,
         stdout_file=None,
         stderr_file=None,
@@ -1970,6 +1971,8 @@ def start_ray_client_server(
     """Run the server process of the Ray client.
 
     Args:
+        redis_address: The address of the redis server.
+        ray_client_server_ip: Host IP the Ray client server listens on.
         ray_client_server_port (int): Port the Ray client server listens on.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
@@ -1987,12 +1990,15 @@ def start_ray_client_server(
     setup_worker_path = os.path.join(root_ray_dir, "workers",
                                      ray_constants.SETUP_WORKER_FILENAME)
 
+    ray_client_server_host = \
+        "127.0.0.1" if ray_client_server_ip == "127.0.0.1" else "0.0.0.0"
     command = [
         sys.executable,
         setup_worker_path,
         "-m",
         "ray.util.client.server",
         f"--redis-address={redis_address}",
+        f"--host={ray_client_server_host}",
         f"--port={ray_client_server_port}",
         f"--mode={server_type}",
         f"--language={Language.Name(Language.PYTHON)}",
