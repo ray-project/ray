@@ -169,6 +169,8 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   double metrics_num_object_location_updates_per_second_;
 
   uint64_t cum_metrics_num_object_location_updates_;
+
+  friend class OwnershipBasedObjectDirectoryTest;
 };
 
 }  // namespace ray

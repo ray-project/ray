@@ -57,7 +57,7 @@ bool UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_
   // object's size is always greater than 0.
   // TODO(swang): If that's not the case, we should use a flag to check
   // whether the size is set instead.
-  if (location_info.object_size() > 0) {
+  if (location_info.object_size() > 0 && location_info.object_size() != *object_size) {
     *object_size = location_info.object_size();
     is_updated = true;
   }

@@ -404,8 +404,13 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   it->second.spilled_node_id = spilled_node_id;
   it->second.pending_object_creation = pending_creation;
   if (!it->second.object_size_set) {
-    // The object has been created. We can now read the object size and check
-    // whether we have available space for the object.
+    // TODO(swang): This assumes that the object size will be set correctly on
+    // the first location update and that locations will soon appear after the
+    // object size has been set. This can block later requests whose metadata
+    // has already arrived. Instead, we should keep track of which pull
+    // requests are still waiting for object metadata and queue requests in the
+    // order that their metadata appears.
+    // See https://github.com/ray-project/ray/issues/13689.
     it->second.object_size = object_size;
     it->second.object_size_set = true;
     for (auto &bundle_request_id : it->second.bundle_request_ids) {
