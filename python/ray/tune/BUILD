@@ -303,7 +303,7 @@ py_test(
 
 py_test(
     name = "test_trial_scheduler_pbt",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trial_scheduler_pbt.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "flaky"],
