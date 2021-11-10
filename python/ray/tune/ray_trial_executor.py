@@ -394,7 +394,7 @@ class RayTrialExecutor(TrialExecutor):
             # We keep these kwargs separate for backwards compatibility
             # with trainables that don't provide these keyword arguments
             kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
-            kwargs["sync_function_tpl"] = trial.sync_to_cloud
+            kwargs["sync_function_tpl"] = trial.sync_function_tpl
 
         with self._change_working_directory(trial):
             return full_actor_class.remote(**kwargs)

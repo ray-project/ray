@@ -28,12 +28,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Syncing period for syncing local checkpoints to cloud.
-# In env variable is not set, sync happens every 300 seconds.
-CLOUD_SYNC_PERIOD = 300
-
-# Syncing period for syncing worker logs to driver.
-NODE_SYNC_PERIOD = 300
+# Syncing period for syncing checkpoints between nodes or to cloud.
+SYNC_PERIOD = 300
 
 _log_sync_warned = False
 _syncers = {}
@@ -45,16 +41,9 @@ def wait_for_sync():
 
 
 def set_sync_periods(sync_config: "SyncConfig"):
-    """Sets sync periods from config."""
-    global CLOUD_SYNC_PERIOD
-    global NODE_SYNC_PERIOD
-    if os.environ.get("TUNE_CLOUD_SYNC_S"):
-        raise DeprecationWarning(
-            "'TUNE_CLOUD_SYNC_S' is deprecated. Set "
-            "`cloud_sync_period` via tune.SyncConfig instead.")
-        CLOUD_SYNC_PERIOD = env_integer(key="TUNE_CLOUD_SYNC_S", default=300)
-    NODE_SYNC_PERIOD = int(sync_config.sync_period)
-    CLOUD_SYNC_PERIOD = int(sync_config.sync_period)
+    """Sets sync period from config."""
+    global SYNC_PERIOD
+    SYNC_PERIOD = int(sync_config.sync_period)
 
 
 def log_sync_template(options=""):
@@ -256,11 +245,11 @@ class CloudSyncer(Syncer):
 
     def sync_up_if_needed(self, exclude: Optional[List] = None):
         return super(CloudSyncer, self).sync_up_if_needed(
-            CLOUD_SYNC_PERIOD, exclude=exclude)
+            SYNC_PERIOD, exclude=exclude)
 
     def sync_down_if_needed(self, exclude: Optional[List] = None):
         return super(CloudSyncer, self).sync_down_if_needed(
-            CLOUD_SYNC_PERIOD, exclude=exclude)
+            SYNC_PERIOD, exclude=exclude)
 
 
 class NodeSyncer(Syncer):
@@ -291,13 +280,13 @@ class NodeSyncer(Syncer):
         if not self.has_remote_target():
             return True
         return super(NodeSyncer, self).sync_up_if_needed(
-            NODE_SYNC_PERIOD, exclude=exclude)
+            SYNC_PERIOD, exclude=exclude)
 
     def sync_down_if_needed(self, exclude: Optional[List] = None):
         if not self.has_remote_target():
             return True
         return super(NodeSyncer, self).sync_down_if_needed(
-            NODE_SYNC_PERIOD, exclude=exclude)
+            SYNC_PERIOD, exclude=exclude)
 
     def sync_up_to_new_location(self, worker_ip):
         if worker_ip != self.worker_ip:

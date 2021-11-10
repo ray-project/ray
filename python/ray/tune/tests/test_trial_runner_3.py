@@ -780,7 +780,7 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(trials[0].has_checkpoint())
         self.assertEqual(num_checkpoints(trials[0]), 2)
 
-    @patch("ray.tune.syncer.CLOUD_SYNC_PERIOD", 0)
+    @patch("ray.tune.syncer.SYNC_PERIOD", 0)
     def testCheckpointAutoPeriod(self):
         ray.init(num_cpus=3)
 

@@ -1038,7 +1038,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             cls = trial.get_trainable_cls()
             actor = ray.remote(cls).remote(
                 remote_checkpoint_dir=upload_dir,
-                sync_function_tpl=trial.sync_to_cloud)
+                sync_function_tpl=trial.sync_function_tpl)
             return actor
 
         # This actor should create a default aws syncer, so check should fail

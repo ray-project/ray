@@ -194,6 +194,10 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
                                 resources) from exc
 
     sync_config = spec.get("sync_config", SyncConfig())
+    if isinstance(sync_config.syncer, (None, str)):
+        sync_function_tpl = sync_config.syncer
+    else:
+        sync_function_tpl = None  # Auto-detect
 
     return Trial(
         # Submitting trial via server in py2.7 creates Unicode, which does not
@@ -205,7 +209,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
         # json.load leads to str -> unicode in py2.7
         stopping_criterion=spec.get("stop", {}),
         remote_checkpoint_dir=spec.get("remote_checkpoint_dir"),
-        sync_to_cloud=sync_config.syncer,
+        sync_function_tpl=sync_function_tpl,
         checkpoint_freq=args.checkpoint_freq,
         checkpoint_at_end=args.checkpoint_at_end,
         sync_on_checkpoint=sync_config.sync_on_checkpoint,

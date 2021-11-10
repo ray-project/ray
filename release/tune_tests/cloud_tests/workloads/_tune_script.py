@@ -62,7 +62,7 @@ def run_tune(
             syncer="auto" if not no_syncer else None,
             upload_dir=upload_dir,
             sync_on_checkpoint=True,
-            cloud_sync_period=0.5,
+            sync_period=0.5,
         ),
         keep_checkpoints_num=2,
         resources_per_trial={"cpu": num_cpus_per_trial},

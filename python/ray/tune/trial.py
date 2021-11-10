@@ -217,7 +217,7 @@ class Trial:
                  placement_group_factory=None,
                  stopping_criterion=None,
                  remote_checkpoint_dir=None,
-                 sync_to_cloud=None,
+                 sync_function_tpl=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  sync_on_checkpoint=True,
@@ -317,9 +317,10 @@ class Trial:
         else:
             self.remote_checkpoint_dir_prefix = None
 
-        if sync_to_cloud == "auto":
-            sync_to_cloud = None
-        self.sync_to_cloud = sync_to_cloud
+        if sync_function_tpl == "auto" or not isinstance(
+                sync_function_tpl, str):
+            sync_function_tpl = None
+        self.sync_function_tpl = sync_function_tpl
 
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end

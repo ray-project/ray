@@ -150,7 +150,7 @@ class TestSyncFunctionality(unittest.TestCase):
 
     @patch("ray.tune.sync_client.S3_PREFIX", "test")
     def testCloudSyncPeriod(self):
-        """Tests that changing CLOUD_SYNC_PERIOD affects syncing frequency."""
+        """Tests that changing SYNC_PERIOD affects syncing frequency."""
         tmpdir = tempfile.mkdtemp()
 
         def trainable(config):
