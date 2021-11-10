@@ -322,10 +322,12 @@ def test_function_unique_export(ray_start_regular):
 @pytest.mark.skipif(
     sys.platform not in ["win32", "darwin"],
     reason="Only listen on localhost by default on mac and windows.")
-def test_listen_on_localhost(ray_start_regular):
+@pytest.mark.parametrize("start_ray", ["ray_start_regular", "call_ray_start"])
+def test_listen_on_localhost(start_ray, request):
     """All ray processes should listen on localhost by default
        on mac and windows to prevent security popups.
     """
+    request.getfixturevalue(start_ray)
 
     process_infos = []
     for proc in psutil.process_iter(["name", "cmdline"]):
