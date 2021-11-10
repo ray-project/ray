@@ -158,8 +158,8 @@ void GcsActorManager::HandleRegisterActor(const rpc::RegisterActorRequest &reque
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
       });
   if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to register actor: " << status.ToString()
-                   << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
+    RAY_LOG(WARNING) << "Failed to register actor: " << status.ToString()
+                     << ", job id = " << actor_id.JobId() << ", actor id = " << actor_id;
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   }
   ++counts_[CountType::REGISTER_ACTOR_REQUEST];
@@ -376,12 +376,12 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
         RAY_CHECK_OK(
             gcs_publisher_->PublishError(job_id.Hex(), *error_data_ptr, nullptr));
       }
-
       actors_in_namespace.emplace(actor->GetName(), actor->GetActorID());
     } else {
       std::stringstream stream;
-      stream << "Actor with name '" << actor->GetName() << "' already exists.";
-      return Status::Invalid(stream.str());
+      stream << "Actor with name '" << actor->GetName()
+             << "' already exists in the namespace " << actor->GetRayNamespace();
+      return Status::NotFound(stream.str());
     }
   }
 
@@ -453,6 +453,12 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
     return Status::Invalid("Actor may be already destroyed.");
   }
 
+  const auto &actor_name = iter->second->GetName();
+  // If the actor has the name, the name metadata should be stored already.
+  if (!actor_name.empty()) {
+    RAY_CHECK(!GetActorIDByName(actor_name, iter->second->GetRayNamespace()).IsNil());
+  }
+
   if (iter->second->GetState() == rpc::ActorTableData::ALIVE) {
     // In case of temporary network failures, workers will re-send multiple duplicate
     // requests to GCS server.
@@ -513,6 +519,25 @@ ActorID GcsActorManager::GetActorIDByName(const std::string &name,
     }
   }
   return actor_id;
+}
+
+void GcsActorManager::RemoveActorNameFromRegistry(
+    const std::shared_ptr<GcsActor> &actor) {
+  // Remove actor from `named_actors_` if its name is not empty.
+  if (!actor->GetName().empty()) {
+    auto namespace_it = named_actors_.find(actor->GetRayNamespace());
+    if (namespace_it != named_actors_.end()) {
+      auto it = namespace_it->second.find(actor->GetName());
+      if (it != namespace_it->second.end()) {
+        RAY_LOG(INFO) << "Actor name " << actor->GetName() << " is cleand up.";
+        namespace_it->second.erase(it);
+      }
+      // If we just removed the last actor in the namespace, remove the map.
+      if (namespace_it->second.empty()) {
+        named_actors_.erase(namespace_it);
+      }
+    }
+  }
 }
 
 std::vector<std::pair<std::string, std::string>> GcsActorManager::ListNamedActors(
@@ -607,20 +632,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
     runtime_env_manager_.RemoveURIReference(actor->GetActorID().Hex());
   }
 
-  // Remove actor from `named_actors_` if its name is not empty.
-  if (!actor->GetName().empty()) {
-    auto namespace_it = named_actors_.find(actor->GetRayNamespace());
-    if (namespace_it != named_actors_.end()) {
-      auto it = namespace_it->second.find(actor->GetName());
-      if (it != namespace_it->second.end()) {
-        namespace_it->second.erase(it);
-      }
-      // If we just removed the last actor in the namespace, remove the map.
-      if (namespace_it->second.empty()) {
-        named_actors_.erase(namespace_it);
-      }
-    }
-  }
+  RemoveActorNameFromRegistry(actor);
   // The actor is already dead, most likely due to process or node failure.
   if (actor->GetState() == rpc::ActorTableData::DEAD) {
     RAY_LOG(DEBUG) << "Actor " << actor->GetActorID() << "has been dead,"
@@ -875,21 +887,7 @@ void GcsActorManager::ReconstructActor(
         }));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
-    // Remove actor from `named_actors_` if its name is not empty.
-    if (!actor->GetName().empty()) {
-      auto namespace_it = named_actors_.find(actor->GetRayNamespace());
-      if (namespace_it != named_actors_.end()) {
-        auto it = namespace_it->second.find(actor->GetName());
-        if (it != namespace_it->second.end()) {
-          namespace_it->second.erase(it);
-        }
-        // If we just removed the last actor in the namespace, remove the map.
-        if (namespace_it->second.empty()) {
-          named_actors_.erase(namespace_it);
-        }
-      }
-    }
-
+    RemoveActorNameFromRegistry(actor);
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
     if (creation_task_exception != nullptr) {
       mutable_actor_table_data->set_allocated_creation_task_exception(

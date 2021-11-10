@@ -409,6 +409,9 @@ ray::Status NodeManager::RegisterGcs() {
     const auto &resources_changed =
         [this](const rpc::NodeResourceChange &resource_notification) {
           auto id = NodeID::FromBinary(resource_notification.node_id());
+          if (id == self_node_id_) {
+            return;
+          }
           if (resource_notification.updated_resources_size() != 0) {
             ResourceSet resource_set(
                 MapFromProtobuf(resource_notification.updated_resources()));

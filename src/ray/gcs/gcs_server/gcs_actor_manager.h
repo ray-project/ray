@@ -264,6 +264,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ActorID GetActorIDByName(const std::string &name,
                            const std::string &ray_namespace) const;
 
+  /// Remove the actor name from the name registry if actor has the name.
+  /// If the actor doesn't have the name, it is no-op.
+  /// \param actor The actor to remove name from the entry.
+  void RemoveActorNameFromRegistry(const std::shared_ptr<GcsActor> &actor);
+
   /// Get names of named actors.
   //
   /// \param[in] all_namespaces Whether to include actors from all Ray namespaces.
