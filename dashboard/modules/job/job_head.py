@@ -155,12 +155,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def logs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
         job_id = req.query["job_id"]
 
-        stdout: bytes = self._job_manager.get_job_stdout(job_id)
-        stderr: bytes = self._job_manager.get_job_stderr(job_id)
-
+        logs: str = self._job_manager.get_job_logs(job_id)
         # TODO(jiaodong): Support log streaming #19415
-        resp = JobLogsResponse(
-            stdout=stdout.decode("utf-8"), stderr=stderr.decode("utf-8"))
+        resp = JobLogsResponse(logs=logs)
         return aiohttp.web.Response(
             text=json.dumps(dataclasses.asdict(resp)),
             content_type="application/json")

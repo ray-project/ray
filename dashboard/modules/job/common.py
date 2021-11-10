@@ -108,5 +108,4 @@ class JobStatusResponse:
 # TODO(jiaodong): Support log streaming #19415
 @dataclass
 class JobLogsResponse:
-    stdout: str
-    stderr: str
+    logs: str
