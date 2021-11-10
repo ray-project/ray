@@ -416,7 +416,7 @@ class Node:
     def unique_id(self):
         """Get a unique identifier for this node."""
         if hasattr(self, "_plasma_store_socket_name"):
-            return f"{self.node_ip_address}:{self._plasma_store_socket_name or ''}"
+            return f"{self.node_ip_address}:{self._plasma_store_socket_name}"
         return f"{self.node_ip_address}"
 
     @property
