@@ -26,8 +26,7 @@ BASIC_CLUSTER_PARAMS = dict(
             "min_workers": 0,
             "max_workers": 2,
         },
-    }
-)
+    })
 
 
 @pytest.mark.skipif(
@@ -56,8 +55,7 @@ def test_fake_autoscaler_basic_e2e(shutdown_only):
                 "min_workers": 0,
                 "max_workers": 2,
             },
-        }
-    )
+        })
 
     try:
         cluster.start()

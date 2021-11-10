@@ -6,7 +6,6 @@ import pytest
 import ray
 from ray.cluster_utils import AutoscalingCluster
 import ray.ray_constants as ray_constants
-from ray.tests.test_autoscaler_fake_multinode import BASIC_CLUSTER_PARAMS
 from ray._private.test_utils import get_error_message, init_error_pubsub
 
 
@@ -40,8 +39,7 @@ def test_drain_api(shutdown_only):
                 "min_workers": 0,
                 "max_workers": 2,
             },
-        }
-    )
+        })
 
     try:
         cluster.start()
