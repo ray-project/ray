@@ -1,5 +1,4 @@
 import os
-import time
 
 import pytest
 from unittest.mock import patch
@@ -144,10 +143,10 @@ def test_train_failure(ray_start_2_cpus, tmp_path):
     e.start()
 
     with pytest.raises(TrainBackendError):
-        e.fetch_next_result()
+        e.get_next_results()
 
     with pytest.raises(TrainBackendError):
-        e.finish_training()
+        e.get_next_results()
 
     e.start_training(lambda: 1, run_dir=tmp_path)
 
@@ -170,106 +169,6 @@ def test_worker_failure(ray_start_2_cpus, tmp_path):
         with pytest.raises(TrainingWorkerError):
             e.start_training(lambda: 1, run_dir=tmp_path)
             e.finish_training()
-
-
-def test_no_exhaust(ray_start_2_cpus, tmp_path):
-    """Tests if training can finish even if queue is not exhausted."""
-
-    def train_func():
-        for _ in range(2):
-            train.report(loss=1)
-        return 2
-
-    config = TestConfig()
-    e = BackendExecutor(config, num_workers=2)
-    e.start()
-
-    e.start_training(train_func, run_dir=tmp_path)
-    output = e.finish_training()
-
-    assert output == [2, 2]
-
-
-def test_checkpoint(ray_start_2_cpus, tmp_path):
-    def train_func():
-        for i in range(2):
-            train.save_checkpoint(epoch=i)
-
-    config = TestConfig()
-    e = BackendExecutor(config, num_workers=1)
-    e.start()
-
-    e.start_training(train_func, run_dir=tmp_path)
-    e.finish_training()
-
-    assert e.latest_checkpoint() is not None
-    assert e.latest_checkpoint()["epoch"] == 1
-
-
-def test_persisted_checkpoint(ray_start_2_cpus, tmp_path):
-    def train_func():
-        for i in range(2):
-            train.save_checkpoint(epoch=i)
-            time.sleep(1)
-
-    config = TestConfig()
-    e = BackendExecutor(config)
-    e.start()
-    e.start_training(train_func, run_dir=tmp_path)
-    e.finish_training()
-
-    assert e.latest_checkpoint_id() == 2
-    assert e.latest_checkpoint() is not None
-    assert e.latest_checkpoint()["epoch"] == 1
-    assert e.best_checkpoint_path() is not None
-
-    assert os.path.exists(e.best_checkpoint_path())
-
-    def validate():
-        checkpoint = train.load_checkpoint()
-        assert checkpoint is not None
-        assert checkpoint["epoch"] == 1
-
-    e2 = BackendExecutor(config)
-    e2.start()
-    e2.start_training(
-        validate, checkpoint=e.best_checkpoint_path(), run_dir=tmp_path)
-    e2.finish_training()
-
-
-def test_persisted_checkpoint_id(ray_start_2_cpus, tmp_path):
-    def train_func():
-        for i in range(2):
-            train.save_checkpoint(epoch=i)
-            time.sleep(1)
-
-    config = TestConfig()
-    e = BackendExecutor(config)
-    e.start()
-    e.start_training(train_func, run_dir=tmp_path, latest_checkpoint_id=100)
-    e.finish_training()
-
-    assert e.latest_checkpoint_id() == 102
-    assert e.latest_checkpoint() is not None
-    assert e.latest_checkpoint()["epoch"] == 1
-    assert e.best_checkpoint_path() is not None
-
-    assert os.path.exists(e.best_checkpoint_path())
-
-
-def test_mismatch_checkpoint_report(ray_start_2_cpus, tmp_path):
-    def train_func():
-        if (train.world_rank()) == 0:
-            train.save_checkpoint(epoch=0)
-        else:
-            train.report(iter=0)
-
-    config = TestConfig()
-    e = BackendExecutor(config, num_workers=2)
-    e.start()
-    e.start_training(train_func, run_dir=tmp_path)
-    with pytest.raises(RuntimeError):
-        e.finish_training()
 
 
 def test_tensorflow_start(ray_start_2_cpus, tmp_path):

@@ -14,7 +14,6 @@ from ray.train import Trainer, TorchConfig, TensorflowConfig, \
 from ray.train.backends.backend import BackendConfig, Backend, \
     BackendExecutor
 from ray.train.callbacks.callback import TrainingCallback
-from ray.train.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.train.examples.horovod.horovod_example import train_func as \
     horovod_torch_train_func, HorovodTrainClass
 from ray.train.examples.tensorflow_mnist_example import train_func as \
@@ -1152,7 +1151,7 @@ def test_dataset_fault_tolerance(ray_start_4_cpus):
         with patch.object(
                 new_backend_executor_cls,
                 "_get_dataset_shards",
-                return_value=dataset_splits) as mock_method:
+                return_value=dataset_splits):
             trainer = Trainer(test_config, num_workers=2)
             trainer.start()
             result = trainer.run(train_func, dataset=dataset)
@@ -1183,6 +1182,7 @@ def test_resources(ray_start_4_cpus_4_gpus_4_extra, resource, num_requested):
     wait_for_condition(
         lambda: ray.available_resources().get(resource, 0) == original)
 
+
 def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
     class CudaTestBackend(TestBackend):
         share_cuda_visible_devices = True
@@ -1191,7 +1191,6 @@ def test_gpu_requests(ray_start_4_cpus_4_gpus_4_extra):
         @property
         def backend_cls(self):
             return CudaTestBackend
-
 
     # GPUs should not be requested if `use_gpu` is False.
     with pytest.raises(ValueError):
