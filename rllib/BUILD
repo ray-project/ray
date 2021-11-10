@@ -2663,6 +2663,6 @@ py_test(
     name = "examples/documentation/rllib_in_60s",
     main = "examples/documentation/rllib_in_60s.py",
     tags = ["team:ml", "documentation"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/documentation/rllib_in_60s.py"],
 )
