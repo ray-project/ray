@@ -4,30 +4,6 @@ import platform
 import ray
 from ray.cluster_utils import AutoscalingCluster
 
-BASIC_CLUSTER_PARAMS = dict(
-    head_resources={"CPU": 2},
-    worker_node_types={
-        "cpu_node": {
-            "resources": {
-                "CPU": 4,
-                "object_store_memory": 1024 * 1024 * 1024,
-            },
-            "node_config": {},
-            "min_workers": 0,
-            "max_workers": 2,
-        },
-        "gpu_node": {
-            "resources": {
-                "CPU": 2,
-                "GPU": 1,
-                "object_store_memory": 1024 * 1024 * 1024,
-            },
-            "node_config": {},
-            "min_workers": 0,
-            "max_workers": 2,
-        },
-    })
-
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
