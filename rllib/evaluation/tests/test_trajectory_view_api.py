@@ -353,7 +353,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         # timesteps.
         view_reqs = {
             "state_in_0": ViewRequirement(
-                data_col="state_out_0", shift="-5:-1",
+                data_col="state_out_0",
+                shift="-5:-1",
                 space=space,
                 batch_repeat_value=5,
             ),
@@ -369,12 +370,13 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "state_out_0": np.array([1]),
         })
         input_dict = batch.get_single_step_input_dict(
-            view_requirements=view_reqs,
-            index="last")
-        check(input_dict, {
-            "state_in_0": [[0, 0, 0, 0, 1]],  # ts=1
-            "seq_lens": [1],
-        })
+            view_requirements=view_reqs, index="last")
+        check(
+            input_dict,
+            {
+                "state_in_0": [[0, 0, 0, 0, 1]],  # ts=1
+                "seq_lens": [1],
+            })
 
         # Trajectory of 6 ts (0-5) (we would like to compute the 6th).
         batch = SampleBatch({
@@ -385,12 +387,13 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "state_out_0": np.array([1, 2, 3, 4, 5, 6]),
         })
         input_dict = batch.get_single_step_input_dict(
-            view_requirements=view_reqs,
-            index="last")
-        check(input_dict, {
-            "state_in_0": [[2, 3, 4, 5, 6]],  # ts=6
-            "seq_lens": [1],
-        })
+            view_requirements=view_reqs, index="last")
+        check(
+            input_dict,
+            {
+                "state_in_0": [[2, 3, 4, 5, 6]],  # ts=6
+                "seq_lens": [1],
+            })
 
         # Trajectory of 12 ts (0-11) (we would like to compute the 12th).
         batch = SampleBatch({
@@ -402,12 +405,13 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "state_out_0": np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
         })
         input_dict = batch.get_single_step_input_dict(
-            view_requirements=view_reqs,
-            index="last")
-        check(input_dict, {
-            "state_in_0": [[8, 9, 10, 11, 12]],  # ts=12
-            "seq_lens": [1],
-        })
+            view_requirements=view_reqs, index="last")
+        check(
+            input_dict,
+            {
+                "state_in_0": [[8, 9, 10, 11, 12]],  # ts=12
+                "seq_lens": [1],
+            })
 
     def test_get_single_step_input_dict_batch_repeat_value_1(self):
         """Test whether a SampleBatch produces the correct 1-step input dict.
@@ -417,7 +421,8 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         # With batch-repeat-value==1: state_in_0 is built each timestep.
         view_reqs = {
             "state_in_0": ViewRequirement(
-                data_col="state_out_0", shift="-5:-1",
+                data_col="state_out_0",
+                shift="-5:-1",
                 space=space,
                 batch_repeat_value=1,
             ),
@@ -433,12 +438,13 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "state_out_0": np.array([1]),
         })
         input_dict = batch.get_single_step_input_dict(
-            view_requirements=view_reqs,
-            index="last")
-        check(input_dict, {
-            "state_in_0": [[0, 0, 0, 0, 1]],  # ts=1
-            "seq_lens": [1],
-        })
+            view_requirements=view_reqs, index="last")
+        check(
+            input_dict,
+            {
+                "state_in_0": [[0, 0, 0, 0, 1]],  # ts=1
+                "seq_lens": [1],
+            })
 
         # Trajectory of 6 ts (0-5) (we would like to compute the 6th).
         batch = SampleBatch({
@@ -453,12 +459,13 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "state_out_0": np.array([1, 2, 3, 4, 5, 6]),
         })
         input_dict = batch.get_single_step_input_dict(
-            view_requirements=view_reqs,
-            index="last")
-        check(input_dict, {
-            "state_in_0": [[2, 3, 4, 5, 6]],  # ts=6
-            "seq_lens": [1],
-        })
+            view_requirements=view_reqs, index="last")
+        check(
+            input_dict,
+            {
+                "state_in_0": [[2, 3, 4, 5, 6]],  # ts=6
+                "seq_lens": [1],
+            })
 
         # Trajectory of 12 ts (0-11) (we would like to compute the 12th).
         batch = SampleBatch({
@@ -479,12 +486,13 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             "state_out_0": np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
         })
         input_dict = batch.get_single_step_input_dict(
-            view_requirements=view_reqs,
-            index="last")
-        check(input_dict, {
-            "state_in_0": [[8, 9, 10, 11, 12]],  # ts=12
-            "seq_lens": [1],
-        })
+            view_requirements=view_reqs, index="last")
+        check(
+            input_dict,
+            {
+                "state_in_0": [[8, 9, 10, 11, 12]],  # ts=12
+                "seq_lens": [1],
+            })
 
 
 def analyze_rnn_batch(batch, max_seq_len, view_requirements):

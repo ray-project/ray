@@ -962,8 +962,9 @@ class SampleBatch(dict):
 
     @ExperimentalAPI
     def get_single_step_input_dict(
-        self, view_requirements: ViewRequirementsDict,
-        index: Union[str, int] = "last",
+            self,
+            view_requirements: ViewRequirementsDict,
+            index: Union[str, int] = "last",
     ) -> "SampleBatch":
         """Creates single ts SampleBatch at given index from `self`.
 
