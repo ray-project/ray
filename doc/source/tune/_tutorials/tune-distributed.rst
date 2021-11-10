@@ -130,10 +130,121 @@ If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray
 Syncing
 -------
 
-Tune automatically syncs the trial folder on remote nodes back to the head node. This requires the ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>`.
-By default, local syncing requires rsync to be installed. You can customize the sync command with the ``syncer`` argument in ``tune.SyncConfig`` by providing either a function or a string.
+Tune stores checkpoints on the node where the trials are executed. If you are training on more than one node,
+this means that some trial checkpoints may be on the head node and others are not.
 
-If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like ``rsync -savz -e "ssh -i ssh_key.pem" {source} {target}``. Alternatively, a function can be provided with the following signature:
+When trials are restored (e.g. after a failure or when the experiment was paused), they may be scheduled on
+different nodes, but still would need access to the latest checkpoint. To make sure this works, Ray Tune
+comes with facilities to synchronize trial checkpoints between nodes.
+
+Generally we consider three cases:
+
+1. When using a shared directory (e.g. via NFS)
+2. When using cloud storage (e.g. S3 or GS)
+3. When using neither
+
+The default option here is 3, which will be automatically used if nothing else is configured.
+
+Using a shared directory
+""""""""""""""""""""""""
+If all Ray nodes have access to a shared filesystem, e.g. via NFS, they can all write to this directory.
+In this case, we don't need any synchronization at all, as it is implicitly done by the operating system.
+
+For this case, we only need to tell Ray Tune not to do any syncing at all (as syncing is the default):
+
+.. code-block:: python
+
+    from ray import tune
+
+    tune.run(
+        trainable,
+        name="experiment_name",
+        local_dir="/path/to/shared/storage/",
+        sync_config=tune.SyncConfig(
+            syncer=None  # Disable syncing
+        )
+    )
+
+Note that the driver (on the head node) will have access to all checkpoints locally (in the
+shared directory) for further processing.
+
+
+Using cloud storage
+"""""""""""""""""""
+If all nodes have access to cloud storage, e.g. S3 or GS, we end up with a similar situation as in the first case,
+only that the consolidated directory including all logs and checkpoints lives on cloud storage.
+
+For this case, we tell Ray Tune to use an ``upload_dir`` to store checkpoints at.
+This will automatically store both the experiment state and the trial checkpoints at that directory:
+
+.. code-block:: python
+
+    from ray import tune
+
+    tune.run(
+        trainable,
+        name="experiment_name",
+        sync_config=tune.SyncConfig(
+            upload_dir="s3://bucket-name/sub-path/"
+        )
+    )
+
+We don't have to provide a ``syncer`` here as it will be automatically detected. However, you can provide
+a string if you want to use a custom command:
+
+.. code-block:: python
+
+    from ray import tune
+
+    tune.run(
+        trainable,
+        name="experiment_name",
+        sync_config=tune.SyncConfig(
+            upload_dir="s3://bucket-name/sub-path/",
+            syncer="aws s3 sync {source} {target}",  # Custom sync command
+        )
+    )
+
+If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``,
+as demonstrated in the example above.
+
+The consolidated data will live be available in the cloud bucket. This means that the driver
+(on the head node) will not have access to all checkpoints locally. If you want to process
+e.g. the best checkpoint further, you will first have to fetch it from the cloud storage.
+
+
+Default syncing (no shared/cloud storage)
+"""""""""""""""""""""""""""""""""""""""""
+If you're using neither a shared filesystem nor cloud storage, Ray Tune will resort to the
+default syncing mechanisms, which utilizes ``rsync`` (via SSH) to synchronize checkpoints across
+nodes.
+
+Please note that this approach is likely the least efficient one - you should always try to use
+shared or cloud storage if possible when training on a multi node cluster.
+
+For the syncing to work, the head node must be able to SSH into the worker nodes. If you are using
+the Ray cluster launcher this is usually the case (note that Kubernetes is an exception, but
+:ref:`see here for more details <tune-kubernetes>`).
+
+If you don't provide a ``tune.SyncConfig`` at all, rsync-based syncing will be used.
+
+If you want to customize syncing behavior, you can again specify a custom sync template:
+
+.. code-block:: python
+
+    from ray import tune
+
+    tune.run(
+        trainable,
+        name="experiment_name",
+        sync_config=tune.SyncConfig(
+            # Do not specify an upload dir here
+            syncer="rsync -savz -e "ssh -i ssh_key.pem" {source} {target}",  # Custom sync command
+        )
+    )
+
+
+Alternatively, a function can be provided with the following signature:
 
 .. code-block:: python
 
@@ -145,15 +256,19 @@ If a string is provided, then it must include replacement fields ``{source}`` an
         sync_process.wait()
 
     tune.run(
-        MyTrainableClass,
+        trainable,
         name="experiment_name",
         sync_config=tune.SyncConfig(
-            syncer=custom_sync_func
+            syncer=custom_sync_func,
+            sync_period=60  # Synchronize more often
         )
     )
 
 When syncing results back to the driver, the source would be a path similar to ``ubuntu@192.0.0.1:/home/ubuntu/ray_results/trial1``, and the target would be a local path.
-This custom sync command is used to restart trials under failure. The ``syncer`` is invoked to push a checkpoint to new node for a paused/pre-empted trial to resume.
+
+Note that we adjusted the sync period in the example above. Setting this to a lower number will pull
+checkpoints from remote nodes more often. This will lead to more robust trial recovery,
+but it will also lead to more synchronization overhead (as SHH is usually slow).
 
 
 .. _tune-distributed-spot:
