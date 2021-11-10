@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "ray/gcs/gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 
 namespace ray {
 

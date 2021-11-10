@@ -171,7 +171,7 @@ CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
     if (data.state() == rpc::GcsNodeInfo::DEAD) {
       std::vector<std::shared_ptr<CoreWorker>> workers_copy;
       {
-        absl::ReaderMutexLock lock(&worker_map_mutex_);
+        absl::ReaderMutexLock lock(&mutex_);
         for (auto &entry : workers_) {
           workers_copy.push_back(entry.second);
         }
