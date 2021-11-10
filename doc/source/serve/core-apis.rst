@@ -5,7 +5,7 @@ Core API: Deployments
 This section should help you:
 
 - create, expose, update and configure deployments
-- configure resources of your deployments
+- configure resources for your deployments
 - specify different Python dependencies across different deployment using Runtime Environments
 
 .. contents::
