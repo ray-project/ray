@@ -105,6 +105,10 @@ class PullManager {
   /// non-empty, the object may no longer be on any node.
   /// \param spilled_node_id The node id of the object if it was spilled. If Nil, the
   /// object may no longer be on any node.
+  /// \param pending_creation Whether this object is pending creation. This is
+  /// used to time out objects that have had no locations for too long.
+  /// \param object_size The size of the object. Used to compute how many
+  /// objects we can safely pull.
   void OnLocationChange(const ObjectID &object_id,
                         const std::unordered_set<NodeID> &client_ids,
                         const std::string &spilled_url, const NodeID &spilled_node_id,
