@@ -50,7 +50,7 @@ namespace core {
 
 class MockTaskResubmissionInterface : public TaskResubmissionInterface {
  public:
-  MOCK_METHOD(Status, ResubmitTask,
+  MOCK_METHOD(bool, ResubmitTask,
               (const TaskID &task_id, std::vector<ObjectID> *task_deps), (override));
 };
 

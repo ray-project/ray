@@ -106,8 +106,8 @@ class TestPPO(unittest.TestCase):
         config["compress_observations"] = True
         num_iterations = 2
 
-        for fw in framework_iterator(config):
-            for env in ["FrozenLake-v0", "MsPacmanNoFrameskip-v4"]:
+        for fw in framework_iterator(config, with_eager_tracing=True):
+            for env in ["FrozenLake-v1", "MsPacmanNoFrameskip-v4"]:
                 print("Env={}".format(env))
                 for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
@@ -146,7 +146,7 @@ class TestPPO(unittest.TestCase):
         # Test against all frameworks.
         for fw in framework_iterator(config):
             # Default Agent should be setup with StochasticSampling.
-            trainer = ppo.PPOTrainer(config=config, env="FrozenLake-v0")
+            trainer = ppo.PPOTrainer(config=config, env="FrozenLake-v1")
             # explore=False, always expect the same (deterministic) action.
             a_ = trainer.compute_single_action(
                 obs,

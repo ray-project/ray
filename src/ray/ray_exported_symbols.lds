@@ -37,5 +37,3 @@
 *ray*streaming*
 *aligned_free*
 *aligned_malloc*
-*absl*
-*grpc*

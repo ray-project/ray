@@ -26,7 +26,7 @@ class TestTD3(unittest.TestCase):
 
         # Test against all frameworks.
         for _ in framework_iterator(config, with_eager_tracing=True):
-            trainer = td3.TD3Trainer(config=config, env="Pendulum-v0")
+            trainer = td3.TD3Trainer(config=config, env="Pendulum-v1")
             num_iterations = 1
             for i in range(num_iterations):
                 results = trainer.train()
@@ -45,7 +45,7 @@ class TestTD3(unittest.TestCase):
         for _ in framework_iterator(config, with_eager_tracing=True):
             lcl_config = config.copy()
             # Default GaussianNoise setup.
-            trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v0")
+            trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v1")
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_single_action(obs, explore=False)
             self.assertEqual(trainer.get_policy().global_timestep, 1)
@@ -70,7 +70,7 @@ class TestTD3(unittest.TestCase):
                 "initial_scale": 0.001,
                 "final_scale": 0.001,
             }
-            trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v0")
+            trainer = td3.TD3Trainer(config=lcl_config, env="Pendulum-v1")
             # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = trainer.compute_single_action(
                 obs, explore=False)
