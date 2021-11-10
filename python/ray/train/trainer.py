@@ -24,6 +24,7 @@ from ray.train.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
 # Ray Train should be usable even if Tune is not installed.
 from ray.train.utils import construct_path
 from ray.train.worker_group import WorkerGroup
+from ray.util.ml_utils.node import force_on_current_node
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -132,6 +133,7 @@ class Trainer:
                     "`resources_per_worker.")
 
         remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
+        remote_executor = force_on_current_node(remote_executor)
         self._executor = remote_executor.remote(
             backend_config=backend_config,
             num_workers=num_workers,
