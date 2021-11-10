@@ -132,11 +132,21 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
                 path='/dir/file.zip'
             )
             -> ("s3", "s3_bucket_dir_file.zip")
+    For HTTPS URIs, the path will have '/' replaced with '_'.
+        urlparse("https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip")
+            -> ParseResult(
+                scheme='https',
+                netloc='github.com',
+                path='/shrekris-anyscale/test_repo/archive/HEAD.zip'
+            )
+            -> ("https", "https_github_com__shrekris-anyscale_test_repo_archive_HEAD.zip")
     """
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
     if protocol == Protocol.S3:
         return (protocol, f"s3_{uri.netloc}_" + "_".join(uri.path.split("/")))
+    elif protocol == Protocol.HTTPS:
+        return (protocol, f"http_{uri.netloc.replace('.', '_')}_" + "_".join(uri.path.split("/")))
     else:
         return (protocol, uri.netloc)
 
