@@ -109,3 +109,8 @@ train.local_rank
 ~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.local_rank
+
+train.world_size
+~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.world_size

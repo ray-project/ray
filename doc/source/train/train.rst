@@ -85,10 +85,10 @@ system. Let's take following simple examples:
 
     Now let's convert this to a distributed multi-worker training function!
 
-    First, update the training function code to use PyTorch's
-    ``DistributedDataParallel``. With Ray Train, you just pass in your distributed
-    data parallel code as as you would normally run it with
-    ``torch.distributed.launch``.
+    All you have to do is use the ``ray.train.torch.prepare`` utility function to
+    easily setup your model, data, optimizer, & loss for distributed training.
+    This will automatically wrap your model with ``DistributedDataParallel``
+    and place it on the right device, and add ``DisributedSampler`` to your DataLoaders.
 
     .. literalinclude:: /../../python/ray/train/examples/torch_quick_start.py
        :language: python
