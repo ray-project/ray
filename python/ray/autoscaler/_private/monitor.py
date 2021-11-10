@@ -294,8 +294,7 @@ class Monitor:
         if not _internal_kv_initialized():
             return
         data = _internal_kv_get(
-            ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
-            namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
+            ray.ray_constants.AUTOSCALER_RESOURCE_REQUEST_CHANNEL)
         if data:
             try:
                 resource_request = json.loads(data)
@@ -332,10 +331,7 @@ class Monitor:
             as_json = json.dumps(status)
             if _internal_kv_initialized():
                 _internal_kv_put(
-                    DEBUG_AUTOSCALING_STATUS,
-                    as_json,
-                    overwrite=True,
-                    namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
+                    DEBUG_AUTOSCALING_STATUS, as_json, overwrite=True)
 
             # Wait for a autoscaler update interval before processing the next
             # round of messages.
@@ -402,11 +398,7 @@ class Monitor:
         # drivers.
         message = f"The autoscaler failed with the following error:\n{error}"
         if _internal_kv_initialized():
-            _internal_kv_put(
-                DEBUG_AUTOSCALING_ERROR,
-                message,
-                overwrite=True,
-                namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
+            _internal_kv_put(DEBUG_AUTOSCALING_ERROR, message, overwrite=True)
         redis_client = ray._private.services.create_redis_client(
             self.redis_address, password=self.redis_password)
         from ray._private.utils import push_error_to_driver_through_redis
@@ -425,9 +417,7 @@ class Monitor:
         try:
             if _internal_kv_initialized():
                 # Delete any previous autoscaling errors.
-                _internal_kv_del(
-                    DEBUG_AUTOSCALING_ERROR,
-                    namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
+                _internal_kv_del(DEBUG_AUTOSCALING_ERROR)
             self._initialize_autoscaler()
             self._run()
         except Exception:

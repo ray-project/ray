@@ -21,7 +21,6 @@ from ray.util.placement_group import (PlacementGroup, placement_group,
                                       remove_placement_group)
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 import ray.experimental.internal_kv as internal_kv
-from ray import ray_constants
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 
@@ -30,12 +29,8 @@ def get_ray_status_output(address):
     redis_client = ray._private.services.create_redis_client(address, "")
     gcs_client = gcs_utils.GcsClient.create_from_redis(redis_client)
     internal_kv._initialize_internal_kv(gcs_client)
-    status = internal_kv._internal_kv_get(
-        DEBUG_AUTOSCALING_STATUS,
-        namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
-    error = internal_kv._internal_kv_get(
-        DEBUG_AUTOSCALING_ERROR,
-        namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
+    status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
+    error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
     return {
         "demand": debug_status(
             status, error).split("Demands:")[1].strip("\n").strip(" "),

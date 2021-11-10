@@ -23,7 +23,6 @@ except ImportError:  # py2
     from pipes import quote
 
 import ray
-from ray import ray_constants
 from ray.experimental.internal_kv import _internal_kv_put
 import ray._private.services as services
 from ray.autoscaler.node_provider import NodeProvider
@@ -142,8 +141,7 @@ def request_resources(num_cpus: Optional[int] = None,
     _internal_kv_put(
         AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
         json.dumps(to_request),
-        overwrite=True,
-        namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
+        overwrite=True)
 
 
 def create_or_update_cluster(

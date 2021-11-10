@@ -1527,11 +1527,9 @@ def status(address, redis_password):
         redis_client)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     status = ray.experimental.internal_kv._internal_kv_get(
-        DEBUG_AUTOSCALING_STATUS,
-        namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
+        DEBUG_AUTOSCALING_STATUS)
     error = ray.experimental.internal_kv._internal_kv_get(
-        DEBUG_AUTOSCALING_ERROR,
-        namespace=ray_constants.KV_NAMESPACE_AUTOSCALER)
+        DEBUG_AUTOSCALING_ERROR)
     print(debug_status(status, error))
 
 

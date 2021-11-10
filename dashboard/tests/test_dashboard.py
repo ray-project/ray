@@ -23,7 +23,6 @@ from ray._private.test_utils import (
     run_string_as_driver, wait_until_succeeded_without_exception)
 from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS_LEGACY,
                                           DEBUG_AUTOSCALING_ERROR)
-from ray.ray_constants import KV_NAMESPACE_AUTOSCALER
 from ray.dashboard import dashboard
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
@@ -151,16 +150,13 @@ def test_basic(ray_start_with_dashboard):
     # Check redis keys are set.
     logger.info("Check redis keys are set.")
     dashboard_address = ray.experimental.internal_kv._internal_kv_get(
-        ray_constants.REDIS_KEY_DASHBOARD,
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+        ray_constants.REDIS_KEY_DASHBOARD)
     assert dashboard_address is not None
     dashboard_rpc_address = ray.experimental.internal_kv._internal_kv_get(
-        dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
-        namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+        dashboard_consts.REDIS_KEY_DASHBOARD_RPC)
     assert dashboard_rpc_address is not None
     key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}"
-    agent_ports = ray.experimental.internal_kv._internal_kv_get(
-        key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+    agent_ports = ray.experimental.internal_kv._internal_kv_get(key)
     assert agent_ports is not None
 
 
@@ -480,11 +476,9 @@ def test_get_cluster_status(ray_start_with_dashboard):
     gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(client)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     ray.experimental.internal_kv._internal_kv_put(
-        DEBUG_AUTOSCALING_STATUS_LEGACY,
-        "hello",
-        namespace=KV_NAMESPACE_AUTOSCALER)
-    ray.experimental.internal_kv._internal_kv_put(
-        DEBUG_AUTOSCALING_ERROR, "world", namespace=KV_NAMESPACE_AUTOSCALER)
+        DEBUG_AUTOSCALING_STATUS_LEGACY, "hello")
+    ray.experimental.internal_kv._internal_kv_put(DEBUG_AUTOSCALING_ERROR,
+                                                  "world")
 
     response = requests.get(f"{webui_url}/api/cluster_status")
     response.raise_for_status()
@@ -642,8 +636,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         time.sleep(1)
         try:
             dashboard_url = ray.experimental.internal_kv._internal_kv_get(
-                ray_constants.REDIS_KEY_DASHBOARD,
-                namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+                ray_constants.REDIS_KEY_DASHBOARD)
             if dashboard_url:
                 new_port = int(dashboard_url.split(b":")[-1])
                 assert new_port > int(port)
