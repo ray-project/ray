@@ -27,9 +27,22 @@ def test_drain_api(shutdown_only):
     DrainNode currently works by asking the GCS to de-register and shut down
     Ray nodes.
     """
-
     cluster = AutoscalingCluster(
-        **BASIC_CLUSTER_PARAMS, _leave_termination_to_drain_api=True)
+        head_resources={"CPU": 1},
+        worker_node_types={
+            "gpu_node": {
+                "resources": {
+                    "CPU": 1,
+                    "GPU": 1,
+                    "object_store_memory": 1024 * 1024 * 1024,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
+        }
+    )
+
     try:
         cluster.start()
         ray.init("auto")

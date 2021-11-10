@@ -26,14 +26,38 @@ BASIC_CLUSTER_PARAMS = dict(
             "min_workers": 0,
             "max_workers": 2,
         },
-    })
+    }
+)
 
 
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_fake_autoscaler_basic_e2e(shutdown_only):
     # __example_begin__
-    cluster = AutoscalingCluster(**BASIC_CLUSTER_PARAMS)
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 2},
+        worker_node_types={
+            "cpu_node": {
+                "resources": {
+                    "CPU": 4,
+                    "object_store_memory": 1024 * 1024 * 1024,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
+            "gpu_node": {
+                "resources": {
+                    "CPU": 2,
+                    "GPU": 1,
+                    "object_store_memory": 1024 * 1024 * 1024,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
+        }
+    )
 
     try:
         cluster.start()
