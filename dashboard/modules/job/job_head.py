@@ -9,24 +9,28 @@ from dataclasses import dataclass
 
 import ray
 import ray.dashboard.utils as dashboard_utils
-from ray._private.job_manager import JobManager
 from ray._private.runtime_env.packaging import (package_exists,
                                                 upload_package_to_gcs)
-from ray.dashboard.modules.job.data_types import (
-    GetPackageResponse, JobStatus, JobSubmitRequest, JobSubmitResponse,
-    JobStopResponse, JobStatusResponse, JobLogsResponse)
+from ray.dashboard.modules.job.common import (
+    GetPackageResponse,
+    JobStatus,
+    JobSubmitRequest,
+    JobSubmitResponse,
+    JobStopResponse,
+    JobStatusResponse,
+    JobLogsResponse,
+    JOBS_API_ROUTE_LOGS,
+    JOBS_API_ROUTE_SUBMIT,
+    JOBS_API_ROUTE_STOP,
+    JOBS_API_ROUTE_STATUS,
+    JOBS_API_ROUTE_PACKAGE,
+)
+from ray.dashboard.modules.job.job_manager import JobManager
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 RAY_INTERNAL_JOBS_NAMESPACE = "_ray_internal_jobs_"
-
-JOBS_API_PREFIX = "/api/jobs/"
-JOBS_API_ROUTE_LOGS = JOBS_API_PREFIX + "logs"
-JOBS_API_ROUTE_SUBMIT = JOBS_API_PREFIX + "submit"
-JOBS_API_ROUTE_STOP = JOBS_API_PREFIX + "stop"
-JOBS_API_ROUTE_STATUS = JOBS_API_PREFIX + "status"
-JOBS_API_ROUTE_PACKAGE = JOBS_API_PREFIX + "package"
 
 
 def _ensure_ray_initialized(f: Callable) -> Callable:

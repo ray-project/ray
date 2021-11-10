@@ -9,9 +9,8 @@ import pytest
 from ray.dashboard.tests.conftest import *  # noqa
 from ray._private.test_utils import (format_web_url, wait_for_condition,
                                      wait_until_server_available)
-from ray._private.job_manager import JobStatus
+from ray.dashboard.modules.job.common import JobStatus, JOBS_API_ROUTE_SUBMIT
 from ray.dashboard.modules.job.sdk import JobSubmissionClient
-from ray.dashboard.modules.job.job_head import JOBS_API_ROUTE_SUBMIT
 
 logger = logging.getLogger(__name__)
 
