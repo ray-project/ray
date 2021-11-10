@@ -99,7 +99,10 @@ class Cluster:
                 for shutting down all started processes.
         """
         if cluster_not_supported:
-            raise RuntimeError("cannot use Cluster on this platform")
+            logger.warning(
+                "Ray cluster mode is currently experimental and untested on "
+                "Windows. If you are using it and running into issues please "
+                "file a report at https://github.com/ray-project/ray/issues.")
         self.head_node = None
         self.worker_nodes = set()
         self.redis_address = None
