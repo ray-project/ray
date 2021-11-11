@@ -9,7 +9,7 @@ _default_context: "Optional[DatasetContext]" = None
 _context_lock = threading.Lock()
 
 # The max target block size in bytes for reads and transformations.
-DEFAULT_MAX_TARGET_BLOCK_SIZE = 512 * 1024 * 1024
+DEFAULT_TARGET_MAX_BLOCK_SIZE = 512 * 1024 * 1024
 
 
 @DeveloperAPI
@@ -39,7 +39,7 @@ class DatasetContext:
 
             if _default_context is None:
                 _default_context = DatasetContext(
-                    None, DEFAULT_MAX_TARGET_BLOCK_SIZE)
+                    None, DEFAULT_TARGET_MAX_BLOCK_SIZE)
 
             if _default_context.block_owner is None:
                 owner = _DesignatedBlockOwner.options(
