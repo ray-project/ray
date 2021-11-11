@@ -99,7 +99,7 @@ def train_func(config):
 
 def train_linear(num_workers=2, use_gpu=False, epochs=3):
     trainer = Trainer(
-        backend="torch",
+        backend=TorchConfig(backend="gloo"),
         num_workers=num_workers,
         use_gpu=use_gpu)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}

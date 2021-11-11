@@ -34,6 +34,7 @@
     driver_setup: train/driver_setup.sh
 
     run:
+        use_connect: True
         timeout: 36000
         script: python train/train_tensorflow_mnist_test.py
 
