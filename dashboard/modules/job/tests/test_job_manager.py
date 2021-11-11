@@ -7,8 +7,8 @@ import psutil
 import pytest
 
 import ray
-from ray._private.job_manager import (JobManager, JobStatus,
-                                      JOB_ID_METADATA_KEY)
+from ray.dashboard.modules.job.common import JobStatus, JOB_ID_METADATA_KEY
+from ray.dashboard.modules.job.job_manager import JobManager
 from ray._private.test_utils import SignalActor, wait_for_condition
 
 TEST_NAMESPACE = "jobs_test_namespace"
