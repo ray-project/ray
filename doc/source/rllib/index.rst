@@ -66,103 +66,110 @@ for a few training iterations, then perform a single evaluation loop
 Feature Overview
 ----------------
 
-The following is a summary of RLlib's most striking features (for an in-depth overview, check out our `documentation <http://docs.ray.io/en/master/rllib.html>`_).
+The following is a summary of RLlib's most striking features.
+For an in-depth overview, check out our `documentation <http://docs.ray.io/en/master/rllib.html>`_.
 
-In particular, RLlib offers and supports:
-
-.. .. container:: clear-both
-
-..    .. container:: buttons-float-left
-
-..        .. image:: ../images/rllib/sigils/tf-and-torch.svg
-..            :width: 120
-
-.. container::
-
-    The most **popular deep-learning frameworks**: PyTorch and TensorFlow
-    (tf1.x/2.x static-graph/eager/traced).
+Click on the images below to see an example script for each of the listed features:
 
 
-.. .. container:: clear-both
+.. container:: clear-both
 
-..    .. container:: buttons-float-left
+    .. container:: buttons-float-left
 
-..        .. image:: ../images/rllib/sigils/distributed-learning.svg
-..            :width: 120
+        .. image:: ../images/rllib/sigils/rllib-sigil-tf-and-torch.svg
+            :width: 100
+            :target: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py
 
-.. container::
+    .. container::
 
-    **Highly distributed learning**: Our RLlib algorithms (such as our "PPO" or "IMPALA")
-    allow you to set the ``num_workers`` config parameter, such that your workloads can run
-    on 100s of CPUs/nodes thus parallelizing and speeding up learning.
-
-.. .. container:: clear-both
-
-..    .. container:: buttons-float-left
-
-..        .. image:: ../images/rllib/sigils/vectorized-envs.svg
-..            :width: 120
-
-.. container::
-
-    **Vectorized (batched) environments**: RLlib auto-vectorizes your (custom)
-    gym.Env classes such that RLlib environment workers can batch and thus
-    significantly speedup the action computing model forward passes.
-
-.. .. container:: clear-both
-
-..    .. container:: buttons-float-left
-
-..        .. image:: ../images/rllib/sigils/multi-agent.svg
-..            :width: 120
-
-.. container::
-
-    **Multi-agent RL** (MARL): Convert your (custom) gym.Env into a multi-agent one via a few simple steps and start training your agents in any of the following possible setups:
-    <br/>Cooperative with shared or separate policies and/or value functions.
-    <br/>Adversarial scenarios using self-play and league-based training.
-    <br/>Independent learning of neutral/co-existing agents.
-
-.. .. container:: clear-both
-
-..    .. container:: buttons-float-left
-
-..        .. image:: ../images/rllib/sigils/external-simulators.svg
-..            :width: 120
-
-.. container::
-
-    **External simulators** connecting to RLlib from the outside (e.g.
-    via http(s)): Don't have your simulation running as a gym.Env in python?
-    No problem, RLlib supports an external environment API and comes with a pluggable,
-    off-the-shelve client/server setup that allows you to run 100s of independent
-    simulators on the "outside" (e.g. a Windows cloud) connecting to a central RLlib
-    Policy-Server that learns and serves actions. Alternatively, actions can be computed
-    on the client side to save on network traffic.
-
-.. .. container:: clear-both
-
-..    .. container:: buttons-float-left
-
-..        .. image:: ../images/rllib/sigils/offline-rl.svg
-..            :width: 120
-
-.. container::
-
-    **Offline (batch) RL and imitation learning (behavior cloning)** using historic data:
-    If you don't have a simulator for your particular problem, but tons of historic data
-    recorded by a legacy (maybe non-RL/ML system), this branch of reinforcement learning
-    is for you! RLlib's comes with several offline RL algorithms (*CQL*, *MARWIL*, and *DQfD*),
-    allowing you to either purely behavior-clone the historic system (the one that recorded
-    your historic data) or learn how to improve over that system.
+        The most **popular deep-learning frameworks**: `PyTorch <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_torch_policy.py>`_ and `TensorFlow
+        (tf1.x/2.x static-graph/eager/traced) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py>`_.
 
 
-In-Depth Documentation
-----------------------
+.. container:: clear-both
 
-For an in-depth overview of RLlib and everything it has to offer, including
-hand-on tutorials of important industry use cases and workflows, head over to
-our `documentation pages <https://docs.ray.io/en/master/rllib.html>`_.
+    .. container:: buttons-float-right
+
+        .. image:: ../images/rllib/sigils/rllib-sigil-distributed-learning.svg
+            :width: 100
+            :target: https://github.com/ray-project/ray/blob/master/rllib/examples/tune/framework.py
+
+    .. container::
+
+        **Highly distributed learning**: Our RLlib algorithms (such as our "PPO" or "IMPALA")
+        allow you to set the ``num_workers`` config parameter, such that your workloads can run
+        on 100s of CPUs/nodes thus parallelizing and speeding up learning.
+
+
+.. container:: clear-both
+
+    .. container:: buttons-float-left
+
+        .. image:: ../images/rllib/sigils/rllib-sigil-vector-envs.svg
+            :width: 100
+            :target: https://github.com/ray-project/ray/blob/master/rllib/examples/env_rendering_and_recording.py
+
+    .. container::
+
+        **Vectorized (batched), remote (parallel) environments**: RLlib auto-vectorizes
+        your (custom) gym.Env classes such that environment workers can batch and thus
+        significantly speedup the action computing model forward passes.
+        On top of that, RLlib offers an option to create
+        `single environments (within a vectorized one) as ray Actors <https://github.com/ray-project/ray/blob/master/rllib/examples/remote_vector_env_with_custom_api.py>`_,
+        thus parallelizing even the env stepping process.
+
+
+.. container:: clear-both
+
+    .. container:: buttons-float-right
+
+        .. image:: ../images/rllib/sigils/rllib-sigil-multi-agent.svg
+            :width: 100
+            :target: https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py
+
+    .. container::
+
+        | **Multi-agent RL** (MARL): Convert your (custom) gym.Env into a multi-agent one via a few simple steps and start training your agents in any of the following fashions:
+        | 1) Cooperative with `shared <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`_ or `separate <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`_ policies and/or value functions.
+        | 2) Adversarial scenarios using `self-play <https://github.com/ray-project/ray/blob/master/rllib/examples/self_play_with_open_spiel.py>`_ and `league-based training <https://github.com/ray-project/ray/blob/master/rllib/examples/self_play_league_based_with_open_spiel.py>`_.
+        | 3) `Independent learning <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`_ of neutral/co-existing agents.
+
+
+.. container:: clear-both
+
+    .. container:: buttons-float-left
+
+        .. image:: ../images/rllib/sigils/rllib-sigil-external-simulators.svg
+            :width: 100
+            :target: https://github.com/ray-project/ray/tree/master/rllib/examples/serving
+
+    .. container::
+
+        **External simulators**: Don't have your simulation running as a gym.Env in python?
+        No problem! RLlib supports an external environment API and comes with a pluggable,
+        off-the-shelve client/server setup that allows you to run 100s of independent
+        simulators on the "outside" (e.g. a Windows cloud) connecting to a central RLlib
+        Policy-Server that learns and serves actions. Alternatively, actions can be computed
+        on the client side to save on network traffic.
+
+
+.. container:: clear-both
+
+    .. container:: buttons-float-right
+
+        .. image:: ../images/rllib/sigils/rllib-sigil-offline-rl.svg
+            :width: 100
+            :target: https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl.py
+
+    .. container::
+
+        **Offline RL and imitation learning/behavior cloning**: You don't have a simulator
+        for your particular problem, but tons of historic data recorded by a legacy (maybe
+        non-RL/ML) system? This branch of reinforcement learning is for you!
+        RLlib's comes with several offline RL algorithms (*CQL*, *MARWIL*, and *DQfD*),
+        allowing you to either purely behavior-clone your existing system or learn how
+        to further improve over it.
+
 
 
 Customizations
