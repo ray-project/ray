@@ -145,7 +145,7 @@ class GcsClient:
                                GcsClient.MAX_MESSAGE_LENGTH),
                          ("grpc.max_receive_message_length",
                           GcsClient.MAX_MESSAGE_LENGTH)]
-        if isinstance(gcs_address, str):
+        if isinstance(gcs_address, (str, bytes)):
             self._get_gcs_address = lambda: gcs_address
         else:
             self._get_gcs_address = gcs_address
@@ -163,7 +163,7 @@ class GcsClient:
                     self._channel)
                 return
             except Exception as e:
-                logger.error(f"Connecting to GCS failed with error: {e}")
+                logger.debug(f"Connecting to GCS failed with error: {e}")
                 time.sleep(1)
 
     @auto_reconnect

@@ -94,13 +94,13 @@ class ImportThread:
     def _get_import_info_for_collision_detection(self, key):
         """Retrieve the collision identifier, type, and name of the import."""
         if key.startswith(b"RemoteFunction"):
-            collision_identifier, function_name = self._internal_kv_mget(
+            collision_identifier, function_name = self._internal_kv_multiget(
                 key, ["collision_identifier", "function_name"])
             return (collision_identifier,
                     ray._private.utils.decode(function_name.encode()),
                     "remote function")
         elif key.startswith(b"ActorClass"):
-            collision_identifier, class_name = self._internal_kv_mget(
+            collision_identifier, class_name = self._internal_kv_multiget(
                 key, ["collision_identifier", "class_name"])
             return collision_identifier, ray._private.utils.decode(
                 class_name.encode()), "actor"
@@ -161,7 +161,7 @@ class ImportThread:
 
     def fetch_and_execute_function_to_run(self, key):
         """Run on arbitrary function on the worker."""
-        (job_id, serialized_function) = self._internal_kv_mget(
+        (job_id, serialized_function) = self._internal_kv_multiget(
             key, ["job_id", "function"])
 
         if self.worker.mode == ray.SCRIPT_MODE:
@@ -190,7 +190,7 @@ class ImportThread:
                 traceback_str,
                 job_id=ray.JobID(job_id))
 
-    def _internal_kv_mget(self, key, fields):
+    def _internal_kv_multiget(self, key, fields):
         with disable_client_hook():
             vals = _internal_kv_get(
                 key, namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
