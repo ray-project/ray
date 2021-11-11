@@ -513,7 +513,7 @@ A.deploy()"""
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_local_store_recovery():
+def test_local_store_recovery(ray_shutdown):
     _, tmp_path = mkstemp()
 
     @serve.deployment
@@ -551,7 +551,8 @@ def test_local_store_recovery():
         "num_cpus": 4
     }], indirect=True)
 def test_snapshot_always_written_to_internal_kv(
-        ray_start_with_dashboard):  # noqa: F811
+        ray_start_with_dashboard,  # noqa: F811
+        ray_shutdown):
     # https://github.com/ray-project/ray/issues/19752
     _, tmp_path = mkstemp()
 
