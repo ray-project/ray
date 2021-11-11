@@ -379,7 +379,7 @@ def commit_or_url(commit_or_url: str) -> str:
         if url is not None:
             # Extract commit from url so that we can do the
             # commit sanity check later.
-            p = re.compile('/([a-f0-9]{40})/')
+            p = re.compile("/([a-f0-9]{40})/")
             m = p.search(url)
             if m is not None:
                 os.environ["RAY_COMMIT"] = m.group(1)
