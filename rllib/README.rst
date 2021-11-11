@@ -97,7 +97,7 @@ In-Depth Documentation
 
 For an in-depth overview of RLlib and everything it has to offer, including
 hand-on tutorials of important industry use cases and workflows, head over to
-our `documentation pages <https://docs.ray.io/en/master/rllib.html>`_.
+our `documentation pages <https://docs.ray.io/en/latest/rllib.html>`_.
 
 
 Cite our Paper
