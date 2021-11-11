@@ -19,11 +19,12 @@ class CSVDatasource(FileBasedDatasource):
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str,
                      **reader_args) -> Iterator[Block]:
+        import pyarrow
         from pyarrow import csv
 
         read_options = reader_args.pop(
             "read_options", csv.ReadOptions(use_threads=False))
-        reader = csv.open(f, read_options=read_options, **reader_args)
+        reader = csv.open_csv(f, read_options=read_options, **reader_args)
         schema = None
         while True:
             try:
@@ -33,7 +34,7 @@ class CSVDatasource(FileBasedDatasource):
                     schema = table.schema
                 yield table
             except StopIteration:
-                pass
+                return
 
     def _write_block(self,
                      f: "pyarrow.NativeFile",

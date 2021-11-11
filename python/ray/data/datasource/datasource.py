@@ -5,10 +5,11 @@ import numpy as np
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor, BlockMetadata, T, \
-    BlockPartition, BlockPartitionMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata, T
 from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import ArrowRow
+from ray.data.impl.block_partition import BlockPartition, \
+    BlockPartitionMetadata
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
 

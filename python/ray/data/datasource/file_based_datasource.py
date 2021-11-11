@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
-from ray.data.context import DataContext
+from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_list import BlockMetadata
 from ray.data.impl.block_partition import BlockPartitionBuilder
@@ -141,7 +141,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             logger.debug(f"Reading {len(read_paths)} files.")
             if isinstance(fs, _S3FileSystemWrapper):
                 fs = fs.unwrap()
-            ctx = DataContext.get_current()
+            ctx = DatasetContext.get_current()
             builder = BlockPartitionBuilder(
                 block_udf=_block_udf,
                 target_max_block_size=ctx.target_max_block_size)

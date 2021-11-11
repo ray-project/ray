@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
-from ray.data.context import DataContext
+from ray.data.context import DatasetContext
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource, _resolve_paths_and_filesystem, _resolve_kwargs)
@@ -87,7 +87,7 @@ class ParquetDatasource(FileBasedDatasource):
 
             from pyarrow.dataset import _get_partition_keys
 
-            ctx = DataContext.get_current()
+            ctx = DatasetContext.get_current()
             builder = BlockPartitionBuilder(
                 block_udf=_block_udf,
                 target_max_block_size=ctx.target_max_block_size)
