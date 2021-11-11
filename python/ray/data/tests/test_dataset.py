@@ -3531,12 +3531,14 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
         def __init__(self):
             self.counter = Counter.remote()
 
-        def _read_file(self, f: "pa.NativeFile", path: str, **reader_args):
+        def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
             count = self.counter.increment.remote()
             if ray.get(count) == 1:
                 raise ValueError("oops")
             else:
-                return CSVDatasource._read_file(self, f, path, **reader_args)
+                for block in CSVDatasource._read_stream(
+                        self, f, path, **reader_args):
+                    yield block
 
         def _write_block(self, f: "pa.NativeFile", block: BlockAccessor,
                          **writer_args):
