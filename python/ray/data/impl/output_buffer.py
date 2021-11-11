@@ -15,7 +15,7 @@ class BlockOutputBuffer(object):
         self._blocks: List[ObjectRef[Block]] = []
         self._finalized = False
 
-    def add_item(self, item: Any) -> None:
+    def add(self, item: Any) -> None:
         assert not self._finalized
         self._buffer.add(item)
 

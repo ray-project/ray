@@ -35,6 +35,7 @@ from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
     CallableClass
+from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
@@ -124,13 +125,18 @@ class Dataset(Generic[T]):
         fn = cache_wrapper(fn)
         context = DatasetContext.get_current()
 
-        def transform(block: Block) -> Block:
+        def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
-            builder = DelegatingArrowBlockBuilder()
+            output_buffer = BlockOutputBuffer(None,
+                                              context.target_max_block_size)
             for row in block.iter_rows():
-                builder.add(fn(row))
-            return builder.build()
+                output_buffer.add(fn(row))
+                if output_buffer.has_next():
+                    yield output_buffer.next()
+            output_buffer.finalize()
+            if output_buffer.has_next():
+                yield output_buffer.next()
 
         compute = get_compute(compute)
 
@@ -191,7 +197,7 @@ class Dataset(Generic[T]):
         fn = cache_wrapper(fn)
         context = DatasetContext.get_current()
 
-        def transform(block: Block) -> Block:
+        def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
             total_rows = block.num_rows()
@@ -228,7 +234,7 @@ class Dataset(Generic[T]):
                                      "pandas.DataFrame, or pyarrow.Table")
                 builder.add_block(applied)
 
-            return builder.build()
+            return [builder.build()]
 
         compute = get_compute(compute)
 
@@ -263,14 +269,15 @@ class Dataset(Generic[T]):
         fn = cache_wrapper(fn)
         context = DatasetContext.get_current()
 
-        def transform(block: Block) -> Block:
+        def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
+            # TODO(ekl) use BlockOutputBuffer
             builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
                 for r2 in fn(row):
                     builder.add(r2)
-            return builder.build()
+            return [builder.build()]
 
         compute = get_compute(compute)
 
@@ -305,14 +312,14 @@ class Dataset(Generic[T]):
         fn = cache_wrapper(fn)
         context = DatasetContext.get_current()
 
-        def transform(block: Block) -> Block:
+        def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
             builder = block.builder()
             for row in block.iter_rows():
                 if fn(row):
                     builder.add(row)
-            return builder.build()
+            return [builder.build()]
 
         compute = get_compute(compute)
 
