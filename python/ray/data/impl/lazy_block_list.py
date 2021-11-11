@@ -5,8 +5,7 @@ import numpy as np
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata
-from ray.data.impl.block_partition import BlockPartition, \
+from ray.data.block import Block, BlockMetadata, BlockPartition, \
     BlockPartitionMetadata
 from ray.data.impl.block_list import BlockList
 

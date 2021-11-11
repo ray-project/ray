@@ -11,7 +11,7 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_list import BlockMetadata
-from ray.data.impl.block_partition import BlockPartitionBuilder
+from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
@@ -142,14 +142,18 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
             if isinstance(fs, _S3FileSystemWrapper):
                 fs = fs.unwrap()
             ctx = DatasetContext.get_current()
-            builder = BlockPartitionBuilder(
+            output_buffer = BlockOutputBuffer(
                 block_udf=_block_udf,
                 target_max_block_size=ctx.target_max_block_size)
             for read_path in read_paths:
                 with fs.open_input_stream(read_path, **open_stream_args) as f:
                     for data in read_stream(f, read_path, **reader_args):
-                        builder.add_block(data)
-            return builder.iterator()
+                        output_buffer.add_block(data)
+                        if output_buffer.has_next():
+                            yield output_buffer.next()
+            output_buffer.finalize()
+            if output_buffer.has_next():
+                yield output_buffer.next()
 
         read_tasks = []
         for read_paths, file_sizes in zip(

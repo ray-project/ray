@@ -15,7 +15,7 @@ from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import (
     FileBasedDatasource, _resolve_paths_and_filesystem, _resolve_kwargs)
 from ray.data.impl.block_list import BlockMetadata
-from ray.data.impl.block_partition import BlockPartitionBuilder
+from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.util import _check_pyarrow_version
@@ -88,7 +88,7 @@ class ParquetDatasource(FileBasedDatasource):
             from pyarrow.dataset import _get_partition_keys
 
             ctx = DatasetContext.get_current()
-            builder = BlockPartitionBuilder(
+            output_buffer = BlockOutputBuffer(
                 block_udf=_block_udf,
                 target_max_block_size=ctx.target_max_block_size)
 
@@ -108,8 +108,12 @@ class ParquetDatasource(FileBasedDatasource):
                             pa.array([value] * len(table)))
                 # If the table is empty, drop it.
                 if table.num_rows > 0:
-                    builder.add_block(table)
-            return builder.iterator()
+                    output_buffer.add_block(table)
+                    if output_buffer.has_next():
+                        yield output_buffer.next()
+            output_buffer.finalize()
+            if output_buffer.has_next():
+                yield builder.next()
 
         if _block_udf is not None:
             # Try to infer dataset schema by passing dummy table through UDF.
