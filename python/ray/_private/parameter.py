@@ -208,7 +208,8 @@ class RayParams:
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
-        self.runtime_env_dir_name = (runtime_env_dir_name or ray_constants.DEFAULT_RUNTIME_ENV_DIR_NAME)
+        self.runtime_env_dir_name = (
+            runtime_env_dir_name or ray_constants.DEFAULT_RUNTIME_ENV_DIR_NAME)
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
         self.metrics_agent_port = metrics_agent_port

@@ -129,7 +129,12 @@ class Cluster:
         output_info = ray.init(
             namespace=namespace,
             ignore_reinit_error=True,
-    node_args):
+            address=self.redis_address,
+            _redis_password=self.redis_password)
+        logger.info(output_info)
+        self.connected = True
+
+    def add_node(self, wait=True, **node_args):
         """Adds a node to the local Ray Cluster.
 
         All nodes are by default started with the following settings:

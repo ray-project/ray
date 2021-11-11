@@ -294,4 +294,3 @@ KV_NAMESPACE_JOB = "job"
 # This might introduce some compatibility issues so leave it here for now.
 KV_NAMESPACE_PACKAGE = None
 KV_NAMESPACE_SERVE = "serve"
-

@@ -120,8 +120,8 @@ class Node:
                 f"workers/{ray_constants.SETUP_WORKER_FILENAME}"))
 
         # Create a directory to be used for runtime environment.
-        self._runtime_env_dir = os.path.join(
-            self._session_dir, ray_params.runtime_env_dir_name)
+        self._runtime_env_dir = os.path.join(self._session_dir,
+                                             ray_params.runtime_env_dir_name)
         self._resource_spec = None
         self._localhost = socket.gethostbyname("localhost")
         self._ray_params = ray_params
