@@ -573,11 +573,14 @@ def get_all_log_message(pub_sub, num, timeout=20):
     return msgs
 
 
-def format_web_url(url):
+def format_web_url(url, for_job_submission_client: bool = False):
     """Format web url."""
     url = url.replace("localhost", "http://127.0.0.1")
     if not url.startswith("http://"):
-        return "http://" + url
+        if for_job_submission_client:
+            return "ray://" + url
+        else:
+            return "http://" + url
     return url
 
 
