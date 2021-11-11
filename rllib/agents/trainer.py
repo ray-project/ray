@@ -712,18 +712,19 @@ class Trainer(Trainable):
             logger.info(
                 f"Executing eagerly (framework='{self.config['framework']}'),"
                 f" with eager_tracing={self.config['eager_tracing']}. For "
-                "production workloads, make sure to set eager_tracing=True in"
-                " order to match the speed of tf-static-graph "
-                "(framework='tf')")
+                "production workloads, make sure to set `eager_tracing=True` "
+                "in order to match the speed of tf-static-graph "
+                "(framework='tf'). For debugging purposes, "
+                "`eager_tracing=False` is the best choice.")
         # Tf-static-graph (framework=tf): Recommend upgrading to tf2 and
         # enabling eager tracing for similar speed.
         elif tf1 and self.config["framework"] == "tf":
             logger.info(
                 "Your framework setting is 'tf', meaning you are using static"
                 "-graph mode. Set framework='tf2' to enable eager execution "
-                "with tf2.x. You may also want to then set eager_tracing=True"
-                " in order to reach similar execution speed as with "
-                "static-graph mode.")
+                "with tf2.x. You may also want to then set "
+                "`eager_tracing=True` in order to reach similar execution "
+                "speed as with static-graph mode.")
 
         # Set Trainer's seed after we have - if necessary - enabled
         # tf eager-execution.
@@ -763,14 +764,18 @@ class Trainer(Trainable):
             self._init(self.config, self.env_creator)
         # New design: Override `Trainable.setup()` (as indented by Trainable)
         # and do or don't call super().setup() from within your override.
-        # By default, `setup` should create both worker sets: "rollout workers"
-        # for collecting samples for training and - if applicable - "evaluation
-        # workers".
-        # TODO: Deprecate _init and remove this try/except block.
+        # By default, `super().setup()` will create both worker sets:
+        # "rollout workers" for collecting samples for training and - if
+        # applicable - "evaluation workers" for evaluation runs in between or
+        # parallel to training.
+        # TODO: Deprecate `_init()` and remove this try/except block.
         except NotImplementedError:
+            # Only if user did not override `_init()`:
             # - Create rollout workers here automatically.
             # - Run the execution plan to create the local iterator to `next()`
             #   in each training iteration.
+            # This matches the behavior of using `build_trainer()`, which should
+            # no longer be used.
             self.workers = self._make_workers(
                 env_creator=self.env_creator,
                 validate_env=self.validate_env,
@@ -2001,9 +2006,8 @@ class Trainer(Trainable):
         with the remaining (healthy) workers.
         """
 
-        workers = self.workers if hasattr(self, "workers") else \
-            getattr(self, "_workers", None)
-        if workers is None:
+        workers = getattr(self, "workers", None)
+        if not isinstance(workers, WorkerSet):
             return
 
         logger.info("Health checking all workers...")
