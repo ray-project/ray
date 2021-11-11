@@ -21,7 +21,6 @@ from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError
 from ray import ray_constants
 from ray._private.resource_spec import NODE_ID_PREFIX
-from ray.tune.durable_trainable import DurableTrainable
 from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
@@ -391,7 +390,9 @@ class RayTrialExecutor(TrialExecutor):
             "config": trial_config,
             "logger_creator": logger_creator,
         }
-        if issubclass(trial.get_trainable_cls(), DurableTrainable):
+        if trial.uses_cloud_checkpointing:
+            # We keep these kwargs separate for backwards compatibility
+            # with trainables that don't provide these keyword arguments
             kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
             kwargs["sync_function_tpl"] = trial.sync_to_cloud
 
@@ -770,7 +771,7 @@ class RayTrialExecutor(TrialExecutor):
             self._last_nontrivial_wait = time.time()
         return self._running[result_id]
 
-    def fetch_result(self, trial) -> List[Trial]:
+    def fetch_result(self, trial) -> List[Dict]:
         """Fetches result list of the running trials.
 
         Returns:
@@ -1048,13 +1049,12 @@ class RayTrialExecutor(TrialExecutor):
                 trial.runner.restore_from_object.remote(value)
         else:
             logger.debug("Trial %s: Attempting restore from %s", trial, value)
-            if issubclass(trial.get_trainable_cls(),
-                          DurableTrainable) or not trial.sync_on_checkpoint:
+            if trial.uses_cloud_checkpointing or not trial.sync_on_checkpoint:
                 with self._change_working_directory(trial):
                     remote = trial.runner.restore.remote(value)
             elif trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the
-                # case where a DurableTrainable is not provided.
+                # case where no cloud checkpoints are provided.
                 logger.debug("Trial %s: Reading checkpoint into memory", trial)
                 obj = TrainableUtil.checkpoint_to_object(value)
                 with self._change_working_directory(trial):
@@ -1062,9 +1062,8 @@ class RayTrialExecutor(TrialExecutor):
             else:
                 raise AbortTrialExecution(
                     "Pass in `sync_on_checkpoint=True` for driver-based trial"
-                    "restoration. Pass in an `upload_dir` and a Trainable "
-                    "extending `DurableTrainable` for remote storage-based "
-                    "restoration")
+                    "restoration. Pass in an `upload_dir` for remote "
+                    "storage-based restoration")
 
             if block:
                 ray.get(remote)

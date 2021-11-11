@@ -8,8 +8,6 @@ import pickle
 
 from ray import tune
 
-from ray.tune.durable_trainable import DurableTrainable
-
 
 class ProgressCallback(tune.callback.Callback):
     def __init__(self):
@@ -33,18 +31,11 @@ class ProgressCallback(tune.callback.Callback):
             self.last_update = now
 
 
-class TestDurableTrainable(DurableTrainable):
-    def __init__(self,
-                 remote_checkpoint_dir,
-                 config,
-                 logger_creator=None,
-                 **kwargs):
+class TestDurableTrainable(tune.Trainable):
+    def __init__(self, *args, **kwargs):
         self.setup_env()
 
-        super(TestDurableTrainable, self).__init__(
-            remote_checkpoint_dir,
-            config=config,
-            logger_creator=logger_creator)
+        super(TestDurableTrainable, self).__init__(*args, **kwargs)
 
     def setup_env(self):
         pass

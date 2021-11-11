@@ -13,6 +13,7 @@ from grpc.experimental import aio as aiogrpc
 from distutils.version import LooseVersion
 
 import ray
+import ray.experimental.internal_kv as internal_kv
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
@@ -151,7 +152,7 @@ class DashboardAgent(object):
 
         # Start a grpc asyncio server.
         await self.server.start()
-        # TODO: use grpc address directly
+        # TODO: redis-removal bootstrap
         gcs_address = await self.aioredis_client.get(
             dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
         self.gcs_client = GcsClient(gcs_address.decode())
@@ -194,9 +195,11 @@ class DashboardAgent(object):
         logger.info("Registered %s routes.", len(dump_routes))
 
         # Write the dashboard agent port to redis.
-        await self.aioredis_client.set(
+        # TODO: Use async version if performance is an issue
+        internal_kv._internal_kv_put(
             f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}",
-            json.dumps([http_port, self.grpc_port]))
+            json.dumps([http_port, self.grpc_port]),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
 
         # Register agent to agent manager.
         raylet_stub = agent_manager_pb2_grpc.AgentManagerServiceStub(

@@ -13,6 +13,7 @@ from ray.serve.common import (
     str,
     ReplicaConfig,
     ReplicaTag,
+    ReplicaName,
 )
 from ray.serve.deployment_state import (
     DeploymentState,
@@ -1881,7 +1882,7 @@ def test_resume_deployment_state_from_replica_tags(
     # Step 3: Create new deployment_state by resuming from passed in replicas
 
     deployment_state_manager._recover_from_checkpoint(
-        [mocked_replica.replica_tag])
+        [ReplicaName.prefix + mocked_replica.replica_tag])
 
     # Step 4: Ensure new deployment_state is correct
     # deployment state behind "test" is re-created in recovery flow

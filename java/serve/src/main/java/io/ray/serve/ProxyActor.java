@@ -137,8 +137,8 @@ public class ProxyActor {
     this.proxyRouter.updateRoutes(endpointInfos);
   }
 
-  public void ready() {
-    return;
+  public boolean ready() {
+    return true;
   }
 
   public void blockUntilEndpointExists(String endpoint, double timeoutS) {

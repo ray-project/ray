@@ -349,7 +349,7 @@ On a multinode cluster, Tune automatically creates a copy of all trial checkpoin
 Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing.
 
 If you are running Ray Tune on Kubernetes, you should usually use a
-:func:`DurableTrainable <ray.tune.durable>` or a shared filesystem for checkpoint sharing.
+:ref:`cloud checkpointing <tune-sync-config>` or a shared filesystem for checkpoint sharing.
 Please :ref:`see here for best practices for running Tune on Kubernetes <tune-kubernetes>`.
 
 If you do not use the cluster launcher, you should set up a NFS or global file system and
@@ -688,7 +688,7 @@ especially when running many trials in parallel.
 Instead you should use shared storage for checkpoints so that no additional synchronization across nodes
 is necessary. There are two main options.
 
-First, you can use a :func:`DurableTrainable <ray.tune.durable>` to store your
+First, you can use the :ref:`SyncConfig <tune-sync-config>` to store your
 logs and checkpoints on cloud storage, such as AWS S3 or Google Cloud Storage:
 
 .. code-block:: python

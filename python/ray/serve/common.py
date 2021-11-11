@@ -1,5 +1,3 @@
-import ray
-
 from dataclasses import dataclass
 from typing import Optional
 from uuid import UUID
@@ -63,24 +61,28 @@ class ReplicaName:
     replica_suffix: str
     replica_tag: ReplicaTag = ""
     delimiter: str = "#"
+    prefix: str = "SERVE_REPLICA::"
 
     def __init__(self, deployment_tag: str, replica_suffix: str):
         self.deployment_tag = deployment_tag
         self.replica_suffix = replica_suffix
         self.replica_tag = f"{deployment_tag}{self.delimiter}{replica_suffix}"
 
+    @staticmethod
+    def is_replica_name(actor_name: str) -> bool:
+        return actor_name.startswith(ReplicaName.prefix)
+
     @classmethod
-    def from_str(self, replica_name):
-        parsed = replica_name.split(self.delimiter)
+    def from_str(cls, actor_name):
+        assert ReplicaName.is_replica_name(actor_name)
+        # TODO(simon): this currently conforms the tag and suffix logic. We
+        # can try to keep the internal name always hard coded with the prefix.
+        replica_name = actor_name.replace(cls.prefix, "")
+        parsed = replica_name.split(cls.delimiter)
         assert len(parsed) == 2, (
             f"Given replica name {replica_name} didn't match pattern, please "
-            f"ensure it has exactly two fields with delimiter {self.delimiter}"
-        )
-        self.deployment_tag = parsed[0]
-        self.replica_suffix = parsed[1]
-        self.replica_tag = replica_name
-
-        return self
+            f"ensure it has exactly two fields with delimiter {cls.delimiter}")
+        return cls(deployment_tag=parsed[0], replica_suffix=parsed[1])
 
     def __str__(self):
         return self.replica_tag
