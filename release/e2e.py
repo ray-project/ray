@@ -2117,6 +2117,8 @@ if __name__ == "__main__":
     report = GLOBAL_CONFIG["REPORT_RESULT"]
     if report.lower() == "1" or report.lower() == "true":
         report = True
+    else:
+        report = args.report
 
     run_test(
         test_config_file=test_config_file,
