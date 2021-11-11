@@ -364,8 +364,8 @@ class DeploymentReplica(VersionedReplica):
                  replica_tag: ReplicaTag, deployment_name: str,
                  version: DeploymentVersion):
         self._actor = ActorReplicaWrapper(
-            format_actor_name(replica_tag), detached, controller_name,
-            replica_tag, deployment_name)
+            f"{ReplicaName.prefix}{format_actor_name(replica_tag)}", detached,
+            controller_name, replica_tag, deployment_name)
         self._controller_name = controller_name
         self._deployment_name = deployment_name
         self._replica_tag = replica_tag

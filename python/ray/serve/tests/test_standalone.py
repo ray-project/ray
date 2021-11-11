@@ -513,7 +513,7 @@ A.deploy()"""
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-def test_local_store_recovery():
+def test_local_store_recovery(ray_shutdown):
     _, tmp_path = mkstemp()
 
     @serve.deployment
@@ -550,8 +550,8 @@ def test_local_store_recovery():
     "ray_start_with_dashboard", [{
         "num_cpus": 4
     }], indirect=True)
-def test_snapshot_always_written_to_internal_kv(
-        ray_start_with_dashboard):  # noqa: F811
+def test_snapshot_always_written_to_internal_kv(ray_start_with_dashboard,
+                                                ray_shutdown):  # noqa: F811
     # https://github.com/ray-project/ray/issues/19752
     _, tmp_path = mkstemp()
 
@@ -590,26 +590,6 @@ def test_snapshot_always_written_to_internal_kv(
     hello_deployment = list(snapshot.values())[0]
     assert hello_deployment["name"] == "hello"
     assert hello_deployment["status"] == "RUNNING"
-
-
-def test_standalone_actor_outside_serve():
-    # https://github.com/ray-project/ray/issues/20066
-
-    ray.init(num_cpus=8, namespace="serve")
-
-    @ray.remote
-    class MyActor:
-        def ready(self):
-            return
-
-    a = MyActor.options(name="my_actor").remote()
-    ray.get(a.ready.remote())
-
-    serve.start()
-    serve.shutdown()
-
-    ray.get(a.ready.remote())
-    ray.shutdown()
 
 
 if __name__ == "__main__":
