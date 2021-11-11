@@ -273,8 +273,9 @@ def test_job_level_gc(start_cluster, option: str, source: str):
     """Tests that job-level working_dir is GC'd when the job exits."""
     NUM_NODES = 3
     cluster, address = start_cluster
-    for _ in range(NUM_NODES - 1):  # Head node already added.
-        cluster.add_node(num_cpus=1)
+    for i in range(NUM_NODES - 1):  # Head node already added.
+        cluster.add_node(
+            num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
 
     if option == "working_dir":
         ray.init(address, runtime_env={"working_dir": source})
@@ -319,10 +320,11 @@ def test_job_level_gc(start_cluster, option: str, source: str):
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_actor_level_gc(start_cluster, option: str):
     """Tests that actor-level working_dir is GC'd when the actor exits."""
-    NUM_NODES = 3
+    NUM_NODES = 5
     cluster, address = start_cluster
-    for _ in range(NUM_NODES - 1):  # Head node already added.
-        cluster.add_node(num_cpus=1)
+    for i in range(NUM_NODES - 1):  # Head node already added.
+        cluster.add_node(
+            num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
 
     ray.init(address)
 
