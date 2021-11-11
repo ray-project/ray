@@ -193,6 +193,7 @@ RL (MARL) becomes an easy-to-use low-level primitive for our users.
 
 .. figure:: ../images/rllib/rllib-stack.svg
     :align: left
+    :width: 650
 
     **RLlib's API stack:** Built on top of Ray, RLlib offers off-the-shelf, highly distributed
     algorithms, policies, loss functions, and default models (including the option to
