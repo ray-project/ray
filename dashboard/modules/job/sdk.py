@@ -37,9 +37,10 @@ class JobSubmissionClient:
             f"Module: {module_string} does "
             "not have `get_cluster_address_cookies`.")
 
-        self._address, self._cookies = module.get_cluster_address_cookies(
-            inner_address)
-        print("DEBUG self._address", self._address, self._cookies)
+        (self._address, self._cookies, self._default_metadata
+         ) = module.get_cluster_address_cookies(inner_address)
+        print("DEBUG self._address", self._address, self._cookies,
+              self._default_metadata)
         self._test_connection()
 
     def _test_connection(self):
@@ -141,6 +142,8 @@ class JobSubmissionClient:
                    metadata: Optional[Dict[str, str]] = None) -> str:
         runtime_env = runtime_env or {}
         metadata = metadata or {}
+        metadata.update(self._default_metadata)
+        print("DEBUG: metadata final", metadata)
 
         self._upload_working_dir_if_needed(runtime_env)
         req = JobSubmitRequest(

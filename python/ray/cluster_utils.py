@@ -320,9 +320,10 @@ class Cluster:
 
 
 def get_job_submission_client_cluster_address_cookies(
-        address: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+        address: str
+) -> Tuple[str, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """
-    Get address and cookies used for
+    Get address, cookies, and metadata used for
     ray.dashboard.modules.job.sdk.JobSubmissionClient.
     """
-    return ("http://" + address, None)
+    return ("http://" + address, None, None)
