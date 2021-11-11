@@ -421,6 +421,8 @@ class StandardAutoscaler:
             node_ips & self.load_metrics.raylet_id_by_ip.keys())
 
         # Convert ips to Raylet ids.
+        # (The assignment ip->raylet_id is well-defined under current
+        # assumptions. See "use_node_id_as_ip" in monitor.py)
         raylet_ids_to_drain = {
             self.load_metrics.raylet_id_by_ip[ip]
             for ip in connected_node_ips
