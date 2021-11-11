@@ -51,6 +51,9 @@ logger = logging.getLogger(__name__)
 # Whether we have warned of Datasets containing multiple epochs of data.
 _epoch_warned = False
 
+# The default batch size for map_batches().
+SYSTEM_DEFAULT_BATCH_SIZE = 32768
+
 
 @PublicAPI(stability="beta")
 class Dataset(Generic[T]):
@@ -147,7 +150,7 @@ class Dataset(Generic[T]):
     def map_batches(self,
                     fn: Union[CallableClass, Callable[[BatchType], BatchType]],
                     *,
-                    batch_size: int = None,
+                    batch_size: Optional[int] = SYSTEM_DEFAULT_BATCH_SIZE,
                     compute: Optional[str] = None,
                     batch_format: str = "native",
                     **ray_remote_args) -> "Dataset[Any]":
@@ -179,8 +182,8 @@ class Dataset(Generic[T]):
         Args:
             fn: The function to apply to each record batch, or a class type
                 that can be instantiated to create such a callable.
-            batch_size: Request a specific batch size, or leave unspecified
-                to use entire blocks as batches.
+            batch_size: Request a specific batch size, or None to use entire
+                blocks as batches. Defaults to a system chosen batch size.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or "actors" to use an autoscaling Ray actor pool.
             batch_format: Specify "native" to use the native block format,
@@ -199,13 +202,13 @@ class Dataset(Generic[T]):
 
         def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
+            output_buffer = BlockOutputBuffer(None,
+                                              context.target_max_block_size)
             block = BlockAccessor.for_block(block)
             total_rows = block.num_rows()
             max_batch_size = batch_size
             if max_batch_size is None:
                 max_batch_size = max(total_rows, 1)
-
-            builder = DelegatingArrowBlockBuilder()
 
             for start in range(0, total_rows, max_batch_size):
                 # Build a block for each batch.
@@ -232,9 +235,13 @@ class Dataset(Generic[T]):
                                      f"{applied}, which is not allowed. "
                                      "The return type must be either list, "
                                      "pandas.DataFrame, or pyarrow.Table")
-                builder.add_block(applied)
+                output_buffer.add_block(applied)
+                if output_buffer.has_next():
+                    yield output_buffer.next()
 
-            return [builder.build()]
+            output_buffer.finalize()
+            if output_buffer.has_next():
+                yield output_buffer.next()
 
         compute = get_compute(compute)
 
@@ -271,13 +278,17 @@ class Dataset(Generic[T]):
 
         def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
+            output_buffer = BlockOutputBuffer(None,
+                                              context.target_max_block_size)
             block = BlockAccessor.for_block(block)
-            # TODO(ekl) use BlockOutputBuffer
-            builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
                 for r2 in fn(row):
-                    builder.add(r2)
-            return [builder.build()]
+                    output_buffer.add(r2)
+                    if output_buffer.has_next():
+                        yield output_buffer.next()
+            output_buffer.finalize()
+            if output_buffer.has_next():
+                yield output_buffer.next()
 
         compute = get_compute(compute)
 
