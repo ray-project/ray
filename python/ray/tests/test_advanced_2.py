@@ -11,8 +11,6 @@ import signal
 
 import ray
 import ray.cluster_utils
-from ray.experimental.internal_kv import (_internal_kv_get,
-                                          _internal_kv_exists)
 from ray._private.test_utils import (run_string_as_driver_nonblocking,
                                      RayTestTimeoutException,
                                      wait_for_pid_to_exit, wait_for_condition)
@@ -761,20 +759,41 @@ def test_max_call_tasks(ray_start_regular):
 #      the previous nomral task.
 def test_whether_worker_leaked_when_task_finished_with_errors(
         ray_start_regular):
+
     driver_template = """
 import ray
 import os
 import ray
 import numpy as np
 import time
-from ray.experimental.internal_kv import _internal_kv_put
 
 ray.init(address="{address}", namespace="test")
+
+# The util actor to store the pid cross jobs.
+@ray.remote
+class PidStoreActor:
+    def __init(self):
+        self._pid = None
+
+    def put(self, pid):
+        self._pid = pid
+        return True
+
+    def get(self):
+        return self._pid
+
+def _store_pid_helper():
+    try:
+        pid_store_actor = ray.get_actor("pid-store", "test")
+    except Exception:
+        pid_store_actor = PidStoreActor.options(
+            name="pid-store", lifetime="detached").remote()
+    assert ray.get(pid_store_actor.put.remote(os.getpid()))
 
 @ray.remote
 def normal_task(large1, large2):
     # Record the pid of this normal task.
-    _internal_kv_put("NORMAL_TASK_PID", str(os.getpid()))
+    _store_pid_helper()
     time.sleep(60 * 60)
     return "normaltask"
 
@@ -790,17 +809,24 @@ print(ray.get(obj))
     except Exception:
         pass
 
-    wait_for_condition(lambda: _internal_kv_exists("NORMAL_TASK_PID"), 10)
-    normal_task_pid = int(_internal_kv_get("NORMAL_TASK_PID"))
+    def get_normal_task_pid():
+        try:
+            pid_store_actor = ray.get_actor("pid-store", "test")
+            return ray.get(pid_store_actor.get.remote())
+        except Exception:
+            return None
+
+    wait_for_condition(lambda: get_normal_task_pid() is not None, 10)
+    pid_store_actor = ray.get_actor("pid-store", "test")
+    normal_task_pid = ray.get(pid_store_actor.get.remote())
     assert normal_task_pid is not None
     normal_task_proc = psutil.Process(normal_task_pid)
     print("killing normal task process, pid =", normal_task_pid)
     normal_task_proc.send_signal(signal.SIGTERM)
 
     def normal_task_was_reconstructed():
-        curr_pid_bytes = _internal_kv_get("NORMAL_TASK_PID")
-        return curr_pid_bytes is not None \
-            and int(curr_pid_bytes) != normal_task_pid
+        curr_pid = get_normal_task_pid()
+        return curr_pid is not None and curr_pid != normal_task_pid
 
     wait_for_condition(lambda: normal_task_was_reconstructed(), 10)
     driver_proc.send_signal(signal.SIGTERM)

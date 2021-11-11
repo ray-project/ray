@@ -473,7 +473,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   bool IsObjectReconstructable(const ObjectID &object_id) const;
 
-  /// Relase all local references which registered on this local.
+  /// Release all local references which registered on this local.
   void ReleaseAllLocalReferences();
 
  private:
