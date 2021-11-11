@@ -9,10 +9,9 @@ import requests
 
 from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
-from ray._private.job_manager import JobStatus
-from ray.dashboard.modules.job.data_types import (
+from ray.dashboard.modules.job.common import (
     GetPackageResponse, JobSubmitRequest, JobSubmitResponse, JobStopResponse,
-    JobStatusResponse, JobLogsResponse)
+    JobStatus, JobStatusResponse, JobLogsResponse)
 
 from ray.client_builder import _split_address
 from ray.dashboard.modules.job.job_head import (

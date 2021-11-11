@@ -81,22 +81,14 @@ only want to trigger rebuilds once per day, use `DATESTAMP` instead:
 
 Local testing
 -------------
-For local testing, make sure to authenticate with the ray-ossci AWS user
-(e.g. by setting the respective environment variables obtained from go/aws),
-or use the `--no-report` command line argument.
-
-Also make sure to set these environment variables:
+Make sure to set these environment variables:
 
 - ANYSCALE_CLI_TOKEN (should contain your anyscale credential token)
 - ANYSCALE_PROJECT (should point to a project ID you have access to)
 
 A test can then be run like this:
 
-python e2e.py --no-report --test-config ~/ray/release/xgboost_tests/xgboost_tests.yaml --test-name tune_small
-
-The `--no-report` option disables storing the results in the DB and
-artifacts on S3. If you set this option, you do not need access to the
-ray-ossci AWS user.
+python e2e.py --test-config ~/ray/release/xgboost_tests/xgboost_tests.yaml --test-name tune_small
 
 Using Compilation on Product + App Config Override
 --------------------------------------------------
@@ -109,7 +101,7 @@ After kicking off the app build, you can give the app config ID to this script
 as an app config override, where the indicated app config will be used instead
 of the app config given in the test config. E.g., running
 
-python e2e.py --no-report --test-config ~/ray/benchmarks/benchmark_tests.yaml --test-name=single_node --app-config-id-override=apt_TBngEXXXrhipMXgexVcrpC9i
+python e2e.py --test-config ~/ray/benchmarks/benchmark_tests.yaml --test-name=single_node --app-config-id-override=apt_TBngEXXXrhipMXgexVcrpC9i
 
 would run the single_node benchmark test with the apt_TBngEXXXrhipMXgexVcrpC9i
 app config instead of the app config given in
@@ -261,6 +253,7 @@ GLOBAL_CONFIG = {
                           datetime.timedelta(days=2)).strftime("%Y-%m-%d")),
     "EXPIRATION_3D": str((datetime.datetime.now() +
                           datetime.timedelta(days=3)).strftime("%Y-%m-%d")),
+    "REPORT_RESULT": getenv_default("REPORT_RESULT", ""),
 }
 
 REPORT_S = 30
@@ -2050,7 +2043,7 @@ if __name__ == "__main__":
         default=False,
         help="Don't terminate session after failure")
     parser.add_argument(
-        "--no-report",
+        "--report",
         action="store_true",
         default=False,
         help="Do not report any results or upload to S3")
@@ -2120,6 +2113,13 @@ if __name__ == "__main__":
 
     test_config_file = os.path.abspath(os.path.expanduser(args.test_config))
 
+    # Override it from the global variable.
+    report = GLOBAL_CONFIG["REPORT_RESULT"]
+    if report.lower() == "1" or report.lower() == "true":
+        report = True
+    else:
+        report = args.report
+
     run_test(
         test_config_file=test_config_file,
         test_name=args.test_name,
@@ -2130,7 +2130,7 @@ if __name__ == "__main__":
         no_terminate=args.no_terminate or args.kick_off_only,
         kick_off_only=args.kick_off_only,
         check_progress=args.check,
-        report=not args.no_report,
+        report=report,
         session_name=args.session_name,
         keep_results_dir=args.keep_results_dir,
         app_config_id_override=args.app_config_id_override,
