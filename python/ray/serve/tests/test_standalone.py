@@ -543,7 +543,7 @@ def test_local_store_recovery(ray_shutdown):
                 if "ray::" in cmdline:
                     print(f"Kill {proc} {cmdline}")
                     proc.kill()
-            except:
+            except Exception:
                 pass
 
     def crash():

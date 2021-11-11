@@ -1,5 +1,6 @@
 import math
 import json
+import pickle
 import time
 from collections import defaultdict, OrderedDict
 from enum import Enum
@@ -7,7 +8,7 @@ import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
-from ray import cloudpickle, ObjectRef
+from ray import ObjectRef
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (DeploymentInfo, Duration, GoalId, ReplicaTag,
@@ -111,13 +112,13 @@ class ActorReplicaWrapper:
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
 
-    def __get_state__(self) -> Dict[Any, Any]:
+    def __getstate__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
         del clean_dict["_ready_obj_ref"]
         del clean_dict["_graceful_shutdown_ref"]
         return clean_dict
 
-    def __set_state__(self, d: Dict[Any, Any]) -> None:
+    def __setstate__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
         self._ready_obj_ref = None
         self._graceful_shutdown_ref = None
@@ -373,10 +374,10 @@ class DeploymentReplica(VersionedReplica):
         self._start_time = None
         self._prev_slow_startup_warning_time = None
 
-    def __get_state__(self) -> Dict[Any, Any]:
+    def __getstate__(self) -> Dict[Any, Any]:
         return self.__dict__.copy()
 
-    def __set_state__(self, d: Dict[Any, Any]) -> None:
+    def __setstate__(self, d: Dict[Any, Any]) -> None:
         self.__dict__ = d
 
     def get_running_replica_info(self) -> RunningReplicaInfo:
@@ -1268,7 +1269,7 @@ class DeploymentStateManager:
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
             (deployment_state_info,
-             self._deleted_deployment_metadata) = cloudpickle.loads(checkpoint)
+             self._deleted_deployment_metadata) = pickle.loads(checkpoint)
 
             for deployment_tag, checkpoint_data in deployment_state_info.items(
             ):
@@ -1318,8 +1319,11 @@ class DeploymentStateManager:
         }
         self._kv_store.put(
             CHECKPOINT_KEY,
-            cloudpickle.dumps((deployment_state_info,
-                               self._deleted_deployment_metadata)))
+            # NOTE(simon): Make sure to use pickle so we don't save any ray
+            # object that relies on external state (e.g. gcs). For code object,
+            # we are explicitly using cloudpickle to serialize them.
+            pickle.dumps((deployment_state_info,
+                          self._deleted_deployment_metadata)))
 
     def get_running_replica_infos(
             self,

@@ -1,11 +1,11 @@
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Dict, Optional
 from uuid import UUID
 
+import ray
 from ray.actor import ActorHandle
 from ray.serve.config import DeploymentConfig, ReplicaConfig
 from ray.serve.autoscaling_policy import AutoscalingPolicy
-from ray.serve.utils import cached_property
 
 str = str
 EndpointTag = str
@@ -43,16 +43,29 @@ class DeploymentInfo:
         self.end_time_ms = end_time_ms
         self.autoscaling_policy = autoscaling_policy
 
-    # We don't want to serialize the actor class.
-    @cached_property
+        # ephermal state
+        self._cached_actor_def = None
+
+    def __getstate__(self) -> Dict[Any, Any]:
+        clean_dict = self.__dict__.copy()
+        del clean_dict["_cached_actor_def"]
+        return clean_dict
+
+    def __setstate__(self, d: Dict[Any, Any]) -> None:
+        self.__dict__ = d
+        self._cached_actor_def = None
+
+    @property
     def actor_def(self):
         # Delayed import as replica depends on this file.
         from ray.serve.replica import create_replica_wrapper
-        assert self.actor_name is not None
-        assert self.serialized_deployment_def is not None
-        return ray.remote(
-            create_replica_wrapper(self.actor_name,
-                                   self.serialized_deployment_def))
+        if self._cached_actor_def is None:
+            assert self.actor_name is not None
+            assert self.serialized_deployment_def is not None
+            self._cached_actor_def = ray.remote(
+                create_replica_wrapper(self.actor_name,
+                                       self.serialized_deployment_def))
+        return self._cached_actor_def
 
 
 @dataclass

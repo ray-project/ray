@@ -1,4 +1,3 @@
-import inspect
 from itertools import groupby
 import json
 import logging
@@ -222,21 +221,3 @@ def ensure_serialization_context():
     been started."""
     ctx = StandaloneSerializationContext()
     ray.serialization_addons.apply(ctx)
-
-
-class cached_property(object):
-    """A property that is only computed once per instance and then replaces
-    itself with an ordinary attribute.
-    Source: https://github.com/pydanny/cached-property
-    """
-
-    def __init__(self, func):
-        self.__doc__ = getattr(func, "__doc__")
-        self.func = func
-
-    def __get__(self, obj, _):
-        if obj is None:
-            return self
-
-        value = obj.__dict__[self.func.__name__] = self.func(obj)
-        return value
