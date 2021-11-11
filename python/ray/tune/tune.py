@@ -11,6 +11,7 @@ import warnings
 
 import ray
 from ray.util.annotations import PublicAPI
+from ray.util.ml_utils.node import force_on_current_node
 from ray.util.queue import Queue, Empty
 
 from ray.tune.analysis import ExperimentAnalysis
@@ -35,7 +36,6 @@ from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
-from ray.tune.utils import force_on_current_node
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
