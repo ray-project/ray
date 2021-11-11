@@ -52,6 +52,7 @@ cython >= 0.29.15
 dataclasses; python_version < '3.7'
 feather-format
 google-api-python-client
+google-cloud-storage
 gym-minigrid
 kubernetes
 lxml
