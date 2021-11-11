@@ -93,6 +93,10 @@ class Trainer:
     ):
 
         self._backend = backend
+
+        if num_workers <= 0:
+            raise ValueError("`num_workers` must be a positive integer.")
+
         self._num_workers = num_workers
         self._use_gpu = use_gpu
         self._resources_per_worker = resources_per_worker
