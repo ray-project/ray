@@ -89,24 +89,27 @@ class ActorPool(ComputeStrategy):
 
         blocks_in = list(blocks.iter_blocks_with_metadata())
         orig_num_blocks = len(blocks_in)
-        blocks_out = []
+        results = []
         map_bar = ProgressBar("Map Progress", total=orig_num_blocks)
 
         class BlockWorker:
             def ready(self):
                 return "ok"
 
-            @ray.method(num_returns=2)
             def process_block(self, block: Block, input_files: List[str]
-                              ) -> (Block, BlockMetadata):
-                new_block = fn(block)
-                accessor = BlockAccessor.for_block(new_block)
-                new_metadata = BlockMetadata(
-                    num_rows=accessor.num_rows(),
-                    size_bytes=accessor.size_bytes(),
-                    schema=accessor.schema(),
-                    input_files=input_files)
-                return new_block, new_metadata
+                              ) -> Iterable[Tuple[Block, BlockMetadata]]:
+                output = []
+                for new_block in fn(block):
+                    accessor = BlockAccessor.for_block(new_block)
+                    new_metadata = BlockMetadata(
+                        num_rows=accessor.num_rows(),
+                        size_bytes=accessor.size_bytes(),
+                        schema=accessor.schema(),
+                        input_files=input_files)
+                    owner = DatasetContext.get_current().block_owner
+                    output.append((ray.put(new_block, _owner=owner),
+                                   new_metadata))
+                return output
 
         if not remote_args:
             remote_args["num_cpus"] = 1
@@ -114,11 +117,10 @@ class ActorPool(ComputeStrategy):
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
         self.workers = [BlockWorker.remote()]
-        metadata_mapping = {}
         tasks = {w.ready.remote(): w for w in self.workers}
         ready_workers = set()
 
-        while len(blocks_out) < orig_num_blocks:
+        while len(results) < orig_num_blocks:
             ready, _ = ray.wait(
                 list(tasks), timeout=0.01, num_returns=1, fetch_local=False)
             if not ready:
@@ -138,7 +140,7 @@ class ActorPool(ComputeStrategy):
 
             # Process task result.
             if worker in ready_workers:
-                blocks_out.append(obj_id)
+                results.append(obj_id)
                 map_bar.update(1)
             else:
                 ready_workers.add(worker)
@@ -146,14 +148,16 @@ class ActorPool(ComputeStrategy):
             # Schedule a new task.
             if blocks_in:
                 block, meta = blocks_in.pop()
-                block_ref, meta_ref = worker.process_block.remote(
-                    block, meta.input_files)
-                metadata_mapping[block_ref] = meta_ref
-                tasks[block_ref] = worker
+                ref = worker.process_block.remote(block, meta.input_files)
+                tasks[ref] = worker
 
-        new_metadata = ray.get([metadata_mapping[b] for b in blocks_out])
         map_bar.close()
-        return BlockList(blocks_out, new_metadata)
+        new_blocks, new_metadata = [], []
+        for result in ray.get(results):
+            for block, metadata in result:
+                new_blocks.append(block)
+                new_metadata.append(metadata)
+        return BlockList(new_blocks, new_metadata)
 
 
 def cache_wrapper(fn: Union[CallableClass, Callable[[Any], Any]]
