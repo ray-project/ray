@@ -8,6 +8,9 @@ from ray.util.annotations import DeveloperAPI
 _default_context: "Optional[DatasetContext]" = None
 _context_lock = threading.Lock()
 
+# The max target block size for reads and transformations.
+DEFAULT_TARGET_BLOCK_SIZE_BYTES = 512 * 1024 * 1024
+
 
 @DeveloperAPI
 class DatasetContext:
@@ -35,7 +38,8 @@ class DatasetContext:
         with _context_lock:
 
             if _default_context is None:
-                _default_context = DatasetContext(None, 500 * 1024 * 1024)
+                _default_context = DatasetContext(
+                    None, DEFAULT_TARGET_BLOCK_SIZE_BYTES)
 
             if _default_context.block_owner is None:
                 owner = _DesignatedBlockOwner.options(
