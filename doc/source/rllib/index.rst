@@ -67,7 +67,7 @@ Feature Overview
 ----------------
 
 The following is a summary of RLlib's most striking features.
-For an in-depth overview, check out our `documentation <http://docs.ray.io/en/master/rllib.html>`_.
+For an in-depth overview, check out our `documentation <http://docs.ray.io/en/latest/rllib.html>`_.
 
 Click on the images below to see an example script for each of the listed features:
 
@@ -88,7 +88,7 @@ Click on the images below to see an example script for each of the listed featur
 
 .. container:: clear-both
 
-    .. container:: buttons-float-right
+    .. container:: buttons-float-left
 
         .. image:: ../images/rllib/sigils/rllib-sigil-distributed-learning.svg
             :width: 100
@@ -111,17 +111,17 @@ Click on the images below to see an example script for each of the listed featur
 
     .. container::
 
-        **Vectorized (batched), remote (parallel) environments**: RLlib auto-vectorizes
-        your (custom) gym.Env classes such that environment workers can batch and thus
-        significantly speedup the action computing model forward passes.
-        On top of that, RLlib offers an option to create
+        **Vectorized (batched) and remote (parallel) environments**: RLlib auto-vectorizes
+        your ``gym.Env``s via the ``num_envs_per_worker`` config. Environment workers can
+        then batch and thus significantly speedup the action computing forward pass.
+        On top of that, RLlib offers the ``remote_worker_envs`` config to create
         `single environments (within a vectorized one) as ray Actors <https://github.com/ray-project/ray/blob/master/rllib/examples/remote_vector_env_with_custom_api.py>`_,
         thus parallelizing even the env stepping process.
 
 
 .. container:: clear-both
 
-    .. container:: buttons-float-right
+    .. container:: buttons-float-left
 
         .. image:: ../images/rllib/sigils/rllib-sigil-multi-agent.svg
             :width: 100
@@ -129,10 +129,15 @@ Click on the images below to see an example script for each of the listed featur
 
     .. container::
 
-        | **Multi-agent RL** (MARL): Convert your (custom) gym.Env into a multi-agent one via a few simple steps and start training your agents in any of the following fashions:
-        | 1) Cooperative with `shared <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`_ or `separate <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`_ policies and/or value functions.
-        | 2) Adversarial scenarios using `self-play <https://github.com/ray-project/ray/blob/master/rllib/examples/self_play_with_open_spiel.py>`_ and `league-based training <https://github.com/ray-project/ray/blob/master/rllib/examples/self_play_league_based_with_open_spiel.py>`_.
-        | 3) `Independent learning <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`_ of neutral/co-existing agents.
+        | **Multi-agent RL** (MARL): Convert your (custom) ``gym.Env``s into a multi-agent ones
+        via a few simple steps and start training your agents in any of the following fashions:
+        | 1) Cooperative with `shared <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`_ or
+        `separate <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`_
+        policies and/or value functions.
+        | 2) Adversarial scenarios using `self-play <https://github.com/ray-project/ray/blob/master/rllib/examples/self_play_with_open_spiel.py>`_
+        and `league-based training <https://github.com/ray-project/ray/blob/master/rllib/examples/self_play_league_based_with_open_spiel.py>`_.
+        | 3) `Independent learning <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py>`_
+        of neutral/co-existing agents.
 
 
 .. container:: clear-both
@@ -155,7 +160,7 @@ Click on the images below to see an example script for each of the listed featur
 
 .. container:: clear-both
 
-    .. container:: buttons-float-right
+    .. container:: buttons-float-left
 
         .. image:: ../images/rllib/sigils/rllib-sigil-offline-rl.svg
             :width: 100

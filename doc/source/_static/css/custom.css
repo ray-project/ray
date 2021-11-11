@@ -84,6 +84,7 @@ img.horizontal-scroll {
 .clear-both {
     clear: both;
     min-height: 100px;
+    margin-top: 15px;
 }
 
 .buttons-float-left {
