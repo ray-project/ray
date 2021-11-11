@@ -12,6 +12,7 @@ from distutils.version import LooseVersion
 from grpc.experimental import aio as aiogrpc
 import grpc
 
+import ray.experimental.internal_kv as internal_kv
 import ray._private.utils
 from ray._private.gcs_utils import GcsClient
 import ray._private.services
@@ -189,10 +190,13 @@ class DashboardHead:
             self.http_session = aiohttp.ClientSession()
 
         # Waiting for GCS is ready.
+        # TODO: redis-removal bootstrap
         gcs_address = await get_gcs_address_with_retry(self.aioredis_client)
         self.gcs_client = GcsClient(gcs_address)
         self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
             gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True)
+        gcs_client = GcsClient(gcs_address)
+        internal_kv._initialize_internal_kv(gcs_client)
 
         self.health_check_thread = GCSHealthCheckThread(gcs_address)
         self.health_check_thread.start()
@@ -237,12 +241,16 @@ class DashboardHead:
             http_host).is_unspecified else http_host
         logger.info("Dashboard head http address: %s:%s", http_host, http_port)
 
-        # Write the dashboard head port to redis.
-        await self.aioredis_client.set(ray_constants.REDIS_KEY_DASHBOARD,
-                                       f"{http_host}:{http_port}")
-        await self.aioredis_client.set(
+        # TODO: Use async version if performance is an issue
+        # Write the dashboard head port to gcs kv.
+        internal_kv._internal_kv_put(
+            ray_constants.REDIS_KEY_DASHBOARD,
+            f"{http_host}:{http_port}",
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+        internal_kv._internal_kv_put(
             dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
-            f"{self.ip}:{self.grpc_port}")
+            f"{self.ip}:{self.grpc_port}",
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
 
         # Dump registered http routes.
         dump_routes = [

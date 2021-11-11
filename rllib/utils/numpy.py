@@ -362,7 +362,8 @@ def sigmoid(x: np.ndarray, derivative: bool = False) -> np.ndarray:
         return 1 / (1 + np.exp(-x))
 
 
-def softmax(x: np.ndarray, axis: int = -1) -> np.ndarray:
+def softmax(x: np.ndarray, axis: int = -1,
+            epsilon: Optional[float] = None) -> np.ndarray:
     """Returns the softmax values for x.
 
     The exact formula used is:
@@ -371,12 +372,15 @@ def softmax(x: np.ndarray, axis: int = -1) -> np.ndarray:
     Args:
         x: The input to the softmax function.
         axis: The axis along which to softmax.
+        epsilon: Optional epsilon as a minimum value. If None, use
+            `SMALL_NUMBER`.
 
     Returns:
         The softmax over x.
     """
+    epsilon = epsilon or SMALL_NUMBER
     # x_exp = np.maximum(np.exp(x), SMALL_NUMBER)
     x_exp = np.exp(x)
     # return x_exp /
     #   np.maximum(np.sum(x_exp, axis, keepdims=True), SMALL_NUMBER)
-    return np.maximum(x_exp / np.sum(x_exp, axis, keepdims=True), SMALL_NUMBER)
+    return np.maximum(x_exp / np.sum(x_exp, axis, keepdims=True), epsilon)

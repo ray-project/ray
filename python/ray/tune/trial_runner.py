@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import Any, List, Mapping, Optional, Union
 
 import click
 from datetime import datetime
@@ -36,7 +36,7 @@ MAX_DEBUG_TRIALS = 20
 logger = logging.getLogger(__name__)
 
 
-def _find_newest_ckpt(ckpt_dir) -> Optional[str]:
+def find_newest_experiment_checkpoint(ckpt_dir) -> Optional[str]:
     """Returns path to most recently modified checkpoint."""
     full_paths = [
         os.path.join(ckpt_dir, fname) for fname in os.listdir(ckpt_dir)
@@ -45,6 +45,27 @@ def _find_newest_ckpt(ckpt_dir) -> Optional[str]:
     if not full_paths:
         return None
     return max(full_paths)
+
+
+def load_trials_from_experiment_checkpoint(
+        experiment_checkpoint: Mapping[str, Any],
+        stub: bool = False) -> List[Trial]:
+    """Create trial objects from experiment checkpoint.
+
+    Given an experiment checkpoint (TrialRunner state dict), return
+    list of trials."""
+    checkpoints = [
+        json.loads(cp, cls=TuneFunctionDecoder) if isinstance(cp, str) else cp
+        for cp in experiment_checkpoint["checkpoints"]
+    ]
+
+    trials = []
+    for trial_cp in checkpoints:
+        new_trial = Trial(trial_cp["trainable_name"], stub=stub)
+        new_trial.__setstate__(trial_cp)
+        trials.append(new_trial)
+
+    return trials
 
 
 class _ExperimentCheckpointManager:
@@ -310,6 +331,7 @@ class TrialRunner:
         self._remote_checkpoint_dir = remote_checkpoint_dir
         self._syncer = get_cloud_syncer(local_checkpoint_dir,
                                         remote_checkpoint_dir, sync_to_cloud)
+
         self._stopper = stopper or NoopStopper()
         self._resumed = False
 
@@ -591,7 +613,8 @@ class TrialRunner:
         Requires user to manually re-register their objects. Also stops
         all ongoing trials.
         """
-        newest_ckpt_path = _find_newest_ckpt(self._local_checkpoint_dir)
+        newest_ckpt_path = find_newest_experiment_checkpoint(
+            self._local_checkpoint_dir)
 
         if not newest_ckpt_path:
             raise ValueError(f"Tried to resume from checkpoint dir "
@@ -612,17 +635,7 @@ class TrialRunner:
         if self._search_alg.has_checkpoint(self._local_checkpoint_dir):
             self._search_alg.restore_from_dir(self._local_checkpoint_dir)
 
-        checkpoints = [
-            json.loads(cp, cls=TuneFunctionDecoder)
-            if isinstance(cp, str) else cp
-            for cp in runner_state["checkpoints"]
-        ]
-
-        trials = []
-        for trial_cp in checkpoints:
-            new_trial = Trial(trial_cp["trainable_name"])
-            new_trial.__setstate__(trial_cp)
-            trials += [new_trial]
+        trials = load_trials_from_experiment_checkpoint(runner_state)
         for trial in sorted(
                 trials, key=lambda t: t.last_update_time, reverse=True):
             if run_errored_only and trial.status == Trial.ERROR:
@@ -866,7 +879,7 @@ class TrialRunner:
                         trials=self._trials,
                         trial=trial)
                 if _profile.too_slow and trial.sync_on_checkpoint:
-                    # TODO(ujvl): Suggest using DurableTrainable once
+                    # TODO(ujvl): Suggest using cloud checkpointing once
                     #  API has converged.
 
                     msg = (

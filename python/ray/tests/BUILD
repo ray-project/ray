@@ -105,6 +105,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
+    "test_autoscaler_drain_node_api.py",
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_asyncio.py",
@@ -221,6 +222,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_failure_3.py",
+    "test_chaos.py",
     "test_reference_counting_2.py",
   ],
   size = "large",
@@ -243,11 +245,22 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_runtime_env.py",
-    "test_runtime_env_working_dir.py"
+    "test_runtime_env_working_dir.py",
+    "test_runtime_env_working_dir_2.py"
   ],
   size = "large",
   extra_srcs = SRCS,
   tags = ["flaky-mac", "exclusive", "team:serve"],
+  deps = ["//:ray_lib"],
+)
+
+py_test_module_list(
+  files = [
+    "test_runtime_env_conda.py"
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "post_wheel_build", "team:serve"],
   deps = ["//:ray_lib"],
 )
 

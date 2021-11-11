@@ -12,6 +12,8 @@ import time
 import yaml
 from enum import Enum
 
+import grpc
+
 try:
     from urllib3.exceptions import MaxRetryError
 except ImportError:
@@ -42,6 +44,8 @@ from ray.autoscaler._private.util import ConcurrentCounter, validate_config, \
 from ray.autoscaler._private.constants import AUTOSCALER_MAX_NUM_FAILURES, \
     AUTOSCALER_MAX_LAUNCH_BATCH, AUTOSCALER_MAX_CONCURRENT_LAUNCHES, \
     AUTOSCALER_UPDATE_INTERVAL_S, AUTOSCALER_HEARTBEAT_TIMEOUT_S
+from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
+
 from six.moves import queue
 
 logger = logging.getLogger(__name__)
@@ -87,6 +91,7 @@ class StandardAutoscaler:
             # TODO(ekl): require config reader to be a callable always.
             config_reader: Union[str, Callable[[], dict]],
             load_metrics: LoadMetrics,
+            gcs_node_info_stub: gcs_service_pb2_grpc.NodeInfoGcsServiceStub,
             max_launch_batch: int = AUTOSCALER_MAX_LAUNCH_BATCH,
             max_concurrent_launches: int = AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
             max_failures: int = AUTOSCALER_MAX_NUM_FAILURES,
@@ -94,7 +99,8 @@ class StandardAutoscaler:
             update_interval_s: int = AUTOSCALER_UPDATE_INTERVAL_S,
             prefix_cluster_info: bool = False,
             event_summarizer: Optional[EventSummarizer] = None,
-            prom_metrics: Optional[AutoscalerPrometheusMetrics] = None):
+            prom_metrics: Optional[AutoscalerPrometheusMetrics] = None,
+    ):
         """Create a StandardAutoscaler.
 
         Args:
@@ -112,6 +118,8 @@ class StandardAutoscaler:
             prefix_cluster_info: Whether to add the cluster name to info strs.
             event_summarizer: Utility to consolidate duplicated messages.
             prom_metrics: Prometheus metrics for autoscaler-related operations.
+            gcs_node_info_stub: Stub for interactions with Ray nodes via gRPC
+                request to the GCS. Used to drain nodes before termination.
         """
 
         if isinstance(config_reader, str):
@@ -199,6 +207,8 @@ class StandardAutoscaler:
             for remote, local in self.config["file_mounts"].items()
         }
 
+        self.gcs_node_info_stub = gcs_node_info_stub
+
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
         logger.info("StandardAutoscaler: {}".format(self.config))
@@ -233,6 +243,7 @@ class StandardAutoscaler:
         self.last_update_time = now
         self.update_worker_list()
 
+        # Remove from LoadMetrics the ips unknown to the NodeProvider.
         self.load_metrics.prune_active_ips([
             self.provider.internal_ip(node_id) for node_id in self.all_workers
         ])
@@ -380,6 +391,7 @@ class StandardAutoscaler:
         """Terminate scheduled nodes and clean associated autoscaler state."""
         if not self.nodes_to_terminate:
             return
+        self.drain_nodes_via_gcs(self.nodes_to_terminate)
         self.provider.terminate_nodes(self.nodes_to_terminate)
         for node in self.nodes_to_terminate:
             self.node_tracker.untrack(node)
@@ -387,6 +399,82 @@ class StandardAutoscaler:
 
         self.nodes_to_terminate = []
         self.update_worker_list()
+
+    def drain_nodes_via_gcs(self, provider_node_ids_to_drain: List[NodeID]):
+        """Send an RPC request to the GCS to drain (prepare for termination)
+        the nodes with the given node provider ids.
+
+        note: The current implementation of DrainNode on the GCS side is to
+        de-register and gracefully shut down the Raylets. In the future,
+        the behavior may change to better reflect the name "Drain."
+        See https://github.com/ray-project/ray/pull/19350.
+        """
+        # The GCS expects Raylet ids in the request, rather than NodeProvider
+        # ids. To get the Raylet ids of the nodes to we're draining, we make
+        # the following translations of identifiers:
+        # node provider node id -> ip -> raylet id
+
+        # Convert node provider node ids to ips.
+        node_ips = {
+            self.provider.internal_ip(provider_node_id)
+            for provider_node_id in provider_node_ids_to_drain
+        }
+
+        # Only attempt to drain connected nodes, i.e. nodes with ips in
+        # LoadMetrics.
+        connected_node_ips = (
+            node_ips & self.load_metrics.raylet_id_by_ip.keys())
+
+        # Convert ips to Raylet ids.
+        # (The assignment ip->raylet_id is well-defined under current
+        # assumptions. See "use_node_id_as_ip" in monitor.py)
+        raylet_ids_to_drain = {
+            self.load_metrics.raylet_id_by_ip[ip]
+            for ip in connected_node_ips
+        }
+
+        logger.info(f"Draining {len(raylet_ids_to_drain)} raylet(s).")
+        try:
+            request = gcs_service_pb2.DrainNodeRequest(drain_node_data=[
+                gcs_service_pb2.DrainNodeData(node_id=raylet_id)
+                for raylet_id in raylet_ids_to_drain
+            ])
+
+            # A successful response indicates that the GCS has marked the
+            # desired nodes as "drained." The cloud provider can then terminate
+            # the nodes without the GCS printing an error.
+            response = self.gcs_node_info_stub.DrainNode(request, timeout=5)
+
+            # Check if we succeeded in draining all of the intended nodes by
+            # looking at the RPC response.
+            drained_raylet_ids = {
+                status_item.node_id
+                for status_item in response.drain_node_status
+            }
+            failed_to_drain = raylet_ids_to_drain - drained_raylet_ids
+            if failed_to_drain:
+                self.prom_metrics.drain_node_exceptions.inc()
+                logger.error(
+                    f"Failed to drain {len(failed_to_drain)} raylet(s).")
+
+        # If we get a gRPC error with an UNIMPLEMENTED code, fail silently.
+        # This error indicates that the GCS is using Ray version < 1.8.0,
+        # for which DrainNode is not implemented.
+        except grpc.RpcError as e:
+            # If the code is UNIMPLEMENTED, pass.
+            if e.code() == grpc.StatusCode.UNIMPLEMENTED:
+                pass
+            # Otherwise, it's a plane old gRPC error and we should log it.
+            else:
+                self.prom_metrics.drain_node_exceptions.inc()
+                logger.exception(
+                    "Failed to drain Ray nodes. Traceback follows.")
+        except Exception:
+            # We don't need to interrupt the autoscaler update with an
+            # exception, but we should log what went wrong and record the
+            # failure in Prometheus.
+            self.prom_metrics.drain_node_exceptions.inc()
+            logger.exception("Failed to drain Ray nodes. Traceback follows.")
 
     def launch_required_nodes(self, to_launch: Dict[NodeType, int]) -> None:
         if to_launch:

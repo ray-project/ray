@@ -16,8 +16,8 @@ from ray.core.generated import agent_manager_pb2
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.modules.runtime_env.runtime_env_consts \
     as runtime_env_consts
-from ray.experimental.internal_kv import (_initialize_internal_kv,
-                                          _internal_kv_initialized)
+from ray.experimental.internal_kv import _internal_kv_initialized, \
+    _initialize_internal_kv
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaManager
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -212,6 +212,13 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             elif plugin == "py_modules":
                 if not self._py_modules_manager.delete_uri(uri):
                     failed_uris.append(uri)
+            elif plugin == "conda":
+                if not self._conda_manager.delete_uri(uri):
+                    failed_uris.append(uri)
+            else:
+                raise ValueError(
+                    "RuntimeEnvAgent received DeleteURI request "
+                    f"for unsupported plugin {plugin}. URI: {uri}")
 
             if failed_uris:
                 return runtime_env_agent_pb2.DeleteURIsReply(

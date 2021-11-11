@@ -149,7 +149,7 @@ class SimpleBlockAccessor(BlockAccessor):
         return ret
 
     def combine(self, key: GroupKeyT,
-                agg: AggregateFn) -> Block[Tuple[KeyType, AggType]]:
+                aggs: Tuple[AggregateFn]) -> Block[Tuple[KeyType, AggType]]:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -157,11 +157,12 @@ class SimpleBlockAccessor(BlockAccessor):
         Args:
             key: The key function that returns the key from the row
                 or None for global aggregation.
-            agg: The aggregation to do.
+            agg: The aggregations to do.
 
         Returns:
-            A sorted block of (k, v) tuples where k is the groupby
-            key and v is the partially combined accumulator.
+            A sorted block of (k, v_1, ..., v_n) tuples where k is the groupby
+            key and v_i is the partially combined accumulator for the ith given
+            aggregation.
             If key is None then the k element of tuple is omitted.
         """
         key_fn = key if key else lambda r: None
@@ -193,13 +194,15 @@ class SimpleBlockAccessor(BlockAccessor):
                             next_row = None
                             break
 
-                accumulator = agg.init(next_key)
+                accumulators = [agg.init(next_key) for agg in aggs]
                 for r in gen():
-                    accumulator = agg.accumulate(accumulator, r)
+                    for i in range(len(aggs)):
+                        accumulators[i] = aggs[i].accumulate(
+                            accumulators[i], r)
                 if key is None:
-                    ret.append((accumulator, ))
+                    ret.append(tuple(accumulators))
                 else:
-                    ret.append((next_key, accumulator))
+                    ret.append((next_key, ) + tuple(accumulators))
             except StopIteration:
                 break
         return ret
@@ -215,7 +218,7 @@ class SimpleBlockAccessor(BlockAccessor):
     @staticmethod
     def aggregate_combined_blocks(
             blocks: List[Block[Tuple[KeyType, AggType]]], key: GroupKeyT,
-            agg: AggregateFn
+            aggs: Tuple[AggregateFn]
     ) -> Tuple[Block[Tuple[KeyType, U]], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
@@ -226,11 +229,12 @@ class SimpleBlockAccessor(BlockAccessor):
             blocks: A list of partially combined and sorted blocks.
             key: The key function that returns the key from the row
                 or None for global aggregation.
-            agg: The aggregation to do.
+            aggs: The aggregations to do.
 
         Returns:
-            A block of (k, v) tuples and its metadata where k is the groupby
-            key and v is the corresponding aggregation result.
+            A block of (k, v_1, ..., v_n) tuples and its metadata where k is
+            the groupby key and v_i is the corresponding aggregation result for
+            the ith given aggregation.
             If key is None then the k element of tuple is omitted.
         """
 
@@ -259,18 +263,25 @@ class SimpleBlockAccessor(BlockAccessor):
                             break
 
                 first = True
-                accumulator = None
+                accumulators = [None] * len(aggs)
                 for r in gen():
                     if first:
-                        accumulator = r[1] if key else r[0]
+                        for i in range(len(aggs)):
+                            accumulators[i] = r[i + 1] if key else r[i]
                         first = False
                     else:
-                        accumulator = agg.merge(accumulator, r[1]
-                                                if key else r[0])
+                        for i in range(len(aggs)):
+                            accumulators[i] = aggs[i].merge(
+                                accumulators[i], r[i + 1] if key else r[i])
                 if key is None:
-                    ret.append((agg.finalize(accumulator), ))
+                    ret.append(
+                        tuple(
+                            agg.finalize(accumulator)
+                            for agg, accumulator in zip(aggs, accumulators)))
                 else:
-                    ret.append((next_key, agg.finalize(accumulator)))
+                    ret.append((next_key, ) + tuple(
+                        agg.finalize(accumulator)
+                        for agg, accumulator in zip(aggs, accumulators)))
             except StopIteration:
                 break
 

@@ -1,25 +1,20 @@
-from base64 import b64encode
+import dataclasses
 import logging
 from pathlib import Path
 import tempfile
-from typing import Any, Dict, List, Optional, Tuple
-
-try:
-    from pydantic import BaseModel
-    from pydantic.main import ModelMetaclass
-except ImportError:
-    BaseModel = object
-    ModelMetaclass = object
+from typing import Any, Dict, List, Optional
 
 import requests
 
 from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
-from ray._private.job_manager import JobStatus
-from ray.dashboard.modules.job.data_types import (
-    GetPackageRequest, GetPackageResponse, UploadPackageRequest, JobSpec,
-    JobSubmitRequest, JobSubmitResponse, JobStatusRequest, JobStatusResponse,
-    JobLogsRequest, JobLogsResponse)
+from ray.dashboard.modules.job.common import (
+    GetPackageResponse, JobSubmitRequest, JobSubmitResponse, JobStopResponse,
+    JobStatus, JobStatusResponse, JobLogsResponse)
+
+from ray.dashboard.modules.job.job_head import (
+    JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP,
+    JOBS_API_ROUTE_STATUS, JOBS_API_ROUTE_PACKAGE)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -37,32 +32,33 @@ class JobSubmissionClient:
             raise ConnectionError(
                 f"Failed to connect to Ray at address: {self._address}.")
 
-    def _do_request(
-            self,
-            method: str,
-            endpoint: str,
-            data: BaseModel,
-            response_type: Optional[ModelMetaclass] = None) -> Dict[Any, Any]:
-        url = f"{self._address}/{endpoint}"
-        json_payload = data.dict()
-        logger.debug(f"Sending request to {url} with payload {json_payload}.")
-        r = requests.request(method, url, json=json_payload)
+    def _do_request(self,
+                    method: str,
+                    endpoint: str,
+                    *,
+                    data: Optional[bytes] = None,
+                    json_data: Optional[dict] = None,
+                    params: Optional[dict] = None,
+                    response_type: Optional[type] = None) -> Optional[object]:
+        url = self._address + endpoint
+        logger.debug(f"Sending request to {url} with "
+                     f"json: {json_data}, params: {params}.")
+        r = requests.request(
+            method, url, data=data, json=json_data, params=params)
         r.raise_for_status()
-
-        response_json = r.json()
-        if not response_json["result"]:  # Indicates failure.
-            raise Exception(response_json["msg"])
-
         if response_type is None:
             return None
         else:
-            # Dashboard "framework" returns double-nested "data" field...
-            return response_type(**response_json["data"]["data"])
+            response = r.json()
+            logger.info(f"Got response: {response}.")
+            return response_type(**response)
 
     def _package_exists(self, package_uri: str) -> bool:
-        req = GetPackageRequest(package_uri=package_uri)
         resp = self._do_request(
-            "GET", "package", req, response_type=GetPackageResponse)
+            "GET",
+            JOBS_API_ROUTE_PACKAGE,
+            params={"package_uri": package_uri},
+            response_type=GetPackageResponse)
         return resp.package_exists
 
     def _upload_package(self,
@@ -78,10 +74,11 @@ class JobSubmissionClient:
                 package_file,
                 include_parent_dir=include_parent_dir,
                 excludes=excludes)
-            req = UploadPackageRequest(
-                package_uri=package_uri,
-                encoded_package_bytes=b64encode(package_file.read_bytes()))
-            self._do_request("PUT", "package", req)
+            self._do_request(
+                "PUT",
+                JOBS_API_ROUTE_PACKAGE,
+                data=package_file.read_bytes(),
+                params={"package_uri": package_uri})
             package_file.unlink()
 
     def _upload_package_if_needed(self,
@@ -115,25 +112,47 @@ class JobSubmissionClient:
                 runtime_env["working_dir"] = package_uri
 
     def submit_job(self,
+                   *,
                    entrypoint: str,
+                   job_id: Optional[str] = None,
                    runtime_env: Optional[Dict[str, Any]] = None,
                    metadata: Optional[Dict[str, str]] = None) -> str:
         runtime_env = runtime_env or {}
         metadata = metadata or {}
 
         self._upload_working_dir_if_needed(runtime_env)
-        job_spec = JobSpec(
-            entrypoint=entrypoint, runtime_env=runtime_env, metadata=metadata)
-        req = JobSubmitRequest(job_spec=job_spec)
-        resp = self._do_request("POST", "submit", req, JobSubmitResponse)
+        req = JobSubmitRequest(
+            entrypoint=entrypoint,
+            job_id=job_id,
+            runtime_env=runtime_env,
+            metadata=metadata)
+        resp = self._do_request(
+            "POST",
+            JOBS_API_ROUTE_SUBMIT,
+            json_data=dataclasses.asdict(req),
+            response_type=JobSubmitResponse)
         return resp.job_id
 
+    def stop_job(self, job_id: str) -> bool:
+        resp = self._do_request(
+            "POST",
+            JOBS_API_ROUTE_STOP,
+            params={"job_id": job_id},
+            response_type=JobStopResponse)
+        return resp.stopped
+
     def get_job_status(self, job_id: str) -> JobStatus:
-        req = JobStatusRequest(job_id=job_id)
-        resp = self._do_request("GET", "status", req, JobStatusResponse)
+        resp = self._do_request(
+            "GET",
+            JOBS_API_ROUTE_STATUS,
+            params={"job_id": job_id},
+            response_type=JobStatusResponse)
         return resp.job_status
 
-    def get_job_logs(self, job_id: str) -> Tuple[str, str]:
-        req = JobLogsRequest(job_id=job_id)
-        resp = self._do_request("GET", "logs", req, JobLogsResponse)
-        return resp.stdout, resp.stderr
+    def get_job_logs(self, job_id: str) -> str:
+        resp = self._do_request(
+            "GET",
+            JOBS_API_ROUTE_LOGS,
+            params={"job_id": job_id},
+            response_type=JobLogsResponse)
+        return resp.logs
