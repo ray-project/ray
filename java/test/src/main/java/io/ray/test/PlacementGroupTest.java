@@ -11,10 +11,7 @@ import io.ray.api.placementgroup.PlacementGroup;
 import io.ray.api.placementgroup.PlacementGroupState;
 import io.ray.api.placementgroup.PlacementStrategy;
 import io.ray.runtime.exception.RayException;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

@@ -7,6 +7,7 @@ import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.PlacementGroupId;
+import io.ray.api.id.PlacementGroups;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
 import io.ray.api.options.PlacementGroupCreationOptions;
@@ -93,8 +94,8 @@ public class NativeTaskSubmitter implements TaskSubmitter {
     if (StringUtils.isNotBlank(creationOptions.name)) {
       PlacementGroup placementGroup =
           creationOptions.global
-              ? Ray.getGlobalPlacementGroup(creationOptions.name)
-              : Ray.getPlacementGroup(creationOptions.name);
+              ? PlacementGroups.getGlobalPlacementGroup(creationOptions.name)
+              : PlacementGroups.getPlacementGroup(creationOptions.name);
 
       Preconditions.checkArgument(
           placementGroup == null,

@@ -4,7 +4,6 @@ import io.ray.api.runtime.RayRuntime;
 import io.ray.api.runtime.RayRuntimeFactory;
 import io.ray.api.runtimecontext.RuntimeContext;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
