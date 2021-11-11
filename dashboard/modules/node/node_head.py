@@ -7,6 +7,7 @@ from aioredis.pubsub import Receiver
 
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
+from ray import ray_constants
 from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node.node_consts import (MAX_LOGS_TO_CACHE,
                                                     LOG_PRUNE_THREASHOLD)
@@ -93,7 +94,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
     async def _update_nodes(self):
         # TODO(fyrestone): Refactor code for updating actor / node / job.
         # Subscribe actor channel.
-        aioredis_client = self._dashboard_head.aioredis_client
         while True:
             try:
                 nodes = await self._get_nodes()
@@ -117,7 +117,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 for node_id in alive_node_ids:
                     key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}" \
                           f"{node_id}"
-                    agent_port = await aioredis_client.get(key)
+                    # TODO: Use async version if performance is an issue
+                    agent_port = ray.experimental.internal_kv._internal_kv_get(
+                        key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
                     if agent_port:
                         agents[node_id] = json.loads(agent_port)
                 for node_id in agents.keys() - set(alive_node_ids):
