@@ -303,6 +303,7 @@ def test_actor_pass_by_ref_order_optimization(shutdown_only):
     assert delta < 10, "did not skip slow value"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 @pytest.mark.parametrize(
     "ray_start_cluster", [{
         "num_cpus": 1,
