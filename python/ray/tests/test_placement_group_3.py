@@ -700,5 +700,16 @@ def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
         ray.get(trainer.train.remote())
 
 
+def test_fractional_resources_handle_correct(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1000)
+    ray.init(address=cluster.address)
+
+    bundles = [{"CPU": 0.01} for _ in range(5)]
+    pg = placement_group(bundles, strategy="SPREAD")
+
+    ray.get(pg.ready(), timeout=10)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
