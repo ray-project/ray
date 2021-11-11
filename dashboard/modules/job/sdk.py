@@ -26,22 +26,21 @@ logger.setLevel(logging.INFO)
 class JobSubmissionClient:
     def __init__(self, address: str):
         module_string, inner_address = _split_address(address.rstrip("/"))
-        if module_string == "ray":
-            self._address = "http://" + inner_address
-        else:
+
+        module = importlib.import_module(module_string)
+        try:
             module = importlib.import_module(module_string)
-            try:
-                module = importlib.import_module(module_string)
-            except Exception:
-                raise RuntimeError(
-                    f"Module: {module_string} does not exist.\n"
-                    f"This module was parsed from Address: {address}"
-                ) from None
-            assert "get_cluster_address" in dir(module), (
-                f"Module: {module_string} does "
-                "not have `get_cluster_address`.")
-            self._address = module.get_cluster_address(inner_address)
-        print("DEBUG self._address", self._address)
+        except Exception:
+            raise RuntimeError(
+                f"Module: {module_string} does not exist.\n"
+                f"This module was parsed from Address: {address}") from None
+        assert "get_cluster_address_cookies" in dir(module), (
+            f"Module: {module_string} does "
+            "not have `get_cluster_address_cookies`.")
+
+        self._address, self._cookies = module.get_cluster_address_cookies(
+            inner_address)
+        print("DEBUG self._address", self._address, self._cookies)
         self._test_connection()
 
     def _test_connection(self):
@@ -63,7 +62,12 @@ class JobSubmissionClient:
         logger.debug(f"Sending request to {url} with "
                      f"json: {json_data}, params: {params}.")
         r = requests.request(
-            method, url, data=data, json=json_data, params=params)
+            method,
+            url,
+            cookies=self._cookies,
+            data=data,
+            json=json_data,
+            params=params)
         r.raise_for_status()
         if response_type is None:
             return None

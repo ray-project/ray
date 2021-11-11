@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 import time
+from typing import Any, Dict, Optional, Tuple
 
 import ray
 import ray._private.services
@@ -307,3 +308,12 @@ class Cluster:
 
         if self.head_node is not None:
             self.remove_node(self.head_node)
+
+
+def get_job_submission_client_cluster_address_cookies(
+        address: str) -> Tuple[str, Optional[Dict[str, Any]]]:
+    """
+    Get address and cookies used for
+    ray.dashboard.modules.job.sdk.JobSubmissionClient.
+    """
+    return ("http://" + address, None)
