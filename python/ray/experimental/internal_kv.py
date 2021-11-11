@@ -28,26 +28,27 @@ def _initialize_internal_kv(gcs_client: GcsClient):
 
 # b'@:' will be the leading characters for namespace
 # If the key in storage has this, it'll contain namespace
-__NS_START_CHAR = b"@"
+__NS_START_CHAR = b"@namespace_"
 
 
 def __make_key(namespace: Optional[str], key: bytes) -> bytes:
     if namespace is None:
-        if key.startswith(__NS_START_CHAR + b":"):
-            raise ValueError("key is not allowed to start with '@:'")
+        if key.startswith(__NS_START_CHAR):
+            raise ValueError("key is not allowed to start with"
+                             f" '{__NS_START_CHAR}'")
         return key
     assert isinstance(namespace, str)
     assert isinstance(key, bytes)
-    return b":".join([__NS_START_CHAR, namespace.encode(), key])
+    return b":".join([__NS_START_CHAR + namespace.encode(), key])
 
 
-def __parse_key(key: bytes) -> Tuple[Optional[str], bytes]:
+def __get_key(key: bytes) -> Tuple[Optional[str], bytes]:
     assert isinstance(key, bytes)
-    if not key.startswith(__NS_START_CHAR + b":"):
+    if not key.startswith(__NS_START_CHAR):
         return (None, key)
 
-    _, ns, key = key.split(b":", 2)
-    return (ns.decode(), key)
+    _, key = key.split(b":", 2)
+    return key
 
 
 @client_mode_hook(auto_init=False)
@@ -126,6 +127,6 @@ def _internal_kv_list(prefix: Union[str, bytes],
         prefix = prefix.encode()
     prefix = __make_key(namespace, prefix)
     return [
-        __parse_key(key)[1]
+        __get_key(key)
         for key in global_gcs_client.internal_kv_keys(prefix)
     ]
