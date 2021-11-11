@@ -40,8 +40,6 @@ class JobSubmissionClient:
         (self._address, self._cookies, self._default_metadata
          ) = module.get_job_submission_client_cluster_info(
              inner_address, create_cluster_if_needed)
-        print("DEBUG self._address", self._address, self._cookies,
-              self._default_metadata)
         self._test_connection()
 
     def _test_connection(self):
@@ -144,7 +142,6 @@ class JobSubmissionClient:
         runtime_env = runtime_env or {}
         metadata = metadata or {}
         metadata.update(self._default_metadata)
-        print("DEBUG: metadata final", metadata)
 
         self._upload_working_dir_if_needed(runtime_env)
         req = JobSubmitRequest(
