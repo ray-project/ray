@@ -13,15 +13,16 @@ from grpc.experimental import aio as aiogrpc
 from distutils.version import LooseVersion
 
 import ray
+import ray.experimental.internal_kv as internal_kv
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
+from ray._private.gcs_utils import GcsClient
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
-from ray._raylet import connect_to_gcs
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
@@ -83,17 +84,16 @@ class DashboardAgent(object):
             assert self.ppid > 0
             logger.info("Parent pid is %s", self.ppid)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
+        grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
-            self.server, f"[::]:{self.dashboard_agent_port}")
-        logger.info("Dashboard agent grpc address: %s:%s", self.ip,
+            self.server, f"{grpc_ip}:{self.dashboard_agent_port}")
+        logger.info("Dashboard agent grpc address: %s:%s", grpc_ip,
                     self.grpc_port)
         self.aioredis_client = None
         options = (("grpc.enable_http_proxy", 0), )
         self.aiogrpc_raylet_channel = ray._private.utils.init_grpc_channel(
             f"{self.ip}:{self.node_manager_port}", options, asynchronous=True)
         self.http_session = None
-        ip, port = redis_address.split(":")
-        self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
 
     def _load_modules(self):
         """Load dashboard agent modules."""
@@ -152,7 +152,10 @@ class DashboardAgent(object):
 
         # Start a grpc asyncio server.
         await self.server.start()
-
+        # TODO: redis-removal bootstrap
+        gcs_address = await self.aioredis_client.get(
+            dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
+        self.gcs_client = GcsClient(gcs_address.decode())
         modules = self._load_modules()
 
         # Http server should be initialized after all modules loaded.
@@ -192,9 +195,11 @@ class DashboardAgent(object):
         logger.info("Registered %s routes.", len(dump_routes))
 
         # Write the dashboard agent port to redis.
-        await self.aioredis_client.set(
+        # TODO: Use async version if performance is an issue
+        internal_kv._internal_kv_put(
             f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}",
-            json.dumps([http_port, self.grpc_port]))
+            json.dumps([http_port, self.grpc_port]),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
 
         # Register agent to agent manager.
         raylet_stub = agent_manager_pb2_grpc.AgentManagerServiceStub(

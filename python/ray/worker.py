@@ -59,7 +59,8 @@ from ray._private.ray_logging import global_worker_stdstream_dispatcher
 from ray._private.utils import check_oversized_function
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
-    _internal_kv_initialized
+    _internal_kv_initialized, _initialize_internal_kv, \
+    _internal_kv_reset
 from ray._private.client_mode_hook import client_mode_hook
 
 SCRIPT_MODE = 0
@@ -1005,15 +1006,17 @@ def shutdown(_exiting_interpreter: bool = False):
 
     disconnect(_exiting_interpreter)
 
+    # disconnect internal kv
+    if hasattr(global_worker, "gcs_client"):
+        del global_worker.gcs_client
+    _internal_kv_reset()
+
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
-    if hasattr(global_worker, "gcs_client"):
-        del global_worker.gcs_client
     if hasattr(global_worker, "core_worker"):
         global_worker.core_worker.shutdown()
         del global_worker.core_worker
-
     # Disconnect global state from GCS.
     ray.state.state.disconnect()
 
@@ -1304,7 +1307,9 @@ def connect(node,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
     worker.redis_client = node.create_redis_client()
-
+    worker.gcs_client = gcs_utils.GcsClient.create_from_redis(
+        worker.redis_client)
+    _initialize_internal_kv(worker.gcs_client)
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
 
@@ -1418,7 +1423,6 @@ def connect(node,
         driver_name, log_stdout_file_path, log_stderr_file_path,
         serialized_job_config, node.metrics_agent_port, runtime_env_hash,
         worker_shim_pid, startup_token)
-    worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
@@ -1486,11 +1490,16 @@ def connect(node,
     worker.cached_functions_to_run = None
 
     # Setup tracing here
-    if _internal_kv_get("tracing_startup_hook"):
+    if _internal_kv_get(
+            "tracing_startup_hook",
+            namespace=ray_constants.KV_NAMESPACE_TRACING):
         ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
         if not getattr(ray, "__traced__", False):
             _setup_tracing = import_from_string(
-                _internal_kv_get("tracing_startup_hook").decode("utf-8"))
+                _internal_kv_get(
+                    "tracing_startup_hook",
+                    namespace=ray_constants.KV_NAMESPACE_TRACING).decode(
+                        "utf-8"))
             _setup_tracing()
             ray.__traced__ = True
 

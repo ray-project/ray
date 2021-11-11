@@ -12,7 +12,9 @@ from distutils.version import LooseVersion
 from grpc.experimental import aio as aiogrpc
 import grpc
 
+import ray.experimental.internal_kv as internal_kv
 import ray._private.utils
+from ray._private.gcs_utils import GcsClient
 import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
@@ -21,7 +23,6 @@ from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.utils import async_loop_forever
-from ray._raylet import connect_to_gcs
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
@@ -115,11 +116,11 @@ class DashboardHead:
         self.http_session = None
         self.ip = ray.util.get_node_ip_address()
         ip, port = redis_address.split(":")
-        self.gcs_client = connect_to_gcs(ip, int(port), redis_password)
         self.server = aiogrpc.server(options=(("grpc.so_reuseport", 0), ))
+        grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
         self.grpc_port = ray._private.tls_utils.add_port_to_grpc_server(
-            self.server, "[::]:0")
-        logger.info("Dashboard head grpc address: %s:%s", self.ip,
+            self.server, f"{grpc_ip}:0")
+        logger.info("Dashboard head grpc address: %s:%s", grpc_ip,
                     self.grpc_port)
 
     @async_loop_forever(dashboard_consts.GCS_CHECK_ALIVE_INTERVAL_SECONDS)
@@ -189,9 +190,13 @@ class DashboardHead:
             self.http_session = aiohttp.ClientSession()
 
         # Waiting for GCS is ready.
+        # TODO: redis-removal bootstrap
         gcs_address = await get_gcs_address_with_retry(self.aioredis_client)
+        self.gcs_client = GcsClient(gcs_address)
         self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
             gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True)
+        gcs_client = GcsClient(gcs_address)
+        internal_kv._initialize_internal_kv(gcs_client)
 
         self.health_check_thread = GCSHealthCheckThread(gcs_address)
         self.health_check_thread.start()
@@ -211,7 +216,8 @@ class DashboardHead:
         modules = self._load_modules()
 
         # Http server should be initialized after all modules loaded.
-        app = aiohttp.web.Application()
+        # working_dir uploads for job submission can be up to 100MiB.
+        app = aiohttp.web.Application(client_max_size=100 * 1024**2)
         app.add_routes(routes=routes.bound_routes())
 
         runner = aiohttp.web.AppRunner(app)
@@ -235,12 +241,16 @@ class DashboardHead:
             http_host).is_unspecified else http_host
         logger.info("Dashboard head http address: %s:%s", http_host, http_port)
 
-        # Write the dashboard head port to redis.
-        await self.aioredis_client.set(ray_constants.REDIS_KEY_DASHBOARD,
-                                       f"{http_host}:{http_port}")
-        await self.aioredis_client.set(
+        # TODO: Use async version if performance is an issue
+        # Write the dashboard head port to gcs kv.
+        internal_kv._internal_kv_put(
+            ray_constants.REDIS_KEY_DASHBOARD,
+            f"{http_host}:{http_port}",
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+        internal_kv._internal_kv_put(
             dashboard_consts.REDIS_KEY_DASHBOARD_RPC,
-            f"{self.ip}:{self.grpc_port}")
+            f"{self.ip}:{self.grpc_port}",
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
 
         # Dump registered http routes.
         dump_routes = [

@@ -24,48 +24,9 @@
 
 namespace ray {
 
-std::string GetExeSuffix() {
-  std::string result;
-#ifdef _WIN32
-  result = ".exe";
-#endif
-  return result;
-}
-
 std::string GetFileName(const std::string &path) {
-  size_t i = GetRootPathLength(path), j = path.size();
-  while (j > i && !IsDirSep(path[j - 1])) {
-    --j;
-  }
-  return path.substr(j);
+  return std::filesystem::path(path).filename().string();
 }
-
-size_t GetRootPathLength(const std::string &path) {
-  size_t i = 0;
-#ifdef _WIN32
-  if (i + 2 < path.size() && IsDirSep(path[i]) && IsDirSep(path[i + 1]) &&
-      !IsDirSep(path[i + 2])) {
-    // UNC paths begin with two separators (but not 1 or 3)
-    i += 2;
-    for (int k = 0; k < 2; ++k) {
-      while (i < path.size() && !IsDirSep(path[i])) {
-        ++i;
-      }
-      while (i < path.size() && IsDirSep(path[i])) {
-        ++i;
-      }
-    }
-  } else if (i + 1 < path.size() && path[i + 1] == ':') {
-    i += 2;
-  }
-#endif
-  while (i < path.size() && IsDirSep(path[i])) {
-    ++i;
-  }
-  return i;
-}
-
-std::string GetRayTempDir() { return JoinPaths(GetUserTempDir(), "ray"); }
 
 std::string GetUserTempDir() {
   std::string result;

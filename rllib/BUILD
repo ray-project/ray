@@ -40,6 +40,10 @@
 # starting letter of the test name (e.g. "examples_A", or "tests_dir_F") for
 # split-up purposes in buildkite.
 
+# Note: There is a special directory in examples: "documentation" which contains
+# all code that is linked to from within the RLlib docs. This code is tested
+# separately via the "documentation" tag.
+
 # Additional tags are:
 # - "team:ml": Indicating that all tests in this file are the responsibility of
 #   the ML Team.
@@ -144,6 +148,16 @@ py_test(
     data = [
         "tuned_examples/ppo/cartpole-appo-vtrace-separate-losses.yaml"
     ],
+    args = ["--yaml-dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "learning_frozenlake_appo",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:ml", "learning_tests", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/frozenlake-appo-vtrace.yaml"],
     args = ["--yaml-dir=tuned_examples/ppo"]
 )
 
@@ -502,7 +516,7 @@ py_test(
 py_test(
     name = "test_a2c",
     tags = ["team:ml", "trainers_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/a3c/tests/test_a2c.py"]
 )
 
@@ -517,7 +531,7 @@ py_test(
 py_test(
     name = "test_apex_dqn",
     tags = ["team:ml", "trainers_dir"],
-    size = "medium",
+    size = "large",
     srcs = ["agents/dqn/tests/test_apex_dqn.py"]
 )
 
@@ -798,7 +812,7 @@ py_test(
     main = "train.py", srcs = ["train.py"],
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "Pendulum-v0",
+        "--env", "Pendulum-v1",
         "--run", "APEX_DDPG",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"optimizer\": {\"num_replay_buffer_shards\": 1}, \"learning_starts\": 100, \"min_iter_time_s\": 1, \"batch_mode\": \"complete_episodes\"}'",
@@ -809,12 +823,12 @@ py_test(
 # DQN/APEX
 
 py_test(
-    name = "test_dqn_frozenlake_v0",
+    name = "test_dqn_frozenlake_v1",
     main = "train.py", srcs = ["train.py"],
     size = "small",
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "FrozenLake-v0",
+        "--env", "FrozenLake-v1",
         "--run", "DQN",
         "--config", "'{\"framework\": \"tf\"}'",
         "--stop", "'{\"training_iteration\": 1}'"
@@ -997,11 +1011,11 @@ py_test(
 )
 
 py_test(
-    name = "test_appo_tf_pendulum_v0_no_gpus",
+    name = "test_appo_tf_pendulum_v1_no_gpus",
     main = "train.py", srcs = ["train.py"],
     tags = ["team:ml", "quick_train"],
     args = [
-        "--env", "Pendulum-v0",
+        "--env", "Pendulum-v1",
         "--run", "APPO",
         "--stop", "'{\"training_iteration\": 1}'",
         "--config", "'{\"framework\": \"tf\", \"num_workers\": 2, \"num_gpus\": 0}'",
@@ -1257,6 +1271,15 @@ py_test(
     data = glob(["utils/tests/**"]),
     srcs = ["utils/tests/test_framework_agnostic_components.py"]
 )
+
+# Spaces/Space utils.
+py_test(
+    name = "test_space_utils",
+    tags = ["team:ml", "utils"],
+    size = "large",
+    srcs = ["utils/spaces/tests/test_space_utils.py"]
+)
+
 
 # TaskPool
 py_test(
@@ -1598,7 +1621,7 @@ py_test(
 )
 
 # --------------------------------------------------------------------
-# examples/ directory
+# examples/ directory (excluding examples/documentation/...)
 #
 # Tag: examples, examples_[A-Z]
 #
@@ -2374,6 +2397,60 @@ py_test(
 )
 
 py_test(
+    name = "examples/inference_and_serving/policy_inference_after_training_tf",
+    main = "examples/inference_and_serving/policy_inference_after_training.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/inference_and_serving/policy_inference_after_training.py"],
+    args = ["--stop-iters=3", "--framework=tf"]
+)
+
+py_test(
+    name = "examples/inference_and_serving/policy_inference_after_training_torch",
+    main = "examples/inference_and_serving/policy_inference_after_training.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/inference_and_serving/policy_inference_after_training.py"],
+    args = ["--stop-iters=3", "--framework=torch"]
+)
+
+py_test(
+    name = "examples/inference_and_serving/policy_inference_after_training_with_attention_tf",
+    main = "examples/inference_and_serving/policy_inference_after_training_with_attention.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_attention.py"],
+    args = ["--stop-iters=2", "--framework=tf"]
+)
+
+py_test(
+    name = "examples/inference_and_serving/policy_inference_after_training_with_attention_torch",
+    main = "examples/inference_and_serving/policy_inference_after_training_with_attention.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_attention.py"],
+    args = ["--stop-iters=2", "--framework=torch"]
+)
+
+py_test(
+    name = "examples/inference_and_serving/policy_inference_after_training_with_lstm_tf",
+    main = "examples/inference_and_serving/policy_inference_after_training_with_lstm.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_lstm.py"],
+    args = ["--stop-iters=1", "--framework=tf"]
+)
+
+py_test(
+    name = "examples/inference_and_serving/policy_inference_after_training_with_lstm_torch",
+    main = "examples/inference_and_serving/policy_inference_after_training_with_lstm.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_lstm.py"],
+    args = ["--stop-iters=1", "--framework=torch"]
+)
+
+py_test(
     name = "examples/preprocessing_disabled_tf",
     main = "examples/preprocessing_disabled.py",
     tags = ["team:ml", "examples", "examples_P"],
@@ -2515,6 +2592,15 @@ py_test(
 )
 
 py_test(
+    name = "examples/tune/framework",
+    main = "examples/tune/framework.py",
+    tags = ["team:ml", "examples", "examples_F"],
+    size = "medium",
+    srcs = ["examples/tune/framework.py"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "examples/two_trainer_workflow_tf",
     main = "examples/two_trainer_workflow.py",
     tags = ["team:ml", "examples", "examples_T"],
@@ -2617,4 +2703,20 @@ py_test(
     tags = ["team:ml", "examples", "examples_U"],
     size = "small",
     srcs = ["contrib/bandits/examples/tune_LinUCB_train_recommendation.py"],
+)
+
+# --------------------------------------------------------------------
+# examples/documentation directory
+#
+# Tag: documentation
+#
+# NOTE: Add tests alphabetically into this list.
+# --------------------------------------------------------------------
+
+py_test(
+    name = "examples/documentation/rllib_in_60s",
+    main = "examples/documentation/rllib_in_60s.py",
+    tags = ["team:ml", "documentation"],
+    size = "medium",
+    srcs = ["examples/documentation/rllib_in_60s.py"],
 )
