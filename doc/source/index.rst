@@ -279,6 +279,7 @@ Papers
 
    data/dataset.rst
    data/dataset-pipeline.rst
+   data/dataset-execution-model.rst
    data/examples/big_data_ingestion
    data/dataset-tensor-support.rst
    data/package-ref.rst
