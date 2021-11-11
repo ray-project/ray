@@ -14,8 +14,8 @@ class MultiAgentEnv(gym.Env):
     """An environment that hosts multiple independent agents.
 
     Agents are identified by (string) agent ids. Note that these "agents" here
-    are not to be confused with RLlib Trainers, which are also sometimes refered
-    to as "agents" or "RL agents".
+    are not to be confused with RLlib Trainers, which are also sometimes
+    referred to as "agents" or "RL agents".
     """
 
     @PublicAPI
@@ -141,10 +141,10 @@ def make_multi_agent(
 
     Allows you to convert a simple (single-agent) `gym.Env` class
     into a `MultiAgentEnv` class. This function simply stacks n instances
-    of the given ```gym.Env``` class into one unified ``MultiAgentEnv`` class and
-    returns this class, thus pretending the agents act together in the same
-    environment, whereas - under the hood - they live separately from each
-    other in n parallel single-agent envs.
+    of the given ```gym.Env``` class into one unified ``MultiAgentEnv`` class
+    and returns this class, thus pretending the agents act together in the
+    same environment, whereas - under the hood - they live separately from
+    each other in n parallel single-agent envs.
 
     Agent IDs in the resulting and are int numbers starting from 0
     (first agent).

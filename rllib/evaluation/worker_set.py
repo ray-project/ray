@@ -33,6 +33,7 @@ class WorkerSet:
 
     Where n may be 0.
     """
+
     def __init__(self,
                  *,
                  env_creator: Optional[Callable[[EnvContext], EnvType]] = None,
