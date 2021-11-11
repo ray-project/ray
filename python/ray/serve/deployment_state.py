@@ -13,8 +13,7 @@ from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (DeploymentInfo, Duration, GoalId, ReplicaTag,
                               ReplicaName, RunningReplicaInfo)
 from ray.serve.config import DeploymentConfig
-from ray.serve.constants import (SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME,
-                                 MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+from ray.serve.constants import (MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
                                  MAX_NUM_DELETED_DEPLOYMENTS)
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
@@ -364,8 +363,8 @@ class DeploymentReplica(VersionedReplica):
                  replica_tag: ReplicaTag, deployment_name: str,
                  version: DeploymentVersion):
         self._actor = ActorReplicaWrapper(
-            format_actor_name(replica_tag), detached, controller_name,
-            replica_tag, deployment_name)
+            f"{ReplicaName.prefix}{format_actor_name(replica_tag)}", detached,
+            controller_name, replica_tag, deployment_name)
         self._controller_name = controller_name
         self._deployment_name = deployment_name
         self._replica_tag = replica_tag
@@ -1261,8 +1260,7 @@ class DeploymentStateManager:
         """
         all_replica_names = [
             actor_name for actor_name in all_current_actor_names
-            if (SERVE_CONTROLLER_NAME not in actor_name
-                and SERVE_PROXY_NAME not in actor_name)
+            if ReplicaName.is_replica_name(actor_name)
         ]
         deployment_to_current_replicas = defaultdict(list)
         if len(all_replica_names) > 0:
