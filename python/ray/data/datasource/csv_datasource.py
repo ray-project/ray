@@ -1,9 +1,9 @@
-from typing import TYPE_CHECKING, Any, Dict, Callable
+from typing import TYPE_CHECKING, Any, Dict, Callable, Iterator
 
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.data.block import BlockAccessor
+from ray.data.block import BlockAccessor, Block
 from ray.data.datasource.file_based_datasource import (FileBasedDatasource,
                                                        _resolve_kwargs)
 
@@ -17,7 +17,8 @@ class CSVDatasource(FileBasedDatasource):
         ... [{"a": 1, "b": "foo"}, ...]
     """
 
-    def _read_stream(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Iterator[Block]:
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str,
+                     **reader_args) -> Iterator[Block]:
         from pyarrow import csv
 
         read_options = reader_args.pop(

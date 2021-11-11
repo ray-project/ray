@@ -1,6 +1,6 @@
 import logging
 from typing import Callable, Optional, List, Tuple, Union, Any, Dict, \
-    TYPE_CHECKING
+    Iterator, Iterable, TYPE_CHECKING
 import urllib.parse
 
 if TYPE_CHECKING:
@@ -8,8 +8,10 @@ if TYPE_CHECKING:
 
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
-from ray.data.impl.arrow_block import (ArrowRow, DelegatingArrowBlockBuilder)
+from ray.data.context import DataContext
+from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_list import BlockMetadata
+from ray.data.impl.block_partition import BlockPartitionBuilder
 from ray.data.datasource.datasource import Datasource, ReadTask, WriteResult
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
@@ -120,7 +122,6 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         """Creates and returns read tasks for a file-based datasource.
         """
         _check_pyarrow_version()
-        import pyarrow as pa
         import numpy as np
 
         paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
@@ -134,22 +135,21 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         if open_stream_args is None:
             open_stream_args = {}
 
-        def read_files(
-                read_paths: List[str],
-                fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper]
-                ) -> Iterable[Block]:
+        def read_files(read_paths: List[str],
+                       fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper]
+                       ) -> Iterable[Block]:
             logger.debug(f"Reading {len(read_paths)} files.")
             if isinstance(fs, _S3FileSystemWrapper):
                 fs = fs.unwrap()
-            stream = BlockStreamBuilder(_block_udf)
+            ctx = DataContext.get_current()
+            builder = BlockPartitionBuilder(
+                block_udf=_block_udf,
+                target_max_block_size=ctx.target_max_block_size)
             for read_path in read_paths:
                 with fs.open_input_stream(read_path, **open_stream_args) as f:
                     for data in read_stream(f, read_path, **reader_args):
-                        if isinstance(data, pa.Table):
-                            stream.add_block(data)
-                        else:
-                            stream.add(data)
-            return stream.iterator()
+                        builder.add_block(data)
+            return builder.iterator()
 
         read_tasks = []
         for read_paths, file_sizes in zip(
@@ -179,14 +179,16 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
         """Returns the number of rows per file, or None if unknown."""
         return None
 
-    def _read_stream(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Iterator[Block]:
+    def _read_stream(self, f: "pyarrow.NativeFile", path: str,
+                     **reader_args) -> Iterator[Block]:
         """Streaming read a single file, passing all kwargs to the reader.
 
         By default, delegates to self._read_file().
         """
-        yield self._read_file()
+        yield self._read_file(**reader_args)
 
-    def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args) -> Block:
+    def _read_file(self, f: "pyarrow.NativeFile", path: str,
+                   **reader_args) -> Block:
         """Reads a single file, passing all kwargs to the reader.
 
         This method should be implemented by subclasses.

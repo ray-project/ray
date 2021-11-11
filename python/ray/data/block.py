@@ -10,7 +10,6 @@ if TYPE_CHECKING:
     from ray.data.aggregate import AggregateFn
     from ray.data.grouped_dataset import GroupKeyT
 
-from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
 
@@ -24,14 +23,6 @@ AggType = TypeVar("AggType")
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
 Block = Union[List[T], "pyarrow.Table", bytes]
-
-# A list of block references pending computation by a single task. For example,
-# this may be the output of a task reading a file.
-BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
-
-# The metadata that describes the output of a BlockPartition. This has the
-# same type as the metadata that describes each block in the partition.
-BlockPartitionMetadata = "BlockMetadata"
 
 
 @DeveloperAPI
