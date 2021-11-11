@@ -2,14 +2,12 @@ import argparse
 import os
 import json
 import logging
-import time
 
 from time import perf_counter
 
 import ray
 
-from ray.util.placement_group import (
-    placement_group, remove_placement_group)
+from ray.util.placement_group import (placement_group, remove_placement_group)
 from ray._private.test_utils import wait_for_condition
 
 logging.basicConfig(level=logging.INFO)
@@ -25,16 +23,18 @@ def run_trial(total_stage, num_pg_per_stage):
         pgs = []
         start = perf_counter()
         for _ in range(num_pg_per_stage):
-            pgs.append(placement_group(
-                bundles=[{"custom": 0.025} for _ in range(4)],
-                strategy="PACK"))
+            pgs.append(
+                placement_group(
+                    bundles=[{
+                        "custom": 0.025
+                    } for _ in range(4)],
+                    strategy="PACK"))
         logger.info(f"Created {num_pg_per_stage} pgs.")
         ray.get([pg.ready() for pg in pgs])
         end = perf_counter()
         total_creating_time = (end - start)
-        logger.info(
-            f"Creating {num_pg_per_stage} took "
-            f"{total_creating_time} seconds at stage {i}")
+        logger.info(f"Creating {num_pg_per_stage} took "
+                    f"{total_creating_time} seconds at stage {i}")
         creating_e2e_s.append(total_creating_time * 1000.0)
 
         # Remove pgs
@@ -43,9 +43,8 @@ def run_trial(total_stage, num_pg_per_stage):
             remove_placement_group(pg)
         end = perf_counter()
         total_removal_time = end - start
-        logger.info(
-            f"removed {num_pg_per_stage} pgs took "
-            f"{total_removal_time} seconds at stage {i}")
+        logger.info(f"removed {num_pg_per_stage} pgs took "
+                    f"{total_removal_time} seconds at stage {i}")
         removing_e2e_s.append(total_removal_time * 1000.0)
         # time.sleep(1)
 
@@ -64,12 +63,7 @@ def run_trial(total_stage, num_pg_per_stage):
         p50 = latencies[int(len(latencies) * 0.5)]
         p95 = latencies[int(len(latencies) * 0.95)]
         p99 = latencies[int(len(latencies) * 0.99)]
-        return {
-            "p10_ms": p10,
-            "p50_ms": p50,
-            "p95_ms": p95, 
-            "p99_ms": p99
-        }
+        return {"p10_ms": p10, "p50_ms": p50, "p95_ms": p95, "p99_ms": p99}
 
     scheduling_perf = get_scheduling_perf(latencies)
     removing_perf = get_scheduling_perf(removing_e2e_s)
@@ -77,22 +71,20 @@ def run_trial(total_stage, num_pg_per_stage):
 
     wait_for_condition(lambda: (
         ray.cluster_resources()["custom"]
-            == ray.available_resources()["custom"]), timeout=30)
+        == ray.available_resources()["custom"]), timeout=30)
     wait_for_condition(lambda: (
         ray.cluster_resources()["pending"]
-            == ray.available_resources()["pending"]), timeout=30)
-    
+        == ray.available_resources()["pending"]), timeout=30)
+
     return scheduling_perf, removing_perf, creation_perf
+
 
 def parse_script_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--num-pgs-stage", type=int, default=100)
     parser.add_argument("--num-stages", type=int, default=100)
     parser.add_argument("--num-pending-pgs", type=int, default=0)
-    parser.add_argument(
-        "--local",
-        action="store_true",
-        default=False)
+    parser.add_argument("--local", action="store_true", default=False)
     return parser.parse_known_args()
 
 
@@ -111,37 +103,29 @@ def main():
     TOTAL_STAGE = args.num_stages
 
     if args.local:
-        ray.init(resources={
-            "custom": 100, "pending": 1})
+        ray.init(resources={"custom": 100, "pending": 1})
     else:
         ray.init(address="auto")
 
-    assert (
-        ray.cluster_resources()["custom"] >= NUM_PG_AT_EACH_STAGE * 4)
-    assert (
-        ray.cluster_resources()["pending"] >= 1)
+    assert (ray.cluster_resources()["custom"] >= NUM_PG_AT_EACH_STAGE * 4)
+    assert (ray.cluster_resources()["pending"] >= 1)
 
     # Create pending placement groups.
     pending_pgs = []
     for _ in range(NUM_PENDING_PG):
         # Right now, we don't have infeasible pgs,
         # so this will simulate the pending pgs.
-        pending_pgs.append(
-            placement_group([{"pending": 1}], strategy="PACK"))
+        pending_pgs.append(placement_group([{"pending": 1}], strategy="PACK"))
 
-    (
-        scheduling_perf,
-        removing_perf,
-        creation_perf
-    ) = run_trial(20, NUM_PG_AT_EACH_STAGE)
-    (
-        scheduling_perf_final,
-        removing_perf_final,
-        creation_perf_final
-    ) = run_trial(TOTAL_STAGE, NUM_PG_AT_EACH_STAGE)
+    (scheduling_perf, removing_perf, creation_perf) = run_trial(
+        20, NUM_PG_AT_EACH_STAGE)
+    (scheduling_perf_final, removing_perf_final,
+     creation_perf_final) = run_trial(TOTAL_STAGE, NUM_PG_AT_EACH_STAGE)
 
     print(f"Scheduling performance 20 trials: {scheduling_perf}")
-    print(f"Scheduling performance {TOTAL_STAGE} trials: {scheduling_perf_final}")
+    print(
+        f"Scheduling performance {TOTAL_STAGE} trials: {scheduling_perf_final}"
+    )
     print(f"Removal performance 20 trials: {removing_perf}")
     print(f"Removal performance {TOTAL_STAGE} trials: {removing_perf_final}")
     print(f"Creation performance 20 trials: {creation_perf}")
