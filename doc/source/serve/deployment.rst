@@ -194,12 +194,12 @@ Now we can try querying the service by sending an HTTP request to the service fr
     # Get a shell inside of the head node.
     $ ray attach ray/python/ray/autoscaler/kubernetes/example-full.yaml
 
-    # Query the Ray Serve endpoint. This can be run from anywhere in the
+    # Query the Ray Serve deployment. This can be run from anywhere in the
     # Kubernetes cluster.
     $ curl -X GET http://$RAY_HEAD_SERVICE_HOST:8000/hello
     hello world
 
-In order to expose the Ray Serve endpoint externally, we would need to deploy the Service we created here behind an `Ingress`_ or a `NodePort`_.
+In order to expose the Ray Serve deployment externally, we would need to deploy the Service we created here behind an `Ingress`_ or a `NodePort`_.
 Please refer to the Kubernetes documentation for more information.
 
 .. _`Kubernetes default config`: https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/kubernetes/example-full.yaml
@@ -301,7 +301,7 @@ To automatically include the current deployment and replica in your logs, simply
 
 .. literalinclude:: ../../../python/ray/serve/examples/doc/snippet_logger.py
 
-Querying a Serve endpoint with the above deployment will produce a log line like the following:
+Querying the above deployment will produce a log line like the following:
 
 .. code-block:: bash
 

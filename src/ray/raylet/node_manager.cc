@@ -415,6 +415,9 @@ ray::Status NodeManager::RegisterGcs() {
     const auto &resources_changed =
         [this](const rpc::NodeResourceChange &resource_notification) {
           auto id = NodeID::FromBinary(resource_notification.node_id());
+          if (id == self_node_id_) {
+            return;
+          }
           if (resource_notification.updated_resources_size() != 0) {
             ResourceSet resource_set(
                 MapFromProtobuf(resource_notification.updated_resources()));
@@ -1259,9 +1262,7 @@ void NodeManager::DisconnectClient(
         cluster_task_manager_->TaskFinished(worker, &task);
       }
 
-      if (worker->IsDetachedActor()) {
-        runtime_env_manager_.RemoveURIReference(actor_id.Hex());
-      }
+      runtime_env_manager_.RemoveURIReference(actor_id.Hex());
 
       if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR_EXIT) {
         // Push the error to driver.
@@ -1953,9 +1954,10 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
     auto job_id = task.GetTaskSpecification().JobId();
     auto job_config = worker_pool_.GetJobConfig(job_id);
     RAY_CHECK(job_config);
-    runtime_env_manager_.AddURIReference(actor_id.Hex(),
-                                         task.GetTaskSpecification().RuntimeEnv());
   }
+
+  runtime_env_manager_.AddURIReference(actor_id.Hex(),
+                                       task.GetTaskSpecification().RuntimeEnv());
 }
 
 void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
