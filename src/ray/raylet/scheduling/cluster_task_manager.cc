@@ -266,8 +266,11 @@ bool ClusterTaskManager::PoppedWorkerHandler(
                 task.GetTaskSpecification().TaskId());
           }
         } else {
+          RAY_LOG(INFO) << "Retry runtime env setup, task_id="
+                        << work->task.GetTaskSpecification().TaskId();
           /// Retry scheduling.
           work->SetStateWaiting(cause);
+          erase_from_dispatch_queue_fn(work, scheduling_class);
           tasks_to_schedule_[scheduling_class].push_back(work);
           ScheduleAndDispatchTasks();
         }
