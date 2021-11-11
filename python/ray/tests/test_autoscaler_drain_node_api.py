@@ -20,6 +20,7 @@ class MockFakeProvider(FakeMultiNodeProvider):
     Used to check that a Ray node can be terminated by DrainNode API call
     from the autoscaler.
     """
+
     def _kill_ray_processes(self, node):
         logger.info("Leaving Raylet termination to autoscaler Drain API!")
 
@@ -27,13 +28,13 @@ class MockFakeProvider(FakeMultiNodeProvider):
 class MockAutoscalingCluster(AutoscalingCluster):
     """AutoscalingCluster modified to used the above MockFakeProvider.
     """
+
     def _generate_config(self, head_resources, worker_node_types):
         config = super()._generate_config(head_resources, worker_node_types)
         config["provider"]["type"] = "external"
         config["provider"]["module"] = (
             "ray.tests"
-            ".test_autoscaler_drain_node_api.MockFakeProvider"
-        )
+            ".test_autoscaler_drain_node_api.MockFakeProvider")
         return config
 
 
