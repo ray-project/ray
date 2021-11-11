@@ -97,6 +97,8 @@ class RayParams:
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        runtime_env_dir_name (str): If provided, specifies the directory that
+            will be created in the session dir to hold runtime_env files.
         include_log_monitor (bool): If True, then start a log monitor to
             monitor the log files for all processes on this node and push their
             contents to Redis.
