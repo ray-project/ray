@@ -92,7 +92,7 @@ def start_actors(total_num_actors, num_nodes):
         }) for n in nodes for _ in range(actors_per_node)
     ]
     ray.get([actor.ready.remote() for actor in pi_actors])
-    print(f"Took {time.time() - start} to create {actors_per_node} actors")
+    print(f"Took {time.time() - start} to create {total_num_actors} actors")
     # Start the computation loop.
     for actor in pi_actors:
         actor.run_compute.remote()
