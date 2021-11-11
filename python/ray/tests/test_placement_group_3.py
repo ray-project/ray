@@ -36,9 +36,6 @@ def get_ray_status_output(address):
     }
 
 
-@pytest.mark.skip(
-    reason=("Flaky in the master. The feature is not officially "
-            "supported yet, so we just disable it."))
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
@@ -701,6 +698,17 @@ def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
         trainer = Trainer.options(placement_group=pg).remote(0)
         ray.get([workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)])
         ray.get(trainer.train.remote())
+
+
+def test_fractional_resources_handle_correct(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1000)
+    ray.init(address=cluster.address)
+
+    bundles = [{"CPU": 0.01} for _ in range(5)]
+    pg = placement_group(bundles, strategy="SPREAD")
+
+    ray.get(pg.ready(), timeout=10)
 
 
 if __name__ == "__main__":
