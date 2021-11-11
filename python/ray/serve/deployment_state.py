@@ -704,9 +704,9 @@ class DeploymentState:
                 "Target state should be recovered successfully first before "
                 "recovering current state from replica actor names.")
 
-        logger.info("Recovering current state for deployment "
-                    f"{self._name} from {len(replica_actor_names)} actors in "
-                    "current ray cluster..")
+        logger.debug("Recovering current state for deployment "
+                     f"{self._name} from {len(replica_actor_names)} actors in "
+                     "current ray cluster..")
         # All current states use default value, only attach running replicas.
         for replica_actor_name in replica_actor_names:
             replica_name: ReplicaName = ReplicaName.from_str(
