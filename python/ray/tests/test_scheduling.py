@@ -34,7 +34,7 @@ def attempt_to_load_balance(remote_function,
         locations = ray.get(
             [remote_function.remote(*args) for _ in range(total_tasks)])
         counts = collections.Counter(locations)
-        logger.info(f"Counts are {counts}")
+        print(f"====Counts are {counts}")
         if (len(counts) == num_nodes
                 and counts.most_common()[-1][1] >= minimum_count):
             break
