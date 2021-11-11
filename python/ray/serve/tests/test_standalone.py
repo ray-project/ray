@@ -550,8 +550,9 @@ def test_local_store_recovery(ray_shutdown):
     "ray_start_with_dashboard", [{
         "num_cpus": 4
     }], indirect=True)
-def test_snapshot_always_written_to_internal_kv(ray_start_with_dashboard,
-                                                ray_shutdown):  # noqa: F811
+def test_snapshot_always_written_to_internal_kv(
+        ray_start_with_dashboard,  # noqa: F811
+        ray_shutdown):
     # https://github.com/ray-project/ray/issues/19752
     _, tmp_path = mkstemp()
 
