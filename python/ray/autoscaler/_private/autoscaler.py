@@ -407,7 +407,7 @@ class StandardAutoscaler:
         note: The current implementation of DrainNode on the GCS side is to
         de-register and gracefully shut down the Raylet. In the future,
         the behavior may change to better reflect the name "Drain."
-        See https://github.com/ray-project/ray/pull/19350
+        See https://github.com/ray-project/ray/pull/19350.
         """
         # The GCS expects Raylet ids in the request, rather than NodeProvider
         # ids. To get the Raylet ids of the nodes to we're draining, we make
