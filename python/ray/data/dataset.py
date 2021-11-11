@@ -2131,6 +2131,11 @@ class Dataset(Generic[T]):
         return ray.get(
             [get_num_rows.remote(b) for b in self._blocks.iter_blocks()])
 
+    def _block_size_bytes(self) -> List[int]:
+        get_size_bytes = cached_remote_fn(_get_size_bytes)
+        return ray.get(
+            [get_size_bytes.remote(b) for b in self._blocks.iter_blocks()])
+
     def _meta_count(self) -> Optional[int]:
         metadata = self._blocks.get_metadata()
         if metadata and metadata[0].num_rows is not None:
@@ -2154,6 +2159,11 @@ class Dataset(Generic[T]):
 def _get_num_rows(block: Block) -> int:
     block = BlockAccessor.for_block(block)
     return block.num_rows()
+
+
+def _get_size_bytes(block: Block) -> int:
+    block = BlockAccessor.for_block(block)
+    return block.size_bytes()
 
 
 def _block_to_df(block: Block):
