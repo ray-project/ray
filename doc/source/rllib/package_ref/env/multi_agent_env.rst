@@ -7,9 +7,12 @@ rllib.env.multi_agent_env.MultiAgentEnv
 ---------------------------------------
 
 .. autoclass:: ray.rllib.env.multi_agent_env.MultiAgentEnv
-    :members:
-    :inherited-members: __init__, reset, step, render, with_agent_groups
-    :undoc-members:
+
+    .. automethod:: __init__
+    .. automethod:: reset
+    .. automethod:: step
+    .. automethod:: render
+    .. automethod:: with_agent_groups
 
 
 Convert gym.Env into MultiAgentEnv
