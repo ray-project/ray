@@ -189,7 +189,7 @@ class FileBasedDatasource(Datasource[Union[ArrowRow, Any]]):
 
         By default, delegates to self._read_file().
         """
-        yield self._read_file(**reader_args)
+        yield self._read_file(f, path, **reader_args)
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str,
                    **reader_args) -> Block:
