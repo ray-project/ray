@@ -33,7 +33,7 @@ def test_successful_job_status(ray_start_with_dashboard, disable_aiohttp_cache,
                                enable_test_module):
     address = ray_start_with_dashboard["webui_url"]
     assert wait_until_server_available(address)
-    address = format_web_url(address)
+    address = format_web_url(address, for_job_submission_client=True)
 
     entrypoint_cmd = ("python -c\""
                       "import ray;"
@@ -65,7 +65,7 @@ def test_failed_job_status(ray_start_with_dashboard, disable_aiohttp_cache,
                            enable_test_module):
     address = ray_start_with_dashboard["webui_url"]
     assert wait_until_server_available(address)
-    address = format_web_url(address)
+    address = format_web_url(address, for_job_submission_client=True)
 
     entrypoint_cmd = ("python -c\""
                       "import ray;"
