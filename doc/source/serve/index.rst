@@ -4,9 +4,9 @@
 Serve: Scalable and Programmable Serving
 ========================================
 
-.. warning::
-  You're probably running the latest pip release and not the nightly build, so please ensure you're viewing the correct version of this documentation.
-  `Here's the documentation for the latest pip release of Ray Serve <https://docs.ray.io/en/latest/serve/index.html>`_.
+.. tip::
+   Get in touch with us if you're using or considering using `Ray Serve <https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU>`_.
+
 
 
 .. image:: logo.svg
