@@ -114,3 +114,21 @@ train.world_size
 ~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.world_size
+
+PyTorch Training Function Utilities
+-----------------------------------
+
+train.torch.prepare
+~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.prepare
+
+train.torch.prepare_data_loader
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.prepare_data_loader
+
+train.torch.get_device
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.get_device
