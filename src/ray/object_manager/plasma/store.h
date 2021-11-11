@@ -105,6 +105,11 @@ class PlasmaStore {
     callback(available);
   }
 
+  void SetShouldSpill(bool should_spill) {
+    absl::MutexLock lock(&mutex_);
+    return create_request_queue_.SetShouldSpill(should_spill);
+  }
+
  private:
   /// Create a new object. The client must do a call to release_object to tell
   /// the store when it is done with the object.

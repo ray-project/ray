@@ -144,6 +144,10 @@ Status CreateRequestQueue::ProcessFirstRequest() {
   return Status::OK();
 }
 
+void CreateRequestQueue::SetShouldSpill(bool should_spill) {
+  should_spill_ = should_spill;
+}
+
 Status CreateRequestQueue::ProcessRequests() {
   // Suppress OOM dump to once per grace period.
   bool logged_oom = false;
@@ -170,8 +174,9 @@ Status CreateRequestQueue::ProcessRequests() {
         oom_start_time_ns_ = now;
       }
 
-      bool wait = on_object_creation_blocked_callback_(queue_it->first.first);
-      if (wait) {
+      // Notify the scheduler that object creation is blocked at this priority.
+      on_object_creation_blocked_callback_(queue_it->first.first);
+      if (!should_spill_) {
         RAY_LOG(INFO) << "Object creation of priority " << queue_it->first.first << " blocked";
         return Status::TransientObjectStoreFull("Waiting for higher priority tasks to finish");
       }

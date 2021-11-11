@@ -32,6 +32,10 @@ class PlasmaStoreRunner {
                        "PlasmaStoreRunner.GetAvailableMemory");
   }
 
+  void SetShouldSpill(bool should_spill) {
+    store_->SetShouldSpill(should_spill);
+  }
+
  private:
   void Shutdown();
   mutable absl::Mutex store_runner_mutex_;

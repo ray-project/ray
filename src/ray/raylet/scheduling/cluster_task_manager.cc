@@ -39,7 +39,8 @@ ClusterTaskManager::ClusterTaskManager(
     std::function<bool(const std::vector<ObjectID> &object_ids,
                        std::vector<std::unique_ptr<RayObject>> *results)>
         get_task_arguments,
-    size_t max_pinned_task_arguments_bytes)
+    size_t max_pinned_task_arguments_bytes,
+    SetShouldSpillCallback set_should_spill)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
@@ -55,7 +56,8 @@ ClusterTaskManager::ClusterTaskManager(
       max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes),
       metric_tasks_queued_(0),
       metric_tasks_dispatched_(0),
-      metric_tasks_spilled_(0) {}
+      metric_tasks_spilled_(0),
+      set_should_spill_(set_should_spill) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.

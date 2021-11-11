@@ -120,6 +120,8 @@ class CreateRequestQueue {
 
   size_t NumPendingBytes() const { return num_bytes_pending_; }
 
+  void SetShouldSpill(bool should_spill);
+
  private:
   struct CreateRequest {
     CreateRequest(const ObjectID &object_id, uint64_t request_id,
@@ -213,6 +215,9 @@ class CreateRequestQueue {
   int64_t oom_start_time_ns_ = -1;
 
   size_t num_bytes_pending_ = 0;
+
+  // Shared between the object store thread and the scheduler thread.
+  bool should_spill_ = false;
 
   friend class CreateRequestQueueTest;
 };
