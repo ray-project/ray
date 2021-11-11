@@ -116,13 +116,10 @@ class ActorManager {
   /// This is used for debugging purpose.
   std::vector<ObjectID> GetActorHandleIDsFromHandles();
 
-  /// Invalidate the actor handle cache.
-  ///
-  /// Named actor handles are cached to memory. This method invalidates
-  /// the actor handle cache.
+  /// Function that's invoked when the actor is permanatly dead.
   ///
   /// \param actor_id The actor id of the handle that will be invalidated.
-  void InvalidateActorHandleCache(const ActorID &actor_id);
+  void OnActorKilled(const ActorID &actor_id);
 
  private:
   bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
