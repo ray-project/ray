@@ -19,6 +19,7 @@ import os
 import json
 import time
 import requests
+import pprint
 
 from ray._private.utils import get_master_wheel_url, get_release_wheel_url
 
@@ -70,7 +71,7 @@ if __name__ == "__main__":
         print("Retrying now...")
         for url in list(retry):
             if requests.head(url).status_code != 200:
-                f"URL still not found: {url}"
+                print(f"URL still not found: {url}")
             else:
                 print("Successfully tested URL: ", url)
                 update_progress({"url": url})
@@ -79,6 +80,7 @@ if __name__ == "__main__":
 
     if retry:
         print("FAILED")
-        print("List of URLs not available after all retries: ", retry)
-
-    print("PASSED")
+        print("List of URLs not available after all retries: ")
+        pprint.pprint(list(retry))
+    else:
+        print("PASSED")
