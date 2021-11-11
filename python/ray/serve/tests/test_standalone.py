@@ -521,9 +521,9 @@ def test_local_store_recovery():
         return "hello"
 
     # https://github.com/ray-project/ray/issues/19987
-    # @serve.deployment
-    # def world(_):
-    #     return "world"
+    @serve.deployment
+    def world(_):
+        return "world"
 
     def check(name):
         try:
@@ -533,16 +533,30 @@ def test_local_store_recovery():
         except Exception:
             return False
 
+    # https://github.com/ray-project/ray/issues/20159
+    # https://github.com/ray-project/ray/issues/20158
+    def clean_up_leaked_processes():
+        import psutil
+        for proc in psutil.process_iter():
+            try:
+                cmdline = " ".join(proc.cmdline())
+                if "ray::" in cmdline:
+                    print(f"Kill {proc} {cmdline}")
+                    proc.kill()
+            except:
+                pass
+
     def crash():
         subprocess.call(["ray", "stop", "--force"])
+        clean_up_leaked_processes()
         ray.shutdown()
         serve.shutdown()
 
     serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
     hello.deploy()
-    # world.deploy()
+    world.deploy()
     assert check("hello")
-    # assert check("world")
+    assert check("world")
     crash()
 
     # Simulate a crash
