@@ -3,9 +3,10 @@ import logging
 import os
 
 from datetime import timedelta
-from typing import Optional
+from typing import Optional, Dict, Any
 
 import ray
+from ray import train
 from ray.train.backends.backend import BackendConfig, Backend
 from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
@@ -144,3 +145,144 @@ class TorchBackend(Backend):
 
         worker_group.execute(
             shutdown_torch, destroy_process_group=len(worker_group) > 1)
+
+
+if torch:
+    from torch.nn.parallel import DistributedDataParallel
+    from torch.utils.data import DistributedSampler, DataLoader, \
+        IterableDataset
+
+    def _get_torch_device() -> torch.device:
+        rank = train.local_rank()
+
+        if torch.cuda.is_available():
+            device = torch.device("cpu")
+        else:
+            device = torch.device(f"cuda:{rank}")
+
+        return device
+
+    class _WrappedDataLoader(DataLoader):
+        def __init__(self, base_dataloader: DataLoader, device: torch.device):
+
+            self.__dict__.update(getattr(base_dataloader, "__dict__", {}))
+            self._dataloader = base_dataloader
+            self._device = device
+
+        def __len__(self):
+            return len(self._dataloader)
+
+        @property
+        def device(self) -> Optional[torch.device]:
+            return self._device
+
+        def __iter__(self):
+            iterator = iter(self._dataloader)
+            if self._device is None:
+                yield from iterator
+
+            for item in iterator:
+                yield (i.to(self.device) for i in item)
+
+    def prepare(
+            model: torch.nn.Module,
+            move_to_device: bool = True,
+            wrap_ddp: bool = True,
+            ddp_kwargs: Optional[Dict[str, Any]] = None) -> torch.nn.Module:
+        """Prepares the model for distributed execution.
+
+        This allows you to use the same exact code regardless of number of
+        workers or the device type being used (CPU, GPU).
+
+        Example:
+            TODO
+
+        Args:
+            model (torch.nn.Module): A torch model to prepare.
+            move_to_device (bool): Whether to move the model to the correct
+                device. If set to False, the model needs to manually be moved
+                to the correct device.
+            wrap_ddp (bool): Whether to wrap models in
+                ``DistributedDataParallel``.
+            ddp_kwargs (Dict[str, Any]): Args to pass into
+                ``DistributedDataParallel`` initialization if ``wrap_ddp`` is
+                set to True.
+        """
+        rank = train.local_rank()
+
+        device = _get_torch_device()
+
+        if torch.cuda.is_available():
+            torch.cuda.set_device(device)
+
+        if move_to_device:
+            logger.info(f"Moving model to device: {device}")
+            model = model.to(device)
+        if wrap_ddp and train.world_size() > 1:
+            logger.info("Wrapping provided model in DDP.")
+            if torch.cuda.is_available():
+                model = DistributedDataParallel(
+                    model, device_ids=[rank], output_device=rank, **ddp_kwargs)
+            else:
+                model = DistributedDataParallel(model, **ddp_kwargs)
+
+        return model
+
+    def prepare_data_loader(data_loader: torch.utils.data.DataLoader,
+                            add_dist_sampler: bool = True,
+                            move_to_device: bool = True) -> \
+            torch.utils.data.DataLoader:
+        """
+        Prepares DataLoader for distributed execution.
+
+        This allows you to use the same exact code regardless of number of
+        workers or the device type being used (CPU, GPU).
+
+        Args:
+            data_loader (torch.utils.data.DataLoader): The DataLoader to
+                prepare.
+            add_dist_sampler (bool): Whether to add a DistributedSampler to
+                the provided DataLoader.
+            move_to_device (bool): If set, automatically move the data
+                returned by the data loader to the correct device.
+        """
+
+        if train.world_size() > 1 \
+            and not isinstance(data_loader.sampler, DistributedSampler) \
+            and not (hasattr(data_loader, "dataset")
+                     and isinstance(data_loader.dataset, IterableDataset)) \
+                and add_dist_sampler:
+
+            def with_sampler(loader):
+                # Automatically set the DistributedSampler
+                data_loader_args = {
+                    "dataset": loader.dataset,
+                    "batch_size": loader.batch_size,
+                    "shuffle": False,
+                    "num_workers": loader.num_workers,
+                    "collate_fn": loader.collate_fn,
+                    "pin_memory": loader.pin_memory,
+                    "drop_last": loader.drop_last,
+                    "timeout": loader.timeout,
+                    "worker_init_fn": loader.worker_init_fn,
+                    "sampler": DistributedSampler(
+                        loader.dataset, shuffle=loader.shuffle)
+                }
+                return DataLoader(**data_loader_args)
+
+            data_loader = with_sampler(data_loader)
+
+        if move_to_device:
+            device = _get_torch_device()
+            data_loader = _WrappedDataLoader(data_loader, device)
+
+        return data_loader
+
+else:
+
+    class TorchNotInstalled:
+        def __getattr__(self, item):
+            raise ValueError("`torch` is not installed. "
+                             "Please install torch to use this function.")
+
+    prepare = prepare_data_loader = TorchNotInstalled

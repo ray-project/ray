@@ -6,8 +6,6 @@ import torch.nn as nn
 import ray.train as train
 from ray.train import Trainer, TorchConfig
 from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
-from torch.nn.parallel import DistributedDataParallel
-from torch.utils.data import DistributedSampler
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -66,19 +64,15 @@ def train_func(config):
     train_dataset = LinearDataset(2, 5, size=data_size)
     val_dataset = LinearDataset(2, 5, size=val_size)
     train_loader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        sampler=DistributedSampler(train_dataset))
+        train_dataset, batch_size=batch_size)
     validation_loader = torch.utils.data.DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        sampler=DistributedSampler(val_dataset))
+        val_dataset, batch_size=batch_size)
+
+    train_loader = train.torch.prepare_data_loader(train_loader)
+    validation_loader = train.torch.prepare_data_loader(validation_loader)
 
     model = nn.Linear(1, hidden_size)
-    model.to(device)
-    model = DistributedDataParallel(
-        model,
-        device_ids=[device.index] if torch.cuda.is_available() else None)
+    model = train.torch.prepare(model)
 
     loss_fn = nn.MSELoss()
 
