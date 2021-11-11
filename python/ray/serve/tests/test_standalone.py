@@ -607,6 +607,8 @@ def test_standalone_actor_outside_serve():
 
     serve.start()
     serve.shutdown()
+
+    ray.get(a.ready.remote())
     ray.shutdown()
 
 

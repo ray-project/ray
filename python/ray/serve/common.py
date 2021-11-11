@@ -57,14 +57,14 @@ class ReplicaName:
 
     @staticmethod
     def is_replica_name(actor_name: str) -> bool:
-        return (actor_name.startswith(ReplicaName.prefix)
-                and actor_name.count("#") == 1)
+        return actor_name.startswith(ReplicaName.prefix)
 
     @classmethod
     def from_str(cls, actor_name):
-        assert actor_name.startswith(cls.prefix), "Actor "
+        assert ReplicaName.is_replica_name(actor_name)
+        # TODO(simon): this currently conforms the tag and suffix logic. We
+        # can try to keep the internal name always hard coded with the prefix.
         replica_name = actor_name.replace(cls.prefix, "")
-
         parsed = replica_name.split(cls.delimiter)
         assert len(parsed) == 2, (
             f"Given replica name {replica_name} didn't match pattern, please "
