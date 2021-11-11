@@ -27,6 +27,7 @@ import numpy as np
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.ray_constants as ray_constants
+from ray._private.gcs_pubsub import construct_error_message
 from ray._private.tls_utils import load_certs_from_env
 
 # Import psutil after ray so the packaged version is used.
@@ -138,8 +139,8 @@ def publish_error_to_driver(error_type,
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
-    error_data = gcs_utils.construct_error_message(job_id, error_type, message,
-                                                   time.time())
+    error_data = construct_error_message(job_id, error_type, message,
+                                         time.time())
     if gcs_publisher:
         gcs_publisher.publish_error(job_id.hex().encode(), error_data)
     elif redis_client:

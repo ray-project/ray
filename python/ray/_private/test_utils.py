@@ -26,6 +26,7 @@ import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsSubscriber
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray.util.queue import Queue, _QueueActor, Empty
 from ray.scripts.scripts import main as ray_main
@@ -502,9 +503,8 @@ def get_non_head_nodes(cluster):
 
 def init_error_pubsub():
     """Initialize redis error info pub/sub"""
-    if os.environ.get("RAY_gcs_grpc_based_pubsub") == "true":
-        s = gcs_utils.GcsSubscriber(
-            channel=ray.worker.global_worker.gcs_channel)
+    if gcs_pubsub_enabled():
+        s = GcsSubscriber(channel=ray.worker.global_worker.gcs_channel)
         s.subscribe_error()
     else:
         s = ray.worker.global_worker.redis_client.pubsub(
@@ -518,7 +518,7 @@ def get_error_message(subscriber, num, error_type=None, timeout=20):
     deadline = time.time() + timeout
     msgs = []
     while time.time() < deadline and len(msgs) < num:
-        if isinstance(subscriber, gcs_utils.GcsSubscriber):
+        if isinstance(subscriber, GcsSubscriber):
             try:
                 _, error_data = subscriber.poll_error(timeout=deadline -
                                                       time.time())

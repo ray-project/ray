@@ -34,8 +34,8 @@ from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 import ray.ray_constants as ray_constants
 from ray._private.ray_logging import setup_component_logger
-from ray._private.gcs_utils import GcsClient, GcsPublisher, \
-    get_gcs_address_from_redis
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
+from ray._private.gcs_utils import GcsClient, get_gcs_address_from_redis
 from ray.experimental.internal_kv import _initialize_internal_kv, \
     _internal_kv_put, _internal_kv_initialized, _internal_kv_get, \
     _internal_kv_del
@@ -404,7 +404,7 @@ class Monitor:
         gcs_publisher = None
         if args.gcs_address:
             gcs_publisher = GcsPublisher(address=args.gcs_address)
-        elif os.environ.get("RAY_gcs_grpc_based_pubsub") == "true":
+        elif gcs_pubsub_enabled():
             gcs_publisher = GcsPublisher(
                 address=get_gcs_address_from_redis(redis_client))
         from ray._private.utils import publish_error_to_driver

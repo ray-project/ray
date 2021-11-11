@@ -2,6 +2,7 @@ import sys
 
 import ray
 import ray._private.gcs_utils as gcs_utils
+from ray._private.gcs_pubsub import GcsPublisher, GcsSubscriber, GcsAioPublisher, GcsAioSubscriber
 from ray.core.generated.gcs_pb2 import (ErrorTableData)
 import pytest
 
@@ -21,10 +22,10 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
 
     gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
 
-    subscriber = gcs_utils.GcsSubscriber(address=gcs_server_addr)
+    subscriber = GcsSubscriber(address=gcs_server_addr)
     subscriber.subscribe_error()
 
-    publisher = gcs_utils.GcsPublisher(address=gcs_server_addr)
+    publisher = GcsPublisher(address=gcs_server_addr)
     err1 = ErrorTableData(error_message="test error message 1")
     err2 = ErrorTableData(error_message="test error message 2")
     publisher.publish_error(b"aaa_id", err1)
@@ -52,10 +53,10 @@ async def test_aio_publish_and_subscribe_error_info(ray_start_regular):
 
     gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
 
-    subscriber = gcs_utils.GcsAioSubscriber(address=gcs_server_addr)
+    subscriber = GcsAioSubscriber(address=gcs_server_addr)
     await subscriber.subscribe_error()
 
-    publisher = gcs_utils.GcsAioPublisher(address=gcs_server_addr)
+    publisher = GcsAioPublisher(address=gcs_server_addr)
     err1 = ErrorTableData(error_message="test error message 1")
     err2 = ErrorTableData(error_message="test error message 2")
     await publisher.publish_error(b"aaa_id", err1)

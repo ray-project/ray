@@ -290,8 +290,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 logger.info(f"Received error entry for {ip} {pid}")
 
         if self._dashboard_head.gcs_subscriber:
-            self._dashboard_head.gcs_subscriber.subscribe_error()
-
             while True:
                 _, error_data = await \
                     self._dashboard_head.gcs_subscriber.poll_error()

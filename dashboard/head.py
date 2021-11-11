@@ -13,11 +13,12 @@ from grpc.experimental import aio as aiogrpc
 import grpc
 
 import ray._private.utils
-from ray._private.gcs_utils import GcsClient, GcsAioSubscriber
+from ray._private.gcs_utils import GcsClient
 import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray import ray_constants
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsAioSubscriber
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.datacenter import DataOrganizer
@@ -195,9 +196,10 @@ class DashboardHead:
         self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
             gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True)
         self.gcs_subscriber = None
-        if os.environ.get("RAY_gcs_grpc_based_pubsub") == "true":
+        if gcs_pubsub_enabled():
             self.gcs_subscriber = GcsAioSubscriber(
                 channel=self.aiogrpc_gcs_channel)
+            await self.gcs_subscriber.subscribe_error()
 
         self.health_check_thread = GCSHealthCheckThread(gcs_address)
         self.health_check_thread.start()

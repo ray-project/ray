@@ -16,6 +16,7 @@ import ray.ray_constants as ray_constants
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services
 import ray._private.utils
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
 from ray._private.ray_logging import setup_component_logger
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 
@@ -245,9 +246,9 @@ if __name__ == "__main__":
             args.redis_address, password=args.redis_password)
         gcs_publisher = None
         if args.gcs_address:
-            gcs_publisher = gcs_utils.GcsPublisher(address=args.gcs_address)
-        elif os.environ.get("RAY_gcs_grpc_based_pubsub") == "true":
-            gcs_publisher = gcs_utils.GcsPublisher(
+            gcs_publisher = GcsPublisher(address=args.gcs_address)
+        elif gcs_pubsub_enabled():
+            gcs_publisher = GcsPublisher(
                 address=gcs_utils.get_gcs_address_from_redis(redis_client))
         ray._private.utils.publish_error_to_driver(
             redis_client,

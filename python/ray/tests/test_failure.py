@@ -11,6 +11,7 @@ import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError, RayActorError, GetTimeoutError
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
 from ray._private.test_utils import (wait_for_condition, SignalActor,
                                      init_error_pubsub, get_error_message)
 
@@ -67,8 +68,8 @@ def test_publish_error_to_driver(ray_start_regular, error_pubsub):
     redis_client = ray._private.services.create_redis_client(
         address, password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
     gcs_publisher = None
-    if os.environ.get("RAY_gcs_grpc_based_pubsub") == "true":
-        gcs_publisher = gcs_utils.GcsPublisher(
+    if gcs_pubsub_enabled():
+        gcs_publisher = GcsPublisher(
             address=gcs_utils.get_gcs_address_from_redis(redis_client))
     error_message = "Test error message"
     ray._private.utils.publish_error_to_driver(
