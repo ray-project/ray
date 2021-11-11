@@ -24,7 +24,7 @@ Tune is a Python library for experiment execution and hyperparameter tuning at a
 Quick Start
 -----------
 
-To run this example, install the following: ``pip install 'ray[tune]'``.
+To run this example, install the following: ``pip install "ray[tune]"``.
 
 This example runs a parallel grid search to optimize an example objective function.
 

@@ -179,8 +179,8 @@ Methods of the actor can be called remotely.
 
 .. _actor-resource-guide:
 
-Resources with Actors
----------------------
+Specifying Resources
+--------------------
 
 You can specify that an actor requires CPUs or GPUs in the decorator. While Ray has built-in support for CPUs and GPUs, Ray can also handle custom resources.
 
@@ -309,6 +309,11 @@ requirements, you can do so as follows.
 
 Note that to create these actors successfully, Ray will need to be started with
 sufficient CPU resources and the relevant custom resources.
+
+.. tip::
+
+  Besides compute resources, you can also specify an environment for an actor to run in,
+  which can include Python packages, local files, environment variables, and more--see :ref:`Runtime Environments <runtime-environments>` for details.
 
 
 Terminating Actors
@@ -647,9 +652,17 @@ Actor Pool
 
       from ray.util import ActorPool
 
+      @ray.remote
+      class Actor
+        def double(self, n):
+            return n * 2
+
       a1, a2 = Actor.remote(), Actor.remote()
       pool = ActorPool([a1, a2])
-      print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+
+      # pool.map(..) returns a Python generator object ActorPool.map
+      gen = pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+      print([v for v in gen])
       # [2, 4, 6, 8]
 
     See the `package reference <package-ref.html#ray.util.ActorPool>`_ for more information.

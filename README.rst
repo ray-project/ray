@@ -21,8 +21,8 @@ Ray is packaged with the following libraries for accelerating machine learning w
 
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
-- `RaySGD <https://docs.ray.io/en/master/raysgd/raysgd.html>`__: Distributed Training Wrappers
-- `Datasets`_: Flexible Distributed Data Loading (alpha)
+- `Train`_: Distributed Deep Learning (alpha)
+- `Datasets`_: Distributed Data Loading and Compute (beta)
 
 As well as libraries for taking ML and distributed apps to production:
 
@@ -43,6 +43,7 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 .. _`Serve`: https://docs.ray.io/en/master/serve/index.html
 .. _`Datasets`: https://docs.ray.io/en/master/data/dataset.html
 .. _`Workflows`: https://docs.ray.io/en/master/workflows/concepts.html
+.. _`Train`: https://docs.ray.io/en/master/train/train.html
 
 
 Quick Start

@@ -273,7 +273,7 @@ ddpg-hopperbulletenv-v0:
 #        time_total_s: 3600
 #    config:
 #        # DDPPO only supports PyTorch so far.
-#        framework: torch
+#        frameworks: [ "torch" ]
 #        # Worker config: 10 workers, each of which requires a GPU.
 #        num_workers: 16
 #        # Workers require GPUs, but share 1 GPU amongst 2 workers.
@@ -302,7 +302,7 @@ dqn-breakoutnoframeskip-v4:
     run: DQN
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 30.0
+        episode_reward_mean: 20.0
         timesteps_total: 400000
     stop:
         time_total_s: 7200
@@ -347,7 +347,7 @@ impala-breakoutnoframeskip-v4:
     run: IMPALA
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 300.0
+        episode_reward_mean: 200.0
         timesteps_total: 6000000
     stop:
         time_total_s: 3600
@@ -423,7 +423,7 @@ sac-halfcheetahbulletenv-v0:
     run: SAC
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:
-        episode_reward_mean: 600.0
+        episode_reward_mean: 500.0
         timesteps_total: 100000
     stop:
         time_total_s: 7200

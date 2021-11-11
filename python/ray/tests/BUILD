@@ -83,6 +83,7 @@ py_test_module_list(
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
     "test_runtime_env_env_vars.py",
+    "test_runtime_env_packaging.py",
     "test_runtime_env_plugin.py",
     "test_runtime_env_fork_process.py",
     "test_serialization.py",
@@ -91,6 +92,8 @@ py_test_module_list(
     "test_stress_sharded.py",
     "test_tempfile.py",
     "test_tensorflow.py",
+    "test_threaded_actor.py",
+    "test_tls_auth.py",
     "test_ray_debugger.py",
   ],
   size = "medium",
@@ -102,6 +105,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
+    "test_autoscaler_drain_node_api.py",
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_asyncio.py",
@@ -218,6 +222,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_failure_3.py",
+    "test_chaos.py",
     "test_reference_counting_2.py",
   ],
   size = "large",
@@ -239,7 +244,9 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_runtime_env.py"
+    "test_runtime_env.py",
+    "test_runtime_env_working_dir.py",
+    "test_runtime_env_working_dir_2.py"
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -247,7 +254,23 @@ py_test_module_list(
   deps = ["//:ray_lib"],
 )
 
+py_test_module_list(
+  files = [
+    "test_runtime_env_conda.py"
+  ],
+  size = "large",
+  extra_srcs = SRCS,
+  tags = ["exclusive", "post_wheel_build", "team:serve"],
+  deps = ["//:ray_lib"],
+)
 
+py_test(
+    name = "test_actor_group",
+    size = "medium",
+    srcs = SRCS + ["test_actor_group.py"],
+    tags = ["exclusive", "team:serve"],
+    deps = ["//:ray_lib"]
+)
 
 # TODO(barakmich): aws/ might want its own buildfile, or
 #    py_test_module_list should support subdirectories.
@@ -306,6 +329,22 @@ py_test(
     name = "test_runtime_env_validation",
     size = "small",
     srcs = SRCS + ["test_runtime_env_validation.py"],
+    tags = ["exclusive", "team:serve"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_runtime_env_ray_minimal",
+    size = "small",
+    srcs = SRCS + ["test_runtime_env_ray_minimal.py"],
+    tags = ["exclusive", "team:serve"],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_serve_ray_minimal",
+    size = "small",
+    srcs = SRCS + ["test_serve_ray_minimal.py"],
     tags = ["exclusive", "team:serve"],
     deps = ["//:ray_lib"],
 )

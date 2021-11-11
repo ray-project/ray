@@ -15,7 +15,7 @@ import socket
 import subprocess
 import sys
 import time
-from typing import Optional
+from typing import Optional, List
 
 # Ray modules
 import ray
@@ -51,14 +51,21 @@ GCS_SERVER_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/gcs/gcs_server" + EXE_SUFFIX)
 
 # Location of the cpp default worker executables.
-DEFAULT_WORKER_EXECUTABLE = os.path.join(
-    RAY_PATH, "core/src/ray/cpp/default_worker" + EXE_SUFFIX)
+DEFAULT_WORKER_EXECUTABLE = os.path.join(RAY_PATH,
+                                         "cpp/default_worker" + EXE_SUFFIX)
+
+# Location of the native libraries.
+DEFAULT_NATIVE_LIBRARY_PATH = os.path.join(RAY_PATH, "cpp/lib")
 
 DASHBOARD_DEPENDENCY_ERROR_MESSAGE = (
     "Not all Ray Dashboard dependencies were "
     "found. To use the dashboard please "
     "install Ray using `pip install "
     "ray[default]`.")
+
+RAY_JEMALLOC_LIB_PATH = "RAY_JEMALLOC_LIB_PATH"
+RAY_JEMALLOC_CONF = "RAY_JEMALLOC_CONF"
+RAY_JEMALLOC_PROFILE = "RAY_JEMALLOC_PROFILE"
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -79,6 +86,46 @@ ProcessInfo = collections.namedtuple("ProcessInfo", [
 
 def serialize_config(config):
     return base64.b64encode(json.dumps(config).encode("utf-8")).decode("utf-8")
+
+
+def propagate_jemalloc_env_var(*, jemalloc_path: str, jemalloc_conf: str,
+                               jemalloc_comps: List[str], process_type: str):
+    """Read the jemalloc memory profiling related
+        env var and return the dictionary that translates
+        them to proper jemalloc related env vars.
+
+        For example, if users specify `RAY_JEMALLOC_LIB_PATH`,
+        it is translated into `LD_PRELOAD` which is needed to
+        run Jemalloc as a shared library.
+
+        Params:
+            jemalloc_path (str): The path to the jemalloc shared library.
+            jemalloc_conf (str): `,` separated string of jemalloc config.
+            jemalloc_comps List(str): The list of Ray components
+                that we will profile.
+            process_type (str): The process type that needs jemalloc
+                env var for memory profiling. If it doesn't match one of
+                jemalloc_comps, the function will return an empty dict.
+
+        Returns:
+            dictionary of {env_var: value}
+                that are needed to jemalloc profiling. The caller can
+                call `dict.update(return_value_of_this_func)` to
+                update the dict of env vars. If the process_type doesn't
+                match jemalloc_comps, it will return an empty dict.
+    """
+    assert isinstance(jemalloc_comps, list)
+    assert process_type is not None
+    process_type = process_type.lower()
+    if (not jemalloc_path or process_type not in jemalloc_comps):
+        return {}
+
+    env_vars = {
+        "LD_PRELOAD": jemalloc_path,
+    }
+    if jemalloc_conf:
+        env_vars.update({"MALLOC_CONF": jemalloc_conf})
+    return env_vars
 
 
 class ConsolePopen(subprocess.Popen):
@@ -143,7 +190,7 @@ def find_redis_address(address=None):
     # /usr/local/lib/python3.8/dist-packages/ray/core/src/ray/raylet/raylet
     # --redis_address=123.456.78.910 --node_ip_address=123.456.78.910
     # --raylet_socket_name=... --store_socket_name=... --object_manager_port=0
-    # --min_worker_port=10000 --max_worker_port=10999
+    # --min_worker_port=10000 --max_worker_port=19999
     # --node_manager_port=58578 --redis_port=6379
     # --maximum_startup_concurrency=8
     # --static_resource_list=node:123.456.78.910,1.0,object_store_memory,66
@@ -287,8 +334,10 @@ def get_node_to_connect_for_driver(redis_address,
     return global_state.get_node_to_connect_for_driver(node_ip_address)
 
 
-def get_webui_url_from_redis(redis_client):
-    webui_url = redis_client.hmget("webui", "url")[0]
+def get_webui_url_from_internal_kv():
+    assert ray.experimental.internal_kv._internal_kv_initialized()
+    webui_url = ray.experimental.internal_kv._internal_kv_get(
+        "webui:url", namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
     return ray._private.utils.decode(
         webui_url) if webui_url is not None else None
 
@@ -399,8 +448,8 @@ def node_ip_address_from_perspective(address):
 def get_node_ip_address(address="8.8.8.8:53"):
     if ray.worker._global_node is not None:
         return ray.worker._global_node.node_ip_address
-    if sys.platform == "darwin":
-        # Due to the mac osx firewall,
+    if sys.platform == "darwin" or sys.platform == "win32":
+        # Due to the mac osx/windows firewall,
         # we use loopback ip as the ip address
         # to prevent security popups.
         return "127.0.0.1"
@@ -508,17 +557,29 @@ def start_ray_process(command,
     if os.environ.get(gdb_env_var) == "1":
         logger.info("Detected environment variable '%s'.", gdb_env_var)
         use_gdb = True
+    # Jemalloc memory profiling.
+    jemalloc_lib_path = os.environ.get(RAY_JEMALLOC_LIB_PATH)
+    jemalloc_conf = os.environ.get(RAY_JEMALLOC_CONF)
+    jemalloc_comps = os.environ.get(RAY_JEMALLOC_PROFILE)
+    jemalloc_comps = [] if not jemalloc_comps else jemalloc_comps.split(",")
+    jemalloc_env_vars = propagate_jemalloc_env_var(
+        jemalloc_path=jemalloc_lib_path,
+        jemalloc_conf=jemalloc_conf,
+        jemalloc_comps=jemalloc_comps,
+        process_type=process_type)
+    use_jemalloc_mem_profiler = len(jemalloc_env_vars) > 0
 
     if sum([
             use_gdb,
             use_valgrind,
             use_valgrind_profiler,
             use_perftools_profiler,
+            use_jemalloc_mem_profiler,
     ]) > 1:
-        raise ValueError(
-            "At most one of the 'use_gdb', 'use_valgrind', "
-            "'use_valgrind_profiler', and 'use_perftools_profiler' flags can "
-            "be used at a time.")
+        raise ValueError("At most one of the 'use_gdb', 'use_valgrind', "
+                         "'use_valgrind_profiler', 'use_perftools_profiler', "
+                         "and 'use_jemalloc_mem_profiler' flags can "
+                         "be used at a time.")
     if env_updates is None:
         env_updates = {}
     if not isinstance(env_updates, dict):
@@ -558,6 +619,11 @@ def start_ray_process(command,
     if use_perftools_profiler:
         modified_env["LD_PRELOAD"] = os.environ["PERFTOOLS_PATH"]
         modified_env["CPUPROFILE"] = os.environ["PERFTOOLS_LOGFILE"]
+
+    if use_jemalloc_mem_profiler:
+        logger.info(f"Jemalloc profiling will be used for {process_type}. "
+                    f"env vars: {jemalloc_env_vars}")
+        modified_env.update(jemalloc_env_vars)
 
     if use_tmux:
         # The command has to be created exactly as below to ensure that it
@@ -1181,7 +1247,10 @@ def start_dashboard(require_dashboard,
                 port_test_socket.bind((host, port))
                 port_test_socket.close()
             except socket.error as e:
-                if e.errno in {48, 98}:  # address already in use.
+                # 10013 on windows is a bit more broad than just
+                # "address in use": it can also indicate "permission denied".
+                # TODO: improve the error message?
+                if e.errno in {48, 98, 10013}:  # address already in use.
                     raise ValueError(
                         f"Failed to bind to {host}:{port} because it's "
                         "already occupied. You can use `ray start "
@@ -1222,10 +1291,15 @@ def start_dashboard(require_dashboard,
         # Retrieve the dashboard url
         redis_client = ray._private.services.create_redis_client(
             redis_address, redis_password)
+        from ray._private.gcs_utils import GcsClient
+        gcs_client = GcsClient.create_from_redis(redis_client)
+        ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
         dashboard_url = None
         dashboard_returncode = None
         for _ in range(200):
-            dashboard_url = redis_client.get(ray_constants.REDIS_KEY_DASHBOARD)
+            dashboard_url = ray.experimental.internal_kv._internal_kv_get(
+                ray_constants.REDIS_KEY_DASHBOARD,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
             if dashboard_url is not None:
                 dashboard_url = dashboard_url.decode("utf-8")
                 break
@@ -1499,26 +1573,14 @@ def start_raylet(redis_address,
     if max_worker_port is None:
         max_worker_port = 0
 
-    # Check to see if we should start the dashboard agent or not based on the
-    # Ray installation version the user has installed (ray vs. ray[default]).
-    # Unfortunately there doesn't seem to be a cleaner way to detect this other
-    # than just blindly importing the relevant packages.
-    def check_should_start_agent():
-        try:
-            import ray.dashboard.optional_deps  # noqa: F401
-
-            return True
-        except ImportError:
-            return False
-
-    if not check_should_start_agent():
+    if not ray._private.utils.check_dashboard_dependencies_installed():
         # An empty agent command will cause the raylet not to start it.
         agent_command = []
     else:
         agent_command = [
             sys.executable,
             "-u",
-            os.path.join(RAY_PATH, "dashboard/agent.py"),
+            os.path.join(RAY_PATH, "dashboard", "agent.py"),
             f"--node-ip-address={node_ip_address}",
             f"--redis-address={redis_address}",
             f"--metrics-export-port={metrics_export_port}",
@@ -1554,6 +1616,7 @@ def start_raylet(redis_address,
         f"--python_worker_command={subprocess.list2cmdline(start_worker_command)}",  # noqa
         f"--java_worker_command={subprocess.list2cmdline(java_worker_command)}",  # noqa
         f"--cpp_worker_command={subprocess.list2cmdline(cpp_worker_command)}",  # noqa
+        f"--native_library_path={DEFAULT_NATIVE_LIBRARY_PATH}",
         f"--redis_password={redis_password or ''}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
@@ -1903,6 +1966,7 @@ def start_monitor(redis_address,
 
 def start_ray_client_server(
         redis_address,
+        ray_client_server_ip,
         ray_client_server_port,
         stdout_file=None,
         stderr_file=None,
@@ -1914,6 +1978,8 @@ def start_ray_client_server(
     """Run the server process of the Ray client.
 
     Args:
+        redis_address: The address of the redis server.
+        ray_client_server_ip: Host IP the Ray client server listens on.
         ray_client_server_port (int): Port the Ray client server listens on.
         stdout_file: A file handle opened for writing to redirect stdout to. If
             no redirection should happen, then this should be None.
@@ -1931,12 +1997,15 @@ def start_ray_client_server(
     setup_worker_path = os.path.join(root_ray_dir, "workers",
                                      ray_constants.SETUP_WORKER_FILENAME)
 
+    ray_client_server_host = \
+        "127.0.0.1" if ray_client_server_ip == "127.0.0.1" else "0.0.0.0"
     command = [
         sys.executable,
         setup_worker_path,
         "-m",
         "ray.util.client.server",
         f"--redis-address={redis_address}",
+        f"--host={ray_client_server_host}",
         f"--port={ray_client_server_port}",
         f"--mode={server_type}",
         f"--language={Language.Name(Language.PYTHON)}",

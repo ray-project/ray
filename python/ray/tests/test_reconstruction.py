@@ -170,7 +170,8 @@ def test_basic_reconstruction(ray_start_cluster, reconstruction_enabled):
         num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
 
     if reconstruction_enabled:
-        with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
+        with pytest.raises(ray.exceptions.
+                           ObjectReconstructionFailedMaxAttemptsExceededError):
             ray.get(obj)
     else:
         with pytest.raises(ray.exceptions.ObjectLostError):
@@ -367,12 +368,8 @@ def test_basic_reconstruction_actor_lineage_disabled(ray_start_cluster,
 
     wait_for_pid_to_exit(pid)
 
-    if reconstruction_enabled:
-        with pytest.raises(ray.exceptions.ObjectReconstructionFailedError):
-            ray.get(obj)
-    else:
-        with pytest.raises(ray.exceptions.ObjectLostError):
-            ray.get(obj)
+    with pytest.raises(ray.exceptions.ObjectLostError):
+        ray.get(obj)
 
     # Make sure the actor handle is still usable.
     pid = ray.get(a.pid.remote())
@@ -460,7 +457,6 @@ def test_basic_reconstruction_actor_constructor(ray_start_cluster,
         assert "ObjectLostError" in exc
 
 
-@pytest.mark.skip(reason="This hangs due to a deadlock in admission control.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
     config = {
@@ -486,7 +482,7 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
         num_cpus=1, resources={"node2": 1}, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
-    @ray.remote(max_retries=1 if reconstruction_enabled else 0)
+    @ray.remote
     def large_object():
         return np.zeros(10**7, dtype=np.uint8)
 
@@ -537,7 +533,6 @@ def test_multiple_downstream_tasks(ray_start_cluster, reconstruction_enabled):
                 ray.get(obj)
 
 
-@pytest.mark.skip(reason="This hangs due to a deadlock in admission control.")
 @pytest.mark.parametrize("reconstruction_enabled", [False, True])
 def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
     config = {
@@ -589,7 +584,6 @@ def test_reconstruction_chain(ray_start_cluster, reconstruction_enabled):
             ray.get(obj)
 
 
-@pytest.mark.skip(reason="This hangs due to a deadlock in admission control.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_reconstruction_stress(ray_start_cluster):
     config = {
@@ -643,6 +637,103 @@ def test_reconstruction_stress(ray_start_cluster):
             ray.get(outputs.pop(0))
             print(i)
             i += 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize("reconstruction_enabled", [False, True])
+def test_nondeterministic_output(ray_start_cluster, reconstruction_enabled):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "max_direct_call_object_size": 100,
+        "task_retry_delay_ms": 100,
+        "object_timeout_milliseconds": 200,
+    }
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0, _system_config=config, enable_object_reconstruction=True)
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+    cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def nondeterministic_object():
+        if np.random.rand() < 0.5:
+            return np.zeros(10**5, dtype=np.uint8)
+        else:
+            return 0
+
+    @ray.remote
+    def dependent_task(x):
+        return
+
+    for _ in range(10):
+        obj = nondeterministic_object.options(resources={"node1": 1}).remote()
+        for _ in range(3):
+            ray.get(dependent_task.remote(obj))
+            x = dependent_task.remote(obj)
+            cluster.remove_node(node_to_kill, allow_graceful=False)
+            node_to_kill = cluster.add_node(
+                num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+            ray.get(x)
+
+
+def test_lineage_evicted(ray_start_cluster):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "object_timeout_milliseconds": 200,
+        "max_lineage_bytes": 10_000,
+    }
+
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config=config,
+        object_store_memory=10**8,
+        enable_object_reconstruction=True)
+    ray.init(address=cluster.address)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def large_object():
+        return np.zeros(10**7, dtype=np.uint8)
+
+    @ray.remote
+    def chain(x):
+        return x
+
+    @ray.remote
+    def dependent_task(x):
+        return x
+
+    obj = large_object.remote()
+    for _ in range(5):
+        obj = chain.remote(obj)
+    ray.get(dependent_task.remote(obj))
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    ray.get(dependent_task.remote(obj))
+
+    # Lineage now exceeds the eviction factor.
+    for _ in range(100):
+        obj = chain.remote(obj)
+    ray.get(dependent_task.remote(obj))
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    try:
+        ray.get(dependent_task.remote(obj))
+        assert False
+    except ray.exceptions.RayTaskError as e:
+        assert "ObjectReconstructionFailedLineageEvictedError" in str(e)
 
 
 if __name__ == "__main__":

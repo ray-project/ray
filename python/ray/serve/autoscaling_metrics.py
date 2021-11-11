@@ -51,7 +51,7 @@ def start_metrics_pusher(interval_s: float,
 
     timer = threading.Thread(target=send_forever)
     # Making this a daemon thread so it doesn't leak upon shutdown, and it
-    # doesn't need to block the backend worker's shutdown.
+    # doesn't need to block the replica's shutdown.
     timer.setDaemon(True)
     timer.start()
 

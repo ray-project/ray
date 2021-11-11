@@ -28,7 +28,16 @@ public class RunManager {
     command.add("--head");
     command.add("--redis-password");
     command.add(rayConfig.redisPassword);
+    command.add("--node-ip-address");
+    command.add(rayConfig.nodeIp);
     command.addAll(rayConfig.headArgs);
+
+    String numGpus = System.getProperty("num-gpus");
+    if (numGpus != null) {
+      command.add("--num-gpus");
+      command.add(numGpus);
+    }
+
     String output;
     try {
       output = runCommand(command);

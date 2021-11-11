@@ -11,6 +11,7 @@ import warnings
 
 import ray
 from ray.util.annotations import PublicAPI
+from ray.util.ml_utils.node import force_on_current_node
 from ray.util.queue import Queue, Empty
 
 from ray.tune.analysis import ExperimentAnalysis
@@ -28,13 +29,13 @@ from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, \
 from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.tune.suggest.variant_generator import has_unresolved_values
-from ray.tune.syncer import SyncConfig, set_sync_periods, wait_for_sync
+from ray.tune.syncer import (SyncConfig, validate_sync_config,
+                             set_sync_periods, wait_for_sync)
 from ray.tune.trainable import Trainable
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
-from ray.tune.utils import force_on_current_node
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -100,15 +101,15 @@ def run(
         restore: Optional[str] = None,
         server_port: Optional[int] = None,
         resume: bool = False,
-        queue_trials: bool = False,
         reuse_actors: bool = False,
         trial_executor: Optional[RayTrialExecutor] = None,
         raise_on_failed_trial: bool = True,
         callbacks: Optional[Sequence[Callback]] = None,
         max_concurrent_trials: Optional[int] = None,
         # Deprecated args
+        queue_trials: Optional[bool] = None,
         loggers: Optional[Sequence[Type[Logger]]] = None,
-        _remote: bool = None,
+        _remote: Optional[bool] = None,
 ) -> ExperimentAnalysis:
     """Executes training.
 
@@ -261,10 +262,6 @@ def run(
             ERRORED trials upon resume - previous trial artifacts will
             be left untouched.  If resume is set but checkpoint does not exist,
             ValueError will be thrown.
-        queue_trials (bool): Whether to queue trials when the cluster does
-            not currently have enough resources to launch one. This should
-            be set to True when running on an autoscaling cluster to enable
-            automatic scale-up.
         reuse_actors (bool): Whether to reuse actors between different trials
             when possible. This can drastically speed up experiments that start
             and stop actors often (e.g., PBT in time-multiplexing mode). This
@@ -293,6 +290,15 @@ def run(
     Raises:
         TuneError: Any trials failed and `raise_on_failed_trial` is True.
     """
+
+    # To be removed in 1.9.
+    if queue_trials is not None:
+        raise DeprecationWarning(
+            "`queue_trials` has been deprecated and is replaced by "
+            "the `TUNE_MAX_PENDING_TRIALS_PG` environment variable. "
+            "Per default at least one Trial is queued at all times, "
+            "so you likely don't need to change anything other than "
+            "removing this argument from your call to `tune.run()`")
 
     # NO CODE IS TO BE ADDED ABOVE THIS COMMENT
     # remote_run_kwargs must be defined before any other
@@ -380,6 +386,7 @@ def run(
     config = config or {}
     sync_config = sync_config or SyncConfig()
     set_sync_periods(sync_config)
+    validate_sync_config(sync_config)
 
     if num_samples == -1:
         num_samples = sys.maxsize
@@ -393,8 +400,8 @@ def run(
         scheduler = create_scheduler(scheduler)
     scheduler = scheduler or FIFOScheduler()
 
-    if scheduler.supports_buffered_results:
-        # Result buffering with a Hyperband scheduler is a bad idea, as
+    if not scheduler.supports_buffered_results:
+        # Result buffering with e.g. a Hyperband scheduler is a bad idea, as
         # hyperband tries to stop trials when processing brackets. With result
         # buffering, we might trigger this multiple times when evaluating
         # a single trial, which leads to unexpected behavior.
@@ -409,9 +416,7 @@ def run(
         result_buffer_length = 1
 
     trial_executor = trial_executor or RayTrialExecutor(
-        reuse_actors=reuse_actors,
-        queue_trials=queue_trials,
-        result_buffer_length=result_buffer_length)
+        reuse_actors=reuse_actors, result_buffer_length=result_buffer_length)
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
     else:
@@ -534,7 +539,10 @@ def run(
         fail_fast=fail_fast,
         trial_executor=trial_executor,
         callbacks=callbacks,
-        metric=metric)
+        metric=metric,
+        # Driver should only sync trial checkpoints if
+        # checkpoints are not synced to cloud
+        driver_sync_trial_checkpoints=not bool(sync_config.upload_dir))
 
     if not runner.resumed:
         for exp in experiments:
@@ -651,13 +659,14 @@ def run_experiments(
         verbose: Union[int, Verbosity] = Verbosity.V3_TRIAL_DETAILS,
         progress_reporter: Optional[ProgressReporter] = None,
         resume: bool = False,
-        queue_trials: bool = False,
         reuse_actors: bool = False,
         trial_executor: Optional[RayTrialExecutor] = None,
         raise_on_failed_trial: bool = True,
         concurrent: bool = True,
+        # Deprecated args.
+        queue_trials: Optional[bool] = None,
         callbacks: Optional[Sequence[Callback]] = None,
-        _remote: bool = None):
+        _remote: Optional[bool] = None):
     """Runs and blocks until all trials finish.
 
     Examples:
@@ -671,6 +680,15 @@ def run_experiments(
         List of Trial objects, holding data for each executed trial.
 
     """
+    # To be removed in 1.9.
+    if queue_trials is not None:
+        raise DeprecationWarning(
+            "`queue_trials` has been deprecated and is replaced by "
+            "the `TUNE_MAX_PENDING_TRIALS_PG` environment variable. "
+            "Per default at least one Trial is queued at all times, "
+            "so you likely don't need to change anything other than "
+            "removing this argument from your call to `tune.run()`")
+
     if _remote is None:
         _remote = ray.util.client.ray.is_connected()
 
@@ -694,7 +712,6 @@ def run_experiments(
                 verbose,
                 progress_reporter,
                 resume,
-                queue_trials,
                 reuse_actors,
                 trial_executor,
                 raise_on_failed_trial,
@@ -714,7 +731,6 @@ def run_experiments(
             verbose=verbose,
             progress_reporter=progress_reporter,
             resume=resume,
-            queue_trials=queue_trials,
             reuse_actors=reuse_actors,
             trial_executor=trial_executor,
             raise_on_failed_trial=raise_on_failed_trial,
@@ -729,7 +745,6 @@ def run_experiments(
                 verbose=verbose,
                 progress_reporter=progress_reporter,
                 resume=resume,
-                queue_trials=queue_trials,
                 reuse_actors=reuse_actors,
                 trial_executor=trial_executor,
                 raise_on_failed_trial=raise_on_failed_trial,

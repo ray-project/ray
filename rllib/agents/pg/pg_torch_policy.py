@@ -35,7 +35,7 @@ def pg_torch_loss(
             of loss tensors.
     """
     # Pass the training data through our model to get distribution parameters.
-    dist_inputs, _ = model.from_batch(train_batch)
+    dist_inputs, _ = model(train_batch)
 
     # Create an action distribution object.
     action_dist = dist_class(dist_inputs, model)
@@ -79,7 +79,7 @@ def pg_loss_stats(policy: Policy,
 PGTorchPolicy = build_policy_class(
     name="PGTorchPolicy",
     framework="torch",
-    get_default_config=lambda: ray.rllib.agents.pg.pg.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.pg.DEFAULT_CONFIG,
     loss_fn=pg_torch_loss,
     stats_fn=pg_loss_stats,
     postprocess_fn=post_process_advantages,

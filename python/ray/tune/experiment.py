@@ -7,7 +7,7 @@ import os
 from pickle import PicklingError
 
 from ray.tune.error import TuneError
-from ray.tune.registry import register_trainable, get_trainable_cls
+from ray.tune.registry import register_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.sample import Domain
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, \
@@ -19,20 +19,12 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
-def _raise_on_durable(trainable_name, sync_to_driver, upload_dir):
-    trainable_cls = get_trainable_cls(trainable_name)
-    from ray.tune.durable_trainable import DurableTrainable
-    if issubclass(trainable_cls, DurableTrainable):
-        if sync_to_driver is not False:
-            raise ValueError(
-                "EXPERIMENTAL: DurableTrainable will automatically sync "
-                "results to the provided upload_dir. "
-                "Set `sync_to_driver=False` to avoid data inconsistencies.")
-        if not upload_dir:
-            raise ValueError(
-                "EXPERIMENTAL: DurableTrainable will automatically sync "
-                "results to the provided upload_dir. "
-                "`upload_dir` must be provided.")
+def _raise_on_cloud_checkpointing(sync_to_driver, upload_dir):
+    if bool(upload_dir) and sync_to_driver is not False:
+        raise ValueError(
+            "The Ray Tune trainable will automatically sync "
+            "results to the provided upload_dir. "
+            "Set `sync_to_driver=False` to avoid data inconsistencies.")
 
 
 def _validate_log_to_file(log_to_file):
@@ -87,7 +79,7 @@ class Experiment:
             max_failures=2)
     """
 
-    # keys that will be present in `public_spec` dict
+    # Keys that will be present in `public_spec` dict.
     PUBLIC_KEYS = {"stop", "num_samples"}
 
     def __init__(self,
@@ -149,26 +141,28 @@ class Experiment:
         if not stop:
             pass
         elif isinstance(stop, list):
-            if any(not isinstance(s, Stopper) for s in stop):
+            bad_stoppers = [s for s in stop if not isinstance(s, Stopper)]
+            if bad_stoppers:
+                stopper_types = [type(s) for s in stop]
                 raise ValueError(
                     "If you pass a list as the `stop` argument to "
                     "`tune.run()`, each element must be an instance of "
-                    "`tune.stopper.Stopper`.")
+                    f"`tune.stopper.Stopper`. Got {stopper_types}.")
             self._stopper = CombinedStopper(*stop)
         elif isinstance(stop, dict):
             stopping_criteria = stop
         elif callable(stop):
             if FunctionStopper.is_valid_function(stop):
                 self._stopper = FunctionStopper(stop)
-            elif issubclass(type(stop), Stopper):
+            elif isinstance(stop, Stopper):
                 self._stopper = stop
             else:
                 raise ValueError("Provided stop object must be either a dict, "
                                  "a function, or a subclass of "
-                                 "`ray.tune.Stopper`.")
+                                 f"`ray.tune.Stopper`. Got {type(stop)}.")
         else:
-            raise ValueError("Invalid stop criteria: {}. Must be a "
-                             "callable or dict".format(stop))
+            raise ValueError(f"Invalid stop criteria: {stop}. Must be a "
+                             f"callable or dict. Got {type(stop)}.")
 
         if time_budget_s:
             if self._stopper:
@@ -177,7 +171,7 @@ class Experiment:
             else:
                 self._stopper = TimeoutStopper(time_budget_s)
 
-        _raise_on_durable(self._run_identifier, sync_to_driver, upload_dir)
+        _raise_on_cloud_checkpointing(sync_to_driver, upload_dir)
 
         stdout_file, stderr_file = _validate_log_to_file(log_to_file)
 
