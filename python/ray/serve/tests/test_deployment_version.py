@@ -21,8 +21,9 @@ def test_validation():
 def test_other_type_equality():
     v = DeploymentVersion("1", None)
 
-    assert not v == None
-    assert not v == "1"
+    assert v is not None
+    assert v != "1"
+    assert v != None  # noqa: E711
 
 
 def test_code_version():
