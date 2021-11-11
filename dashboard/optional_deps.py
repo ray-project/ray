@@ -5,7 +5,7 @@ import opencensus  # noqa: F401
 import prometheus_client  # noqa: F401
 
 import aiohttp  # noqa: F401
-import aiohttp.signals
+import aiosignal  # noqa: F401
 import aiohttp.web  # noqa: F401
 import aiohttp_cors  # noqa: F401
 from aiohttp import hdrs  # noqa: F401
