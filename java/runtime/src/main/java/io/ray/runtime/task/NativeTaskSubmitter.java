@@ -50,8 +50,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
       }
 
       if (StringUtils.isNotBlank(options.name)) {
-        Optional<BaseActorHandle> actor =
-            options.global ? Ray.getGlobalActor(options.name) : Ray.getActor(options.name);
+        Optional<BaseActorHandle> actor = Ray.getActor(options.name);
         Preconditions.checkArgument(
             !actor.isPresent(), String.format("Actor of name %s exists", options.name));
       }

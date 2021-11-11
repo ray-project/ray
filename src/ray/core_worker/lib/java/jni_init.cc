@@ -105,7 +105,6 @@ jfieldID java_actor_creation_options_concurrency_groups;
 
 jclass java_placement_group_creation_options_class;
 jclass java_placement_group_creation_options_strategy_class;
-jfieldID java_placement_group_creation_options_global;
 jfieldID java_placement_group_creation_options_name;
 jfieldID java_placement_group_creation_options_bundles;
 jfieldID java_placement_group_creation_options_strategy;
@@ -275,8 +274,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       LoadClass(env, "io/ray/api/options/PlacementGroupCreationOptions");
   java_placement_group_creation_options_strategy_class =
       LoadClass(env, "io/ray/api/placementgroup/PlacementStrategy");
-  java_placement_group_creation_options_global =
-      env->GetFieldID(java_placement_group_creation_options_class, "global", "Z");
   java_placement_group_creation_options_name = env->GetFieldID(
       java_placement_group_creation_options_class, "name", "Ljava/lang/String;");
   java_placement_group_creation_options_bundles = env->GetFieldID(

@@ -171,21 +171,6 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Get a handle to a named actor of current namespace.
-   *
-   * <p>Gets a handle to a named actor with the given name. The actor must have been created with
-   * name specified.
-   *
-   * @param name The name of the named actor.
-   * @return an ActorHandle to the actor if the actor of specified name exists in current namespace
-   *     or an Optional.empty()
-   * @throws RayException An exception is raised if timed out.
-   */
-  public static <T extends BaseActorHandle> Optional<T> getActor(String name) {
-    return internal().getActor(name);
-  }
-
-  /**
    * If users want to use Ray API in their own threads, call this method to get the async context
    * and then call {@link #setAsyncContext} at the beginning of the new thread.
    *

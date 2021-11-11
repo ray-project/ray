@@ -49,6 +49,14 @@ class TaskSubmitter {
     return true;
   }
 
+  /// TODO(qwang): Remove this.
+  std::string GetFullName(bool global, const std::string &name) const {
+    if (name.empty()) {
+      return "";
+    }
+    return global ? name : GetCurrentJobID().Hex() + "-" + name;
+  }
+
   virtual JobID GetCurrentJobID() const = 0;
 };
 }  // namespace internal

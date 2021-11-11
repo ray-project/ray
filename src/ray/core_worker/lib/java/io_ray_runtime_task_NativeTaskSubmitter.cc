@@ -219,7 +219,6 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         });
   }
 
-  auto full_name = GetFullName(global, name);
   // TODO(suquark): support passing namespace for Java. Currently
   // there is no use case.
   std::string ray_namespace = "";
@@ -231,7 +230,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       resources,
       dynamic_worker_options,
       /*is_detached=*/false,
-      full_name,
+      name,
       ray_namespace,
       /*is_asyncio=*/false,
       placement_options,
@@ -258,8 +257,6 @@ inline PlacementStrategy ConvertStrategy(jint java_strategy) {
 inline PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
     JNIEnv *env, jobject placementGroupCreationOptions) {
   // We have make sure the placementGroupCreationOptions is not null in java api.
-  bool global = env->GetBooleanField(placementGroupCreationOptions,
-                                     java_placement_group_creation_options_global);
   std::string name = "";
   jstring java_name = (jstring)env->GetObjectField(
       placementGroupCreationOptions, java_placement_group_creation_options_name);
@@ -286,8 +283,7 @@ inline PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
               return value;
             });
       });
-  auto full_name = GetFullName(global, name);
-  return PlacementGroupCreationOptions(full_name, ConvertStrategy(java_strategy), bundles,
+  return PlacementGroupCreationOptions(name, ConvertStrategy(java_strategy), bundles,
                                        /*is_detached=*/false);
 }
 

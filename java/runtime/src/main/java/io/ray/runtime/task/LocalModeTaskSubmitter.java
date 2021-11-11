@@ -381,10 +381,8 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     return actorHandles.get(actorId).copy();
   }
 
-  public Optional<BaseActorHandle> getActor(String name, boolean global) {
-    String fullName =
-        global ? name : String.format("%s-%s", Ray.getRuntimeContext().getCurrentJobId(), name);
-    ActorHandle actorHandle = namedActors.get(fullName);
+  public Optional<BaseActorHandle> getActor(String name) {
+    ActorHandle actorHandle = namedActors.get(name);
     if (null == actorHandle) {
       return Optional.empty();
     }

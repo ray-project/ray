@@ -191,7 +191,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     if (name.isEmpty()) {
       return Optional.empty();
     }
-    byte[] actorIdBytes = nativeGetActorIdOfNamedActor(name, global);
+    byte[] actorIdBytes = nativeGetActorIdOfNamedActor(name);
     ActorId actorId = ActorId.fromBytes(actorIdBytes);
     if (actorId.isNil()) {
       return Optional.empty();

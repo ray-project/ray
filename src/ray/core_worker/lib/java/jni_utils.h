@@ -197,8 +197,6 @@ extern jfieldID java_concurrency_group_impl_max_concurrency;
 extern jclass java_placement_group_creation_options_class;
 /// PlacementStrategy class
 extern jclass java_placement_group_creation_options_strategy_class;
-/// global field of PlacementGroupCreationOptions class
-extern jfieldID java_placement_group_creation_options_global;
 /// name field of PlacementGroupCreationOptions class
 extern jfieldID java_placement_group_creation_options_name;
 /// bundles field of PlacementGroupCreationOptions class
