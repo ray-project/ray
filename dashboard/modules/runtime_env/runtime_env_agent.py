@@ -84,6 +84,13 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         return self._per_job_logger_cache[job_id]
 
     async def CreateRuntimeEnv(self, request, context):
+        node_name = os.environ.get("NODE_NAME")
+        if os.environ.get("_RAY_RUNTIME_ENV_FAIL_AT_NODE_NAME") == node_name:
+            return runtime_env_agent_pb2.CreateRuntimeEnvReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                error_message="runtime env intentionally failed"
+                f" at {node_name}")
+
         async def _setup_runtime_env(serialized_runtime_env,
                                      serialized_allocated_resource_instances):
             # This function will be ran inside a thread
