@@ -275,6 +275,11 @@ class Monitor:
             use_node_id_as_ip = (self.autoscaler is not None
                                  and self.autoscaler.config["provider"].get(
                                      "use_node_id_as_ip", False))
+
+            # "use_node_id_as_ip" is a hack meant to address situations in
+            # which there's more than one Ray node residing at a given ip.
+            # TODO (Dmitri): Stop using ips as node identifiers.
+            # https://github.com/ray-project/ray/issues/19086
             if use_node_id_as_ip:
                 peloton_id = total_resources.get("NODE_ID_AS_RESOURCE")
                 # Legacy support https://github.com/ray-project/ray/pull/17312
