@@ -60,7 +60,7 @@ from ray._private.utils import check_oversized_function
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
     _internal_kv_initialized, _initialize_internal_kv, \
-    _internal_kv_get_gcs_client, _internal_kv_reset
+    _internal_kv_reset
 from ray._private.client_mode_hook import client_mode_hook
 
 SCRIPT_MODE = 0
@@ -1008,9 +1008,8 @@ def shutdown(_exiting_interpreter: bool = False):
 
     # disconnect internal kv
     if hasattr(global_worker, "gcs_client"):
-        if _internal_kv_get_gcs_client() == global_worker.gcs_client:
-            _internal_kv_reset()
         del global_worker.gcs_client
+    _internal_kv_reset()
 
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background
@@ -1491,11 +1490,16 @@ def connect(node,
     worker.cached_functions_to_run = None
 
     # Setup tracing here
-    if _internal_kv_get("tracing_startup_hook"):
+    if _internal_kv_get(
+            "tracing_startup_hook",
+            namespace=ray_constants.KV_NAMESPACE_TRACING):
         ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
         if not getattr(ray, "__traced__", False):
             _setup_tracing = import_from_string(
-                _internal_kv_get("tracing_startup_hook").decode("utf-8"))
+                _internal_kv_get(
+                    "tracing_startup_hook",
+                    namespace=ray_constants.KV_NAMESPACE_TRACING).decode(
+                        "utf-8"))
             _setup_tracing()
             ray.__traced__ = True
 

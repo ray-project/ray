@@ -35,39 +35,6 @@ NUM_PORT_RETRIES = 40
 NUM_REDIS_GET_RETRIES = 20
 
 
-def _get_with_retry(redis_client, key, num_retries=NUM_REDIS_GET_RETRIES):
-    result = None
-    for i in range(num_retries):
-        result = redis_client.get(key)
-        if result is not None:
-            break
-        else:
-            logger.debug(f"Fetched {key}=None from redis. Retrying.")
-            time.sleep(2)
-    if not result:
-        raise RuntimeError(f"Could not read '{key}' from GCS (redis). "
-                           "Has redis started correctly on the head node?")
-    return result
-
-
-def _hget_with_retry(redis_client,
-                     key,
-                     field,
-                     num_retries=NUM_REDIS_GET_RETRIES):
-    result = None
-    for i in range(num_retries):
-        result = redis_client.hget(key, field)
-        if result is not None:
-            break
-        else:
-            logger.debug(f"Fetched {key}=None from redis. Retrying.")
-            time.sleep(2)
-    if not result:
-        raise RuntimeError(f"Could not read '{key}' from GCS (redis). "
-                           "Has redis started correctly on the head node?")
-    return result
-
-
 class Node:
     """An encapsulation of the Ray processes on a single node.
 
@@ -171,17 +138,16 @@ class Node:
 
         # Register the temp dir.
         if head:
-            redis_client = None
             # date including microsecond
             date_str = datetime.datetime.today().strftime(
                 "%Y-%m-%d_%H-%M-%S_%f")
             self.session_name = f"session_{date_str}_{os.getpid()}"
         else:
-            redis_client = self.create_redis_client()
-            session_name = _get_with_retry(redis_client, "session_name")
+            session_name = self._internal_kv_get_with_retry(
+                "session_name", ray_constants.KV_NAMESPACE_SESSION)
             self.session_name = ray._private.utils.decode(session_name)
 
-        self._init_temp(redis_client)
+        self._init_temp()
 
         # If it is a head node, try validating if
         # external storage is configurable.
@@ -235,8 +201,8 @@ class Node:
                 ray_params.update_if_absent(gcs_server_port=gcs_server_port)
             self._webui_url = None
         else:
-            self._webui_url = (
-                ray._private.services.get_webui_url_from_redis(redis_client))
+            self._webui_url = \
+                ray._private.services.get_webui_url_from_internal_kv()
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
@@ -246,15 +212,25 @@ class Node:
         # Start processes.
         if head:
             self.start_head_processes()
-            redis_client = self.create_redis_client()
-            redis_client.set("session_name", self.session_name)
-            redis_client.hset("session_dir", "value", self._session_dir)
-            redis_client.set("temp_dir", self._temp_dir)
+            ray.experimental.internal_kv._internal_kv_put(
+                "session_name",
+                self.session_name,
+                namespace=ray_constants.KV_NAMESPACE_SESSION)
+            ray.experimental.internal_kv._internal_kv_put(
+                "session_dir",
+                self._session_dir,
+                namespace=ray_constants.KV_NAMESPACE_SESSION)
+            ray.experimental.internal_kv._internal_kv_put(
+                "temp_dir",
+                self._temp_dir,
+                namespace=ray_constants.KV_NAMESPACE_SESSION)
             # Add tracing_startup_hook to redis / internal kv manually
             # since internal kv is not yet initialized.
             if ray_params.tracing_startup_hook:
-                redis_client.hset("tracing_startup_hook", "value",
-                                  ray_params.tracing_startup_hook)
+                ray.experimental.internal_kv._internal_kv_put(
+                    "tracing_startup_hook",
+                    ray_params.tracing_startup_hook,
+                    namespace=ray_constants.KV_NAMESPACE_TRACING)
 
         if not connect_only:
             self.start_ray_processes()
@@ -291,14 +267,15 @@ class Node:
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
 
-    def _init_temp(self, redis_client):
+    def _init_temp(self):
         # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
         if self.head:
             self._temp_dir = self._ray_params.temp_dir
         else:
-            temp_dir = _get_with_retry(redis_client, "temp_dir")
+            temp_dir = self._internal_kv_get_with_retry(
+                "temp_dir", ray_constants.KV_NAMESPACE_SESSION)
             self._temp_dir = ray._private.utils.decode(temp_dir)
 
         try_to_create_directory(self._temp_dir)
@@ -306,8 +283,8 @@ class Node:
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self.session_name)
         else:
-            session_dir = _hget_with_retry(redis_client, "session_dir",
-                                           "value")
+            session_dir = self._internal_kv_get_with_retry(
+                "session_dir", ray_constants.KV_NAMESPACE_SESSION)
             self._session_dir = ray._private.utils.decode(session_dir)
         session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
 
@@ -473,6 +450,13 @@ class Node:
         """Create a redis client."""
         return ray._private.services.create_redis_client(
             self._redis_address, self._ray_params.redis_password)
+
+    def initialize_internal_kv(self):
+        """Initialize internal kv."""
+        if not ray.experimental.internal_kv._internal_kv_initialized():
+            gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(
+                self.create_redis_client())
+            ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
 
     def get_temp_dir_path(self):
         """Get the path of the temporary directory."""
@@ -769,8 +753,11 @@ class Node:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
                 process_info,
             ]
-            redis_client = self.create_redis_client()
-            redis_client.hset("webui", mapping={"url": self._webui_url})
+            self.initialize_internal_kv()
+            ray.experimental.internal_kv._internal_kv_put(
+                "webui:url",
+                self._webui_url,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
 
     def start_gcs_server(self):
         """Start the gcs server.
@@ -793,6 +780,14 @@ class Node:
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info,
         ]
+        ray.experimental.internal_kv._internal_kv_reset()
+        while True:
+            try:
+                self.initialize_internal_kv()
+                break
+            except Exception:
+                time.sleep(1)
+                logger.debug("Waiting for gcs up")
 
     def start_raylet(self,
                      plasma_directory,
@@ -1276,3 +1271,28 @@ class Node:
         from ray import external_storage
         external_storage.setup_external_storage(deserialized_config)
         external_storage.reset_external_storage()
+
+    def _internal_kv_get_with_retry(self,
+                                    key,
+                                    namespace,
+                                    num_retries=NUM_REDIS_GET_RETRIES):
+        result = None
+        for i in range(num_retries):
+            try:
+                self.initialize_internal_kv()
+                result = ray.experimental.internal_kv._internal_kv_get(
+                    key, namespace=namespace)
+            except Exception:
+                ray.experimental.internal_kv._internal_kv_reset()
+                self.initialize_internal_kv()
+                result = None
+
+            if result is not None:
+                break
+            else:
+                logger.debug(f"Fetched {key}=None from redis. Retrying.")
+                time.sleep(2)
+        if not result:
+            raise RuntimeError(f"Could not read '{key}' from GCS (redis). "
+                               "Has redis started correctly on the head node?")
+        return result
