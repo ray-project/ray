@@ -143,7 +143,6 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
 
 inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                    jobject actorCreationOptions) {
-  bool global = false;
   std::string name = "";
   int64_t max_restarts = 0;
   std::unordered_map<std::string, double> resources;
@@ -153,8 +152,6 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   std::vector<ConcurrencyGroup> concurrency_groups;
 
   if (actorCreationOptions) {
-    global =
-        env->GetBooleanField(actorCreationOptions, java_actor_creation_options_global);
     auto java_name = (jstring)env->GetObjectField(actorCreationOptions,
                                                   java_actor_creation_options_name);
     if (java_name) {
