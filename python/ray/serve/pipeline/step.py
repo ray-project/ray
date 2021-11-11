@@ -26,7 +26,7 @@ def _validate_step_args(*args, **kwargs):
         elif arg is INPUT:
             if len(args) > 1:
                 raise ValueError(
-                    "INPUT steps can only take a single argument.")
+                    "INPUT steps cannnot take argument other than INPUT.")
 
         elif not isinstance(arg, PipelineNode):
             raise TypeError(
@@ -73,7 +73,7 @@ class UninstantiatedClassPipelineStep(PipelineStep):
     """Represents a class step whose constructor has not been initialized.
 
     This must be called with constructor args & kwargs to return an
-    InstantiatedClassPipelineStep before it can actually be used.
+    CallablePipelineStep before it can actually be used.
     """
 
     def __init__(self, _class: Callable, config: StepConfig):
@@ -101,12 +101,12 @@ def step(_func_or_class: Optional[Callable] = None,
                 - ExecutionMode.TASKS: executes this step in Ray tasks.
                 - ExecutionMode.ACTORS: executes this step in Ray actors.
         num_replicas (int): The number of Ray actors to start that
-            will run this step (efaults to 1). Only valid when using
+            will run this step (default to 1). Only valid when using
             ExecutionMode.ACTORS.
 
     Example:
 
-    >>> @pipeline.step(num_replicas=10)
+    >>> @pipeline.step(execution_mode="actors", num_replicas=10)
         def my_step(*args):
             pass
 
