@@ -720,11 +720,10 @@ class DeploymentState:
                 f"RECOVERING replica: {new_deployment_replica.replica_tag}, "
                 f"deployment: {self._name}.")
 
-        # Blocking grace period to avoid controller thrashing when cover
-        # from replica actor names
-        time.sleep(CONTROLLER_STARTUP_GRACE_PERIOD_S)
-        # This halts all traffic in cluster.
-        self._notify_running_replicas_changed()
+        # TODO(jiaodong): this currently halts all traffic in the cluster
+        # briefly because we will broadcast a replica update with everything in
+        # RECOVERING. We should have a grace period where we recover the state
+        # of the replicas before doing this update.
 
     @property
     def target_info(self) -> DeploymentInfo:
