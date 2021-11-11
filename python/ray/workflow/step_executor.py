@@ -137,13 +137,11 @@ def _resolve_step_inputs(
     return signature.recover_args(flattened_args)
 
 
-def execute_workflow(workflow: "Workflow",
-                     inplace=False) -> "WorkflowExecutionResult":
+def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     """Execute workflow.
 
     Args:
         workflow: The workflow to be executed.
-        inplace: Execute the workflow inplace.
 
     Returns:
         An object ref that represent the result.
@@ -154,7 +152,7 @@ def execute_workflow(workflow: "Workflow",
     baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
         workflow_data.inputs)
     step_options = workflow_data.step_options
-    if inplace:
+    if step_options.allow_inplace:
         # TODO(suquark): For inplace execution, it is impossible
         # to get the ObjectRef of the output before execution.
         # Here we use a dummy ObjectRef, because _record_step_status does not
@@ -163,6 +161,9 @@ def execute_workflow(workflow: "Workflow",
                             [ray.put(None)])
         # Note: we need to be careful about workflow context when
         # calling the executor directly.
+        # TODO(suquark): We still have recursive Python calls.
+        # This would cause stack overflow if we have a really
+        # deep recursive call. We should fix it later.
         executor = _workflow_step_executor
     else:
         executor = _workflow_step_executor_remote.options(
@@ -177,7 +178,7 @@ def execute_workflow(workflow: "Workflow",
         volatile_output = ray.put(volatile_output)
 
     if step_options.step_type != StepType.READONLY_ACTOR_METHOD:
-        if not inplace:
+        if not step_options.allow_inplace:
             # TODO: [Possible flaky bug] Here the RUNNING state may
             # be recorded earlier than SUCCESSFUL. This caused some
             # confusion during development.
@@ -393,12 +394,7 @@ def _workflow_step_executor(
             # Execute sub-workflow. Pass down "outer_most_step_id".
             with workflow_context.fork_workflow_step_context(
                     outer_most_step_id=outer_most_step_id):
-                # TODO(suquark): We still have recursive Python calls.
-                # This would cause stack overflow if we have a really
-                # deep recursive call. We should fix it later.
-                result = execute_workflow(
-                    persisted_output,
-                    inplace=persisted_output.data.step_options.allow_inplace)
+                result = execute_workflow(persisted_output)
             # When virtual actor returns a workflow in the method,
             # the volatile_output and persisted_output will be put together
             persisted_output = result.persisted_output

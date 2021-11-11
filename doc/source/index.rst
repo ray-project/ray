@@ -298,6 +298,7 @@ Papers
    workflows/actors.rst
    workflows/events.rst
    workflows/comparison.rst
+   workflows/advanced.rst
    workflows/package-ref.rst
 
 .. toctree::

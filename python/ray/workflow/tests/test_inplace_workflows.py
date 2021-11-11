@@ -5,8 +5,22 @@ from ray import workflow
 
 
 @workflow.step
-def mul(a, b):
-    return a * b
+def check_and_update(x, worker_id):
+    from ray.worker import global_worker
+    _worker_id = global_worker.worker_id
+    if worker_id == _worker_id:
+        return x + "0"
+    return x + "1"
+
+
+@workflow.step
+def inplace_test():
+    from ray.worker import global_worker
+    worker_id = global_worker.worker_id
+    x = check_and_update.options(allow_inplace=True).step("@", worker_id)
+    y = check_and_update.step(x, worker_id)
+    z = check_and_update.options(allow_inplace=True).step(y, worker_id)
+    return z
 
 
 @workflow.step
@@ -35,14 +49,15 @@ def exp_remote(k, n, worker_id=None):
 
     if n == 0:
         return k
-    # Force remote by acquiring different resources.
     return exp_remote.step(2 * k, n - 1, worker_id)
 
 
 def test_inplace_workflows(workflow_start_regular_shared):
+    assert inplace_test.step().run() == "@010"
+
     k, n = 12, 10
-    assert exp_inplace.step(k, n).run() == 12 * 2**10
-    assert exp_remote.step(k, n).run() == 12 * 2**10
+    assert exp_inplace.step(k, n).run() == k * 2**n
+    assert exp_remote.step(k, n).run() == k * 2**n
 
 
 if __name__ == "__main__":
