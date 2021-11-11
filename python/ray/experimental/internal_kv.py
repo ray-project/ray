@@ -127,6 +127,5 @@ def _internal_kv_list(prefix: Union[str, bytes],
         prefix = prefix.encode()
     prefix = __make_key(namespace, prefix)
     return [
-        __get_key(key)
-        for key in global_gcs_client.internal_kv_keys(prefix)
+        __get_key(key) for key in global_gcs_client.internal_kv_keys(prefix)
     ]
