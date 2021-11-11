@@ -33,7 +33,6 @@ class WorkerSet:
 
     Where n may be 0.
     """
-
     def __init__(self,
                  *,
                  env_creator: Optional[Callable[[EnvContext], EnvType]] = None,
@@ -288,7 +287,7 @@ class WorkerSet:
 
     @DeveloperAPI
     def foreach_env(self, func: Callable[[EnvType], List[T]]) -> List[List[T]]:
-        """Calls `func` with all workers' sub environments as args.
+        """Calls `func` with all workers' sub-environments as args.
 
         An "underlying sub environment" is a single clone of an env within
         a vectorized environment.
@@ -313,7 +312,7 @@ class WorkerSet:
     def foreach_env_with_context(
             self,
             func: Callable[[BaseEnv, EnvContext], List[T]]) -> List[List[T]]:
-        """Call `func` with all workers' sub-environments and env_ctx as args.
+        """Calls `func` with all workers' sub-environments and env_ctx as args.
 
         An "underlying sub environment" is a single clone of an env within
         a vectorized environment.

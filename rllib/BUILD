@@ -2714,6 +2714,14 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
+    name = "examples/documentation/custom_gym_env",
+    main = "examples/documentation/custom_gym_env.py",
+    tags = ["team:ml", "documentation"],
+    size = "small",
+    srcs = ["examples/documentation/custom_gym_env.py"],
+)
+
+py_test(
     name = "examples/documentation/rllib_in_60s",
     main = "examples/documentation/rllib_in_60s.py",
     tags = ["team:ml", "documentation"],

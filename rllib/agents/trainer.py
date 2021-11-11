@@ -1188,8 +1188,8 @@ class Trainer(Trainable):
 
         Returns:
             The computed action if full_fetch=False, or a tuple of a) the
-                full output of policy.compute_actions() if full_fetch=True
-                or we have an RNN-based Policy.
+            full output of policy.compute_actions() if full_fetch=True
+            or we have an RNN-based Policy.
 
         Raises:
             KeyError: If the `policy_id` cannot be found in this Trainer's
@@ -1329,8 +1329,8 @@ class Trainer(Trainable):
             kwargs: forward compatibility placeholder
 
         Returns:
-            any: The computed action if full_fetch=False, or
-            tuple: The full output of policy.compute_actions() if
+            The computed action if full_fetch=False, or a tuple consisting of
+            the full output of policy.compute_actions_from_input_dict() if
             full_fetch=True or we have an RNN-based Policy.
         """
         if normalize_actions is not None:
@@ -1473,8 +1473,8 @@ class Trainer(Trainable):
                 to the evaluation WorkerSet.
 
         Returns:
-            Policy: The newly added policy (the copy that got added to the
-                local worker).
+            The newly added policy (the copy that got added to the local
+            worker).
         """
 
         def fn(worker: RolloutWorker):
