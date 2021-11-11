@@ -119,9 +119,6 @@ class Node:
                 os.path.dirname(os.path.abspath(__file__)),
                 f"workers/{ray_constants.SETUP_WORKER_FILENAME}"))
 
-        # Create a directory to be used for runtime environment.
-        self._runtime_env_dir = os.path.join(self._session_dir,
-                                             ray_params.runtime_env_dir_name)
         self._resource_spec = None
         self._localhost = socket.gethostbyname("localhost")
         self._ray_params = ray_params
@@ -302,6 +299,9 @@ class Node:
         try_to_create_directory(self._logs_dir)
         old_logs_dir = os.path.join(self._logs_dir, "old")
         try_to_create_directory(old_logs_dir)
+        # Create a directory to be used for runtime environment.
+        self._runtime_env_dir = os.path.join(
+            self._session_dir, self._ray_params.runtime_env_dir_name)
         try_to_create_directory(self._runtime_env_dir)
 
     def get_resource_spec(self):
