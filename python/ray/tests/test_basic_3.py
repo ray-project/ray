@@ -284,8 +284,9 @@ def test_worker_startup_count(ray_start_cluster):
         return None
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
+    timeout_limit = 40 if sys.platform == "win32" else 10
     start = time.time()
-    wait_for_condition(lambda: get_num_workers() == 16)
+    wait_for_condition(lambda: get_num_workers() == 16, timeout=timeout_limit)
     time_waited = time.time() - start
     print(f"Waited {time_waited} for debug_state.txt to be updated")
 
@@ -321,10 +322,12 @@ def test_function_unique_export(ray_start_regular):
 @pytest.mark.skipif(
     sys.platform not in ["win32", "darwin"],
     reason="Only listen on localhost by default on mac and windows.")
-def test_listen_on_localhost(ray_start_regular):
+@pytest.mark.parametrize("start_ray", ["ray_start_regular", "call_ray_start"])
+def test_listen_on_localhost(start_ray, request):
     """All ray processes should listen on localhost by default
        on mac and windows to prevent security popups.
     """
+    request.getfixturevalue(start_ray)
 
     process_infos = []
     for proc in psutil.process_iter(["name", "cmdline"]):
