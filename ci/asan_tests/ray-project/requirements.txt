@@ -1,4 +1,5 @@
 aiohttp==3.7
+aiosignal
 blist
 boto3
 cython==0.29.0

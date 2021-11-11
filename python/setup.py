@@ -199,6 +199,7 @@ if setup_spec.type == SetupType.RAY:
         ],
         "default": [
             "aiohttp == 3.7",
+            "aiosignal",
             "aiohttp_cors",
             "aioredis < 2",
             "colorful",
