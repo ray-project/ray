@@ -1,4 +1,5 @@
-.. _policy_base_class-docs:
+.. _policy-base-class-reference-docs:
+
 
 Base Policy class (ray.rllib.policy.policy.Policy)
 ==================================================

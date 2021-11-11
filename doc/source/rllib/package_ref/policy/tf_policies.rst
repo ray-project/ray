@@ -1,6 +1,6 @@
-.. _tf_policies-docs:
+.. _tf-policies-reference-docs:
 
-TensorFlow=Specific Sub-Classes
+TensorFlow-Specific Sub-Classes
 ===============================
 
 TFPolicy

@@ -1,4 +1,4 @@
-.. _offline-docs:
+.. _offline-reference-docs:
 
 Offline RL
 ==========

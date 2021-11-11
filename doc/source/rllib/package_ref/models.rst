@@ -1,4 +1,4 @@
-.. _model-docs:
+.. _model-reference-docs:
 
 Model APIs
 ==========

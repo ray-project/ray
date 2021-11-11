@@ -1,4 +1,4 @@
-.. _multi_agent_env-docs:
+.. _multi-agent-env-reference-docs:
 
 MultiAgentEnv API
 =================

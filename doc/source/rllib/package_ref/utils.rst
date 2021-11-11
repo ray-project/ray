@@ -1,4 +1,4 @@
-.. _utils-docs:
+.. _utils-reference-docs:
 
 
 RLlib Utilities

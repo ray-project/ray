@@ -1,4 +1,4 @@
-.. _base_env-docs:
+.. _base-env-reference-docs:
 
 BaseEnv API
 ===========

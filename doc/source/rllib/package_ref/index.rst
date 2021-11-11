@@ -1,4 +1,4 @@
-.. _rllib-package-ref:
+.. _rllib-reference-docs:
 
 RLlib API Reference
 ===================

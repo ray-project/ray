@@ -1,4 +1,4 @@
-.. _vector_env-docs:
+.. _vector-env-reference-docs:
 
 VectorEnv API
 =============

@@ -1,4 +1,4 @@
-.. _torch_policies-docs:
+.. _torch-policies-reference-docs:
 
 Torch-Specific Policy: TorchPolicy
 ==================================
