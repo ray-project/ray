@@ -198,7 +198,7 @@ if setup_spec.type == SetupType.RAY:
             "fsspec",
         ],
         "default": [
-            "aiohttp == 3.7",
+            "aiohttp >= 3.7",
             "aiosignal",
             "aiohttp_cors",
             "aioredis < 2",
