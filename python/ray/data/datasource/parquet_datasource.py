@@ -113,7 +113,7 @@ class ParquetDatasource(FileBasedDatasource):
                         yield output_buffer.next()
             output_buffer.finalize()
             if output_buffer.has_next():
-                yield builder.next()
+                yield output_buffer.next()
 
         if _block_udf is not None:
             # Try to infer dataset schema by passing dummy table through UDF.
