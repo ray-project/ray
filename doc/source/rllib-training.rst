@@ -399,6 +399,15 @@ Similar to accessing policy state, you may want to get a reference to the underl
 
 **Example: Preprocessing observations for feeding into a model**
 
+First, install the dependencies:
+
+.. code-block:: python
+
+    # The "Pong-v0" Atari environment requires a few additional gym installs:
+    pip install "ray[rllib]" tensorflow torch "gym[atari]" "gym[accept-rom-license]" atari_py
+
+Then for the code:
+
 .. code-block:: python
 
     >>> import gym

@@ -156,6 +156,8 @@ class Monitor:
         # TODO: Use gcs client for this
         self.gcs_node_resources_stub = \
             gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
+        self.gcs_node_info_stub = \
+            gcs_service_pb2_grpc.NodeInfoGcsServiceStub(gcs_channel)
 
         # Set the redis client and mode so _internal_kv works for autoscaler.
         worker = ray.worker.global_worker
@@ -219,6 +221,7 @@ class Monitor:
         self.autoscaler = StandardAutoscaler(
             autoscaling_config,
             self.load_metrics,
+            self.gcs_node_info_stub,
             prefix_cluster_info=self.prefix_cluster_info,
             event_summarizer=self.event_summarizer,
             prom_metrics=self.prom_metrics)
@@ -242,11 +245,11 @@ class Monitor:
         mirror_node_types = {}
         cluster_full = False
         for resource_message in resources_batch_data.batch:
+            node_id = resource_message.node_id
             # Generate node type config based on GCS reported node list.
             if self.readonly_config:
                 # Keep prefix in sync with ReadonlyNodeProvider.
-                node_type = format_readonly_node_type(
-                    resource_message.node_id.hex())
+                node_type = format_readonly_node_type(node_id.hex())
                 resources = {}
                 for k, v in resource_message.resources_total.items():
                     resources[k] = v
@@ -272,18 +275,23 @@ class Monitor:
             use_node_id_as_ip = (self.autoscaler is not None
                                  and self.autoscaler.config["provider"].get(
                                      "use_node_id_as_ip", False))
+
+            # "use_node_id_as_ip" is a hack meant to address situations in
+            # which there's more than one Ray node residing at a given ip.
+            # TODO (Dmitri): Stop using ips as node identifiers.
+            # https://github.com/ray-project/ray/issues/19086
             if use_node_id_as_ip:
                 peloton_id = total_resources.get("NODE_ID_AS_RESOURCE")
                 # Legacy support https://github.com/ray-project/ray/pull/17312
                 if peloton_id is not None:
                     ip = str(int(peloton_id))
                 else:
-                    ip = resource_message.node_id.hex()
+                    ip = node_id.hex()
             else:
                 ip = resource_message.node_manager_address
-            self.load_metrics.update(ip, total_resources, available_resources,
-                                     resource_load, waiting_bundles,
-                                     infeasible_bundles,
+            self.load_metrics.update(ip, node_id, total_resources,
+                                     available_resources, resource_load,
+                                     waiting_bundles, infeasible_bundles,
                                      pending_placement_groups, cluster_full)
         if self.readonly_config:
             self.readonly_config["available_node_types"].update(
