@@ -185,6 +185,7 @@ import requests
 import shutil
 import subprocess
 import sys
+import re
 import tempfile
 import time
 from queue import Empty
@@ -367,13 +368,22 @@ def wheel_exists(ray_version, git_branch, git_commit):
 
 def commit_or_url(commit_or_url: str) -> str:
     if commit_or_url.startswith("http"):
+        url = None
         # Directly return the S3 url
         if "s3" in commit_or_url and "amazonaws.com" in commit_or_url:
-            return commit_or_url
+            url = commit_or_url
         # Resolve the redirects for buildkite artifacts
         # This is needed because otherwise pip won't recognize the file name.
-        if "buildkite.com" in commit_or_url and "artifacts" in commit_or_url:
-            return requests.head(commit_or_url, allow_redirects=True).url
+        elif "buildkite.com" in commit_or_url and "artifacts" in commit_or_url:
+            url = requests.head(commit_or_url, allow_redirects=True).url
+        if url is not None:
+            # Extract commit from url so that we can do the
+            # commit sanity check later.
+            p = re.compile('/([a-f0-9]{40})/')
+            m = p.search(url)
+            if m is not None:
+                os.environ["RAY_COMMIT"] = m.group(1)
+            return url
 
     # Else, assume commit
     os.environ["RAY_COMMIT"] = commit_or_url
