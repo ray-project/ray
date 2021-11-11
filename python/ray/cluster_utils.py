@@ -6,11 +6,11 @@ import os
 import subprocess
 import tempfile
 import time
-from typing import Any, Dict, Optional, Tuple
 
 import ray
 import ray._private.services
 from ray._private.client_mode_hook import disable_client_hook
+from ray.dashboard.modules.job.sdk import ClusterInfo
 from ray import ray_constants
 
 logger = logging.getLogger(__name__)
@@ -320,8 +320,7 @@ class Cluster:
 
 
 def get_job_submission_client_cluster_info(
-        address: str, create_cluster_if_needed: bool
-) -> Tuple[str, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        address: str, create_cluster_if_needed: bool) -> ClusterInfo:
     """Get address, cookies, and metadata used for
         ray.dashboard.modules.job.sdk.JobSubmissionClient.
 
@@ -334,7 +333,7 @@ def get_job_submission_client_cluster_info(
                 implementations may do so.
 
         Returns:
-            Tuple containing (address, cookies, metadata) for
-                JobSubmissionClient to use.
+            ClusterInfo object consisting of address, cookies, and metadata
+            for JobSubmissionClient to use.
         """
-    return ("http://" + address, None, None)
+    return ClusterInfo("http://" + address, None, None)

@@ -22,6 +22,13 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+@dataclasses.dataclass
+class ClusterInfo:
+    address: str
+    cookies: Optional[Dict[str, Any]]
+    metadata: Optional[Dict[str, Any]]
+
+
 class JobSubmissionClient:
     def __init__(self, address: str, create_cluster_if_needed=False):
         module_string, inner_address = _split_address(address.rstrip("/"))
@@ -37,9 +44,12 @@ class JobSubmissionClient:
             f"Module: {module_string} does "
             "not have `get_job_submission_client_cluster_info`.")
 
-        (self._address, self._cookies, self._default_metadata
-         ) = module.get_job_submission_client_cluster_info(
-             inner_address, create_cluster_if_needed)
+        cluster_info = module.get_job_submission_client_cluster_info(
+            inner_address, create_cluster_if_needed)
+        self._address = cluster_info.address
+        self._cookies = cluster_info.cookies
+        self._default_metadata = cluster_info.metadata
+
         self._test_connection()
 
     def _test_connection(self):
