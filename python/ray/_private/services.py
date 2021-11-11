@@ -921,18 +921,20 @@ def start_redis(node_ip_address,
         if port is None:
             default_port = ray_constants.DEFAULT_PORT
             if sys.platform == "win32":
-                # In Windows, the port for Redis server is selected by first trying on
-                # to obtain the default_port i.e., 6379. If it's not available or if
-                # if it's not possible to use it then we randomly try to select
-                # other ports for starting Redis servers for the current Ray
-                # instance. The reason for random selection of ports is to lower
-                # the chances of two ray instances attempting to acquire the same
-                # port at some point of time. This helps in reducing the time spent
-                # in the following for loop.
-                port = default_port # Start from default_port
+                # In Windows, the port for Redis server is selected by first
+                # trying on to obtain the default_port i.e., 6379. If it's
+                # not available or if it's not possible to use it then we
+                # randomly try to select other ports for starting Redis
+                # servers for the current Ray instance. The reason for
+                # random selection of ports is to lower the chances of two
+                # ray instances attempting to acquire the same port at some
+                # point of time. This helps in reducing the time spent in
+                # the following for loop.
+                port = default_port  # Start from default_port
                 port_found = False
-                num_attempts = 200 # The number of attempts to try other ports
-                a_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # A TCP socket
+                num_attempts = 200  # The number of attempts to try other ports
+                a_socket = socket.socket(socket.AF_INET,
+                                         socket.SOCK_STREAM)  # A TCP socket
                 for _ in range(num_attempts):
                     location = (node_ip_address, port)
                     try:
@@ -943,10 +945,11 @@ def start_redis(node_ip_address,
                         # location is not available for use
                         # Select next port to be tried randomly
                         port += random.randint(-100, 100)
-                a_socket.close() # Port found
+                a_socket.close()  # Port found
                 if not port_found:
-                    raise ConnectionError("Redis server cannot be started because"
-                                          " an available port couldn't be found.")
+                    raise ConnectionError(
+                        "Redis server cannot be started because"
+                        " an available port couldn't be found.")
             else:
                 port = default_port
             num_retries = 20
