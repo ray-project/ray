@@ -334,8 +334,10 @@ def get_node_to_connect_for_driver(redis_address,
     return global_state.get_node_to_connect_for_driver(node_ip_address)
 
 
-def get_webui_url_from_redis(redis_client):
-    webui_url = redis_client.hmget("webui", "url")[0]
+def get_webui_url_from_internal_kv():
+    assert ray.experimental.internal_kv._internal_kv_initialized()
+    webui_url = ray.experimental.internal_kv._internal_kv_get(
+        "webui:url", namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
     return ray._private.utils.decode(
         webui_url) if webui_url is not None else None
 
@@ -1289,10 +1291,15 @@ def start_dashboard(require_dashboard,
         # Retrieve the dashboard url
         redis_client = ray._private.services.create_redis_client(
             redis_address, redis_password)
+        from ray._private.gcs_utils import GcsClient
+        gcs_client = GcsClient.create_from_redis(redis_client)
+        ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
         dashboard_url = None
         dashboard_returncode = None
         for _ in range(200):
-            dashboard_url = redis_client.get(ray_constants.REDIS_KEY_DASHBOARD)
+            dashboard_url = ray.experimental.internal_kv._internal_kv_get(
+                ray_constants.REDIS_KEY_DASHBOARD,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
             if dashboard_url is not None:
                 dashboard_url = dashboard_url.decode("utf-8")
                 break

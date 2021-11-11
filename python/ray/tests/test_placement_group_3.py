@@ -20,14 +20,17 @@ from ray._raylet import PlacementGroupID
 from ray.util.placement_group import (PlacementGroup, placement_group,
                                       remove_placement_group)
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
+import ray.experimental.internal_kv as internal_kv
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 
 
 def get_ray_status_output(address):
     redis_client = ray._private.services.create_redis_client(address, "")
-    status = redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
-    error = redis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
+    gcs_client = gcs_utils.GcsClient.create_from_redis(redis_client)
+    internal_kv._initialize_internal_kv(gcs_client)
+    status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
+    error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
     return {
         "demand": debug_status(
             status, error).split("Demands:")[1].strip("\n").strip(" "),
@@ -698,6 +701,17 @@ def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
         trainer = Trainer.options(placement_group=pg).remote(0)
         ray.get([workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)])
         ray.get(trainer.train.remote())
+
+
+def test_fractional_resources_handle_correct(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1000)
+    ray.init(address=cluster.address)
+
+    bundles = [{"CPU": 0.01} for _ in range(5)]
+    pg = placement_group(bundles, strategy="SPREAD")
+
+    ray.get(pg.ready(), timeout=10)
 
 
 if __name__ == "__main__":

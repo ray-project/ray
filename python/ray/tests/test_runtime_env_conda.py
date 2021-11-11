@@ -124,5 +124,35 @@ def test_detached_actor_gc(start_cluster, field, spec_format, tmp_path):
     wait_for_condition(lambda: check_local_files_gced(cluster), timeout=30)
 
 
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="Requires PR wheels built in CI, so only run on linux CI machines.")
+@pytest.mark.parametrize("field", ["conda", "pip"])
+@pytest.mark.parametrize("spec_format", ["file", "python_object"])
+def test_actor_level_gc(start_cluster, field, spec_format, tmp_path):
+    """Tests that actor-level working_dir is GC'd when the actor exits."""
+    cluster, address = start_cluster
+
+    ray.init(address)
+
+    runtime_env = generate_runtime_env_dict(field, spec_format, tmp_path)
+
+    @ray.remote
+    class A:
+        def test_import(self):
+            import pip_install_test  # noqa: F401
+            return True
+
+    NUM_ACTORS = 5
+    actors = [
+        A.options(runtime_env=runtime_env).remote() for _ in range(NUM_ACTORS)
+    ]
+    ray.get([a.test_import.remote() for a in actors])
+    for i in range(5):
+        assert not check_local_files_gced(cluster)
+        ray.kill(actors[i])
+    wait_for_condition(lambda: check_local_files_gced(cluster))
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
