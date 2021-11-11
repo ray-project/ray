@@ -23,7 +23,7 @@ logger.setLevel(logging.INFO)
 
 
 class JobSubmissionClient:
-    def __init__(self, address: str):
+    def __init__(self, address: str, create_cluster_if_needed=False):
         module_string, inner_address = _split_address(address.rstrip("/"))
 
         module = importlib.import_module(module_string)
@@ -33,12 +33,13 @@ class JobSubmissionClient:
             raise RuntimeError(
                 f"Module: {module_string} does not exist.\n"
                 f"This module was parsed from Address: {address}") from None
-        assert "get_cluster_address_cookies" in dir(module), (
+        assert "get_job_submission_client_cluster_info" in dir(module), (
             f"Module: {module_string} does "
-            "not have `get_cluster_address_cookies`.")
+            "not have `get_job_submission_client_cluster_info`.")
 
         (self._address, self._cookies, self._default_metadata
-         ) = module.get_cluster_address_cookies(inner_address)
+         ) = module.get_job_submission_client_cluster_info(
+             inner_address, create_cluster_if_needed)
         print("DEBUG self._address", self._address, self._cookies,
               self._default_metadata)
         self._test_connection()

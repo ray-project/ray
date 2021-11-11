@@ -319,11 +319,22 @@ class Cluster:
         ray.experimental.internal_kv._internal_kv_reset()
 
 
-def get_job_submission_client_cluster_address_cookies(
-        address: str
+def get_job_submission_client_cluster_info(
+        address: str, create_cluster_if_needed: bool
 ) -> Tuple[str, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
-    """
-    Get address, cookies, and metadata used for
-    ray.dashboard.modules.job.sdk.JobSubmissionClient.
-    """
+    """Get address, cookies, and metadata used for
+        ray.dashboard.modules.job.sdk.JobSubmissionClient.
+
+        Args:
+            address (str): Address without the module prefix that is passed
+                to ray.dashboard.modules.job.sdk.JobSubmissionClient.
+            create_cluster_if_needed (bool): Indicates whether the cluster
+                of the address returned needs to be running. Ray doesn't
+                start a cluster before interacting with jobs, but other
+                implementations may do so.
+
+        Returns:
+            Tuple containing (address, cookies, metadata) for
+                JobSubmissionClient to use.
+        """
     return ("http://" + address, None, None)

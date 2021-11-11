@@ -119,8 +119,7 @@ from ray import workflow  # noqa: E402,F401
 # We import ClientBuilder so that modules can inherit from `ray.ClientBuilder`.
 from ray.client_builder import client, ClientBuilder  # noqa: E402
 from ray.cluster_utils import (  # noqa: E402,F401
-    get_job_submission_client_cluster_address_cookies as
-    get_cluster_address_cookies, )
+    get_job_submission_client_cluster_info)
 
 __all__ = [
     "__version__",
