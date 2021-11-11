@@ -97,6 +97,7 @@ or head over to the :doc:`tutorials/index` to get started building your Ray Serv
 
 For more, see the following blog posts about Ray Serve:
 
+- `Serving ML Models in Production: Common Patterns <https://www.anyscale.com/blog/serving-ml-models-in-production-common-patterns>`_ by Simon Mo, Edward Oakes, and Michael Galarnyk
 - `How to Scale Up Your FastAPI Application Using Ray Serve <https://medium.com/distributed-computing-with-ray/how-to-scale-up-your-fastapi-application-using-ray-serve-c9a7b69e786>`_ by Archit Kulkarni
 - `Machine Learning is Broken <https://medium.com/distributed-computing-with-ray/machine-learning-serving-is-broken-f59aff2d607f>`_ by Simon Mo
 - `The Simplest Way to Serve your NLP Model in Production with Pure Python <https://medium.com/distributed-computing-with-ray/the-simplest-way-to-serve-your-nlp-model-in-production-with-pure-python-d42b6a97ad55>`_ by Edward Oakes and Bill Chambers
