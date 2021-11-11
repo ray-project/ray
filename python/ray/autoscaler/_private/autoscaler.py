@@ -243,6 +243,7 @@ class StandardAutoscaler:
         self.last_update_time = now
         self.update_worker_list()
 
+        # Remove from LoadMetrics the ips unknown to the NodeProvider.
         self.load_metrics.prune_active_ips([
             self.provider.internal_ip(node_id) for node_id in self.all_workers
         ])

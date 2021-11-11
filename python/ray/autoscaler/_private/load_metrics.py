@@ -136,7 +136,18 @@ class LoadMetrics:
     def is_active(self, ip):
         return ip in self.last_heartbeat_time_by_ip
 
-    def prune_active_ips(self, active_ips):
+    def prune_active_ips(self, active_ips: List[str]):
+        """The Raylet ips stored by LoadMetrics are obtained by polling
+        the GCS in Monitor.update_load_metrics().
+
+        On the other hand, the autoscaler gets a list of node ips from
+        its NodeProvider.
+
+        This method removes from LoadMetrics the ips unknown to the autoscaler.
+
+        Args:
+            active_ips (List[str]): The node ips known to the autoscaler.
+        """
         active_ips = set(active_ips)
         active_ips.add(self.local_ip)
 
@@ -144,10 +155,7 @@ class LoadMetrics:
             unwanted_ips = set(mapping) - active_ips
             for unwanted_ip in unwanted_ips:
                 if should_log:
-                    logger.info(
-                        "LoadMetrics: "
-                        f"Removed ip: {unwanted_ip}."
-                        "\n(is not the ip of a node known to the autoscaler)")
+                    logger.info("LoadMetrics: " f"Removed ip: {unwanted_ip}.")
                 del mapping[unwanted_ip]
             if unwanted_ips and should_log:
                 logger.info(
