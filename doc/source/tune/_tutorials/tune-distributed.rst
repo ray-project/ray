@@ -146,7 +146,7 @@ Generally we consider three cases:
 The default option here is 3, which will be automatically used if nothing else is configured.
 
 Using a shared directory
-""""""""""""""""""""""""
+~~~~~~~~~~~~~~~~~~~~~~~~
 If all Ray nodes have access to a shared filesystem, e.g. via NFS, they can all write to this directory.
 In this case, we don't need any synchronization at all, as it is implicitly done by the operating system.
 
@@ -170,7 +170,7 @@ shared directory) for further processing.
 
 
 Using cloud storage
-"""""""""""""""""""
+~~~~~~~~~~~~~~~~~~~
 If all nodes have access to cloud storage, e.g. S3 or GS, we end up with a similar situation as in the first case,
 only that the consolidated directory including all logs and checkpoints lives on cloud storage.
 
@@ -214,7 +214,7 @@ e.g. the best checkpoint further, you will first have to fetch it from the cloud
 
 
 Default syncing (no shared/cloud storage)
-"""""""""""""""""""""""""""""""""""""""""
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 If you're using neither a shared filesystem nor cloud storage, Ray Tune will resort to the
 default syncing mechanisms, which utilizes ``rsync`` (via SSH) to synchronize checkpoints across
 nodes.
