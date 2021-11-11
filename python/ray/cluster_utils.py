@@ -1,3 +1,4 @@
+import copy
 import logging
 import json
 import yaml
@@ -7,8 +8,6 @@ import tempfile
 import time
 
 import ray
-from ray.autoscaler._private.\
-    fake_multi_node.node_provider import TEST_DISABLE_TERMINATION_FIELD
 import ray._private.services
 from ray import ray_constants
 
@@ -21,10 +20,7 @@ class AutoscalingCluster:
     See test_autoscaler_fake_multinode.py for an end-to-end example.
     """
 
-    def __init__(self,
-                 head_resources: dict,
-                 worker_node_types: dict,
-                 _leave_termination_to_drain_api: bool = False):
+    def __init__(self, head_resources: dict, worker_node_types: dict):
         """Create the cluster.
 
         Args:
@@ -32,25 +28,23 @@ class AutoscalingCluster:
             worker_node_types: autoscaler node types config for worker nodes.
         """
         self._head_resources = head_resources
+        self._config = self._generate_config(head_resources, worker_node_types)
+        self._process = None
 
+    def _generate_config(self, head_resources, worker_node_types):
         base_config = yaml.safe_load(
             open(
                 os.path.join(
                     os.path.dirname(ray.__file__),
                     "autoscaler/_private/fake_multi_node/example.yaml")))
-        base_config["available_node_types"] = worker_node_types
-        base_config["available_node_types"]["ray.head.default"] = {
+        custom_config = copy.deepcopy(base_config)
+        custom_config["available_node_types"] = worker_node_types
+        custom_config["available_node_types"]["ray.head.default"] = {
             "resources": head_resources,
             "node_config": {},
             "max_workers": 0,
         }
-        # For testing only: `terminate_node` will not stop Ray node processes
-        # if True.
-        base_config["provider"][
-            TEST_DISABLE_TERMINATION_FIELD] = _leave_termination_to_drain_api
-        self._config = base_config
-
-        self._process = None
+        return custom_config
 
     def start(self):
         """Start the cluster.

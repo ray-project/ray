@@ -1,12 +1,40 @@
 import platform
+import logging
 import time
 
 import pytest
 
 import ray
+from ray.autoscaler._private.fake_multi_node.node_provider import\
+    FakeMultiNodeProvider
 from ray.cluster_utils import AutoscalingCluster
 import ray.ray_constants as ray_constants
 from ray._private.test_utils import get_error_message, init_error_pubsub
+
+logger = logging.getLogger(__name__)
+
+
+class MockFakeProvider(FakeMultiNodeProvider):
+    """FakeMultiNodeProvider, with Ray node process termination mocked out.
+
+    Used to check that a Ray node can be terminated by DrainNode API call
+    from the autoscaler.
+    """
+    def _kill_ray_processes(self, node):
+        logger.info("Leaving Raylet termination to autoscaler Drain API!")
+
+
+class MockAutoscalingCluster(AutoscalingCluster):
+    """AutoscalingCluster modified to used the above MockFakeProvider.
+    """
+    def _generate_config(self, head_resources, worker_node_types):
+        config = super()._generate_config(head_resources, worker_node_types)
+        config["provider"]["type"] = "external"
+        config["provider"]["module"] = (
+            "ray.tests"
+            ".test_autoscaler_drain_node_api.MockFakeProvider"
+        )
+        return config
 
 
 @pytest.mark.skipif(
@@ -26,7 +54,9 @@ def test_drain_api(shutdown_only):
     DrainNode currently works by asking the GCS to de-register and shut down
     Ray nodes.
     """
-    cluster = AutoscalingCluster(
+    # Autoscaling cluster with Ray process termination mocked out in the node
+    # provider.
+    cluster = MockAutoscalingCluster(
         head_resources={"CPU": 1},
         worker_node_types={
             "gpu_node": {

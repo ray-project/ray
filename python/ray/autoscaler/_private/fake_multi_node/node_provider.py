@@ -17,8 +17,6 @@ logger = logging.getLogger(__name__)
 FAKE_HEAD_NODE_ID = "fffffffffffffffffffffffffffffffffffffffffffffffffff00000"
 FAKE_HEAD_NODE_TYPE = "ray.head.default"
 
-TEST_DISABLE_TERMINATION_FIELD = "_leave_termination_to_drain_api"
-
 
 class FakeMultiNodeProvider(NodeProvider):
     """A node provider that implements multi-node on a single machine.
@@ -42,11 +40,6 @@ class FakeMultiNodeProvider(NodeProvider):
             },
         }
         self._next_node_id = 0
-
-        # For testing only: `terminate_node` will not stop Ray node processes
-        # if True.
-        self._leave_termination_to_drain_api = self.provider_config.get(
-            TEST_DISABLE_TERMINATION_FIELD, False)
 
     def _next_hex_node_id(self):
         self._next_node_id += 1
@@ -114,13 +107,10 @@ class FakeMultiNodeProvider(NodeProvider):
 
     def terminate_node(self, node_id):
         node = self._nodes.pop(node_id)["node"]
-        # Kill Ray processes here, unless that's disabled for testing.
-        if self._leave_termination_to_drain_api:
-            logger.warning("FakeMultiNodeProvider:"
-                           f" Leaving termination of node {node_id} to the"
-                           " DrainNode API.")
-        else:
-            node.kill_all_processes(check_alive=False, allow_graceful=True)
+        self._kill_ray_processes(node)
+
+    def _kill_ray_processes(self, node):
+        node.kill_all_processes(check_alive=False, allow_graceful=True)
 
     @staticmethod
     def bootstrap_config(cluster_config):
