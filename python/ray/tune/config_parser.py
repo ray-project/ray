@@ -194,7 +194,7 @@ def create_trial_from_spec(spec, output_path, parser, **trial_kwargs):
                                 resources) from exc
 
     sync_config = spec.get("sync_config", SyncConfig())
-    if isinstance(sync_config.syncer, (None, str)):
+    if sync_config.syncer is None or isinstance(sync_config.syncer, str):
         sync_function_tpl = sync_config.syncer
     else:
         sync_function_tpl = None  # Auto-detect

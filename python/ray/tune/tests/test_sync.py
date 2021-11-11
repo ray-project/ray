@@ -6,7 +6,6 @@ import sys
 import tempfile
 import time
 import unittest
-import warnings
 from unittest.mock import patch
 import yaml
 
@@ -37,8 +36,6 @@ class TestSyncFunctionality(unittest.TestCase):
         _register_all()  # re-register the evicted objects
 
     def testSyncConfigDeprecation(self):
-        from ray.tune.syncer import logger
-
         with self.assertWarnsRegex(
                 DeprecationWarning, expected_regex="sync_period"):
             sync_conf = tune.SyncConfig(
