@@ -20,7 +20,8 @@ def exp_inplace(k, n, worker_id=None):
 
     if n == 0:
         return k
-    return exp_inplace.step(2 * k, n - 1, worker_id)
+    return exp_inplace.options(allow_inplace=True).step(
+        2 * k, n - 1, worker_id)
 
 
 @workflow.step
@@ -35,14 +36,13 @@ def exp_remote(k, n, worker_id=None):
     if n == 0:
         return k
     # Force remote by acquiring different resources.
-    return exp_remote.options(num_cpus=1.0 - 0.001 * n).step(
-        2 * k, n - 1, worker_id)
+    return exp_remote.step(2 * k, n - 1, worker_id)
 
 
 def test_inplace_workflows(workflow_start_regular_shared):
     k, n = 12, 10
     assert exp_inplace.step(k, n).run() == 12 * 2**10
-    assert exp_remote.options(num_cpus=1).step(k, n).run() == 12 * 2**10
+    assert exp_remote.step(k, n).run() == 12 * 2**10
 
 
 if __name__ == "__main__":
