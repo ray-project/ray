@@ -318,8 +318,9 @@ Papers
    :maxdepth: -1
    :caption: Ray RLlib
 
-   rllib.rst
+   rllib/index.rst
    rllib-toc.rst
+   rllib/core-concepts.rst
    rllib-training.rst
    rllib-env.rst
    rllib-models.rst

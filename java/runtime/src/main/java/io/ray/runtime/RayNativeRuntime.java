@@ -54,7 +54,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private void updateSessionDir(GcsClient gcsClient) {
     // Fetch session dir from GCS.
-    final String sessionDir = gcsClient.getInternalKV("session_dir");
+    final String sessionDir = gcsClient.getInternalKV("@:session:session_dir");
     Preconditions.checkNotNull(sessionDir);
     rayConfig.setSessionDir(sessionDir);
   }
@@ -239,6 +239,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     return nativeGetResourceIds();
   }
 
+  @Override
+  public String getNamespace() {
+    return nativeGetNamespace();
+  }
+
   private static native void nativeInitialize(
       int workerMode,
       String ndoeIpAddress,
@@ -264,6 +269,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static native void nativeSetCoreWorker(byte[] workerId);
 
   private static native Map<String, List<ResourceValue>> nativeGetResourceIds();
+
+  private static native String nativeGetNamespace();
 
   static class AsyncContext {
 

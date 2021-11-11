@@ -2397,6 +2397,60 @@ py_test(
 )
 
 py_test(
+    name = "examples/inference_and_serving/policy_inference_after_training_tf",
+    main = "examples/inference_and_serving/policy_inference_after_training.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/inference_and_serving/policy_inference_after_training.py"],
+    args = ["--stop-iters=3", "--framework=tf"]
+)
+
+py_test(
+    name = "examples/inference_and_serving/policy_inference_after_training_torch",
+    main = "examples/inference_and_serving/policy_inference_after_training.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/inference_and_serving/policy_inference_after_training.py"],
+    args = ["--stop-iters=3", "--framework=torch"]
+)
+
+py_test(
+    name = "examples/inference_and_serving/policy_inference_after_training_with_attention_tf",
+    main = "examples/inference_and_serving/policy_inference_after_training_with_attention.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_attention.py"],
+    args = ["--stop-iters=2", "--framework=tf"]
+)
+
+py_test(
+    name = "examples/inference_and_serving/policy_inference_after_training_with_attention_torch",
+    main = "examples/inference_and_serving/policy_inference_after_training_with_attention.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_attention.py"],
+    args = ["--stop-iters=2", "--framework=torch"]
+)
+
+py_test(
+    name = "examples/inference_and_serving/policy_inference_after_training_with_lstm_tf",
+    main = "examples/inference_and_serving/policy_inference_after_training_with_lstm.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_lstm.py"],
+    args = ["--stop-iters=1", "--framework=tf"]
+)
+
+py_test(
+    name = "examples/inference_and_serving/policy_inference_after_training_with_lstm_torch",
+    main = "examples/inference_and_serving/policy_inference_after_training_with_lstm.py",
+    tags = ["team:ml", "examples", "examples_P"],
+    size = "medium",
+    srcs = ["examples/inference_and_serving/policy_inference_after_training_with_lstm.py"],
+    args = ["--stop-iters=1", "--framework=torch"]
+)
+
+py_test(
     name = "examples/preprocessing_disabled_tf",
     main = "examples/preprocessing_disabled.py",
     tags = ["team:ml", "examples", "examples_P"],
@@ -2665,4 +2719,12 @@ py_test(
     tags = ["team:ml", "documentation"],
     size = "small",
     srcs = ["examples/documentation/custom_gym_env.py"],
+)
+
+py_test(
+    name = "examples/documentation/rllib_in_60s",
+    main = "examples/documentation/rllib_in_60s.py",
+    tags = ["team:ml", "documentation"],
+    size = "medium",
+    srcs = ["examples/documentation/rllib_in_60s.py"],
 )
