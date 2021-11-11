@@ -46,7 +46,7 @@ PyTorch (or both as shown below):
     $ conda activate rllib
     $ pip install "ray[rllib]" tensorflow torch
 
-To be able to run our Atari examples we well, you should also install:
+To be able to run our Atari examples, you should also install:
 
 .. code-block:: bash
 
