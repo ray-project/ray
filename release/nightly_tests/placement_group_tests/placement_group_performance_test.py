@@ -10,7 +10,7 @@ RESOURCES_VALUE = 0.01
 
 def test_placement_group_perf(num_pgs, num_bundles, num_pending_pgs):
     # Run the placement group performance benchmark given arguments.
-    ray.cluster_resources()["custom"] >= (
+    assert ray.cluster_resources()["custom"] >= (
         RESOURCES_VALUE * num_pgs * num_bundles)
 
     def placement_group_create(num_pgs):
