@@ -46,6 +46,7 @@ public class ObjectSerializer {
   public static final byte[] OBJECT_METADATA_TYPE_JAVA = "JAVA".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_PYTHON = "PYTHON".getBytes();
   public static final byte[] OBJECT_METADATA_TYPE_RAW = "RAW".getBytes();
+  public static final byte[] OBJECT_METADATA_TYPE_ARROW = "ARROW".getBytes();
   // A constant used as object metadata to indicate the object is an actor handle.
   // This value should be synchronized with the Python definition in ray_constants.py
   // TODO(fyrestone): Serialize the ActorHandle via the custom type feature of XLANG.
