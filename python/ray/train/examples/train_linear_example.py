@@ -48,7 +48,9 @@ def validate_epoch(dataloader, model, loss_fn, device):
             pred = model(X)
             loss += loss_fn(pred, y).item()
     loss /= num_batches
-    result = {"model": model.state_dict(), "loss": loss}
+    import copy
+    model_copy = copy.deepcopy(model)
+    result = {"model": model_copy.cpu().state_dict(), "loss": loss}
     return result
 
 
@@ -97,7 +99,7 @@ def train_func(config):
 
 def train_linear(num_workers=2, use_gpu=False, epochs=3):
     trainer = Trainer(
-        backend=TorchConfig(backend="gloo"),
+        backend="torch",
         num_workers=num_workers,
         use_gpu=use_gpu)
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
