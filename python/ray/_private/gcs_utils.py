@@ -1,9 +1,6 @@
-from collections import deque
 import enum
 import logging
-import random
-import threading
-from typing import List, Tuple
+from typing import List
 
 import grpc
 
@@ -34,7 +31,6 @@ from ray.core.generated.gcs_pb2 import (
     WorkerTableData,
     PlacementGroupTableData,
 )
-from ray.core.generated import pubsub_pb2
 
 logger = logging.getLogger(__name__)
 

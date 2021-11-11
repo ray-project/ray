@@ -27,7 +27,8 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher, \
+    GcsSubscriber
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
@@ -1260,7 +1261,7 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
     """
-    worker.gcs_subscriber = gcs_utils.GcsSubscriber(channel=worker.gcs_channel)
+    worker.gcs_subscriber = GcsSubscriber(channel=worker.gcs_channel)
     # Exports that are published after the call to
     # gcs_subscriber.subscribe_error() and before the call to
     # gcs_subscriber.poll_error() will still be processed in the loop.

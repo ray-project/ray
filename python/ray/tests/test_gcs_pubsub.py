@@ -2,8 +2,9 @@ import sys
 
 import ray
 import ray._private.gcs_utils as gcs_utils
-from ray._private.gcs_pubsub import GcsPublisher, GcsSubscriber, GcsAioPublisher, GcsAioSubscriber
-from ray.core.generated.gcs_pb2 import (ErrorTableData)
+from ray._private.gcs_pubsub import GcsPublisher, GcsSubscriber, \
+    GcsAioPublisher, GcsAioSubscriber
+from ray.core.generated.gcs_pb2 import ErrorTableData
 import pytest
 
 
