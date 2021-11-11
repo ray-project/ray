@@ -573,11 +573,11 @@ def get_all_log_message(pub_sub, num, timeout=20):
     return msgs
 
 
-def format_web_url(url, for_job_submission_client: bool = False):
+def format_web_url(url, ray_protocol_addr: bool = False):
     """Format web url."""
     url = url.replace("localhost", "http://127.0.0.1")
     if not url.startswith("http://"):
-        if for_job_submission_client:
+        if ray_protocol_addr:
             return "ray://" + url
         else:
             return "http://" + url

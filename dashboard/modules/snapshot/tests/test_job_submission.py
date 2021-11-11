@@ -33,7 +33,8 @@ def test_successful_job_status(ray_start_with_dashboard, disable_aiohttp_cache,
                                enable_test_module):
     address = ray_start_with_dashboard["webui_url"]
     assert wait_until_server_available(address)
-    address = format_web_url(address, for_job_submission_client=True)
+    job_submission_address = format_web_url(address, ray_protocol_addr=True)
+    address = format_web_url(address)
 
     entrypoint_cmd = ("python -c\""
                       "import ray;"
@@ -42,7 +43,7 @@ def test_successful_job_status(ray_start_with_dashboard, disable_aiohttp_cache,
                       "time.sleep(5);"
                       "\"")
 
-    client = JobSubmissionClient(address)
+    client = JobSubmissionClient(job_submission_address)
     job_id = client.submit_job(entrypoint=entrypoint_cmd)
 
     def wait_for_job_to_succeed():
@@ -65,7 +66,8 @@ def test_failed_job_status(ray_start_with_dashboard, disable_aiohttp_cache,
                            enable_test_module):
     address = ray_start_with_dashboard["webui_url"]
     assert wait_until_server_available(address)
-    address = format_web_url(address, for_job_submission_client=True)
+    job_submission_address = format_web_url(address, ray_protocol_addr=True)
+    address = format_web_url(address)
 
     entrypoint_cmd = ("python -c\""
                       "import ray;"
@@ -75,7 +77,7 @@ def test_failed_job_status(ray_start_with_dashboard, disable_aiohttp_cache,
                       "import sys;"
                       "sys.exit(1);"
                       "\"")
-    client = JobSubmissionClient(address)
+    client = JobSubmissionClient(job_submission_address)
     job_id = client.submit_job(entrypoint=entrypoint_cmd)
 
     def wait_for_job_to_fail():
