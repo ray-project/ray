@@ -10,11 +10,9 @@ from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
 from ray.dashboard.modules.job.common import (
     GetPackageResponse, JobSubmitRequest, JobSubmitResponse, JobStopResponse,
-    JobStatus, JobStatusResponse, JobLogsResponse)
-
-from ray.dashboard.modules.job.job_head import (
-    JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP,
-    JOBS_API_ROUTE_STATUS, JOBS_API_ROUTE_PACKAGE)
+    JobStatus, JobStatusResponse, JobLogsResponse, JOBS_API_ROUTE_LOGS,
+    JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP, JOBS_API_ROUTE_STATUS,
+    JOBS_API_ROUTE_PACKAGE)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
