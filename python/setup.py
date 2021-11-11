@@ -203,6 +203,7 @@ if setup_spec.type == SetupType.RAY:
             "aiohttp_cors",
             "aioredis < 2",
             "colorful",
+            "frozenlist",
             "py-spy >= 0.2.0",
             "requests",
             "gpustat >= 1.0.0b1",  # for windows

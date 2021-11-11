@@ -11,6 +11,7 @@ aiosignal
 click >= 7.0
 cloudpickle
 filelock
+frozenlist
 gpustat >= 1.0.0b1
 grpcio >= 1.28.1
 jsonschema

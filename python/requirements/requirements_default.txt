@@ -3,5 +3,6 @@ aiosignal
 aiohttp_cors
 aioredis<2
 colorful
+frozenlist
 opencensus
 prometheus_client>=0.7.1
