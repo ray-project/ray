@@ -113,12 +113,7 @@ def train_func(config):
             feature_column_dtypes=[torch.float],
             batch_size=batch_size)
 
-        rank = train.local_rank()
-
-        if torch.cuda.is_available():
-            device = torch.device("cpu")
-        else:
-            device = torch.device(f"cuda:{rank}")
+        device = train.torch.get_torch_device()
 
         train_epoch(train_torch_dataset, model, loss_fn, optimizer, device)
         result = validate_epoch(validation_torch_dataset, model, loss_fn,

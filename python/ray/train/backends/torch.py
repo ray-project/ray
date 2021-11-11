@@ -152,7 +152,8 @@ if torch:
     from torch.utils.data import DistributedSampler, DataLoader, \
         IterableDataset, SequentialSampler
 
-    def _get_torch_device() -> torch.device:
+    def get_device() -> torch.device:
+        """Gets the correct torch device to use for training."""
         rank = train.local_rank()
 
         if not torch.cuda.is_available():
@@ -210,7 +211,7 @@ if torch:
         """
         rank = train.local_rank()
 
-        device = _get_torch_device()
+        device = get_device()
 
         if torch.cuda.is_available():
             torch.cuda.set_device(device)
@@ -276,7 +277,7 @@ if torch:
             data_loader = with_sampler(data_loader)
 
         if move_to_device:
-            device = _get_torch_device()
+            device = get_device()
             data_loader = _WrappedDataLoader(data_loader, device)
 
         return data_loader

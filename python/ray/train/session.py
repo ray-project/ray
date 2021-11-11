@@ -423,10 +423,10 @@ def world_size() -> int:
     .. code-block:: python
 
         import time
-        from ray import sgd
+        from ray import train
 
         def train_func():
-            assert sgd.world_size() == 4
+            assert train.world_size() == 4
 
         trainer = Trainer(backend="torch", num_workers=4)
         trainer.start()
