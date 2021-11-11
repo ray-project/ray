@@ -24,8 +24,7 @@ class ExternalMultiAgentEnv(ExternalEnv):
             max_concurrent: Max number of active episodes to allow at
                 once. Exceeding this limit raises an error.
         """
-        super().__init__(self, action_space, observation_space,
-                         max_concurrent)
+        super().__init__(self, action_space, observation_space, max_concurrent)
 
         # We require to know all agents' spaces.
         if isinstance(self.action_space, dict) or isinstance(
