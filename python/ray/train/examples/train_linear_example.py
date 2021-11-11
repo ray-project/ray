@@ -23,9 +23,8 @@ class LinearDataset(torch.utils.data.Dataset):
         return len(self.x)
 
 
-def train_epoch(dataloader, model, loss_fn, optimizer, device):
+def train_epoch(dataloader, model, loss_fn, optimizer):
     for X, y in dataloader:
-        X, y = X.to(device), y.to(device)
         # Compute prediction error
         pred = model(X)
         loss = loss_fn(pred, y)
@@ -58,9 +57,6 @@ def train_func(config):
     lr = config.get("lr", 1e-2)
     epochs = config.get("epochs", 3)
 
-    device = torch.device(f"cuda:{train.local_rank()}"
-                          if torch.cuda.is_available() else "cpu")
-
     train_dataset = LinearDataset(2, 5, size=data_size)
     val_dataset = LinearDataset(2, 5, size=val_size)
     train_loader = torch.utils.data.DataLoader(
@@ -81,8 +77,8 @@ def train_func(config):
     results = []
 
     for _ in range(epochs):
-        train_epoch(train_loader, model, loss_fn, optimizer, device)
-        result = validate_epoch(validation_loader, model, loss_fn, device)
+        train_epoch(train_loader, model, loss_fn, optimizer)
+        result = validate_epoch(validation_loader, model, loss_fn)
         train.report(**result)
         results.append(result)
 

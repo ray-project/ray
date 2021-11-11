@@ -48,6 +48,7 @@ def train_func():
 
 # __torch_distributed_begin__
 
+from ray import train
 
 def train_func_distributed():
     num_epochs = 3

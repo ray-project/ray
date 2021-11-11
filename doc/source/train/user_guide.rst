@@ -64,59 +64,25 @@ training.
 
   .. group-tab:: PyTorch
 
-    Ray Train will set up your distributed process group for you. You simply
-    need to add in the proper PyTorch hooks in your training function to
-    utilize it.
-
-    **Step 1:** Wrap your model in ``DistributedDataParallel``.
-
-    The `DistributedDataParallel <https://pytorch.org/docs/master/generated/torch.nn.parallel.DistributedDataParallel.html>`_
-    container will parallelize the input ``Module`` across the worker processes.
+    Ray Train will set up your distributed process group for you and also provides utility methods
+    to automatically prepare your model and data for distributed training.
 
     .. code-block:: python
 
-        from torch.nn.parallel import DistributedDataParallel
-
-        model = DistributedDataParallel(model)
-
-    **Step 2:** Update your ``DataLoader`` to use a ``DistributedSampler``.
-
-    The `DistributedSampler <https://pytorch.org/docs/master/data.html#torch.utils.data.distributed.DistributedSampler>`_
-    will split the data across the workers, so each process will train on
-    only a subset of the data.
-
-    .. code-block:: python
-
-        from torch.utils.data import DataLoader, DistributedSampler
-
-        data_loader = DataLoader(dataset,
-                                 batch_size=batch_size,
-                                 sampler=DistributedSampler(dataset))
+        from ray import train
 
 
-    **Step 3:** Set the proper CUDA device if you are using GPUs.
-
-    If you are using GPUs, you need to make sure to the CUDA devices are properly setup inside your training function.
-
-    This involves 3 steps:
-
-    1. Use the local rank to set the default CUDA device for the worker.
-    2. Move the model to the default CUDA device (or a specific CUDA device).
-    3. Specify ``device_ids`` when wrapping in ``DistributedDataParallel``.
-
-    .. code-block:: python
 
         def train_func():
-            device = torch.device(f"cuda:{train.local_rank()}" if
-                          torch.cuda.is_available() else "cpu")
-            torch.cuda.set_device(device)
-
             # Create model.
             model = NeuralNetwork()
-            model = model.to(device)
-            model = DistributedDataParallel(
-                model,
-                device_ids=[train.local_rank()] if torch.cuda.is_available() else None)
+
+            # Use the ``prepare`` function to automatically move your model to the right device and wrap it in
+            # ``DistributedDataParallel``
+            model = train.torch.prepare(model)
+
+            dataset =
+            data_loader = DataLoader(dataset, batch_size=batch_size)
 
 
   .. group-tab:: TensorFlow

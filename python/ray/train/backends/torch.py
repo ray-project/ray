@@ -150,12 +150,12 @@ class TorchBackend(Backend):
 if torch:
     from torch.nn.parallel import DistributedDataParallel
     from torch.utils.data import DistributedSampler, DataLoader, \
-        IterableDataset
+        IterableDataset, SequentialSampler
 
     def _get_torch_device() -> torch.device:
         rank = train.local_rank()
 
-        if torch.cuda.is_available():
+        if not torch.cuda.is_available():
             device = torch.device("cpu")
         else:
             device = torch.device(f"cuda:{rank}")
@@ -255,6 +255,9 @@ if torch:
 
             def with_sampler(loader):
                 # Automatically set the DistributedSampler
+
+                shuffle = not isinstance(loader.sampler, SequentialSampler)
+
                 data_loader_args = {
                     "dataset": loader.dataset,
                     "batch_size": loader.batch_size,
@@ -266,7 +269,7 @@ if torch:
                     "timeout": loader.timeout,
                     "worker_init_fn": loader.worker_init_fn,
                     "sampler": DistributedSampler(
-                        loader.dataset, shuffle=loader.shuffle)
+                        loader.dataset, shuffle=shuffle)
                 }
                 return DataLoader(**data_loader_args)
 

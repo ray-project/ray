@@ -85,8 +85,9 @@ system. Let's take following simple examples:
 
     Now let's convert this to a distributed multi-worker training function!
 
-    All you have to do is use the ``ray.train.torch.prepare`` utility function to
-    easily setup your model, data, optimizer, & loss for distributed training.
+    All you have to do is use the ``ray.train.torch.prepare`` and
+    ``ray.train.torch.prepare_data_loader`` utility functions to
+    easily setup your model & data for distributed training.
     This will automatically wrap your model with ``DistributedDataParallel``
     and place it on the right device, and add ``DisributedSampler`` to your DataLoaders.
 
