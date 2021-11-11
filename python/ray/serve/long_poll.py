@@ -4,6 +4,7 @@ import random
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
+from threading import Timer
 from typing import (Any, Optional, Tuple, Callable, DefaultDict, Dict, Set,
                     Union)
 
@@ -18,6 +19,10 @@ from ray.serve.utils import logger
 # We randomly select a timeout within this range to avoid a "thundering herd"
 # when there are many clients subscribing at the same time.
 LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = (30, 60)
+# Same mechanism as the LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S but this should
+# be used at client side to sleep for a duration to let long poll host catch
+# up to other requests.
+CLIENT_SIDE_TIMEOUT_WAIT_S = (5, 30)
 
 
 class LongPollNamespace(Enum):
@@ -127,7 +132,8 @@ class LongPollClient:
                 # Some error happened in the controller. It could be a bug or
                 # some undesired state.
                 logger.error("LongPollHost errored\n" + updates.traceback_str)
-            self._poll_next()
+            poll_next_after_s = random.uniform(**CLIENT_SIDE_TIMEOUT_WAIT_S)
+            Timer(poll_next_after_s, self._poll_next).start()
             return
 
         logger.debug(f"LongPollClient {self} received updates for keys: "
