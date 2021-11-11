@@ -47,12 +47,62 @@ def _check_job_does_not_exist(client: JobSubmissionClient,
     return status == JobStatus.DOES_NOT_EXIST
 
 
+@pytest.fixture(
+    scope="function",
+    params=["no_working_dir", "local_working_dir", "s3_working_dir"])
+def working_dir_option(request):
+    if request.param == "no_working_dir":
+        yield {
+            "runtime_env": {},
+            "entrypoint": "echo hello",
+            "expected_logs": "hello\n",
+        }
+    elif request.param == "local_working_dir":
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir)
+
+            hello_file = path / "test.py"
+            with hello_file.open(mode="w") as f:
+                f.write("from test_module import run_test\n")
+                f.write("print(run_test())")
+
+            module_path = path / "test_module"
+            module_path.mkdir(parents=True)
+
+            test_file = module_path / "test.py"
+            with test_file.open(mode="w") as f:
+                f.write("def run_test():\n")
+                f.write("    return 'Hello from test_module!'\n")
+
+            init_file = module_path / "__init__.py"
+            with init_file.open(mode="w") as f:
+                f.write("from test_module.test import run_test\n")
+
+            yield {
+                "runtime_env": {
+                    "working_dir": tmp_dir
+                },
+                "entrypoint": "python test.py",
+                "expected_logs": "Hello from test_module!\n",
+            }
+    elif request.param == "s3_working_dir":
+        yield {
+            "runtime_env": {
+                "working_dir": "s3://runtime-env-test/script.zip",
+            },
+            "entrypoint": "python script.py",
+            "expected_logs": "Executing main() from script.py !!\n",
+        }
+    else:
+        assert False, f"Unrecognized option: {request.param}."
+
+
 def test_submit_job(job_sdk_client, working_dir_option):
     client = job_sdk_client
 
     job_id = client.submit_job(
         entrypoint=working_dir_option["entrypoint"],
-        runtime_env={"runtime_env": working_dir_option["working_dir"]})
+        runtime_env=working_dir_option["runtime_env"])
 
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
