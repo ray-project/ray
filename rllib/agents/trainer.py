@@ -843,33 +843,39 @@ class Trainer(Trainable):
     def step(self) -> ResultDict:
         """Implements the main `Trainer.train()` logic.
 
-        Attempts to perform a single training step up to n times. Thereby
+        Takes n attempts to perform a single training step. Thereby
         catches RayErrors resulting from worker failures. After n attempts,
         fails gracefully.
 
+        Override this method in your Trainer sub-classes if you would like to
+        handle worker failures yourself. Otherwise, override
+        `self.step_attempt()` to keep the n attempts (catch worker failures).
+
         Returns:
-            The results dict with stats/infos on sampling and training.
+            The results dict with stats/infos on sampling, training,
+            and - if required - evaluation.
         """
         result = None
         for _ in range(1 + MAX_WORKER_FAILURE_RETRIES):
             # Try to train one step.
             try:
-                result = self._step_attempt()
+                result = self.step_attempt()
             # @ray.remote RolloutWorker failure -> Try to recover,
             # if necessary.
             except RayError as e:
                 if self.config["ignore_worker_failures"]:
                     logger.exception(
                         "Error in train call, attempting to recover")
-                    self._try_recover()
+                    self.try_recover_from_step_attempt()
                 else:
                     logger.info(
                         "Worker crashed during call to train(). To attempt to "
                         "continue training without the failed worker, set "
                         "`'ignore_worker_failures': True`.")
                     raise e
-            # allow logs messages to propagate
+            # Any other exception.
             except Exception as e:
+                # Allow logs messages to propagate.
                 time.sleep(0.5)
                 raise e
             else:
@@ -884,8 +890,17 @@ class Trainer(Trainable):
 
         return result
 
-    def _step_attempt(self) -> ResultDict:
-        """Attempt a single training step, including an evaluation run, if necessary.
+    @ExperimentalAPI
+    def step_attempt(self) -> ResultDict:
+        """Attempts a single training step, including evaluation, if required.
+
+        Override this method in your Trainer sub-classes if you would like to
+        keep the n attempts (catch worker failures) or override `step()`
+        directly if you would like to handle worker failures yourself.
+
+        Returns:
+            The results dict with stats/infos on sampling, training,
+            and - if required - evaluation.
         """
 
         # self._iteration gets incremented after this function returns,
@@ -1975,16 +1990,21 @@ class Trainer(Trainable):
         """
         pass
 
-    def _try_recover(self):
+    def try_recover_from_step_attempt(self) -> None:
         """Try to identify and remove any unhealthy workers.
 
         This method is called after an unexpected remote error is encountered
-        from a worker. It issues check requests to all current workers and
+        from a worker during the call to `self.step_attempt()` (within
+        `self.step()`). It issues check requests to all current workers and
         removes any that respond with error. If no healthy workers remain,
-        an error is raised.
+        an error is raised. Otherwise, tries to re-build the execution plan
+        with the remaining (healthy) workers.
         """
 
-        workers = self.workers if hasattr(self, "workers") else self._workers
+        workers = self.workers if hasattr(self, "workers") else \
+            getattr(self, "_workers", None)
+        if workers is None:
+            return
 
         logger.info("Health checking all workers...")
         checks = []
@@ -2212,6 +2232,9 @@ class Trainer(Trainable):
             "You can specify a custom env as either a class "
             "(e.g., YourEnvCls) or a registered env id (e.g., \"your_env\").")
 
+    def __repr__(self):
+        return self._name
+
     @Deprecated(new="Trainer.evaluate", error=False)
     def _evaluate(self) -> dict:
         return self.evaluate()
@@ -2220,5 +2243,6 @@ class Trainer(Trainable):
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
 
-    def __repr__(self):
-        return self._name
+    @Deprecated(new="try_recover_from_step_attempt", error=False)
+    def _try_recover(self):
+        return self.try_recover_from_step_attempt()
