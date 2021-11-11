@@ -774,8 +774,8 @@ class Trainer(Trainable):
             # - Create rollout workers here automatically.
             # - Run the execution plan to create the local iterator to `next()`
             #   in each training iteration.
-            # This matches the behavior of using `build_trainer()`, which should
-            # no longer be used.
+            # This matches the behavior of using `build_trainer()`, which
+            # should no longer be used.
             self.workers = self._make_workers(
                 env_creator=self.env_creator,
                 validate_env=self.validate_env,

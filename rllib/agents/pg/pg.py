@@ -13,14 +13,15 @@ class PGTrainer(Trainer):
     """Policy Gradient (PG) Trainer.
 
     Defines the distributed Trainer class for policy gradients.
-    See `pg_[tf|torch]_policy.py` for the definition of the policy loss.
+    See `pg_[tf|torch]_policy.py` for the definition of the policy losses for
+    TensorFlow and PyTorch.
 
     Detailed documentation:
     https://docs.ray.io/en/master/rllib-algorithms.html#pg
 
     Only overrides the default config- and policy selectors
     (`get_default_policy` and `get_default_config`). Utilizes
-    the default execution plan of `Trainer`.
+    the default `execution_plan()` of `Trainer`.
     """
 
     @override(Trainer)
