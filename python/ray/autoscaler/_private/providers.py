@@ -86,6 +86,12 @@ def _import_aliyun(provider_config):
     return AliyunNodeProvider
 
 
+def _load_fake_docker_defaults_config():
+    import ray.autoscaler._private.fake_docker as ray_fake_docker
+    return os.path.join(
+        os.path.dirname(ray_fake_docker.__file__), "defaults.yaml")
+
+
 def _load_local_defaults_config():
     import ray.autoscaler.local as ray_local
     return os.path.join(os.path.dirname(ray_local.__file__), "defaults.yaml")
@@ -143,6 +149,7 @@ _NODE_PROVIDERS = {
 
 _PROVIDER_PRETTY_NAMES = {
     "readonly": "Readonly (Manual Cluster Setup)",
+    "fake_docker": "Fake Docker",
     "fake_multinode": "Fake Multinode",
     "local": "Local",
     "aws": "AWS",
@@ -155,6 +162,7 @@ _PROVIDER_PRETTY_NAMES = {
 }
 
 _DEFAULT_CONFIGS = {
+    "fake_docker": _load_fake_docker_defaults_config,
     "local": _load_local_defaults_config,
     "aws": _load_aws_defaults_config,
     "gcp": _load_gcp_defaults_config,

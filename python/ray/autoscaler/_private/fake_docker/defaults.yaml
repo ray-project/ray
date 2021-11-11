@@ -11,12 +11,9 @@ provider:
     project_name: fake_docker
     image: rayproject/ray:nightly
     shared_volume_dir: /tmp/fake_docker
-    head_resources:
-      CPU: 4
-      GPU: 0
 
 auth:
-  ssh_user: ubuntu
+    ssh_user: ubuntu
 
 available_node_types:
     ray.head.default:
@@ -25,31 +22,17 @@ available_node_types:
         # configure its resources. The resources specified for its node type
         # must line up with what Ray detects/is configured with on start.
         resources:
-            CPU: 4   # <-- set this to num CPUs used/detected in `ray start`
+            CPU: 2   # <-- set this to num CPUs used/detected in `ray start`
             GPU: 0   # <-- set this to num GPUs used/detected in `ray start`
         node_config: {}
         max_workers: 0
-    ray.worker.cpu:
-        resources:
-            CPU: 2
-            object_store_memory: 1000000000
-        node_config: {}
-        min_workers: 1
-        max_workers: 4
-    ray.worker.gpu:
-        resources:
-            CPU: 4
-            GPU: 1
-            object_store_memory: 1000000000
-        node_config: {}
-        min_workers: 1
-        max_workers: 2
 head_node_type: ray.head.default
 upscaling_speed: 1.0
 idle_timeout_minutes: 0.1
 #
 # !!! Configurations below are not supported in fake cluster mode !!!
 #
+
 docker: {}
 initialization_commands: []
 setup_commands: []
