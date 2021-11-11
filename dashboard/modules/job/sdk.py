@@ -1,4 +1,5 @@
 import dataclasses
+import importlib
 import logging
 from pathlib import Path
 import tempfile
@@ -13,6 +14,7 @@ from ray.dashboard.modules.job.data_types import (
     GetPackageResponse, JobSubmitRequest, JobSubmitResponse, JobStopResponse,
     JobStatusResponse, JobLogsResponse)
 
+from ray.client_builder import _split_address
 from ray.dashboard.modules.job.job_head import (
     JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP,
     JOBS_API_ROUTE_STATUS, JOBS_API_ROUTE_PACKAGE)
@@ -23,7 +25,23 @@ logger.setLevel(logging.INFO)
 
 class JobSubmissionClient:
     def __init__(self, address: str):
-        self._address: str = address.rstrip("/")
+        module_string, inner_address = _split_address(address.rstrip("/"))
+        if module_string == "ray":
+            self._address = "http://" + inner_address
+        else:
+            module = importlib.import_module(module_string)
+            try:
+                module = importlib.import_module(module_string)
+            except Exception:
+                raise RuntimeError(
+                    f"Module: {module_string} does not exist.\n"
+                    f"This module was parsed from Address: {address}"
+                ) from None
+            assert "get_cluster_address" in dir(module), (
+                f"Module: {module_string} does "
+                "not have `get_cluster_address`.")
+            self._address = module.get_cluster_address(inner_address)
+        print("DEBUG self._address", self._address)
         self._test_connection()
 
     def _test_connection(self):
