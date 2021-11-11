@@ -1005,6 +1005,9 @@ class SampleBatch(dict):
                     data = self[view_col][-1]
                     traj_len = len(self[data_col])
                     missing_at_end = traj_len % view_req.batch_repeat_value
+                    # Index into the observations column must be shifted by
+                    # -1 b/c index=0 for observations means the current (last
+                    # seen) observation (after having taken an action).
                     obs_shift = -1 if data_col in [
                         SampleBatch.OBS, SampleBatch.NEXT_OBS
                     ] else 0
@@ -1023,16 +1026,10 @@ class SampleBatch(dict):
                         lambda v: v[-1:],  # keep as array (w/ 1 element)
                         self[data_col],
                     )
+            # Single index somewhere inside the trajectory (non-last).
             else:
-                # Index range.
-                if isinstance(index, tuple):
-                    data = self[data_col][index[0]:index[1] +
-                                          1 if index[1] != -1 else None]
-                    input_dict[view_col] = np.array([data])
-                # Single index.
-                else:
-                    input_dict[view_col] = self[data_col][
-                        index:index + 1 if index != -1 else None]
+                input_dict[view_col] = self[data_col][index:index + 1
+                                                      if index != -1 else None]
 
         return SampleBatch(input_dict, seq_lens=np.array([1], dtype=np.int32))
 
