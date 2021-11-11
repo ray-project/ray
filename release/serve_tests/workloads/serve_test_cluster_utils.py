@@ -52,9 +52,10 @@ def setup_anyscale_cluster(checkpoint_path: str = DEFAULT_CHECKPOINT_PATH):
     ray.init(
         address="auto",
         runtime_env={"env_vars": {
-            "SERVE_ENABLE_SCALING_LOG": "1"
+            "SERVE_ENABLE_SCALING_LOG": "1",
         }})
     serve_client = serve.start(
+        detached=True,
         http_options={"location": DeploymentMode.EveryNode},
         _checkpoint_path=checkpoint_path,
     )
