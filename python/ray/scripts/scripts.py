@@ -1943,7 +1943,7 @@ def job():
     pass
 
 
-@job.command("submit")
+@job.command("submit", "Submit a job to be executed on the cluster.")
 @click.option(
     "--address",
     type=str,
@@ -1985,7 +1985,7 @@ def job_submit(address: Optional[str], job_id: Optional[str],
         f"Query the status of the job using: `ray job status {job_id}`.")
 
 
-@job.command("status")
+@job.command("status", "Get the status of a running job.")
 @click.option(
     "--address",
     type=str,
@@ -2004,6 +2004,7 @@ def job_status(address: Optional[str], job_id: str):
     logger.info(f"Job status for '{job_id}': {client.get_job_status(job_id)}")
 
 
+@job.command("status", "Attempt to stop a running job.")
 @job.command("stop")
 @click.option(
     "--address",
@@ -2021,6 +2022,25 @@ def job_stop(address: Optional[str], job_id: str):
     # TODO(edoakes): should we wait for the job to exit afterwards?
     client = _get_sdk_client(address)
     client.stop_job(job_id)
+
+
+@job.command("logs", "Get the logs of a running job.")
+@job.command("logs")
+@click.option(
+    "--address",
+    type=str,
+    default=None,
+    required=False,
+)
+@click.argument("job-id", type=str)
+def job_logs(address: Optional[str], job_id: str):
+    """Gets the logs of a job.
+
+    Example:
+        >>> ray job logs <my_job_id>
+    """
+    client = _get_sdk_client(address)
+    print(client.get_job_logs(job_id))
 
 
 def add_command_alias(command, name, hidden):
