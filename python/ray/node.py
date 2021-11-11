@@ -790,7 +790,7 @@ class Node:
                 break
             except Exception as e:
                 time.sleep(1)
-                logger.debug("Waiting for gcs up")
+                logger.debug(f"Waiting for gcs up {e}")
 
     def start_raylet(self,
                      plasma_directory,
