@@ -106,7 +106,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
-    "test_autoscaler_drain_node_api.py",
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_asyncio.py",
