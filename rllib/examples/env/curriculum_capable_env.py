@@ -9,7 +9,7 @@ from ray.rllib.utils.annotations import override
 class CurriculumCapableEnv(TaskSettableEnv):
     """Example of a curriculum learning capable env.
 
-    This simply wraps a FrozenLake-v0 env and makes it harder with each
+    This simply wraps a FrozenLake-v1 env and makes it harder with each
     task. Task (difficulty levels) can range from 1 to 10."""
 
     # Defining the different maps (all same size) for the different
@@ -70,6 +70,6 @@ class CurriculumCapableEnv(TaskSettableEnv):
 
     def _make_lake(self):
         self.frozen_lake = gym.make(
-            "FrozenLake-v0",
+            "FrozenLake-v1",
             desc=self.MAPS[self.cur_level - 1],
             is_slippery=False)

@@ -121,7 +121,7 @@ Ray provides Python, Java, and *EXPERIMENTAL* C++ API. And Ray uses Tasks (funct
 
     .. code-block:: shell
 
-      pip install ray[cpp]
+      pip install "ray[cpp]"
       mkdir ray-template && ray cpp --generate-bazel-project-template-to ray-template
 
     | - The project template comes with a simple example application. You can try this example out in 2 ways:
@@ -181,6 +181,7 @@ Blog and Press
 Talks (Videos)
 --------------
 
+ - `Unifying Large Scale Data Preprocessing and Machine Learning Pipelines with Ray Datasets | PyData 2021 <https://zoom.us/rec/share/0cjbk_YdCTbiTm7gNhzSeNxxTCCEy1pCDUkkjfBjtvOsKGA8XmDOx82jflHdQCUP.fsjQkj5PWSYplOTz?startTime=1635456658000>`_ `(slides) <https://docs.google.com/presentation/d/19F_wxkpo1JAROPxULmJHYZd3sKryapkbMd0ib3ndMiU/edit?usp=sharing>`_
  - `Programming at any Scale with Ray | SF Python Meetup Sept 2019 <https://www.youtube.com/watch?v=LfpHyIXBhlE>`_
  - `Ray for Reinforcement Learning | Data Council 2019 <https://www.youtube.com/watch?v=Ayc0ca150HI>`_
  - `Scaling Interactive Pandas Workflows with Modin <https://www.youtube.com/watch?v=-HjLd_3ahCw>`_
@@ -317,8 +318,9 @@ Papers
    :maxdepth: -1
    :caption: Ray RLlib
 
-   rllib.rst
+   rllib/index.rst
    rllib-toc.rst
+   rllib/core-concepts.rst
    rllib-training.rst
    rllib-env.rst
    rllib-models.rst

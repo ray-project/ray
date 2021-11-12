@@ -53,6 +53,7 @@ std::string RayLog::logger_name_ = "ray_log_sink";
 long RayLog::log_rotation_max_size_ = 1 << 29;
 long RayLog::log_rotation_file_num_ = 10;
 bool RayLog::is_failure_signal_handler_installed_ = false;
+std::atomic<bool> RayLog::initialized_ = false;
 
 std::string GetCallTrace() {
   std::vector<void *> local_stack;
@@ -200,10 +201,6 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
 
   if (!log_dir_.empty()) {
     // Enable log file if log_dir_ is not empty.
-    std::string dir_ends_with_slash = log_dir_;
-    if (!ray::IsDirSep(log_dir_[log_dir_.length() - 1])) {
-      dir_ends_with_slash += ray::GetDirSep();
-    }
     std::string app_name_without_path = app_name;
     if (app_name.empty()) {
       app_name_without_path = "DefaultApp";
@@ -246,7 +243,7 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
       spdlog::drop(RayLog::GetLoggerName());
     }
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        dir_ends_with_slash + app_name_without_path + "_" + std::to_string(pid) + ".log",
+        JoinPaths(log_dir_, app_name_without_path + "_" + std::to_string(pid) + ".log"),
         log_rotation_max_size_, log_rotation_file_num_);
     sinks.push_back(file_sink);
   } else {
@@ -271,6 +268,8 @@ void RayLog::StartRayLog(const std::string &app_name, RayLogLevel severity_thres
   spdlog::set_level(static_cast<spdlog::level::level_enum>(severity_threshold_));
   spdlog::set_pattern(log_format_pattern_);
   spdlog::set_default_logger(logger);
+
+  initialized_ = true;
 }
 
 void RayLog::UninstallSignalAction() {
@@ -296,6 +295,11 @@ void RayLog::UninstallSignalAction() {
 }
 
 void RayLog::ShutDownRayLog() {
+  if (!initialized_) {
+    // If the log wasn't initialized, make it no-op.
+    RAY_LOG(INFO) << "The log wasn't initialized. ShutdownRayLog requests are ignored";
+    return;
+  }
   UninstallSignalAction();
   if (spdlog::default_logger()) {
     spdlog::default_logger()->flush();

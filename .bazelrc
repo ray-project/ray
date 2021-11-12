@@ -96,6 +96,7 @@ build:tsan --copt -DTHREAD_SANITIZER
 build:tsan --copt -O2
 build:tsan --copt -g
 build:tsan --copt -fno-omit-frame-pointer
+build:tsan --copt -Wno-uninitialized
 build:tsan --linkopt -fsanitize=thread
 # This config is only for running TSAN with LLVM toolchain on Linux.
 build:tsan-clang --config=tsan
@@ -149,13 +150,19 @@ build:ci-github --experimental_repository_cache_hardlinks # GitHub Actions has l
 build:ci-github --disk_cache=~/ray-bazel-cache
 build:ci-github --remote_cache="https://storage.googleapis.com/ray-bazel-cache"
 test:ci --flaky_test_attempts=3
-test:ci --genrule_strategy=local
+# Disable test result caching because py_test under Bazel can import from outside of sandbox, but Bazel only looks at
+# declared dependencies to determine if a result should be cached. More details at:
+# https://github.com/bazelbuild/bazel/issues/7091, https://github.com/bazelbuild/rules_python/issues/382
+test:ci --nocache_test_results
+test:ci --spawn_strategy=local
 test:ci --test_output=errors
 test:ci --test_verbose_timeout_warnings
 test:ci-debug -c dbg
 test:ci-debug --copt="-g"
 test:ci-debug --flaky_test_attempts=3
-test:ci-debug --genrule_strategy=local
+# Disable test result caching for the same reason above.
+test:ci-debug --nocache_test_results
+test:ci-debug --spawn_strategy=local
 test:ci-debug --test_output=errors
 test:ci-debug --test_verbose_timeout_warnings
 

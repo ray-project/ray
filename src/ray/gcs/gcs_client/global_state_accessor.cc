@@ -37,7 +37,7 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
   options.enable_sync_conn_ = true;
   options.enable_async_conn_ = false;
   options.enable_subscribe_conn_ = false;
-  gcs_client_ = std::make_unique<ServiceBasedGcsClient>(options);
+  gcs_client_ = std::make_unique<GcsClient>(options);
 
   io_service_ = std::make_unique<instrumented_io_context>();
 
@@ -119,40 +119,6 @@ std::vector<std::string> GlobalStateAccessor::GetAllProfileInfo() {
   }
   promise.get_future().get();
   return profile_table_data;
-}
-
-std::vector<std::string> GlobalStateAccessor::GetAllObjectInfo() {
-  std::vector<std::string> object_table_data;
-  std::promise<bool> promise;
-  {
-    absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK_OK(gcs_client_->Objects().AsyncGetAll(
-        TransformForMultiItemCallback<rpc::ObjectLocationInfo>(object_table_data,
-                                                               promise)));
-  }
-  promise.get_future().get();
-  return object_table_data;
-}
-
-std::unique_ptr<std::string> GlobalStateAccessor::GetObjectInfo(
-    const ObjectID &object_id) {
-  std::unique_ptr<std::string> object_info;
-  std::promise<bool> promise;
-  auto on_done = [&object_info, &promise](
-                     const Status &status,
-                     const boost::optional<rpc::ObjectLocationInfo> &result) {
-    RAY_CHECK_OK(status);
-    if (result) {
-      object_info = std::make_unique<std::string>(result->SerializeAsString());
-    }
-    promise.set_value(true);
-  };
-  {
-    absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK_OK(gcs_client_->Objects().AsyncGetLocations(object_id, on_done));
-  }
-  promise.get_future().get();
-  return object_info;
 }
 
 std::string GlobalStateAccessor::GetNodeResourceInfo(const NodeID &node_id) {

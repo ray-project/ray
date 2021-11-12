@@ -355,10 +355,19 @@ def test_output():
     lines = outputs.split("\n")
     for line in lines:
         print(line)
-    assert len(lines) == 2, lines
+    if os.environ.get("RAY_MINIMAL") == "1":
+        # Without "View the Ray dashboard"
+        assert len(lines) == 1, lines
+    else:
+        # With "View the Ray dashboard"
+        assert len(lines) == 2, lines
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+# TODO: fix this test to support minimal installation
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test currently fails with minimal install.")
 def test_output_on_driver_shutdown(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=16)

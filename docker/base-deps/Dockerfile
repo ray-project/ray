@@ -56,13 +56,11 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         numpy==1.19.5 \
         psutil \
         blist \ 
-        atari-py \
     # blist is needed for numpy (which is re-installed when ray is installed)
-    # atari-py is built from source for Python 3.8 (requires g++ & zlib1g-dev)
     # To avoid the following error on Jenkins:
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
     && $HOME/anaconda3/bin/pip uninstall -y dask \ 
-    # We install cmake temporarily to get psutil, blist & atari-py
+    # We install cmake temporarily to get psutil, blist
     && sudo apt-get autoremove -y cmake zlib1g-dev \
         # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
         $(if [ "$BASE_IMAGE" = "ubuntu:focal" ]; then echo \

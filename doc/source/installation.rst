@@ -16,18 +16,15 @@ You can install the latest official version of Ray as follows.
   pip install -U ray  # minimal install
 
   # To install Ray with support for the dashboard + cluster launcher, run
-  # `pip install -U 'ray[default]'`
+  # `pip install -U "ray[default]"`
 
 To install Ray libraries:
 
 .. code-block:: bash
 
-  pip install -U ray[tune]  # installs Ray + dependencies for Ray Tune
-  pip install -U ray[rllib]  # installs Ray + dependencies for Ray RLlib
-  pip install -U ray[serve]  # installs Ray + dependencies for Ray Serve
-
-
-**Note for Windows Users:** To use Ray on Windows, Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section). If you run into any issues, please see the :ref:`Windows Support <windows-support>` section.
+  pip install -U "ray[tune]"  # installs Ray + dependencies for Ray Tune
+  pip install -U "ray[rllib]"  # installs Ray + dependencies for Ray RLlib
+  pip install -U "ray[serve]"  # installs Ray + dependencies for Ray Serve
 
 .. _install-nightlies:
 
@@ -38,6 +35,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. code-block:: bash
 
+  pip uninstall -y ray # clean removal of previous install, otherwise version number may cause pip not to upgrade
   pip install -U LINK_TO_WHEEL.whl  # minimal install
 
   # To install Ray with support for the dashboard + cluster launcher, run
@@ -56,6 +54,11 @@ You can install the nightly Ray wheels via the following links. These daily rele
 .. note::
 
   Python 3.9 support is currently experimental.
+
+.. note::
+
+  On Windows, support for multi-node Ray clusters is currently experimental and untested.
+  If you run into issues please file a report at https://github.com/ray-project/ray/issues.
 
 .. _`Linux Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
 .. _`Linux Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
@@ -178,8 +181,6 @@ Windows support is currently limited and "alpha" quality.
 Bugs, process/resource leaks, or other incompatibilities may exist under various scenarios.
 Unusual, unattended, or production usage is **not** recommended.
 
-To use Ray on Windows, the Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section).
-
 If you encounter any issues, please try the following:
 
 - Check the `Windows Known Issues <https://github.com/ray-project/ray/issues/9114>`_ page on GitHub to see the latest updates on Windows support.
@@ -188,22 +189,6 @@ If you encounter any issues, please try the following:
 If your issue has not yet been addressed, comment on the `Windows Known Issues <https://github.com/ray-project/ray/issues/9114>`_ page.
 
 .. _windows-dependencies:
-
-Windows Dependencies
-~~~~~~~~~~~~~~~~~~~~
-
-For Windows, ensure the latest `Visual C++ runtime`_ (`install link`_) is installed before using Ray.
-
-Otherwise, you may receive an error similar to the following when Ray fails to find
-the runtime library files (e.g. ``VCRUNTIME140_1.dll``):
-
-.. code-block:: bash
-
-  FileNotFoundError: Could not find module '_raylet.pyd' (or one of its dependencies).
-
-.. _`Visual C++ Runtime`: https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
-.. _`install link`: https://aka.ms/vs/16/release/vc_redist.x64.exe
-
 
 Installing Ray on Arch Linux
 ----------------------------

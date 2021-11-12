@@ -27,8 +27,11 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher, \
+    GcsSubscriber
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
 from ray.util.annotations import PublicAPI, DeveloperAPI, Deprecated
@@ -58,7 +61,8 @@ from ray._private.ray_logging import global_worker_stdstream_dispatcher
 from ray._private.utils import check_oversized_function
 from ray.util.inspect import is_cython
 from ray.experimental.internal_kv import _internal_kv_get, \
-    _internal_kv_initialized
+    _internal_kv_initialized, _initialize_internal_kv, \
+    _internal_kv_reset
 from ray._private.client_mode_hook import client_mode_hook
 
 SCRIPT_MODE = 0
@@ -749,7 +753,7 @@ def init(
 
     if address is not None and "://" in address:
         # Address specified a protocol, use ray client
-        builder = ray.client(address)
+        builder = ray.client(address, _deprecation_warn_enabled=False)
 
         # Forward any keyword arguments that were changed from their default
         # values to the builder
@@ -800,7 +804,22 @@ def init(
         logger.debug("Could not import resource module (on Windows)")
         pass
 
-    if runtime_env:
+    if RAY_JOB_CONFIG_JSON_ENV_VAR in os.environ:
+        if runtime_env:
+            logger.warning(
+                "Both RAY_JOB_CONFIG_JSON_ENV_VAR and ray.init(runtime_env) "
+                "are provided, only using JSON_ENV_VAR to construct "
+                "job_config. Please ensure no runtime_env is used in driver "
+                "script's ray.init() when using job submission API.")
+        # Set runtime_env in job_config if passed as env variable, such as
+        # ray job submission with driver script executed in subprocess
+        job_config_json = json.loads(
+            os.environ.get(RAY_JOB_CONFIG_JSON_ENV_VAR))
+        job_config = ray.job_config.JobConfig.from_json(job_config_json)
+    # RAY_JOB_CONFIG_JSON_ENV_VAR is only set at ray job manager level and has
+    # higher priority in case user also provided runtime_env for ray.init()
+    elif runtime_env:
+        # Set runtime_env in job_config if passed in as part of ray.init()
         if job_config is None:
             job_config = ray.job_config.JobConfig()
         job_config.set_runtime_env(runtime_env)
@@ -989,15 +1008,17 @@ def shutdown(_exiting_interpreter: bool = False):
 
     disconnect(_exiting_interpreter)
 
+    # disconnect internal kv
+    if hasattr(global_worker, "gcs_client"):
+        del global_worker.gcs_client
+    _internal_kv_reset()
+
     # We need to destruct the core worker here because after this function,
     # we will tear down any processes spawned by ray.init() and the background
     # IO thread in the core worker doesn't currently handle that gracefully.
-    if hasattr(global_worker, "gcs_client"):
-        del global_worker.gcs_client
     if hasattr(global_worker, "core_worker"):
         global_worker.core_worker.shutdown()
         del global_worker.core_worker
-
     # Disconnect global state from GCS.
     ray.state.state.disconnect()
 
@@ -1228,6 +1249,58 @@ def listen_error_messages_raylet(worker, threads_stopped):
         worker.error_message_pubsub_client.close()
 
 
+def listen_error_messages_from_gcs(worker, threads_stopped):
+    """Listen to error messages in the background on the driver.
+
+    This runs in a separate thread on the driver and pushes (error, time)
+    tuples to be published.
+
+    Args:
+        worker: The worker class that this thread belongs to.
+        threads_stopped (threading.Event): A threading event used to signal to
+            the thread that it should exit.
+    """
+    worker.gcs_subscriber = GcsSubscriber(channel=worker.gcs_channel)
+    # Exports that are published after the call to
+    # gcs_subscriber.subscribe_error() and before the call to
+    # gcs_subscriber.poll_error() will still be processed in the loop.
+
+    # TODO: we should just subscribe to the errors for this specific job.
+    worker.gcs_subscriber.subscribe_error()
+
+    try:
+        if _internal_kv_initialized():
+            # Get any autoscaler errors that occurred before the call to
+            # subscribe.
+            error_message = _internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+            if error_message is not None:
+                logger.warning(error_message.decode())
+
+        while True:
+            # Exit if received a signal that the thread should stop.
+            if threads_stopped.is_set():
+                return
+
+            _, error_data = worker.gcs_subscriber.poll_error()
+            if error_data is None:
+                continue
+            if error_data.job_id not in [
+                    worker.current_job_id.binary(),
+                    JobID.nil().binary(),
+            ]:
+                continue
+
+            error_message = error_data.error_message
+            if error_data.type == ray_constants.TASK_PUSH_ERROR:
+                # TODO(ekl) remove task push errors entirely now that we have
+                # the separate unhandled exception handler.
+                pass
+            else:
+                logger.warning(error_message)
+    except (OSError, ConnectionError) as e:
+        logger.error(f"listen_error_messages_from_gcs: {e}")
+
+
 @PublicAPI
 @client_mode_hook(auto_init=False)
 def is_initialized() -> bool:
@@ -1288,9 +1361,16 @@ def connect(node,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
     worker.redis_client = node.create_redis_client()
-
+    worker.gcs_channel = gcs_utils.create_gcs_channel(
+        gcs_utils.get_gcs_address_from_redis(worker.redis_client))
+    worker.gcs_client = gcs_utils.GcsClient(channel=worker.gcs_channel)
+    _initialize_internal_kv(worker.gcs_client)
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
+    worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
+    worker.gcs_publisher = None
+    if worker.gcs_pubsub_enabled:
+        worker.gcs_publisher = GcsPublisher(channel=worker.gcs_channel)
 
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
@@ -1329,11 +1409,12 @@ def connect(node,
             raise e
         elif mode == WORKER_MODE:
             traceback_str = traceback.format_exc()
-            ray._private.utils.push_error_to_driver_through_redis(
-                worker.redis_client,
+            ray._private.utils.publish_error_to_driver(
                 ray_constants.VERSION_MISMATCH_PUSH_ERROR,
                 traceback_str,
-                job_id=None)
+                job_id=None,
+                redis_client=worker.redis_client,
+                gcs_publisher=worker.gcs_publisher)
 
     worker.lock = threading.RLock()
 
@@ -1402,7 +1483,6 @@ def connect(node,
         driver_name, log_stdout_file_path, log_stderr_file_path,
         serialized_job_config, node.metrics_agent_port, runtime_env_hash,
         worker_shim_pid, startup_token)
-    worker.gcs_client = worker.core_worker.get_gcs_client()
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
@@ -1425,7 +1505,8 @@ def connect(node,
     # scheduler for new error messages.
     if mode == SCRIPT_MODE:
         worker.listener_thread = threading.Thread(
-            target=listen_error_messages_raylet,
+            target=listen_error_messages_from_gcs
+            if worker.gcs_pubsub_enabled else listen_error_messages_raylet,
             name="ray_listen_error_messages",
             args=(worker, worker.threads_stopped))
         worker.listener_thread.daemon = True
@@ -1470,11 +1551,16 @@ def connect(node,
     worker.cached_functions_to_run = None
 
     # Setup tracing here
-    if _internal_kv_get("tracing_startup_hook"):
+    if _internal_kv_get(
+            "tracing_startup_hook",
+            namespace=ray_constants.KV_NAMESPACE_TRACING):
         ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
         if not getattr(ray, "__traced__", False):
             _setup_tracing = import_from_string(
-                _internal_kv_get("tracing_startup_hook").decode("utf-8"))
+                _internal_kv_get(
+                    "tracing_startup_hook",
+                    namespace=ray_constants.KV_NAMESPACE_TRACING).decode(
+                        "utf-8"))
             _setup_tracing()
             ray.__traced__ = True
 
@@ -1494,6 +1580,8 @@ def disconnect(exiting_interpreter=False):
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
+            if hasattr(worker, "gcs_subscriber"):
+                worker.gcs_subscriber.close()
             worker.listener_thread.join()
         if hasattr(worker, "logger_thread"):
             worker.logger_thread.join()

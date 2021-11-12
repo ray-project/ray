@@ -5,7 +5,7 @@ try:
     from ray.serve.config import HTTPOptions
 except ModuleNotFoundError as e:
     e.msg += (
-        ". You can run `pip install 'ray[serve]'` to install all Ray Serve"
+        ". You can run `pip install \"ray[serve]\"` to install all Ray Serve"
         " dependencies.")
     raise e
 

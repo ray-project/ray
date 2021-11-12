@@ -15,7 +15,6 @@ from typing import Callable, Dict, List, Optional, Tuple
 import ray
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
-from ray._raylet import connect_to_gcs
 import ray.core.generated.agent_manager_pb2 as agent_manager_pb2
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
@@ -30,6 +29,7 @@ from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
 from ray._private.tls_utils import add_port_to_grpc_server
+from ray._private.gcs_utils import GcsClient
 from ray._private.utils import (detect_fate_sharing_support,
                                 check_dashboard_dependencies_installed)
 
@@ -214,7 +214,7 @@ class ProxyManager():
                                "runtime_env feature were found on the "
                                "cluster. To install the required "
                                "dependencies, please run `pip install "
-                               "'ray[default]'` on all cluster nodes.")
+                               "\"ray[default]\"` on all cluster nodes.")
         create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvRequest(
             serialized_runtime_env=serialized_runtime_env,
             job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"))
@@ -283,6 +283,7 @@ class ProxyManager():
 
         proc = start_ray_client_server(
             self.redis_address,
+            self.node.node_ip_address,
             specific_server.port,
             stdout_file=output,
             stderr_file=error,
@@ -745,9 +746,9 @@ def serve_proxier(connection_str: str,
     # NOTE(edoakes): redis_address and redis_password should only be None in
     # tests.
     if redis_address is not None and redis_password is not None:
-        ip, port = redis_address.split(":")
-        gcs_client = connect_to_gcs(ip, int(port), redis_password)
-        ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+        gcs_cli = GcsClient.connect_to_gcs_by_redis_address(
+            redis_address, redis_password)
+        ray.experimental.internal_kv._initialize_internal_kv(gcs_cli)
 
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),

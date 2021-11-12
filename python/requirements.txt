@@ -7,9 +7,11 @@
 # setup.py install_requires
 aiohttp>=3.7
 aioredis < 2
+aiosignal
 click >= 7.0
 cloudpickle
 filelock
+frozenlist
 gpustat >= 1.0.0b1
 grpcio >= 1.28.1
 jsonschema
@@ -27,7 +29,8 @@ requests
 ## setup.py extras
 dm_tree
 flask
-gym==0.19
+gym>=0.21.0; python_version >= '3.7'
+gym==0.19.0; python_version < '3.7'
 lz4
 scikit-image
 opencv-python-headless==4.3.0.36
@@ -51,6 +54,7 @@ cython >= 0.29.15
 dataclasses; python_version < '3.7'
 feather-format
 google-api-python-client
+google-cloud-storage
 gym-minigrid
 kubernetes
 lxml

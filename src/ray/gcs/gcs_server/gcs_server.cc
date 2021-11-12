@@ -21,7 +21,6 @@
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/stats_handler_impl.h"
@@ -38,7 +37,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       rpc_server_(config.grpc_server_name, config.grpc_server_port,
                   config.node_ip_address == "127.0.0.1", config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
-      client_call_manager_(main_service),
+      client_call_manager_(main_service,
+                           RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
       pubsub_periodical_runner_(main_service_),
@@ -71,7 +71,9 @@ void GcsServer::Start() {
             rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
                               rpc::ChannelType::GCS_JOB_CHANNEL,
                               rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-                              rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL},
+                              rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
+                              rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
+                              rpc::ChannelType::RAY_ERROR_INFO_CHANNEL},
         /*periodical_runner=*/&pubsub_periodical_runner_,
         /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
         /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
@@ -118,9 +120,6 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 
   // Init gcs actor manager.
   InitGcsActorManager(gcs_init_data);
-
-  // Init object manager.
-  InitObjectManager(gcs_init_data);
 
   // Init gcs worker manager.
   InitGcsWorkerManager();
@@ -250,12 +249,13 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
 void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_node_manager_);
   std::unique_ptr<GcsActorSchedulerInterface> scheduler;
-  auto schedule_failure_handler = [this](std::shared_ptr<GcsActor> actor) {
+  auto schedule_failure_handler = [this](std::shared_ptr<GcsActor> actor,
+                                         bool destroy_actor) {
     // When there are no available nodes to schedule the actor the
     // gcs_actor_scheduler will treat it as failed and invoke this handler. In
     // this case, the actor manager should schedule the actor once an
     // eligible node is registered.
-    gcs_actor_manager_->OnActorCreationFailed(std::move(actor));
+    gcs_actor_manager_->OnActorCreationFailed(std::move(actor), destroy_actor);
   };
   auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor,
                                          const rpc::PushTaskReply &reply) {
@@ -325,18 +325,6 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   placement_group_info_service_.reset(new rpc::PlacementGroupInfoGrpcService(
       main_service_, *gcs_placement_group_manager_));
   rpc_server_.RegisterService(*placement_group_info_service_);
-}
-
-void GcsServer::InitObjectManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_node_manager_);
-  gcs_object_manager_.reset(
-      new GcsObjectManager(gcs_table_storage_, gcs_publisher_, *gcs_node_manager_));
-  // Initialize by gcs tables data.
-  gcs_object_manager_->Initialize(gcs_init_data);
-  // Register service.
-  object_info_service_.reset(
-      new rpc::ObjectInfoGrpcService(main_service_, *gcs_object_manager_));
-  rpc_server_.RegisterService(*object_info_service_);
 }
 
 void GcsServer::StoreGcsServerAddressInRedis() {
@@ -414,19 +402,27 @@ void GcsServer::InitPubSubHandler() {
 }
 
 void GcsServer::InitRuntimeEnvManager() {
-  runtime_env_manager_ =
-      std::make_unique<RuntimeEnvManager>([this](const std::string &uri, auto cb) {
-        std::string sep = "://";
-        auto pos = uri.find(sep);
-        if (pos == std::string::npos || pos + sep.size() == uri.size()) {
-          RAY_LOG(ERROR) << "Invalid uri: " << uri;
+  runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
+      /*deleter=*/[this](const std::string &plugin_uri, auto cb) {
+        // A valid runtime env URI is of the form "plugin|protocol://hash".
+        std::string plugin_sep = "|";
+        std::string protocol_sep = "://";
+        auto plugin_end_pos = plugin_uri.find(plugin_sep);
+        auto protocol_end_pos = plugin_uri.find(protocol_sep);
+        if (protocol_end_pos == std::string::npos ||
+            plugin_end_pos == std::string::npos) {
+          RAY_LOG(ERROR) << "Plugin URI must be of form "
+                         << "<plugin>|<protocol>://<hash>, got " << plugin_uri;
           cb(false);
         } else {
-          auto scheme = uri.substr(0, pos);
-          if (scheme != "gcs") {
-            // Skip other uri
+          auto protocol_pos = plugin_end_pos + plugin_sep.size();
+          int protocol_len = protocol_end_pos - protocol_pos;
+          auto protocol = plugin_uri.substr(protocol_pos, protocol_len);
+          if (protocol != "gcs") {
+            // Some URIs do not correspond to files in the GCS.  Skip deletion for these.
             cb(true);
           } else {
+            auto uri = plugin_uri.substr(protocol_pos);
             this->kv_manager_->InternalKVDelAsync(uri, [cb](int deleted_num) {
               if (deleted_num == 0) {
                 cb(false);
@@ -523,7 +519,6 @@ void GcsServer::PrintDebugInfo() {
   std::ostringstream stream;
   stream << gcs_node_manager_->DebugString() << "\n"
          << gcs_actor_manager_->DebugString() << "\n"
-         << gcs_object_manager_->DebugString() << "\n"
          << gcs_placement_group_manager_->DebugString() << "\n"
          << gcs_publisher_->DebugString() << "\n"
          << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();

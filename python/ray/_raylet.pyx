@@ -348,7 +348,8 @@ cdef int prepare_actor_concurrency_groups(
 
 cdef prepare_args(
         CoreWorker core_worker,
-        Language language, args, c_vector[unique_ptr[CTaskArg]] *args_vector):
+        Language language, args,
+        c_vector[unique_ptr[CTaskArg]] *args_vector, function_descriptor):
     cdef:
         size_t size
         int64_t put_threshold
@@ -374,7 +375,17 @@ cdef prepare_args(
                     arg.call_site())))
 
         else:
-            serialized_arg = worker.get_serialization_context().serialize(arg)
+            try:
+                serialized_arg = worker.get_serialization_context(
+                ).serialize(arg)
+            except TypeError as e:
+                msg = (
+                    "Could not serialize the argument "
+                    f"{repr(arg)} for a task or actor "
+                    f"{function_descriptor.repr}. Check "
+                    "https://docs.ray.io/en/master/serialization.html#troubleshooting " # noqa
+                    "for more information.")
+                raise TypeError(msg) from e
             metadata = serialized_arg.metadata
             if language != Language.PYTHON:
                 metadata_fields = metadata.split(b",")
@@ -624,9 +635,12 @@ cdef execute_task(
                             # task. In that case we just exit the debugger.
                             ray.experimental.internal_kv._internal_kv_put(
                                 "RAY_PDB_{}".format(next_breakpoint),
-                                "{\"exit_debugger\": true}")
+                                "{\"exit_debugger\": true}",
+                                namespace=ray_constants.KV_NAMESPACE_PDB
+                            )
                             ray.experimental.internal_kv._internal_kv_del(
-                                "RAY_PDB_CONTINUE_{}".format(next_breakpoint)
+                                "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
+                                namespace=ray_constants.KV_NAMESPACE_PDB
                             )
                             ray.worker.global_worker.debugger_breakpoint = b""
                     task_exception = False
@@ -1432,7 +1446,8 @@ cdef class CoreWorker:
             prepare_resources(resources, &c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(self, language, args, &args_vector)
+            prepare_args(
+                self, language, args, &args_vector, function_descriptor)
 
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:
@@ -1489,7 +1504,8 @@ cdef class CoreWorker:
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(self, language, args, &args_vector)
+            prepare_args(
+                self, language, args, &args_vector, function_descriptor)
             prepare_actor_concurrency_groups(
                 concurrency_groups_dict, &c_concurrency_groups)
 
@@ -1596,7 +1612,8 @@ cdef class CoreWorker:
                 c_resources[b"CPU"] = num_method_cpus
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(self, language, args, &args_vector)
+            prepare_args(
+                self, language, args, &args_vector, function_descriptor)
 
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:

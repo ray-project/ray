@@ -34,7 +34,7 @@ class TaskFinisherInterface {
   virtual bool RetryTaskIfPossible(const TaskID &task_id) = 0;
 
   virtual bool PendingTaskFailed(
-      const TaskID &task_id, rpc::ErrorType error_type, Status *status,
+      const TaskID &task_id, rpc::ErrorType error_type, const Status *status,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr,
       bool immediately_mark_object_fail = true) = 0;
 
@@ -55,8 +55,7 @@ class TaskFinisherInterface {
 
 class TaskResubmissionInterface {
  public:
-  virtual Status ResubmitTask(const TaskID &task_id,
-                              std::vector<ObjectID> *task_deps) = 0;
+  virtual bool ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) = 0;
 
   virtual ~TaskResubmissionInterface() {}
 };
@@ -77,17 +76,18 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               RetryTaskCallback retry_task_callback,
               const std::function<bool(const NodeID &node_id)> &check_node_alive,
               ReconstructObjectCallback reconstruct_object_callback,
-              PushErrorCallback push_error_callback)
+              PushErrorCallback push_error_callback, int64_t max_lineage_bytes)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(put_in_local_plasma_callback),
         retry_task_callback_(retry_task_callback),
         check_node_alive_(check_node_alive),
         reconstruct_object_callback_(reconstruct_object_callback),
-        push_error_callback_(push_error_callback) {
+        push_error_callback_(push_error_callback),
+        max_lineage_bytes_(max_lineage_bytes) {
     reference_counter_->SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
-          RemoveLineageReference(object_id, ids_to_release);
+          return RemoveLineageReference(object_id, ids_to_release);
           ShutdownIfNeeded();
         });
   }
@@ -115,7 +115,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// not already pending and was successfully resubmitted.
   /// \return OK if the task was successfully resubmitted or was
   /// already pending, Invalid if the task spec is no longer present.
-  Status ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) override;
+  bool ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) override;
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///
@@ -146,7 +146,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// result object as failed.
   /// \return Whether the task will be retried or not.
   bool PendingTaskFailed(
-      const TaskID &task_id, rpc::ErrorType error_type, Status *status = nullptr,
+      const TaskID &task_id, rpc::ErrorType error_type, const Status *status = nullptr,
       const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr,
       bool immediately_mark_object_fail = true) override;
 
@@ -201,6 +201,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Return the number of pending tasks.
   size_t NumPendingTasks() const;
 
+  int64_t TotalLineageFootprintBytes() const {
+    absl::MutexLock lock(&mu_);
+    return total_lineage_footprint_bytes_;
+  }
+
  private:
   struct TaskEntry {
     TaskEntry(const TaskSpecification &spec_arg, int num_retries_left_arg,
@@ -243,12 +248,23 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     //    pending tasks and tasks that finished execution but that may be
     //    retried in the future.
     absl::flat_hash_set<ObjectID> reconstructable_return_ids;
+    // The size of this (serialized) task spec in bytes, if the task spec is
+    // not pending, i.e. it is being pinned because it's in another object's
+    // lineage. We cache this because the task spec protobuf can mutate
+    // out-of-band.
+    int64_t lineage_footprint_bytes = 0;
   };
 
   /// Remove a lineage reference to this object ID. This should be called
   /// whenever a task that depended on this object ID can no longer be retried.
-  void RemoveLineageReference(const ObjectID &object_id,
-                              std::vector<ObjectID> *ids_to_release) LOCKS_EXCLUDED(mu_);
+  ///
+  /// \param[in] object_id The object ID whose lineage to delete.
+  /// \param[out] ids_to_release If a task was deleted, then these are the
+  /// task's arguments whose lineage should also be released.
+  /// \param[out] The amount of lineage in bytes that was removed.
+  int64_t RemoveLineageReference(const ObjectID &object_id,
+                                 std::vector<ObjectID> *ids_to_release)
+      LOCKS_EXCLUDED(mu_);
 
   /// Helper function to call RemoveSubmittedTaskReferences on the remaining
   /// dependencies of the given task spec after the task has finished or
@@ -292,6 +308,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   // Called to push an error to the relevant driver.
   const PushErrorCallback push_error_callback_;
 
+  const int64_t max_lineage_bytes_;
+
   // The number of task failures we have logged total.
   int64_t num_failure_logs_ GUARDED_BY(mu_) = 0;
 
@@ -312,8 +330,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// execution.
   size_t num_pending_tasks_ = 0;
 
+  int64_t total_lineage_footprint_bytes_ GUARDED_BY(mu_) = 0;
+
   /// Optional shutdown hook to call when pending tasks all finish.
   std::function<void()> shutdown_hook_ GUARDED_BY(mu_) = nullptr;
+
+  friend class TaskManagerTest;
 };
 
 }  // namespace core

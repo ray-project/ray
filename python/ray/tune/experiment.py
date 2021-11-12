@@ -7,7 +7,7 @@ import os
 from pickle import PicklingError
 
 from ray.tune.error import TuneError
-from ray.tune.registry import register_trainable, get_trainable_cls
+from ray.tune.registry import register_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.sample import Domain
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, \
@@ -19,18 +19,12 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
-def _raise_on_durable(is_durable_trainable, sync_to_driver, upload_dir):
-    if is_durable_trainable:
-        if sync_to_driver is not False:
-            raise ValueError(
-                "EXPERIMENTAL: DurableTrainable will automatically sync "
-                "results to the provided upload_dir. "
-                "Set `sync_to_driver=False` to avoid data inconsistencies.")
-        if not upload_dir:
-            raise ValueError(
-                "EXPERIMENTAL: DurableTrainable will automatically sync "
-                "results to the provided upload_dir. "
-                "`upload_dir` must be provided.")
+def _raise_on_cloud_checkpointing(sync_to_driver, upload_dir):
+    if bool(upload_dir) and sync_to_driver is not False:
+        raise ValueError(
+            "The Ray Tune trainable will automatically sync "
+            "results to the provided upload_dir. "
+            "Set `sync_to_driver=False` to avoid data inconsistencies.")
 
 
 def _validate_log_to_file(log_to_file):
@@ -85,7 +79,7 @@ class Experiment:
             max_failures=2)
     """
 
-    # keys that will be present in `public_spec` dict
+    # Keys that will be present in `public_spec` dict.
     PUBLIC_KEYS = {"stop", "num_samples"}
 
     def __init__(self,
@@ -177,8 +171,7 @@ class Experiment:
             else:
                 self._stopper = TimeoutStopper(time_budget_s)
 
-        _raise_on_durable(self.is_durable_trainable, sync_to_driver,
-                          upload_dir)
+        _raise_on_cloud_checkpointing(sync_to_driver, upload_dir)
 
         stdout_file, stderr_file = _validate_log_to_file(log_to_file)
 
@@ -302,13 +295,6 @@ class Experiment:
     def run_identifier(self):
         """Returns a string representing the trainable identifier."""
         return self._run_identifier
-
-    @property
-    def is_durable_trainable(self):
-        # Local import to avoid cyclical dependencies
-        from ray.tune.durable_trainable import DurableTrainable
-        trainable_cls = get_trainable_cls(self._run_identifier)
-        return issubclass(trainable_cls, DurableTrainable)
 
     @property
     def public_spec(self) -> Dict[str, Any]:
