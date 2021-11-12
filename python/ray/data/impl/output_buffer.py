@@ -5,7 +5,7 @@ from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
 
 
 class BlockOutputBuffer(object):
-    def __init__(self, block_udf: Callable[[Block], Block],
+    def __init__(self, block_udf: Optional[Callable[[Block], Block]],
                  target_max_block_size: int):
         from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
         self._target_max_block_size = target_max_block_size

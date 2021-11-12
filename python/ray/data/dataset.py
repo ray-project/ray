@@ -2141,7 +2141,7 @@ class Dataset(Generic[T]):
     def __str__(self) -> str:
         return repr(self)
 
-    def _block_sizes(self) -> List[int]:
+    def _block_num_rows(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)
         return ray.get(
             [get_num_rows.remote(b) for b in self._blocks.iter_blocks()])
