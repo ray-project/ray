@@ -113,6 +113,26 @@ def test_arrow_size_add_block(ray_start_regular_shared):
     assert b2.build().num_rows == 10000
 
 
+def test_split_read_csv(ray_start_regular_shared):
+    pass
+
+
+def test_split_read_parquet(ray_start_regular_shared):
+    pass
+
+
+def test_split_map(ray_start_regular_shared):
+    pass
+
+
+def test_split_flat_map(ray_start_regular_shared):
+    pass
+
+
+def test_split_map_batches(ray_start_regular_shared):
+    pass
+
+
 if __name__ == "__main__":
     import sys
     sys.exit(pytest.main(["-v", __file__]))

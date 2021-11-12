@@ -147,7 +147,7 @@ class Dataset(Generic[T]):
     def map_batches(self,
                     fn: Union[CallableClass, Callable[[BatchType], BatchType]],
                     *,
-                    batch_size: Optional[int] = None,
+                    batch_size: Optional[int] = 4096,
                     compute: Optional[str] = None,
                     batch_format: str = "native",
                     **ray_remote_args) -> "Dataset[Any]":
@@ -180,7 +180,7 @@ class Dataset(Generic[T]):
             fn: The function to apply to each record batch, or a class type
                 that can be instantiated to create such a callable.
             batch_size: Request a specific batch size, or None to use entire
-                blocks as batches.
+                blocks as batches. Defaults to a system-chosen batch size.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or "actors" to use an autoscaling Ray actor pool.
             batch_format: Specify "native" to use the native block format,
