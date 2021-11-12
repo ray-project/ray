@@ -40,6 +40,8 @@ enum ChannelType {
   GCS_NODE_RESOURCE_CHANNEL = 6;
   /// A channel for worker changes, currently only for worker failures.
   GCS_WORKER_DELTA_CHANNEL = 7;
+  /// A channel for errors from various Ray components.
+  RAY_ERROR_INFO_CHANNEL = 8;
 }
 
 ///
@@ -61,6 +63,7 @@ message PubMessage {
     GcsNodeInfo node_info_message = 9;
     NodeResourceChange node_resource_message = 10;
     WorkerDeltaData worker_delta_message = 11;
+    ErrorTableData error_info_message = 12;
 
     // The message that indicates the given key id is not available anymore.
     FailureMessage failure_message = 6;

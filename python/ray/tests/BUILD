@@ -28,6 +28,7 @@ py_test_module_list(
     "test_component_failures_2.py",
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",
+    "test_gcs_pubsub.py",
     "test_global_gc.py",
     "test_grpc_client_credentials.py",
     "test_iter.py",
@@ -105,6 +106,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
+    "test_autoscaler_drain_node_api.py",
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_asyncio.py",
