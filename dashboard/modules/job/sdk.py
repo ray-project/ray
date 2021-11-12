@@ -33,7 +33,7 @@ def parse_cluster_info(address: str,
     module_string, inner_address = _split_address(address.rstrip("/"))
 
     if module_string == "http" or module_string == "https":
-        return ClusterInfo(address=address, cookies=None, metadata={})
+        return ClusterInfo(address=address, cookies=None, metadata=None)
     else:
         try:
             module = importlib.import_module(module_string)
