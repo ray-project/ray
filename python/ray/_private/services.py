@@ -1081,7 +1081,8 @@ def _start_redis_instance(executable,
             fate_share=fate_share)
         wait_for_redis_to_start("127.0.0.1", port, password=password)
         r = redis.StrictRedis(host="127.0.0.1", port=port, password=password)
-        # Check if Redis successfully started and we connected to the right server
+        # Check if Redis successfully started and we connected
+        # to the right server.
         if r.config_get("pidfile")["pidfile"] == pidfile:
             break
         port = new_port(denylist=port_denylist)
