@@ -70,7 +70,7 @@ First, we need to import ray, ray serve, and requests. The ray and ray serve lib
   from ray import serve
   import requests
 
-After these imports, we can include our model code from above. We won't call our ``summarize`` function just yet though! We will soon add logic to route HTTP requests, so the ``summarize`` function will handle them.
+After these imports, we can include our model code from above. We won't call our ``summarize`` function just yet though! We will soon add logic to handle HTTP requests, so the ``summarize`` function can operate on article text sent via HTTP request.
 
 .. code-block:: python
 
@@ -228,3 +228,6 @@ HTTP queries for the Ray Serve class deployments follow a similar format to Ray 
   here. The Eagle has landed."
   '''
 
+Congratulations! You just built and deployed a machine learning model on Ray Serve! You should now have enough context to dive into the :doc:`core-apis` to get a deeper understanding of Ray Serve.
+To learn more about how to start a multi-node cluster for your Ray Serve deployments, see :doc:`../cluster/index`.
+For more interesting example applications, including integrations with popular machine learning frameworks and Python web servers, be sure to check out :doc:`tutorials/index`.
