@@ -1,3 +1,4 @@
+# __rllib-custom-gym-env-begin__
 import gym
 
 import ray
@@ -33,6 +34,8 @@ config = {
         "corridor_length": 5,
     },
 }
+
 trainer = ppo.PPOTrainer(config=config)
-for _ in range(10):
+for _ in range(3):
     print(trainer.train())
+# __rllib-custom-gym-env-end__
