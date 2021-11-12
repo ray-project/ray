@@ -5,6 +5,9 @@ from shutil import rmtree, make_archive
 import string
 import sys
 import tempfile
+import filecmp
+from filecmp import dircmp
+from zipfile import ZipFile
 import uuid
 
 import pytest
@@ -14,10 +17,12 @@ from ray.experimental.internal_kv import (_internal_kv_del,
 from ray._private.runtime_env.packaging import (
     _dir_travel, get_uri_for_directory, _get_excludes,
     upload_package_if_needed, parse_uri, Protocol,
-    get_top_level_dir_from_compressed_package)
+    get_top_level_dir_from_compressed_package,
+    extract_file_and_remove_top_level_dir)
 
 
 TOP_LEVEL_DIR_NAME = "top_level"
+ARCHIVE_NAME = "archive.zip"
 
 
 def random_string(size: int = 10):
@@ -49,8 +54,8 @@ def random_dir():
 @pytest.fixture
 def random_zip_file_without_top_level_dir(random_dir):
     path = Path(random_dir)
-    make_archive(path / "archive", "zip", path)
-    yield str(path / "archive.zip")
+    make_archive(path / ARCHIVE_NAME[:ARCHIVE_NAME.rfind(".")], "zip", path)
+    yield str(path / ARCHIVE_NAME)
 
 
 @pytest.fixture
@@ -72,8 +77,8 @@ def random_zip_file_with_top_level_dir():
             dir2 = next_level_dir / random_string(15)
             dir2.mkdir(parents=True)
             next_level_dir = dir2
-        make_archive(path / "archive", "zip", path, TOP_LEVEL_DIR_NAME)
-        yield str(path / "archive.zip")
+        make_archive(path / ARCHIVE_NAME[:ARCHIVE_NAME.rfind(".")], "zip", path, TOP_LEVEL_DIR_NAME)
+        yield str(path / ARCHIVE_NAME)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -160,6 +165,31 @@ class TestGetTopLevelDirFromCompressedPackage:
         assert top_level_dir_name is None
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+class TestExtractFileAndRemoveTopLevelDir:
+    def test_valid_extraction(self, random_zip_file_with_top_level_dir):
+        archive_path = random_zip_file_with_top_level_dir
+        tmp_path = archive_path[:archive_path.rfind("/")]
+        rmtree(os.path.join(tmp_path, TOP_LEVEL_DIR_NAME))
+        with ZipFile(archive_path, "r") as zf:
+            for fname in zf.namelist():
+                extract_file_and_remove_top_level_dir(base_dir=tmp_path, fname=fname, zip_ref=zf)
+        rmtree(os.path.join(tmp_path, TOP_LEVEL_DIR_NAME))
+        with ZipFile(archive_path, "r") as zf:
+            zf.extractall(tmp_path)
+        dcmp = dircmp(tmp_path, f"{tmp_path}/{TOP_LEVEL_DIR_NAME}")
+
+        # Since this test uses the tmp_path as the target directory, and since
+        # the tmp_path also contains the zip file and the top level directory,
+        # make sure that the only difference between the tmp_path's contents
+        # and the top level directory's contents are the zip file and the top
+        # level directory itself. This implies that all files have been
+        # extracted from the top level directory and moved into the tmp_path.
+        assert set(dcmp.left_only) == set([ARCHIVE_NAME, TOP_LEVEL_DIR_NAME])
+
+        # Make sure that all the subdirectories and files have been moved to
+        # the target directory
+        assert len(dcmp.right_only) == 0
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_travel():
