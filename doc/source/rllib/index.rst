@@ -74,6 +74,8 @@ Click on the images below to see an example script for each of the listed featur
 
     .. container:: buttons-float-left
 
+        .. https://docs.google.com/drawings/d/1i_yoxocyEOgiCxcfRZVKpNh0R_-2tQZOX4syquiytAI/edit?skip_itp2_check=true&pli=1
+
         .. image:: ../images/rllib/sigils/rllib-sigil-tf-and-torch.svg
             :width: 100
             :target: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py
@@ -87,6 +89,8 @@ Click on the images below to see an example script for each of the listed featur
 .. container:: clear-both
 
     .. container:: buttons-float-left
+
+        .. https://docs.google.com/drawings/d/1yEOfeHvuLi5EzZKtGFQMfQ2NINzi3bUBrU3Z7bCiuKs/edit
 
         .. image:: ../images/rllib/sigils/rllib-sigil-distributed-learning.svg
             :width: 100
@@ -102,6 +106,8 @@ Click on the images below to see an example script for each of the listed featur
 .. container:: clear-both
 
     .. container:: buttons-float-left
+
+        .. https://docs.google.com/drawings/d/1b8uaRo0KjPH-x-elBmyvDwAA4I2oy8cj3dxNnUT3HTE/edit
 
         .. image:: ../images/rllib/sigils/rllib-sigil-vector-envs.svg
             :width: 100
@@ -120,6 +126,8 @@ Click on the images below to see an example script for each of the listed featur
 .. container:: clear-both
 
     .. container:: buttons-float-left
+
+        .. https://docs.google.com/drawings/d/1Lbi1Zf5SvczSliGEWuK4mjWeehPIArYY9XKys81EtHU/edit
 
         .. image:: ../images/rllib/sigils/rllib-sigil-multi-agent.svg
             :width: 100
@@ -142,6 +150,8 @@ Click on the images below to see an example script for each of the listed featur
 
     .. container:: buttons-float-left
 
+        .. https://docs.google.com/drawings/d/1DY2IJUPo007mSRylz6IEs-dz_n1-rFh67RMi9PB2niY/edit
+
         .. image:: ../images/rllib/sigils/rllib-sigil-external-simulators.svg
             :width: 100
             :target: https://github.com/ray-project/ray/tree/master/rllib/examples/serving
@@ -162,6 +172,8 @@ Click on the images below to see an example script for each of the listed featur
 .. container:: clear-both
 
     .. container:: buttons-float-left
+
+        .. https://docs.google.com/drawings/d/1VFuESSI5u9AK9zqe9zKSJIGX8taadijP7Qw1OLv2hSQ/edit
 
         .. image:: ../images/rllib/sigils/rllib-sigil-offline-rl.svg
             :width: 100
