@@ -1,6 +1,6 @@
 import enum
 import logging
-from typing import List, Option
+from typing import List, Optional
 from functools import wraps
 import time
 
@@ -144,7 +144,7 @@ def auto_reconnect(f):
 
 
 class GcsChannel:
-    def __init__(self, redis_client=None, gcs_address: Option[str] = None):
+    def __init__(self, redis_client=None, gcs_address: Optional[str] = None):
         if redis_client is None and gcs_address is None:
             raise ValueError(
                 "One of `redis_client` or `gcs_address` has to be set")
