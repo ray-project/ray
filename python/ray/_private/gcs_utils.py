@@ -1,7 +1,9 @@
 import enum
 import logging
+
+from typing import List, Optional
+from functools import wraps
 import time
-from typing import List, Callable
 
 import grpc
 
@@ -120,6 +122,54 @@ def create_gcs_channel(address: str, aio=False):
     return init_grpc_channel(address, options=_GRPC_OPTIONS, asynchronous=aio)
 
 
+def _auto_reconnect(f):
+    @wraps(f)
+    def wrapper(self, *args, **kwargs):
+        while True:
+            try:
+                return f(self, *args, **kwargs)
+            except grpc.RpcError as e:
+                if self._enable_auto_reconnect is False:
+                    raise
+                if e.code() == grpc.StatusCode.UNAVAILABLE:
+                    logger.error(
+                        "Failed to send request to gcs, reconnecting. "
+                        f"Error {e}")
+                    try:
+                        self._connect()
+                        time.sleep(1)
+                    except Exception:
+                        logger.error(f"Connecting to gcs failed. Error {e}")
+                    continue
+                raise
+
+    return wrapper
+
+
+class GcsChannel:
+    def __init__(self, redis_client=None, gcs_address: Optional[str] = None):
+        if redis_client is None and gcs_address is None:
+            raise ValueError(
+                "One of `redis_client` or `gcs_address` has to be set")
+        if redis_client is not None and gcs_address is not None:
+            raise ValueError(
+                "Only one of `redis_client` or `gcs_address` can be set")
+        self._redis_client = redis_client
+        self._gcs_address = gcs_address
+
+    def connect(self):
+        if self._redis_client is not None:
+            gcs_address = get_gcs_address_from_redis(self._redis_client)
+        else:
+            gcs_address = self._gcs_address
+
+        self._channel = create_gcs_channel(gcs_address)
+        self._aio_channel = create_gcs_channel(gcs_address, True)
+
+    def channel(self, aio=False):
+        return self._aio_channel if aio is True else self._channel
+
+
 class GcsCode(enum.IntEnum):
     # corresponding to ray/src/ray/common/status.h
     OK = 0
@@ -150,22 +200,24 @@ def auto_reconnect(f):
 class GcsClient:
     """Client to GCS using GRPC"""
 
-    def __init__(self, get_address: Callable):
-        assert get_address is not None
-        self._get_address = get_address
+    def __init__(self,
+                 channel: Optional[GcsChannel] = None,
+                 address: Optional[str] = None,
+                 auto_reconnect: bool = True):
+        if channel is None:
+            assert isinstance(address, str)
+            channel = GcsChannel(gcs_address=address)
+        assert isinstance(channel, GcsChannel)
+        self._channel = channel
         self._connect()
-
-    def get_channel(self):
-        return self._channel
+        self._enable_auto_reconnect = auto_reconnect
 
     def _connect(self):
-        gcs_address = self._get_address()
-        logger.debug(f"Connecting to gcs address: {gcs_address}")
-        self._channel = create_gcs_channel(gcs_address)
+        self._channel.connect()
         self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(
-            self._channel)
+            self._channel.channel())
 
-    @auto_reconnect
+    @_auto_reconnect
     def internal_kv_get(self, key: bytes) -> bytes:
         logger.debug(f"internal_kv_get {key}")
         req = gcs_service_pb2.InternalKVGetRequest(key=key)
@@ -178,7 +230,7 @@ class GcsClient:
             raise RuntimeError(f"Failed to get value for key {key} "
                                f"due to error {reply.status.message}")
 
-    @auto_reconnect
+    @_auto_reconnect
     def internal_kv_put(self, key: bytes, value: bytes,
                         overwrite: bool) -> int:
         logger.debug(f"internal_kv_put {key} {value} {overwrite}")
@@ -191,7 +243,7 @@ class GcsClient:
             raise RuntimeError(f"Failed to put value {value} to key {key} "
                                f"due to error {reply.status.message}")
 
-    @auto_reconnect
+    @_auto_reconnect
     def internal_kv_del(self, key: bytes) -> int:
         logger.debug(f"internal_kv_del {key}")
         req = gcs_service_pb2.InternalKVDelRequest(key=key)
@@ -202,7 +254,7 @@ class GcsClient:
             raise RuntimeError(f"Failed to delete key {key} "
                                f"due to error {reply.status.message}")
 
-    @auto_reconnect
+    @_auto_reconnect
     def internal_kv_exists(self, key: bytes) -> bool:
         logger.debug(f"internal_kv_exists {key}")
         req = gcs_service_pb2.InternalKVExistsRequest(key=key)
@@ -213,7 +265,7 @@ class GcsClient:
             raise RuntimeError(f"Failed to check existence of key {key} "
                                f"due to error {reply.status.message}")
 
-    @auto_reconnect
+    @_auto_reconnect
     def internal_kv_keys(self, prefix: bytes) -> List[bytes]:
         logger.debug(f"internal_kv_keys {prefix}")
         req = gcs_service_pb2.InternalKVKeysRequest(prefix=prefix)
@@ -226,7 +278,7 @@ class GcsClient:
 
     @staticmethod
     def create_from_redis(redis_cli):
-        return GcsClient(lambda: get_gcs_address_from_redis(redis_cli))
+        return GcsClient(GcsChannel(redis_client=redis_cli))
 
     @staticmethod
     def connect_to_gcs_by_redis_address(redis_address, redis_password):

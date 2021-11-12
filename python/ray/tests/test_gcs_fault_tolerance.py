@@ -165,6 +165,25 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular):
         ray.get_actor("abc")
 
 
+@pytest.mark.parametrize("auto_reconnect", [True, False])
+def test_gcs_client_reconnect(ray_start_regular, auto_reconnect):
+    redis_client = ray.worker.global_worker.redis_client
+    gcs_client = gcs_utils.GcsClient(
+        channel=gcs_utils.GcsChannel(redis_client=redis_client),
+        auto_reconnect=auto_reconnect)
+
+    gcs_client.internal_kv_put(b"a", b"b", overwrite=True)
+    gcs_client.internal_kv_get(b"a") == b"b"
+
+    ray.worker._global_node.kill_gcs_server()
+    ray.worker._global_node.start_gcs_server()
+    if auto_reconnect is False:
+        with pytest.raises(Exception):
+            gcs_client.internal_kv_get(b"a")
+    else:
+        assert gcs_client.internal_kv_get(b"a") == b"b"
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))

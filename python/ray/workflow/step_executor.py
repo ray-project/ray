@@ -140,6 +140,9 @@ def _resolve_step_inputs(
 def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     """Execute workflow.
 
+    Args:
+        workflow: The workflow to be executed.
+
     Returns:
         An object ref that represent the result.
     """
@@ -149,18 +152,38 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
         workflow_data.inputs)
     step_options = workflow_data.step_options
-    persisted_output, volatile_output = _workflow_step_executor.options(
-        **step_options.ray_options).remote(
-            workflow_data.func_body,
-            workflow_context.get_workflow_step_context(), workflow.step_id,
-            baked_inputs, workflow_data.step_options)
+    if step_options.allow_inplace:
+        # TODO(suquark): For inplace execution, it is impossible
+        # to get the ObjectRef of the output before execution.
+        # Here we use a dummy ObjectRef, because _record_step_status does not
+        # even use it (?!).
+        _record_step_status(workflow.step_id, WorkflowStatus.RUNNING,
+                            [ray.put(None)])
+        # Note: we need to be careful about workflow context when
+        # calling the executor directly.
+        # TODO(suquark): We still have recursive Python calls.
+        # This would cause stack overflow if we have a really
+        # deep recursive call. We should fix it later.
+        executor = _workflow_step_executor
+    else:
+        executor = _workflow_step_executor_remote.options(
+            **step_options.ray_options).remote
 
+    persisted_output, volatile_output = executor(
+        workflow_data.func_body, workflow_context.get_workflow_step_context(),
+        workflow.step_id, baked_inputs, workflow_data.step_options)
     if not isinstance(persisted_output, WorkflowOutputType):
-        raise TypeError("Unexpected return type of the workflow.")
+        persisted_output = ray.put(persisted_output)
+    if not isinstance(persisted_output, WorkflowOutputType):
+        volatile_output = ray.put(volatile_output)
 
     if step_options.step_type != StepType.READONLY_ACTOR_METHOD:
-        _record_step_status(workflow.step_id, WorkflowStatus.RUNNING,
-                            [volatile_output])
+        if not step_options.allow_inplace:
+            # TODO: [Possible flaky bug] Here the RUNNING state may
+            # be recorded earlier than SUCCESSFUL. This caused some
+            # confusion during development.
+            _record_step_status(workflow.step_id, WorkflowStatus.RUNNING,
+                                [volatile_output])
 
     result = WorkflowExecutionResult(persisted_output, volatile_output)
     workflow._result = result
@@ -309,11 +332,10 @@ def _wrap_run(func: Callable, runtime_options: "WorkflowStepRuntimeOptions",
     return persisted_output, volatile_output
 
 
-@ray.remote(num_returns=2)
 def _workflow_step_executor(
         func: Callable, context: "WorkflowStepContext", step_id: "StepID",
         baked_inputs: "_BakedWorkflowInputs",
-        runtime_options: "WorkflowStepRuntimeOptions") -> Any:
+        runtime_options: "WorkflowStepRuntimeOptions") -> Tuple[Any, Any]:
     """Executor function for workflow step.
 
     Args:
@@ -389,6 +411,16 @@ def _workflow_step_executor(
         volatile_output = volatile_output.run_async(
             workflow_context.get_current_workflow_id())
     return persisted_output, volatile_output
+
+
+@ray.remote(num_returns=2)
+def _workflow_step_executor_remote(
+        func: Callable, context: "WorkflowStepContext", step_id: "StepID",
+        baked_inputs: "_BakedWorkflowInputs",
+        runtime_options: "WorkflowStepRuntimeOptions") -> Any:
+    """The remote version of '_workflow_step_executor'."""
+    return _workflow_step_executor(func, context, step_id, baked_inputs,
+                                   runtime_options)
 
 
 @dataclass
