@@ -414,6 +414,10 @@ TEST(RayClusterModeTest, ObjectRefArgsTest) {
   auto obj2 = ray::Put(2);
   auto r1 = ray::Task(Add).Remote(obj1, obj2);
   EXPECT_EQ(*r1.Get(), 3);
+
+  std::vector v{obj1, obj2};
+  auto r2 = ray::Task(GetList).Remote(v);
+  EXPECT_EQ(*r2.Get(), 3);
 }
 
 int main(int argc, char **argv) {

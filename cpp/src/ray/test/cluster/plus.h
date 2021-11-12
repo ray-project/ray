@@ -23,3 +23,4 @@ int Plus(int x, int y);
 void ThrowTask();
 std::string GetVal(ray::ObjectRef<std::string> obj);
 int Add(ray::ObjectRef<int> obj1, ray::ObjectRef<int> obj2);
+int GetList(std::vector<ray::ObjectRef<int>> list);

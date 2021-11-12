@@ -51,5 +51,12 @@ struct is_object_ref_t<T, std::void_t<decltype(std::declval<T>().IsObjectRef())>
 template <typename T>
 auto constexpr is_object_ref_v = is_object_ref_t<T>::value;
 
+template <class, class = void>
+struct has_value_type_t : std::false_type {};
+template <class T>
+struct has_value_type_t<T, std::void_t<typename T::value_type>> : std::true_type {};
+template <typename T>
+auto constexpr has_value_type_v = has_value_type_t<T>::value;
+
 }  // namespace internal
 }  // namespace ray

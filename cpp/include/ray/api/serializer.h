@@ -15,20 +15,20 @@
 #pragma once
 
 #include <ray/api/ray_exception.h>
+#include <ray/api/type_traits.h>
 
 #include <msgpack.hpp>
 
 namespace ray {
 namespace internal {
 
-inline thread_local std::string outer_object_id;
-
 class Serializer {
  public:
   template <typename T>
-  static msgpack::sbuffer Serialize(const T &t) {
+  static msgpack::sbuffer Serialize(T &&t) {
+    WriteExternal(std::forward<T>(t));
     msgpack::sbuffer buffer;
-    msgpack::pack(buffer, t);
+    msgpack::pack(buffer, std::forward<T>(t));
     return buffer;
   }
 
@@ -36,7 +36,9 @@ class Serializer {
   static T Deserialize(const char *data, size_t size) {
     msgpack::unpacked unpacked;
     msgpack::unpack(unpacked, data, size);
-    return unpacked.get().as<T>();
+    auto val = unpacked.get().as<T>();
+    ReadExternal(val);
+    return val;
   }
 
   template <typename T>
@@ -58,6 +60,7 @@ class Serializer {
     if (!unpacked.get().convert_if_not_nil(val)) {
       return {false, {}};
     }
+    ReadExternal(val);
 
     return {true, val};
   }
@@ -65,6 +68,32 @@ class Serializer {
   static bool HasError(char *data, size_t size) {
     msgpack::unpacked unpacked = msgpack::unpack(data, size);
     return unpacked.get().is_nil() && size > 1;
+  }
+
+ private:
+  template <typename T>
+  static void WriteExternal(T &&t) {
+    using U = std::remove_const_t<std::remove_reference_t<T>>;
+    if constexpr (has_value_type_v<U>) {
+      using value_type = typename U::value_type;
+      if constexpr (is_object_ref_v<value_type>) {
+        for (auto &obj : t) {
+          obj.WriteExternal();
+        }
+      }
+    }
+  }
+
+  template <typename T>
+  static void ReadExternal(const T &val) {
+    if constexpr (has_value_type_v<T>) {
+      using U = typename T::value_type;
+      if constexpr (is_object_ref_v<U>) {
+        for (auto &obj : val) {
+          obj.ReadExternal();
+        }
+      }
+    }
   }
 };
 

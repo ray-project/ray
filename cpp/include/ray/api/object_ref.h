@@ -38,8 +38,7 @@ inline void CheckResult(const std::shared_ptr<msgpack::sbuffer> &packed_object) 
   }
 }
 
-inline void CopyAndAddReference(std::string &dest_id, const std::string &id) {
-  dest_id = id;
+inline void AddReference(const std::string &id) {
   ray::internal::GetRayRuntime()->AddLocalReference(id);
 }
 
@@ -47,64 +46,104 @@ inline void SubReference(const std::string &id) {
   ray::internal::GetRayRuntime()->RemoveLocalReference(id);
 }
 
+/// This base class used to reduce duplicate code.
+class ObjectRefBase {
+ public:
+  ObjectRefBase() = default;
+  virtual ~ObjectRefBase() { SubReference(id_); }
+
+  ObjectRefBase(const std::string &id) {
+    id_ = id;
+    AddReference(id);
+  }
+
+  /// Get a untyped ID of the object
+  const std::string &ID() const { return id_; }
+
+  void ReadExternal() const {
+    ray::internal::GetRayRuntime()->RegisterOwnershipInfoAndResolveFuture(id_, "",
+                                                                          owner_address_);
+  }
+
+  void WriteExternal() {
+    owner_address_ = ray::internal::GetRayRuntime()->GetOwnershipInfo(id_);
+  }
+
+  // Used to identify its type.
+  static bool IsObjectRef() { return true; }
+  bool operator==(const ObjectRefBase &object) const { return id_ == object.id_; }
+
+ protected:
+  ObjectRefBase(ObjectRefBase &&rhs) { Move(std::move(rhs)); }
+
+  ObjectRefBase &operator=(ObjectRefBase &&rhs) {
+    if (rhs == *this) {
+      return *this;
+    }
+
+    SubReference(id_);
+    Move(std::move(rhs));
+    return *this;
+  }
+
+  ObjectRefBase(const ObjectRefBase &rhs) { Copy(rhs); }
+
+  ObjectRefBase &operator=(const ObjectRefBase &rhs) {
+    SubReference(id_);
+    Copy(rhs);
+    return *this;
+  }
+
+  template <typename T>
+  void Copy(const T &rhs) {
+    id_ = rhs.id_;
+    owner_address_ = rhs.owner_address_;
+    AddReference(rhs.id_);
+  }
+
+  template <typename T>
+  void Move(T &&rhs) {
+    id_ = std::move(rhs.id_);
+    owner_address_ = std::move(rhs.owner_address_);
+    SubReference(rhs.id_);
+    AddReference(rhs.id_);
+  }
+
+  std::string id_;
+  std::string owner_address_;
+};
+
 /// Represents an object in the object store..
 /// \param T The type of object.
 template <typename T>
-class ObjectRef {
+class ObjectRef : public ObjectRefBase {
  public:
-  ObjectRef();
-  ~ObjectRef();
-  // Used to identify its type.
-  static bool IsObjectRef() { return true; }
+  ObjectRef() = default;
 
-  ObjectRef(ObjectRef &&rhs) {
-    SubReference(rhs.id_);
-    CopyAndAddReference(id_, rhs.id_);
-    rhs.id_ = {};
-  }
+  ObjectRef(ObjectRef &&rhs) : ObjectRefBase(std::move(rhs)) {}
 
   ObjectRef &operator=(ObjectRef &&rhs) {
-    if (rhs == *this) {
-      return *this;
-    }
-
-    SubReference(id_);
-    SubReference(rhs.id_);
-    CopyAndAddReference(id_, rhs.id_);
-    rhs.id_ = {};
+    ObjectRefBase::operator=(std::move(rhs));
     return *this;
   }
 
-  ObjectRef(const ObjectRef &rhs) { CopyAndAddReference(id_, rhs.id_); }
+  ObjectRef(const ObjectRef &rhs) : ObjectRefBase(rhs) {}
 
   ObjectRef &operator=(const ObjectRef &rhs) {
-    if (rhs == *this) {
-      return *this;
-    }
-
-    SubReference(id_);
-    CopyAndAddReference(id_, rhs.id_);
+    ObjectRefBase::operator=(rhs);
     return *this;
   }
 
-  ObjectRef(const std::string &id);
-
-  bool operator==(const ObjectRef<T> &object) const;
-
-  /// Get a untyped ID of the object
-  const std::string &ID() const;
+  ObjectRef(const std::string &id) : ObjectRefBase(id) {}
 
   /// Get the object from the object store.
   /// This method will be blocked until the object is ready.
   ///
   /// \return shared pointer of the result.
-  std::shared_ptr<T> Get() const;
+  std::shared_ptr<T> Get() const { return GetFromRuntime(*this); }
 
   /// Make ObjectRef serializable
-  MSGPACK_DEFINE(id_);
-
- private:
-  std::string id_;
+  MSGPACK_DEFINE(id_, owner_address_);
 };
 
 // ---------- implementation ----------
@@ -117,55 +156,26 @@ inline static std::shared_ptr<T> GetFromRuntime(const ObjectRef<T> &object) {
       packed_object->data(), packed_object->size());
 }
 
-template <typename T>
-ObjectRef<T>::ObjectRef() {}
-
-template <typename T>
-ObjectRef<T>::ObjectRef(const std::string &id) {
-  CopyAndAddReference(id_, id);
-}
-
-template <typename T>
-ObjectRef<T>::~ObjectRef() {
-  SubReference(id_);
-}
-
-template <typename T>
-inline bool ObjectRef<T>::operator==(const ObjectRef<T> &object) const {
-  return id_ == object.id_;
-}
-
-template <typename T>
-const std::string &ObjectRef<T>::ID() const {
-  return id_;
-}
-
-template <typename T>
-inline std::shared_ptr<T> ObjectRef<T>::Get() const {
-  return GetFromRuntime(*this);
-}
-
 template <>
-class ObjectRef<void> {
+class ObjectRef<void> : public ObjectRefBase {
  public:
   ObjectRef() = default;
-  ~ObjectRef() { SubReference(id_); }
-  // Used to identify its type.
-  static bool IsObjectRef() { return true; }
 
-  ObjectRef(const ObjectRef &rhs) { CopyAndAddReference(id_, rhs.id_); }
+  ObjectRef(ObjectRef &&rhs) : ObjectRefBase(std::move(rhs)) {}
 
-  ObjectRef &operator=(const ObjectRef &rhs) {
-    CopyAndAddReference(id_, rhs.id_);
+  ObjectRef &operator=(ObjectRef &&rhs) {
+    ObjectRefBase::operator=(std::move(rhs));
     return *this;
   }
 
-  ObjectRef(const std::string &id) { CopyAndAddReference(id_, id); }
+  ObjectRef(const ObjectRef &rhs) : ObjectRefBase(rhs) {}
 
-  bool operator==(const ObjectRef<void> &object) const { return id_ == object.id_; }
+  ObjectRef &operator=(const ObjectRef &rhs) {
+    ObjectRefBase::operator=(rhs);
+    return *this;
+  }
 
-  /// Get a untyped ID of the object
-  const std::string &ID() const { return id_; }
+  ObjectRef(const std::string &id) : ObjectRefBase(id) {}
 
   /// Get the object from the object store.
   /// This method will be blocked until the object is ready.
@@ -177,10 +187,7 @@ class ObjectRef<void> {
   }
 
   /// Make ObjectRef serializable
-  MSGPACK_DEFINE(id_);
-
- private:
-  std::string id_;
+  MSGPACK_DEFINE(id_, owner_address_);
 };
 
 }  // namespace ray

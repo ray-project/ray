@@ -22,5 +22,12 @@ std::string GetVal(ray::ObjectRef<std::string> obj) { return *obj.Get(); }
 int Add(ray::ObjectRef<int> obj1, ray::ObjectRef<int> obj2) {
   return *obj1.Get() + *obj2.Get();
 }
+int GetList(std::vector<ray::ObjectRef<int>> list) {
+  int result = 0;
+  for (auto &val : list) {
+    result += *val.Get();
+  }
+  return result;
+}
 
-RAY_REMOTE(Return1, Plus1, Plus, ThrowTask, GetVal, Add);
+RAY_REMOTE(Return1, Plus1, Plus, ThrowTask, GetVal, Add, GetList);

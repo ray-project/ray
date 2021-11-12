@@ -115,35 +115,6 @@ std::vector<bool> AbstractRayRuntime::Wait(const std::vector<std::string> &ids,
   return object_store_->Wait(StringIDsToObjectIDs(ids), num_objects, timeout_ms);
 }
 
-rpc::Address GetOwnershipInfo(const std::string &object_id_str) {
-  if (ConfigInternal::Instance().run_mode == RunMode::SINGLE_PROCESS) {
-    return {};
-  }
-  ray::internal::outer_object_id = object_id_str;
-  auto object_id = ray::ObjectID::FromBinary(object_id_str);
-  rpc::Address address;
-  std::string serialized_object_status;
-  CoreWorkerProcess::GetCoreWorker().GetOwnershipInfo(object_id, &address,
-                                                      &serialized_object_status);
-  return address;
-}
-
-void RegisterOwnershipInfoAndResolveFuture(const std::string &object_id_str,
-                                           const std::string &outer_object_id,
-                                           const rpc::Address &owner_addr) {
-  ray::ObjectID object_id = ray::ObjectID::FromBinary(object_id_str);
-  auto outer_objectId = ray::ObjectID::Nil();
-  if (!outer_object_id.empty()) {
-    outer_objectId = ray::ObjectID::FromBinary(outer_object_id);
-  }
-
-  rpc::GetObjectStatusReply object_status;
-  auto serialized_status = object_status.SerializeAsString();
-  CoreWorkerProcess::GetCoreWorker().RegisterOwnershipInfoAndResolveFuture(
-      object_id, outer_objectId, owner_addr, serialized_status);
-  ray::internal::outer_object_id = "";
-}
-
 std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
     std::vector<ray::internal::TaskArg> &args) {
   std::vector<std::unique_ptr<::ray::TaskArg>> ray_args;
@@ -157,9 +128,10 @@ std::vector<std::unique_ptr<::ray::TaskArg>> TransformArgs(
           memory_buffer, nullptr, std::vector<rpc::ObjectReference>()));
     } else {
       RAY_CHECK(arg.id);
-      ray_arg = absl::make_unique<ray::TaskArgByReference>(ObjectID::FromBinary(*arg.id),
-                                                           GetOwnershipInfo(*arg.id),
-                                                           /*call_site=*/"");
+      ray_arg = absl::make_unique<ray::TaskArgByReference>(
+          ObjectID::FromBinary(*arg.id),
+          AbstractRayRuntime::GetInstance()->GetOwnershipInfoInternal(*arg.id),
+          /*call_site=*/"");
     }
     ray_args.push_back(std::move(ray_arg));
   }
@@ -343,6 +315,52 @@ PlacementGroup AbstractRayRuntime::GetPlacementGroup(const std::string &name,
   }
   PlacementGroup group = GeneratePlacementGroup(*str_ptr);
   return group;
+}
+
+std::string AbstractRayRuntime::GetOwnershipInfo(const std::string &object_id_str) {
+  auto address = GetOwnershipInfoInternal(object_id_str);
+  return address.SerializeAsString();
+}
+
+rpc::Address AbstractRayRuntime::GetOwnershipInfoInternal(
+    const std::string &object_id_str) {
+  if (ConfigInternal::Instance().run_mode == RunMode::SINGLE_PROCESS) {
+    return {};
+  }
+
+  auto object_id = ray::ObjectID::FromBinary(object_id_str);
+  rpc::Address address;
+  std::string serialized_object_status;
+  CoreWorkerProcess::GetCoreWorker().GetOwnershipInfo(object_id, &address,
+                                                      &serialized_object_status);
+  return address;
+}
+
+void AbstractRayRuntime::RegisterOwnershipInfoAndResolveFuture(
+    const std::string &object_id_str, const std::string &outer_object_id,
+    const std::string &owner_addr) {
+  rpc::Address address;
+  address.ParseFromString(owner_addr);
+  RegisterOwnershipInfoAndResolveFutureInternal(object_id_str, outer_object_id, address);
+}
+
+void AbstractRayRuntime::RegisterOwnershipInfoAndResolveFutureInternal(
+    const std::string &object_id_str, const std::string &outer_object_id,
+    const rpc::Address &owner_addr) {
+  if (ConfigInternal::Instance().run_mode == RunMode::SINGLE_PROCESS) {
+    return;
+  }
+
+  ray::ObjectID object_id = ray::ObjectID::FromBinary(object_id_str);
+  auto outer_objectId = ray::ObjectID::Nil();
+  if (!outer_object_id.empty()) {
+    outer_objectId = ray::ObjectID::FromBinary(outer_object_id);
+  }
+
+  rpc::GetObjectStatusReply object_status;
+  auto serialized_status = object_status.SerializeAsString();
+  CoreWorkerProcess::GetCoreWorker().RegisterOwnershipInfoAndResolveFuture(
+      object_id, outer_objectId, owner_addr, serialized_status);
 }
 
 }  // namespace internal
