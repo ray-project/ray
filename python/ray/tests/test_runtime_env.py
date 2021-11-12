@@ -293,6 +293,9 @@ def test_runtime_env_rescheduling(shutdown_only):
         def get_node_name(self):
             return os.environ["NODE_NAME"]
 
+        def kill(self):
+            os._exit(0)
+
     @ray.remote
     def get_node_name():
         return os.environ["NODE_NAME"]
@@ -307,13 +310,51 @@ def test_runtime_env_rescheduling(shutdown_only):
     cluster.connect()
 
     # test task
-    node_name = ray.get(
-        get_node_name.options(runtime_env=runtime_env).remote())
-    assert node_name == "2"
+    for i in range(10):
+        node_name = ray.get(
+            get_node_name.options(runtime_env=runtime_env).remote())
+        assert node_name == "2"
     # test actor
-    a = A.options(runtime_env=runtime_env).remote()
-    node_name = ray.get(a.get_node_name.remote())
-    assert node_name == "2"
+    for i in range(10):
+        a = A.options(runtime_env=runtime_env).remote()
+        node_name = ray.get(a.get_node_name.remote())
+        assert node_name == "2"
+        a.kill.remote()
+
+
+def test_runtime_env_fail_when_no_node_left(shutdown_only):
+    @ray.remote
+    class A:
+        def get_node_name(self):
+            return os.environ["NODE_NAME"]
+
+        def kill(self):
+            os._exit(0)
+
+    @ray.remote
+    def get_node_name():
+        return os.environ["NODE_NAME"]
+
+    runtime_env = {"env_vars": {"TF_WARNINGS": "none"}}
+    # Runtime env setup will fail at node1, and retry at node2
+    os.environ["_RAY_RUNTIME_ENV_FAIL_AT_NODE_NAME"] = "1"
+
+    cluster = Cluster()
+    cluster.add_node(env_vars={"NODE_NAME": "1"})
+    cluster.connect()
+    # If no other node left, task will fail regardless of retry time
+
+    # test task
+    for i in range(10):
+        with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+            ray.get(get_node_name.options(runtime_env=runtime_env).remote())
+
+    # test actor
+    for i in range(10):
+        a = A.options(runtime_env=runtime_env).remote()
+        # TODO(lixin): Raise a RuntimeEnvSetupError with proper error.
+        with pytest.raises(ray.exceptions.RayActorError):
+            ray.get(a.get_node_name.remote())
 
 
 if __name__ == "__main__":
