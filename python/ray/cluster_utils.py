@@ -336,4 +336,4 @@ def get_job_submission_client_cluster_info(
             ClusterInfo object consisting of address, cookies, and metadata
             for JobSubmissionClient to use.
         """
-    return ClusterInfo("http://" + address, None, {})
+    return ClusterInfo(address="http://" + address, cookies=None, metadata={})
