@@ -844,6 +844,11 @@ class Deployment:
         Only those options passed in will be updated, all others will remain
         unchanged from the existing deployment.
         """
+        # Wait all in_flight_queries finished before reconfiguration
+        handle = self.get_handle(sync=True)
+        queries = handle.router.get_in_flight_queries()
+        ray.wait(queries)
+
         new_config = self._config.copy()
         if num_replicas is not None:
             new_config.num_replicas = num_replicas
