@@ -42,11 +42,10 @@ class Protocol(Enum):
     GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
     CONDA = "conda", "For conda environments installed locally on each node."
-    HTTPS = "https", \
-        "Remote https path, assumes everything packed in one zip file."
-    GS = "gs", \
-        "Remote google storage path, " + \
-        "assumes everything packed in one zip file."
+    HTTPS = "https", ("Remote https path, "
+                      "assumes everything packed in one zip file.")
+    GS = "gs", ("Remote google storage path, "
+                "assumes everything packed in one zip file.")
 
     @classmethod
     def remote_protocols(cls):
@@ -431,35 +430,33 @@ def download_and_unpack_package(
                     raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
                 code = code or b""
                 pkg_file.write_bytes(code)
-                unzip_package(pkg_file, local_dir, False, True, logger)
-            elif protocol == Protocol.S3:
-                # Download package from S3.
-                try:
-                    from smart_open import open
-                    import boto3
-                except ImportError:
-                    raise ImportError(
-                        "You must `pip install smart_open` and "
-                        "`pip install boto3` to fetch URIs in s3 "
-                        "bucket.")
+                unzip_package(package_path=pkg_file, target_dir=local_dir, remove_top_level_directory=False, unlink_zip=True, logger=logger)
+            elif protocol in Protocol.remote_protocols():
+                # Download package from remote URI
+                tp = None
 
-                tp = {"client": boto3.client("s3")}
+                if protocol == Protocol.S3:
+                    try:
+                        from smart_open import open
+                        import boto3
+                    except ImportError:
+                        raise ImportError(
+                            "You must `pip install smart_open` and "
+                            "`pip install boto3` to fetch URIs in s3 "
+                            "bucket.")
+                    tp = {"client": boto3.client("s3")}
+                else:
+                    try:
+                        from smart_open import open
+                    except ImportError:
+                        raise ImportError(
+                            "You must `pip install smart_open` "
+                            f"to fetch {protocol.value.upper()} URIs.")
+
                 with open(pkg_uri, "rb", transport_params=tp) as package_zip:
                     with open(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
-                unzip_package(pkg_file, local_dir, True, True, logger)
-            elif protocol == Protocol.GS or protocol == Protocol.HTTPS:
-                # Download package via GS or HTTPS.
-                try:
-                    from smart_open import open
-                except ImportError:
-                    raise ImportError(
-                        "You must `pip install smart_open` "
-                        f"to fetch {protocol.value.upper()} URIs.")
-                with open(pkg_uri, "rb") as package_zip:
-                    with open(pkg_file, "wb") as fin:
-                        fin.write(package_zip.read())
-                unzip_package(pkg_file, local_dir, True, True, logger)
+                unzip_package(package_path=pkg_file, target_dir=local_dir, remove_top_level_directory=True, unlink_zip=True, logger=logger)
             else:
                 raise NotImplementedError(
                     f"Protocol {protocol} is not supported")
