@@ -1391,7 +1391,7 @@ std::string ClusterTaskManager::GetBestSchedulableNode(const internal::Work &wor
                                                        bool *is_infeasible) {
   // If the local node is available, we should directly return it instead of
   // going through the full hybrid policy since we don't want spillback.
-  if (work.grant_or_reject && IsLocallySchedulable(work.task)) {
+  if (work.grant_or_reject && !force_spillback && IsLocallySchedulable(work.task)) {
     *is_infeasible = false;
     return self_node_id_.Binary();
   }
