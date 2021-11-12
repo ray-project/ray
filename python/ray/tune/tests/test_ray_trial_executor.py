@@ -459,10 +459,10 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
             [{
                 "custom": 7,
                 "GPU": 4,
-                "CPU": 2,
+                "CPU": 2.0,
                 "custom2": 0
             }, {
-                "custom": 1,
+                "custom": 1.0,
                 "GPU": 2,
                 "CPU": 3,
                 "custom2": 0
