@@ -112,17 +112,6 @@ class ActorReplicaWrapper:
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
 
-    def __getstate__(self) -> Dict[Any, Any]:
-        clean_dict = self.__dict__.copy()
-        del clean_dict["_ready_obj_ref"]
-        del clean_dict["_graceful_shutdown_ref"]
-        return clean_dict
-
-    def __setstate__(self, d: Dict[Any, Any]) -> None:
-        self.__dict__ = d
-        self._ready_obj_ref = None
-        self._graceful_shutdown_ref = None
-
     @property
     def replica_tag(self) -> str:
         return self._replica_tag
@@ -373,12 +362,6 @@ class DeploymentReplica(VersionedReplica):
         self._version = version
         self._start_time = None
         self._prev_slow_startup_warning_time = None
-
-    def __getstate__(self) -> Dict[Any, Any]:
-        return self.__dict__.copy()
-
-    def __setstate__(self, d: Dict[Any, Any]) -> None:
-        self.__dict__ = d
 
     def get_running_replica_info(self) -> RunningReplicaInfo:
         return RunningReplicaInfo(
