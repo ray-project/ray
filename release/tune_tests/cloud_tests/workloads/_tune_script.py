@@ -40,21 +40,15 @@ class IndicatorCallback(tune.Callback):
 
 
 def run_tune(
-        sync_to_driver: bool,
+        no_syncer: bool,
         upload_dir: Optional[str] = None,
-        durable: bool = False,
         experiment_name: str = "cloud_test",
         indicator_file: str = "/tmp/tune_cloud_indicator",
 ):
     num_cpus_per_trial = int(os.environ.get("TUNE_NUM_CPUS_PER_TRIAL", "2"))
 
-    if durable:
-        trainable = tune.durable(train)
-    else:
-        trainable = train
-
     tune.run(
-        trainable,
+        train,
         name=experiment_name,
         resume="AUTO",
         num_samples=4,
@@ -65,10 +59,10 @@ def run_tune(
             "score_multiplied": tune.randint(0, 100),
         },
         sync_config=tune.SyncConfig(
-            sync_to_driver=sync_to_driver,
+            syncer="auto" if not no_syncer else None,
             upload_dir=upload_dir,
             sync_on_checkpoint=True,
-            cloud_sync_period=0.5,
+            sync_period=0.5,
         ),
         keep_checkpoints_num=2,
         resources_per_trial={"cpu": num_cpus_per_trial},
@@ -79,11 +73,9 @@ def run_tune(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--sync-to-driver", action="store_true", default=False)
+    parser.add_argument("--no-syncer", action="store_true", default=False)
 
     parser.add_argument("--upload-dir", required=False, default=None, type=str)
-
-    parser.add_argument("--durable", action="store_true", default=False)
 
     parser.add_argument(
         "--experiment-name", required=False, default=None, type=str)
@@ -97,9 +89,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     run_kwargs = dict(
-        sync_to_driver=args.sync_to_driver or False,
+        no_syncer=args.no_syncer or False,
         upload_dir=args.upload_dir or None,
-        durable=args.durable or False,
         experiment_name=args.experiment_name or "cloud_test",
         indicator_file=args.indicator_file,
     )
