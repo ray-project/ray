@@ -26,7 +26,7 @@ from ray.tune.trial_runner import (find_newest_experiment_checkpoint,
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, Deprecated
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,50 @@ class ExperimentAnalysis:
         experiment_checkpoint_path = os.path.expanduser(
             experiment_checkpoint_path)
 
+        latest_checkpoint = self._get_latest_checkpoint(
+            experiment_checkpoint_path)
+
+        self._experiment_states = []
+        for path in latest_checkpoint:
+            with open(path) as f:
+                _experiment_states = json.load(f, cls=TuneFunctionDecoder)
+                self._experiment_states.append(_experiment_states)
+
+        self._checkpoints = []
+        for experiment_state in self._experiment_states:
+            if "checkpoints" not in experiment_state:
+                raise TuneError(
+                    "Experiment state invalid; no checkpoints found.")
+            self._checkpoints += [
+                json.loads(cp, cls=TuneFunctionDecoder)
+                if isinstance(cp, str) else cp
+                for cp in experiment_state["checkpoints"]
+            ]
+        self.trials = trials
+
+        self._configs = {}
+        self._trial_dataframes = {}
+
+        self.default_metric = default_metric
+        if default_mode and default_mode not in ["min", "max"]:
+            raise ValueError(
+                "`default_mode` has to be None or one of [min, max]")
+        self.default_mode = default_mode
+        self._file_type = self._validate_filetype(None)
+
+        if self.default_metric is None and self.default_mode:
+            # If only a mode was passed, use anonymous metric
+            self.default_metric = DEFAULT_METRIC
+
+        if not pd:
+            logger.warning(
+                "pandas not installed. Run `pip install pandas` for "
+                "ExperimentAnalysis utilities.")
+        else:
+            self.fetch_trial_dataframes()
+
+    def _get_latest_checkpoint(self,
+                               experiment_checkpoint_path: str) -> List[str]:
         if os.path.isdir(experiment_checkpoint_path):
             # Case 1: Dir specified, find latest checkpoint.
             latest_checkpoint = find_newest_experiment_checkpoint(
@@ -92,57 +136,9 @@ class ExperimentAnalysis:
         else:
             # Case 3: File specified, use as latest checkpoint.
             latest_checkpoint = experiment_checkpoint_path
-
         if not isinstance(latest_checkpoint, list):
             latest_checkpoint = [latest_checkpoint]
-
-        self._experiment_states = []
-        for path in latest_checkpoint:
-            with open(path) as f:
-                _experiment_states = json.load(f, cls=TuneFunctionDecoder)
-                self._experiment_states.append(_experiment_states)
-
-        self._checkpoints = []
-        for experiment_state in self._experiment_states:
-            if "checkpoints" not in experiment_state:
-                raise TuneError(
-                    "Experiment state invalid; no checkpoints found.")
-            self._checkpoints += [
-                json.loads(cp, cls=TuneFunctionDecoder)
-                if isinstance(cp, str) else cp
-                for cp in experiment_state["checkpoints"]
-            ]
-        self.trials = trials
-
-        # Use current dir per default
-        # experiment_dir = os.path.dirname(
-        #     os.path.abspath(latest_checkpoint)) or os.getcwd()
-
-        # experiment_dir = os.path.expanduser(experiment_dir)
-        # if not os.path.isdir(experiment_dir):
-        #     raise ValueError(
-        #         "{} is not a valid directory.".format(experiment_dir))
-        # self._experiment_dir = experiment_dir
-        self._configs = {}
-        self._trial_dataframes = {}
-
-        self.default_metric = default_metric
-        if default_mode and default_mode not in ["min", "max"]:
-            raise ValueError(
-                "`default_mode` has to be None or one of [min, max]")
-        self.default_mode = default_mode
-        self._file_type = self._validate_filetype(None)
-
-        if self.default_metric is None and self.default_mode:
-            # If only a mode was passed, use anonymous metric
-            self.default_metric = DEFAULT_METRIC
-
-        if not pd:
-            logger.warning(
-                "pandas not installed. Run `pip install pandas` for "
-                "ExperimentAnalysis utilities.")
-        else:
-            self.fetch_trial_dataframes()
+        return latest_checkpoint
 
     @property
     def best_trial(self) -> Trial:
@@ -741,3 +737,13 @@ class ExperimentAnalysis:
                     format(path))
 
         return rows
+
+
+@Deprecated
+class Analysis(ExperimentAnalysis):
+    def __init__(self, *args, **kwargs):
+        if log_once("durable_deprecated"):
+            logger.warning(
+                "DeprecationWarning: The `Analysis` class is being "
+                "deprecated. Please use `ExperimentAnalysis` instead.")
+        super().__init__(*args, **kwargs)
