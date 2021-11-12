@@ -199,6 +199,8 @@ def prepare(model: torch.nn.Module,
             ``DistributedDataParallel`` initialization if ``wrap_ddp`` is
             set to True.
     """
+    ddp_kwargs = ddp_kwargs or {}
+
     rank = train.local_rank()
 
     device = get_device()
