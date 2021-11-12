@@ -82,7 +82,7 @@ werkzeug
 xlrd
 starlette
 fastapi
-smart_open[s3]
+smart_open[all]
 tqdm
 async-exit-stack
 async-generator
