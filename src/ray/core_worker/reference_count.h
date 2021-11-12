@@ -469,6 +469,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] min_bytes_to_evict The minimum number of bytes to evict.
   int64_t EvictLineage(int64_t min_bytes_to_evict);
 
+  /// Release all local references which registered on this local.
+  void ReleaseAllLocalReferences();
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
@@ -792,6 +795,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void CleanupBorrowersOnRefRemoved(const ReferenceTable &new_borrower_refs,
                                     const ObjectID &object_id,
                                     const rpc::WorkerAddress &borrower_addr);
+
+  /// Decrease the local reference count for the ObjectID by one.
+  /// This method is internal and not thread-safe. mutex_ lock must be held before
+  /// calling this method.
+  void RemoveLocalReferenceInternal(const ObjectID &object_id,
+                                    std::vector<ObjectID> *deleted)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the

@@ -90,7 +90,7 @@ if __name__ == "__main__":
         # should be wrapped in a task so it will execute on the server.
         # We have to make sure it gets executed on the same node that
         # ``tune.run`` is called on.
-        from ray.tune.utils import force_on_current_node
+        from ray.util.ml_utils.node import force_on_current_node
         remote_fn = force_on_current_node(
             ray.remote(get_best_model_checkpoint))
         best_bst = ray.get(remote_fn.remote(analysis))
