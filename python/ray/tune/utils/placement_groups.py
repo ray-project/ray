@@ -1,9 +1,10 @@
+from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple
 from collections import defaultdict
 from inspect import signature
+from copy import deepcopy
 import json
 import os
 import time
-from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple
 import uuid
 
 import ray
@@ -108,8 +109,9 @@ class PlacementGroupFactory:
                  strategy: str = "PACK",
                  *args,
                  **kwargs):
-        self._bundles = [{k: v
-                          for k, v in bundle.items()} for bundle in bundles]
+        self._bundles = [{k: float(v)
+                          for k, v in bundle.items() if v != 0}
+                         for bundle in bundles]
         self._strategy = strategy
         self._args = args
         self._kwargs = kwargs
@@ -120,20 +122,19 @@ class PlacementGroupFactory:
         self._bind()
 
     @property
-    def _clean_bundles(self):
-        return [{k: float(v)
-                 for k, v in bundle.items() if v != 0}
-                for bundle in self._bundles]
+    def head_cpus(self) -> Optional[float]:
+        return self._bundles[0].get("CPU", None)
 
     @property
-    def head_cpus(self):
-        return self._clean_bundles[0].get("CPU", None)
+    def bundles(self) -> List[Dict[str, float]]:
+        """Returns a deep copy of resource bundles"""
+        return deepcopy(self._bundles)
 
     @property
     def required_resources(self) -> Dict[str, float]:
         """Returns a dict containing the sums of all resources"""
         resources = {}
-        for bundle in self._clean_bundles:
+        for bundle in self._bundles:
             for k, v in bundle.items():
                 resources[k] = resources.get(k, 0) + v
         return resources
@@ -141,8 +142,8 @@ class PlacementGroupFactory:
     def _bind(self):
         sig = signature(placement_group)
         try:
-            self._bound = sig.bind(self._clean_bundles, self._strategy,
-                                   *self._args, **self._kwargs)
+            self._bound = sig.bind(self._bundles, self._strategy, *self._args,
+                                   **self._kwargs)
         except Exception as exc:
             raise RuntimeError(
                 "Invalid definition for placement group factory. Please check "
