@@ -443,3 +443,13 @@ def ray_start_chaos_cluster(request):
     cluster.shutdown()
     del os.environ["RAY_num_heartbeats_timeout"]
     del os.environ["RAY_raylet_heartbeat_period_milliseconds"]
+
+
+@pytest.fixture
+def set_env_vars(request):
+    param = getattr(request, "param", {})
+    for k, v in param.items():
+        os.environ[k] = v
+    yield
+    for k in param:
+        del os.environ[k]

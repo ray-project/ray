@@ -223,7 +223,7 @@ def run(ray_address=None,
     is_multi_node = num_nodes
     if ray_address:
         print("Connecting to a existing cluster...")
-        ray.init(address=ray_address)
+        ray.init(address=ray_address, ignore_reinit_error=True)
     elif is_multi_node:
         print("Emulating a cluster...")
         print(f"Num nodes: {num_nodes}")

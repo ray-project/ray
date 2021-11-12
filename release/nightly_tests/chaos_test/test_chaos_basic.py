@@ -10,8 +10,7 @@ import numpy as np
 import ray
 
 from ray.data.impl.progress_bar import ProgressBar
-from ray._private.test_utils import (monitor_memory_usage, wait_for_condition,
-                                     get_and_run_node_killer)
+from ray._private.test_utils import (monitor_memory_usage, wait_for_condition)
 
 
 def run_task_workload(total_num_cpus, smoke):
@@ -198,10 +197,9 @@ def main():
 
     # Step 3
     print("Running with failures")
-    node_killer = get_and_run_node_killer(
-        node_kill_interval_s=args.node_kill_interval)
     start = time.time()
     workload(total_num_cpus, args.smoke)
+    node_killer = ray.get_actor("node_killer", namespace="release_test_namespace")
     print(f"Runtime when there are many failures: {time.time() - start}")
     print(f"Total node failures: "
           f"{ray.get(node_killer.get_total_killed_nodes.remote())}")

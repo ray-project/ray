@@ -9,6 +9,7 @@ import pytest
 import time
 
 from ray.data.impl.progress_bar import ProgressBar
+from ray.experimental import shuffle
 from ray._private.test_utils import get_all_log_message
 
 
@@ -31,11 +32,11 @@ def assert_no_system_failure(p, total_lines, timeout):
         "worker_node_types": {
             "cpu_node": {
                 "resources": {
-                    "CPU": 8,
+                    "CPU": 4,
                 },
                 "node_config": {},
                 "min_workers": 0,
-                "max_workers": 4,
+                "max_workers": 3,
             },
         },
     }],
@@ -58,7 +59,7 @@ def test_chaos_task_retry(ray_start_chaos_cluster):
         return ray.get(task.remote())
 
     # 50MB of return values.
-    TOTAL_TASKS = 300
+    TOTAL_TASKS = 100
 
     pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS)
     results = [invoke_nested_task.remote() for _ in range(TOTAL_TASKS)]
@@ -82,7 +83,7 @@ def test_chaos_task_retry(ray_start_chaos_cluster):
         "worker_node_types": {
             "cpu_node": {
                 "resources": {
-                    "CPU": 8,
+                    "CPU": 4,
                 },
                 "node_config": {},
                 "min_workers": 0,
@@ -106,7 +107,7 @@ def test_chaos_actor_retry(ray_start_chaos_cluster, log_pubsub):
         def get(self):
             return self.letter_dict
 
-    NUM_CPUS = 32
+    NUM_CPUS = 16
     TOTAL_TASKS = 300
 
     pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS * NUM_CPUS)
@@ -123,6 +124,35 @@ def test_chaos_actor_retry(ray_start_chaos_cluster, log_pubsub):
     # TODO(sang): Currently, there are lots of SIGBART with
     # plasma client failures. Fix it.
     # assert_no_system_failure(p, 10000, 10)
+
+
+@pytest.mark.skip(reason="Now working yet.")
+@pytest.mark.parametrize(
+    "set_env_vars", [{
+        "RAY_lineage_pinning_enabled": "1"
+    }],
+    indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_chaos_cluster", [{
+        "kill_interval": 8,
+        "head_resources": {
+            "CPU": 1
+        },
+        "worker_node_types": {
+            "cpu_node": {
+                "resources": {
+                    "CPU": 8,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 4,
+            },
+        },
+    }],
+    indirect=True)
+def test_chaos_lineage_reconstruction(
+        set_env_vars, ray_start_chaos_cluster):
+    shuffle.run(ray_address="auto", no_streaming=True, num_partitions=200, partition_size=15e6)
 
 
 if __name__ == "__main__":
