@@ -69,6 +69,7 @@ class BuildType(Enum):
     DEFAULT = 1
     DEBUG = 2
     ASAN = 3
+    TSAN = 4
 
 
 class SetupSpec:
@@ -82,6 +83,8 @@ class SetupSpec:
             self.version: str = f"{version}+dbg"
         elif build_type == BuildType.ASAN:
             self.version: str = f"{version}+asan"
+        elif build_type == BuildType.TSAN:
+            self.version: str = f"{version}+tsan"
         else:
             self.version = version
         self.description: str = description
@@ -102,6 +105,8 @@ if build_type == "debug":
     BUILD_TYPE = BuildType.DEBUG
 elif build_type == "asan":
     BUILD_TYPE = BuildType.ASAN
+elif build_type == "tsan":
+    BUILD_TYPE = BuildType.TSAN
 else:
     BUILD_TYPE = BuildType.DEFAULT
 
@@ -162,6 +167,8 @@ ray_files.append("ray/nightly-wheels.yaml")
 # Autoscaler files.
 ray_files += [
     "ray/autoscaler/aws/defaults.yaml",
+    "ray/autoscaler/aws/cloudwatch/prometheus.yml",
+    "ray/autoscaler/aws/cloudwatch/ray_prometheus_waiter.sh",
     "ray/autoscaler/azure/defaults.yaml",
     "ray/autoscaler/_private/_azure/azure-vm-template.json",
     "ray/autoscaler/_private/_azure/azure-config-template.json",
@@ -191,10 +198,12 @@ if setup_spec.type == SetupType.RAY:
             "fsspec",
         ],
         "default": [
-            "aiohttp == 3.7",
+            "aiohttp >= 3.7",
+            "aiosignal",
             "aiohttp_cors",
             "aioredis < 2",
             "colorful",
+            "frozenlist",
             "py-spy >= 0.2.0",
             "requests",
             "gpustat >= 1.0.0b1",  # for windows
@@ -509,6 +518,8 @@ def build(build_python, build_java, build_cpp):
         bazel_flags.extend(["--config", "debug"])
     if setup_spec.build_type == BuildType.ASAN:
         bazel_flags.extend(["--config=asan-build"])
+    if setup_spec.build_type == BuildType.TSAN:
+        bazel_flags.extend(["--config=tsan"])
 
     return bazel_invoke(
         subprocess.check_call,

@@ -35,6 +35,7 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. code-block:: bash
 
+  pip uninstall -y ray # clean removal of previous install, otherwise version number may cause pip not to upgrade
   pip install -U LINK_TO_WHEEL.whl  # minimal install
 
   # To install Ray with support for the dashboard + cluster launcher, run
@@ -53,6 +54,11 @@ You can install the nightly Ray wheels via the following links. These daily rele
 .. note::
 
   Python 3.9 support is currently experimental.
+
+.. note::
+
+  On Windows, support for multi-node Ray clusters is currently experimental and untested.
+  If you run into issues please file a report at https://github.com/ray-project/ray/issues.
 
 .. _`Linux Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
 .. _`Linux Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl

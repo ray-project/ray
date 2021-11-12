@@ -8,7 +8,6 @@ import shutil
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
 from zipfile import ZipFile
-
 from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists)
 from ray._private.thirdparty.pathspec import PathSpec
@@ -41,6 +40,7 @@ class Protocol(Enum):
 
     GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
+    CONDA = "conda", "For conda environments installed locally on each node."
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:

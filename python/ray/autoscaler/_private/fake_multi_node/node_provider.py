@@ -107,6 +107,9 @@ class FakeMultiNodeProvider(NodeProvider):
 
     def terminate_node(self, node_id):
         node = self._nodes.pop(node_id)["node"]
+        self._kill_ray_processes(node)
+
+    def _kill_ray_processes(self, node):
         node.kill_all_processes(check_alive=False, allow_graceful=True)
 
     @staticmethod

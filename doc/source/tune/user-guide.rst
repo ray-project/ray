@@ -445,7 +445,7 @@ On a multinode cluster, Tune automatically creates a copy of all trial checkpoin
 Note that you must use the ``tune.checkpoint_dir`` API to trigger syncing (or use a model type with a built-in Ray Tune integration as described here). See :doc:`/tune/examples/custom_func_checkpointing` for an example.
 
 If you are running Ray Tune on Kubernetes, you should usually use a
-:func:`DurableTrainable <ray.tune.durable>` or a shared filesystem for checkpoint sharing.
+:ref:`cloud checkpointing <tune-sync-config>` or a shared filesystem for checkpoint sharing.
 Please :ref:`see here for best practices for running Tune on Kubernetes <tune-kubernetes>`.
 
 If you do not use the cluster launcher, you should set up a NFS or global file system and
@@ -453,7 +453,7 @@ disable cross-node syncing:
 
 .. code-block:: python
 
-    sync_config = tune.SyncConfig(sync_to_driver=False)
+    sync_config = tune.SyncConfig(syncer=None)
     tune.run(func, sync_config=sync_config)
 
 
@@ -721,7 +721,7 @@ If an upload directory is provided, Tune will automatically sync results from th
         sync_config=tune.SyncConfig(upload_dir="s3://my-log-dir")
     )
 
-You can customize this to specify arbitrary storages with the ``sync_to_cloud`` argument in ``tune.SyncConfig``. This argument supports either strings with the same replacement fields OR arbitrary functions.
+You can customize this to specify arbitrary storages with the ``syncer`` argument in ``tune.SyncConfig``. This argument supports either strings with the same replacement fields OR arbitrary functions.
 
 .. code-block:: python
 
@@ -729,7 +729,7 @@ You can customize this to specify arbitrary storages with the ``sync_to_cloud`` 
         MyTrainableClass,
         sync_config=tune.SyncConfig(
             upload_dir="s3://my-log-dir",
-            sync_to_cloud=custom_sync_str_or_func
+            syncer=custom_sync_str_or_func
         )
     )
 
@@ -761,13 +761,13 @@ containers as needed.
 
 To make this work in your Docker cluster, e.g. when you are using the Ray autoscaler
 with docker containers, you will need to pass a
-``DockerSyncer`` to the ``sync_to_driver`` argument of ``tune.SyncConfig``.
+``DockerSyncer`` to the ``syncer`` argument of ``tune.SyncConfig``.
 
 .. code-block:: python
 
     from ray.tune.integration.docker import DockerSyncer
     sync_config = tune.SyncConfig(
-        sync_to_driver=DockerSyncer)
+        syncer=DockerSyncer)
 
     tune.run(train, sync_config=sync_config)
 
@@ -783,7 +783,7 @@ especially when running many trials in parallel.
 Instead you should use shared storage for checkpoints so that no additional synchronization across nodes
 is necessary. There are two main options.
 
-First, you can use a :func:`DurableTrainable <ray.tune.durable>` to store your
+First, you can use the :ref:`SyncConfig <tune-sync-config>` to store your
 logs and checkpoints on cloud storage, such as AWS S3 or Google Cloud Storage:
 
 .. code-block:: python
@@ -794,7 +794,6 @@ logs and checkpoints on cloud storage, such as AWS S3 or Google Cloud Storage:
         tune.durable(train_fn),
         # ...,
         sync_config=tune.SyncConfig(
-            sync_to_driver=False,
             upload_dir="s3://your-s3-bucket/durable-trial/"
         )
     )
@@ -810,22 +809,22 @@ Second, you can set up a shared file system like NFS. If you do this, disable au
         # ...,
         local_dir="/path/to/shared/storage",
         sync_config=tune.SyncConfig(
-            # Do not sync to driver because we are on shared storage
-            sync_to_driver=False
+            # Do not sync because we are on shared storage
+            syncer=None
         )
     )
 
 
 Lastly, if you still want to use ssh for trial synchronization, but are not running
 on the Ray cluster launcher, you might need to pass a
-``KubernetesSyncer`` to the ``sync_to_driver`` argument of ``tune.SyncConfig``.
+``KubernetesSyncer`` to the ``syncer`` argument of ``tune.SyncConfig``.
 You have to specify your Kubernetes namespace explicitly:
 
 .. code-block:: python
 
     from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
     sync_config = tune.SyncConfig(
-        sync_to_driver=NamespacedKubernetesSyncer("ray")
+        syncer=NamespacedKubernetesSyncer("ray")
     )
 
     tune.run(train, sync_config=sync_config)

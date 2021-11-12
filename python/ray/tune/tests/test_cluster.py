@@ -235,8 +235,10 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
         },
         "checkpoint_freq": 2,
         "max_failures": 2,
-        "remote_checkpoint_dir": MOCK_REMOTE_DIR,
     }
+
+    if trainable_id == "__fake_durable":
+        kwargs["remote_checkpoint_dir"] = MOCK_REMOTE_DIR
 
     # Test recovery of trial that hasn't been checkpointed
     t = Trial(trainable_id, **kwargs)
@@ -287,8 +289,11 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
         "stopping_criterion": {
             "training_iteration": 3
         },
-        "remote_checkpoint_dir": MOCK_REMOTE_DIR,
     }
+
+    if trainable_id == "__fake_durable":
+        kwargs["remote_checkpoint_dir"] = MOCK_REMOTE_DIR
+
     t3 = Trial(trainable_id, **kwargs)
     runner.add_trial(t3)
     runner.step()  # Start trial
@@ -328,8 +333,10 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id,
         },
         "checkpoint_freq": 1,
         "max_failures": 1,
-        "remote_checkpoint_dir": MOCK_REMOTE_DIR,
     }
+
+    if trainable_id == "__fake_durable":
+        kwargs["remote_checkpoint_dir"] = MOCK_REMOTE_DIR
 
     trials = [Trial(trainable_id, **kwargs), Trial(trainable_id, **kwargs)]
     for t in trials:
@@ -377,8 +384,10 @@ def test_migration_checkpoint_removal(start_connected_emptyhead_cluster,
         },
         "checkpoint_freq": 2,
         "max_failures": 2,
-        "remote_checkpoint_dir": MOCK_REMOTE_DIR,
     }
+
+    if trainable_id == "__fake_durable":
+        kwargs["remote_checkpoint_dir"] = MOCK_REMOTE_DIR
 
     # The following patches only affect __fake_remote.
     def hide_remote_path(path_function):
@@ -446,8 +455,11 @@ def test_cluster_down_simple(start_connected_cluster, tmpdir, trainable_id):
         },
         "checkpoint_freq": 1,
         "max_failures": 1,
-        "remote_checkpoint_dir": MOCK_REMOTE_DIR,
     }
+
+    if trainable_id == "__fake_durable":
+        kwargs["remote_checkpoint_dir"] = MOCK_REMOTE_DIR
+
     trials = [Trial(trainable_id, **kwargs), Trial(trainable_id, **kwargs)]
     for t in trials:
         runner.add_trial(t)
@@ -494,9 +506,7 @@ def test_cluster_down_full(start_connected_cluster, tmpdir, trainable_id):
         run=trainable_id,
         stop=dict(training_iteration=3),
         local_dir=local_dir,
-        upload_dir=upload_dir,
-        sync_to_driver=use_default_sync,
-    )
+        sync_config=dict(upload_dir=upload_dir, syncer=use_default_sync))
 
     exp1_args = base_dict
     exp2_args = dict(base_dict.items(), local_dir=dirpath, checkpoint_freq=1)
