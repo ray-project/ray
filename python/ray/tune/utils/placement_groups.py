@@ -11,6 +11,7 @@ import ray
 from ray import ObjectRef, logger
 from ray.actor import ActorClass
 from ray.tune.resources import Resources
+from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.util.placement_group import PlacementGroup, get_placement_group, \
     placement_group, placement_group_table, remove_placement_group
 
@@ -48,6 +49,7 @@ def get_tune_pg_prefix():
     return _tune_pg_prefix
 
 
+@PublicAPI(stability="beta")
 class PlacementGroupFactory:
     """Wrapper class that creates placement groups for trials.
 
@@ -122,10 +124,12 @@ class PlacementGroupFactory:
         self._bind()
 
     @property
+    @DeveloperAPI
     def head_cpus(self) -> Optional[float]:
         return self._bundles[0].get("CPU", None)
 
     @property
+    @DeveloperAPI
     def bundles(self) -> List[Dict[str, float]]:
         """Returns a deep copy of resource bundles"""
         return deepcopy(self._bundles)
