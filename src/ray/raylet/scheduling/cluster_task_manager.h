@@ -160,7 +160,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
           get_task_arguments,
       size_t max_pinned_task_arguments_bytes,
       std::function<int64_t(void)> get_time_ms =
-          []() { return absl::GetCurrentTimeNanos() / 1e6; },
+          []() { return (int64_t)(absl::GetCurrentTimeNanos() / 1e6); },
       int64_t sched_cls_cap_interval_ms =
           RayConfig::instance().worker_cap_initial_backoff_delay_ms());
 
