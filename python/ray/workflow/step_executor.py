@@ -18,7 +18,6 @@ from ray.workflow import workflow_storage
 from ray.workflow.workflow_access import (get_or_create_management_actor,
                                           get_management_actor)
 from ray.workflow.common import (
-    EventsUnresolved,
     Workflow,
     WorkflowStatus,
     WorkflowOutputType,
@@ -26,6 +25,7 @@ from ray.workflow.common import (
     StepType,
     StepID,
     WorkflowData,
+    WaitingForEvent,
 )
 
 if TYPE_CHECKING:
@@ -148,22 +148,9 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     if workflow.executed:
         return workflow.result
     workflow_data = workflow.data
-    step_options = workflow_data.step_options
     baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
         workflow_data.inputs)
-    if step_options.step_type == StepType.EVENT:
-        logger.info(
-            f"DETECTED EVENT, type: {workflow_data.func_body}, inputs: {baked_inputs}"
-        )
-        coordinator = events.get_or_create_manager()
-        workflow_id = workflow_context.get_current_workflow_id()
-        ref = coordinator.register_workflow_dependency.remote(
-            workflow_id, workflow_data,
-            workflow_context.get_workflow_step_context(), workflow.step_id,
-            baked_inputs)
-        ray.get(ref)
-        raise EventsUnresolved([])
-
+    step_options = workflow_data.step_options
     persisted_output, volatile_output = _workflow_step_executor.options(
         **step_options.ray_options).remote(
             workflow_data.func_body,
@@ -302,6 +289,8 @@ def _wrap_run(func: Callable, runtime_options: "WorkflowStepRuntimeOptions",
                                                             exception)
         elif runtime_options.step_type == StepType.READONLY_ACTOR_METHOD:
             persisted_output, volatile_output = None, (result, exception)
+        elif runtime_options.step_type == StepType.EVENT:
+            persisted_output, volatile_output = None, (result, exception)
         else:
             raise ValueError(f"Unknown StepType '{step_type}'")
     else:
@@ -317,6 +306,8 @@ def _wrap_run(func: Callable, runtime_options: "WorkflowStepRuntimeOptions",
         elif step_type == StepType.ACTOR_METHOD:
             persisted_output, volatile_output = result
         elif step_type == StepType.READONLY_ACTOR_METHOD:
+            persisted_output, volatile_output = None, result
+        elif runtime_options.step_type == StepType.EVENT:
             persisted_output, volatile_output = None, result
         else:
             raise ValueError(f"Unknown StepType '{step_type}'")
@@ -360,7 +351,7 @@ def _workflow_step_executor(
         store.save_step_postrun_metadata(step_id, step_postrun_metadata)
     except Exception as e:
         commit_step(store, step_id, None, exception=e)
-        raise e
+        raise WaitingForEvent()
 
     # Part 4: save outputs
     if step_type == StepType.READONLY_ACTOR_METHOD:
@@ -369,6 +360,9 @@ def _workflow_step_executor(
                 "Returning a Workflow from a readonly virtual actor "
                 "is not allowed.")
         assert not isinstance(persisted_output, Workflow)
+    elif step_type == StepType.EVENT:
+        logger.info(f"DETECTED EVENT, NOT SAVING OUTPUT {persisted_output}")
+        raise WaitingForEvent()
     else:
         store = workflow_storage.get_workflow_storage()
         commit_step(store, step_id, persisted_output, exception=None)
@@ -417,19 +411,21 @@ class _BakedWorkflowInputs:
 
     @classmethod
     def from_workflow_inputs(cls, inputs: "WorkflowInputs"):
-        unfinished_events = []
-        workflow_outputs = []
         with workflow_context.fork_workflow_step_context(
                 outer_most_step_id=None, last_step_of_workflow=False):
+            workflow_outputs = []
+            waiting_for_event = False
+            # Even if one of the workfow arguments is an event, we should make
+            # sure we still execute all the other workflow arguments.
             for w in inputs.workflows:
                 try:
                     result = execute_workflow(w)
-                    workflow_outputs.append(result)
-                except EventsUnresolved as e:
-                    unfinished_events.extend(e.events)
+                    workflow_outputs.append(result.persisted_output)
+                except events.WaitingForEvent:
+                    waiting_for_event = True
 
-        if unfinished_events:
-            raise EventsUnresolved(unfinished_events)
+            if waiting_for_event:
+                raise WaitingForEvent()
 
         return cls(inputs.args, workflow_outputs, inputs.workflow_refs)
 

@@ -71,7 +71,6 @@ def init(storage: "Optional[Union[str, Storage]]" = None) -> None:
     storage_base.set_global_storage(storage)
     workflow_access.init_management_actor()
     serialization.init_manager()
-    events.init_manager()
 
 
 def make_step_decorator(step_options: "WorkflowStepRuntimeOptions",
@@ -335,7 +334,36 @@ def wait_for_event(event_listener_type: EventListenerType, *args,
             f"Event listener type is {event_listener_type.__name__}"
             ", which is not a subclass of workflow.EventListener")
 
-    return events.make_event(event_listener_type, args, kwargs)
+    def _register_event(event_listener_type: EventListenerType, *args,
+                        **kwargs):
+        from ray.workflow import workflow_context
+        manager = events.get_or_create_manager()
+
+        workflow_id = workflow_context.get_current_workflow_id()
+        step_id = workflow_context.get_current_step_id()
+
+        ray.get(manager.register_workflow_dependency.remote(
+            workflow_id, step_id, event_listener_type, args, kwargs
+        ))
+        pass
+
+    options = WorkflowStepRuntimeOptions.make(step_type=StepType.EVENT)
+    register_event = make_step_decorator(options)(_register_event)
+
+    @step
+    def message_committed(event_listener_type: EventListenerType,
+                          event: Event) -> Event:
+        assert False
+        event_listener = event_listener_type()
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(event_listener.event_checkpointed(event))
+        return event
+
+
+    register_event_step = register_event.step(event_listener_type, *args, **kwargs)
+    return message_committed.step(
+        event_listener_type,
+        register_event_step)
 
 
 @PublicAPI

@@ -4,18 +4,31 @@ import pytest
 import asyncio
 import ray
 from ray import workflow
+from ray.workflow import common
 from ray.workflow import storage
 from ray.workflow.tests import utils
 import subprocess
 import time
 
 
-def test_basic_event(workflow_start_regular_shared):
+def test_basic(workflow_start_regular_shared):
     class EventListener(workflow.EventListener):
         async def poll_for_event(self):
+            await asyncio.sleep(1000000)
             return "hello"
 
-    workflow.wait_for_event(EventListener).run()
+    ref = workflow.wait_for_event(EventListener).run_async("test")
+
+    try:
+        ray.get(ref)
+    except common.WaitingForEvent as e:
+        print("=========== Caught exception", e)
+        pass
+    else:
+        assert False
+    time.sleep(1)
+    print(workflow.get_status("test"))
+    # assert  == "hello"
 
 
 def test_sleep(workflow_start_regular_shared):

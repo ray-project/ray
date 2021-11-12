@@ -108,13 +108,7 @@ class Manager:
             workflow_id (str): The id of the workflow to be resumed when the event occurs.
             event_data (WorkflowData): The information needed to begin to wait for the event.
         """
-
-        args, kwargs = await _resolve_args.remote(event_data, context, step_id,
-                                                  baked_inputs)
-        func = event_data.func_body
-
-        # Execute function
-        logger.info(f"Executing {func} with {args}, {kwargs}")
-        func(*args, **kwargs)
-
+        logger.info(f"GOT WORKFLOW EVENT TO WAIT FOR {workflow_id}: {step_id} {event_data}")
         pass
+
+

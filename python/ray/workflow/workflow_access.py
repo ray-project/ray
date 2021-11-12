@@ -12,8 +12,7 @@ from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.actor import ActorHandle
-    from ray.workflow.common import (StepID, WorkflowExecutionResult,
-                                     EventsUnresolved)
+    from ray.workflow.common import (StepID, WorkflowExecutionResult)
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +64,6 @@ def _resolve_workflow_output(workflow_id: Optional[str],
     Returns:
         The resolved physical object.
     """
-    logger.info("============= IN DERENFERENCER ===================")
     if workflow_id is not None:
         try:
             actor = get_management_actor()
@@ -75,7 +73,11 @@ def _resolve_workflow_output(workflow_id: Optional[str],
 
     try:
         while isinstance(output, ray.ObjectRef):
-            output = ray.get(output)
+            try:
+                output = ray.get(output)
+            except common.WaitingForEvent as e:
+                print("DETECTED WAITING FOR EVENT")
+                return e
     except Exception as e:
         if workflow_id is not None:
             # re-raise the exception so we know it is a workflow failure.
@@ -179,7 +181,6 @@ class WorkflowManagementActor:
             current_output = self._workflow_outputs[workflow_id].output
         except KeyError:
             current_output = None
-        logger.info(f"Resuming workflow_id")
         result = recovery.resume_workflow_step(
             workflow_id, step_id, self._store.storage_url, current_output)
         latest_output = LatestWorkflowOutput(result.persisted_output,

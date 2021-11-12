@@ -22,7 +22,7 @@ WorkflowOutputType = ObjectRef
 MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
 STORAGE_ACTOR_NAME = "StorageManagementActor"
-EVENT_ACTOR_NAME = "EventManagementActor"
+EVENT_ACTOR_NAME = "EventCoordinatorActor"
 
 
 def get_module(f):
@@ -417,6 +417,5 @@ class WorkflowRunningError(Exception):
         super().__init__(self.message)
 
 
-class EventsUnresolved(Exception):
-    def __init__(self, events: List[Workflow[Event]]):
-        self.events = events
+class WaitingForEvent(Exception):
+    pass
