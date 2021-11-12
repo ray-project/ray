@@ -108,7 +108,7 @@ class PlacementGroupFactory:
                  strategy: str = "PACK",
                  *args,
                  **kwargs):
-        self._bundles = [{k: float(v)
+        self._bundles = [{k: v
                           for k, v in bundle.items()} for bundle in bundles]
         self._strategy = strategy
         self._args = args
@@ -120,14 +120,20 @@ class PlacementGroupFactory:
         self._bind()
 
     @property
+    def _clean_bundles(self):
+        return [{k: float(v)
+                 for k, v in bundle.items() if v != 0}
+                for bundle in self._bundles]
+
+    @property
     def head_cpus(self):
-        return self._bundles[0].get("CPU", None)
+        return self._clean_bundles[0].get("CPU", None)
 
     @property
     def required_resources(self) -> Dict[str, float]:
         """Returns a dict containing the sums of all resources"""
         resources = {}
-        for bundle in self._bundles:
+        for bundle in self._clean_bundles:
             for k, v in bundle.items():
                 resources[k] = resources.get(k, 0) + v
         return resources
@@ -135,8 +141,8 @@ class PlacementGroupFactory:
     def _bind(self):
         sig = signature(placement_group)
         try:
-            self._bound = sig.bind(self._bundles, self._strategy, *self._args,
-                                   **self._kwargs)
+            self._bound = sig.bind(self._clean_bundles, self._strategy,
+                                   *self._args, **self._kwargs)
         except Exception as exc:
             raise RuntimeError(
                 "Invalid definition for placement group factory. Please check "
