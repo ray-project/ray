@@ -22,7 +22,7 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
+class PPOTorchPolicy(TorchPolicy):#, LearningRateSchedule, EntropyCoeffSchedule):
     """PyTorch policy class used with PPOTrainer."""
 
     def __init__(self, observation_space, action_space, config):
@@ -31,10 +31,10 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
 
         TorchPolicy.__init__(self, observation_space, action_space, config)
 
-        EntropyCoeffSchedule.__init__(self, config["entropy_coeff"],
-                                      config["entropy_coeff_schedule"])
-        LearningRateSchedule.__init__(self, config["lr"],
-                                      config["lr_schedule"])
+        #EntropyCoeffSchedule.__init__(self, config["entropy_coeff"],
+        #                              config["entropy_coeff_schedule"])
+        #LearningRateSchedule.__init__(self, config["lr"],
+        #                              config["lr_schedule"])
 
         # The current KL value (as python float).
         self.kl_coeff = self.config["kl_coeff"]
@@ -52,7 +52,7 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
         # Do all post-processing always with no_grad().
         # Not using this here will introduce a memory leak
         # in torch (issue #6962).
-        with torch.no_grad():
+        with torch.no_grad():#TODO: Still necessary?
             return compute_gae_for_sample_batch(
                 self, sample_batch, other_agent_batches, episode)
 
@@ -155,6 +155,7 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             # Input dict is provided to us automatically via the Model's
             # requirements. It's a single-timestep (last one in trajectory)
             # input_dict.
+            input_dict = SampleBatch(input_dict)#TODO: <- unnecessary line
             input_dict = self._lazy_tensor_dict(input_dict)
             model_out, _ = self.model(input_dict)
             # [0] = remove the batch dim.
@@ -171,6 +172,13 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
             self.kl_coeff *= 0.5
         # Return the current KL value.
         return self.kl_coeff
+        ## Update the current KL value based on the recently measured value.
+        #if sampled_kl > 2.0 * self.kl_target:
+        #    self.kl_coeff *= 1.5
+        #elif sampled_kl < 0.5 * self.kl_target:
+        #    self.kl_coeff *= 0.5
+        ## Return the current KL value.
+        #return self.kl_coeff
 
     # TODO: Make this an event-style subscription (e.g.:
     #  "after_actions_computed").
@@ -214,14 +222,14 @@ class PPOTorchPolicy(TorchPolicy, LearningRateSchedule, EntropyCoeffSchedule):
 
     # TODO: Make lr-schedule and entropy-schedule Plugin-style functionalities
     #  that can be added (via the config) to any Trainer/Policy.
-    @override(TorchPolicy)
-    def on_global_var_update(self, global_vars):
-        super().on_global_var_update(global_vars)
-        if self._lr_schedule:
-            self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
-            for opt in self._optimizers:
-                for p in opt.param_groups:
-                    p["lr"] = self.cur_lr
-        if self._entropy_coeff_schedule is not None:
-            self.entropy_coeff = self._entropy_coeff_schedule.value(
-                global_vars["timestep"])
+    #@override(TorchPolicy)
+    #def on_global_var_update(self, global_vars):
+    #    super().on_global_var_update(global_vars)
+        #if self._lr_schedule:
+        #    self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
+        #    for opt in self._optimizers:
+        #        for p in opt.param_groups:
+        #            p["lr"] = self.cur_lr
+        #if self._entropy_coeff_schedule is not None:
+        #    self.entropy_coeff = self._entropy_coeff_schedule.value(
+        #        global_vars["timestep"])
