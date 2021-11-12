@@ -42,7 +42,7 @@ def __make_key(namespace: Optional[str], key: bytes) -> bytes:
     return b":".join([__NS_START_CHAR + namespace.encode(), key])
 
 
-def __get_key(key: bytes) -> Tuple[Optional[str], bytes]:
+def __get_key(key: bytes) -> bytes:
     assert isinstance(key, bytes)
     if not key.startswith(__NS_START_CHAR):
         return (None, key)
