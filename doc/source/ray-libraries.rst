@@ -120,7 +120,7 @@ RayDP |raydp|
 
 RayDP ("Spark on Ray") enables you to easily use Spark inside a Ray program. You can use Spark to read the input data, process the data using SQL, Spark DataFrame, or Pandas (via Koalas) API, extract and transform features using Spark MLLib, and use RayDP Estimator API for distributed training on the preprocessed dataset.
 
-GitHub: `https://github.com/Intel-bigdata/oap-raydp <https://github.com/Intel-bigdata/oap-raydp>`_
+GitHub: `https://github.com/oap-project/raydp <https://github.com/oap-project/raydp>`_
 
 Scikit Learn |scikit|
 ---------------------
