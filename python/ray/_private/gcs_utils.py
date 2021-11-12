@@ -1,9 +1,11 @@
-from ray.core.generated.common_pb2 import ErrorType
 import enum
 import logging
-from typing import List, Callable, Union
 import time
+from typing import List, Callable
+
 import grpc
+
+from ray.core.generated.common_pb2 import ErrorType
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated.gcs_pb2 import (
@@ -53,64 +55,69 @@ __all__ = [
     "ResourceLoad",
     "ResourceMap",
     "ResourceTableData",
-    "construct_error_message",
     "ObjectLocationInfo",
     "PubSubMessage",
     "WorkerTableData",
     "PlacementGroupTableData",
 ]
 
-FUNCTION_PREFIX = "RemoteFunction:"
 LOG_FILE_CHANNEL = "RAY_LOG_CHANNEL"
-REPORTER_CHANNEL = "RAY_REPORTER"
-
-# xray resource usages
-XRAY_RESOURCES_BATCH_PATTERN = "RESOURCES_BATCH:".encode("ascii")
-
-# xray job updates
-XRAY_JOB_PATTERN = "JOB:*".encode("ascii")
 
 # Actor pub/sub updates
 RAY_ACTOR_PUBSUB_PATTERN = "ACTOR:*".encode("ascii")
-
-# Reporter pub/sub updates
-RAY_REPORTER_PUBSUB_PATTERN = "RAY_REPORTER.*".encode("ascii")
 
 RAY_ERROR_PUBSUB_PATTERN = "ERROR_INFO:*".encode("ascii")
 
 # These prefixes must be kept up-to-date with the TablePrefix enum in
 # gcs.proto.
-# TODO(rkn): We should use scoped enums, in which case we should be able to
-# just access the flatbuffer generated values.
-TablePrefix_RAYLET_TASK_string = "RAYLET_TASK"
-TablePrefix_OBJECT_string = "OBJECT"
-TablePrefix_PROFILE_string = "PROFILE"
-TablePrefix_JOB_string = "JOB"
 TablePrefix_ACTOR_string = "ACTOR"
 
 WORKER = 0
 DRIVER = 1
 
+# Cap messages at 512MB
+_MAX_MESSAGE_LENGTH = 512 * 1024 * 1024
+# Send keepalive every 60s
+_GRPC_KEEPALIVE_TIME_MS = 60 * 1000
+# Keepalive should be replied < 60s
+_GRPC_KEEPALIVE_TIMEOUT_MS = 60 * 1000
 
-def construct_error_message(job_id, error_type, message, timestamp):
-    """Construct a serialized ErrorTableData object.
+# Also relying on these defaults:
+# grpc.keepalive_permit_without_calls=0: No keepalive without inflight calls.
+# grpc.use_local_subchannel_pool=0: Subchannels are shared.
+_GRPC_OPTIONS = [("grpc.enable_http_proxy",
+                  0), ("grpc.max_send_message_length", _MAX_MESSAGE_LENGTH),
+                 ("grpc.max_receive_message_length", _MAX_MESSAGE_LENGTH),
+                 ("grpc.keepalive_time_ms",
+                  _GRPC_KEEPALIVE_TIME_MS), ("grpc.keepalive_timeout_ms",
+                                             _GRPC_KEEPALIVE_TIMEOUT_MS)]
+
+
+def get_gcs_address_from_redis(redis) -> str:
+    """Reads GCS address from redis.
 
     Args:
-        job_id: The ID of the job that the error should go to. If this is
-            nil, then the error will go to all drivers.
-        error_type: The type of the error.
-        message: The error message.
-        timestamp: The time of the error.
-
+        redis: Redis client to fetch GCS address.
     Returns:
-        The serialized object.
+        GCS address string.
     """
-    data = ErrorTableData()
-    data.job_id = job_id.binary()
-    data.type = error_type
-    data.error_message = message
-    data.timestamp = timestamp
-    return data.SerializeToString()
+    gcs_address = redis.get("GcsServerAddress")
+    if gcs_address is None:
+        raise RuntimeError("Failed to look up gcs address through redis")
+    return gcs_address.decode()
+
+
+def create_gcs_channel(address: str, aio=False):
+    """Returns a GRPC channel to GCS.
+
+    Args:
+        address: GCS address string, e.g. ip:port
+        aio: Whether using grpc.aio
+    Returns:
+        grpc.Channel or grpc.aio.Channel to GCS
+    """
+    from ray._private.utils import init_grpc_channel
+    return init_grpc_channel(address, options=_GRPC_OPTIONS, asynchronous=aio)
 
 
 class GcsCode(enum.IntEnum):
@@ -128,8 +135,11 @@ def auto_reconnect(f):
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
                     logger.error(
                         f"Failed to send request to gcs, reconnect. Error {e}")
-                    self._connect()
-                    time.sleep(1)
+                    try:
+                        self._connect()
+                        time.sleep(1)
+                    except Exception:
+                        logger.error(f"Connect to gcs failed. Error {e}")
                     continue
                 raise e
 
@@ -137,34 +147,19 @@ def auto_reconnect(f):
 
 
 class GcsClient:
-    MAX_MESSAGE_LENGTH = 512 * 1024 * 1024  # 512MB
+    """Client to GCS using GRPC"""
 
-    def __init__(self, gcs_address: Union[Callable, str]):
-        self._options = [("grpc.enable_http_proxy",
-                          0), ("grpc.max_send_message_length",
-                               GcsClient.MAX_MESSAGE_LENGTH),
-                         ("grpc.max_receive_message_length",
-                          GcsClient.MAX_MESSAGE_LENGTH)]
-        if isinstance(gcs_address, (str, bytes)):
-            self._get_gcs_address = lambda: gcs_address
-        else:
-            self._get_gcs_address = gcs_address
+    def __init__(self, get_address: Callable):
+        assert get_address is not None
+        self._get_address = get_address
         self._connect()
 
     def _connect(self):
-        while True:
-            try:
-                from ray._private.utils import init_grpc_channel
-                gcs_address = self._get_gcs_address()
-                logger.debug(f"Connecting to gcs address: {gcs_address}")
-                self._channel = init_grpc_channel(
-                    gcs_address, options=self._options)
-                self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(
-                    self._channel)
-                return
-            except Exception as e:
-                logger.debug(f"Connecting to GCS failed with error: {e}")
-                time.sleep(1)
+        gcs_address = self._get_address()
+        logger.debug(f"Connecting to gcs address: {gcs_address}")
+        self._channel = create_gcs_channel(gcs_address)
+        self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(
+            self._channel)
 
     @auto_reconnect
     def internal_kv_get(self, key: bytes) -> bytes:
@@ -227,14 +222,7 @@ class GcsClient:
 
     @staticmethod
     def create_from_redis(redis_cli):
-        def get_gcs_address():
-            gcs_address = redis_cli.get("GcsServerAddress")
-            if gcs_address is None:
-                raise RuntimeError(
-                    "Failed to look up gcs address through redis")
-            return gcs_address
-
-        return GcsClient(get_gcs_address)
+        return GcsClient(lambda: get_gcs_address_from_redis(redis_cli))
 
     @staticmethod
     def connect_to_gcs_by_redis_address(redis_address, redis_password):
