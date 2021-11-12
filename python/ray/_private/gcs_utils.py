@@ -136,9 +136,9 @@ def _auto_reconnect(f):
                         f"Error {e}")
                     try:
                         self._connect()
-                        time.sleep(1)
                     except Exception:
                         logger.error(f"Connecting to gcs failed. Error {e}")
+                    time.sleep(1)
                     continue
                 raise
 
@@ -146,7 +146,10 @@ def _auto_reconnect(f):
 
 
 class GcsChannel:
-    def __init__(self, redis_client=None, gcs_address: Optional[str] = None):
+    def __init__(self,
+                 redis_client=None,
+                 gcs_address: Optional[str] = None,
+                 aio: bool = False):
         if redis_client is None and gcs_address is None:
             raise ValueError(
                 "One of `redis_client` or `gcs_address` has to be set")
@@ -155,6 +158,7 @@ class GcsChannel:
                 "Only one of `redis_client` or `gcs_address` can be set")
         self._redis_client = redis_client
         self._gcs_address = gcs_address
+        self._aio = aio
 
     def connect(self):
         if self._redis_client is not None:
@@ -162,11 +166,10 @@ class GcsChannel:
         else:
             gcs_address = self._gcs_address
 
-        self._channel = create_gcs_channel(gcs_address)
-        self._aio_channel = create_gcs_channel(gcs_address, True)
+        self._channel = create_gcs_channel(gcs_address, self._aio)
 
-    def channel(self, aio=False):
-        return self._aio_channel if aio is True else self._channel
+    def channel(self):
+        return self._channel
 
 
 class GcsCode(enum.IntEnum):
