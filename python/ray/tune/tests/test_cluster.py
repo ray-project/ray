@@ -110,7 +110,6 @@ def start_connected_emptyhead_cluster():
 
 def test_counting_resources(start_connected_cluster):
     """Tests that Tune accounting is consistent with actual cluster."""
-    os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
 
     cluster = start_connected_cluster
     nodes = []
@@ -122,7 +121,7 @@ def test_counting_resources(start_connected_cluster):
     for t in trials:
         runner.add_trial(t)
 
-    runner.step()  # run 1
+    runner.step()
     running_trials = _get_running_trials(runner)
     assert len(running_trials) == 1
     assert _check_trial_running(running_trials[0])
@@ -133,7 +132,8 @@ def test_counting_resources(start_connected_cluster):
     cluster.remove_node(nodes.pop())
     cluster.wait_for_nodes()
     assert ray.cluster_resources()["CPU"] == 1
-    runner.step()  # run 2
+    runner.step()
+    # Only 1 trial can be running due to resource limitation.
     assert sum(t.status == Trial.RUNNING for t in runner.get_trials()) == 1
 
     for i in range(5):
@@ -141,7 +141,11 @@ def test_counting_resources(start_connected_cluster):
     cluster.wait_for_nodes()
     assert ray.cluster_resources()["CPU"] == 6
 
-    runner.step()  # 1 result
+    # This is to make sure that pg is ready for the previous pending trial,
+    # so that when runner.step() is called next, the trial can be started in
+    # the same event loop.
+    time.sleep(5)
+    runner.step()
     assert sum(t.status == Trial.RUNNING for t in runner.get_trials()) == 2
 
 
@@ -311,14 +315,9 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
 
 
 @pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])
-@pytest.mark.parametrize("with_pg", [True, False])
-def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id,
-                       with_pg):
+def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
     """Removing a node in full cluster causes Trial to be requeued."""
     os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
-
-    if not with_pg:
-        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
 
     cluster = start_connected_emptyhead_cluster
     node = cluster.add_node(num_cpus=1)
@@ -326,7 +325,8 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id,
 
     syncer_callback = _PerTrialSyncerCallback(
         lambda trial: trial.trainable_name == "__fake")
-    runner = TrialRunner(BasicVariantGenerator(), callbacks=[syncer_callback])
+    runner = TrialRunner(
+        BasicVariantGenerator(), callbacks=[syncer_callback])  # noqa
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 5
@@ -356,11 +356,6 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id,
     runner.step()  # Process save (detect error), requeue trial
     assert all(
         t.status == Trial.PENDING for t in trials), runner.debug_string()
-
-    if not with_pg:
-        # Only raises if placement groups are not used
-        with pytest.raises(TuneError):
-            runner.step()
 
 
 @pytest.mark.parametrize("trainable_id", ["__fake_remote", "__fake_durable"])
