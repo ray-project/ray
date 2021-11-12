@@ -9,11 +9,13 @@ Reading Data
 Datasets uses Ray tasks to read data from remote storage. When reading from an file-based datasource (e.g., S3, GCS), it creates a number of read tasks equal to the specified read parallelism (200 by default). One or more files will be assigned to each read task. Each read task reads its assigned files and produces one or more output blocks (Ray objects):
 
 .. image:: dataset-read.svg
+   :width: 650px
+   :align: center
 
 ..
   https://docs.google.com/drawings/d/15B4TB8b5xN15Q9S8-s0MjW6iIvo_PrH7JtV1fL123pU/edit
 
-In the common case, each read task produces a single output block. Read tasks may split the output into multiple blocks if the data exceeds the target max block size (500MB by default). This automatic block splitting avoids out of memory errors when reading very large single files (e.g., a 100-gigabyte CSV file). All the built-in datasources except for JSON currently support automatic block splitting.
+In the common case, each read task produces a single output block. Read tasks may split the output into multiple blocks if the data exceeds the target max block size (500MiB by default). This automatic block splitting avoids out of memory errors when reading very large single files (e.g., a 100-gigabyte CSV file). All the built-in datasources except for JSON currently support automatic block splitting.
 
 Deferred Read Task Execution
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -24,9 +26,11 @@ When a Dataset is created using ``ray.data.read_*``, only the first read task wi
 Dataset Transforms
 ------------------
 
-Datasets use either Ray tasks or Ray actors to transform datasets (i.e., for ``.map``, ``.flat_map``, or ``.map_batches``). By default, tasks are used (``compute="tasks"``). Actors can be specified with ``compute="actors"``, in which case an autoscaling pool of Ray actors will be used to apply transformations. Using actors allows for expensive state initialization (e.g., for GPU-based tasks) to be re-used. Whether the compute strategy used, each map task generally takes in one block and produces one or more output blocks. The output block splitting rule is the same as for file reads (blocks are split after hitting the target max block size of 500MB):
+Datasets use either Ray tasks or Ray actors to transform datasets (i.e., for ``.map``, ``.flat_map``, or ``.map_batches``). By default, tasks are used (``compute="tasks"``). Actors can be specified with ``compute="actors"``, in which case an autoscaling pool of Ray actors will be used to apply transformations. Using actors allows for expensive state initialization (e.g., for GPU-based tasks) to be re-used. Whether the compute strategy used, each map task generally takes in one block and produces one or more output blocks. The output block splitting rule is the same as for file reads (blocks are split after hitting the target max block size of 500MiB):
 
 .. image:: dataset-map.svg
+   :width: 650px
+   :align: center
 
 ..
   https://docs.google.com/drawings/d/1MGlGsPyTOgBXswJyLZemqJO1Mf7d-WiEFptIulvcfWE/edit
@@ -34,11 +38,13 @@ Datasets use either Ray tasks or Ray actors to transform datasets (i.e., for ``.
 Shuffling Data
 --------------
 
-Certain operations like ``.sort`` and ``.groupby`` require data blocks to be partitioned by value. Datasets executes this in three phases. First, a wave of sampling tasks determines suitable partition boundaries based on a random sample of data. Second, a wave of map tasks divide each input block into a number of output blocks equal to the number of reduce tasks. Third, reduce tasks take assigned output blocks from each map task and produce a single output block. Overall, this strategy generates ``O(n^2)`` intermediate objects where ``n`` is the number of input blocks.
+Certain operations like ``.sort`` and ``.groupby`` require data blocks to be partitioned by value. Datasets executes this in three phases. First, a wave of sampling tasks determines suitable partition boundaries based on a random sample of data. Second, map tasks divide each input block into a number of output blocks equal to the number of reduce tasks. Third, reduce tasks take assigned output blocks from each map task and combines them into one block. Overall, this strategy generates ``O(n^2)`` intermediate objects where ``n`` is the number of input blocks.
 
 You can also change the partitioning of a Dataset using ``.random_shuffle`` or ``.repartition``. The former should be used if you want to randomize the order of elements in the dataset. The second should be used if you only want to equalize the size of the Dataset blocks (e.g., after a read or transformation that may skew the distribution of block sizes). Note that repartition has two modes, ``shuffle=False``, which performs the minimal data movement needed to equalize block sizes, and ``shuffle=True``, which performs a full distributed shuffle:
 
 .. image:: dataset-shuffle.svg
+   :width: 650px
+   :align: center
 
 ..
   https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
@@ -51,7 +57,7 @@ This section deals with how Datasets manages execution and object store memory.
 Execution Memory
 ~~~~~~~~~~~~~~~~
 
-During execution, certain types of intermediate data must fit in memory. This includes the input block of a task, as well as at least one of the output blocks of the task (when a task has multiple output blocks, only one needs to fit in memory at any given time). The input block consumes object stored shared memory, and the output blocks consume Python heap memory (prior to putting in the object store) as well as object store memory (after being put in the object store).
+During execution, certain types of intermediate data must fit in memory. This includes the input block of a task, as well as at least one of the output blocks of the task (when a task has multiple output blocks, only one needs to fit in memory at any given time). The input block consumes object stored shared memory (Python heap memory for non-Arrow data). The output blocks consume Python heap memory (prior to putting in the object store) as well as object store memory (after being put in the object store).
 
 This means that large block sizes can lead to potential out of memory situations. To avoid OOM errors, Datasets tries to split blocks during map and read tasks into pieces smaller than the target max block size. In some cases this splitting is not possible (i.e., if a single item in a block is extremely large, or the function given to ``.map_batches`` returns a very large batch). To avoid these issues, make sure no single item in your Datasets is too large, and always call ``.map_batches`` with batch size small enough that the output batch can comfortably fit into memory.
 
@@ -63,6 +69,8 @@ Datasets uses the Ray object store to store data blocks, which means it inherits
 **Object Spilling**: Since Datasets uses the Ray object store to store data blocks, any blocks that can't fit into object store memory are automatically spilled to disk. The objects are automatically reloaded when needed by downstream compute tasks:
 
 .. image:: dataset-spill.svg
+   :width: 650px
+   :align: center
 
 ..
   https://docs.google.com/drawings/d/1H_vDiaXgyLU16rVHKqM3rEl0hYdttECXfxCj8YPrbks/edit
