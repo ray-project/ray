@@ -121,13 +121,15 @@ def create_gcs_channel(address: str, aio=False):
     return init_grpc_channel(address, options=_GRPC_OPTIONS, asynchronous=aio)
 
 
-def auto_reconnect(f):
+def _auto_reconnect(f):
     @wraps(f)
     def wrapper(self, *args, **kwargs):
         while True:
             try:
                 return f(self, *args, **kwargs)
             except grpc.RpcError as e:
+                if self._enable_auto_reconnect is False:
+                    raise
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
                     logger.error(
                         "Failed to send request to gcs, reconnecting. "
@@ -138,7 +140,7 @@ def auto_reconnect(f):
                     except Exception:
                         logger.error(f"Connecting to gcs failed. Error {e}")
                     continue
-                raise e
+                raise
 
     return wrapper
 
@@ -178,20 +180,22 @@ class GcsClient:
 
     def __init__(self,
                  channel: Optional[GcsChannel] = None,
-                 address: Optional[str] = None):
+                 address: Optional[str] = None,
+                 auto_reconnect: bool = True):
         if channel is None:
             assert isinstance(address, str)
             channel = GcsChannel(gcs_address=address)
         assert isinstance(channel, GcsChannel)
         self._channel = channel
         self._connect()
+        self._enable_auto_reconnect = auto_reconnect
 
     def _connect(self):
         self._channel.connect()
         self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(
             self._channel.channel())
 
-    @auto_reconnect
+    @_auto_reconnect
     def internal_kv_get(self, key: bytes) -> bytes:
         logger.debug(f"internal_kv_get {key}")
         req = gcs_service_pb2.InternalKVGetRequest(key=key)
@@ -204,7 +208,7 @@ class GcsClient:
             raise RuntimeError(f"Failed to get value for key {key} "
                                f"due to error {reply.status.message}")
 
-    @auto_reconnect
+    @_auto_reconnect
     def internal_kv_put(self, key: bytes, value: bytes,
                         overwrite: bool) -> int:
         logger.debug(f"internal_kv_put {key} {value} {overwrite}")
@@ -217,7 +221,7 @@ class GcsClient:
             raise RuntimeError(f"Failed to put value {value} to key {key} "
                                f"due to error {reply.status.message}")
 
-    @auto_reconnect
+    @_auto_reconnect
     def internal_kv_del(self, key: bytes) -> int:
         logger.debug(f"internal_kv_del {key}")
         req = gcs_service_pb2.InternalKVDelRequest(key=key)
@@ -228,7 +232,7 @@ class GcsClient:
             raise RuntimeError(f"Failed to delete key {key} "
                                f"due to error {reply.status.message}")
 
-    @auto_reconnect
+    @_auto_reconnect
     def internal_kv_exists(self, key: bytes) -> bool:
         logger.debug(f"internal_kv_exists {key}")
         req = gcs_service_pb2.InternalKVExistsRequest(key=key)
@@ -239,7 +243,7 @@ class GcsClient:
             raise RuntimeError(f"Failed to check existence of key {key} "
                                f"due to error {reply.status.message}")
 
-    @auto_reconnect
+    @_auto_reconnect
     def internal_kv_keys(self, prefix: bytes) -> List[bytes]:
         logger.debug(f"internal_kv_keys {prefix}")
         req = gcs_service_pb2.InternalKVKeysRequest(prefix=prefix)
