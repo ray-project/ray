@@ -18,11 +18,13 @@ from ray.serve.utils import logger
 # a few seconds and let each client retry on their end.
 # We randomly select a timeout within this range to avoid a "thundering herd"
 # when there are many clients subscribing at the same time.
-LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = (30, 60)
+LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = (10, 30)
 # Same mechanism as the LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S but this should
 # be used at client side to sleep for a duration to let long poll host catch
-# up to other requests.
-CLIENT_SIDE_TIMEOUT_WAIT_S = (5, 30)
+# up to other requests. If the host returned timeout, this means there is
+# unlikely to be any meaninful changes, so it is ok to wait a bit before
+# pulling again.
+CLIENT_SIDE_TIMEOUT_WAIT_S = (10, 60)
 
 
 class LongPollNamespace(Enum):
