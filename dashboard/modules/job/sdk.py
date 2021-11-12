@@ -16,9 +16,6 @@ from ray.dashboard.modules.job.common import (
     JOBS_API_ROUTE_PACKAGE)
 
 from ray.client_builder import _split_address
-from ray.dashboard.modules.job.job_head import (
-    JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP,
-    JOBS_API_ROUTE_STATUS, JOBS_API_ROUTE_PACKAGE)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
