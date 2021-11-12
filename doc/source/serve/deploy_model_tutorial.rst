@@ -2,7 +2,7 @@
 End-to-End Model Deployment Tutorial
 ====================================
 
-By the end of this tutorial you will have learned how to deploy a machine learning model via Ray Serve.
+By the end of this tutorial you will have learned how to deploy a machine learning model locally via Ray Serve.
 
 First, install Ray Serve and all of its dependencies by running the following command in your terminal:
 
@@ -102,7 +102,7 @@ Next, we start the Ray Serve runtime:
   When the Python script exits, Ray Serve will shut down.  
   If you would rather keep Ray Serve running in the background you can use ``serve.start(detached=True)`` (see :doc:`deployment` for details).
 
-Now that we have defined our ``summarize`` function, launched a Ray Cluster, and started the Ray Serve runtime, we can define a function to accept HTTP requests and route them to the ``summarize`` function. Since ``summarize`` takes in article ``text`` and a summary ``max_length``, we need to take in these variables' values as parameters in the HTTP request URL. We can define function called ``router`` that takes in a ``request`` object. ``router`` then looks for the ``txt`` parameter in the ``request`` object to find the requested article text that must be summarized. It then passes in the article text, as well its length, into the ``summarize`` function and returns the value. We also add the decorator ``@serve.deployment`` to the ``router`` function to turn it into a Serve ``Deployment`` object.
+Now that we have defined our ``summarize`` function, launched a Ray Cluster, and started the Ray Serve runtime, we can define a function to accept HTTP requests and route them to the ``summarize`` function. Since ``summarize`` takes in article ``text`` and a summary ``max_length``, we need to take in these variables' values as parameters in the HTTP request URL. We can define function called ``router`` that takes in a Starlette ``request`` object. ``router`` then looks for the ``txt`` parameter in the Starlette ``request`` object to find the requested article text that must be summarized. It then passes in the article text, as well its length, into the ``summarize`` function and returns the value. We also add the decorator ``@serve.deployment`` to the ``router`` function to turn it into a Serve ``Deployment`` object.
 
 .. code-block:: python
 
@@ -179,3 +179,52 @@ Now that the ``summarize`` function is deployed on Ray Serve, we can make http r
 .. warning::
 
   Since Ray Serve shuts down when the Python deployment script finishes, we can either keep Ray Serve running in the background using ``serve.start(detached=True)`` (see :doc:`deployment` for details) or for testing purposes, we can add this client script to the end of the Serve deployment script and run it all together to see the output.
+
+Our Serve deployment is still a bit inefficient though. In particular, the ``summarize`` function sets the input encodings and weights by defining the ``tokenizer`` and ``model`` variables each time that it's called. However, these encodings and weights never change, so it would be better if we could define ``tokenizer`` and ``model`` only once and keep their values in memory instead of reloading them upon each HTTP query.
+
+We can achieve this by converting our ``summarize`` function into a class:
+
+.. code-block:: python
+    @serve.deployment
+    class Summarizer:
+        def __init__(self):
+            self.tokenizer = AutoTokenizer.from_pretrained("mrm8488/t5-base-finetuned-summarize-news")
+            self.model = AutoModelWithLMHead.from_pretrained("mrm8488/t5-base-finetuned-summarize-news")
+        
+        def __call__(self, request):
+            txt = request.query_params["txt"]
+            return self.summarize(txt, max_length=len(txt))
+
+        def summarize(self, text, max_length=150):
+            input_ids = self.tokenizer.encode(text, return_tensors="pt", add_special_tokens=True)
+            generated_ids = self.model.generate(input_ids=input_ids, num_beams=2, max_length=max_length,  repetition_penalty=2.5, length_penalty=1.0, early_stopping=True)
+            preds = [self.tokenizer.decode(g, skip_special_tokens=True, clean_up_tokenization_spaces=True) for g in generated_ids]
+            
+            return preds[0]
+    
+    Summarizer.deploy()
+
+With this configuration, we can query the Summarizer class instead of a router function. When the ``Summarizer`` class is initialized, its ``__init__`` function is called, which loads and stores the input encodings and model weights in ``self.tokenizer`` and ``self.model``. HTTP queries for the ``Summarizer`` class will by default get routed to its ``__call__`` method, which takes in a Starlette ``request`` object. The ``Summarizer`` class can then take the request's ``txt`` article ``text`` data and call the ``summarize`` function on it. The ``summarize`` function no longer needs to load the input encodings and model weights on each query. Instead it can use the saved ``self.tokenizer`` and ``self.model`` values.
+
+HTTP queries for the Ray Serve class deployments follow a similar format to Ray Serve function deployments. Here's an example client script for the ``Summarizer`` example:
+
+.. code-block:: python
+  import requests
+
+  article_text = "HOUSTON -- Men have landed and walked on the moon. "        \
+                                 ...
+  "of millions of people on earth."
+  response = requests.get("http://127.0.0.1:8000/Summarizer?txt=" + article_text).text
+  print(response)
+
+  '''
+  Print output:
+
+  and walked on the moon. The astronauts of Apollo 11 steered their craft to
+  the historic landing yesterday at 4:17:40 P.M., Eastern daylight time.
+  "That's one small step for man, one giant leap for mankind," Armstrong
+  declared as he planted the first human footprint on the lunar crust. He
+  radioed to earth and the mission control room: "Houston, Tranquility Base
+  here. The Eagle has landed."
+  '''
+
