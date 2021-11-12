@@ -514,7 +514,6 @@ def extract_file_and_remove_top_level_dir(base_dir: str, fname: str, zip_ref: Zi
             os.path.join(base_dir, fname_without_top_level_dir))
 
 
-
 def unzip_package(package_path: str,
                   target_dir: str,
                   remove_top_level_directory: bool,
@@ -552,7 +551,7 @@ def unzip_package(package_path: str,
             zip_ref.extractall(target_dir)
 
     if unlink_zip:
-        package_path.unlink()
+        Path(package_path).unlink()
 
 
 def delete_package(pkg_uri: str, base_directory: str) -> bool:

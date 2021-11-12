@@ -5,7 +5,6 @@ from shutil import rmtree, make_archive
 import string
 import sys
 import tempfile
-import filecmp
 from filecmp import dircmp
 from zipfile import ZipFile
 import uuid
@@ -18,7 +17,7 @@ from ray._private.runtime_env.packaging import (
     _dir_travel, get_uri_for_directory, _get_excludes,
     upload_package_if_needed, parse_uri, Protocol,
     get_top_level_dir_from_compressed_package,
-    extract_file_and_remove_top_level_dir)
+    extract_file_and_remove_top_level_dir, unzip_package)
 
 
 TOP_LEVEL_DIR_NAME = "top_level"
@@ -190,6 +189,30 @@ class TestExtractFileAndRemoveTopLevelDir:
         # Make sure that all the subdirectories and files have been moved to
         # the target directory
         assert len(dcmp.right_only) == 0
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("remove_top_level_directory", [False, True])
+@pytest.mark.parametrize("unlink_zip", [False, True])
+def test_unzip_package(random_zip_file_with_top_level_dir, remove_top_level_directory, unlink_zip):
+    archive_path = random_zip_file_with_top_level_dir
+    tmp_path = archive_path[:archive_path.rfind("/")]
+    tmp_subdir = f"{tmp_path}/{TOP_LEVEL_DIR_NAME}_tmp"
+    unzip_package(package_path=archive_path, target_dir=tmp_subdir, remove_top_level_directory=remove_top_level_directory, unlink_zip=unlink_zip)
+
+    dcmp = None
+    if remove_top_level_directory:
+        dcmp = dircmp(f"{tmp_subdir}", f"{tmp_path}/{TOP_LEVEL_DIR_NAME}")
+    else:
+        dcmp = dircmp(f"{tmp_subdir}/{TOP_LEVEL_DIR_NAME}", f"{tmp_path}/{TOP_LEVEL_DIR_NAME}")
+    assert len(dcmp.left_only) == 0
+    assert len(dcmp.right_only) == 0
+
+    if unlink_zip:
+        assert not Path(archive_path).is_file()
+    else:
+        assert Path(archive_path).is_file()
+
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_travel():
