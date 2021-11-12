@@ -123,10 +123,11 @@ class Subscriber {
 
   /// Publish all queued messages if possible.
   ///
-  /// \param force If true, we publish to the subscriber although there's no queued
-  /// message.
+  /// \param force_noop If true, reply to the subscriber with an empty message, regardless
+  /// of whethere there is any queued message. This is for cases where the current poll
+  /// might have been cancelled, or the subscriber might be dead.
   /// \return True if it publishes. False otherwise.
-  bool PublishIfPossible(bool force = false);
+  bool PublishIfPossible(bool force_noop = false);
 
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;

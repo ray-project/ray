@@ -13,6 +13,7 @@ from ray.serve.common import (
     str,
     ReplicaConfig,
     ReplicaTag,
+    ReplicaName,
 )
 from ray.serve.deployment_state import (
     DeploymentState,
@@ -1773,10 +1774,8 @@ def mock_deployment_state_manager(
     with patch(
             "ray.serve.deployment_state.ActorReplicaWrapper",
             new=MockReplicaActorWrapper), patch(
-                "ray.serve.deployment_state.CONTROLLER_STARTUP_GRACE_PERIOD_S",
-                0), patch(
-                    "time.time", new=timer.time), patch(
-                        "ray.serve.long_poll.LongPollHost") as mock_long_poll:
+                "time.time", new=timer.time), patch(
+                    "ray.serve.long_poll.LongPollHost") as mock_long_poll:
 
         kv_store = RayLocalKVStore("TEST_DB", "test_kv_store.db")
         goal_manager = AsyncGoalManager()
@@ -1882,7 +1881,7 @@ def test_resume_deployment_state_from_replica_tags(
     # Step 3: Create new deployment_state by resuming from passed in replicas
 
     deployment_state_manager._recover_from_checkpoint(
-        [mocked_replica.replica_tag])
+        [ReplicaName.prefix + mocked_replica.replica_tag])
 
     # Step 4: Ensure new deployment_state is correct
     # deployment state behind "test" is re-created in recovery flow
