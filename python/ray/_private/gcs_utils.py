@@ -134,13 +134,13 @@ def _auto_reconnect(f):
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
                     logger.error(
                         "Failed to send request to gcs, reconnecting. "
-                        f"Error {e}")
+                        f"Error {e.code()}")
                     try:
                         self._connect()
-                        time.sleep(1)
-                    except Exception:
+                    except Exception as e:
                         import traceback
-                        logger.error(f"Connecting to gcs failed. Error {e} {traceback.print_stack()}")
+                        logger.error(f"Connecting to gcs failed. Error {e}")
+                    time.sleep(1)
                     continue
                 raise
 
@@ -148,7 +148,7 @@ def _auto_reconnect(f):
 
 
 class GcsChannel:
-    def __init__(self, redis_client=None, gcs_address: Optional[str] = None):
+    def __init__(self, redis_client=None, gcs_address: Optional[str] = None, aio: bool=False):
         if redis_client is None and gcs_address is None:
             raise ValueError(
                 "One of `redis_client` or `gcs_address` has to be set")
@@ -157,6 +157,8 @@ class GcsChannel:
                 "Only one of `redis_client` or `gcs_address` can be set")
         self._redis_client = redis_client
         self._gcs_address = gcs_address
+        self._aio_channel = aio
+        self._channel = None
 
     def connect(self):
         if self._redis_client is not None:
@@ -164,39 +166,16 @@ class GcsChannel:
         else:
             gcs_address = self._gcs_address
 
-        self._channel = create_gcs_channel(gcs_address)
-        self._aio_channel = create_gcs_channel(gcs_address, True)
+        self._channel = create_gcs_channel(gcs_address, aio)
 
-    def channel(self, aio=False):
-        return self._aio_channel if aio is True else self._channel
+    def channel(self):
+        return self._channel
 
 
 class GcsCode(enum.IntEnum):
     # corresponding to ray/src/ray/common/status.h
     OK = 0
     NotFound = 17
-
-
-def auto_reconnect(f):
-    def wrapper(self, *args, **kwargs):
-        while True:
-            try:
-                return f(self, *args, **kwargs)
-            except grpc.RpcError as e:
-                if e.code() == grpc.StatusCode.UNAVAILABLE:
-                    logger.error(
-                        "Failed to send request to gcs, reconnecting. "
-                        f"Error {e}")
-                    try:
-                        self._connect()
-                        time.sleep(1)
-                    except Exception:
-                        logger.error(f"Connecting to gcs failed. Error {e}")
-                    time.sleep(1)
-                    continue
-                raise e
-
-    return wrapper
 
 
 class GcsClient:
