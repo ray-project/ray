@@ -20,7 +20,7 @@ def job_sdk_client(ray_start_with_dashboard, disable_aiohttp_cache,
                    enable_test_module):
     address = ray_start_with_dashboard["webui_url"]
     assert wait_until_server_available(address)
-    yield JobSubmissionClient(format_web_url(address, ray_protocol_addr=True))
+    yield JobSubmissionClient(format_web_url(address))
 
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:

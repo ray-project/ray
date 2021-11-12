@@ -589,14 +589,11 @@ def get_all_log_message(pub_sub, num, timeout=20):
     return msgs
 
 
-def format_web_url(url, ray_protocol_addr: bool = False):
+def format_web_url(url):
     """Format web url."""
     url = url.replace("localhost", "http://127.0.0.1")
     if not url.startswith("http://"):
-        if ray_protocol_addr:
-            return "ray://" + url
-        else:
-            return "http://" + url
+        return "http://" + url
     return url
 
 

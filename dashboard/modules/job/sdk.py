@@ -32,22 +32,28 @@ class JobSubmissionClient:
     def __init__(self, address: str, create_cluster_if_needed=False):
         module_string, inner_address = _split_address(address.rstrip("/"))
 
-        module = importlib.import_module(module_string)
-        try:
+        if module_string == "http" or module_string == "https":
+            self._address = address
+            self._cookies = None
+            self._default_metadata = {}
+        else:
             module = importlib.import_module(module_string)
-        except Exception:
-            raise RuntimeError(
-                f"Module: {module_string} does not exist.\n"
-                f"This module was parsed from Address: {address}") from None
-        assert "get_job_submission_client_cluster_info" in dir(module), (
-            f"Module: {module_string} does "
-            "not have `get_job_submission_client_cluster_info`.")
+            try:
+                module = importlib.import_module(module_string)
+            except Exception:
+                raise RuntimeError(
+                    f"Module: {module_string} does not exist.\n"
+                    f"This module was parsed from Address: {address}"
+                ) from None
+            assert "get_job_submission_client_cluster_info" in dir(module), (
+                f"Module: {module_string} does "
+                "not have `get_job_submission_client_cluster_info`.")
 
-        cluster_info = module.get_job_submission_client_cluster_info(
-            inner_address, create_cluster_if_needed)
-        self._address = cluster_info.address
-        self._cookies = cluster_info.cookies
-        self._default_metadata = cluster_info.metadata or {}
+            cluster_info = module.get_job_submission_client_cluster_info(
+                inner_address, create_cluster_if_needed)
+            self._address = cluster_info.address
+            self._cookies = cluster_info.cookies
+            self._default_metadata = cluster_info.metadata or {}
 
         self._test_connection()
 
