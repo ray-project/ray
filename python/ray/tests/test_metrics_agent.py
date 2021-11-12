@@ -59,6 +59,12 @@ _METRICS = [
     "ray_operation_run_time_ms",
     "ray_operation_queue_time_ms",
     "ray_operation_active_count",
+    # "ray_placement_group_creation_latency_ms",
+    # "ray_placement_group_scheduling_latency_ms",
+    # "ray_pending_placement_group",
+    # "ray_registered_placement_group",
+    # "ray_infeasible_placement_group",
+    # "ray_placement_group_resource_persist_latency_ms"
 ]
 
 # This list of metrics should be kept in sync with
