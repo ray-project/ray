@@ -437,14 +437,13 @@ def download_and_unpack_package(
                     with open(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
                 unzip_package(pkg_file, local_dir, True, True, logger)
-            elif protocol == Protocol.HTTPS:
-                # Download package via HTTPS
+            elif protocol == Protocol.GS or protocol == Protocol.HTTPS:
+                # Download package via GS or HTTPS.
                 try:
                     from smart_open import open
                 except ImportError:
                     raise ImportError(
-                        "You must `pip install smart_open` to fetch "
-                        "HTTPS URIs.")
+                        f"You must `pip install smart_open` to fetch {protocol.value.upper()} URIs.")
                 with open(pkg_uri, "rb") as package_zip:
                     with open(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
