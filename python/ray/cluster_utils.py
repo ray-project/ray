@@ -321,12 +321,11 @@ class Cluster:
 
 def get_job_submission_client_cluster_info(
         address: str, create_cluster_if_needed: bool) -> ClusterInfo:
-    """Get address, cookies, and metadata used for
-        ray.dashboard.modules.job.sdk.JobSubmissionClient.
+    """Get address, cookies, and metadata used for JobSubmissionClient.
 
         Args:
             address (str): Address without the module prefix that is passed
-                to ray.dashboard.modules.job.sdk.JobSubmissionClient.
+                to JobSubmissionClient.
             create_cluster_if_needed (bool): Indicates whether the cluster
                 of the address returned needs to be running. Ray doesn't
                 start a cluster before interacting with jobs, but other
