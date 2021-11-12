@@ -210,7 +210,9 @@ class Dataset(Generic[T]):
             for start in range(0, total_rows, max_batch_size):
                 # Build a block for each batch.
                 end = min(total_rows, start + max_batch_size)
-                view = block.slice(start, end, copy=False)
+                # Make sure to copy if slicing to avoid the Arrow serialization
+                # bug where we include the entire base view on serialization.
+                view = block.slice(start, end, copy=batch_size is not None)
                 if batch_format == "native":
                     pass
                 elif batch_format == "pandas":
