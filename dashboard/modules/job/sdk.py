@@ -1,4 +1,5 @@
 import dataclasses
+import importlib
 import logging
 from pathlib import Path
 import tempfile
@@ -10,19 +11,51 @@ from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
 from ray.dashboard.modules.job.common import (
     GetPackageResponse, JobSubmitRequest, JobSubmitResponse, JobStopResponse,
-    JobStatus, JobStatusResponse, JobLogsResponse)
+    JobStatus, JobStatusResponse, JobLogsResponse, JOBS_API_ROUTE_LOGS,
+    JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP, JOBS_API_ROUTE_STATUS,
+    JOBS_API_ROUTE_PACKAGE)
 
-from ray.dashboard.modules.job.job_head import (
-    JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP,
-    JOBS_API_ROUTE_STATUS, JOBS_API_ROUTE_PACKAGE)
+from ray.client_builder import _split_address
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+@dataclasses.dataclass
+class ClusterInfo:
+    address: str
+    cookies: Optional[Dict[str, Any]]
+    metadata: Optional[Dict[str, Any]]
+
+
+def parse_cluster_info(address: str,
+                       create_cluster_if_needed: bool) -> ClusterInfo:
+    module_string, inner_address = _split_address(address.rstrip("/"))
+
+    if module_string == "http" or module_string == "https":
+        return ClusterInfo(address=address, cookies=None, metadata=None)
+    else:
+        try:
+            module = importlib.import_module(module_string)
+        except Exception:
+            raise RuntimeError(
+                f"Module: {module_string} does not exist.\n"
+                f"This module was parsed from Address: {address}") from None
+        assert "get_job_submission_client_cluster_info" in dir(module), (
+            f"Module: {module_string} does "
+            "not have `get_job_submission_client_cluster_info`.")
+
+        return module.get_job_submission_client_cluster_info(
+            inner_address, create_cluster_if_needed)
+
+
 class JobSubmissionClient:
-    def __init__(self, address: str):
-        self._address: str = address.rstrip("/")
+    def __init__(self, address: str, create_cluster_if_needed=False):
+        cluster_info = parse_cluster_info(address, create_cluster_if_needed)
+        self._address = cluster_info.address
+        self._cookies = cluster_info.cookies
+        self._default_metadata = cluster_info.metadata or {}
+
         self._test_connection()
 
     def _test_connection(self):
@@ -44,13 +77,18 @@ class JobSubmissionClient:
         logger.debug(f"Sending request to {url} with "
                      f"json: {json_data}, params: {params}.")
         r = requests.request(
-            method, url, data=data, json=json_data, params=params)
+            method,
+            url,
+            cookies=self._cookies,
+            data=data,
+            json=json_data,
+            params=params)
         r.raise_for_status()
         if response_type is None:
             return None
         else:
             response = r.json()
-            logger.info(f"Got response: {response}.")
+            logger.debug(f"Got response: {response}.")
             return response_type(**response)
 
     def _package_exists(self, package_uri: str) -> bool:
@@ -119,6 +157,7 @@ class JobSubmissionClient:
                    metadata: Optional[Dict[str, str]] = None) -> str:
         runtime_env = runtime_env or {}
         metadata = metadata or {}
+        metadata.update(self._default_metadata)
 
         self._upload_working_dir_if_needed(runtime_env)
         req = JobSubmitRequest(
