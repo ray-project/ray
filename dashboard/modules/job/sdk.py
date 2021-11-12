@@ -46,7 +46,6 @@ class JobSubmissionClient:
 
         cluster_info = module.get_job_submission_client_cluster_info(
             inner_address, create_cluster_if_needed)
-        print("DEBUG cluster_info", cluster_info)
         self._address = cluster_info.address
         self._cookies = cluster_info.cookies
         self._default_metadata = cluster_info.metadata or {}
