@@ -430,7 +430,7 @@ def ray_start_chaos_cluster(request):
     # Config of workers that are re-started.
     head_resources = param["head_resources"]
     worker_node_types = param["worker_node_types"]
-    env_vars = param["env_vars"]
+    env_vars = param.get("env_vars", {})
     for k, v in env_vars.items():
         os.environ[k] = v
 
