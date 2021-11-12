@@ -126,14 +126,13 @@ def test_chaos_actor_retry(ray_start_chaos_cluster, log_pubsub):
     # assert_no_system_failure(p, 10000, 10)
 
 
-@pytest.mark.skip(reason="Now working yet.")
-@pytest.mark.parametrize(
-    "set_env_vars", [{
-        "RAY_lineage_pinning_enabled": "1"
-    }], indirect=True)
+@pytest.mark.skip(reason="Flaky.")
 @pytest.mark.parametrize(
     "ray_start_chaos_cluster", [{
         "kill_interval": 8,
+        "env_vars": {
+            "RAY_lineage_pinning_enabled": "true"
+        },
         "head_resources": {
             "CPU": 1
         },
@@ -149,7 +148,7 @@ def test_chaos_actor_retry(ray_start_chaos_cluster, log_pubsub):
         },
     }],
     indirect=True)
-def test_chaos_lineage_reconstruction(set_env_vars, ray_start_chaos_cluster):
+def test_chaos_lineage_reconstruction(ray_start_chaos_cluster):
     shuffle.run(
         ray_address="auto",
         no_streaming=True,

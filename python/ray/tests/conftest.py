@@ -430,6 +430,9 @@ def ray_start_chaos_cluster(request):
     # Config of workers that are re-started.
     head_resources = param["head_resources"]
     worker_node_types = param["worker_node_types"]
+    env_vars = param["env_vars"]
+    for k, v in env_vars.items():
+        os.environ[k] = v
 
     cluster = AutoscalingCluster(head_resources, worker_node_types)
     cluster.start()
@@ -443,13 +446,5 @@ def ray_start_chaos_cluster(request):
     cluster.shutdown()
     del os.environ["RAY_num_heartbeats_timeout"]
     del os.environ["RAY_raylet_heartbeat_period_milliseconds"]
-
-
-@pytest.fixture
-def set_env_vars(request):
-    param = getattr(request, "param", {})
-    for k, v in param.items():
-        os.environ[k] = v
-    yield
-    for k in param:
+    for k in env_vars:
         del os.environ[k]

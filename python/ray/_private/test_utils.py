@@ -902,7 +902,7 @@ def teardown_tls(key_filepath, cert_filepath, temp_dir):
 
 def get_and_run_node_killer(node_kill_interval_s,
                             namespace=None,
-                            lifetime="",
+                            lifetime=None,
                             no_start=False):
     assert ray.is_initialized(), (
         "The API is only available when Ray is initialized.")
