@@ -1671,6 +1671,7 @@ def run_test_config(
                     exit_code = 4
                 elif (isinstance(e, FileSyncTimeoutError)
                       or isinstance(e, SessionTimeoutError)
+                      or isinstance(e, PrepareCommandRuntimeError)
                       or isinstance(e, AppConfigBuildFailure)):
                     error_type = "infra_timeout"
                     runtime = None
