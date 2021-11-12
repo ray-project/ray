@@ -514,7 +514,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
                            TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
                            function.GetLanguage(), function.GetFunctionDescriptor(), "",
-                           0);
+                           0, "", "");
 
   // Manually create `num_tasks` task specs, and for each of them create a
   // `PushTaskRequest`, this is to batch performance of TaskSpec
@@ -634,7 +634,7 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
   ActorHandle original(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0),
                        TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
                        Language::PYTHON,
-                       FunctionDescriptorBuilder::BuildPython("", "", "", ""), "", 0);
+                       FunctionDescriptorBuilder::BuildPython("", "", "", ""), "", 0, "", "");
   std::string output;
   original.Serialize(&output);
   ActorHandle deserialized(output);
