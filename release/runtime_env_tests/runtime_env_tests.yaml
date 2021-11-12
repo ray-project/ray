@@ -14,7 +14,7 @@
     compute_template: rte_minimal.yaml
 
   run:
-    timeout: 600
+    timeout: 9000 # 2h30m
     prepare: python wait_cluster.py 1 600
     script: python workloads/wheel_urls.py
 

@@ -213,17 +213,6 @@ class GcsTaskReconstructionTable
   JobID GetJobIdFromKey(const TaskID &key) override { return key.ActorId().JobId(); }
 };
 
-class GcsObjectTable : public GcsTableWithJobId<ObjectID, ObjectLocationInfo> {
- public:
-  explicit GcsObjectTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTableWithJobId(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::OBJECT);
-  }
-
- private:
-  JobID GetJobIdFromKey(const ObjectID &key) override { return key.TaskId().JobId(); }
-};
-
 class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
  public:
   explicit GcsNodeTable(std::shared_ptr<StoreClient> store_client)

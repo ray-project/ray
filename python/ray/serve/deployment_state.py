@@ -13,9 +13,8 @@ from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (DeploymentInfo, Duration, GoalId, ReplicaTag,
                               ReplicaName, RunningReplicaInfo)
 from ray.serve.config import DeploymentConfig
-from ray.serve.constants import (
-    CONTROLLER_STARTUP_GRACE_PERIOD_S, SERVE_CONTROLLER_NAME, SERVE_PROXY_NAME,
-    MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT, MAX_NUM_DELETED_DEPLOYMENTS)
+from ray.serve.constants import (MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+                                 MAX_NUM_DELETED_DEPLOYMENTS)
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.utils import format_actor_name, get_random_letters, logger
@@ -364,8 +363,8 @@ class DeploymentReplica(VersionedReplica):
                  replica_tag: ReplicaTag, deployment_name: str,
                  version: DeploymentVersion):
         self._actor = ActorReplicaWrapper(
-            format_actor_name(replica_tag), detached, controller_name,
-            replica_tag, deployment_name)
+            f"{ReplicaName.prefix}{format_actor_name(replica_tag)}", detached,
+            controller_name, replica_tag, deployment_name)
         self._controller_name = controller_name
         self._deployment_name = deployment_name
         self._replica_tag = replica_tag
@@ -704,9 +703,9 @@ class DeploymentState:
                 "Target state should be recovered successfully first before "
                 "recovering current state from replica actor names.")
 
-        logger.info("Recovering current state for deployment "
-                    f"{self._name} from {len(replica_actor_names)} actors in "
-                    "current ray cluster..")
+        logger.debug("Recovering current state for deployment "
+                     f"{self._name} from {len(replica_actor_names)} actors in "
+                     "current ray cluster..")
         # All current states use default value, only attach running replicas.
         for replica_actor_name in replica_actor_names:
             replica_name: ReplicaName = ReplicaName.from_str(
@@ -720,11 +719,10 @@ class DeploymentState:
                 f"RECOVERING replica: {new_deployment_replica.replica_tag}, "
                 f"deployment: {self._name}.")
 
-        # Blocking grace period to avoid controller thrashing when cover
-        # from replica actor names
-        time.sleep(CONTROLLER_STARTUP_GRACE_PERIOD_S)
-        # This halts all traffic in cluster.
-        self._notify_running_replicas_changed()
+        # TODO(jiaodong): this currently halts all traffic in the cluster
+        # briefly because we will broadcast a replica update with everything in
+        # RECOVERING. We should have a grace period where we recover the state
+        # of the replicas before doing this update.
 
     @property
     def target_info(self) -> DeploymentInfo:
@@ -1262,8 +1260,7 @@ class DeploymentStateManager:
         """
         all_replica_names = [
             actor_name for actor_name in all_current_actor_names
-            if (SERVE_CONTROLLER_NAME not in actor_name
-                and SERVE_PROXY_NAME not in actor_name)
+            if ReplicaName.is_replica_name(actor_name)
         ]
         deployment_to_current_replicas = defaultdict(list)
         if len(all_replica_names) > 0:
