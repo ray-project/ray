@@ -33,6 +33,7 @@ With ``allow_inplace=True``, the step that called ``.step()`` executes in the fu
 Inplace is also useful when you need to pass something that is only valid in the current process/physical machine to another step. For example:
 
 .. code-block:: python
+
     @workflow.step
     def Foo():
         x = "<something that is only valid in the current process>"
