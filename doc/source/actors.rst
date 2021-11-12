@@ -652,9 +652,17 @@ Actor Pool
 
       from ray.util import ActorPool
 
+      @ray.remote
+      class Actor
+        def double(self, n):
+            return n * 2
+
       a1, a2 = Actor.remote(), Actor.remote()
       pool = ActorPool([a1, a2])
-      print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+
+      # pool.map(..) returns a Python generator object ActorPool.map
+      gen = pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+      print([v for v in gen])
       # [2, 4, 6, 8]
 
     See the `package reference <package-ref.html#ray.util.ActorPool>`_ for more information.

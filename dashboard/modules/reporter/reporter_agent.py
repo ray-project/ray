@@ -15,6 +15,7 @@ import ray
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 from ray.dashboard import k8s_utils
 import ray.dashboard.utils as dashboard_utils
+import ray.experimental.internal_kv as internal_kv
 import ray._private.services
 import ray._private.utils
 from ray.core.generated import reporter_pb2
@@ -530,8 +531,8 @@ class ReporterAgent(dashboard_utils.DashboardAgentModule,
         """Get any changes to the log files and push updates to Redis."""
         while True:
             try:
-                formatted_status_string = await aioredis_client.hget(
-                    DEBUG_AUTOSCALING_STATUS, "value")
+                formatted_status_string = internal_kv._internal_kv_get(
+                    DEBUG_AUTOSCALING_STATUS)
                 formatted_status = json.loads(formatted_status_string.decode(
                 )) if formatted_status_string else {}
 

@@ -232,7 +232,7 @@ class Trial:
                  placement_group_factory=None,
                  stopping_criterion=None,
                  remote_checkpoint_dir=None,
-                 sync_to_cloud=None,
+                 sync_function_tpl=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  sync_on_checkpoint=True,
@@ -243,13 +243,20 @@ class Trial:
                  trial_name_creator=None,
                  trial_dirname_creator=None,
                  log_to_file=None,
-                 max_failures=0):
+                 max_failures=0,
+                 stub=False):
         """Initialize a new trial.
 
         The args here take the same meaning as the command line flags defined
         in ray.tune.config_parser.
         """
-        validate_trainable(trainable_name)
+        # If this is set, trainables are not validated or looked up.
+        # This can be used e.g. to initialize Trial objects from checkpoints
+        # without loading the trainable first.
+        self.stub = stub
+
+        if not self.stub:
+            validate_trainable(trainable_name)
         # Trial config
         self.trainable_name = trainable_name
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
@@ -327,7 +334,12 @@ class Trial:
             self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
         else:
             self.remote_checkpoint_dir_prefix = None
-        self.sync_to_cloud = sync_to_cloud
+
+        if sync_function_tpl == "auto" or not isinstance(
+                sync_function_tpl, str):
+            sync_function_tpl = None
+        self.sync_function_tpl = sync_function_tpl
+
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self.keep_checkpoints_num = keep_checkpoints_num
@@ -438,6 +450,17 @@ class Trial:
         logdir_name = os.path.basename(self.logdir)
         return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
 
+<<<<<<< HEAD
+=======
+    @property
+    def uses_placement_groups(self):
+        return bool(self.placement_group_factory)
+
+    @property
+    def uses_cloud_checkpointing(self):
+        return bool(self.remote_checkpoint_dir)
+
+>>>>>>> 5f14eb3ee4a7b0620ac0a728006ae4b680b3fa21
     def reset(self):
         # If there is `default_resource_request` associated with the trainable,
         # clear `resources` and `placement_group_factory`.
@@ -659,6 +682,8 @@ class Trial:
         self.invalidate_json_state()
 
     def get_trainable_cls(self):
+        if self.stub:
+            return None
         return get_trainable_cls(self.trainable_name)
 
     def is_finished(self):
@@ -756,7 +781,8 @@ class Trial:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         self.__dict__.update(state)
-        validate_trainable(self.trainable_name)
+        if not self.stub:
+            validate_trainable(self.trainable_name)
 
         # Avoid creating logdir in client mode for returned trial results,
         # since the dir might not be creatable locally. TODO(ekl) thsi is kind

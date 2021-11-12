@@ -596,38 +596,17 @@ class PlacementGroupManager:
         self._ready[pgf].add(pg)
         return True
 
-    def return_pg(self,
-                  trial: "Trial",
-                  destroy_pg_if_cannot_replace: bool = True):
-        """Return pg, making it available for other trials to use.
-
-        If destroy_pg_if_cannot_replace is True, this will only return
-        a placement group if a staged placement group can be replaced
-        by it. If not, it will destroy the placement group.
+    def return_pg(self, trial: "Trial"):
+        """Return pg back to Core scheduling.
 
         Args:
             trial (Trial): Return placement group of this trial.
-
-        Returns:
-            Boolean indicating if the placement group was returned.
         """
-        pgf = trial.placement_group_factory
 
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
 
-        if destroy_pg_if_cannot_replace:
-            staged_pg = self._unstage_unused_pg(pgf)
-
-            # Could not replace
-            if not staged_pg:
-                self.remove_pg(pg)
-                return False
-
-            self.remove_pg(staged_pg)
-        self._ready[pgf].add(pg)
-
-        return True
+        self.remove_pg(pg)
 
     def _unstage_unused_pg(
             self, pgf: PlacementGroupFactory) -> Optional[PlacementGroup]:
@@ -675,34 +654,6 @@ class PlacementGroupManager:
         elif self._ready[pgf]:
             # Otherwise, return an unused ready placement group.
             trial_pg = self._ready[pgf].pop()
-
-        return trial_pg
-
-    def clean_trial_placement_group(
-            self, trial: "Trial") -> Optional[PlacementGroup]:
-        """Remove reference to placement groups associated with a trial.
-
-        Returns an associated placement group. If the trial was scheduled, this
-        is the placement group it was scheduled on. If the trial was not
-        scheduled, it will first try to return a staging placement group. If
-        there is no staging placement group, it will return a ready placement
-        group that is not yet being used by another trial.
-
-        Args:
-            trial ("Trial"): :obj:`Trial` object.
-
-        Returns:
-            PlacementGroup or None.
-
-        """
-        pgf = trial.placement_group_factory
-
-        if trial in self._in_use_trials:
-            # "Trial" was in use. Just return its placement group.
-            trial_pg = self._in_use_trials.pop(trial)
-            self._in_use_pgs.pop(trial_pg)
-        else:
-            trial_pg = self._unstage_unused_pg(pgf)
 
         return trial_pg
 

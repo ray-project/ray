@@ -28,7 +28,7 @@ namespace core {
 TaskSpecification CreateTaskHelper(uint64_t num_returns,
                                    std::vector<ObjectID> dependencies) {
   TaskSpecification task;
-  task.GetMutableMessage().set_task_id(TaskID::ForFakeTask().Binary());
+  task.GetMutableMessage().set_task_id(TaskID::FromRandom(JobID::FromInt(1)).Binary());
   task.GetMutableMessage().set_num_returns(num_returns);
   for (const ObjectID &dep : dependencies) {
     task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
@@ -39,7 +39,8 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
 
 class TaskManagerTest : public ::testing::Test {
  public:
-  TaskManagerTest(bool lineage_pinning_enabled = false)
+  TaskManagerTest(bool lineage_pinning_enabled = false,
+                  int64_t max_lineage_bytes = 1024 * 1024 * 1024)
       : store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore())),
         publisher_(std::make_shared<mock_pubsub::MockPublisher>()),
         subscriber_(std::make_shared<mock_pubsub::MockSubscriber>()),
@@ -61,7 +62,17 @@ class TaskManagerTest : public ::testing::Test {
             },
             [](const JobID &job_id, const std::string &type,
                const std::string &error_message,
-               double timestamp) { return Status::OK(); }) {}
+               double timestamp) { return Status::OK(); },
+            max_lineage_bytes) {}
+
+  virtual void TearDown() { AssertNoLeaks(); }
+
+  void AssertNoLeaks() {
+    absl::MutexLock lock(&manager_.mu_);
+    ASSERT_EQ(manager_.submissible_tasks_.size(), 0);
+    ASSERT_EQ(manager_.num_pending_tasks_, 0);
+    ASSERT_EQ(manager_.total_lineage_footprint_bytes_, 0);
+  }
 
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
@@ -76,7 +87,7 @@ class TaskManagerTest : public ::testing::Test {
 
 class TaskManagerLineageTest : public TaskManagerTest {
  public:
-  TaskManagerLineageTest() : TaskManagerTest(true) {}
+  TaskManagerLineageTest() : TaskManagerTest(true, /*max_lineage_bytes=*/10000) {}
 };
 
 TEST_F(TaskManagerTest, TestTaskSuccess) {
@@ -485,13 +496,13 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
 
   // Cannot resubmit a task whose spec we do not have.
   std::vector<ObjectID> resubmitted_task_deps;
-  ASSERT_FALSE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps).ok());
+  ASSERT_FALSE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_TRUE(resubmitted_task_deps.empty());
   ASSERT_EQ(num_retries_, 0);
 
   manager_.AddPendingTask(caller_address, spec, "", num_retries);
   // A task that is already pending does not get resubmitted.
-  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps).ok());
+  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_TRUE(resubmitted_task_deps.empty());
   ASSERT_EQ(num_retries_, 0);
 
@@ -508,7 +519,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
 
   // The task finished, its return ID is still in scope, and the return object
   // was stored in plasma. It is okay to resubmit it now.
-  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps).ok());
+  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_EQ(resubmitted_task_deps, spec.GetDependencyIds());
   ASSERT_EQ(num_retries_, 1);
   resubmitted_task_deps.clear();
@@ -518,7 +529,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   // The task is still pending execution.
   ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
   // A task that is already pending does not get resubmitted.
-  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps).ok());
+  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_TRUE(resubmitted_task_deps.empty());
   ASSERT_EQ(num_retries_, 1);
 
@@ -526,7 +537,7 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address());
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   // The task cannot be resubmitted because its spec has been released.
-  ASSERT_FALSE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps).ok());
+  ASSERT_FALSE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_TRUE(resubmitted_task_deps.empty());
   ASSERT_EQ(num_retries_, 1);
 }
@@ -540,8 +551,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
   auto spec = CreateTaskHelper(2, {});
   auto return_id1 = spec.ReturnId(0);
   auto return_id2 = spec.ReturnId(1);
-  int num_retries = 3;
-  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+  manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/1);
 
   // The task completes. Both return objects are stored in plasma.
   {
@@ -564,7 +574,7 @@ TEST_F(TaskManagerLineageTest, TestResubmittedTaskNondeterministicReturns) {
   // was stored in plasma. It is okay to resubmit it now.
   ASSERT_TRUE(stored_in_plasma.empty());
   std::vector<ObjectID> resubmitted_task_deps;
-  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps).ok());
+  ASSERT_TRUE(manager_.ResubmitTask(spec.TaskId(), &resubmitted_task_deps));
   ASSERT_EQ(num_retries_, 1);
 
   // The re-executed task completes again. One of the return objects is now

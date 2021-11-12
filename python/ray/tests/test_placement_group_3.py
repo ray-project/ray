@@ -20,14 +20,17 @@ from ray._raylet import PlacementGroupID
 from ray.util.placement_group import (PlacementGroup, placement_group,
                                       remove_placement_group)
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
+import ray.experimental.internal_kv as internal_kv
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 
 
 def get_ray_status_output(address):
     redis_client = ray._private.services.create_redis_client(address, "")
-    status = redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
-    error = redis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
+    gcs_client = gcs_utils.GcsClient.create_from_redis(redis_client)
+    internal_kv._initialize_internal_kv(gcs_client)
+    status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
+    error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
     return {
         "demand": debug_status(
             status, error).split("Demands:")[1].strip("\n").strip(" "),
@@ -36,9 +39,6 @@ def get_ray_status_output(address):
     }
 
 
-@pytest.mark.skip(
-    reason=("Flaky in the master. The feature is not officially "
-            "supported yet, so we just disable it."))
 @pytest.mark.parametrize(
     "ray_start_cluster_head", [
         generate_system_config_map(
@@ -659,6 +659,12 @@ def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
 
         cluster.add_node(num_cpus=16, object_store_memory=1e9)
         cluster.wait_for_nodes()
+        # We need to init here so that we can make sure it's connecting to
+        # the raylet where it only has cpu resources.
+        # This is a hacky way to prevent scheduling hanging which will
+        # schedule <CPU:1> job to the node with GPU and for <GPU:1, CPU:1> task
+        # there is no node has this resource.
+        ray.init(address="auto")
         cluster.add_node(num_cpus=16, num_gpus=1)
         cluster.wait_for_nodes()
         NUM_CPU_BUNDLES = 30
@@ -681,7 +687,6 @@ def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
                 time.sleep(0.2)
                 print("train ", self.i)
 
-        ray.init(address="auto")
         bundles = [{"CPU": 1, "GPU": 1}]
         bundles += [{"CPU": 1} for _ in range(NUM_CPU_BUNDLES)]
         pg = placement_group(bundles, strategy="PACK")
@@ -696,6 +701,17 @@ def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
         trainer = Trainer.options(placement_group=pg).remote(0)
         ray.get([workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)])
         ray.get(trainer.train.remote())
+
+
+def test_fractional_resources_handle_correct(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1000)
+    ray.init(address=cluster.address)
+
+    bundles = [{"CPU": 0.01} for _ in range(5)]
+    pg = placement_group(bundles, strategy="SPREAD")
+
+    ray.get(pg.ready(), timeout=10)
 
 
 if __name__ == "__main__":

@@ -3,12 +3,9 @@ package io.ray.serve;
 import io.ray.api.ActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
-import io.ray.runtime.serializer.MessagePackSerializer;
+import io.ray.serve.api.Serve;
 import io.ray.serve.generated.ActorSet;
-import io.ray.serve.generated.DeploymentConfig;
 import io.ray.serve.generated.DeploymentLanguage;
-import io.ray.serve.generated.DeploymentVersion;
-import java.util.HashMap;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -31,30 +28,29 @@ public class RayServeHandleTest {
           Ray.actor(DummyServeController::new).setName(controllerName).remote();
 
       // Replica
-      DeploymentConfig.Builder deploymentConfigBuilder = DeploymentConfig.newBuilder();
-      deploymentConfigBuilder.setDeploymentLanguage(DeploymentLanguage.JAVA);
-      byte[] deploymentConfigBytes = deploymentConfigBuilder.build().toByteArray();
+      DeploymentConfig deploymentConfig =
+          new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA.getNumber());
 
       Object[] initArgs = new Object[] {deploymentName, replicaTag, controllerName, new Object()};
-      byte[] initArgsBytes = MessagePackSerializer.encode(initArgs).getLeft();
 
-      DeploymentInfo deploymentInfo = new DeploymentInfo();
-      deploymentInfo.setDeploymentConfig(deploymentConfigBytes);
-      deploymentInfo.setDeploymentVersion(
-          DeploymentVersion.newBuilder().setCodeVersion(version).build().toByteArray());
-      deploymentInfo.setReplicaConfig(
-          new ReplicaConfig("io.ray.serve.ReplicaContext", initArgsBytes, new HashMap<>()));
+      DeploymentInfo deploymentInfo =
+          new DeploymentInfo()
+              .setName(deploymentName)
+              .setDeploymentConfig(deploymentConfig)
+              .setDeploymentVersion(new DeploymentVersion(version))
+              .setDeploymentDef("io.ray.serve.ReplicaContext")
+              .setInitArgs(initArgs);
 
       ActorHandle<RayServeWrappedReplica> replicaHandle =
           Ray.actor(
                   RayServeWrappedReplica::new,
-                  deploymentName,
-                  replicaTag,
                   deploymentInfo,
-                  controllerName)
+                  replicaTag,
+                  controllerName,
+                  (RayServeConfig) null)
               .setName(actorName)
               .remote();
-      replicaHandle.task(RayServeWrappedReplica::ready).remote();
+      Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
       // RayServeHandle
       RayServeHandle rayServeHandle =
@@ -71,6 +67,7 @@ public class RayServeHandleTest {
       if (!inited) {
         Ray.shutdown();
       }
+      Serve.setInternalReplicaContext(null);
     }
   }
 }

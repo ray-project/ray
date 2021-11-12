@@ -1,7 +1,7 @@
 import pytest
 
 import ray
-from ray.serve.backend_state import DeploymentVersion
+from ray.serve.deployment_state import DeploymentVersion
 
 
 def test_validation():
@@ -16,6 +16,14 @@ def test_validation():
     # Can't pass nested unhashable type as user config.
     with pytest.raises(TypeError):
         DeploymentVersion(123, {"set": set()})
+
+
+def test_other_type_equality():
+    v = DeploymentVersion("1", None)
+
+    assert v is not None
+    assert v != "1"
+    assert v != None  # noqa: E711
 
 
 def test_code_version():

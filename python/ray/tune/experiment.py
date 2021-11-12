@@ -7,30 +7,17 @@ import os
 from pickle import PicklingError
 
 from ray.tune.error import TuneError
-from ray.tune.registry import register_trainable, get_trainable_cls
+from ray.tune.registry import register_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.sample import Domain
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, \
     TimeoutStopper
+from ray.tune.syncer import SyncConfig
 from ray.tune.utils import date_str, detect_checkpoint_function
 
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
-
-
-def _raise_on_durable(is_durable_trainable, sync_to_driver, upload_dir):
-    if is_durable_trainable:
-        if sync_to_driver is not False:
-            raise ValueError(
-                "EXPERIMENTAL: DurableTrainable will automatically sync "
-                "results to the provided upload_dir. "
-                "Set `sync_to_driver=False` to avoid data inconsistencies.")
-        if not upload_dir:
-            raise ValueError(
-                "EXPERIMENTAL: DurableTrainable will automatically sync "
-                "results to the provided upload_dir. "
-                "`upload_dir` must be provided.")
 
 
 def _validate_log_to_file(log_to_file):
@@ -97,15 +84,12 @@ class Experiment:
                  resources_per_trial=None,
                  num_samples=1,
                  local_dir=None,
-                 upload_dir=None,
+                 sync_config=None,
                  trial_name_creator=None,
                  trial_dirname_creator=None,
                  log_to_file=False,
-                 sync_to_driver=None,
-                 sync_to_cloud=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
-                 sync_on_checkpoint=True,
                  keep_checkpoints_num=None,
                  checkpoint_score_attr=None,
                  export_formats=None,
@@ -113,6 +97,7 @@ class Experiment:
                  restore=None):
 
         config = config or {}
+        sync_config = sync_config or SyncConfig()
         if callable(run) and not inspect.isclass(run) and \
                 detect_checkpoint_function(run):
             if checkpoint_at_end:
@@ -136,8 +121,8 @@ class Experiment:
         else:
             self.dir_name = "{}_{}".format(self.name, date_str())
 
-        if upload_dir:
-            self.remote_checkpoint_dir = os.path.join(upload_dir,
+        if sync_config.upload_dir:
+            self.remote_checkpoint_dir = os.path.join(sync_config.upload_dir,
                                                       self.dir_name)
         else:
             self.remote_checkpoint_dir = None
@@ -177,9 +162,6 @@ class Experiment:
             else:
                 self._stopper = TimeoutStopper(time_budget_s)
 
-        _raise_on_durable(self.is_durable_trainable, sync_to_driver,
-                          upload_dir)
-
         stdout_file, stderr_file = _validate_log_to_file(log_to_file)
 
         spec = {
@@ -190,16 +172,13 @@ class Experiment:
             "num_samples": num_samples,
             "local_dir": os.path.abspath(
                 os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR)),
-            "upload_dir": upload_dir,
+            "sync_config": sync_config,
             "remote_checkpoint_dir": self.remote_checkpoint_dir,
             "trial_name_creator": trial_name_creator,
             "trial_dirname_creator": trial_dirname_creator,
             "log_to_file": (stdout_file, stderr_file),
-            "sync_to_driver": sync_to_driver,
-            "sync_to_cloud": sync_to_cloud,
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
-            "sync_on_checkpoint": sync_on_checkpoint,
             "keep_checkpoints_num": keep_checkpoints_num,
             "checkpoint_score_attr": checkpoint_score_attr,
             "export_formats": export_formats or [],
@@ -226,6 +205,9 @@ class Experiment:
             spec["config"] = spec.get("config", {})
             spec["config"]["env"] = spec["env"]
             del spec["env"]
+
+        if "sync_config" in spec and isinstance(spec["sync_config"], dict):
+            spec["sync_config"] = SyncConfig(**spec["sync_config"])
 
         spec = copy.deepcopy(spec)
 
@@ -302,13 +284,6 @@ class Experiment:
     def run_identifier(self):
         """Returns a string representing the trainable identifier."""
         return self._run_identifier
-
-    @property
-    def is_durable_trainable(self):
-        # Local import to avoid cyclical dependencies
-        from ray.tune.durable_trainable import DurableTrainable
-        trainable_cls = get_trainable_cls(self._run_identifier)
-        return issubclass(trainable_cls, DurableTrainable)
 
     @property
     def public_spec(self) -> Dict[str, Any]:

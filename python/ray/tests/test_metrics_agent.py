@@ -54,7 +54,6 @@ _METRICS = [
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
     "ray_pending_actors",
-    "ray_pending_placement_groups",
     "ray_outbound_heartbeat_size_kb_sum",
     "ray_operation_count",
     "ray_operation_run_time_ms",
@@ -73,7 +72,8 @@ _AUTOSCALER_METRICS = [
     "autoscaler_worker_update_time", "autoscaler_updating_nodes",
     "autoscaler_successful_updates", "autoscaler_failed_updates",
     "autoscaler_failed_create_nodes", "autoscaler_recovering_nodes",
-    "autoscaler_successful_recoveries", "autoscaler_failed_recoveries"
+    "autoscaler_successful_recoveries", "autoscaler_failed_recoveries",
+    "autoscaler_drain_node_exceptions"
 ]
 
 

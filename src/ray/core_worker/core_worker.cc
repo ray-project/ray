@@ -188,8 +188,8 @@ void CoreWorkerProcess::EnsureInitialized(bool quick_exit) {
   }
 
   if (quick_exit) {
-    RAY_LOG(ERROR) << "The core worker process is not initialized yet or already "
-                   << "shutdown.";
+    RAY_LOG(WARNING) << "The core worker process is not initialized yet or already "
+                     << "shutdown.";
     QuickExit();
   } else {
     RAY_CHECK(core_worker_process)
@@ -631,7 +631,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           }
         }
       },
-      check_node_alive_fn, reconstruct_object_callback, push_error_callback));
+      check_node_alive_fn, reconstruct_object_callback, push_error_callback,
+      RayConfig::instance().max_lineage_bytes()));
 
   // Create an entry for the driver task in the task table. This task is
   // added immediately with status RUNNING. This allows us to push errors
@@ -701,6 +702,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       rpc_address_, local_raylet_client_, core_worker_client_pool_, raylet_client_factory,
       std::move(lease_policy), memory_store_, task_manager_, local_raylet_id,
       RayConfig::instance().worker_lease_timeout_milliseconds(), actor_creator_,
+      worker_context_.GetCurrentJobID(),
       RayConfig::instance().max_tasks_in_flight_per_worker(),
       boost::asio::steady_timer(io_service_),
       RayConfig::instance().max_pending_lease_requests_per_scheduling_category());
@@ -832,6 +834,11 @@ void CoreWorker::Exit(
   RAY_CHECK_OK(
       local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
 
+  RAY_LOG(DEBUG) << "Exit signal received, remove all local references.";
+  /// Since this core worker is exiting, it's necessary to release all local references,
+  /// otherwise the frontend code may not release its references and this worker will be
+  /// leaked. See https://github.com/ray-project/ray/issues/19639.
+  reference_counter_->ReleaseAllLocalReferences();
   // Callback to shutdown.
   auto shutdown = [this, exit_type, creation_task_exception_pb_bytes]() {
     // To avoid problems, make sure shutdown is always called from the same
@@ -1684,7 +1691,8 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     const BundleID &bundle_id, bool placement_group_capture_child_tasks,
-    const std::string &debugger_breakpoint, const std::string &serialized_runtime_env,
+    const std::string &debugger_breakpoint, int64_t depth,
+    const std::string &serialized_runtime_env,
     const std::vector<std::string> &runtime_env_uris,
     const std::string &concurrency_group_name) {
   // Build common task spec.
@@ -1692,7 +1700,7 @@ void CoreWorker::BuildCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint,
+      debugger_breakpoint, depth,
       // TODO(SongGuyang): Move the logic of `prepare_runtime_env` from Python to Core
       // Worker. A common process is needed.
       // If runtime env is not provided, use job config. Only for Java and C++ because it
@@ -1724,12 +1732,13 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   auto task_name = task_options.name.empty()
                        ? function.GetFunctionDescriptor()->DefaultTaskName()
                        : task_options.name;
+  int64_t depth = worker_context_.GetTaskDepth() + 1;
   // TODO(ekl) offload task building onto a thread pool for performance
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, placement_options,
-                      placement_group_capture_child_tasks, debugger_breakpoint,
+                      placement_group_capture_child_tasks, debugger_breakpoint, depth,
                       task_options.serialized_runtime_env, task_options.runtime_env_uris);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions);
   TaskSpecification task_spec = builder.Build();
@@ -1780,12 +1789,13 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_name.empty()
           ? function.GetFunctionDescriptor()->DefaultTaskName()
           : actor_name + ":" + function.GetFunctionDescriptor()->CallString();
+  int64_t depth = worker_context_.GetTaskDepth() + 1;
   BuildCommonTaskSpec(builder, job_id, actor_creation_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, new_resource,
                       new_placement_resources, actor_creation_options.placement_options,
                       actor_creation_options.placement_group_capture_child_tasks,
-                      "", /* debugger_breakpoint */
+                      "" /* debugger_breakpoint */, depth,
                       actor_creation_options.serialized_runtime_env,
                       actor_creation_options.runtime_env_uris);
 
@@ -1967,14 +1977,19 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
   const auto task_name = task_options.name.empty()
                              ? function.GetFunctionDescriptor()->DefaultTaskName()
                              : task_options.name;
+
+  // Depth shouldn't matter for an actor task, but for consistency it should be
+  // the same as the actor creation task's depth.
+  int64_t depth = worker_context_.GetTaskDepth();
   BuildCommonTaskSpec(builder, actor_handle->CreationJobID(), actor_task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, num_returns, task_options.resources,
                       required_resources, std::make_pair(PlacementGroupID::Nil(), -1),
-                      true, /* placement_group_capture_child_tasks */
-                      "",   /* debugger_breakpoint */
-                      "{}", /* serialized_runtime_env */
-                      {},   /* runtime_env_uris */
+                      true,  /* placement_group_capture_child_tasks */
+                      "",    /* debugger_breakpoint */
+                      depth, /*depth*/
+                      "{}",  /* serialized_runtime_env */
+                      {},    /* runtime_env_uris */
                       task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.

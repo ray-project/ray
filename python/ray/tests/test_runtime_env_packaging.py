@@ -8,7 +8,7 @@ import tempfile
 import uuid
 
 import pytest
-
+from ray.ray_constants import KV_NAMESPACE_PACKAGE
 from ray.experimental.internal_kv import (_internal_kv_del,
                                           _internal_kv_exists)
 from ray._private.runtime_env.packaging import (
@@ -102,15 +102,15 @@ class TestUploadPackageIfNeeded:
         uri = get_uri_for_directory(random_dir)
         uploaded = upload_package_if_needed(uri, empty_dir, random_dir)
         assert uploaded
-        assert _internal_kv_exists(uri)
+        assert _internal_kv_exists(uri, namespace=KV_NAMESPACE_PACKAGE)
 
         uploaded = upload_package_if_needed(uri, empty_dir, random_dir)
         assert not uploaded
-        assert _internal_kv_exists(uri)
+        assert _internal_kv_exists(uri, namespace=KV_NAMESPACE_PACKAGE)
 
         # Delete the URI from the internal_kv. This should trigger re-upload.
-        _internal_kv_del(uri)
-        assert not _internal_kv_exists(uri)
+        _internal_kv_del(uri, namespace=KV_NAMESPACE_PACKAGE)
+        assert not _internal_kv_exists(uri, namespace=KV_NAMESPACE_PACKAGE)
         uploaded = upload_package_if_needed(uri, empty_dir, random_dir)
         assert uploaded
 

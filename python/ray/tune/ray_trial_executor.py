@@ -20,8 +20,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError
 from ray import ray_constants
-from ray._private.resource_spec import ResourceSpec, NODE_ID_PREFIX
-from ray.tune.durable_trainable import DurableTrainable
+from ray._private.resource_spec import NODE_ID_PREFIX
 from ray.tune.error import AbortTrialExecution, TuneError
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
@@ -379,9 +378,11 @@ class RayTrialExecutor(TrialExecutor):
             "config": trial_config,
             "logger_creator": logger_creator,
         }
-        if issubclass(trial.get_trainable_cls(), DurableTrainable):
+        if trial.uses_cloud_checkpointing:
+            # We keep these kwargs separate for backwards compatibility
+            # with trainables that don't provide these keyword arguments
             kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
-            kwargs["sync_function_tpl"] = trial.sync_to_cloud
+            kwargs["sync_function_tpl"] = trial.sync_function_tpl
 
         with self._change_working_directory(trial):
             return full_actor_class.remote(**kwargs)
@@ -502,20 +503,12 @@ class RayTrialExecutor(TrialExecutor):
                         logger.exception(
                             "Trial %s: updating resources timed out.", trial)
 
-    def _stop_trial(self,
-                    trial: Trial,
-                    error=False,
-                    error_msg=None,
-                    destroy_pg_if_cannot_replace=True):
+    def _stop_trial(self, trial: Trial, error=False, error_msg=None):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
         trial fails, the run will be marked as terminated in error, but no
         exception will be thrown.
-
-        If the placement group will be used right away
-        (destroy_pg_if_cannot_replace=False), we do not remove its placement
-        group (or a surrogate placement group).
 
         Args:
             error (bool): Whether to mark this trial as terminated in error.
@@ -555,8 +548,7 @@ class RayTrialExecutor(TrialExecutor):
                     logger.debug("Trial %s: Destroying actor.", trial)
 
                     # Try to return the placement group for other trials to use
-                    self._pg_manager.return_pg(trial,
-                                               destroy_pg_if_cannot_replace)
+                    self._pg_manager.return_pg(trial)
 
                     with self._change_working_directory(trial):
                         self._trial_cleanup.add(trial, actor=trial.runner)
@@ -614,18 +606,9 @@ class RayTrialExecutor(TrialExecutor):
     def stop_trial(self,
                    trial: Trial,
                    error: bool = False,
-                   error_msg: Optional[str] = None,
-                   destroy_pg_if_cannot_replace: bool = True) -> None:
-        """Only returns resources if resources allocated.
-
-        If destroy_pg_if_cannot_replace is False, the Trial placement group
-        will not be removed if it can't replace any staging ones."""
+                   error_msg: Optional[str] = None) -> None:
         prior_status = trial.status
-        self._stop_trial(
-            trial,
-            error=error,
-            error_msg=error_msg,
-            destroy_pg_if_cannot_replace=destroy_pg_if_cannot_replace)
+        self._stop_trial(trial, error=error, error_msg=error_msg)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             out = self._find_item(self._running, trial)
@@ -753,7 +736,7 @@ class RayTrialExecutor(TrialExecutor):
             self._last_nontrivial_wait = time.time()
         return self._running[result_id]
 
-    def fetch_result(self, trial) -> List[Trial]:
+    def fetch_result(self, trial) -> List[Dict]:
         """Fetches result list of the running trials.
 
         Returns:
@@ -785,13 +768,7 @@ class RayTrialExecutor(TrialExecutor):
                     "Cluster resources not detected or are 0. Attempt #"
                     "%s...", i + 1)
                 time.sleep(0.5)
-            try:
-                resources = ray.cluster_resources()
-            except Exception as exc:
-                # TODO(rliaw): Remove this when local mode is fixed.
-                # https://github.com/ray-project/ray/issues/4147
-                logger.debug(f"{exc}: Using resources for local machine.")
-                resources = ResourceSpec().resolve(True).to_resource_dict()
+            resources = ray.cluster_resources()
             if resources:
                 break
 
@@ -949,13 +926,12 @@ class RayTrialExecutor(TrialExecutor):
                 trial.runner.restore_from_object.remote(value)
         else:
             logger.debug("Trial %s: Attempting restore from %s", trial, value)
-            if issubclass(trial.get_trainable_cls(),
-                          DurableTrainable) or not trial.sync_on_checkpoint:
+            if trial.uses_cloud_checkpointing or not trial.sync_on_checkpoint:
                 with self._change_working_directory(trial):
                     remote = trial.runner.restore.remote(value)
             elif trial.sync_on_checkpoint:
                 # This provides FT backwards compatibility in the
-                # case where a DurableTrainable is not provided.
+                # case where no cloud checkpoints are provided.
                 logger.debug("Trial %s: Reading checkpoint into memory", trial)
                 obj = TrainableUtil.checkpoint_to_object(value)
                 with self._change_working_directory(trial):
@@ -963,9 +939,8 @@ class RayTrialExecutor(TrialExecutor):
             else:
                 raise AbortTrialExecution(
                     "Pass in `sync_on_checkpoint=True` for driver-based trial"
-                    "restoration. Pass in an `upload_dir` and a Trainable "
-                    "extending `DurableTrainable` for remote storage-based "
-                    "restoration")
+                    "restoration. Pass in an `upload_dir` for remote "
+                    "storage-based restoration")
 
             if block:
                 ray.get(remote)

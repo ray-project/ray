@@ -8,11 +8,12 @@ import shutil
 import sys
 import tempfile
 import time
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, Callable
 import uuid
 
 import ray
 import ray.cloudpickle as pickle
+from ray.tune.logger import Logger
 from ray.tune.resources import Resources
 from ray.tune.result import (
     DEBUG_METRICS, DEFAULT_RESULTS_DIR, HOSTNAME, NODE_IP, PID,
@@ -20,6 +21,7 @@ from ray.tune.result import (
     DONE, TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL,
     TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_ID, TRIAL_INFO, STDOUT_FILE,
     STDERR_FILE)
+from ray.tune.sync_client import get_sync_client, get_cloud_sync_client
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
@@ -55,9 +57,17 @@ class Trainable:
     runs on a separate process. Tune will also change the current working
     directory of this process to ``self.logdir``.
 
-    """
+    This class supports checkpointing to and restoring from remote storage.
 
-    def __init__(self, config=None, logger_creator=None):
+
+    """
+    _sync_function_tpl = None
+
+    def __init__(self,
+                 config: Dict[str, Any] = None,
+                 logger_creator: Callable[[Dict[str, Any]], Logger] = None,
+                 remote_checkpoint_dir: Optional[str] = None,
+                 sync_function_tpl: Optional[str] = None):
         """Initialize an Trainable.
 
         Sets up logging and points ``self.logdir`` to a directory in which
@@ -71,6 +81,9 @@ class Trainable:
                 will be saved as ``self.config``.
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
+            remote_checkpoint_dir (str): Upload directory (S3 or GS path).
+            sync_function_tpl (str): Sync function template to use. Defaults
+              to `cls._sync_function` (which defaults to `None`).
         """
 
         self._experiment_id = uuid.uuid4().hex
@@ -114,6 +127,27 @@ class Trainable:
         self._local_ip = self.get_current_ip()
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
+
+        self.remote_checkpoint_dir = remote_checkpoint_dir
+        self.sync_function_tpl = sync_function_tpl or self._sync_function_tpl
+        self.storage_client = None
+
+        if self.uses_cloud_checkpointing:
+            self.storage_client = self._create_storage_client()
+
+    @property
+    def uses_cloud_checkpointing(self):
+        return bool(self.remote_checkpoint_dir)
+
+    def _create_storage_client(self):
+        """Returns a storage client."""
+        return get_sync_client(
+            self.sync_function_tpl) or get_cloud_sync_client(
+                self.remote_checkpoint_dir)
+
+    def _storage_path(self, local_path):
+        rel_local_path = os.path.relpath(local_path, self.logdir)
+        return os.path.join(self.remote_checkpoint_dir, rel_local_path)
 
     @classmethod
     def default_resource_request(cls, config: Dict[str, Any]) -> \
@@ -352,6 +386,9 @@ class Trainable:
         Subclasses should override ``save_checkpoint()`` instead to save state.
         This method dumps additional metadata alongside the saved path.
 
+        If a remote checkpoint dir is given, this will also sync up to remote
+        storage.
+
         Args:
             checkpoint_dir (str): Optional dir to place the checkpoint.
 
@@ -366,7 +403,18 @@ class Trainable:
             checkpoint,
             parent_dir=checkpoint_dir,
             trainable_state=trainable_state)
+
+        # Maybe sync to cloud
+        self._maybe_save_to_cloud()
+
         return checkpoint_path
+
+    def _maybe_save_to_cloud(self):
+        # Derived classes like the FunctionRunner might call this
+        if self.uses_cloud_checkpointing:
+            self.storage_client.sync_up(self.logdir,
+                                        self.remote_checkpoint_dir)
+            self.storage_client.wait()
 
     def save_to_object(self):
         """Saves the current model state to a Python object.
@@ -391,6 +439,12 @@ class Trainable:
         Subclasses should override ``_restore()`` instead to restore state.
         This method restores additional metadata saved with the checkpoint.
         """
+        # Maybe sync from cloud
+        if self.uses_cloud_checkpointing:
+            self.storage_client.sync_down(self.remote_checkpoint_dir,
+                                          self.logdir)
+            self.storage_client.wait()
+
         with open(checkpoint_path + ".tune_metadata", "rb") as f:
             metadata = pickle.load(f)
         self._experiment_id = metadata["experiment_id"]
@@ -441,8 +495,14 @@ class Trainable:
         except FileNotFoundError:
             # The checkpoint won't exist locally if the
             # trial was rescheduled to another worker.
-            logger.debug("Checkpoint not found during garbage collection.")
+            logger.debug(
+                f"Local checkpoint not found during garbage collection: "
+                f"{self.trial_id} - {checkpoint_path}")
             return
+        else:
+            if self.uses_cloud_checkpointing:
+                self.storage_client.delete(self._storage_path(checkpoint_dir))
+
         if os.path.exists(checkpoint_dir):
             shutil.rmtree(checkpoint_dir)
 
@@ -548,7 +608,10 @@ class Trainable:
         """
         return
 
-    def _create_logger(self, config, logger_creator=None):
+    def _create_logger(
+            self,
+            config: Dict[str, Any],
+            logger_creator: Callable[[Dict[str, Any]], Logger] = None):
         """Create logger from logger creator.
 
         Sets _logdir and _result_logger.
