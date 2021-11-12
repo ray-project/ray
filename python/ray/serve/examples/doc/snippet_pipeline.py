@@ -85,8 +85,9 @@ result = sequential_pipeline.call(dummy_png_bytes)
 assert result["top_5_categories"] == [898, 412, 600, 731, 463]
 # __preprocessing_pipeline_example_end__
 
-# Cleanup resource
+# __cleanup_example_start__
 del sequential_pipeline
+# __cleanup_example_end__
 
 
 # __ensemble_pipeline_example_start__
@@ -108,3 +109,5 @@ result = ensemble_pipeline.call(dummy_png_bytes)
 assert result == [898, 412, 600, 731, 463, 899, 618, 733, 463, 600]
 
 # __ensemble_pipeline_example_end__
+
+del ensemble_pipeline
