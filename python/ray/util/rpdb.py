@@ -228,7 +228,7 @@ def connect_ray_pdb(host=None,
     if debugger_external:
         ip_address = ray.worker.global_worker.node_ip_address
     else:
-        ip_address = "127.0.0.1"
+        ip_address = "localhost"
     rdb = RemotePdb(
         breakpoint_uuid=breakpoint_uuid,
         host=host,
