@@ -134,7 +134,9 @@ def auto_reconnect(f):
             except grpc.RpcError as e:
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
                     logger.error(
-                        f"Failed to send request to gcs, reconnecting. Error {e}")
+                        "Failed to send request to gcs, reconnecting. "
+                        f"Error {e}"
+                    )
                     try:
                         self._connect()
                         time.sleep(1)

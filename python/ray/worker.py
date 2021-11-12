@@ -1367,7 +1367,8 @@ def connect(node,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
     worker.redis_client = node.create_redis_client()
-    worker.gcs_client = gcs_utils.GcsClient.create_from_redis(worker.redis_client)
+    worker.gcs_client = gcs_utils.GcsClient.create_from_redis(
+        worker.redis_client)
     worker.gcs_channel = worker.gcs_client.get_channel()
     _initialize_internal_kv(worker.gcs_client)
     ray.state.state._initialize_global_state(
