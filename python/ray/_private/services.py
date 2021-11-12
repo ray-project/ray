@@ -1089,7 +1089,12 @@ def _start_redis_instance(executable,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             fate_share=fate_share)
-        wait_for_redis_to_start("127.0.0.1", port, password=password)
+        try:
+            wait_for_redis_to_start("127.0.0.1", port, password=password)
+        except redis.exceptions.ResponseError:
+            # Connected to redis with the wront password, this means we
+            # got the wrong redis. Try the next port.
+            continue
         r = redis.StrictRedis(host="127.0.0.1", port=port, password=password)
         # Check if Redis successfully started and we connected
         # to the right server.
