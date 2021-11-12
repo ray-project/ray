@@ -275,8 +275,6 @@ def test_job_level_gc(start_cluster, option: str, source: str):
     # session directory, which isn't the case for real world clusters. Once
     # this is fixed, we should test GC with NUM_NODES > 1 here.
     NUM_NODES = 1
-    if option == "py_modules":
-        return
     cluster, address = start_cluster
     for _ in range(NUM_NODES - 1):  # Head node already added.
         cluster.add_node(num_cpus=1)
