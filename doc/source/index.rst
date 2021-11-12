@@ -280,9 +280,9 @@ Papers
    data/dataset.rst
    data/dataset-pipeline.rst
    data/dataset-execution-model.rst
-   data/examples/big_data_ingestion
    data/dataset-tensor-support.rst
    data/package-ref.rst
+   data/examples/big_data_ingestion
    data/dask-on-ray.rst
    data/mars-on-ray.rst
    data/modin/index.rst
