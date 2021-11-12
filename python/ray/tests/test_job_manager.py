@@ -102,7 +102,7 @@ class TestShellScriptExecution:
     def test_submit_with_s3_runtime_env(self, job_manager):
         job_id = job_manager.submit_job(
             "python script.py",
-            runtime_env={"working_dir": "s3://runtime-env-test/script.zip"})
+            runtime_env={"working_dir": "s3://runtime-env-test/script_runtime_env.zip"})
 
         wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id)
