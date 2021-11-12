@@ -462,6 +462,8 @@ class PlacementGroupManager:
         self._in_use_pgs[pg] = trial
         self._in_use_trials[trial] = pg
 
+        logger.debug(f"For trial {trial} use pg {pg.id}")
+
         # We still have to pass resource specs
         if not pgf.head_bundle_is_empty:
             # Pass the full resource specs of the first bundle per default
@@ -471,20 +473,20 @@ class PlacementGroupManager:
 
             # Only custom resources remain in `head_bundle`
             resources = head_bundle
+            return actor_cls.options(
+                placement_group=pg,
+                placement_group_bundle_index=0,
+                placement_group_capture_child_tasks=True,
+                num_cpus=num_cpus,
+                num_gpus=num_gpus,
+                resources=resources)
         else:
-            num_cpus = 0
-            num_gpus = 0
-            resources = {}
-
-        logger.debug(f"For trial {trial} use pg {pg.id}")
-
-        return actor_cls.options(
-            placement_group=pg,
-            placement_group_bundle_index=0,
-            placement_group_capture_child_tasks=True,
-            num_cpus=num_cpus,
-            num_gpus=num_gpus,
-            resources=resources)
+            return actor_cls.options(
+                placement_group=pg,
+                placement_group_capture_child_tasks=True,
+                num_cpus=0,
+                num_gpus=0,
+                resources={})
 
     def has_ready(self, trial: "Trial", update: bool = False) -> bool:
         """Return True if placement group for trial is ready.
