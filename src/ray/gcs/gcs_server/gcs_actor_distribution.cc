@@ -192,7 +192,7 @@ void GcsBasedActorScheduler::HandleWorkerLeaseReply(
         node_to_actors_when_leasing_.erase(iter);
       }
       if (reply.runtime_env_setup_failed()) {
-        HandleRuntimeEnvSetupFailure(actor, node_id);
+        OnRuntimeEnvSetupFailure(actor, node_id);
       } else if (reply.rejected()) {
         RAY_LOG(INFO) << "Failed to lease worker from node " << node_id << " for actor "
                       << actor->GetActorID()

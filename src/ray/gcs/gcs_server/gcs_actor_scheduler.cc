@@ -310,8 +310,8 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
   }
 }
 
-void GcsActorScheduler::HandleRuntimeEnvSetupFailure(std::shared_ptr<GcsActor> actor,
-                                                     const NodeID &node_id) {
+void GcsActorScheduler::OnRuntimeEnvSetupFailure(std::shared_ptr<GcsActor> actor,
+                                                 const NodeID &node_id) {
   RAY_LOG(ERROR)
       << "Failed to lease worker from node " << node_id << " for actor "
       << actor->GetActorID() << "("
@@ -501,7 +501,7 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
       // The runtime environment has failed by an unrecoverable error.
       // We cannot create this actor anymore.
       if (reply.runtime_env_setup_failed()) {
-        HandleRuntimeEnvSetupFailure(actor, node_id);
+        OnRuntimeEnvSetupFailure(actor, node_id);
         return;
       }
 
