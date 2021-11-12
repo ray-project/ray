@@ -1,11 +1,5 @@
 import argparse
-import logging
-import asyncio
-import grpc
 import ray
-
-from ray.core.generated import node_manager_pb2
-from ray.core.generated import node_manager_pb2_grpc
 
 from ray._private.test_utils import get_and_run_node_killer
 
@@ -17,14 +11,20 @@ def parse_script_args():
         "--no-start",
         action="store_true",
         default=False,
-        help=("If set, node killer won't be started when "
-              "the script is done. Script needs to manually "
+        help=("If set, node killer won't be starting to kill nodes when "
+              "the script is done. Driver needs to manually "
               "obtain the node killer handle and invoke run method to "
-              "start a node killer."))
+              "start killing nodes. If not set, as soon as "
+              "the script is done, nodes will be killed every "
+              "--node-kill-interval seconds."))
     return parser.parse_known_args()
 
 
 def main():
+    """Start the chaos testing.
+
+    Currently chaos testing only covers random node failures.
+    """
     args, _ = parse_script_args()
     ray.init(address="auto")
     get_and_run_node_killer(
