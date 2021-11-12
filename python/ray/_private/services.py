@@ -14,6 +14,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 from typing import Optional, List
 
@@ -921,39 +922,7 @@ def start_redis(node_ip_address,
         # If no port is given, fallback to default Redis port for the primary
         # shard.
         if port is None:
-            default_port = ray_constants.DEFAULT_PORT
-            if sys.platform == "win32":
-                # In Windows, the port for Redis server is selected by first
-                # trying on to obtain the default_port i.e., 6379. If it's
-                # not available or if it's not possible to use it then we
-                # randomly try to select other ports for starting Redis
-                # servers for the current Ray instance. The reason for
-                # random selection of ports is to lower the chances of two
-                # ray instances attempting to acquire the same port at some
-                # point of time. This helps in reducing the time spent in
-                # the following for loop.
-                port = default_port  # Start from default_port
-                port_found = False
-                num_attempts = 200  # The number of attempts to try other ports
-                a_socket = socket.socket(socket.AF_INET,
-                                         socket.SOCK_STREAM)  # A TCP socket
-                for _ in range(num_attempts):
-                    location = (node_ip_address, port)
-                    try:
-                        a_socket.bind(location)
-                        port_found = True
-                        break
-                    except socket.error:
-                        # location is not available for use
-                        # Select next port to be tried randomly
-                        port = default_port + random.randint(-100, 100)
-                a_socket.close()  # Port found
-                if not port_found:
-                    raise ConnectionError(
-                        "Redis server cannot be started because"
-                        " an available port couldn't be found.")
-            else:
-                port = default_port
+            port = ray_constants.DEFAULT_PORT
             num_retries = 20
         else:
             num_retries = 1
@@ -1102,16 +1071,18 @@ def _start_redis_instance(executable,
         command += (["--port", str(port), "--loglevel", "warning"])
         if listen_to_localhost_only:
             command += ["--bind", "127.0.0.1"]
+        fd, pidfile = tempfile.mkstemp()
+        command += ["--pidfile", pidfile]
         process_info = start_ray_process(
             command,
             ray_constants.PROCESS_TYPE_REDIS_SERVER,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             fate_share=fate_share)
-        time.sleep(0.1)
-        # Check if Redis successfully started (or at least if it the executable
-        # did not exit within 0.1 seconds).
-        if process_info.process.poll() is None:
+        wait_for_redis_to_start("127.0.0.1", port, password=password)
+        r = redis.StrictRedis(host="127.0.0.1", port=port, password=password)
+        # Check if Redis successfully started and we connected to the right server
+        if r.config_get("pidfile")["pidfile"] == pidfile:
             break
         port = new_port(denylist=port_denylist)
         counter += 1
