@@ -38,6 +38,7 @@ class MockAutoscalingCluster(AutoscalingCluster):
         return config
 
 
+@pytest.mark.skip(reason="Flakey.")
 @pytest.mark.skipif(
     platform.system() == "Windows", reason="Failing on Windows.")
 def test_drain_api(shutdown_only):
