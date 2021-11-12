@@ -300,7 +300,7 @@ Let's cover how to configure your checkpoints storage location, checkpointing fr
 A simple (cloud) checkpointing example
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Cloud storage-backed Tune checkpointing is the recommended best practice for both performance and reliability reasons. It also enables checkpointing if using Ray on Kubernetes, which does not work out of the box with rsync-based sync, which relies on SSH. If you'd rather checkpoint locally or use rsync based checkpointing, see here.
+Cloud storage-backed Tune checkpointing is the recommended best practice for both performance and reliability reasons. It also enables checkpointing if using Ray on Kubernetes, which does not work out of the box with rsync-based sync, which relies on SSH. If you'd rather checkpoint locally or use rsync based checkpointing, see :ref:`here <rsync-checkpointing>`.
 
 Prequisities to use cloud checkpointing in Ray Tune for the example below:
 
@@ -378,7 +378,7 @@ If, however, you prefer not to use ``resume="AUTO"`` (or are on an older version
     # Restored previous trial from the given checkpoint
     tune.run(
         # our same trainable as before
-        durable_trainer_with_params,
+        my_trainable,
 
         # The name can be different from your original name
         name="my-tune-exp-restart",
@@ -386,6 +386,8 @@ If, however, you prefer not to use ``resume="AUTO"`` (or are on an older version
         # our same config as above!
         restore=sync_config,
     )
+
+.. _rsync-checkpointing:
 
 A simple local/rsync checkpointing example
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -409,12 +411,9 @@ Let's take a look at an example:
     # configure how checkpoints are sync'd to the scheduler/sampler 
     sync_config = tune.syncConfig(sync_to_driver=True)
 
-    # with_parameters() ensures when we checkpoint, weights are saved (not just hyperparameters)
-    durable_trainer_with_params = tune.with_parameters(my_trainable)
-
     # this starts the run!
     tune.run(
-        durable_trainer_with_params,
+        my_trainable,
 
         # name of your experiment 
         name="my-tune-exp",
