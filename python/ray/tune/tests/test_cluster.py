@@ -321,7 +321,8 @@ def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
 
     syncer_callback = _PerTrialSyncerCallback(
         lambda trial: trial.trainable_name == "__fake")
-    runner = TrialRunner(BasicVariantGenerator(), callbacks=[syncer_callback])  # noqa
+    runner = TrialRunner(
+        BasicVariantGenerator(), callbacks=[syncer_callback])  # noqa
     kwargs = {
         "stopping_criterion": {
             "training_iteration": 5

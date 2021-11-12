@@ -467,14 +467,14 @@ class PlacementGroupManager:
             # Pass the full resource specs of the first bundle per default
             head_bundle = pg.bundle_specs[0].copy()
             num_cpus = head_bundle.pop("CPU", 0)
-            num_gpus = head_bundle.pop("GPU", None)
+            num_gpus = head_bundle.pop("GPU", 0)
 
             # Only custom resources remain in `head_bundle`
             resources = head_bundle
         else:
-            num_cpus = None
-            num_gpus = None
-            resources = None
+            num_cpus = 0
+            num_gpus = 0
+            resources = {}
 
         logger.debug(f"For trial {trial} use pg {pg.id}")
 
