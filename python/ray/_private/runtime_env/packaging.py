@@ -133,16 +133,18 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
                 netloc='_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip'
             )
             -> ("gcs", "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
-    For S3 URIs, the bucket and path will have '/' replaced with '_'.
+    For S3 URIs, the bucket and path will have '/' replaced with '_'. The
+    package name will be the adjusted path with 's3_' prepended.
         urlparse("s3://bucket/dir/file.zip")
             -> ParseResult(
                 scheme='s3',
                 netloc='bucket',
                 path='/dir/file.zip'
             )
-            -> ("s3", "s3_bucket_dir_file.zip")
+            -> ("s3", "bucket_dir_file.zip")
     For HTTPS URIs, the netloc will have '.' replaced with '_', and
-    the path will have '/' replaced with '_'.
+    the path will have '/' replaced with '_'. The package name will be the
+    adjusted path with 'https_' prepended.
         urlparse(
             "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
         )
@@ -152,8 +154,9 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
                 path='/shrekris-anyscale/test_repo/archive/HEAD.zip'
             )
             -> ("https",
-            "https_github_com_shrekris-anyscale_test_repo_archive_HEAD.zip")
-    For GS URIs, the path will have '/' replaced with '_'.
+            "github_com_shrekris-anyscale_test_repo_archive_HEAD.zip")
+    For GS URIs, the path will have '/' replaced with '_'. The package name
+    will be the adjusted path with 'gs_' prepended.
         urlparse("gs://shreyas-runtime-env-test1/test_module/test_module.zip")
             -> ParseResult(
                 scheme='gs',
@@ -161,7 +164,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
                 path='/test_module/test_module.zip'
             )
             -> ("gs",
-            "gs_shreyas-runtime-env-test1_test_module_test_module.zip")
+            "shreyas-runtime-env-test1_test_module_test_module.zip")
     """
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
@@ -172,7 +175,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     elif protocol == Protocol.HTTPS:
         return (
             protocol,
-            f"http_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}")
+            f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}")
     else:
         return (protocol, uri.netloc)
 
@@ -478,7 +481,7 @@ def get_top_level_dir_from_compressed_package(package_path: str):
 
     for file_name in package_zip.namelist():
         if top_level_directory is None:
-            # Set the top_level_directory when checking
+            # Cache the top_level_directory name when checking
             # the first file in the zipped package
             if "/" in file_name:
                 top_level_directory = file_name.split("/")[0]
@@ -491,7 +494,6 @@ def get_top_level_dir_from_compressed_package(package_path: str):
                     file_name.split("/")[0] != top_level_directory:
                 return None
 
-    # Ensure that zip file is not empty
     return top_level_directory
 
 
