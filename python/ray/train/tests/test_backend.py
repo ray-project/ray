@@ -162,7 +162,10 @@ def test_train_failure(ray_start_2_cpus, tmp_path):
         e.get_next_results()
 
     with pytest.raises(TrainBackendError):
-        e.get_next_results()
+        e.pause_reporting()
+
+    with pytest.raises(TrainBackendError):
+        e.finish_training()
 
     e.start_training(lambda: 1, run_dir=tmp_path)
 
@@ -185,6 +188,21 @@ def test_worker_failure(ray_start_2_cpus, tmp_path):
         with pytest.raises(TrainingWorkerError):
             e.start_training(lambda: 1, run_dir=tmp_path)
             e.finish_training()
+
+
+def test_mismatch_checkpoint_report(ray_start_2_cpus, tmp_path):
+    def train_func():
+        if (train.world_rank()) == 0:
+            train.save_checkpoint(epoch=0)
+        else:
+            train.report(iter=0)
+
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=2)
+    e.start()
+    e.start_training(train_func, run_dir=tmp_path)
+    with pytest.raises(RuntimeError):
+        e.get_next_results()
 
 
 def test_tensorflow_start(ray_start_2_cpus, tmp_path):

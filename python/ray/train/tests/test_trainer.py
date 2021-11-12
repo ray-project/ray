@@ -114,10 +114,11 @@ def gen_new_backend_executor(special_f):
 
 
 class KillCallback(TrainingCallback):
-    def __init__(self, fail_on, worker_group):
+    def __init__(self, fail_on, trainer):
         self.counter = 0
         self.fail_on = fail_on
-        self.worker_group = worker_group
+        self.worker_group = ray.get(
+            trainer._backend_executor_actor.get_worker_group.remote())
 
     def handle_result(self, results):
         print(results)
@@ -316,6 +317,24 @@ def test_run_iterator_error(ray_start_2_cpus):
 
     assert iterator.get_final_results() is None
     assert iterator.is_finished()
+
+
+def test_no_exhaust(ray_start_2_cpus, tmp_path):
+    """Tests if training can finish even if queue is not exhausted."""
+
+    def train_func():
+        for _ in range(2):
+            train.report(loss=1)
+        return 2
+
+    config = TestConfig()
+    trainer = Trainer(config, num_workers=2)
+    trainer.start()
+
+    iterator = trainer.run_iterator(train_func)
+    output = iterator.get_final_results(force=True)
+
+    assert output == [2, 2]
 
 
 def test_checkpoint(ray_start_2_cpus):
@@ -698,7 +717,9 @@ def test_worker_start_failure(ray_start_2_cpus):
                       TestBackendExecutor):
         trainer = Trainer(test_config, num_workers=2)
         trainer.start(initialization_hook=init_hook_fail)
-        assert len(ray.get(trainer._executor.get_worker_group.remote())) == 2
+        assert len(
+            ray.get(trainer._backend_executor_actor.get_worker_group.remote())
+        ) == 2
 
 
 def test_max_failures(ray_start_2_cpus):
@@ -713,7 +734,8 @@ def test_max_failures(ray_start_2_cpus):
     iterator = trainer.run_iterator(train_func)
     with pytest.raises(RuntimeError):
         iterator.get_final_results(force=True)
-    assert ray.get(iterator._executor._get_num_failures.remote()) == 3
+    assert ray.get(
+        iterator._backend_executor_actor._get_num_failures.remote()) == 3
 
 
 def test_start_max_failures(ray_start_2_cpus):
@@ -747,9 +769,7 @@ def test_worker_kill(ray_start_2_cpus, backend):
             train.report(loss=1, iter=i)
 
     trainer.start()
-    kill_callback = KillCallback(
-        fail_on=0,
-        worker_group=ray.get(trainer._executor.get_worker_group.remote()))
+    kill_callback = KillCallback(fail_on=0, trainer=trainer)
     trainer.run(train_func, callbacks=[kill_callback])
     # Run 1: iter=0, counter=1, Successful
     # Run 2: iter=1, counter=1, Unsuccessful, starts training from beginning
@@ -760,9 +780,7 @@ def test_worker_kill(ray_start_2_cpus, backend):
     trainer.shutdown()
     trainer.start()
 
-    kill_callback = KillCallback(
-        fail_on=1,
-        worker_group=ray.get(trainer._executor.get_worker_group.remote()))
+    kill_callback = KillCallback(fail_on=1, trainer=trainer)
     trainer.run(train_func, callbacks=[kill_callback])
     # Run 1: iter=0, counter=1, Successful
     # Run 2: iter=1, counter=2, Successful
@@ -794,9 +812,7 @@ def test_worker_kill_checkpoint(ray_start_2_cpus):
 
     trainer = Trainer(test_config, num_workers=2)
     trainer.start()
-    kill_callback = KillCallback(
-        fail_on=0,
-        worker_group=ray.get(trainer._executor.get_worker_group.remote()))
+    kill_callback = KillCallback(fail_on=0, trainer=trainer)
 
     trainer.run(train_func, callbacks=[kill_callback])
 
@@ -812,9 +828,7 @@ def test_worker_kill_checkpoint(ray_start_2_cpus):
     trainer.shutdown()
     trainer.start()
 
-    kill_callback = KillCallback(
-        fail_on=1,
-        worker_group=ray.get(trainer._executor.get_worker_group.remote()))
+    kill_callback = KillCallback(fail_on=1, trainer=trainer)
     trainer.run(train_func, callbacks=[kill_callback])
     # Run 1: epoch=0, counter=1, Successful
     # *Checkpoint saved*
@@ -1006,6 +1020,7 @@ def test_dataset_pipeline_shuffle(ray_start_4_cpus):
     check_dataset_output(num_data, num_epochs, results)
 
 
+# TODO(matt): fix this test to verify that split is only called once.
 def test_dataset_fault_tolerance(ray_start_4_cpus):
     dataset = ray.data.range(10)
     dataset_splits = dataset.split(n=2, equal=True)

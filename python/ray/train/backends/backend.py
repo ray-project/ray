@@ -364,23 +364,15 @@ class BackendExecutor:
 
         def get_next():
             # Get the session for this worker.
-            try:
-                session = get_session()
-            except ValueError:
-                # Session is not initialized yet.
-                raise TrainBackendError("`fetch_next_result` has been called "
-                                        "before `start_training`. Please call "
-                                        "`start_training` before "
-                                        "`fetch_next_result`.")
-
+            session = _get_session("get_next_results")
             try:
                 result = session.get_next()
             except RuntimeError:
                 # Training thread has not been started yet.
-                raise TrainBackendError("`fetch_next_result` has been called "
+                raise TrainBackendError("`get_next_results` has been called "
                                         "before `start_training`. Please call "
                                         "`start_training` before "
-                                        "`fetch_next_result`.")
+                                        "`get_next_results`.")
 
             return result
 
@@ -412,38 +404,33 @@ class BackendExecutor:
         return results
 
     def pause_reporting(self):
+        """ Disable workers from enqueuing results from `train.report()`.
+
+            Note: Reported results may still be enqueued at this point,
+                  and should be handled appropriately.
+        """
+
         def pause_session_reporting():
             # Get the session for this worker.
-            try:
-                session = get_session()
-            except ValueError:
-                # Session is not initialized yet.
-                raise TrainBackendError("`finish_training` has been called "
-                                        "before `start_training`. Please call "
-                                        "`start_training` before "
-                                        "`finish_training`.")
-
+            session = _get_session("pause_reporting")
             return session.pause_reporting()
 
-        # Disable workers from enqueuing results from `train.report()`.
-        # Results will not be processed during the execution of `finish`.
-        # Note: Reported results may still be enqueued at this point,
-        #       and should be handled appropriately.
         futures = self.worker_group.execute_async(pause_session_reporting)
         self.get_with_failure_handling(futures)
 
     def finish_training(self):
+        """Finish training and return final results. Propagate any exceptions.
+
+        Blocks until training is finished on all workers.
+
+        Returns:
+            A list of return values from calling ``train_func`` on each worker.
+                Each item corresponds to the return value from a single worker.
+        """
+
         def end_training():
             # Get the session for this worker.
-            try:
-                session = get_session()
-            except ValueError:
-                # Session is not initialized yet.
-                raise TrainBackendError("`finish_training` has been called "
-                                        "before `start_training`. Please call "
-                                        "`start_training` before "
-                                        "`finish_training`.")
-
+            session = _get_session("finish_training")
             try:
                 # session.finish raises any Exceptions from training.
                 output = session.finish()
@@ -590,3 +577,14 @@ class InactiveWorkerGroup():
 
     def __len__(self):
         raise InactiveWorkerGroupError()
+
+
+def _get_session(method_name: str):
+    try:
+        return get_session()
+    except ValueError:
+        # Session is not initialized yet.
+        raise TrainBackendError(f"`{method_name}` has been called "
+                                "before `start_training`. Please call "
+                                "`start_training` before "
+                                f"`{method_name}`.")
