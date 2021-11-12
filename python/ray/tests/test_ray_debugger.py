@@ -284,13 +284,13 @@ def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
     if ray_debugger_external:
         assert host1 == services.get_node_ip_address(), host1
     else:
-        assert host1 == "localhost", host1
+        assert host1 == "127.0.0.1", host1
 
     host2, port2 = session2["pdb_address"].split(":")
     if ray_debugger_external:
         assert host2 == services.get_node_ip_address(), host2
     else:
-        assert host2 == "localhost", host2
+        assert host2 == "127.0.0.1", host2
 
     # Check that we can successfully connect to both breakpoints.
     tn1 = Telnet(host1, int(port1))
