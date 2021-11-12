@@ -450,17 +450,10 @@ class Trial:
         logdir_name = os.path.basename(self.logdir)
         return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
 
-<<<<<<< HEAD
-=======
-    @property
-    def uses_placement_groups(self):
-        return bool(self.placement_group_factory)
-
     @property
     def uses_cloud_checkpointing(self):
         return bool(self.remote_checkpoint_dir)
 
->>>>>>> 5f14eb3ee4a7b0620ac0a728006ae4b680b3fa21
     def reset(self):
         # If there is `default_resource_request` associated with the trainable,
         # clear `resources` and `placement_group_factory`.
