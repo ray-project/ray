@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, Optional
 import pickle
-
+from ray import ray_constants
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_get,
@@ -45,11 +45,14 @@ class JobStatusStorageClient:
     def put_status(self, job_id: str, status: JobStatus):
         assert isinstance(status, JobStatus)
         _internal_kv_put(
-            self.JOB_STATUS_KEY.format(job_id=job_id), pickle.dumps(status))
+            self.JOB_STATUS_KEY.format(job_id=job_id),
+            pickle.dumps(status),
+            namespace=ray_constants.KV_NAMESPACE_JOB)
 
     def get_status(self, job_id: str) -> JobStatus:
         pickled_status = _internal_kv_get(
-            self.JOB_STATUS_KEY.format(job_id=job_id))
+            self.JOB_STATUS_KEY.format(job_id=job_id),
+            namespace=ray_constants.KV_NAMESPACE_JOB)
         if pickled_status is None:
             return JobStatus.DOES_NOT_EXIST
         else:

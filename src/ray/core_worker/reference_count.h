@@ -475,6 +475,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// scheduled/executing).
   bool IsObjectPendingCreation(const ObjectID &object_id) const;
 
+  /// Release all local references which registered on this local.
+  void ReleaseAllLocalReferences();
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
@@ -804,6 +807,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void CleanupBorrowersOnRefRemoved(const ReferenceTable &new_borrower_refs,
                                     const ObjectID &object_id,
                                     const rpc::WorkerAddress &borrower_addr);
+
+  /// Decrease the local reference count for the ObjectID by one.
+  /// This method is internal and not thread-safe. mutex_ lock must be held before
+  /// calling this method.
+  void RemoveLocalReferenceInternal(const ObjectID &object_id,
+                                    std::vector<ObjectID> *deleted)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the

@@ -314,20 +314,20 @@
       --test_env=CONDA_PREFIX
       --test_env=CONDA_DEFAULT_ENV
       python/ray/tests/...
-#- label: ":python: (Worker In Container)"
-  #conditions: ["RAY_CI_PYTHON_AFFECTED"]
-  #commands:
-    #- LINUX_WHEELS=1 ./ci/travis/ci.sh build
-    #- pip install docker
-     #We build image ray-worker-container:nightly-py36-cpu which have installed podman,but not push it.
-     #And we save this image to a tarball, so that we can load it to podman image storage in the
-     #nested-container which run tests. And in this nested-container, Raylet will start ray worker
-     #process in double-nested-container.
-    #- python ./ci/travis/build-docker-images.py --py-versions PY36 --build-type BUILDKITE --only-build-worker-container
-    #- mkdir /ray-mount/containers
-    #- docker save -o /ray-mount/containers/images.tar rayproject/ray-worker-container:nightly-py36-cpu
-    #- docker run --rm --privileged -v /ray/containers:/var/lib/containers -v /ray:/ray --entrypoint /bin/bash
-      #rayproject/ray-worker-container:nightly-py36-cpu /ray/ci/travis/test-worker-in-container.sh
+- label: ":python: (Privileged test)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  commands:
+    - LINUX_WHEELS=1 ./ci/travis/ci.sh build
+    - pip install docker
+    # We build image ray-worker-container:nightly-py36-cpu which have installed podman,but not push it.
+    # And we save this image to a tarball, so that we can load it to podman image storage in the
+    # nested-container which run tests. And in this nested-container, Raylet will start ray worker
+    # process in double-nested-container.
+    - python ./ci/travis/build-docker-images.py --py-versions py36 --device-types cpu --build-type BUILDKITE --only-build-worker-container
+    - mkdir /ray-mount/containers
+    - docker save -o /ray-mount/containers/images.tar rayproject/ray-worker-container:nightly-py36-cpu
+    - docker run --rm --privileged -v /ray/containers:/var/lib/containers -v /ray:/ray --entrypoint /bin/bash
+      rayproject/ray-worker-container:nightly-py36-cpu /ray/ci/travis/test-worker-in-container.sh
 
 - label: ":redis: HA GCS (Small & Large)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -343,6 +343,7 @@
       --test_env=RAY_gcs_grpc_based_pubsub=true
       -- //python/ray/tests/...
       -//python/ray/tests:test_failure_2
+      -//python/ray/tests:test_job
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,client_tests,-flaky
       --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
@@ -358,6 +359,7 @@
       -- //python/ray/tests/...
       -//python/ray/tests:test_client_multi -//python/ray/tests:test_component_failures_3
       -//python/ray/tests:test_healthcheck -//python/ray/tests:test_gcs_fault_tolerance
+      -//python/ray/tests:test_client
 - label: ":redis: HA GCS (Medium K-Z)"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   commands:
@@ -368,6 +370,7 @@
       -- //python/ray/tests/...
       -//python/ray/tests:test_multinode_failures_2 -//python/ray/tests:test_ray_debugger
       -//python/ray/tests:test_placement_group_2 -//python/ray/tests:test_placement_group_3
+      -//python/ray/tests:test_multi_node
 
 - label: ":brain: RLlib: Learning discr. actions TF2-static-graph (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]
@@ -626,17 +629,38 @@
       --test_tag_filters=documentation,-flaky --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1
       rllib/...
 
-- label: ":octopus: Tune tests and examples {1/2; no RLlib}"
+- label: ":octopus: Tune tests {A-R; no RLlib}"
   conditions: ["RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
     - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
     # Because Python version changed, we need to re-install Ray here
     - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
-    - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=-example,-flaky,-py37,-soft_imports,-gpu_only,-rllib python/ray/tune/...
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
+      --test_tag_filters=tests_dir_A,tests_dir_B,tests_dir_C,tests_dir_D,tests_dir_E,tests_dir_F,tests_dir_G,tests_dir_H,tests_dir_I,tests_dir_J,tests_dir_K,tests_dir_L,tests_dir_M,tests_dir_N,tests_dir_O,tests_dir_P,tests_dir_Q,tests_dir_R,-example,-flaky,-py37,-soft_imports,-gpu_only,-rllib
+      python/ray/tune/...
+
+- label: ":octopus: Tune tests {S-Z; no RLlib}"
+  conditions: ["RAY_CI_TUNE_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
+    # Because Python version changed, we need to re-install Ray here
+    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only
+      --test_tag_filters=tests_dir_S,tests_dir_T,tests_dir_U,tests_dir_V,tests_dir_W,tests_dir_X,tests_dir_Y,tests_dir_Z,-example,-flaky,-py37,-soft_imports,-gpu_only,-rllib
+      python/ray/tune/...
+
+- label: ":octopus: Tune examples {w/o tf/pytorch; no RLlib}"
+  conditions: ["RAY_CI_TUNE_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - TUNE_TESTING=1 PYTHON=3.7 ./ci/travis/install-dependencies.sh
+    # Because Python version changed, we need to re-install Ray here
+    - rm -rf ./python/ray/thirdparty_files; rm -rf ./python/ray/pickle5_files; ./ci/travis/ci.sh build
     - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=example,-tf,-pytorch,-py37,-flaky,-soft_imports,-gpu_only,-rllib python/ray/tune/...
 
-- label: ":octopus: Tune tests and examples {2/2; no RLlib}"
+- label: ":octopus: Tune examples {w/ tf/pytorch; no RLlib}"
   conditions: ["RAY_CI_TUNE_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
