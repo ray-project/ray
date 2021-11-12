@@ -4,8 +4,8 @@ Serving ML Models
 
 This section should help you:
 
-- Batch requests to optimize performance
-- Serve multiple models by composing deployments
+- batch requests to optimize performance
+- serve multiple models by composing deployments
 
 .. contents::
 
