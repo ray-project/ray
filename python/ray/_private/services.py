@@ -17,6 +17,7 @@ import sys
 import tempfile
 import time
 from typing import Optional, List
+import uuid
 
 # Ray modules
 import ray
@@ -855,6 +856,7 @@ def start_reaper(fate_share=None):
 def start_redis(node_ip_address,
                 redirect_files,
                 resource_spec,
+                session_dir_path,
                 port=None,
                 redis_shard_ports=None,
                 num_redis_shards=1,
@@ -871,6 +873,8 @@ def start_redis(node_ip_address,
             for recording the log filenames in Redis.
         redirect_files: The list of (stdout, stderr) file pairs.
         resource_spec (ResourceSpec): Resources for the node.
+        session_dir_path (str): Path to the session directory of
+            this Ray cluster.
         port (int): If provided, the primary Redis shard will be started on
             this port.
         redis_shard_ports: A list of the ports to use for the non-primary Redis
@@ -929,6 +933,7 @@ def start_redis(node_ip_address,
         # Start the primary Redis shard.
         port, p = _start_redis_instance(
             redis_executable,
+            session_dir_path,
             port=port,
             password=password,
             redis_max_clients=redis_max_clients,
@@ -988,6 +993,7 @@ def start_redis(node_ip_address,
 
             redis_shard_port, p = _start_redis_instance(
                 redis_executable,
+                session_dir_path,
                 port=redis_shard_port,
                 password=password,
                 redis_max_clients=redis_max_clients,
@@ -1011,6 +1017,7 @@ def start_redis(node_ip_address,
 
 
 def _start_redis_instance(executable,
+                          session_dir_path,
                           port,
                           redis_max_clients=None,
                           num_retries=20,
@@ -1030,6 +1037,8 @@ def _start_redis_instance(executable,
 
     Args:
         executable (str): Full path of the redis-server executable.
+        session_dir_path (str): Path to the session directory of
+            this Ray cluster.
         port (int): Try to start a Redis server at this port.
         redis_max_clients: If this is provided, Ray will attempt to configure
             Redis with this maxclients number.
@@ -1071,7 +1080,8 @@ def _start_redis_instance(executable,
         command += (["--port", str(port), "--loglevel", "warning"])
         if listen_to_localhost_only:
             command += ["--bind", "127.0.0.1"]
-        fd, pidfile = tempfile.mkstemp()
+        pidfile = os.path.join(
+            session_dir_path, "redis-" + uuid.uuid4().hex + ".pid")
         command += ["--pidfile", pidfile]
         process_info = start_ray_process(
             command,
