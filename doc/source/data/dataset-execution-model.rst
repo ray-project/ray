@@ -90,3 +90,13 @@ Tuning Max Block Size
 The max target block size can be adjusted via Dataset context API. For example, to configure a max target block size of 64MB, run ``ray.data.context.DatasetContext.get_current().target_max_block_size = 64_000_000`` prior to creating the Dataset. Lower block sizes reduce the max amount of object store and Python heap memory required during execution. However, having too many blocks may introduce task scheduling overheads. We do not recommend adjusting this value for most workloads.
 
 Note that the number of blocks a Dataset created from ``ray.data.read_*`` contains is not fully known until all read tasks are fully executed. The number of blocks printed in the Dataset's string representation is initially set to the number of read tasks generated. To view the actual number of blocks created after block splitting, use ``len(ds.get_internal_block_refs())``, which will block until all data has been read.
+
+Batching Transforms
+~~~~~~~~~~~~~~~~~~~
+
+Mapping individual records using ``.map(fn)`` can be quite slow. Instead, consider using ``.map_batches(batch_fn, batch_format="pandas")`` and writing your ``batch_fn`` to perform vectorized pandas operations.
+
+Parquet Column Pruning
+~~~~~~~~~~~~~~~~~~~~~~
+
+Current Datasets will read all Parquet columns into memory. Make sure to specify the list of columns explicitly when calling ``ray.data.read_parquet()`` to avoid loading them.
