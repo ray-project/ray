@@ -332,7 +332,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           }
 
           int64_t target_time = get_time_ms_() + wait_time;
-          sched_cls_info.next_update_time = std::min(target_time, sched_cls_info.next_update_time);
+          sched_cls_info.next_update_time =
+              std::min(target_time, sched_cls_info.next_update_time);
           break;
         } else {
           // Force us to recalculate the next update time the next time a task
