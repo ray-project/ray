@@ -176,9 +176,15 @@ class GcsCode(enum.IntEnum):
 class GcsClient:
     """Client to GCS using GRPC"""
 
-    def __init__(self, channel: GcsChannel):
+    def __init__(self,
+                 channel: Optional[GcsChannel] = None,
+                 address: Optional[str] = None):
+        if channel is None:
+            assert isinstance(address, str)
+            channel = GcsChannel(gcs_address=address)
+        assert isinstance(channel, GcsChannel)
         self._channel = channel
-        self.connect()
+        self._connect()
 
     def _connect(self):
         self._channel.connect()

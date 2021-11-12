@@ -1260,7 +1260,7 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
     """
-    worker.gcs_subscriber = GcsSubscriber(channel=worker.gcs_channel)
+    worker.gcs_subscriber = GcsSubscriber(channel=worker.gcs_channel.channel())
     # Exports that are published after the call to
     # gcs_subscriber.subscribe_error() and before the call to
     # gcs_subscriber.poll_error() will still be processed in the loop.
@@ -1361,16 +1361,16 @@ def connect(node,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
     worker.redis_client = node.create_redis_client()
-    worker.gcs_channel = gcs_utils.create_gcs_channel(
-        gcs_utils.get_gcs_address_from_redis(worker.redis_client))
-    worker.gcs_client = gcs_utils.GcsClient(channel=worker.gcs_channel)
+    worker.gcs_channel = gcs_utils.GcsChannel(redis_client=worker.redis_client)
+    worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
     _initialize_internal_kv(worker.gcs_client)
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
-        worker.gcs_publisher = GcsPublisher(channel=worker.gcs_channel)
+        worker.gcs_publisher = GcsPublisher(
+            channel=worker.gcs_channel.channel())
 
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
