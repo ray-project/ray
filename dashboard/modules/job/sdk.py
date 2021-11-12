@@ -2,20 +2,17 @@ import dataclasses
 import logging
 from pathlib import Path
 import tempfile
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import requests
 
 from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
-from ray._private.job_manager import JobStatus
-from ray.dashboard.modules.job.data_types import (
+from ray.dashboard.modules.job.common import (
     GetPackageResponse, JobSubmitRequest, JobSubmitResponse, JobStopResponse,
-    JobStatusResponse, JobLogsResponse)
-
-from ray.dashboard.modules.job.job_head import (
-    JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP,
-    JOBS_API_ROUTE_STATUS, JOBS_API_ROUTE_PACKAGE)
+    JobStatus, JobStatusResponse, JobLogsResponse, JOBS_API_ROUTE_LOGS,
+    JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP, JOBS_API_ROUTE_STATUS,
+    JOBS_API_ROUTE_PACKAGE)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -51,7 +48,7 @@ class JobSubmissionClient:
             return None
         else:
             response = r.json()
-            logger.info(f"Got response: {response}.")
+            logger.debug(f"Got response: {response}.")
             return response_type(**response)
 
     def _package_exists(self, package_uri: str) -> bool:
@@ -113,7 +110,9 @@ class JobSubmissionClient:
                 runtime_env["working_dir"] = package_uri
 
     def submit_job(self,
+                   *,
                    entrypoint: str,
+                   job_id: Optional[str] = None,
                    runtime_env: Optional[Dict[str, Any]] = None,
                    metadata: Optional[Dict[str, str]] = None) -> str:
         runtime_env = runtime_env or {}
@@ -121,7 +120,10 @@ class JobSubmissionClient:
 
         self._upload_working_dir_if_needed(runtime_env)
         req = JobSubmitRequest(
-            entrypoint=entrypoint, runtime_env=runtime_env, metadata=metadata)
+            entrypoint=entrypoint,
+            job_id=job_id,
+            runtime_env=runtime_env,
+            metadata=metadata)
         resp = self._do_request(
             "POST",
             JOBS_API_ROUTE_SUBMIT,
@@ -145,10 +147,10 @@ class JobSubmissionClient:
             response_type=JobStatusResponse)
         return resp.job_status
 
-    def get_job_logs(self, job_id: str) -> Tuple[str, str]:
+    def get_job_logs(self, job_id: str) -> str:
         resp = self._do_request(
             "GET",
             JOBS_API_ROUTE_LOGS,
             params={"job_id": job_id},
             response_type=JobLogsResponse)
-        return resp.stdout, resp.stderr
+        return resp.logs

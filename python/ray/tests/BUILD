@@ -28,6 +28,7 @@ py_test_module_list(
     "test_component_failures_2.py",
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",
+    "test_gcs_pubsub.py",
     "test_global_gc.py",
     "test_grpc_client_credentials.py",
     "test_iter.py",
@@ -105,6 +106,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
+    "test_autoscaler_drain_node_api.py",
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_asyncio.py",
@@ -244,7 +246,8 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_runtime_env.py",
-    "test_runtime_env_working_dir.py"
+    "test_runtime_env_working_dir.py",
+    "test_runtime_env_working_dir_2.py"
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -303,14 +306,6 @@ py_test(
     size = "small",
     srcs = SRCS + ["test_typing.py"] + glob(["typing_files"]),
     tags = ["exclusive", "team:core"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_job_manager",
-    size = "small",
-    srcs = SRCS + ["test_job_manager.py"] + glob(["subprocess_driver_scripts/**/*.py"]),
-    tags = ["exclusive", "team:serve"],
     deps = ["//:ray_lib"],
 )
 

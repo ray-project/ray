@@ -70,10 +70,10 @@ Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This functi
 
 .. code-block:: python
 
-    # Pass in a Trainable class or function to tune.run.
-    tune.run(trainable)
+    # Pass in a Trainable class or function to tune.run, along with configs
+    tune.run(trainable, config={"a": 2, "b": 4})
 
-``tune.run`` will generate a couple hyperparameter configurations from its arguments, wrapping them into :ref:`Trial objects <trial-docstring>`.
+``tune.run`` will generate a couple of hyperparameter configurations from its arguments, wrapping them into :ref:`Trial objects <trial-docstring>`.
 
 Each trial has
 
@@ -104,7 +104,7 @@ You can also easily run 10 trials. Tune automatically :ref:`determines how many 
 
 .. code-block:: python
 
-    tune.run(trainable, num_samples=10)
+    tune.run(trainable, config={"a": 2, "b": 4}, num_samples=10)
 
 Finally, you can randomly sample or grid search hyperparameters via Tune's :ref:`search space API <tune-default-search-space>`:
 
