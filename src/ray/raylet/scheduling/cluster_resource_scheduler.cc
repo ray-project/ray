@@ -174,6 +174,8 @@ bool ClusterResourceScheduler::RemoveNode(const std::string &node_id_string) {
 
 bool ClusterResourceScheduler::IsNodeAvailable(int64_t node_id,
                                                const SchedulingContext &context) const {
+  bool has =
+      context.task_spec.HasRuntimeEnvFailureAtNode(string_to_int_map_.Get(node_id));
   return NodeAlive(node_id) &&
          !context.task_spec.HasRuntimeEnvFailureAtNode(string_to_int_map_.Get(node_id));
 }

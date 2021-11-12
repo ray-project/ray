@@ -287,36 +287,35 @@ def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
         ray.get(a.ready.remote())
 
 
-def test_runtime_env_rescheduling():
+def test_runtime_env_rescheduling(shutdown_only):
     @ray.remote
     class A:
         def get_node_name(self):
-            return os.environ["_RAY_RUNTIME_ENV_FAIL_AT_NODE_NAME"]
+            return os.environ["NODE_NAME"]
 
     @ray.remote
     def get_node_name():
-        return os.environ["_RAY_RUNTIME_ENV_FAIL_AT_NODE_NAME"]
+        return os.environ["NODE_NAME"]
 
     runtime_env = {"env_vars": {"TF_WARNINGS": "none"}}
     # Runtime env setup will fail at node1, and retry at node2
     os.environ["_RAY_RUNTIME_ENV_FAIL_AT_NODE_NAME"] = "1"
 
-    cluster = Cluster(initialize_head=True, connect=True)
+    cluster = Cluster()
     cluster.add_node(env_vars={"NODE_NAME": "1"})
     cluster.add_node(env_vars={"NODE_NAME": "2"})
+    cluster.connect()
 
     # test task
     node_name = ray.get(
         get_node_name.options(runtime_env=runtime_env).remote())
     assert node_name == "2"
     # test actor
-    a = A.remote()
-    node_name = ray.get(
-        a.get_node_name.options(runtime_env=runtime_env).remote())
+    a = A.options(runtime_env=runtime_env).remote()
+    node_name = ray.get(a.get_node_name.remote())
     assert node_name == "2"
 
 
 if __name__ == "__main__":
-    test_runtime_env_rescheduling()
-    # import sys
-    # sys.exit(pytest.main(["-sv", __file__]))
+    import sys
+    sys.exit(pytest.main(["-sv", __file__]))

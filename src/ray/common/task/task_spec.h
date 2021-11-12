@@ -306,6 +306,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   bool HasRuntimeEnvFailureAtNode(const std::string &node_id) const;
 
+  void AddRuntimeEnvFailureNode(const std::string &node_id);
+
  private:
   void ComputeResources();
 

@@ -472,6 +472,11 @@ std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
   return concurrency_groups;
 }
 
+void TaskSpecification::AddRuntimeEnvFailureNode(const std::string &node_id) {
+  runtime_env_setup_failed_node_ids_.emplace(node_id);
+  message_->add_runtime_env_setup_failed_node_ids(node_id);
+}
+
 bool TaskSpecification::HasRuntimeEnvFailureAtNode(const std::string &node_id) const {
   return runtime_env_setup_failed_node_ids_.contains(node_id);
 }

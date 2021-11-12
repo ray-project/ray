@@ -251,9 +251,10 @@ bool ClusterTaskManager::PoppedWorkerHandler(
       // until maximum retry time is reached.
       if (status == PopWorkerStatus::RuntimeEnvCreationFailed) {
         cause = internal::UnscheduledWorkCause::RUNTIME_ENV_SETUP_FAILED;
-        auto &task_spec = work->task.GetMutableTaskSpecification().GetMutableMessage();
-        auto &failed_nodes = task_spec.runtime_env_setup_failed_node_ids();
-        task_spec.add_runtime_env_setup_failed_node_ids(self_node_id_.Binary());
+        auto &task_spec = work->task.GetMutableTaskSpecification();
+        auto &failed_nodes =
+            task_spec.GetMutableMessage().runtime_env_setup_failed_node_ids();
+        task_spec.AddRuntimeEnvFailureNode(self_node_id_.Binary());
 
         if (failed_nodes.size() > RayConfig::instance().runtime_env_max_retry_time()) {
           // Cancel this task directly and raise a `RuntimeEnvSetupError` exception to
