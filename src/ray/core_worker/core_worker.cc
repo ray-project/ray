@@ -834,6 +834,11 @@ void CoreWorker::Exit(
   RAY_CHECK_OK(
       local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
 
+  RAY_LOG(DEBUG) << "Exit signal received, remove all local references.";
+  /// Since this core worker is exiting, it's necessary to release all local references,
+  /// otherwise the frontend code may not release its references and this worker will be
+  /// leaked. See https://github.com/ray-project/ray/issues/19639.
+  reference_counter_->ReleaseAllLocalReferences();
   // Callback to shutdown.
   auto shutdown = [this, exit_type, creation_task_exception_pb_bytes]() {
     // To avoid problems, make sure shutdown is always called from the same
