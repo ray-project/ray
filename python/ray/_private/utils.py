@@ -1145,3 +1145,16 @@ def check_dashboard_dependencies_installed() -> bool:
         return True
     except ImportError:
         return False
+
+
+def get_directory_size(path="."):
+    """Get the total size of a directory, including subdirectories."""
+    total_size = 0
+    for dirpath, dirnames, filenames in os.walk(path):
+        for f in filenames:
+            fp = os.path.join(dirpath, f)
+            # skip if it is symbolic link
+            if not os.path.islink(fp):
+                total_size += os.path.getsize(fp)
+
+    return total_size

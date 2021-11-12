@@ -1,13 +1,14 @@
 import logging
 import os
 from types import ModuleType
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package, delete_package, get_uri_for_directory,
     parse_uri, Protocol, upload_package_if_needed)
+from ray._private.utils import get_directory_size
 
 default_logger = logging.getLogger(__name__)
 
@@ -88,30 +89,37 @@ class PyModulesManager:
         if not os.path.isdir(self._resources_dir):
             os.makedirs(self._resources_dir)
         assert _internal_kv_initialized()
+        self._uris_to_module_dirs = dict()
 
     def delete_uri(self,
                    uri: str,
                    logger: Optional[logging.Logger] = default_logger) -> bool:
-
+        del self._uris_to_module_dirs[uri]
         deleted = delete_package(uri, self._resources_dir)
         if not deleted:
             logger.warning(f"Tried to delete nonexistent URI: {uri}.")
 
         return deleted
 
-    def setup(self,
-              runtime_env: dict,
-              context: RuntimeEnvContext,
-              logger: Optional[logging.Logger] = default_logger):
-        if not runtime_env.get("py_modules"):
-            return
+    def get_uris(self, runtime_env: dict) -> Optional[List[str]]:
+        return runtime_env.get("py_modules")
 
+
+    def create(self, uri: str, runtime_env: dict,
+               context: RuntimeEnvContext, logger: Optional[logging.Logger] = default_logger) -> int:
+        module_dir = download_and_unpack_package(
+            uri, self._resources_dir, logger=logger)
+        self._uris_to_module_dirs[uri] = module_dir
+        return get_directory_size(module_dir)
+
+    def modify_context(self, uris: List[str], runtime_env_dict: Dict,
+                       context: RuntimeEnvContext):
         module_dirs = []
-        for uri in runtime_env["py_modules"]:
-            module_dir = download_and_unpack_package(
-                uri, self._resources_dir, logger=logger)
+        for uri in uris:
+            module_dir = self._uris_to_module_dirs.get(uri)
+            if module_dir is None:
+                raise ValueError(f"Local directory not found for URI {uri}")
             module_dirs.append(module_dir)
-
         # Insert the py_modules directories into the PYTHONPATH.
         python_path = os.pathsep.join(module_dirs)
         if "PYTHONPATH" in context.env_vars:
