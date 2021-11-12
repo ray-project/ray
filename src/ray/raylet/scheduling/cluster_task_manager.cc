@@ -331,8 +331,13 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
                                 "task. Worker process startup is being throttled.";
           }
 
-          sched_cls_info.next_update_time =
-              std::min(get_time_ms_() + wait_time, sched_cls_info.next_update_time);
+          int64_t target_time = get_time_ms_() + wait_time;
+          if (target_time < sched_cls_info.next_update_time) {
+            // If we've decreased the wait time, rerun the loop over this task
+            // since we may be able to run this test now.
+            sched_cls_info.next_update_time = target_time;
+            continue;
+          }
           break;
         } else {
           // Force us to recalculate the next update time the next time a task
