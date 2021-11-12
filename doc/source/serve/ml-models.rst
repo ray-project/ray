@@ -54,7 +54,7 @@ To define a higher-level composed model you need to do three things:
    Ray Serve deployments.
 2. Define your composed model, using the handles of the underlying models
    (see the example below).
-3. Define an endpoint representing this composed model and query it!
+3. Define a deployment representing this composed model and query it!
 
 In order to avoid synchronous execution in the composed model (e.g., it's very
 slow to make calls to the composed model), you'll need to make the function

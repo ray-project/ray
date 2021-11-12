@@ -13,7 +13,7 @@ import io.ray.serve.poll.LongPollNamespace;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Router process incoming queries: choose backend, and assign replica. */
+/** Router process incoming queries: assign a replica. */
 public class Router {
 
   private ReplicaSet replicaSet;
@@ -36,9 +36,6 @@ public class Router {
                     .register());
 
     Map<KeyType, KeyListener> keyListeners = new HashMap<>();
-    keyListeners.put(
-        new KeyType(LongPollNamespace.BACKEND_CONFIGS, deploymentName),
-        deploymentConfig -> replicaSet.setMaxConcurrentQueries(deploymentConfig)); // cross language
     keyListeners.put(
         new KeyType(LongPollNamespace.REPLICA_HANDLES, deploymentName),
         workerReplicas -> replicaSet.updateWorkerReplicas(workerReplicas)); // cross language
