@@ -8,6 +8,9 @@ This section should help you:
 - configure resources of your deployments
 - specify different Python dependencies across different deployment using Runtime Environments
 
+.. tip::
+   Get in touch with us if you're using or considering using `Ray Serve <https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU>`_.
+
 .. contents::
 
 Creating a Deployment
@@ -76,7 +79,7 @@ Here's an example:
     def __call__(self, request):
         return "Hello world!"
 
-After creating the endpoint, it is now exposed by the HTTP server and handles requests using the specified class.
+After creating the deployment, it is now exposed by the HTTP server and handles requests using the specified class.
 We can query the model to verify that it's working.
 
 .. code-block:: python
@@ -84,7 +87,7 @@ We can query the model to verify that it's working.
   import requests
   print(requests.get("http://127.0.0.1:8000/api").text)
 
-We can also query the endpoint using the :mod:`ServeHandle <ray.serve.handle.RayServeHandle>` interface.
+We can also query the deployment using the :mod:`ServeHandle <ray.serve.handle.RayServeHandle>` interface.
 
 .. code-block:: python
 
@@ -319,4 +322,4 @@ using runtime environments.
 
 Example:
 
-.. literalinclude:: ../../../python/ray/serve/examples/doc/imported_backend.py
+.. literalinclude:: ../../../python/ray/serve/examples/doc/delayed_import.py

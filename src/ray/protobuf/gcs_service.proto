@@ -563,6 +563,16 @@ service InternalKVGcsService {
   rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
 }
 
+message GcsPublishRequest {
+  /// The messages that are published.
+  repeated PubMessage pub_messages = 1;
+}
+
+message GcsPublishReply {
+  // Not populated.
+  GcsStatus status = 100;
+}
+
 message GcsSubscriberPollRequest {
   /// The id of the subscriber.
   bytes subscriber_id = 1;
@@ -590,6 +600,9 @@ message GcsSubscriberCommandBatchReply {
 /// This supports subscribing updates from GCS with long poll, and registering /
 /// de-registering subscribers.
 service InternalPubSubGcsService {
+  /// The request to sent to GCS to publish messages.
+  /// Currently only supporting error info, logs and Python function messages.
+  rpc GcsPublish(GcsPublishRequest) returns (GcsPublishReply);
   /// The long polling request sent to GCS for pubsub operations.
   /// The long poll request will be replied once there are a batch of messages that
   /// need to be published to the caller (subscriber).

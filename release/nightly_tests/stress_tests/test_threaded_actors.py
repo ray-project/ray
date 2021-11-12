@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 PiResult = namedtuple("PiResult", ["samples", "pi"])
 
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=0)
 class PiCalculator:
     def __init__(self, metadata):
         # -- Read only variables --
@@ -69,10 +69,11 @@ class PiCalculator:
         return result
 
 
-def start_actors(num_actors, num_nodes):
+def start_actors(total_num_actors, num_nodes):
     """Create actors and run the computation loop.
     """
-    num_actors = int(num_actors)
+    total_num_actors = int(total_num_actors)
+    actors_per_node = int(total_num_actors / num_nodes)
     start = time.time()
     nodes = []
     # Place an actor per node in round-robin.
@@ -88,10 +89,10 @@ def start_actors(num_actors, num_nodes):
             n: 0.01
         }, max_concurrency=10).remote({
             "meta": 1
-        }) for n in nodes for _ in range(num_actors)
+        }) for n in nodes for _ in range(actors_per_node)
     ]
     ray.get([actor.ready.remote() for actor in pi_actors])
-    print(f"Took {time.time() - start} to create {num_actors} actors")
+    print(f"Took {time.time() - start} to create {total_num_actors} actors")
     # Start the computation loop.
     for actor in pi_actors:
         actor.run_compute.remote()
@@ -101,7 +102,7 @@ def start_actors(num_actors, num_nodes):
 def parse_script_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--kill-interval_s", type=float, default=60)
-    parser.add_argument("--test-runtime", type=float, default=3600)
+    parser.add_argument("--test-runtime", type=float, default=3000)
     return parser.parse_known_args()
 
 

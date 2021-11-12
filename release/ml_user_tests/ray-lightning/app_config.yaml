@@ -1,4 +1,4 @@
-base_image: "anyscale/ray-ml:pinned-nightly-py37-gpu"
+base_image: "anyscale/ray-ml:nightly-py37-gpu"
 env_vars:
   PL_TORCH_DISTRIBUTED_BACKEND: gloo
 
@@ -7,11 +7,8 @@ debian_packages:
 
 python:
   pip_packages:
-    # TODO(amogkam): Remove the tblib, torch, and torchvision installs once we use nightly image.
-    - tblib
-    - torch==1.9.0
-    - torchvision==0.10.0
     - ray-lightning
+    - tblib
   conda_packages: []
 
 post_build_cmds:

@@ -1,6 +1,5 @@
 import asyncio
 from asyncio.tasks import FIRST_COMPLETED
-import pickle
 import os
 import json
 import logging
@@ -13,12 +12,8 @@ from uuid import uuid4
 import ray
 import ray.ray_constants as ray_constants
 from ray.actor import ActorHandle
-from ray.experimental.internal_kv import (
-    _internal_kv_initialized,
-    _internal_kv_get,
-    _internal_kv_put,
-)
-from ray.dashboard.modules.job.data_types import JobStatus
+from ray.dashboard.modules.job.common import (
+    JobStatus, JobStatusStorageClient, JOB_ID_METADATA_KEY)
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 
 logger = logging.getLogger(__name__)
@@ -28,8 +23,6 @@ try:
     create_task = asyncio.create_task
 except AttributeError:
     create_task = asyncio.ensure_future
-
-JOB_ID_METADATA_KEY = "job_submission_id"
 
 
 class JobLogStorageClient:
@@ -53,29 +46,6 @@ class JobLogStorageClient:
         return os.path.join(
             ray.worker._global_node.get_logs_dir_path(),
             self.JOB_LOGS_PATH.format(job_id=job_id))
-
-
-class JobStatusStorageClient:
-    """
-    Handles formatting of status storage key given job id.
-    """
-    JOB_STATUS_KEY = "_ray_internal_job_status_{job_id}"
-
-    def __init__(self):
-        assert _internal_kv_initialized()
-
-    def put_status(self, job_id: str, status: JobStatus):
-        assert isinstance(status, JobStatus)
-        _internal_kv_put(
-            self.JOB_STATUS_KEY.format(job_id=job_id), pickle.dumps(status))
-
-    def get_status(self, job_id: str) -> JobStatus:
-        pickled_status = _internal_kv_get(
-            self.JOB_STATUS_KEY.format(job_id=job_id))
-        if pickled_status is None:
-            return JobStatus.DOES_NOT_EXIST
-        else:
-            return pickle.loads(pickled_status)
 
 
 class JobSupervisor:
@@ -258,8 +228,6 @@ class JobManager:
         self._status_client = JobStatusStorageClient()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
-
-        assert _internal_kv_initialized()
 
     def _get_actor_for_job(self, job_id: str) -> Optional[ActorHandle]:
         try:

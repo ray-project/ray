@@ -78,7 +78,6 @@ CORE_NIGHTLY_TESTS = {
         SmokeTest("stress_test_dead_actors"),
         "shuffle_data_loader",
         "dask_on_ray_1tb_sort",
-        "many_nodes_actor_test",
         SmokeTest("threaded_actors_stress_test"),
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
@@ -127,6 +126,7 @@ NIGHTLY_TESTS = {
         "dask_on_ray_large_scale_test_spilling",
         "pg_autoscaling_regression_test",
         "threaded_actors_stress_test",
+        "many_nodes_actor_test",
     ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("actor_deaths"),
