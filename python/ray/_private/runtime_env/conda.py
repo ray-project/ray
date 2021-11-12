@@ -330,32 +330,8 @@ class CondaManager:
 
     def create(self, uri: str, runtime_env: dict,
                ctx: RuntimeEnvContext) -> float:
-        # Gets called in the runtime env agent at install time.
-        # The URI enables caching and garbage collection to be done at the Ray level
-        # without plugin-specific code/logic (this is how working_dir works today).
-        # Returns: the disk space taken up by this plugin installation for this env
-        # E.g. for working_dir, this downloads the files to the local node.
-
-        # install_conda_env(dir=ctx.resources_dir / uri, env_name = uri)
-        # return size_of_dir(ctx.resources_dir / uri)
         pass
 
     def modify_context(self, uri: str, runtime_env_dict: Dict,
                        context: RuntimeEnvContext):
-        # The RuntimeEnvContext should be modified by this method to define
-        # any behavior that needs to happen when starting up the process.
-        # ctx.setup_commands.prepend(f"conda activate {uri}")
-        # working_dir: prepend "cd <dir> &&"
-        # env_vars: add env variable
-
-        # Need to know the module dir given the URI.
-        # Probably the right way to do it is refactor download_and_unpack_package
-        # to pass in a target directory.  Then the plugin impl can have a fn
-        # called uri_to_name which is called twice, once before
-        # download_and_unpack_package and once in modify_ctx.
-
-        # context.py_executable = "python"
-        # context.command_prefix += get_conda_activate_commands(conda_env_name)
-        # logger.info(
-        #     f"Finished setting up runtime environment at {conda_env_name}")
         pass

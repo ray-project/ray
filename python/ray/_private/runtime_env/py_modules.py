@@ -104,9 +104,11 @@ class PyModulesManager:
     def get_uris(self, runtime_env: dict) -> Optional[List[str]]:
         return runtime_env.get("py_modules")
 
-
-    def create(self, uri: str, runtime_env: dict,
-               context: RuntimeEnvContext, logger: Optional[logging.Logger] = default_logger) -> int:
+    def create(self,
+               uri: str,
+               runtime_env: dict,
+               context: RuntimeEnvContext,
+               logger: Optional[logging.Logger] = default_logger) -> int:
         module_dir = download_and_unpack_package(
             uri, self._resources_dir, logger=logger)
         self._uris_to_module_dirs[uri] = module_dir

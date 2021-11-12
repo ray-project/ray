@@ -31,7 +31,7 @@ default_logger = logging.getLogger(__name__)
 # better pluggability mechanism once available.
 SLEEP_FOR_TESTING_S = os.environ.get("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S")
 
-DEFAULT_MAX_URI_CACHE_SIZE_BYTES: int = 0 # 10 * (1024**4)  # 10 GB
+DEFAULT_MAX_URI_CACHE_SIZE_BYTES: int = 0  # 10 * (1024**4)  # 10 GB
 
 
 @dataclass
@@ -199,8 +199,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     else:
                         self._working_dir_uri_cache.mark_used(
                             working_dir_uri, logger=per_job_logger)
-                    self._working_dir_manager.modify_context(working_dir_uri,
-                                                    runtime_env, context)
+                    self._working_dir_manager.modify_context(
+                        working_dir_uri, runtime_env, context)
 
                 # Set up py_modules
                 py_modules_uris = self._py_modules_manager.get_uris(
@@ -218,8 +218,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                         else:
                             self._py_modules_uri_cache.mark_used(
                                 uri, logger=per_job_logger)
-                    self._py_modules_manager.modify_context(py_modules_uris,
-                                                        runtime_env, context)
+                    self._py_modules_manager.modify_context(
+                        py_modules_uris, runtime_env, context)
 
                 per_job_logger.error(f"CONTEXT: {str(context.serialize())}")
                 # Add the mapping of URIs -> the serialized environment to be
