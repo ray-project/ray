@@ -19,6 +19,7 @@ import ray._private.services
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 from ray import ray_constants
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsAioSubscriber
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.datacenter import DataOrganizer
@@ -44,8 +45,8 @@ GRPC_CHANNEL_OPTIONS = (
 async def get_gcs_address_with_retry(redis_client) -> str:
     while True:
         try:
-            gcs_address = await redis_client.get(
-                dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
+            gcs_address = (await redis_client.get(
+                dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)).decode()
             if not gcs_address:
                 raise Exception("GCS address not found.")
             logger.info("Connect to GCS at %s", gcs_address)
@@ -113,6 +114,7 @@ class DashboardHead:
         self.log_dir = log_dir
         self.aioredis_client = None
         self.aiogrpc_gcs_channel = None
+        self.gcs_subscriber = None
         self.http_session = None
         self.ip = ray.util.get_node_ip_address()
         ip, port = redis_address.split(":")
@@ -192,11 +194,15 @@ class DashboardHead:
         # Waiting for GCS is ready.
         # TODO: redis-removal bootstrap
         gcs_address = await get_gcs_address_with_retry(self.aioredis_client)
-        self.gcs_client = GcsClient(gcs_address)
+        self.gcs_client = GcsClient(address=gcs_address)
+        internal_kv._initialize_internal_kv(self.gcs_client)
         self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
             gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True)
-        gcs_client = GcsClient(gcs_address)
-        internal_kv._initialize_internal_kv(gcs_client)
+        self.gcs_subscriber = None
+        if gcs_pubsub_enabled():
+            self.gcs_subscriber = GcsAioSubscriber(
+                channel=self.aiogrpc_gcs_channel)
+            await self.gcs_subscriber.subscribe_error()
 
         self.health_check_thread = GCSHealthCheckThread(gcs_address)
         self.health_check_thread.start()
