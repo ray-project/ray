@@ -363,7 +363,6 @@ class BackendExecutor:
         """
 
         def get_next():
-            # Get the session for this worker.
             session = _get_session("get_next_results")
             try:
                 result = session.get_next()
@@ -411,7 +410,6 @@ class BackendExecutor:
         """
 
         def pause_session_reporting():
-            # Get the session for this worker.
             session = _get_session("pause_reporting")
             return session.pause_reporting()
 
@@ -429,7 +427,6 @@ class BackendExecutor:
         """
 
         def end_training():
-            # Get the session for this worker.
             session = _get_session("finish_training")
             try:
                 # session.finish raises any Exceptions from training.
@@ -581,6 +578,7 @@ class InactiveWorkerGroup():
 
 def _get_session(method_name: str):
     try:
+        # Get the session for this worker.
         return get_session()
     except ValueError:
         # Session is not initialized yet.
