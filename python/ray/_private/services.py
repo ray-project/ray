@@ -944,7 +944,7 @@ def start_redis(node_ip_address,
                     except socket.error:
                         # location is not available for use
                         # Select next port to be tried randomly
-                        port += random.randint(-100, 100)
+                        port = default_port + random.randint(-100, 100)
                 a_socket.close()  # Port found
                 if not port_found:
                     raise ConnectionError(
