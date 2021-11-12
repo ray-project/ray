@@ -42,8 +42,11 @@ class Protocol(Enum):
     GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
     CONDA = "conda", "For conda environments installed locally on each node."
-    HTTPS = "https", "Remote https path, assumes everything packed in one zip file."
-    GS = "gs", "Remote google storage path, assumes everything packed in one zip file."
+    HTTPS = "https", \
+        "Remote https path, assumes everything packed in one zip file."
+    GS = "gs", \
+        "Remote google storage path, " + \
+        "assumes everything packed in one zip file."
 
     @classmethod
     def remote_protocols(cls):
@@ -140,13 +143,16 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             )
             -> ("s3", "s3_bucket_dir_file.zip")
     For HTTPS URIs, the path will have '/' and '.' replaced with '_'.
-        urlparse("https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip")
+        urlparse(
+            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+        )
             -> ParseResult(
                 scheme='https',
                 netloc='github.com',
                 path='/shrekris-anyscale/test_repo/archive/HEAD.zip'
             )
-            -> ("https", "https_github_com__shrekris-anyscale_test_repo_archive_HEAD.zip")
+            -> ("https",
+            "https_github_com__shrekris-anyscale_test_repo_archive_HEAD.zip")
     For GS URIs, the path will have '/' replaced with '_'.
         urlparse("gs://shreyas-runtime-env-test1/test_module/test_module.zip")
             -> ParseResult(
@@ -154,14 +160,18 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
                 netloc='shreyas-runtime-env-test1',
                 path='/test_module/test_module.zip'
             )
-            -> ("gs", "gs_shreyas-runtime-env-test1__test_module_test_module.zip")
+            -> ("gs",
+            "gs_shreyas-runtime-env-test1__test_module_test_module.zip")
     """
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
     if protocol == Protocol.S3 or protocol == Protocol.GS:
-        return (protocol, f"{protocol.value}_{uri.netloc}_" + "_".join(uri.path.split("/")))
+        return (
+            protocol,
+            f"{protocol.value}_{uri.netloc}_" + "_".join(uri.path.split("/")))
     elif protocol == Protocol.HTTPS:
-        return (protocol, f"http_{uri.netloc.replace('.', '_')}_" + "_".join(uri.path.split("/")))
+        return (protocol, f"http_{uri.netloc.replace('.', '_')}_" + "_".join(
+            uri.path.split("/")))
     else:
         return (protocol, uri.netloc)
 
@@ -318,7 +328,8 @@ def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes):
     if protocol == Protocol.GCS:
         _store_package_in_gcs(pkg_uri, pkg_bytes)
     elif protocol in Protocol.remote_protocols():
-        raise RuntimeError("push_package should not be called with remote path.")
+        raise RuntimeError(
+            "push_package should not be called with remote path.")
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -443,7 +454,8 @@ def download_and_unpack_package(
                     from smart_open import open
                 except ImportError:
                     raise ImportError(
-                        f"You must `pip install smart_open` to fetch {protocol.value.upper()} URIs.")
+                        "You must `pip install smart_open` "
+                        f"to fetch {protocol.value.upper()} URIs.")
                 with open(pkg_uri, "rb") as package_zip:
                     with open(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
@@ -457,66 +469,79 @@ def download_and_unpack_package(
 
 def get_top_level_dir_from_compressed_package(package_path: str):
     """
-    If compressed package at package_path contains a single top-level directory,
-    returns the name of the top-level directory. Otherwise, returns None.
+    If compressed package at package_path contains a single top-level
+    directory, returns the name of the top-level directory. Otherwise,
+    returns None.
     """
 
     package_zip = ZipFile(package_path, "r")
     top_level_directory = None
 
     for file_name in package_zip.namelist():
-        if top_level_directory == None:
-            # Set the top_level_directory when checking the first file in the zipped package
-            if '/' in file_name:
-                top_level_directory = file_name.split('/')[0]
+        if top_level_directory is None:
+            # Set the top_level_directory when checking
+            # the first file in the zipped package
+            if "/" in file_name:
+                top_level_directory = file_name.split("/")[0]
             else:
                 return None
         else:
-            # Confirm that all other files belong to the same top_level_directory
-            if '/' not in file_name or file_name.split('/')[0] != top_level_directory:
-                print(file_name.split('/')[0])
+            # Confirm that all other files
+            # belong to the same top_level_directory
+            if "/" not in file_name or \
+                    file_name.split("/")[0] != top_level_directory:
                 return None
-    
+
     # Ensure that zip file is not empty
     return top_level_directory
 
 
-def unzip_package(package_path: str, target_dir: str, remove_top_level_directory: bool, unlink_zip: bool, logger: Optional[logging.Logger] = default_logger):
+def unzip_package(package_path: str,
+                  target_dir: str,
+                  remove_top_level_directory: bool,
+                  unlink_zip: bool,
+                  logger: Optional[logging.Logger] = default_logger):
     """
-    Unzip the compressed package contained at package_path and store the contents in target_dir.
-    If remove_top_level_directory is True, the function will automatically
-    remove the top_level_directory and store the contents directly in target_dir.
-    If unlinke_zip is True, the function will unlink the zip file stored at package_path.
+    Unzip the compressed package contained at package_path and store the
+    contents in target_dir. If remove_top_level_directory is True, the function
+    will automatically remove the top_level_directory and store the contents
+    directly in target_dir. If unlink_zip is True, the function will unlink the
+    zip file stored at package_path.
     """
     try:
         os.mkdir(target_dir)
     except FileExistsError:
         logger.info(f"Directory at {target_dir} already exists")
-    
+
     logger.debug(f"Unpacking {package_path} to {target_dir}")
 
     if remove_top_level_directory:
-        top_level_directory = get_top_level_dir_from_compressed_package(package_path)
+        top_level_directory = get_top_level_dir_from_compressed_package(
+            package_path)
         if top_level_directory is None:
-            raise ValueError("The package at package_path must contain a single top level directory.")
+            raise ValueError("The package at package_path must contain "
+                             "a single top level directory.")
         with ZipFile(str(package_path), "r") as zip_ref:
 
             for fname in zip_ref.namelist():
-                fname_without_top_level_dir = "/".join(fname.split('/')[1:])
+                fname_without_top_level_dir = "/".join(fname.split("/")[1:])
 
-                # Extract files only if the top level directory actually contains any files
+                # Extract files only if the top level directory
+                # actually contains any files
                 if fname_without_top_level_dir:
                     zip_ref.extract(fname, target_dir)
-                    os.rename(os.path.join(target_dir, fname), os.path.join(target_dir, fname_without_top_level_dir))
-            
+                    os.rename(
+                        os.path.join(target_dir, fname),
+                        os.path.join(target_dir, fname_without_top_level_dir))
+
             shutil.rmtree(os.path.join(target_dir, top_level_directory))
     else:
         with ZipFile(str(package_path), "r") as zip_ref:
             zip_ref.extractall(target_dir)
-    
+
     if unlink_zip:
         package_path.unlink()
-    
+
 
 def delete_package(pkg_uri: str, base_directory: str) -> bool:
     """Deletes a specific URI from the local filesystem.

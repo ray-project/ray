@@ -35,7 +35,8 @@ def upload_working_dir_if_needed(
         protocol, path = None, None
 
     if protocol is not None:
-        if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
+        if protocol in Protocol.remote_protocols(
+        ) and not path.endswith(".zip"):
             raise ValueError("Only .zip files supported for remote URIs.")
         return runtime_env
 
