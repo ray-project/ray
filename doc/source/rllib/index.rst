@@ -1,13 +1,9 @@
-.. admonition:: We're hiring!
-
-    The RLlib team at `Anyscale Inc. <https://anyscale.com>`__, the company behind Ray, is hiring interns and full-time **reinforcement learning engineers** to help advance and maintain RLlib.
-    If you have a background in ML/RL and are interested in making RLlib **the** industry-leading open-source RL library, `apply here today <https://jobs.lever.co/anyscale/186d9b8d-3fee-4e07-bb8e-49e85cf33d6b>`__.
-    We'd be thrilled to welcome you on the team!
+.. include:: we_are_hiring.rst
 
 .. _rllib-index:
 
-RLlib: Industry-Grade Reinforcement Learning with PyTorch and TensorFlow
-========================================================================
+RLlib: Industry-Grade Reinforcement Learning
+============================================
 
 .. figure:: ../images/rllib/rllib-index-header.svg
 
@@ -25,8 +21,8 @@ If you either have your problem defined and coded in python as an
 "`RL environment <https://github.com/openai/gym>`_" or are in possession of pre-recorded
 (historic) data to learn from, you should be up and running with RLlib in a day.
 
-RLlib is already used in production by industry leaders from many different verticals,
-such as manufacturing, logistics, finance, gaming, automakers, robotics, and lots of others.
+RLlib is already used in production by industry leaders in many different verticals,
+such as manufacturing, finance, gaming, car makers, robotics, and others.
 
 RLlib in 60 seconds
 -------------------
@@ -62,6 +58,8 @@ for a few training iterations, then perform a single evaluation loop
     :language: python
     :start-after: __rllib-in-60s-begin__
     :end-before: __rllib-in-60s-end__
+
+`See here for a simple example on how to write an action inference loop after training. <https://github.com/ray-project/ray/blob/master/rllib/examples/inference_and_serving/policy_inference_after_training.py>`_
 
 Feature Overview
 ----------------
@@ -112,7 +110,7 @@ Click on the images below to see an example script for each of the listed featur
     .. container::
 
         **Vectorized (batched) and remote (parallel) environments**: RLlib auto-vectorizes
-        your ``gym.Env``s via the ``num_envs_per_worker`` config. Environment workers can
+        your ``gym.Envs`` via the ``num_envs_per_worker`` config. Environment workers can
         then batch and thus significantly speedup the action computing forward pass.
         On top of that, RLlib offers the ``remote_worker_envs`` config to create
         `single environments (within a vectorized one) as ray Actors <https://github.com/ray-project/ray/blob/master/rllib/examples/remote_vector_env_with_custom_api.py>`_,
@@ -152,10 +150,13 @@ Click on the images below to see an example script for each of the listed featur
 
         **External simulators**: Don't have your simulation running as a gym.Env in python?
         No problem! RLlib supports an external environment API and comes with a pluggable,
-        off-the-shelve client/server setup that allows you to run 100s of independent
-        simulators on the "outside" (e.g. a Windows cloud) connecting to a central RLlib
-        Policy-Server that learns and serves actions. Alternatively, actions can be computed
-        on the client side to save on network traffic.
+        off-the-shelve
+        `client <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`_/
+        `server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`_
+        setup that allows you to run 100s of independent simulators on the "outside"
+        (e.g. a Windows cloud) connecting to a central RLlib Policy-Server that learns
+        and serves actions. Alternatively, actions can be computed on the client side
+        to save on network traffic.
 
 
 .. container:: clear-both
@@ -171,10 +172,10 @@ Click on the images below to see an example script for each of the listed featur
         **Offline RL and imitation learning/behavior cloning**: You don't have a simulator
         for your particular problem, but tons of historic data recorded by a legacy (maybe
         non-RL/ML) system? This branch of reinforcement learning is for you!
-        RLlib's comes with several offline RL algorithms (*CQL*, *MARWIL*, and *DQfD*),
-        allowing you to either purely behavior-clone your existing system or learn how
-        to further improve over it.
-
+        RLlib's comes with several `offline RL <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl.py>`_
+        algorithms (*CQL*, *MARWIL*, and *DQfD*), allowing you to either purely
+        `behavior-clone <https://github.com/ray-project/ray/blob/master/rllib/agents/marwil/tests/test_bc.py>`_
+        your existing system or learn how to further improve over it.
 
 
 Customizations
@@ -203,6 +204,3 @@ RL (MARL) becomes an easy-to-use low-level primitive for our users.
     which provides learning functionality and serves action queries. User customizations
     are realized via sub-classing the existing abstractions and - by overriding certain
     methods in those sub-classes - define custom behavior.
-
-
-To learn more, proceed to the `table of contents <rllib-toc.html>`__.
