@@ -25,7 +25,7 @@ S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 GS_PACKAGE_URI = "gs://shreyas-runtime-env-test1/test_module.zip"
 HTTPS_PACKAGE_URI = ("https://github.com/shrekris-anyscale/"
                      "test_module/archive/HEAD.zip")
-REMOTE_URIS = [S3_PACKAGE_URI]
+REMOTE_URIS = [S3_PACKAGE_URI, HTTPS_PACKAGE_URI, GS_PACKAGE_URI]
 
 
 @pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
