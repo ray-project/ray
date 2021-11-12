@@ -123,6 +123,7 @@ def test_detached_actor_gc(start_cluster, field, spec_format, tmp_path):
 
     wait_for_condition(lambda: check_local_files_gced(cluster), timeout=30)
 
+
 # TODO(architkulkarni): fix bug #19602 and enable test.
 @pytest.mark.skip("Currently failing")
 @pytest.mark.skipif(
