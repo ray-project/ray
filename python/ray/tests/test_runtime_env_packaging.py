@@ -13,7 +13,7 @@ from ray.experimental.internal_kv import (_internal_kv_del,
                                           _internal_kv_exists)
 from ray._private.runtime_env.packaging import (
     _dir_travel, get_uri_for_directory, _get_excludes,
-    upload_package_if_needed)
+    upload_package_if_needed, parse_uri)
 
 
 def random_string(size: int = 10):
@@ -175,6 +175,15 @@ def test_travel():
         _dir_travel(root, [exclude_spec], handler)
         assert file_paths == visited_file_paths
         assert dir_paths == visited_dir_paths
+
+@pytest.mark.parametrize("uri", ["gcs://file.zip", "s3://s3bucket/file.zip", "https://testdomain.com/path/file.zip", "gs://gsbucket/file.zip"])
+@pytest.mark.parametrize("protocol", ["gcs", "s3", "https", "gs"])
+@pytest.mark.parametrize("package_name", ["file.zip", "s3bucket_file.zip", "testdomain_com_path_file.zip", "gsbucket_file.zip"])
+def test_parsing(uri, protocol, package_name):
+
+    parsed_protocol, parsed_package_name = parse_uri(uri)
+    assert protocol == parsed_protocol
+    assert package_name == parsed_package_name
 
 
 if __name__ == "__main__":
