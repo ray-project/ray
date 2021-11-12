@@ -145,7 +145,7 @@ def test_http_bad_request(job_sdk_client):
             runtime_env={"working_dir": "s3://does_not_exist"})
     ex_message = str(e.value)
     assert "500 Server Error" in ex_message
-    assert "Only .zip files supported for S3 URIs" in ex_message
+    assert "Only .zip files supported for remote URIs." in ex_message
 
 
 def test_submit_job_with_exception_in_driver(job_sdk_client):
