@@ -316,7 +316,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       // Check if the scheduling class is at capacity now.
       if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity &&
           work->GetState() == internal::WorkStatus::WAITING) {
-        RAY_LOG(ERROR) << "Hit cap! time=" << get_time_ms_()
+        RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_ms_()
                        << " next update time=" << sched_cls_info.next_update_time;
         if (get_time_ms_() < sched_cls_info.next_update_time) {
           // We're over capacity and it's not time to admit a new task yet.
@@ -332,12 +332,7 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           }
 
           int64_t target_time = get_time_ms_() + wait_time;
-          if (target_time < sched_cls_info.next_update_time) {
-            // If we've decreased the wait time, rerun the loop over this task
-            // since we may be able to run this test now.
-            sched_cls_info.next_update_time = target_time;
-            continue;
-          }
+          sched_cls_info.next_update_time = std::min(target_time, sched_cls_info.next_update_time);
           break;
         } else {
           // Force us to recalculate the next update time the next time a task
