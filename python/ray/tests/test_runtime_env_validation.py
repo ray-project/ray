@@ -67,14 +67,16 @@ class TestValidateWorkingDir:
         with pytest.raises(TypeError):
             parse_and_validate_working_dir(1)
 
-    def test_validate_s3_invalid_extension(self):
-        with pytest.raises(
-                ValueError, match="Only .zip files supported for S3 URIs."):
-            parse_and_validate_working_dir("s3://bucket/file")
+    def test_validate_remote_invalid_extensions(self):
+        for uri in ["s3://bucket/file", "https://some_domain.com/path/file", "gs://bucket/file"]:
+            with pytest.raises(
+                    ValueError, match="Only .zip files supported for remote URIs."):
+                parse_and_validate_working_dir(uri)
 
-    def test_validate_s3_valid_input(self):
-        working_dir = parse_and_validate_working_dir("s3://bucket/file.zip")
-        assert working_dir == "s3://bucket/file.zip"
+    def test_validate_remote_valid_input(self):
+        for uri in ["s3://bucket/file.zip", "https://some_domain.com/path/file.zip", "gs://bucket/file.zip"]:
+            working_dir = parse_and_validate_working_dir(uri)
+            assert working_dir == uri
 
 
 class TestValidatePyModules:
@@ -90,14 +92,16 @@ class TestValidatePyModules:
         with pytest.raises(TypeError):
             parse_and_validate_py_modules([1])
 
-    def test_validate_s3_invalid_extension(self):
+    def test_validate_remote_invalid_extension(self):
+        uris = ["s3://bucket/file", "https://some_domain.com/path/file", "gs://bucket/file"]
         with pytest.raises(
-                ValueError, match="Only .zip files supported for S3 URIs."):
-            parse_and_validate_py_modules(["s3://bucket/file"])
+                ValueError, match="Only .zip files supported for remote URIs."):
+            parse_and_validate_py_modules(uris)
 
-    def test_validate_s3_valid_input(self):
-        py_modules = parse_and_validate_py_modules(["s3://bucket/file.zip"])
-        assert py_modules == ["s3://bucket/file.zip"]
+    def test_validate_remote_valid_input(self):
+        uris = ["s3://bucket/file.zip", "https://some_domain.com/path/file.zip", "gs://bucket/file.zip"]
+        py_modules = parse_and_validate_py_modules(uris)
+        assert py_modules == uris
 
 
 class TestValidateExcludes:
