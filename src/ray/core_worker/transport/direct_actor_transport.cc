@@ -86,6 +86,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
       task_queued = true;
     }
   }
+  RAY_LOG(INFO) << "task_queued " << task_queued;
 
   if (task_queued) {
     io_service_.post(
@@ -301,16 +302,26 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 }
 
 void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
-  absl::MutexLock lock(&mu_);
-  for (auto &queue_pair : client_queues_) {
-    auto &queue = queue_pair.second;
-    auto deque_itr = queue.wait_for_death_info_tasks.begin();
-    while (deque_itr != queue.wait_for_death_info_tasks.end() &&
-           /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
-      auto task_spec = deque_itr->second;
-      task_finisher_.MarkPendingTaskFailed(task_spec, rpc::ErrorType::ACTOR_DIED);
-      deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
+  std::vector<std::shared_ptr<TaskSpecification>> task_specs;
+  {
+    absl::MutexLock lock(&mu_);
+    for (auto &queue_pair : client_queues_) {
+      auto &queue = *queue_pair.second;
+      auto deque_itr = queue.wait_for_death_info_tasks.begin();
+      while (deque_itr != queue.wait_for_death_info_tasks.end() &&
+             /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
+        auto task_spec = deque_itr->second;
+        task_specs.push_back(task_spec);
+        deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
+      }
     }
+  }
+
+  // Do not hold mu_, because MarkPendingTaskFailed may call python from cpp,
+  // and may cause deadlock with SubmitActorTask thread when aquire GIL.
+  for (auto &task_spec : task_specs) {
+    task_finisher_->MarkPendingTaskFailed(task_spec->TaskId(), *task_spec,
+                                          rpc::ErrorType::ACTOR_DIED);
   }
 }
 
