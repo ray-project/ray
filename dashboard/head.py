@@ -194,7 +194,7 @@ class DashboardHead:
         # Waiting for GCS is ready.
         # TODO: redis-removal bootstrap
         gcs_address = await get_gcs_address_with_retry(self.aioredis_client)
-        self.gcs_client = GcsClient(lambda: gcs_address)
+        self.gcs_client = GcsClient(address=gcs_address, auto_reconnect=False)
         internal_kv._initialize_internal_kv(self.gcs_client)
         self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
             gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True)

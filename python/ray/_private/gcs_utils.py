@@ -139,7 +139,8 @@ def _auto_reconnect(f):
                         self._connect()
                         time.sleep(1)
                     except Exception:
-                        logger.error(f"Connecting to gcs failed. Error {e}")
+                        import traceback
+                        logger.error(f"Connecting to gcs failed. Error {e} {traceback.print_stack()}")
                     continue
                 raise
 
@@ -191,6 +192,7 @@ def auto_reconnect(f):
                         time.sleep(1)
                     except Exception:
                         logger.error(f"Connecting to gcs failed. Error {e}")
+                    time.sleep(1)
                     continue
                 raise e
 
