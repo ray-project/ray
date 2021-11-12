@@ -12,8 +12,7 @@ from ray._private.test_utils import (format_web_url, wait_for_condition,
                                      wait_until_server_available)
 from ray.dashboard import dashboard
 from ray.dashboard.tests.conftest import *  # noqa
-from ray.dashboard.modules.job.sdk import (ClusterInfo, JobSubmissionClient,
-                                           parse_cluster_info)
+from ray.dashboard.modules.job.sdk import JobSubmissionClient
 
 logger = logging.getLogger(__name__)
 
@@ -91,24 +90,6 @@ def test_failed_job_status(ray_start_with_dashboard, disable_aiohttp_cache,
         return False
 
     wait_for_condition(wait_for_job_to_fail, timeout=30)
-
-
-@pytest.mark.parametrize("address", [
-    "http://127.0.0.1", "https://127.0.0.1", "ray://127.0.0.1",
-    "fake_module://127.0.0.1"
-])
-def test_parse_cluster_info(address: str):
-    if address.startswith("ray"):
-        assert parse_cluster_info(address, False) == ClusterInfo(
-            address="http" + address[address.index("://"):],
-            cookies=None,
-            metadata={})
-    elif address.startswith("http") or address.startswith("https"):
-        assert parse_cluster_info(address, False) == ClusterInfo(
-            address=address, cookies=None, metadata={})
-    else:
-        with pytest.raises(RuntimeError):
-            parse_cluster_info(address, False)
 
 
 if __name__ == "__main__":
