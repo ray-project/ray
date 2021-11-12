@@ -1,7 +1,8 @@
 import enum
 import logging
-from typing import List, Option, Callable
+from typing import List, Option
 from functools import wraps
+import time
 
 import grpc
 
@@ -141,13 +142,15 @@ def auto_reconnect(f):
 
     return wrapper
 
+
 class GcsChannel:
-    def __init__(self, redis_client = None,
-                 gcs_address: Option[str] = None):
+    def __init__(self, redis_client=None, gcs_address: Option[str] = None):
         if redis_client is None and gcs_address is None:
-            raise ValueError("One of `redis_client` or `gcs_address` has to be set")
+            raise ValueError(
+                "One of `redis_client` or `gcs_address` has to be set")
         if redis_client is not None and gcs_address is not None:
-            raise ValueError("Only one of `redis_client` or `gcs_address` can be set")
+            raise ValueError(
+                "Only one of `redis_client` or `gcs_address` can be set")
         self._redis_client = redis_client
         self._gcs_address = gcs_address
 
@@ -176,7 +179,6 @@ class GcsClient:
     def __init__(self, channel: GcsChannel):
         self._channel = channel
         self.connect()
-
 
     def _connect(self):
         self._channel.connect()
