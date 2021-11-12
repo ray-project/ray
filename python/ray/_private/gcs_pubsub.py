@@ -1,5 +1,5 @@
 import os
-from collections import deque
+from collections import defaultdict, deque
 import logging
 import random
 import threading
@@ -49,6 +49,12 @@ def construct_error_message(job_id, error_type, message, timestamp):
 
 
 class _SubscriberBase:
+    def __init__(self):
+        self._subscriber_id = bytes(
+            bytearray(random.getrandbits(8) for _ in range(28)))
+        self._messages = defaultdict(deque)
+        self._processed_seq = -1
+
     def _subscribe_error_request(self):
         cmd = pubsub_pb2.Command(
             channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
@@ -59,7 +65,33 @@ class _SubscriberBase:
 
     def _poll_request(self):
         return gcs_service_pb2.GcsSubscriberPollRequest(
-            subscriber_id=self._subscriber_id)
+            subscriber_id=self._subscriber_id,
+            processed_seq=self._processed_seq)
+
+    def _process_poll_response(self, resp):
+        if resp.seq <= self._processed_seq:
+            # Skip message since it has already been processed.
+            return
+        # When self._processed_seq is -1, it could be re-subscribing.
+        elif -1 < self._processed_seq and self._processed_seq + 1 < resp.seq:
+            logger.warning(
+                f"Missing sequence numbers for subscriber "
+                f"{self._subscriber_id.hex()}: current processed = "
+                f"{self._processed_seq}, incoming message = {resp.seq}")
+        for msg in resp.pub_messages:
+            self._messages[msg.channel_type].append(msg)
+        self._processed_seq = resp.seq
+
+    def _has_error_info(self):
+        errors = self._messages[pubsub_pb2.RAY_ERROR_INFO_CHANNEL]
+        return len(errors) > 0
+
+    def _next_error_info(self):
+        errors = self._messages[pubsub_pb2.RAY_ERROR_INFO_CHANNEL]
+        if len(errors) == 0:
+            return None, None
+        msg = errors.popleft()
+        return msg.key_id, msg.error_info_message
 
     def _unsubscribe_request(self):
         req = gcs_service_pb2.GcsSubscriberCommandBatchRequest(
@@ -112,6 +144,8 @@ class GcsSubscriber(_SubscriberBase):
             address: str = None,
             channel: grpc.Channel = None,
     ):
+        super().__init__()
+
         if address:
             assert channel is None, \
                 "address and channel cannot both be specified"
@@ -121,12 +155,8 @@ class GcsSubscriber(_SubscriberBase):
                 "One of address and channel must be specified"
         self._lock = threading.RLock()
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
-        self._subscriber_id = bytes(
-            bytearray(random.getrandbits(8) for _ in range(28)))
         # Whether error info has been subscribed.
         self._subscribed_error = False
-        # Buffer for holding error info.
-        self._errors = deque()
         # Future for indicating whether the subscriber has closed.
         self._close = threading.Event()
 
@@ -150,7 +180,7 @@ class GcsSubscriber(_SubscriberBase):
             if self._close.is_set():
                 return
 
-            if len(self._errors) == 0:
+            while not self._has_error_info():
                 req = self._poll_request()
                 fut = self._stub.GcsSubscriberPoll.future(req, timeout=timeout)
                 # Wait for result to become available, or cancel if the
@@ -171,13 +201,9 @@ class GcsSubscriber(_SubscriberBase):
                         # GRPC error, including deadline exceeded.
                         raise
                 if fut.done():
-                    for msg in fut.result().pub_messages:
-                        self._errors.append((msg.key_id,
-                                             msg.error_info_message))
+                    self._process_poll_response(fut.result())
 
-            if len(self._errors) == 0:
-                return None, None
-            return self._errors.popleft()
+            return self._next_error_info()
 
     def close(self) -> None:
         """Closes the subscriber and its active subscriptions."""
@@ -232,6 +258,8 @@ class GcsAioSubscriber(_SubscriberBase):
     """
 
     def __init__(self, address: str = None, channel: aiogrpc.Channel = None):
+        super().__init__()
+
         if address:
             assert channel is None, \
                 "address and channel cannot both be specified"
@@ -240,12 +268,8 @@ class GcsAioSubscriber(_SubscriberBase):
             assert channel is not None, \
                 "One of address and channel must be specified"
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
-        self._subscriber_id = bytes(
-            bytearray(random.getrandbits(8) for _ in range(28)))
         # Whether error info has been subscribed.
         self._subscribed_error = False
-        # Buffer for holding error info.
-        self._errors = deque()
 
     async def subscribe_error(self) -> None:
         """Registers a subscription for error info.
@@ -260,15 +284,12 @@ class GcsAioSubscriber(_SubscriberBase):
 
     async def poll_error(self, timeout=None) -> Tuple[bytes, ErrorTableData]:
         """Polls for new error messages."""
-        if len(self._errors) == 0:
+        while not self._has_error_info():
             req = self._poll_request()
             reply = await self._stub.GcsSubscriberPoll(req, timeout=timeout)
-            for msg in reply.pub_messages:
-                self._errors.append((msg.key_id, msg.error_info_message))
+            self._process_poll_response(reply)
 
-        if len(self._errors) == 0:
-            return None, None
-        return self._errors.popleft()
+        return self._next_error_info()
 
     async def close(self) -> None:
         """Closes the subscriber and its active subscriptions."""

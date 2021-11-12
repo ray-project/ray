@@ -2809,7 +2809,7 @@ void CoreWorker::HandlePubsubLongPolling(const rpc::PubsubLongPollingRequest &re
                                          rpc::SendReplyCallback send_reply_callback) {
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
   RAY_LOG(DEBUG) << "Got a long polling request from a node " << subscriber_id;
-  object_info_publisher_->ConnectToSubscriber(subscriber_id, reply,
+  object_info_publisher_->ConnectToSubscriber(request, reply,
                                               std::move(send_reply_callback));
 }
 

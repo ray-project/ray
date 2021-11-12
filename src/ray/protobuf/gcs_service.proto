@@ -576,11 +576,18 @@ message GcsPublishReply {
 message GcsSubscriberPollRequest {
   /// The id of the subscriber.
   bytes subscriber_id = 1;
+  /// Highest processed sequence number by this subscriber. -1 for the initial connection.
+  int64 processed_seq = 2;
 }
 
 message GcsSubscriberPollReply {
   /// The messages that are published.
   repeated PubMessage pub_messages = 1;
+  /// Sequence number of this polling reply.
+  int64 seq = 2;
+  /// Whether the subscriber should reset its sequence number based on this reply,
+  /// e.g. when the subscriber makes an initial connection, or is reconnecting.
+  bool reset_seq = 3;
   // Not populated.
   GcsStatus status = 100;
 }

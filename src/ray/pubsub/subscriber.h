@@ -45,14 +45,18 @@ using SubscriptionFailureCallback =
 
 /// Subscription info stores metadata that is needed for subscriptions.
 struct SubscriptionInfo {
-  // Subscription for all entities.
-  std::unique_ptr<std::pair<SubscriptionItemCallback, SubscriptionFailureCallback>>
-      all_entities_subscription;
+  SubscriptionItemCallback item_cb;
+  SubscriptionFailureCallback failure_cb;
+  int64_t processed_seq = -1;
+};
 
-  // Subscription for all entities.
-  absl::flat_hash_map<std::string,
-                      std::pair<SubscriptionItemCallback, SubscriptionFailureCallback>>
-      per_entity_subscription;
+/// All subscription info for the publisher.
+struct PublisherSubscription {
+  // Subscriptions for all entities.
+  std::unique_ptr<SubscriptionInfo> all_entities_subscription;
+
+  // Subscriptions for each entity.
+  absl::flat_hash_map<std::string, SubscriptionInfo> per_entity_subscription;
 };
 
 /// Subscriber channel is an abstraction for each channel.
@@ -123,7 +127,7 @@ class SubscriberChannel {
 
   /// Return true if the subscription exists for a given publisher id.
   bool SubscriptionExists(const PublisherID &publisher_id) {
-    return subscription_map_.count(publisher_id);
+    return subscription_map_.contains(publisher_id);
   }
 
   /// Return the channel type of this subscribe channel.
@@ -149,13 +153,13 @@ class SubscriberChannel {
       return absl::nullopt;
     }
     if (subscription_it->second.all_entities_subscription != nullptr) {
-      return subscription_it->second.all_entities_subscription->first;
+      return subscription_it->second.all_entities_subscription->item_cb;
     }
     auto callback_it = subscription_it->second.per_entity_subscription.find(key_id);
     if (callback_it == subscription_it->second.per_entity_subscription.end()) {
       return absl::nullopt;
     }
-    return callback_it->second.first;
+    return callback_it->second.item_cb;
   }
 
   /// Returns a publisher failure callback; Returns a nullopt if the object id is not
@@ -168,19 +172,20 @@ class SubscriberChannel {
       return absl::nullopt;
     }
     if (subscription_it->second.all_entities_subscription != nullptr) {
-      return subscription_it->second.all_entities_subscription->second;
+      return subscription_it->second.all_entities_subscription->failure_cb;
     }
     auto callback_it = subscription_it->second.per_entity_subscription.find(key_id);
     if (callback_it == subscription_it->second.per_entity_subscription.end()) {
       return absl::nullopt;
     }
-    return callback_it->second.second;
+    return callback_it->second.failure_cb;
   }
 
   const rpc::ChannelType channel_type_;
 
-  /// Mapping of the publisher ID -> subscription info.
-  absl::flat_hash_map<PublisherID, SubscriptionInfo> subscription_map_;
+  int64_t processed_seq_ = -1;
+  /// Mapping of the publisher ID -> subscription info for the publisher.
+  absl::flat_hash_map<PublisherID, PublisherSubscription> subscription_map_;
 
   /// An event loop to execute RPC callbacks. This should be equivalent to the client
   /// pool's io service.
@@ -443,6 +448,10 @@ class Subscriber : public SubscriberInterface {
   /// The command batch size for the subscriber.
   const int64_t max_command_batch_size_;
 
+  /// Gets an rpc client for connecting to the publisher.
+  const std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
+      get_client_;
+
   /// Protects below fields. Since the coordinator runs in a core worker, it should be
   /// thread safe.
   mutable absl::Mutex mutex_;
@@ -457,13 +466,9 @@ class Subscriber : public SubscriberInterface {
   using CommandQueue = std::queue<std::unique_ptr<CommandItem>>;
   absl::flat_hash_map<PublisherID, CommandQueue> commands_ GUARDED_BY(mutex_);
 
-  /// Gets an rpc client for connecting to the publisher.
-  std::function<std::shared_ptr<SubscriberClientInterface>(const rpc::Address &)>
-      get_client_;
-
-  /// A set to cache the connected publisher ids. "Connected" means the long polling
-  /// request is in flight.
-  absl::flat_hash_set<PublisherID> publishers_connected_ GUARDED_BY(mutex_);
+  /// Processed sequence number for each publisher. Also acts as an indicator to which
+  /// publishers are being actively polling.
+  absl::flat_hash_map<PublisherID, int64_t> processed_seq_ GUARDED_BY(mutex_);
 
   /// A set to keep track of in-flight command batch requests
   absl::flat_hash_set<PublisherID> command_batch_sent_ GUARDED_BY(mutex_);

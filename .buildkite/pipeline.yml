@@ -361,7 +361,7 @@
       --test_tag_filters=-kubernetes,medium_size_python_tests_a_to_j,-flaky
       --test_env=RAY_gcs_grpc_based_pubsub=true
       -- //python/ray/tests/...
-      -//python/ray/tests:test_client_multi -//python/ray/tests:test_component_failures_3
+      -//python/ray/tests:test_component_failures_3
       -//python/ray/tests:test_healthcheck -//python/ray/tests:test_gcs_fault_tolerance
       -//python/ray/tests:test_client
 - label: ":redis: HA GCS (Medium K-Z)"
@@ -374,7 +374,6 @@
       -- //python/ray/tests/...
       -//python/ray/tests:test_multinode_failures_2 -//python/ray/tests:test_ray_debugger
       -//python/ray/tests:test_placement_group_2 -//python/ray/tests:test_placement_group_3
-      -//python/ray/tests:test_multi_node
 
 - label: ":brain: RLlib: Learning discr. actions TF2-static-graph (from rllib/tuned_examples/*.yaml)"
   conditions: ["RAY_CI_RLLIB_AFFECTED"]

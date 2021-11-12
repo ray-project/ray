@@ -53,11 +53,14 @@ void GcsSubscriberClient::PubsubLongPolling(
     const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) {
   rpc::GcsSubscriberPollRequest req;
   req.set_subscriber_id(request.subscriber_id());
+  req.set_processed_seq(request.processed_seq());
   rpc_client_->GcsSubscriberPoll(
       req,
       [callback](const Status &status, const rpc::GcsSubscriberPollReply &poll_reply) {
         rpc::PubsubLongPollingReply reply;
         *reply.mutable_pub_messages() = poll_reply.pub_messages();
+        reply.set_seq(poll_reply.seq());
+        reply.set_reset_seq(poll_reply.reset_seq());
         callback(status, reply);
       });
 }

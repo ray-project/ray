@@ -143,26 +143,35 @@ bool SubscriptionIndex::CheckNoLeaks() const {
   return key_id_to_subscribers_.size() == 0 && subscribers_to_key_id_.size() == 0;
 }
 
-bool Subscriber::ConnectToSubscriber(rpc::PubsubLongPollingReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) {
+bool SubscriberState::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
+                                          rpc::PubsubLongPollingReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  // Delete messages that are already processed by the subscriber.
+  while (!mailbox_.empty() && mailbox_.front()->seq() <= request.processed_seq()) {
+    mailbox_.pop();
+  }
   if (long_polling_connection_) {
-    // Flush the current subscriber poll with an empty reply.
+    // Because of the new long polling request, flush the current polling request with an
+    // empty reply.
     PublishIfPossible(/*force_noop=*/true);
   }
-  if (!long_polling_connection_) {
-    RAY_CHECK(reply != nullptr);
-    RAY_CHECK(send_reply_callback != nullptr);
-    long_polling_connection_ =
-        std::make_unique<LongPollConnection>(reply, std::move(send_reply_callback));
-    last_connection_update_time_ms_ = get_time_ms_();
-    return true;
-  }
-  return false;
+  RAY_CHECK(!long_polling_connection_);
+  RAY_CHECK(reply != nullptr);
+  RAY_CHECK(send_reply_callback != nullptr);
+  long_polling_connection_ =
+      std::make_unique<LongPollConnection>(reply, std::move(send_reply_callback));
+  last_connection_update_time_ms_ = get_time_ms_();
+  PublishIfPossible();
+  return true;
 }
 
-void Subscriber::QueueMessage(const rpc::PubMessage &pub_message, bool try_publish) {
-  if (mailbox_.empty() || mailbox_.back()->pub_messages_size() >= publish_batch_size_) {
-    mailbox_.push(absl::make_unique<rpc::PubsubLongPollingReply>());
+void SubscriberState::QueueMessage(const rpc::PubMessage &pub_message, bool try_publish) {
+  if (mailbox_.empty() || mailbox_.back()->pub_messages_size() >= publish_batch_size_ ||
+      // When existing batches have been replied to the subscriber, do not modify them.
+      // New messages should be added to a new batch.
+      mailbox_.back()->seq() == replied_seq_) {
+    mailbox_.push(std::make_unique<rpc::PubsubLongPollingReply>());
+    mailbox_.back()->set_seq(next_seq_++);
   }
 
   // Update the long polling reply.
@@ -175,7 +184,7 @@ void Subscriber::QueueMessage(const rpc::PubMessage &pub_message, bool try_publi
   }
 }
 
-bool Subscriber::PublishIfPossible(bool force_noop) {
+bool SubscriberState::PublishIfPossible(bool force_noop) {
   if (!long_polling_connection_) {
     return false;
   }
@@ -183,10 +192,20 @@ bool Subscriber::PublishIfPossible(bool force_noop) {
     return false;
   }
 
-  if (!force_noop) {
-    // Reply to the long polling subscriber. Swap the reply here to avoid extra copy.
-    long_polling_connection_->reply->Swap(mailbox_.front().get());
-    mailbox_.pop();
+  // No message should have been added to the reply.
+  RAY_CHECK(long_polling_connection_->reply->pub_messages().empty());
+  if (force_noop) {
+    // Use -1 sequence number to mark a no-op message.
+    long_polling_connection_->reply->set_seq(-1);
+  } else {
+    // Mailbox must not be empty here.
+    RAY_CHECK(!mailbox_.empty() && !mailbox_.front()->pub_messages().empty());
+    // Reply to the long polling subscriber. Reply will be deleted later, after being
+    // acknowledged.
+    long_polling_connection_->reply->CopyFrom(*mailbox_.front());
+    if (replied_seq_ < mailbox_.front()->seq()) {
+      replied_seq_ = mailbox_.front()->seq();
+    }
   }
   long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
 
@@ -196,44 +215,47 @@ bool Subscriber::PublishIfPossible(bool force_noop) {
   return true;
 }
 
-bool Subscriber::CheckNoLeaks() const {
-  return !long_polling_connection_ && mailbox_.size() == 0;
-}
-
-bool Subscriber::IsDisconnected() const {
+bool SubscriberState::CheckNoLeaks() const {
+  // If all message in the mailbox has been replied, consider there is no leak.
   return !long_polling_connection_ &&
-         get_time_ms_() - last_connection_update_time_ms_ >= connection_timeout_ms_;
+         (mailbox_.empty() || mailbox_.back()->seq() == replied_seq_);
 }
 
-bool Subscriber::IsActiveConnectionTimedOut() const {
-  return long_polling_connection_ &&
-         get_time_ms_() - last_connection_update_time_ms_ >= connection_timeout_ms_;
+bool SubscriberState::ConnectionExists() const {
+  return long_polling_connection_ != nullptr;
+}
+
+bool SubscriberState::IsActive() const {
+  return get_time_ms_() - last_connection_update_time_ms_ < connection_timeout_ms_;
 }
 
 }  // namespace pub_internal
 
-void Publisher::ConnectToSubscriber(const SubscriberID &subscriber_id,
+void Publisher::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request,
                                     rpc::PubsubLongPollingReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(reply != nullptr);
   RAY_CHECK(send_reply_callback != nullptr);
-  RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_id;
 
+  const auto subscriber_id = SubscriberID::FromBinary(request.subscriber_id());
+  RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_id.Hex();
   absl::MutexLock lock(&mutex_);
   auto it = subscribers_.find(subscriber_id);
   if (it == subscribers_.end()) {
     it = subscribers_
-             .emplace(subscriber_id,
-                      std::make_shared<pub_internal::Subscriber>(
-                          get_time_ms_, subscriber_timeout_ms_, publish_batch_size_))
+             .emplace(subscriber_id, std::make_shared<pub_internal::SubscriberState>(
+                                         subscriber_id, get_time_ms_,
+                                         subscriber_timeout_ms_, publish_batch_size_))
              .first;
+    // Subscription is created along with this poll request. So this is either a new
+    // subscription or a reconnection. Ask the subscriber to reset their sequence number.
+    reply->set_reset_seq(true);
   }
   auto &subscriber = it->second;
 
-  // Since the long polling connection is synchronous between the client and
-  // coordinator, when it connects, the connection shouldn't have existed.
-  RAY_CHECK(subscriber->ConnectToSubscriber(reply, std::move(send_reply_callback)));
-  subscriber->PublishIfPossible();
+  // May flush the current long poll with an empty message, if a poll request exists.
+  RAY_CHECK(
+      subscriber->ConnectToSubscriber(request, reply, std::move(send_reply_callback)));
 }
 
 bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
@@ -241,9 +263,9 @@ bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
                                      const std::optional<std::string> &key_id) {
   absl::MutexLock lock(&mutex_);
   if (!subscribers_.contains(subscriber_id)) {
-    subscribers_.emplace(subscriber_id,
-                         std::make_shared<pub_internal::Subscriber>(
-                             get_time_ms_, subscriber_timeout_ms_, publish_batch_size_));
+    subscribers_.emplace(subscriber_id, std::make_shared<pub_internal::SubscriberState>(
+                                            subscriber_id, get_time_ms_,
+                                            subscriber_timeout_ms_, publish_batch_size_));
   }
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   RAY_CHECK(subscription_index_it != subscription_index_map_.end());
@@ -309,7 +331,7 @@ int Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) {
     return erased;
   }
   auto &subscriber = it->second;
-  // Remove the long polling connection because otherwise, there's memory leak.
+  // Flush the long polling connection because otherwise the reply could be leaked.
   subscriber->PublishIfPossible(/*force_noop=*/true);
   subscribers_.erase(it);
   return erased;
@@ -321,16 +343,17 @@ void Publisher::CheckDeadSubscribers() {
 
   for (const auto &it : subscribers_) {
     const auto &subscriber = it.second;
-
-    auto disconnected = subscriber->IsDisconnected();
-    auto active_connection_timed_out = subscriber->IsActiveConnectionTimedOut();
-    RAY_CHECK(!(disconnected && active_connection_timed_out));
-
-    if (disconnected) {
-      dead_subscribers.push_back(it.first);
-    } else if (active_connection_timed_out) {
-      // Refresh the long polling connection. The subscriber will poll again.
+    if (subscriber->IsActive()) {
+      continue;
+    }
+    // Subscriber has no activity for a while. It is considered timed out now.
+    if (subscriber->ConnectionExists()) {
+      // Release the long polling connection with a noop. The subscriber will poll again
+      // if it is still alive. This also refreshes the last active time.
       subscriber->PublishIfPossible(/*force_noop*/ true);
+    } else {
+      // Subscriber state can be deleted since it does not have any active connection.
+      dead_subscribers.push_back(it.first);
     }
   }
 

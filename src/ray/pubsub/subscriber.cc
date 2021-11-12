@@ -32,8 +32,10 @@ bool SubscriberChannel::Subscribe(
   if (key_id) {
     return subscription_map_[publisher_id]
         .per_entity_subscription
-        .try_emplace(*key_id, std::make_pair(std::move(subscription_callback),
-                                             std::move(subscription_failure_callback)))
+        .try_emplace(
+            *key_id,
+            SubscriptionInfo{.item_cb = std::move(subscription_callback),
+                             .failure_cb = std::move(subscription_failure_callback)})
         .second;
   }
   auto &all_entities_subscription =
@@ -41,9 +43,9 @@ bool SubscriberChannel::Subscribe(
   if (all_entities_subscription != nullptr) {
     return false;
   }
-  all_entities_subscription =
-      std::make_unique<std::pair<SubscriptionItemCallback, SubscriptionFailureCallback>>(
-          std::move(subscription_callback), std::move(subscription_failure_callback));
+  all_entities_subscription = std::make_unique<SubscriptionInfo>();
+  all_entities_subscription->item_cb = std::move(subscription_callback);
+  all_entities_subscription->failure_cb = std::move(subscription_failure_callback);
   return true;
 }
 
@@ -318,9 +320,9 @@ bool Subscriber::SubscribeInternal(
 void Subscriber::MakeLongPollingConnectionIfNotConnected(
     const rpc::Address &publisher_address) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
-  auto publishers_connected_it = publishers_connected_.find(publisher_id);
-  if (publishers_connected_it == publishers_connected_.end()) {
-    publishers_connected_.emplace(publisher_id);
+  auto processed_seq_it = processed_seq_.find(publisher_id);
+  if (processed_seq_it == processed_seq_.end()) {
+    processed_seq_[publisher_id] = -1;
     MakeLongPollingPubsubConnection(publisher_address);
   }
 }
@@ -331,6 +333,7 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
   auto publisher_client = get_client_(publisher_address);
   rpc::PubsubLongPollingRequest long_polling_request;
   long_polling_request.set_subscriber_id(subscriber_id_.Binary());
+  long_polling_request.set_processed_seq(processed_seq_.at(publisher_id));
 
   publisher_client->PubsubLongPolling(
       long_polling_request,
@@ -345,8 +348,9 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
                                            const rpc::PubsubLongPollingReply &reply) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   RAY_LOG(DEBUG) << "Long polling request has replied from " << publisher_id;
-  RAY_CHECK(publishers_connected_.count(publisher_id));
+  RAY_CHECK(processed_seq_.contains(publisher_id));
 
+  auto &processed_seq = processed_seq_[publisher_id];
   if (!status.ok()) {
     // If status is not okay, we treat that the publisher is dead.
     RAY_LOG(DEBUG) << "A worker is dead. subscription_failure_callback will be invoked. "
@@ -358,7 +362,20 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     }
     // Empty the command queue because we cannot send commands anymore.
     commands_.erase(publisher_id);
-  } else {
+  } else if (processed_seq < reply.seq() || reply.reset_seq()) {
+    if (processed_seq + 1 < reply.seq()) {
+      RAY_LOG(WARNING) << "Missing sequence numbers for subscriber "
+                       << subscriber_id_.Hex()
+                       << ", local processed_seq=" << processed_seq
+                       << ", remote reply seq=" << reply.seq();
+    } else if (reply.reset_seq()) {
+      RAY_LOG(WARNING) << "Publisher resets sequence number for subscriber "
+                       << subscriber_id_.Hex()
+                       << ", local processed_seq=" << processed_seq
+                       << ", remote reply seq=" << reply.seq();
+    }
+    processed_seq = reply.seq();
+
     for (int i = 0; i < reply.pub_messages_size(); i++) {
       const auto &msg = reply.pub_messages(i);
       const auto channel_type = msg.channel_type();
@@ -373,15 +390,19 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
         continue;
       }
 
-      // Otherwise, invoke the subscribe callback.
+      // Otherwise, invoke the subscription callback.
       Channel(channel_type)->HandlePublishedMessage(publisher_address, msg);
     }
+  } else if (reply.seq() != -1) {
+    RAY_LOG(WARNING) << "Ignoring message with unexpected sequence number. "
+                     << "local processed_seq=" << processed_seq << " remote reply=\n"
+                     << reply.DebugString();
   }
 
   if (SubscriptionExists(publisher_id)) {
     MakeLongPollingPubsubConnection(publisher_address);
   } else {
-    publishers_connected_.erase(publisher_id);
+    processed_seq_.erase(publisher_id);
   }
 }
 
@@ -459,11 +480,8 @@ bool Subscriber::CheckNoLeaks() const {
       leaks = true;
     }
   }
-  bool command_batch_leak = command_batch_sent_.size() != 0;
-  bool long_polling_leak = publishers_connected_.size() != 0;
-  bool command_queue_leak = commands_.size() != 0;
-  return !leaks && publishers_connected_.size() == 0 && !command_batch_leak &&
-         !long_polling_leak && !command_queue_leak;
+  return !leaks && command_batch_sent_.empty() && processed_seq_.empty() &&
+         commands_.empty();
 }
 
 std::string Subscriber::DebugString() const {
