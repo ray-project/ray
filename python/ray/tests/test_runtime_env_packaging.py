@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 import random
-from shutil import rmtree
+from shutil import rmtree, make_archive
 import string
 import sys
 import tempfile
@@ -13,7 +13,11 @@ from ray.experimental.internal_kv import (_internal_kv_del,
                                           _internal_kv_exists)
 from ray._private.runtime_env.packaging import (
     _dir_travel, get_uri_for_directory, _get_excludes,
-    upload_package_if_needed, parse_uri)
+    upload_package_if_needed, parse_uri, Protocol,
+    get_top_level_dir_from_compressed_package)
+
+
+TOP_LEVEL_DIR_NAME = "top_level"
 
 
 def random_string(size: int = 10):
@@ -40,6 +44,36 @@ def random_dir():
             with p2.open("w") as f2:
                 f2.write(random_string(200))
         yield tmp_dir
+
+
+@pytest.fixture
+def random_zip_file_without_top_level_dir(random_dir):
+    path = Path(random_dir)
+    make_archive(path / "archive", "zip", path)
+    yield str(path / "archive.zip")
+
+
+@pytest.fixture
+def random_zip_file_with_top_level_dir():
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+        top_level_dir = path / TOP_LEVEL_DIR_NAME
+        top_level_dir.mkdir(parents=True)
+        next_level_dir = top_level_dir
+        for _ in range(10):
+            p1 = next_level_dir / random_string(10)
+            with p1.open("w") as f1:
+                f1.write(random_string(100))
+            p2 = next_level_dir / random_string(10)
+            with p2.open("w") as f2:
+                f2.write(random_string(200))
+            dir1 = next_level_dir / random_string(15)
+            dir1.mkdir(parents=True)
+            dir2 = next_level_dir / random_string(15)
+            dir2.mkdir(parents=True)
+            next_level_dir = dir2
+        make_archive(path / "archive", "zip", path, TOP_LEVEL_DIR_NAME)
+        yield str(path / "archive.zip")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -116,6 +150,18 @@ class TestUploadPackageIfNeeded:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+class TestGetTopLevelDirFromCompressedPackage:
+    def test_get_top_level_valid(self, random_zip_file_with_top_level_dir):
+        top_level_dir_name = get_top_level_dir_from_compressed_package(str(random_zip_file_with_top_level_dir))
+        assert top_level_dir_name == TOP_LEVEL_DIR_NAME
+    
+    def test_get_top_level_invalid(self, random_zip_file_without_top_level_dir):
+        top_level_dir_name = get_top_level_dir_from_compressed_package(str(random_zip_file_without_top_level_dir))
+        assert top_level_dir_name is None
+
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_travel():
     with tempfile.TemporaryDirectory() as tmp_dir:
         dir_paths = set()
@@ -176,12 +222,16 @@ def test_travel():
         assert file_paths == visited_file_paths
         assert dir_paths == visited_dir_paths
 
-@pytest.mark.parametrize("uri", ["gcs://file.zip", "s3://s3bucket/file.zip", "https://testdomain.com/path/file.zip", "gs://gsbucket/file.zip"])
-@pytest.mark.parametrize("protocol", ["gcs", "s3", "https", "gs"])
-@pytest.mark.parametrize("package_name", ["file.zip", "s3bucket_file.zip", "testdomain_com_path_file.zip", "gsbucket_file.zip"])
-def test_parsing(uri, protocol, package_name):
 
+@pytest.mark.parametrize("parsing_tuple", 
+    [("gcs://file.zip", Protocol.GCS, "file.zip"),
+     ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
+     ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
+     ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip")])
+def test_parsing(parsing_tuple):
+    uri, protocol, package_name = parsing_tuple
     parsed_protocol, parsed_package_name = parse_uri(uri)
+
     assert protocol == parsed_protocol
     assert package_name == parsed_package_name
 
