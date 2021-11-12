@@ -130,8 +130,7 @@ def test_chaos_actor_retry(ray_start_chaos_cluster, log_pubsub):
 @pytest.mark.parametrize(
     "set_env_vars", [{
         "RAY_lineage_pinning_enabled": "1"
-    }],
-    indirect=True)
+    }], indirect=True)
 @pytest.mark.parametrize(
     "ray_start_chaos_cluster", [{
         "kill_interval": 8,
@@ -150,9 +149,12 @@ def test_chaos_actor_retry(ray_start_chaos_cluster, log_pubsub):
         },
     }],
     indirect=True)
-def test_chaos_lineage_reconstruction(
-        set_env_vars, ray_start_chaos_cluster):
-    shuffle.run(ray_address="auto", no_streaming=True, num_partitions=200, partition_size=15e6)
+def test_chaos_lineage_reconstruction(set_env_vars, ray_start_chaos_cluster):
+    shuffle.run(
+        ray_address="auto",
+        no_streaming=True,
+        num_partitions=200,
+        partition_size=15e6)
 
 
 if __name__ == "__main__":

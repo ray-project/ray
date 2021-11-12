@@ -32,7 +32,7 @@ def run_task_workload(total_num_cpus, smoke):
         time.sleep(0.8)
         return ray.get(task.remote())
 
-    multiplier = 25
+    multiplier = 75
     # For smoke mode, run less number of tasks
     if smoke:
         multiplier = 1
@@ -198,8 +198,10 @@ def main():
     # Step 3
     print("Running with failures")
     start = time.time()
+    node_killer = ray.get_actor(
+        "node_killer", namespace="release_test_namespace")
+    node_killer.run.remote()
     workload(total_num_cpus, args.smoke)
-    node_killer = ray.get_actor("node_killer", namespace="release_test_namespace")
     print(f"Runtime when there are many failures: {time.time() - start}")
     print(f"Total node failures: "
           f"{ray.get(node_killer.get_total_killed_nodes.remote())}")
