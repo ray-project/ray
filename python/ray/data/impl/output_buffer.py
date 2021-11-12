@@ -1,4 +1,4 @@
-from typing import Callable, Any
+from typing import Callable, Any, Optional
 
 from ray.data.block import Block
 from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
