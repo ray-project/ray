@@ -93,6 +93,8 @@ def test_failed_job_status(ray_start_with_dashboard, disable_aiohttp_cache,
     wait_for_condition(wait_for_job_to_fail, timeout=30)
 
 
+@pytest.mark.parametrize(
+    "address", ["http://127.0.0.1", "https://127.0.0.1", "ray://127.0.0.1"])
 def test_parse_cluster_info(address: str):
     if address.startswith("ray"):
         assert parse_cluster_info(address, False) == ClusterInfo(
