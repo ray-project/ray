@@ -308,8 +308,8 @@ def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes):
     protocol, pkg_name = parse_uri(pkg_uri)
     if protocol == Protocol.GCS:
         _store_package_in_gcs(pkg_uri, pkg_bytes)
-    elif protocol == Protocol.S3:
-        raise RuntimeError("push_package should not be called with s3 path.")
+    elif protocol in Protocol.remote_protocols():
+        raise RuntimeError("push_package should not be called with remote path.")
     else:
         raise NotImplementedError(f"Protocol {protocol} is not supported")
 

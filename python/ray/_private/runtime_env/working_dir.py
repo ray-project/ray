@@ -35,8 +35,8 @@ def upload_working_dir_if_needed(
         protocol, path = None, None
 
     if protocol is not None:
-        if protocol == Protocol.S3 and not path.endswith(".zip"):
-            raise ValueError("Only .zip files supported for S3 URIs.")
+        if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
+            raise ValueError("Only .zip files supported for remote URIs.")
         return runtime_env
 
     excludes = runtime_env.get("excludes", None)
