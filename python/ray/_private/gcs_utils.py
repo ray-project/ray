@@ -134,12 +134,12 @@ def auto_reconnect(f):
             except grpc.RpcError as e:
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
                     logger.error(
-                        f"Failed to send request to gcs, reconnect. Error {e}")
+                        f"Failed to send request to gcs, reconnecting. Error {e}")
                     try:
                         self._connect()
                         time.sleep(1)
                     except Exception:
-                        logger.error(f"Connect to gcs failed. Error {e}")
+                        logger.error(f"Connecting to gcs failed. Error {e}")
                     continue
                 raise e
 
@@ -153,6 +153,9 @@ class GcsClient:
         assert get_address is not None
         self._get_address = get_address
         self._connect()
+
+    def get_channel(self):
+        return self._channel
 
     def _connect(self):
         gcs_address = self._get_address()
