@@ -34,9 +34,9 @@ Datasets use either Ray tasks or Ray actors to transform datasets (i.e., for ``.
 Shuffling Data
 --------------
 
-Certain operations like ``.sort`` and ``.groupby`` require data blocks to be partitioned by value. Ray executes this in three phases. First, a wave of sampling tasks determines suitable partition boundaries based on a random sample of data. Second, a wave of map tasks divide each input block into a number of output blocks equal to the number of reduce tasks. Third, reduce tasks take assigned output blocks from each map task and produce a single output block. Overall, this strategy generates ``O(n^2)`` intermediate objects where ``n`` is the number of input blocks.
+Certain operations like ``.sort`` and ``.groupby`` require data blocks to be partitioned by value. Datasets executes this in three phases. First, a wave of sampling tasks determines suitable partition boundaries based on a random sample of data. Second, a wave of map tasks divide each input block into a number of output blocks equal to the number of reduce tasks. Third, reduce tasks take assigned output blocks from each map task and produce a single output block. Overall, this strategy generates ``O(n^2)`` intermediate objects where ``n`` is the number of input blocks.
 
-You can also change the partitioning of a Dataset using ``.random_shuffle`` or ``.repartition``. The former should be used if you want to randomize the order of elements in the dataset. The second should be used if you only want to equalize the size of the Dataset blocks (e.g., after a read or transformation that may skew the distribution of block sizes). Note that repartition has two modes, a fast mode that performs the minimal data movement needed to equalize block sizes, and ``shuffle=True``, which performs a full distributed shuffle:
+You can also change the partitioning of a Dataset using ``.random_shuffle`` or ``.repartition``. The former should be used if you want to randomize the order of elements in the dataset. The second should be used if you only want to equalize the size of the Dataset blocks (e.g., after a read or transformation that may skew the distribution of block sizes). Note that repartition has two modes, ``shuffle=False``, which performs the minimal data movement needed to equalize block sizes, and ``shuffle=True``, which performs a full distributed shuffle:
 
 .. image:: dataset-shuffle.svg
 
@@ -51,9 +51,9 @@ This section deals with how Datasets manages execution and object store memory.
 Execution Memory
 ~~~~~~~~~~~~~~~~
 
-During execution, certain types of intermediate data must fit in memory. This includes the input block of a task, as well as at least one of the output blocks of the task. When a task has multiple output blocks, only one needs to fit in memory at any given time. The input block consumes object stored shared memory, and the output blocks consume Python heap memory (prior to putting in the object store) as well as object store memory (after being put in the object store).
+During execution, certain types of intermediate data must fit in memory. This includes the input block of a task, as well as at least one of the output blocks of the task (when a task has multiple output blocks, only one needs to fit in memory at any given time). The input block consumes object stored shared memory, and the output blocks consume Python heap memory (prior to putting in the object store) as well as object store memory (after being put in the object store).
 
-This means that large block sizes can lead to potential out of memory situations. To avoid OOM errors, Datasets tries to split blocks into pieces smaller than the target max block size of 500MB during read and map tasks. In some cases this splitting is not possible (e.g., if a single item in a block is extremely large, or the function given to ``.map_batches`` returns a very large batch). To avoid these issues, make sure no single item in your Datasets is too large, and always call ``.map_batches`` with a given batch size small enough that the output batch can comfortably fit into memory.
+This means that large block sizes can lead to potential out of memory situations. To avoid OOM errors, Datasets tries to split blocks during map and read tasks into pieces smaller than the target max block size. In some cases this splitting is not possible (i.e., if a single item in a block is extremely large, or the function given to ``.map_batches`` returns a very large batch). To avoid these issues, make sure no single item in your Datasets is too large, and always call ``.map_batches`` with batch size small enough that the output batch can comfortably fit into memory.
 
 Object Store Memory
 ~~~~~~~~~~~~~~~~~~~
@@ -67,11 +67,11 @@ Datasets uses the Ray object store to store data blocks, which means it inherits
 ..
   https://docs.google.com/drawings/d/1H_vDiaXgyLU16rVHKqM3rEl0hYdttECXfxCj8YPrbks/edit
 
-**Data Locality**: Ray will preferentially schedule compute tasks on nodes that already have a local copy of the object, reducing the need to transfer objects between nodes in the cluster.
+**Locality Scheduling**: Ray will preferentially schedule compute tasks on nodes that already have a local copy of the object, reducing the need to transfer objects between nodes in the cluster.
 
 **Reference Counting**: Dataset blocks are kept alive by object store reference counting as long as there is any Dataset that references them. To free memory, delete any Python references to the Dataset object.
 
-**Data Balancing**: Datasets uses Ray scheduling hints to spread read tasks out across the cluster to balance memory usage.
+**Load Balancing**: Datasets uses Ray scheduling hints to spread read tasks out across the cluster to balance memory usage.
 
 
 Performance Tuning
