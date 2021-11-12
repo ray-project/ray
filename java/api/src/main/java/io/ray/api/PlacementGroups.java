@@ -32,13 +32,24 @@ public class PlacementGroups {
   }
 
   /**
-   * Get a placement group by placement group name from current job.
+   * Get a placement group by placement group name from the current namespace.
    *
    * @param name The placement group name.
    * @return The placement group.
    */
   public static PlacementGroup getPlacementGroup(String name) {
-    return Ray.internal().getPlacementGroup(name);
+    return Ray.internal().getPlacementGroup(name, null);
+  }
+
+  /**
+   * Get a placement group by placement group name from the given namespace.
+   *
+   * @param name The placement group name.
+   * @param namespace The namespace of the placement group.
+   * @return The placement group.
+   */
+  public static PlacementGroup getPlacementGroup(String name, String namespace) {
+    return Ray.internal().getPlacementGroup(name, namespace);
   }
 
   /**

@@ -78,7 +78,7 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   @SuppressWarnings("unchecked")
   @Override
-  public <T extends BaseActorHandle> Optional<T> getActor(String name) {
+  public <T extends BaseActorHandle> Optional<T> getActor(String name, String namespace) {
     return (Optional<T>) ((LocalModeTaskSubmitter) taskSubmitter).getActor(name);
   }
 

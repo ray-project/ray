@@ -1,11 +1,9 @@
 package io.ray.runtime.gcs;
 
 import com.google.common.base.Preconditions;
-import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.PlacementGroupId;
 import io.ray.api.id.UniqueId;
-import io.ray.runtime.RayRuntimeInternal;
 import java.util.List;
 
 /** `GlobalStateAccessor` is used for accessing information from GCS. */
@@ -94,12 +92,10 @@ public class GlobalStateAccessor {
     }
   }
 
-  public byte[] getPlacementGroupInfo(String name) {
+  public byte[] getPlacementGroupInfo(String name, String namespace) {
     synchronized (GlobalStateAccessor.class) {
       validateGlobalStateAccessorPointer();
-      RayRuntimeInternal runtime = (RayRuntimeInternal) Ray.internal();
-      return nativeGetPlacementGroupInfoByName(
-          globalStateAccessorNativePointer, name, runtime.getRayConfig().namespace);
+      return nativeGetPlacementGroupInfoByName(globalStateAccessorNativePointer, name, namespace);
     }
   }
 

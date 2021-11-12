@@ -287,10 +287,12 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeShutdown(JNIEn
 
 JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_RayNativeRuntime_nativeGetActorIdOfNamedActor(JNIEnv *env, jclass,
-                                                                  jstring actor_name) {
+                                                                  jstring actor_name,
+                                                                  jstring ray_namespace) {
   const char *native_actor_name = env->GetStringUTFChars(actor_name, JNI_FALSE);
+  const char * native_ray_namespace = env->GetStringUTFChars(ray_namespace, JNI_FALSE);
   const auto pair = CoreWorkerProcess::GetCoreWorker().GetNamedActorHandle(
-      native_actor_name, /*ray_namespace=*/"");
+      native_actor_name, /*ray_namespace=*/native_ray_namespace);
   const auto status = pair.second;
   if (status.IsNotFound()) {
     return IdToJavaByteArray<ActorID>(env, ActorID::Nil());
