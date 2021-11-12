@@ -48,7 +48,8 @@ def run_task_workload(total_num_cpus, smoke):
     wait_for_condition(
         lambda: (
             ray.cluster_resources().get("CPU", 0)
-            == ray.available_resources().get("CPU", 0)))
+            == ray.available_resources().get("CPU", 0)),
+        timeout=60)
 
 
 def run_actor_workload(total_num_cpus, smoke):
@@ -112,7 +113,8 @@ def run_actor_workload(total_num_cpus, smoke):
     wait_for_condition(
         lambda: (
             ray.cluster_resources().get("CPU", 0)
-            == ray.available_resources().get("CPU", 0)))
+            == ray.available_resources().get("CPU", 0)),
+        timeout=60)
     letter_set = set()
     for db_actor in db_actors:
         letter_set.update(ray.get(db_actor.get.remote()))

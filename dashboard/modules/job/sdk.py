@@ -8,14 +8,11 @@ import requests
 
 from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
-from ray._private.job_manager import JobStatus
-from ray.dashboard.modules.job.data_types import (
+from ray.dashboard.modules.job.common import (
     GetPackageResponse, JobSubmitRequest, JobSubmitResponse, JobStopResponse,
-    JobStatusResponse, JobLogsResponse)
-
-from ray.dashboard.modules.job.job_head import (
-    JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP,
-    JOBS_API_ROUTE_STATUS, JOBS_API_ROUTE_PACKAGE)
+    JobStatus, JobStatusResponse, JobLogsResponse, JOBS_API_ROUTE_LOGS,
+    JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP, JOBS_API_ROUTE_STATUS,
+    JOBS_API_ROUTE_PACKAGE)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -51,7 +48,7 @@ class JobSubmissionClient:
             return None
         else:
             response = r.json()
-            logger.info(f"Got response: {response}.")
+            logger.debug(f"Got response: {response}.")
             return response_type(**response)
 
     def _package_exists(self, package_uri: str) -> bool:
