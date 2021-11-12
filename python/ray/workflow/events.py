@@ -108,7 +108,7 @@ class Manager:
             workflow_id (str): The id of the workflow to be resumed when the event occurs.
             event_data (WorkflowData): The information needed to begin to wait for the event.
         """
-        logger.info(f"GOT WORKFLOW EVENT TO WAIT FOR {workflow_id}: {step_id} {event_data}")
+        logger.info(
+            f"GOT WORKFLOW EVENT TO WAIT FOR {workflow_id}: {step_id} {event_data}"
+        )
         pass
-
-

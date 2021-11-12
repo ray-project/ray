@@ -342,9 +342,9 @@ def wait_for_event(event_listener_type: EventListenerType, *args,
         workflow_id = workflow_context.get_current_workflow_id()
         step_id = workflow_context.get_current_step_id()
 
-        ray.get(manager.register_workflow_dependency.remote(
-            workflow_id, step_id, event_listener_type, args, kwargs
-        ))
+        ray.get(
+            manager.register_workflow_dependency.remote(
+                workflow_id, step_id, event_listener_type, args, kwargs))
         pass
 
     options = WorkflowStepRuntimeOptions.make(step_type=StepType.EVENT)
@@ -359,11 +359,9 @@ def wait_for_event(event_listener_type: EventListenerType, *args,
         loop.run_until_complete(event_listener.event_checkpointed(event))
         return event
 
-
-    register_event_step = register_event.step(event_listener_type, *args, **kwargs)
-    return message_committed.step(
-        event_listener_type,
-        register_event_step)
+    register_event_step = register_event.step(event_listener_type, *args,
+                                              **kwargs)
+    return message_committed.step(event_listener_type, register_event_step)
 
 
 @PublicAPI
