@@ -135,7 +135,7 @@ Click on the images below to see an example script for each of the listed featur
 
     .. container::
 
-        | **Multi-agent RL** (MARL): Convert your (custom) ``gym.Env``s into a multi-agent ones
+        | **Multi-agent RL** (MARL): Convert your (custom) ``gym.Envs`` into a multi-agent ones
           via a few simple steps and start training your agents in any of the following fashions:
         | 1) Cooperative with `shared <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`_ or
           `separate <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`_
