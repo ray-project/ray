@@ -1,5 +1,3 @@
-.. include:: rllib/index.html
-
 .. include:: rllib/we_are_hiring.rst
 
 RLlib Algorithms
