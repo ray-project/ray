@@ -17,6 +17,8 @@ my_pipeline = echo(pipeline.INPUT).deploy()
 assert my_pipeline.call(42) == 42
 # __simple_pipeline_end__
 
+del my_pipeline
+
 
 # __pipeline_configuration_start__
 @pipeline.step(execution_mode="actors", num_replicas=2)
@@ -28,8 +30,10 @@ my_pipeline = echo(pipeline.INPUT).deploy()
 assert my_pipeline.call(42) == 42
 # __pipeline_configuration_end__
 
+del my_pipeline
 
-# __preprocessing_pipeline_examples__
+
+# __preprocessing_pipeline_example_start__
 @pipeline.step(execution_mode="tasks")
 def preprocess(img_bytes):
     from torchvision import transforms
@@ -58,8 +62,10 @@ class ClassificationModel:
         import torch
         with torch.no_grad():
             output = self.model(inp_tensor).squeeze()
+            sorted_value, sorted_idx = output.sort()
         return {
-            "top_5_categories": output.argsort().cpu().numpy().tolist()[-5:]
+            "top_5_categories": sorted_idx.numpy().tolist()[-5:],
+            "top_5_scores": sorted_value.numpy().tolist()[-5:]
         }
 
 
@@ -67,6 +73,7 @@ import PIL.Image
 import io
 import numpy as np
 
+# Generate dummy input
 _buffer = io.BytesIO()
 PIL.Image.fromarray(
     np.zeros((720, 720, 3), int), mode="RGB").save(_buffer, "png")
@@ -74,6 +81,30 @@ dummy_png_bytes = _buffer.getvalue()
 
 sequential_pipeline = (ClassificationModel("resnet18")(preprocess(
     pipeline.INPUT)).deploy())
-assert sequential_pipeline.call(dummy_png_bytes) == {
-    'top_5_categories': [898, 412, 600, 731, 463]
-}
+result = sequential_pipeline.call(dummy_png_bytes)
+assert result["top_5_categories"] == [898, 412, 600, 731, 463]
+# __preprocessing_pipeline_example_end__
+
+# Cleanup resource
+del sequential_pipeline
+
+
+# __ensemble_pipeline_example_start__
+@pipeline.step(execution_mode="actors")
+def combine_output(*classifier_outputs):
+    # Here will we will just concatenate the result from multiple models
+    # You can easily extend this to other ensemble techniques like voting
+    # or weighted average.
+    return sum([out["top_5_categories"] for out in classifier_outputs], [])
+
+
+preprocess_node = preprocess(pipeline.INPUT)
+model_nodes = [
+    ClassificationModel(model)(preprocess_node)
+    for model in ["resnet18", "resnet34"]
+]
+ensemble_pipeline = combine_output(*model_nodes).deploy()
+result = ensemble_pipeline.call(dummy_png_bytes)
+assert result == [898, 412, 600, 731, 463, 899, 618, 733, 463, 600]
+
+# __ensemble_pipeline_example_end__

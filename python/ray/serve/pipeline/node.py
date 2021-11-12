@@ -13,6 +13,8 @@ class PipelineNode(ABC):
     def deploy(self):
         pass
 
+    # NOTE(simon): used _call as name so user don't confuse deployed and
+    # un-deployed pipeline objects.
     def _call(self, input_arg: Tuple[Any]) -> Any:
         pass
 
