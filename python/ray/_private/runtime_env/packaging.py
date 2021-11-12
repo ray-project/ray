@@ -405,6 +405,7 @@ def download_and_unpack_package(
                     raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
                 code = code or b""
                 pkg_file.write_bytes(code)
+                unzip_package(pkg_file, local_dir, False, True, logger)
             elif protocol == Protocol.S3:
                 # Download package from S3.
                 try:
@@ -420,18 +421,88 @@ def download_and_unpack_package(
                 with open(pkg_uri, "rb", transport_params=tp) as package_zip:
                     with open(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
+                unzip_package(pkg_file, local_dir, True, True, logger)
+            elif protocol == Protocol.HTTPS:
+                # Download package via HTTPS
+                try:
+                    from smart_open import open
+                except ImportError:
+                    raise ImportError(
+                        "You must `pip install smart_open` to fetch "
+                        "HTTPS URIs.")
+                with open(pkg_uri, "rb") as package_zip:
+                    with open(pkg_file, "wb") as fin:
+                        fin.write(package_zip.read())
+                unzip_package(pkg_file, local_dir, True, True, logger)
             else:
                 raise NotImplementedError(
                     f"Protocol {protocol} is not supported")
 
-            os.mkdir(local_dir)
-            logger.debug(f"Unpacking {pkg_file} to {local_dir}")
-            with ZipFile(str(pkg_file), "r") as zip_ref:
-                zip_ref.extractall(local_dir)
-            pkg_file.unlink()
-
         return str(local_dir)
 
+
+def get_top_level_dir_from_compressed_package(package_path: str):
+    """
+    If compressed package at package_path contains a single top-level directory,
+    returns the name of the top-level directory. Otherwise, returns None.
+    """
+
+    package_zip = ZipFile(package_path, "r")
+    top_level_directory = None
+
+    for file_name in package_zip.namelist():
+        if top_level_directory == None:
+            # Set the top_level_directory when checking the first file in the zipped package
+            if '/' in file_name:
+                top_level_directory = file_name.split('/')[0]
+            else:
+                return None
+        else:
+            # Confirm that all other files belong to the same top_level_directory
+            if '/' not in file_name or file_name.split('/')[0] != top_level_directory:
+                print(file_name.split('/')[0])
+                return None
+    
+    # Ensure that zip file is not empty
+    return top_level_directory
+
+
+def unzip_package(package_path: str, target_dir: str, remove_top_level_directory: bool, unlink_zip: bool, logger: Optional[logging.Logger] = default_logger):
+    """
+    Unzip the compressed package contained at package_path and store the contents in target_dir.
+    If remove_top_level_directory is True, the function will automatically
+    remove the top_level_directory and store the contents directly in target_dir.
+    If unlinke_zip is True, the function will unlink the zip file stored at package_path.
+    """
+    try:
+        os.mkdir(target_dir)
+    except FileExistsError:
+        logger.info(f"Directory at {target_dir} already exists")
+    
+    logger.debug(f"Unpacking {package_path} to {target_dir}")
+
+    if remove_top_level_directory:
+        top_level_directory = get_top_level_dir_from_compressed_package(package_path)
+        if top_level_directory is None:
+            raise ValueError("The package at package_path must contain a single top level directory.")
+        with ZipFile(str(package_path), "r") as zip_ref:
+
+            for fname in zip_ref.namelist():
+                fname_without_top_level_dir = "/".join(fname.split('/')[1:])
+
+                # Extract files only if the top level directory actually contains any files
+                if fname_without_top_level_dir:
+                    zip_ref.extract(fname, target_dir)
+                    os.rename(os.path.join(target_dir, fname), os.path.join(target_dir, fname_without_top_level_dir))
+            
+            shutil.rmtree(os.path.join(target_dir, top_level_directory))
+    else:
+        with ZipFile(str(package_path), "r") as zip_ref:
+            zip_ref.extractall(target_dir)
+    
+    if unlink_zip:
+        package_path.unlink()
+    
 
 def delete_package(pkg_uri: str, base_directory: str) -> bool:
     """Deletes a specific URI from the local filesystem.
