@@ -147,11 +147,19 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
                 path='/shrekris-anyscale/test_repo/archive/HEAD.zip'
             )
             -> ("https", "https_github_com__shrekris-anyscale_test_repo_archive_HEAD.zip")
+    For GS URIs, the path will have '/' replaced with '_'.
+        urlparse("gs://shreyas-runtime-env-test1/test_module/test_module.zip")
+            -> ParseResult(
+                scheme='gs',
+                netloc='shreyas-runtime-env-test1',
+                path='/test_module/test_module.zip'
+            )
+            -> ("gs", "gs_shreyas-runtime-env-test1__test_module_test_module.zip")
     """
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
-    if protocol == Protocol.S3:
-        return (protocol, f"s3_{uri.netloc}_" + "_".join(uri.path.split("/")))
+    if protocol == Protocol.S3 or protocol == Protocol.GS:
+        return (protocol, f"{protocol.value}_{uri.netloc}_" + "_".join(uri.path.split("/")))
     elif protocol == Protocol.HTTPS:
         return (protocol, f"http_{uri.netloc.replace('.', '_')}_" + "_".join(uri.path.split("/")))
     else:
