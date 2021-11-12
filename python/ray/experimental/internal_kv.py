@@ -1,4 +1,4 @@
-from typing import List, Union, Optional, Tuple
+from typing import List, Union, Optional
 
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.gcs_utils import GcsClient
