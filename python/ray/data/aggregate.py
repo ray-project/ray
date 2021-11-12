@@ -4,8 +4,7 @@ from typing import Callable, Optional, Union, Any, List
 from ray.util.annotations import PublicAPI
 from ray.data.block import T, U, KeyType, AggType
 
-AggregateOnTBase = Union[Callable[[T], Any], str]
-AggregateOnT = Optional[Union[AggregateOnTBase, List[AggregateOnTBase]]]
+AggregateOnT = Union[Callable[[T], Any], str]
 
 
 @PublicAPI(stability="beta")
@@ -58,7 +57,7 @@ class Count(AggregateFn):
 class Sum(AggregateFn):
     """Defines sum aggregation."""
 
-    def __init__(self, on: AggregateOnT = None):
+    def __init__(self, on: Optional[AggregateOnT] = None):
         on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: 0,
@@ -70,7 +69,7 @@ class Sum(AggregateFn):
 class Min(AggregateFn):
     """Defines min aggregation."""
 
-    def __init__(self, on: AggregateOnT = None):
+    def __init__(self, on: Optional[AggregateOnT] = None):
         on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: None,
@@ -83,7 +82,7 @@ class Min(AggregateFn):
 class Max(AggregateFn):
     """Defines max aggregation."""
 
-    def __init__(self, on: AggregateOnT = None):
+    def __init__(self, on: Optional[AggregateOnT] = None):
         on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: None,
@@ -96,7 +95,7 @@ class Max(AggregateFn):
 class Mean(AggregateFn):
     """Defines mean aggregation."""
 
-    def __init__(self, on: AggregateOnT = None):
+    def __init__(self, on: Optional[AggregateOnT] = None):
         on_fn = _to_on_fn(on)
         super().__init__(
             init=lambda k: [0, 0],
@@ -118,7 +117,7 @@ class Std(AggregateFn):
     https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
     """
 
-    def __init__(self, on: AggregateOnT = None, ddof: int = 1):
+    def __init__(self, on: Optional[AggregateOnT] = None, ddof: int = 1):
         on_fn = _to_on_fn(on)
 
         def accumulate(a: List[float], r: float):
@@ -169,7 +168,7 @@ class Std(AggregateFn):
             name=(f"std({str(on)})"))
 
 
-def _to_on_fn(on: AggregateOnT):
+def _to_on_fn(on: Optional[AggregateOnT]):
     if on is None:
         return lambda r: r
     elif isinstance(on, str):

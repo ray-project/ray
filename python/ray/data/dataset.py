@@ -14,7 +14,8 @@ if TYPE_CHECKING:
     import torch
     import tensorflow as tf
     from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.data.grouped_dataset import GroupedDataset, GroupKeyT
+    from ray.data.grouped_dataset import GroupedDataset, GroupKeyT, \
+        AggregateOnTs
 
 import collections
 import itertools
@@ -29,7 +30,7 @@ from ray.data.context import DatasetContext
 from ray.data.datasource import (
     Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
     ParquetDatasource, BlockWritePathProvider, DefaultBlockWritePathProvider)
-from ray.data.aggregate import AggregateOnT, AggregateFn, Sum, Max, Min, \
+from ray.data.aggregate import AggregateFn, Sum, Max, Min, \
     Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
@@ -872,9 +873,9 @@ class Dataset(Generic[T]):
         return ret[0] if len(ret) > 0 else None
 
     def _check_and_normalize_agg_on(self,
-                                    on: AggregateOnT,
+                                    on: Optional["AggregateOnTs"],
                                     skip_cols: Optional[List[str]] = None
-                                    ) -> AggregateOnT:
+                                    ) -> Optional["AggregateOnTs"]:
         """Checks whether the provided aggregation `on` arg is valid for this
         type of dataset, and normalizes the value based on the Dataset type and
         any provided columns to skip.
@@ -885,8 +886,10 @@ class Dataset(Generic[T]):
                       and not (all(isinstance(on_, str) for on_ in on)
                                or all(isinstance(on_, Callable)
                                       for on_ in on))))):
+            from ray.data.grouped_dataset import AggregateOnTs
+
             raise TypeError(
-                f"`on` must be of type {AggregateOnT}, but got {type(on)}")
+                f"`on` must be of type {AggregateOnTs}, but got {type(on)}")
 
         if isinstance(on, list) and len(on) == 0:
             raise ValueError(
@@ -955,7 +958,8 @@ class Dataset(Generic[T]):
                     "it's an Arrow dataset")
             return isinstance(schema, pa.Schema)
 
-    def _aggregate_on(self, agg_cls: type, on: AggregateOnT, *args, **kwargs):
+    def _aggregate_on(self, agg_cls: type, on: Optional["AggregateOnTs"],
+                      *args, **kwargs):
         """Helper for aggregating on a particular subset of the dataset.
 
         This validates the `on` argument, and converts a list of column names
@@ -969,7 +973,7 @@ class Dataset(Generic[T]):
 
     def _build_multicolumn_aggs(self,
                                 agg_cls: type,
-                                on: AggregateOnT,
+                                on: Optional["AggregateOnTs"],
                                 *args,
                                 skip_cols: Optional[List[str]] = None,
                                 **kwargs):
@@ -981,7 +985,7 @@ class Dataset(Generic[T]):
             on = [on]
         return [agg_cls(on_, *args, **kwargs) for on_ in on]
 
-    def sum(self, on: AggregateOnT = None) -> U:
+    def sum(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute sum over entire dataset.
 
         This is a blocking operation.
@@ -1036,7 +1040,7 @@ class Dataset(Generic[T]):
         else:
             return ret
 
-    def min(self, on: AggregateOnT = None) -> U:
+    def min(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute minimum over entire dataset.
 
         This is a blocking operation.
@@ -1091,7 +1095,7 @@ class Dataset(Generic[T]):
         else:
             return ret
 
-    def max(self, on: AggregateOnT = None) -> U:
+    def max(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute maximum over entire dataset.
 
         This is a blocking operation.
@@ -1146,7 +1150,7 @@ class Dataset(Generic[T]):
         else:
             return ret
 
-    def mean(self, on: AggregateOnT = None) -> U:
+    def mean(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute mean over entire dataset.
 
         This is a blocking operation.
@@ -1201,7 +1205,7 @@ class Dataset(Generic[T]):
         else:
             return ret
 
-    def std(self, on: AggregateOnT = None, ddof: int = 1) -> U:
+    def std(self, on: Optional["AggregateOnTs"] = None, ddof: int = 1) -> U:
         """Compute standard deviation over entire dataset.
 
         This is a blocking operation.
