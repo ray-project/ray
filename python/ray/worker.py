@@ -620,12 +620,11 @@ def init(
 
         ray.init()
 
-    To connect to an existing local cluster, use this as follows (substituting
-    in the appropriate port if needed).
+    To connect to an existing local cluster, use this as follows.
 
     .. code-block:: python
 
-        ray.init(address="localhost:6379")
+        ray.init(address="auto")
 
     To connect to an existing remote cluster, use this as follows (substituting
     in the appropriate address). Note the addition of "ray://" at the beginning
