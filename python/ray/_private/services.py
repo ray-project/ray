@@ -1079,8 +1079,8 @@ def _start_redis_instance(executable,
         command += (["--port", str(port), "--loglevel", "warning"])
         if listen_to_localhost_only:
             command += ["--bind", "127.0.0.1"]
-        pidfile = os.path.join(
-            session_dir_path, "redis-" + uuid.uuid4().hex + ".pid")
+        pidfile = os.path.join(session_dir_path,
+                               "redis-" + uuid.uuid4().hex + ".pid")
         command += ["--pidfile", pidfile]
         process_info = start_ray_process(
             command,
