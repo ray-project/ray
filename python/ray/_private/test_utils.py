@@ -15,7 +15,6 @@ from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
 import logging
-import pytest
 import tempfile
 import grpc
 
@@ -871,6 +870,7 @@ def monitor_memory_usage(print_interval_s: int = 30,
 
 def setup_tls():
     """Sets up required environment variables for tls"""
+    import pytest
     if sys.platform == "darwin":
         pytest.skip("Cryptography doesn't install in Mac build pipeline")
     cert, key = generate_self_signed_tls_certs()
