@@ -497,6 +497,24 @@ def get_top_level_dir_from_compressed_package(package_path: str):
     return top_level_directory
 
 
+def extract_file_and_remove_top_level_dir(base_dir: str, fname: str, zip_ref: ZipFile):
+    """
+    Extracts fname file from zip_ref zip file, removes the top level directory
+    from fname's file path, and stores fname in the base_dir.
+    """
+
+    fname_without_top_level_dir = "/".join(fname.split("/")[1:])
+
+    # If this condition is false, it means there was no top-level directory,
+    # so we do nothing
+    if fname_without_top_level_dir:
+        zip_ref.extract(fname, base_dir)
+        os.rename(
+            os.path.join(base_dir, fname),
+            os.path.join(base_dir, fname_without_top_level_dir))
+
+
+
 def unzip_package(package_path: str,
                   target_dir: str,
                   remove_top_level_directory: bool,
@@ -523,18 +541,11 @@ def unzip_package(package_path: str,
             raise ValueError("The package at package_path must contain "
                              "a single top level directory.")
         with ZipFile(str(package_path), "r") as zip_ref:
-
             for fname in zip_ref.namelist():
-                fname_without_top_level_dir = "/".join(fname.split("/")[1:])
+                extract_file_and_remove_top_level_dir(base_dir=target_dir, fname=fname, zip_ref=zip_ref)
 
-                # Extract files only if the top level directory
-                # actually contains any files
-                if fname_without_top_level_dir:
-                    zip_ref.extract(fname, target_dir)
-                    os.rename(
-                        os.path.join(target_dir, fname),
-                        os.path.join(target_dir, fname_without_top_level_dir))
-
+            # Remove now-empty top_level_directory and any empty subdirectories
+            # left over from extract_file_and_remove_top_level_dir operations
             shutil.rmtree(os.path.join(target_dir, top_level_directory))
     else:
         with ZipFile(str(package_path), "r") as zip_ref:
