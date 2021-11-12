@@ -55,7 +55,7 @@ def test_load_balancing(ray_start_cluster):
 
     @ray.remote
     def f():
-        time.sleep(0.01)
+        time.sleep(0.10)
         return ray.worker.global_worker.node.unique_id
 
     attempt_to_load_balance(f, [], 100, num_nodes, 10)
