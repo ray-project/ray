@@ -228,10 +228,9 @@ public interface RayRuntime {
    * Get a placement group by name.
    *
    * @param name The name of the placement group.
-   * @param global Whether the named placement group is global.
    * @return The placement group.
    */
-  PlacementGroup getPlacementGroup(String name, boolean global);
+  PlacementGroup getPlacementGroup(String name);
 
   /**
    * Get all placement groups in this cluster.

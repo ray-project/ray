@@ -211,8 +211,8 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public PlacementGroup getPlacementGroup(String name, boolean global) {
-    return gcsClient.getPlacementGroupInfo(name, global);
+  public PlacementGroup getPlacementGroup(String name) {
+    return gcsClient.getPlacementGroupInfo(name);
   }
 
   @Override

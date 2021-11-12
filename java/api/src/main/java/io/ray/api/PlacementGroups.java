@@ -38,17 +38,7 @@ public class PlacementGroups {
    * @return The placement group.
    */
   public static PlacementGroup getPlacementGroup(String name) {
-    return Ray.internal().getPlacementGroup(name, false);
-  }
-
-  /**
-   * Get a placement group by placement group name from all jobs.
-   *
-   * @param name The placement group name.
-   * @return The placement group.
-   */
-  public static PlacementGroup getGlobalPlacementGroup(String name) {
-    return Ray.internal().getPlacementGroup(name, true);
+    return Ray.internal().getPlacementGroup(name);
   }
 
   /**

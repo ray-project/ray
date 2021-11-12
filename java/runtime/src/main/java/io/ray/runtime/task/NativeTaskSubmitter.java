@@ -91,11 +91,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
   @Override
   public PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions) {
     if (StringUtils.isNotBlank(creationOptions.name)) {
-      PlacementGroup placementGroup =
-          creationOptions.global
-              ? PlacementGroups.getGlobalPlacementGroup(creationOptions.name)
-              : PlacementGroups.getPlacementGroup(creationOptions.name);
-
+      PlacementGroup placementGroup = PlacementGroups.getPlacementGroup(creationOptions.name);
       Preconditions.checkArgument(
           placementGroup == null,
           String.format("Placement group with name %s exists!", creationOptions.name));
