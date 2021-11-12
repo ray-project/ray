@@ -277,7 +277,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         # TODO(xwjiang): https://github.com/ray-project/ray/issues/19959
         # self.assertEqual(f(0, 0).status, Trial.TERMINATED)
 
-        # The rest hangs, so need a failure injection callback to exit.
         # TODO(xwjiang): Make FailureInjectorCallback a test util.
         class FailureInjectorCallback(Callback):
             """Adds random failure injection to the TrialExecutor."""
@@ -305,8 +304,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
                 callbacks=[FailureInjectorCallback()],
             )[0]
 
-        # Too large resource request
-        # TODO(xwjiang): Re-enable after https://github.com/ray-project/ray/issues/19985.  # noqa
+        # Too large resource requests are infeasible
+        # TODO(xwjiang): Throw TuneError after https://github.com/ray-project/ray/issues/19985.  # noqa
         os.environ["TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S"] = "0"
 
         with self.assertRaises(RuntimeError), patch.object(
