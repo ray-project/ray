@@ -262,14 +262,12 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     *total_violations = 0;
   }
 
-  std::string best_node_id_str = "NA";
-  if (best_node_id != -1) {
-    best_node_id_str = NodeID::FromBinary(string_to_int_map_.Get(best_node_id)).Hex();
-  }
-
   RAY_LOG(DEBUG) << "Scheduling decision. "
                  << "forcing spillback: " << force_spillback
-                 << ". Best node: " << best_node_id << " " << best_node_id_str
+                 << ". Best node: " << best_node_id << " "
+                 << (best_node_id == -1
+                         ? "NA"
+                         : NodeID::FromBinary(string_to_int_map_.Get(best_node_id)).Hex())
                  << ", is infeasible: " << *is_infeasible;
   return best_node_id;
 }
