@@ -166,12 +166,11 @@ class _WrappedDataLoader(DataLoader):
 
 def get_device() -> torch.device:
     """Gets the correct torch device to use for training."""
-    rank = train.local_rank()
-
-    if not torch.cuda.is_available():
-        device = torch.device("cpu")
-    else:
+    if torch.cuda.is_available():
+        rank = train.local_rank()
         device = torch.device(f"cuda:{rank}")
+    else:
+        device = torch.device("cpu")
 
     return device
 
