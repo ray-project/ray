@@ -160,7 +160,8 @@ class DashboardAgent(object):
         # TODO: redis-removal bootstrap
         gcs_address = await self.aioredis_client.get(
             dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
-        self.gcs_client = GcsClient(address=gcs_address.decode(), auto_reconnect=False)
+        self.gcs_client = GcsClient(
+            address=gcs_address.decode(), nums_reconnect_retry=0)
         modules = self._load_modules()
 
         # Http server should be initialized after all modules loaded.
