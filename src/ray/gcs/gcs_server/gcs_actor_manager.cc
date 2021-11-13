@@ -873,15 +873,12 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     remaining_restarts = std::max(remaining, static_cast<int64_t>(0));
   }
 
-  int death_cause_case = rpc::ActorDeathCause::ContextCase::CONTEXT_NOT_SET;
-  if (death_cause != nullptr) {
-    death_cause_case = death_cause->context_case();
-  }
   RAY_LOG(INFO) << "Actor " << actor_id << " is failed on worker " << worker_id
                 << " at node " << node_id << ", need_reschedule = " << need_reschedule
-                << ", death context type = " << static_cast<int>(death_cause_case)
+                << ", death context type = " << GetDeathCauseString(death_cause)
                 << ", remaining_restarts = " << remaining_restarts
                 << ", job id = " << actor_id.JobId();
+
   if (remaining_restarts != 0) {
     // num_restarts must be set before updating GCS, or num_restarts will be inconsistent
     // between memory cache and storage.

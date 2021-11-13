@@ -25,6 +25,8 @@ namespace ray {
 
 namespace gcs {
 
+using ContextCase = rpc::ActorDeathCause::ContextCase;
+
 /// Helper function to produce job table data (for newly created job or updated job).
 ///
 /// \param job_id The ID of job that need to be registered or updated.
@@ -116,8 +118,7 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
 inline const rpc::RayException *GetCreationTaskExceptionFromDeathCause(
     const rpc::ActorDeathCause *death_cause) {
   if (death_cause == nullptr ||
-      death_cause->context_case() !=
-          rpc::ActorDeathCause::ContextCase::kCreationTaskFailureContext) {
+      death_cause->context_case() != ContextCase::kCreationTaskFailureContext) {
     return nullptr;
   }
   return &(death_cause->creation_task_failure_context().creation_task_exception());
@@ -129,15 +130,25 @@ inline rpc::ErrorType GenErrorTypeFromDeathCause(
   if (death_cause == nullptr) {
     return rpc::ErrorType::ACTOR_DIED;
   }
-  if (death_cause->context_case() ==
-      rpc::ActorDeathCause::ContextCase::kCreationTaskFailureContext) {
+  if (death_cause->context_case() == ContextCase::kCreationTaskFailureContext) {
     return rpc::ErrorType::ACTOR_DIED;
   }
-  if (death_cause->context_case() ==
-      rpc::ActorDeathCause::ContextCase::kRuntimeEnvSetupFailureContext) {
+  if (death_cause->context_case() == ContextCase::kRuntimeEnvSetupFailureContext) {
     return rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
   }
   return rpc::ErrorType::ACTOR_DIED;
+}
+
+inline const std::string &GetDeathCauseString(const rpc::ActorDeathCause *death_cause) {
+  static absl::flat_hash_map<ContextCase, std::string> death_cause_string{
+      {ContextCase::CONTEXT_NOT_SET, "CONTEXT_NOT_SET"},
+      {ContextCase::kCreationTaskFailureContext, "CreationTaskFailureContext"},
+      {ContextCase::kRuntimeEnvSetupFailureContext, "RuntimeEnvSetupFailureContext"}};
+  ContextCase death_cause_case = ContextCase::CONTEXT_NOT_SET;
+  if (death_cause != nullptr) {
+    death_cause_case = death_cause->context_case();
+  }
+  return death_cause_string.at(death_cause_case);
 }
 
 }  // namespace gcs

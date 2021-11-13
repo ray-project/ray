@@ -222,8 +222,8 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     const ActorID &actor_id, int64_t num_restarts, bool dead,
     const rpc::ActorDeathCause *death_cause) {
-  RAY_LOG(DEBUG) << "Disconnecting from actor " << actor_id << ", death context type="
-                 << static_cast<int>(death_cause->context_case());
+  RAY_LOG(DEBUG) << "Disconnecting from actor " << actor_id
+                 << ", death context type=" << GetDeathCauseString(death_cause);
 
   std::unordered_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
