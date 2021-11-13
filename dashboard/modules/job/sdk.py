@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+import dataclasses
 import importlib
 import logging
 from pathlib import Path
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-@dataclass
+@dataclasses.dataclass
 class ClusterInfo:
     address: str
     cookies: Optional[Dict[str, Any]]
