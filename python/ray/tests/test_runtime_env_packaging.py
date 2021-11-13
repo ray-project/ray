@@ -19,7 +19,6 @@ from ray._private.runtime_env.packaging import (
     get_top_level_dir_from_compressed_package,
     extract_file_and_remove_top_level_dir, unzip_package)
 
-
 TOP_LEVEL_DIR_NAME = "top_level"
 ARCHIVE_NAME = "archive.zip"
 
@@ -76,7 +75,8 @@ def random_zip_file_with_top_level_dir():
             dir2 = next_level_dir / random_string(15)
             dir2.mkdir(parents=True)
             next_level_dir = dir2
-        make_archive(path / ARCHIVE_NAME[:ARCHIVE_NAME.rfind(".")], "zip", path, TOP_LEVEL_DIR_NAME)
+        make_archive(path / ARCHIVE_NAME[:ARCHIVE_NAME.rfind(".")], "zip",
+                     path, TOP_LEVEL_DIR_NAME)
         yield str(path / ARCHIVE_NAME)
 
 
@@ -156,11 +156,14 @@ class TestUploadPackageIfNeeded:
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 class TestGetTopLevelDirFromCompressedPackage:
     def test_get_top_level_valid(self, random_zip_file_with_top_level_dir):
-        top_level_dir_name = get_top_level_dir_from_compressed_package(str(random_zip_file_with_top_level_dir))
+        top_level_dir_name = get_top_level_dir_from_compressed_package(
+            str(random_zip_file_with_top_level_dir))
         assert top_level_dir_name == TOP_LEVEL_DIR_NAME
-    
-    def test_get_top_level_invalid(self, random_zip_file_without_top_level_dir):
-        top_level_dir_name = get_top_level_dir_from_compressed_package(str(random_zip_file_without_top_level_dir))
+
+    def test_get_top_level_invalid(self,
+                                   random_zip_file_without_top_level_dir):
+        top_level_dir_name = get_top_level_dir_from_compressed_package(
+            str(random_zip_file_without_top_level_dir))
         assert top_level_dir_name is None
 
 
@@ -172,7 +175,8 @@ class TestExtractFileAndRemoveTopLevelDir:
         rmtree(os.path.join(tmp_path, TOP_LEVEL_DIR_NAME))
         with ZipFile(archive_path, "r") as zf:
             for fname in zf.namelist():
-                extract_file_and_remove_top_level_dir(base_dir=tmp_path, fname=fname, zip_ref=zf)
+                extract_file_and_remove_top_level_dir(
+                    base_dir=tmp_path, fname=fname, zip_ref=zf)
         rmtree(os.path.join(tmp_path, TOP_LEVEL_DIR_NAME))
         with ZipFile(archive_path, "r") as zf:
             zf.extractall(tmp_path)
@@ -184,7 +188,7 @@ class TestExtractFileAndRemoveTopLevelDir:
         # and the top level directory's contents are the zip file and the top
         # level directory itself. This implies that all files have been
         # extracted from the top level directory and moved into the tmp_path.
-        assert set(dcmp.left_only) == set([ARCHIVE_NAME, TOP_LEVEL_DIR_NAME])
+        assert set(dcmp.left_only) == {ARCHIVE_NAME, TOP_LEVEL_DIR_NAME}
 
         # Make sure that all the subdirectories and files have been moved to
         # the target directory
@@ -194,17 +198,23 @@ class TestExtractFileAndRemoveTopLevelDir:
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("remove_top_level_directory", [False, True])
 @pytest.mark.parametrize("unlink_zip", [False, True])
-def test_unzip_package(random_zip_file_with_top_level_dir, remove_top_level_directory, unlink_zip):
+def test_unzip_package(random_zip_file_with_top_level_dir,
+                       remove_top_level_directory, unlink_zip):
     archive_path = random_zip_file_with_top_level_dir
     tmp_path = archive_path[:archive_path.rfind("/")]
     tmp_subdir = f"{tmp_path}/{TOP_LEVEL_DIR_NAME}_tmp"
-    unzip_package(package_path=archive_path, target_dir=tmp_subdir, remove_top_level_directory=remove_top_level_directory, unlink_zip=unlink_zip)
+    unzip_package(
+        package_path=archive_path,
+        target_dir=tmp_subdir,
+        remove_top_level_directory=remove_top_level_directory,
+        unlink_zip=unlink_zip)
 
     dcmp = None
     if remove_top_level_directory:
         dcmp = dircmp(f"{tmp_subdir}", f"{tmp_path}/{TOP_LEVEL_DIR_NAME}")
     else:
-        dcmp = dircmp(f"{tmp_subdir}/{TOP_LEVEL_DIR_NAME}", f"{tmp_path}/{TOP_LEVEL_DIR_NAME}")
+        dcmp = dircmp(f"{tmp_subdir}/{TOP_LEVEL_DIR_NAME}",
+                      f"{tmp_path}/{TOP_LEVEL_DIR_NAME}")
     assert len(dcmp.left_only) == 0
     assert len(dcmp.right_only) == 0
 
@@ -276,7 +286,8 @@ def test_travel():
         assert dir_paths == visited_dir_paths
 
 
-@pytest.mark.parametrize("parsing_tuple", 
+@pytest.mark.parametrize(
+    "parsing_tuple",
     [("gcs://file.zip", Protocol.GCS, "file.zip"),
      ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
      ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),

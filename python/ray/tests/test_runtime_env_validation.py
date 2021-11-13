@@ -68,13 +68,20 @@ class TestValidateWorkingDir:
             parse_and_validate_working_dir(1)
 
     def test_validate_remote_invalid_extensions(self):
-        for uri in ["https://some_domain.com/path/file", "s3://bucket/file", "gs://bucket/file"]:
+        for uri in [
+                "https://some_domain.com/path/file", "s3://bucket/file",
+                "gs://bucket/file"
+        ]:
             with pytest.raises(
-                    ValueError, match="Only .zip files supported for remote URIs."):
+                    ValueError,
+                    match="Only .zip files supported for remote URIs."):
                 parse_and_validate_working_dir(uri)
 
     def test_validate_remote_valid_input(self):
-        for uri in ["https://some_domain.com/path/file.zip", "s3://bucket/file.zip", "gs://bucket/file.zip"]:
+        for uri in [
+                "https://some_domain.com/path/file.zip",
+                "s3://bucket/file.zip", "gs://bucket/file.zip"
+        ]:
             working_dir = parse_and_validate_working_dir(uri)
             assert working_dir == uri
 
@@ -93,13 +100,20 @@ class TestValidatePyModules:
             parse_and_validate_py_modules([1])
 
     def test_validate_remote_invalid_extension(self):
-        uris = ["https://some_domain.com/path/file", "s3://bucket/file", "gs://bucket/file"]
+        uris = [
+            "https://some_domain.com/path/file", "s3://bucket/file",
+            "gs://bucket/file"
+        ]
         with pytest.raises(
-                ValueError, match="Only .zip files supported for remote URIs."):
+                ValueError,
+                match="Only .zip files supported for remote URIs."):
             parse_and_validate_py_modules(uris)
 
     def test_validate_remote_valid_input(self):
-        uris = ["https://some_domain.com/path/file.zip", "s3://bucket/file.zip", "gs://bucket/file.zip"]
+        uris = [
+            "https://some_domain.com/path/file.zip", "s3://bucket/file.zip",
+            "gs://bucket/file.zip"
+        ]
         py_modules = parse_and_validate_py_modules(uris)
         assert py_modules == uris
 

@@ -168,13 +168,13 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)
     if protocol == Protocol.S3 or protocol == Protocol.GS:
-        return (
-            protocol,
-            f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
+        return (protocol,
+                f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
     elif protocol == Protocol.HTTPS:
         return (
             protocol,
-            f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}")
+            f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}"
+        )
     else:
         return (protocol, uri.netloc)
 
@@ -434,7 +434,12 @@ def download_and_unpack_package(
                     raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
                 code = code or b""
                 pkg_file.write_bytes(code)
-                unzip_package(package_path=pkg_file, target_dir=local_dir, remove_top_level_directory=False, unlink_zip=True, logger=logger)
+                unzip_package(
+                    package_path=pkg_file,
+                    target_dir=local_dir,
+                    remove_top_level_directory=False,
+                    unlink_zip=True,
+                    logger=logger)
             elif protocol in Protocol.remote_protocols():
                 # Download package from remote URI
                 tp = None
@@ -461,7 +466,12 @@ def download_and_unpack_package(
                     with open(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
 
-                unzip_package(package_path=pkg_file, target_dir=local_dir, remove_top_level_directory=True, unlink_zip=True, logger=logger)
+                unzip_package(
+                    package_path=pkg_file,
+                    target_dir=local_dir,
+                    remove_top_level_directory=True,
+                    unlink_zip=True,
+                    logger=logger)
             else:
                 raise NotImplementedError(
                     f"Protocol {protocol} is not supported")
@@ -497,7 +507,8 @@ def get_top_level_dir_from_compressed_package(package_path: str):
     return top_level_directory
 
 
-def extract_file_and_remove_top_level_dir(base_dir: str, fname: str, zip_ref: ZipFile):
+def extract_file_and_remove_top_level_dir(base_dir: str, fname: str,
+                                          zip_ref: ZipFile):
     """
     Extracts fname file from zip_ref zip file, removes the top level directory
     from fname's file path, and stores fname in the base_dir.
@@ -541,7 +552,8 @@ def unzip_package(package_path: str,
                              "a single top level directory.")
         with ZipFile(str(package_path), "r") as zip_ref:
             for fname in zip_ref.namelist():
-                extract_file_and_remove_top_level_dir(base_dir=target_dir, fname=fname, zip_ref=zip_ref)
+                extract_file_and_remove_top_level_dir(
+                    base_dir=target_dir, fname=fname, zip_ref=zip_ref)
 
             # Remove now-empty top_level_directory and any empty subdirectories
             # left over from extract_file_and_remove_top_level_dir operations
