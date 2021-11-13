@@ -239,6 +239,11 @@ def prepare_data_loader(data_loader: torch.utils.data.DataLoader,
             returned by the data loader to the correct device.
     """
 
+    # Only add Distributed Sampler if the following conditions hold:
+    # 1. More than one training worker is being used.
+    # 2. A DistributedSampler has not already been added by the user.
+    # 3. The dataset is not an IterableDataset. Samplers do not worker with
+    # IterableDatasets.
     if train.world_size() > 1 \
         and not isinstance(data_loader.sampler, DistributedSampler) \
         and not (hasattr(data_loader, "dataset")
@@ -248,6 +253,13 @@ def prepare_data_loader(data_loader: torch.utils.data.DataLoader,
         def with_sampler(loader):
             # Automatically set the DistributedSampler
 
+            # If using a sampler, the shuffle attribute in the
+            # DataLoader must be set to False.
+            # Instead the shuffling is determined by the shuffle attribute
+            # in the DistributedSampler.
+            # We identify if shuffling is enabled in the passed in
+            # DataLoader by seeing if the sampler for the DataLoader is a
+            # SequentialSampler.
             shuffle = not isinstance(loader.sampler, SequentialSampler)
 
             data_loader_args = {
