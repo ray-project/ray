@@ -48,16 +48,12 @@ BACKEND_NAME_TO_CONFIG_CLS_NAME = {
 # Import backend configurations dynamically since not all subdependencies
 # may be installed.
 def get_backend_config_cls(backend_name) -> type:
-    try:
-        import importlib
-        config_cls = getattr(
-            importlib.import_module(f"ray.train"
-                                    f".{backend_name}"),
-            BACKEND_NAME_TO_CONFIG_CLS_NAME[backend_name])
-        return config_cls
-    except ImportError:
-        raise ValueError(f"{backend_name} is not installed. Please "
-                         f"install {backend_name} to use this backend.")
+    import importlib
+    config_cls = getattr(
+        importlib.import_module(f"ray.train"
+                                f".{backend_name}"),
+        BACKEND_NAME_TO_CONFIG_CLS_NAME[backend_name])
+    return config_cls
 
 
 class Trainer:
