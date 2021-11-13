@@ -30,7 +30,7 @@ Backend Configurations
 TorchConfig
 ~~~~~~~~~~~
 
-.. autoclass:: ray.train.TorchConfig
+.. autoclass:: ray.train.torch.TorchConfig
 
 .. _train-api-tensorflow-config:
 
