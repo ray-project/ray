@@ -527,8 +527,8 @@ class GCPTPU(GCPResource):
 
         # same logic as in GCPCompute.list_instances
         label_filters = label_filters or {}
-
         label_filters[TAG_RAY_CLUSTER_NAME] = self.cluster_name
+
         def filter_instance(instance: GCPTPUNode) -> bool:
             if instance.is_terminated():
                 return False
