@@ -29,6 +29,8 @@ else:
 
 T = TypeVar("T")
 
+C = TypeVar("C")
+
 logger = logging.getLogger(__name__)
 
 
@@ -354,6 +356,7 @@ class BackendExecutor:
                     world_size=world_size,
                     dataset_shard=dataset_shard,
                     checkpoint=checkpoint,
+                    encode_checkpoint_fn=self._backend.encode_checkpoint,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics
                 )
             except ValueError:
@@ -475,7 +478,8 @@ class BackendExecutor:
                 result_data = [r.data for r in results]
                 return result_data
             elif result_type is TrainingResultType.CHECKPOINT:
-                self.checkpoint_manager._process_checkpoint(results)
+                self.checkpoint_manager._process_checkpoint(results,
+                                                            decode_checkpoint_fn=self._backend.decode_checkpoint)
                 # Iterate until next REPORT call or training has finished.
             else:
                 raise TrainBackendError(f"Unexpected result type: "
@@ -682,6 +686,25 @@ class Backend(metaclass=abc.ABCMeta):
         worker_group.shutdown()
         worker_group.start()
         self.on_start(worker_group, backend_config)
+
+    @staticmethod
+    def encode_checkpoint(checkpoint: Dict) -> C:
+        """Logic to encode a checkpoint dict before sending to the driver.
+
+        This function will be called on the checkpoint on the rank 0 worker.
+        """
+
+        return checkpoint
+
+    @staticmethod
+    def decode_checkpoint(data: C) -> Dict:
+        """Logic to decode an encoded checkpoint.
+
+        This function will be called on the driver after receiving the
+        encoded checkpoint from the worker.
+        """
+
+        return data
 
 
 class InactiveWorkerGroupError(Exception):

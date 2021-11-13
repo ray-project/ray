@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any
 
 import ray
 from ray import train
-from ray.train.backend import BackendConfig, Backend
+from ray.train.backend import BackendConfig, Backend, C
 from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
 
@@ -139,6 +139,30 @@ class TorchBackend(Backend):
 
         worker_group.execute(
             shutdown_torch, destroy_process_group=len(worker_group) > 1)
+
+    @staticmethod
+    def encode_checkpoint(checkpoint: Dict) -> C:
+        """Special handling for moving model from worker to driver."""
+
+        # If model is being checkpointed and is wrapped in DDP, then extract
+        # out the underlying module. If not, then deserialization will fail
+        # since the torch process group is not initialized on the driver.
+
+        for k, v in checkpoint:
+            if isinstance(v, DistributedDataParallel) and hasattr(v, "module"):
+                checkpoint[k] = v.module
+
+        #
+
+    @staticmethod
+    def decode_checkpoint(data: C) -> Dict:
+        """Logic to decode an encoded checkpoint.
+
+        This function will be called on the driver after receiving the
+        encoded checkpoint from the worker.
+        """
+
+        return data
 
 
 class _WrappedDataLoader(DataLoader):

@@ -37,6 +37,7 @@ class Session:
                  world_size: int,
                  dataset_shard: Optional[RayDataset] = None,
                  checkpoint: Optional[Dict] = None,
+                 encode_checkpoint_fn: Callable = None,
                  detailed_autofilled_metrics: bool = False):
 
         self.dataset_shard = dataset_shard
@@ -48,6 +49,12 @@ class Session:
         self.local_rank = local_rank
         self.world_size = world_size
         self.loaded_checkpoint = checkpoint
+
+        # Function to encode checkpoint dict before sending to the driver.
+        if not encode_checkpoint_fn:
+            encode_checkpoint_fn = lambda x: x
+        self._encode_checkpoint_fn = encode_checkpoint_fn
+
 
         # This lock is used to control the execution of the training thread.
         self.continue_lock = threading.Semaphore(0)
@@ -197,6 +204,7 @@ class Session:
             kwargs = {}
         else:
             kwargs = self._auto_fill_checkpoint_metrics(kwargs)
+            kwargs = self._encode_checkpoint_fn(kwargs)
 
         result = TrainingResult(TrainingResultType.CHECKPOINT, kwargs)
         # Add result to a thread-safe queue.
