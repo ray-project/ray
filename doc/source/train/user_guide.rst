@@ -205,7 +205,9 @@ To customize the ``backend`` setup, you can replace the string argument with a
 
     .. code-block:: python
 
-        from ray.train import Trainer, TorchConfig
+        from ray.train import Trainer
+        from ray.train.torch import TorchConfig
+
         trainer = Trainer(backend=TorchConfig(...), num_workers=2)
 
 
@@ -213,14 +215,18 @@ To customize the ``backend`` setup, you can replace the string argument with a
 
     .. code-block:: python
 
-        from ray.train import Trainer, TensorflowConfig
+        from ray.train import Trainer
+        from ray.train.tensorflow import TensorflowConfig
+
         trainer = Trainer(backend=TensorflowConfig(...), num_workers=2)
 
   .. group-tab:: Horovod
 
     .. code-block:: python
 
-        from ray.train import Trainer, HorovodConfig
+        from ray.train import Trainer
+        from ray.train.horovod import HorovodConfig
+
         trainer = Trainer(backend=HorovodConfig(...), num_workers=2)
 
 For more configurability, please reference the :ref:`train-api-trainer` API.
