@@ -142,7 +142,8 @@
 - label: ":book: Lint"
   commands:
     - export LINT=1
-    - ./ci/travis/install-dependencies.sh
+    # Need to install horovod here so that Ray Train docs will render correctly.
+    - INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
     - ./ci/travis/ci.sh lint
     - ./ci/travis/ci.sh build
 
