@@ -11,7 +11,6 @@ import ray
 from ray.tune.resources import Resources
 from ray.util.annotations import DeveloperAPI
 from ray.tune.trial import Trial, Checkpoint
-from ray.tune.error import TuneError
 from ray.tune.cluster_info import is_ray_cluster
 
 logger = logging.getLogger(__name__)
@@ -25,11 +24,8 @@ def _get_cluster_resources_no_autoscaler() -> Dict:
 
 
 def _get_trial_cpu_and_gpu(trial: Trial) -> Dict:
-    cpu = trial.resources.cpu + trial.resources.extra_cpu
-    gpu = trial.resources.gpu + trial.resources.extra_gpu
-    if trial.placement_group_factory is not None:
-        cpu = trial.placement_group_factory.required_resources.get("CPU", 0)
-        gpu = trial.placement_group_factory.required_resources.get("GPU", 0)
+    cpu = trial.placement_group_factory.required_resources.get("CPU", 0)
+    gpu = trial.placement_group_factory.required_resources.get("GPU", 0)
     return {"CPU": cpu, "GPU": gpu}
 
 
@@ -209,8 +205,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
     def stop_trial(self,
                    trial: Trial,
                    error: bool = False,
-                   error_msg: Optional[str] = None,
-                   destroy_pg_if_cannot_replace: bool = True) -> None:
+                   error_msg: Optional[str] = None) -> None:
         """Stops the trial.
 
         Stops this trial, releasing all allocating resources.
@@ -220,8 +215,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
-            destroy_pg_if_cannot_replace (bool): Whether the trial's placement
-            group should be destroyed if it cannot replace any staged ones.
 
         """
         pass
@@ -332,24 +325,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
                 providing TrialRunner directly here.
         """
         self._may_warn_insufficient_resources(trials)
-        for trial in trials:
-            if trial.uses_placement_groups:
-                return
-            # TODO(xwjiang): The rest should be gone in a follow up PR
-            #  to remove non-pg case.
-            if trial.status == Trial.PENDING:
-                if not self.has_resources_for_trial(trial):
-                    resource_string = trial.resources.summary_string()
-                    trial_resource_help_msg = trial.get_trainable_cls(
-                    ).resource_help(trial.config)
-                    raise TuneError(
-                        "Insufficient cluster resources to launch trial: "
-                        f"trial requested {resource_string}, but the cluster "
-                        f"has only {self.resource_string()}. "
-                        f"{trial_resource_help_msg} ")
-            elif trial.status == Trial.PAUSED:
-                raise TuneError("There are paused trials, but no more pending "
-                                "trials with sufficient resources.")
 
     @abstractmethod
     def get_next_available_trial(self) -> Optional[Trial]:
@@ -384,11 +359,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
     @abstractmethod
     def debug_string(self) -> str:
         """Returns a human readable message for printing to the console."""
-        pass
-
-    @abstractmethod
-    def resource_string(self) -> str:
-        """Returns a string describing the total resources available."""
         pass
 
     @abstractmethod

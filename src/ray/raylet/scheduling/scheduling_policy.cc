@@ -111,10 +111,14 @@ int64_t HybridPolicyWithFilter(const ResourceRequest &resource_request,
     }
     bool is_available = node.GetLocalView().IsAvailable(resource_request,
                                                         ignore_pull_manager_at_capacity);
-    RAY_LOG(DEBUG) << "Node " << node_id << " is "
-                   << (is_available ? "available" : "not available");
     float critical_resource_utilization =
         node.GetLocalView().CalculateCriticalResourceUtilization();
+    RAY_LOG(DEBUG) << "Node " << node_id << " is "
+                   << (is_available ? "available" : "not available") << " for request "
+                   << resource_request.DebugString()
+                   << " with critical resource utilization "
+                   << critical_resource_utilization << " based on local view "
+                   << node.GetLocalView().DebugString(StringIdMap());
     if (critical_resource_utilization < spread_threshold) {
       critical_resource_utilization = 0;
     }

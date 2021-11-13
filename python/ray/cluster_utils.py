@@ -10,6 +10,7 @@ import time
 import ray
 import ray._private.services
 from ray._private.client_mode_hook import disable_client_hook
+from ray.dashboard.modules.job.sdk import ClusterInfo
 from ray import ray_constants
 
 logger = logging.getLogger(__name__)
@@ -316,3 +317,23 @@ class Cluster:
             self.remove_node(self.head_node)
         # need to reset internal kv since gcs is down
         ray.experimental.internal_kv._internal_kv_reset()
+
+
+def get_job_submission_client_cluster_info(
+        address: str, create_cluster_if_needed: bool) -> ClusterInfo:
+    """Get address, cookies, and metadata used for JobSubmissionClient.
+
+        Args:
+            address (str): Address without the module prefix that is passed
+                to JobSubmissionClient.
+            create_cluster_if_needed (bool): Indicates whether the cluster
+                of the address returned needs to be running. Ray doesn't
+                start a cluster before interacting with jobs, but other
+                implementations may do so.
+
+        Returns:
+            ClusterInfo object consisting of address, cookies, and metadata
+            for JobSubmissionClient to use.
+        """
+    return ClusterInfo(
+        address="http://" + address, cookies=None, metadata=None)
