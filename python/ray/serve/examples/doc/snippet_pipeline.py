@@ -1,5 +1,4 @@
 # __import_start__
-import PIL
 from ray.serve import pipeline
 # __import_end__
 
@@ -13,9 +12,47 @@ def echo(inp):
     return inp
 
 
-my_pipeline = echo(pipeline.INPUT).deploy()
+my_node = echo(pipeline.INPUT)
+my_pipeline = my_node.deploy()
 assert my_pipeline.call(42) == 42
 # __simple_pipeline_end__
+
+del my_pipeline
+
+
+# __simple_chain_start__
+@pipeline.step
+def add_one(inp):
+    return inp + 1
+
+
+@pipeline.step
+def double(inp):
+    return inp**2
+
+
+my_node = double(add_one(pipeline.INPUT))
+my_pipeline = my_node.deploy()
+assert my_pipeline.call(1) == 4
+
+# __simple_chain_end__
+
+del my_pipeline
+
+
+# __class_node_start__
+@pipeline.step
+class Adder:
+    def __init__(self, value):
+        self.value = value
+
+    def __call__(self, inp):
+        return self.value + inp
+
+
+my_pipeline = Adder(2)(pipeline.INPUT).deploy()
+assert my_pipeline.call(2) == 4
+# __class_node_end__
 
 del my_pipeline
 
@@ -91,7 +128,7 @@ del sequential_pipeline
 
 
 # __ensemble_pipeline_example_start__
-@pipeline.step(execution_mode="actors")
+@pipeline.step(execution_mode="tasks")
 def combine_output(*classifier_outputs):
     # Here will we will just concatenate the result from multiple models
     # You can easily extend this to other ensemble techniques like voting
