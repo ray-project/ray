@@ -198,7 +198,8 @@ class DashboardHead:
         # TODO: redis-removal bootstrap
         gcs_address = await get_gcs_address_with_retry(self.aioredis_client)
         # Dashboard will handle connection failure automatically
-        self.gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
+        self.gcs_client = GcsClient(
+            address=gcs_address, nums_reconnect_retry=0)
         internal_kv._initialize_internal_kv(self.gcs_client)
         self.aiogrpc_gcs_channel = ray._private.utils.init_grpc_channel(
             gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True)
