@@ -89,7 +89,7 @@ def working_dir_option(request):
     elif request.param == "s3_working_dir":
         yield {
             "runtime_env": {
-                "working_dir": "s3://runtime-env-test/script.zip",
+                "working_dir": "s3://runtime-env-test/script_runtime_env.zip",
             },
             "entrypoint": "python script.py",
             "expected_logs": "Executing main() from script.py !!\n",
