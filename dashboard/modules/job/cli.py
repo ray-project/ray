@@ -9,9 +9,7 @@ from ray.dashboard.modules.job.sdk import JobSubmissionClient
 logger = logging.getLogger(__name__)
 
 
-def _get_sdk_client(address: Optional[str],
-                    create_cluster_if_needed: bool = False
-                    ) -> JobSubmissionClient:
+def _get_sdk_client(address: Optional[str]) -> JobSubmissionClient:
     if address is None:
         if "RAY_ADDRESS" not in os.environ:
             raise ValueError(
@@ -19,7 +17,7 @@ def _get_sdk_client(address: Optional[str],
                 "or RAY_ADDRESS environment variable.")
         address = os.environ["RAY_ADDRESS"]
 
-    return JobSubmissionClient(address, create_cluster_if_needed)
+    return JobSubmissionClient(address)
 
 
 @click.group("job")
@@ -55,7 +53,7 @@ def job_submit(address: Optional[str], job_id: Optional[str],
     Example:
         >>> ray job submit -- python my_script.py --arg=val
     """
-    client = _get_sdk_client(address, create_cluster_if_needed=True)
+    client = _get_sdk_client(address)
 
     runtime_env = {}
     if working_dir is not None:
