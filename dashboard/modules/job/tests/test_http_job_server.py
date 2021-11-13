@@ -2,7 +2,6 @@ import logging
 from pathlib import Path
 import sys
 import tempfile
-import requests
 
 import pytest
 
@@ -120,7 +119,7 @@ def test_http_bad_request(job_sdk_client):
     client = job_sdk_client
 
     # 400 - HTTPBadRequest
-    with pytest.raises(requests.exceptions.HTTPError) as e:
+    with pytest.raises(RuntimeError) as e:
         _ = client._do_request(
             "POST",
             JOBS_API_ROUTE_SUBMIT,
@@ -128,26 +127,26 @@ def test_http_bad_request(job_sdk_client):
         )
 
     ex_message = str(e.value)
-    assert "400 Client Error" in ex_message
+    assert "status code 400" in ex_message
     assert "TypeError: __init__() got an unexpected keyword argument" in ex_message  # noqa: E501
 
     # 405 - HTTPMethodNotAllowed
-    with pytest.raises(requests.exceptions.HTTPError) as e:
+    with pytest.raises(RuntimeError) as e:
         _ = client._do_request(
             "GET",
             JOBS_API_ROUTE_SUBMIT,
             json_data={"key": "baaaad request"},
         )
     ex_message = str(e.value)
-    assert "405 Client Error: Method Not Allowed" in ex_message
+    assert "status code 405" in ex_message
 
     # 500 - HTTPInternalServerError
-    with pytest.raises(requests.exceptions.HTTPError) as e:
+    with pytest.raises(RuntimeError) as e:
         _ = client.submit_job(
             entrypoint="echo hello",
             runtime_env={"working_dir": "s3://does_not_exist"})
     ex_message = str(e.value)
-    assert "500 Server Error" in ex_message
+    assert "status code 500" in ex_message
     assert "Only .zip files supported for S3 URIs" in ex_message
 
 

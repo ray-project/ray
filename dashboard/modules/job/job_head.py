@@ -126,6 +126,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 metadata=submit_request.metadata)
 
             resp = JobSubmitResponse(job_id=job_id)
+        except (TypeError, ValueError):
+            return aiohttp.web.Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPBadRequest.status_code)
         except Exception:
             return aiohttp.web.Response(
                 text=traceback.format_exc(),
