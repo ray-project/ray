@@ -102,9 +102,6 @@ void ClusterResourceScheduler::AddOrUpdateNode(
 
 void ClusterResourceScheduler::AddOrUpdateNode(int64_t node_id,
                                                const NodeResources &node_resources) {
-  RAY_LOG(DEBUG) << "AddOrUpdateNode "
-                 << NodeID::FromBinary(string_to_int_map_.Get(node_id)) << " "
-                 << node_resources.DebugString(string_to_int_map_);
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     // This node is new, so add it to the map.
