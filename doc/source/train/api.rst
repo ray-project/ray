@@ -37,14 +37,14 @@ TorchConfig
 TensorflowConfig
 ~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.train.TensorflowConfig
+.. autoclass:: ray.train.tensorflow.TensorflowConfig
 
 .. _train-api-horovod-config:
 
 HorovodConfig
 ~~~~~~~~~~~~~
 
-.. autoclass:: ray.train.HorovodConfig
+.. autoclass:: ray.train.horovod.HorovodConfig
 
 
 Callbacks
