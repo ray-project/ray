@@ -30,21 +30,21 @@ Backend Configurations
 TorchConfig
 ~~~~~~~~~~~
 
-.. autoclass:: ray.train.TorchConfig
+.. autoclass:: ray.train.torch.TorchConfig
 
 .. _train-api-tensorflow-config:
 
 TensorflowConfig
 ~~~~~~~~~~~~~~~~
 
-.. autoclass:: ray.train.TensorflowConfig
+.. autoclass:: ray.train.tensorflow.TensorflowConfig
 
 .. _train-api-horovod-config:
 
 HorovodConfig
 ~~~~~~~~~~~~~
 
-.. autoclass:: ray.train.HorovodConfig
+.. autoclass:: ray.train.horovod.HorovodConfig
 
 
 Callbacks

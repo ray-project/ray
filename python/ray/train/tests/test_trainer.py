@@ -9,10 +9,12 @@ import pytest
 import ray
 import ray.train as train
 from ray._private.test_utils import wait_for_condition
-from ray.train import Trainer, TorchConfig, TensorflowConfig, \
-    HorovodConfig, CheckpointStrategy
+from ray.train import Trainer, CheckpointStrategy
 from ray.train.backend import BackendConfig, Backend, \
     BackendExecutor
+from ray.train.torch import TorchConfig
+from ray.train.tensorflow import TensorflowConfig
+from ray.train.horovod import HorovodConfig
 from ray.train.callbacks.callback import TrainingCallback
 from ray.train.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.train.examples.horovod.horovod_example import train_func as \

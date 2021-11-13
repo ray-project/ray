@@ -9,9 +9,6 @@ from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, \
 from ray.actor import ActorHandle
 from ray.train.backend import BackendConfig, BackendExecutor, \
     InactiveWorkerGroupError, TrainBackendError, TrainingWorkerError
-from ray.train.horovod import HorovodConfig
-from ray.train.tensorflow import TensorflowConfig
-from ray.train.torch import TorchConfig
 from ray.train.callbacks.callback import TrainingCallback
 from ray.train.utils import RayDataset
 from ray.train.checkpoint import CheckpointStrategy
@@ -40,11 +37,25 @@ S = TypeVar("S")
 
 logger = logging.getLogger(__name__)
 
-BACKEND_NAME_TO_CONFIG_CLS = {
-    "horovod": HorovodConfig,
-    "tensorflow": TensorflowConfig,
-    "torch": TorchConfig
+BACKEND_NAME_TO_CONFIG_CLS_NAME = {
+    "horovod": "HorovodConfig",
+    "tensorflow": "TensorflowConfig",
+    "torch": "TorchConfig"
 }
+
+# Import backend configurations dynamically since not all subdependencies
+# may be installed.
+def get_backend_config_cls(backend_name) -> type:
+    try:
+        import importlib
+        config_cls = getattr(
+            importlib.import_module(f"ray.train"
+                                    f".{backend_name}"),
+            BACKEND_NAME_TO_CONFIG_CLS_NAME[backend_name])
+        return config_cls
+    except ImportError:
+        raise ValueError(f"{backend_name} is not installed. Please "
+                         f"install {backend_name} to use this backend.")
 
 class Trainer:
     """A class for enabling seamless distributed deep learning.
@@ -171,12 +182,11 @@ class Trainer:
         if isinstance(backend, BackendConfig):
             return backend
         elif isinstance(backend, str):
-            try:
-                return BACKEND_NAME_TO_CONFIG_CLS[backend]()
-            except KeyError:
+            if backend not in BACKEND_NAME_TO_CONFIG_CLS_NAME:
                 raise ValueError(f"Invalid backend: {backend}. "
                                  f"Supported string values are: "
-                                 f"{BACKEND_NAME_TO_CONFIG_CLS.keys()}")
+                                 f"{BACKEND_NAME_TO_CONFIG_CLS_NAME.keys()}")
+            return get_backend_config_cls(backend)
         else:
             raise TypeError(f"Invalid type for backend: {type(backend)}.")
 
