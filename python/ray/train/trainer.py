@@ -10,8 +10,8 @@ from ray.actor import ActorHandle
 from ray.train.backend import BackendConfig, BackendExecutor, \
     InactiveWorkerGroupError, TrainBackendError, TrainingWorkerError
 from ray.train.horovod import HorovodConfig
-from ray.train.backends.tensorflow import TensorflowConfig
-from ray.train.backends.torch import TorchConfig
+from ray.train.tensorflow import TensorflowConfig
+from ray.train.torch import TorchConfig
 from ray.train.callbacks.callback import TrainingCallback
 from ray.train.utils import RayDataset
 from ray.train.checkpoint import CheckpointStrategy
@@ -40,25 +40,11 @@ S = TypeVar("S")
 
 logger = logging.getLogger(__name__)
 
-def get_config_cls(backend_name):
-    def try_import(fn):
-        try:
-            return fn()
-        except ImportError:
-            raise ValueError(f"`{backend_name}` is not installed. "
-                             f"Please install {backend_name} to use "
-                             "this backend.")
-
-    if backend_name == "torch":
-        try:
-
-            from ray.train.torch import TorchConfig
-            return TorchConfig
-
-
-
-
-
+BACKEND_NAME_TO_CONFIG_CLS = {
+    "horovod": HorovodConfig,
+    "tensorflow": TensorflowConfig,
+    "torch": TorchConfig
+}
 
 class Trainer:
     """A class for enabling seamless distributed deep learning.

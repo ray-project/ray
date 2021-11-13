@@ -86,6 +86,14 @@ py_test(
 )
 
 py_test(
+    name = "test_callbacks",
+    size = "medium",
+    srcs = ["tests/test_callbacks.py"],
+    tags = ["tema:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_gpu",
     size = "large",
     srcs = ["tests/test_gpu.py"],

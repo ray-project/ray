@@ -35,13 +35,12 @@ def train_epoch(dataloader, model, loss_fn, optimizer):
         optimizer.step()
 
 
-def validate_epoch(dataloader, model, loss_fn, device):
+def validate_epoch(dataloader, model, loss_fn):
     num_batches = len(dataloader)
     model.eval()
     loss = 0
     with torch.no_grad():
         for X, y in dataloader:
-            X, y = X.to(device), y.to(device)
             pred = model(X)
             loss += loss_fn(pred, y).item()
     loss /= num_batches

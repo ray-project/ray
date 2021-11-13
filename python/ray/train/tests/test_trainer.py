@@ -11,7 +11,7 @@ import ray.train as train
 from ray._private.test_utils import wait_for_condition
 from ray.train import Trainer, TorchConfig, TensorflowConfig, \
     HorovodConfig, CheckpointStrategy
-from ray.train.backends.backend import BackendConfig, Backend, \
+from ray.train.backend import BackendConfig, Backend, \
     BackendExecutor
 from ray.train.callbacks.callback import TrainingCallback
 from ray.train.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV

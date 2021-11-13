@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any
 
 import ray
 from ray import train
-from ray.train.backends.backend import BackendConfig, Backend
+from ray.train.backend import BackendConfig, Backend
 from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
 
