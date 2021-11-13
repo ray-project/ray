@@ -1020,10 +1020,8 @@ def test_dataset_pipeline_shuffle(ray_start_4_cpus):
     check_dataset_output(num_data, num_epochs, results)
 
 
-# TODO(matt): fix this test to verify that split is only called once.
 def test_dataset_fault_tolerance(ray_start_4_cpus):
     dataset = ray.data.range(10)
-    dataset_splits = dataset.split(n=2, equal=True)
     test_config = TestConfig()
 
     def train_func():
@@ -1035,17 +1033,23 @@ def test_dataset_fault_tolerance(ray_start_4_cpus):
 
     new_backend_executor_cls = gen_new_backend_executor(train_actor_failure)
 
+    class SingleGetDatasetShardsBackendExecutor(new_backend_executor_cls):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self._has_called_get_dataset_shards = False
+
+        def _get_dataset_shards(self, dataset_or_dict):
+            if self._has_called_get_dataset_shards:
+                raise Exception
+            self._has_called_get_dataset_shards = True
+            return super()._get_dataset_shards(dataset_or_dict)
+
     with patch.object(ray.train.trainer, "BackendExecutor",
-                      new_backend_executor_cls):
-        with patch.object(
-                new_backend_executor_cls,
-                "_get_dataset_shards",
-                return_value=dataset_splits):
-            trainer = Trainer(test_config, num_workers=2)
-            trainer.start()
-            result = trainer.run(train_func, dataset=dataset)
-            for worker_shard, input_shard in zip(result, dataset_splits):
-                assert worker_shard.take() == input_shard.take()
+                      SingleGetDatasetShardsBackendExecutor):
+        trainer = Trainer(test_config, num_workers=2)
+        trainer.start()
+        trainer.run(train_func, dataset=dataset)
+        # No exception is raised by _get_dataset_shards
 
 
 @pytest.mark.parametrize("resource", ["CPU", "GPU", "extra"])

@@ -405,7 +405,7 @@ class BackendExecutor:
     def pause_reporting(self):
         """ Disable workers from enqueuing results from `train.report()`.
 
-            Note: Reported results may still be enqueued at this point,
+            Note: Already reported results may still be enqueued at this point,
                   and should be handled appropriately.
         """
 
@@ -420,6 +420,8 @@ class BackendExecutor:
         """Finish training and return final results. Propagate any exceptions.
 
         Blocks until training is finished on all workers.
+
+        Assumes `start_training` has already been called.
 
         Returns:
             A list of return values from calling ``train_func`` on each worker.
