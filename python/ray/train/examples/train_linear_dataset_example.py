@@ -83,7 +83,7 @@ def train_func(config):
     validation_dataset_pipeline_shard = train.get_dataset_shard("validation")
 
     model = nn.Linear(1, hidden_size)
-    model = train.torch.prepare(model)
+    model = train.torch.prepare_model(model)
 
     loss_fn = nn.MSELoss()
 

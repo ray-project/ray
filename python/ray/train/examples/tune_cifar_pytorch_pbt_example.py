@@ -55,7 +55,7 @@ def validate_epoch(dataloader, model, loss_fn):
 def train_func(config):
     epochs = config.pop("epochs", 3)
     model = ResNet18(config)
-    model = train.torch.prepare(model)
+    model = train.torch.prepare_model(model)
 
     # Create optimizer.
     optimizer = torch.optim.SGD(

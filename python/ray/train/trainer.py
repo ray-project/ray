@@ -43,6 +43,7 @@ BACKEND_NAME_TO_CONFIG_CLS_NAME = {
     "torch": "TorchConfig"
 }
 
+
 # Import backend configurations dynamically since not all subdependencies
 # may be installed.
 def get_backend_config_cls(backend_name) -> type:
@@ -56,6 +57,7 @@ def get_backend_config_cls(backend_name) -> type:
     except ImportError:
         raise ValueError(f"{backend_name} is not installed. Please "
                          f"install {backend_name} to use this backend.")
+
 
 class Trainer:
     """A class for enabling seamless distributed deep learning.

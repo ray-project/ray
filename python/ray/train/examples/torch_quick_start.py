@@ -53,7 +53,7 @@ from ray import train
 def train_func_distributed():
     num_epochs = 3
     model = NeuralNetwork()
-    model = train.torch.prepare(model)
+    model = train.torch.prepare_model(model)
     loss_fn = nn.MSELoss()
     optimizer = optim.SGD(model.parameters(), lr=0.1)
 

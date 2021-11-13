@@ -67,23 +67,57 @@ training.
     Ray Train will set up your distributed process group for you and also provides utility methods
     to automatically prepare your model and data for distributed training.
 
-    .. code-block:: python
+    First, use the ``prepare_model`` function to automatically move your model to the right device and wrap it in
+    ``DistributedDataParallel``
 
-        from ray import train
-
+    .. code-block:: diff
+        import torch
+        from torch.nn.parallel import DistributedDataParallel
+        +from ray import train
 
 
         def train_func():
+            -device = torch.device(f"cuda:{train.local_rank()}" if
+            -      torch.cuda.is_available() else "cpu")
+            -torch.cuda.set_device(device)
+
             # Create model.
             model = NeuralNetwork()
 
-            # Use the ``prepare`` function to automatically move your model to the right device and wrap it in
-            # ``DistributedDataParallel``
-            model = train.torch.prepare(model)
+            -model = model.to(device)
+            -model = DistributedDataParallel(
+            -    model,
+            -    device_ids=[train.local_rank()] if torch.cuda.is_available() else None)
 
-            dataset =
-            data_loader = DataLoader(dataset, batch_size=batch_size)
+            +model = train.torch.prepare_model(model)
 
+            ...
+
+
+    Then, use the ``prepare_data_loader`` function to automatically add a ``DistributedSampler`` to your ``DataLoader``s
+    and move the batches to the right device.
+
+    .. code-block:: diff
+        import torch
+        from torch.utils.data import DataLoader, DistributedSampler
+        +from ray import train
+
+
+        def train_func():
+            -device = torch.device(f"cuda:{train.local_rank()}" if
+            -      torch.cuda.is_available() else "cpu")
+            -torch.cuda.set_device(device)
+
+            ...
+
+            -data_loader = DataLoader(my_dataset, sampler=DistributedSampler(dataset))
+
+            +data_loader = DataLoader(my_dataset)
+            +data_loader = train.torch.prepare_data_loader(data_loader)
+
+            for X, y in data_loader:
+                -X = X.to_device(device),
+                -y = y.to_device(device)
 
   .. group-tab:: TensorFlow
 

@@ -176,17 +176,15 @@ def get_device() -> torch.device:
     return device
 
 
-def prepare(model: torch.nn.Module,
-            move_to_device: bool = True,
-            wrap_ddp: bool = True,
-            ddp_kwargs: Optional[Dict[str, Any]] = None) -> torch.nn.Module:
+def prepare_model(
+        model: torch.nn.Module,
+        move_to_device: bool = True,
+        wrap_ddp: bool = True,
+        ddp_kwargs: Optional[Dict[str, Any]] = None) -> torch.nn.Module:
     """Prepares the model for distributed execution.
 
     This allows you to use the same exact code regardless of number of
     workers or the device type being used (CPU, GPU).
-
-    Example:
-        TODO
 
     Args:
         model (torch.nn.Module): A torch model to prepare.

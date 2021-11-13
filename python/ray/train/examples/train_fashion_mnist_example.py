@@ -91,7 +91,7 @@ def train_func(config: Dict):
 
     # Create model.
     model = NeuralNetwork()
-    model = train.torch.prepare(model)
+    model = train.torch.prepare_model(model)
 
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
