@@ -413,6 +413,7 @@ class BackendExecutor:
             Note: Already reported results may still be enqueued at this point,
                   and should be handled appropriately.
         """
+
         def pause_session_reporting():
             session = _get_session("pause_reporting")
             return session.pause_reporting()

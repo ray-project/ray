@@ -562,6 +562,7 @@ def test_world_rank(ray_start_2_cpus):
 
     assert set(results) == {0, 1}
 
+
 def test_torch_auto_unwrap(ray_start_2_cpus):
     """Tests if underlying model from DDP is extracted when saving ckpt."""
 
@@ -579,6 +580,7 @@ def test_torch_auto_unwrap(ray_start_2_cpus):
     trainer.start()
     trainer.run(train_fn)
     trainer.shutdown()
+
 
 def test_horovod_simple(ray_start_2_cpus):
     def simple_fn():
