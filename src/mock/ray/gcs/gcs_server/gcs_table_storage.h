@@ -116,17 +116,6 @@ class MockGcsTaskReconstructionTable : public GcsTaskReconstructionTable {
 namespace ray {
 namespace gcs {
 
-class MockGcsObjectTable : public GcsObjectTable {
- public:
-  MOCK_METHOD(JobID, GetJobIdFromKey, (const ObjectID &key), (override));
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
 class MockGcsNodeTable : public GcsNodeTable {
  public:
 };

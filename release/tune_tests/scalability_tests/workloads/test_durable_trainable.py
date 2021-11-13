@@ -75,10 +75,7 @@ def main(bucket):
         checkpoint_size_b=int(10 * 1000**2),  # 10 MB
         keep_checkpoints_num=2,
         resources_per_trial={"cpu": 2},
-        sync_config=tune.SyncConfig(
-            sync_to_driver=False,
-            upload_dir=f"s3://{bucket}/durable/",
-        ))
+        sync_config=tune.SyncConfig(upload_dir=f"s3://{bucket}/durable/", ))
 
 
 if __name__ == "__main__":

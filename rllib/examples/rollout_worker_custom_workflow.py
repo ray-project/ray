@@ -8,7 +8,6 @@ collection and policy optimization.
 import argparse
 import gym
 import numpy as np
-import os
 
 import ray
 from ray import tune
@@ -16,6 +15,7 @@ from ray.rllib.evaluation import RolloutWorker
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--gpu", action="store_true")
@@ -108,12 +108,12 @@ if __name__ == "__main__":
 
     tune.run(
         training_workflow,
-        resources_per_trial={
-            "gpu": 1 if args.gpu
-            or int(os.environ.get("RLLIB_FORCE_NUM_GPUS", 0)) else 0,
-            "cpu": 1,
-            "extra_cpu": args.num_workers,
-        },
+        resources_per_trial=PlacementGroupFactory(([{
+            "CPU": 1,
+            "GPU": 1 if args.gpu else 0
+        }] + [{
+            "CPU": 1
+        }] * args.num_workers)),
         config={
             "num_workers": args.num_workers,
             "num_iters": args.num_iters,
