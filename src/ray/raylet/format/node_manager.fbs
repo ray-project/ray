@@ -62,9 +62,6 @@ enum MessageType:int {
   // Push an error to the relevant driver. This is sent from a worker to the
   // node manager.
   PushErrorRequest,
-  // Push some profiling events to the GCS. When sending this message to the
-  // node manager, the message itself is serialized as a ProfileTableData object.
-  PushProfileEventsRequest,
   // Free the objects in objects store.
   FreeObjectsInObjectStoreRequest,
   // A node manager requests to connect to another node manager.

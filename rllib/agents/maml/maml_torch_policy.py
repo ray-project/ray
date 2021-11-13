@@ -8,7 +8,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.agents.ppo.ppo_tf_policy import setup_config
 from ray.rllib.agents.ppo.ppo_torch_policy import vf_preds_fetches, \
     ValueNetworkMixin
-from ray.rllib.utils.torch_ops import apply_grad_clipping
+from ray.rllib.utils.torch_utils import apply_grad_clipping
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
@@ -246,7 +246,7 @@ class MAMLLoss(object):
 
 
 def maml_loss(policy, model, dist_class, train_batch):
-    logits, state = model.from_batch(train_batch)
+    logits, state = model(train_batch)
     policy.cur_lr = policy.config["lr"]
 
     if policy.config["worker_index"]:

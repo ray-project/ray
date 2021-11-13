@@ -105,8 +105,8 @@ class WorkerPoolMock : public WorkerPool {
                               &mock_worker_rpc_clients)
       : WorkerPool(
             io_service, NodeID::FromRandom(), "", POOL_SIZE_SOFT_LIMIT, 0,
-            MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands, []() {}, 0,
-            [this]() { return current_time_ms_; }),
+            MAXIMUM_STARTUP_CONCURRENCY, 0, 0, {}, nullptr, worker_commands, "", []() {},
+            0, [this]() { return current_time_ms_; }),
         last_worker_process_(),
         instrumented_io_service_(io_service),
         error_message_type_(1),
@@ -447,7 +447,7 @@ static inline TaskSpecification ExampleTaskSpec(
     const ActorID actor_id = ActorID::Nil(), const Language &language = Language::PYTHON,
     const JobID &job_id = JOB_ID, const ActorID actor_creation_id = ActorID::Nil(),
     const std::vector<std::string> &dynamic_worker_options = {},
-    const TaskID &task_id = TaskID::ForFakeTask(),
+    const TaskID &task_id = TaskID::FromRandom(JobID::Nil()),
     const std::string serialized_runtime_env = "") {
   rpc::TaskSpec message;
   message.set_job_id(job_id.Binary());
@@ -1231,12 +1231,12 @@ TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
 TEST_F(WorkerPoolTest, PopWorkerWithRuntimeEnv) {
   ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
   auto actor_creation_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
-  const auto actor_creation_task_spec =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, actor_creation_id,
-                      {"XXX=YYY"}, TaskID::ForFakeTask(), "{\"uris\": \"XXX\"}");
-  const auto normal_task_spec =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
-                      {"XXX=YYY"}, TaskID::ForFakeTask(), "{\"uris\": \"XXX\"}");
+  const auto actor_creation_task_spec = ExampleTaskSpec(
+      ActorID::Nil(), Language::PYTHON, JOB_ID, actor_creation_id, {"XXX=YYY"},
+      TaskID::FromRandom(JobID::Nil()), R"({"uris": "XXX"})");
+  const auto normal_task_spec = ExampleTaskSpec(
+      ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(), {"XXX=YYY"},
+      TaskID::FromRandom(JobID::Nil()), R"({"uris": "XXX"})");
   const auto normal_task_spec_without_runtime_env =
       ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(), {});
   // Pop worker for actor creation task again.
@@ -1271,13 +1271,13 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
   auto actor_creation_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
   const auto actor_creation_task_spec_1 = ExampleTaskSpec(
       ActorID::Nil(), Language::PYTHON, JOB_ID, actor_creation_id,
-      /*dynamic_options=*/{}, TaskID::ForFakeTask(), "mock_runtime_env_1");
+      /*dynamic_options=*/{}, TaskID::FromRandom(JobID::Nil()), "mock_runtime_env_1");
   const auto task_spec_1 = ExampleTaskSpec(
       ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
-      /*dynamic_options=*/{}, TaskID::ForFakeTask(), "mock_runtime_env_1");
+      /*dynamic_options=*/{}, TaskID::FromRandom(JobID::Nil()), "mock_runtime_env_1");
   const auto task_spec_2 = ExampleTaskSpec(
       ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
-      /*dynamic_options=*/{}, TaskID::ForFakeTask(), "mock_runtime_env_2");
+      /*dynamic_options=*/{}, TaskID::FromRandom(JobID::Nil()), "mock_runtime_env_2");
 
   const WorkerCacheKey env1 = {"mock_runtime_env_1", {}};
   const int runtime_env_hash_1 = env1.IntHash();
@@ -1425,7 +1425,7 @@ TEST_F(WorkerPoolTest, PopWorkerStatus) {
   // Create a task with bad runtime env.
   const auto task_spec_with_bad_runtime_env =
       ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id, ActorID::Nil(),
-                      {"XXX=YYY"}, TaskID::ForFakeTask(), BAD_RUNTIME_ENV);
+                      {"XXX=YYY"}, TaskID::FromRandom(JobID::Nil()), BAD_RUNTIME_ENV);
   popped_worker =
       worker_pool_->PopWorkerSync(task_spec_with_bad_runtime_env, true, &status);
   // PopWorker failed and the status is `RuntimeEnvCreationFailed`.
@@ -1433,9 +1433,9 @@ TEST_F(WorkerPoolTest, PopWorkerStatus) {
   ASSERT_EQ(status, PopWorkerStatus::RuntimeEnvCreationFailed);
 
   // Create a task with available runtime env.
-  const auto task_spec_with_runtime_env =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id, ActorID::Nil(),
-                      {"XXX=YYY"}, TaskID::ForFakeTask(), "{\"uris\": \"XXX\"}");
+  const auto task_spec_with_runtime_env = ExampleTaskSpec(
+      ActorID::Nil(), Language::PYTHON, job_id, ActorID::Nil(), {"XXX=YYY"},
+      TaskID::FromRandom(JobID::Nil()), R"({"uris": "XXX"})");
   popped_worker = worker_pool_->PopWorkerSync(task_spec_with_runtime_env, true, &status);
   // PopWorker success.
   ASSERT_NE(popped_worker, nullptr);

@@ -9,6 +9,7 @@ import tempfile
 from ray.tests.conftest import get_default_fixture_ray_kwargs
 import os
 import uuid
+from ray.workflow.tests import utils
 
 
 @contextmanager
@@ -76,6 +77,7 @@ def _workflow_start(storage_url, shared, **kwargs):
     # should not be an issue for normal use cases, because global variables
     # are freed after the driver exits.
     address_info = ray.init(**init_kwargs)
+    utils.clear_marks()
     ray.workflow.init(storage_url)
     yield address_info
     # The code after the yield will run as teardown code.

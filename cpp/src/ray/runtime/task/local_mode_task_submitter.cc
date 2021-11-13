@@ -41,15 +41,21 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
   rpc::Address address;
   std::unordered_map<std::string, double> required_resources;
   std::unordered_map<std::string, double> required_placement_resources;
+  std::string task_id_data(TaskID::Size(), 0);
+  FillRandom(&task_id_data);
+  auto task_id = TaskID::FromBinary(task_id_data);
   TaskSpecBuilder builder;
   std::string task_name =
       invocation.name.empty() ? functionDescriptor->DefaultTaskName() : invocation.name;
-  builder.SetCommonTaskSpec(invocation.task_id, task_name, rpc::Language::CPP,
-                            functionDescriptor, local_mode_ray_tuntime_.GetCurrentJobID(),
+
+  // TODO (Alex): Properly set the depth here?
+  builder.SetCommonTaskSpec(task_id, task_name, rpc::Language::CPP, functionDescriptor,
+                            local_mode_ray_tuntime_.GetCurrentJobID(),
                             local_mode_ray_tuntime_.GetCurrentTaskId(), 0,
                             local_mode_ray_tuntime_.GetCurrentTaskId(), address, 1,
                             required_resources, required_placement_resources,
-                            std::make_pair(PlacementGroupID::Nil(), -1), true, "");
+                            std::make_pair(PlacementGroupID::Nil(), -1), true, "",
+                            /*depth=*/0);
   if (invocation.task_type == TaskType::NORMAL_TASK) {
   } else if (invocation.task_type == TaskType::ACTOR_CREATION_TASK) {
     invocation.actor_id = local_mode_ray_tuntime_.GetNextActorID();

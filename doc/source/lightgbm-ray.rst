@@ -1,9 +1,7 @@
-.. _lightgbm-ray:
-
 ..
   This part of the docs is generated from the LightGBM-Ray readme using m2r
   To update:
-  - run `m2r /path/to/_lightgbm_ray/README.md`
+  - run `m2r /path/to/lightgbm_ray/README.md`
   - copy the contents of README.rst here
   - Get rid of the badges in the top
   - Get rid of the references section at the bottom
@@ -11,6 +9,8 @@
   - Adjust some link targets (e.g. for "Ray Tune") to anonymous references
     by adding a second underscore (use `target <link>`__)
   - Search for `\ **` and delete this from the links (bold links are not supported)
+
+.. _lightgbm-ray:
 
 Distributed LightGBM on Ray
 ===========================
@@ -419,7 +419,7 @@ to make sure the data is evenly distributed across the source files.
 Lastly, LightGBM-Ray supports **distributed dataframe** representations, such
 as `Modin <https://modin.readthedocs.io/en/latest/>`_ and
 `Dask dataframes <https://docs.dask.org/en/latest/dataframe.html>`_
-(used with `Dask on Ray <https://docs.ray.io/en/master/dask-on-ray.html>`_\ ).
+(used with `Dask on Ray <https://docs.ray.io/en/master/data/dask-on-ray.html>`_\ ).
 Here, LightGBM-Ray will check on which nodes the distributed partitions
 are currently located, and will assign partitions to actors in order to
 minimize cross-node data transfer. Please note that we also assume here
@@ -463,9 +463,6 @@ Data sources
      - Yes
      - Yes
    * - `Petastorm <https://github.com/uber/petastorm>`__
-     - Yes
-     - Yes
-   * - `Ray MLDataset <https://docs.ray.io/en/master/iter.html>`__
      - Yes
      - Yes
    * - `Dask dataframe <https://docs.dask.org/en/latest/dataframe.html>`__
@@ -522,11 +519,11 @@ More examples
 For complete end to end examples, please have a look at
 the `examples folder <https://github.com/ray-project/lightgbm_ray/tree/master/examples/>`_\ :
 
-* `Simple sklearn breastcancer dataset example <https://github.com/ray-project/lightgbm_ray/tree/master/examples/simple.py>`_ (requires ``sklearn``\ )
-* `HIGGS classification example <https://github.com/ray-project/lightgbm_ray/tree/master/examples/higgs.py>`_
+* `Simple sklearn breastcancer dataset example <https://github.com/ray-project/lightgbm_ray/blob/main/lightgbm_ray/examples/simple.py>`_ (requires ``sklearn``\ )
+* `HIGGS classification example <https://github.com/ray-project/lightgbm_ray/blob/main/lightgbm_ray/examples/higgs.py>`_
   (\ `download dataset (2.6 GB) <https://archive.ics.uci.edu/ml/machine-learning-databases/00280/HIGGS.csv.gz>`_\ )
-* `HIGGS classification example with Parquet <https://github.com/ray-project/lightgbm_ray/tree/master/examples/higgs_parquet.py>`_ (uses the same dataset)
-* `Test data classification <https://github.com/ray-project/lightgbm_ray/tree/master/examples/train_on_test_data.py>`_ (uses a self-generated dataset)
+* `HIGGS classification example with Parquet <https://github.com/ray-project/lightgbm_ray/blob/main/lightgbm_ray/examples/higgs_parquet.py>`_ (uses the same dataset)
+* `Test data classification <https://github.com/ray-project/lightgbm_ray/blob/main/lightgbm_ray/examples/train_on_test_data.py>`_ (uses a self-generated dataset)
 
 API reference
 -------------

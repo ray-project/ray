@@ -17,14 +17,18 @@
 #include "ray/common/ray_config.h"
 #include "ray/stats/stats.h"
 
+DEFINE_stats(placement_group_resource_persist_latency_ms,
+             "Time to persist placement resources to Redis.", (),
+             ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::Histogram);
+
 namespace ray {
 namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
-    instrumented_io_context &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+    instrumented_io_context &main_io_service, std::shared_ptr<GcsPublisher> gcs_publisher,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage, bool redis_broadcast_enabled)
     : periodical_runner_(main_io_service),
-      gcs_pub_sub_(gcs_pub_sub),
+      gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
       redis_broadcast_enabled_(redis_broadcast_enabled),
       max_broadcasting_batch_size_(
@@ -58,7 +62,7 @@ void GcsResourceManager::HandleUpdateResources(
     const rpc::UpdateResourcesRequest &request, rpc::UpdateResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(INFO) << "Updating resources, node id = " << node_id;
+  RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
   auto changed_resources = std::make_shared<std::unordered_map<std::string, double>>();
   for (const auto &entry : request.resources()) {
     changed_resources->emplace(entry.first, entry.second.resource_capacity());
@@ -81,17 +85,20 @@ void GcsResourceManager::HandleUpdateResources(
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
 
-    auto on_done = [this, node_id, changed_resources, reply,
-                    send_reply_callback](const Status &status) {
+    auto start = absl::GetCurrentTimeNanos();
+    auto on_done = [this, node_id, changed_resources, reply, send_reply_callback,
+                    start](const Status &status) {
+      auto end = absl::GetCurrentTimeNanos();
+      STATS_placement_group_resource_persist_latency_ms.Record(
+          absl::Nanoseconds(end - start) / absl::Milliseconds(1));
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
       node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
                                                                changed_resources->end());
       if (redis_broadcast_enabled_) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                           node_resource_change.SerializeAsString(),
-                                           nullptr));
+        RAY_CHECK_OK(
+            gcs_publisher_->PublishNodeResource(node_id, node_resource_change, nullptr));
       } else {
         absl::MutexLock guard(&resource_buffer_mutex_);
         resources_buffer_proto_.add_batch()->mutable_change()->Swap(
@@ -145,9 +152,8 @@ void GcsResourceManager::HandleDeleteResources(
         node_resource_change.add_deleted_resources(resource_name);
       }
       if (redis_broadcast_enabled_) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                           node_resource_change.SerializeAsString(),
-                                           nullptr));
+        RAY_CHECK_OK(
+            gcs_publisher_->PublishNodeResource(node_id, node_resource_change, nullptr));
       } else {
         absl::MutexLock guard(&resource_buffer_mutex_);
         resources_buffer_proto_.add_batch()->mutable_change()->Swap(
@@ -421,8 +427,7 @@ void GcsResourceManager::SendBatchedResourceUsage() {
   rpc::ResourceUsageBatchData batch;
   GetResourceUsageBatchForBroadcast_Locked(batch);
   if (batch.ByteSizeLong() > 0) {
-    RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
-                                       batch.SerializeAsString(), nullptr));
+    RAY_CHECK_OK(gcs_publisher_->PublishResourceBatch(batch, nullptr));
     stats::OutboundHeartbeatSizeKB.Record(batch.ByteSizeLong() / 1024.0);
   }
 }

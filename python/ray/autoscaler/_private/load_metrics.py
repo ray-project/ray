@@ -76,6 +76,7 @@ class LoadMetrics:
         self.last_heartbeat_time_by_ip = {}
         self.static_resources_by_ip = {}
         self.dynamic_resources_by_ip = {}
+        self.raylet_id_by_ip = {}
         self.resource_load_by_ip = {}
         self.local_ip = services.get_node_ip_address(
         ) if local_ip is None else local_ip
@@ -87,6 +88,7 @@ class LoadMetrics:
 
     def update(self,
                ip: str,
+               raylet_id: bytes,
                static_resources: Dict[str, Dict],
                dynamic_resources: Dict[str, Dict],
                resource_load: Dict[str, Dict],
@@ -96,6 +98,7 @@ class LoadMetrics:
                cluster_full_of_actors_detected: bool = False):
         self.resource_load_by_ip[ip] = resource_load
         self.static_resources_by_ip[ip] = static_resources
+        self.raylet_id_by_ip[ip] = raylet_id
         self.cluster_full_of_actors_detected = cluster_full_of_actors_detected
 
         if not waiting_bundles:
@@ -133,28 +136,37 @@ class LoadMetrics:
     def is_active(self, ip):
         return ip in self.last_heartbeat_time_by_ip
 
-    def prune_active_ips(self, active_ips):
+    def prune_active_ips(self, active_ips: List[str]):
+        """The Raylet ips stored by LoadMetrics are obtained by polling
+        the GCS in Monitor.update_load_metrics().
+
+        On the other hand, the autoscaler gets a list of node ips from
+        its NodeProvider.
+
+        This method removes from LoadMetrics the ips unknown to the autoscaler.
+
+        Args:
+            active_ips (List[str]): The node ips known to the autoscaler.
+        """
         active_ips = set(active_ips)
         active_ips.add(self.local_ip)
 
         def prune(mapping, should_log):
-            unwanted = set(mapping) - active_ips
-            for unwanted_key in unwanted:
+            unwanted_ips = set(mapping) - active_ips
+            for unwanted_ip in unwanted_ips:
                 if should_log:
-                    logger.info("LoadMetrics: "
-                                "Removed mapping: {} - {}".format(
-                                    unwanted_key, mapping[unwanted_key]))
-                del mapping[unwanted_key]
-            if unwanted and should_log:
-                # TODO (Alex): Change this back to info after #12138.
+                    logger.info("LoadMetrics: " f"Removed ip: {unwanted_ip}.")
+                del mapping[unwanted_ip]
+            if unwanted_ips and should_log:
                 logger.info(
                     "LoadMetrics: "
                     "Removed {} stale ip mappings: {} not in {}".format(
-                        len(unwanted), unwanted, active_ips))
-            assert not (unwanted & set(mapping))
+                        len(unwanted_ips), unwanted_ips, active_ips))
+            assert not (unwanted_ips & set(mapping))
 
         prune(self.last_used_time_by_ip, should_log=True)
         prune(self.static_resources_by_ip, should_log=False)
+        prune(self.raylet_id_by_ip, should_log=False)
         prune(self.dynamic_resources_by_ip, should_log=False)
         prune(self.resource_load_by_ip, should_log=False)
         prune(self.last_heartbeat_time_by_ip, should_log=False)

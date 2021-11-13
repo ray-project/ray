@@ -54,30 +54,31 @@ ray.init(
     namespace="serve_failure_test",
     address=cluster.address,
     dashboard_host="0.0.0.0",
-    log_to_driver=False)
+    log_to_driver=True)
 serve.start(detached=True)
 
 
 @ray.remote
 class RandomKiller:
     def __init__(self, kill_period_s=1):
-        self.client = serve.connect()
         self.kill_period_s = kill_period_s
 
     def _get_all_serve_actors(self):
-        controller = self.client._controller
+        controller = serve.api._get_global_client()._controller
         routers = list(ray.get(controller.get_http_proxies.remote()).values())
         all_handles = routers + [controller]
-        worker_handle_dict = ray.get(controller._all_replica_handles.remote())
-        for _, replica_dict in worker_handle_dict.items():
-            all_handles.extend(list(replica_dict.values()))
+        worker_handle_dict = ray.get(controller._all_running_replicas.remote())
+        for _, replica_info_list in worker_handle_dict.items():
+            for replica_info in replica_info_list:
+                all_handles.append(replica_info.actor_handle)
 
         return all_handles
 
     def run(self):
         while True:
-            ray.kill(
-                random.choice(self._get_all_serve_actors()), no_restart=False)
+            chosen = random.choice(self._get_all_serve_actors())
+            print(f"Killing {chosen}")
+            ray.kill(chosen, no_restart=False)
             time.sleep(self.kill_period_s)
 
 
@@ -125,7 +126,9 @@ class RandomTest:
         while True:
             for _ in range(100):
                 actions, weights = zip(*self.weighted_actions)
-                random.choices(actions, weights=weights)[0]()
+                action_chosen = random.choices(actions, weights=weights)[0]
+                print(f"Executing {action_chosen}")
+                action_chosen()
 
             new_time = time.time()
             print("Iteration {}:\n"

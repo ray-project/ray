@@ -25,6 +25,7 @@ import inspect
 import json
 from ray.util.client.common import (ClientServerHandle, GRPC_OPTIONS,
                                     CLIENT_SERVER_MAX_THREADS, ResponseCache)
+from ray import ray_constants
 from ray.util.client.server.proxier import serve_proxier
 from ray.util.client.server.server_pickler import convert_from_arg
 from ray.util.client.server.server_pickler import dumps_from_server
@@ -35,6 +36,7 @@ from ray.util.client.server.server_stubs import current_server
 from ray.ray_constants import env_integer
 from ray.util.placement_group import PlacementGroup
 from ray._private.client_mode_hook import disable_client_hook
+from ray._private.tls_utils import add_port_to_grpc_server
 
 logger = logging.getLogger(__name__)
 
@@ -686,7 +688,7 @@ def serve(connection_str, ray_connect_handler=None):
         data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
         logs_servicer, server)
-    server.add_insecure_port(connection_str)
+    add_port_to_grpc_server(server, connection_str)
     current_handle = ClientServerHandle(
         task_servicer=task_servicer,
         data_servicer=data_servicer,
@@ -827,8 +829,15 @@ def main():
                 if not redis_client:
                     redis_client = try_create_redis_client(
                         args.redis_address, args.redis_password)
-                redis_client.hset("healthcheck:ray_client_server", "value",
-                                  json.dumps(health_report))
+                if not ray.experimental.internal_kv._internal_kv_initialized():
+                    gcs_client = (ray._private.gcs_utils.GcsClient.
+                                  create_from_redis(redis_client))
+                    ray.experimental.internal_kv._initialize_internal_kv(
+                        gcs_client)
+                ray.experimental.internal_kv._internal_kv_put(
+                    "ray_client_server",
+                    json.dumps(health_report),
+                    namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK)
             except Exception as e:
                 logger.error(f"[{args.mode}] Failed to put health check "
                              f"on {args.redis_address}")

@@ -101,7 +101,13 @@ JNIEXPORT void JNICALL Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(
          const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
          std::vector<std::shared_ptr<RayObject>> *results,
          std::shared_ptr<LocalMemoryBuffer> &creation_task_exception_pb,
-         bool *is_application_level_error) {
+         bool *is_application_level_error,
+         const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
+         const std::string name_of_concurrency_group_to_execute) {
+        // These 2 parameters are used for Python only, and Java worker
+        // will not use them.
+        RAY_UNUSED(defined_concurrency_groups);
+        RAY_UNUSED(name_of_concurrency_group_to_execute);
         // TODO(jjyao): Support retrying application-level errors for Java
         *is_application_level_error = false;
 
@@ -333,6 +339,12 @@ Java_io_ray_runtime_RayNativeRuntime_nativeGetResourceIds(JNIEnv *env, jclass) {
       CoreWorkerProcess::GetCoreWorker().GetResourceIDs();
   return NativeMapToJavaMap<std::string, std::vector<std::pair<int64_t, double>>>(
       env, resource_mapping, std::move(key_converter), std::move(value_converter));
+}
+
+JNIEXPORT jstring JNICALL
+Java_io_ray_runtime_RayNativeRuntime_nativeGetNamespace(JNIEnv *env, jclass) {
+  return env->NewStringUTF(
+      CoreWorkerProcess::GetCoreWorker().GetJobConfig().ray_namespace().c_str());
 }
 
 #ifdef __cplusplus

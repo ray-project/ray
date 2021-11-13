@@ -124,13 +124,6 @@ def create_parser(parser_creator=None):
     parser.add_argument(
         "--env", default=None, type=str, help="The gym environment to use.")
     parser.add_argument(
-        "--queue-trials",
-        action="store_true",
-        help=(
-            "Whether to queue trials when the cluster does not currently have "
-            "enough resources to launch one. This should be set to True when "
-            "running on an autoscaling cluster to enable automatic scale-up."))
-    parser.add_argument(
         "-f",
         "--config-file",
         default=None,
@@ -165,14 +158,16 @@ def run(args, parser):
                 "keep_checkpoints_num": args.keep_checkpoints_num,
                 "checkpoint_score_attr": args.checkpoint_score_attr,
                 "local_dir": args.local_dir,
-                "resources_per_trial": (
-                    args.resources_per_trial and
-                    resources_to_json(args.resources_per_trial)),
+                "resources_per_trial": (args.resources_per_trial
+                                        and resources_to_json(
+                                            args.resources_per_trial)),
                 "stop": args.stop,
                 "config": dict(args.config, env=args.env),
                 "restore": args.restore,
                 "num_samples": args.num_samples,
-                "upload_dir": args.upload_dir,
+                "sync_config": {
+                    "upload_dir": args.upload_dir,
+                }
             }
         }
 
@@ -267,7 +262,6 @@ def run(args, parser):
         experiments,
         scheduler=create_scheduler(args.scheduler, **args.scheduler_config),
         resume=args.resume,
-        queue_trials=args.queue_trials,
         verbose=verbose,
         progress_reporter=progress_reporter,
         concurrent=True)

@@ -15,10 +15,11 @@ be trained, checkpointed, or an action computed. In multi-agent training, the tr
 
 .. image:: rllib-api.svg
 
-You can train a simple DQN trainer with the following command:
+You can train a simple DQN trainer with the following commands:
 
 .. code-block:: bash
 
+    pip install "ray[rllib]" tensorflow
     rllib train --run DQN --env CartPole-v0  # --config '{"framework": "tf2", "eager_tracing": true}' for eager execution
 
 By default, the results will be logged to a subdirectory of ``~/ray_results``.
@@ -398,6 +399,15 @@ Similar to accessing policy state, you may want to get a reference to the underl
 
 **Example: Preprocessing observations for feeding into a model**
 
+First, install the dependencies:
+
+.. code-block:: python
+
+    # The "Pong-v0" Atari environment requires a few additional gym installs:
+    pip install "ray[rllib]" tensorflow torch "gym[atari]" "gym[accept-rom-license]" atari_py
+
+Then for the code:
+
 .. code-block:: python
 
     >>> import gym
@@ -606,6 +616,8 @@ Visualizing Custom Metrics
 Custom metrics can be accessed and visualized like any other training result:
 
 .. image:: custom_metric.png
+
+.. _exploration-api:
 
 Customizing Exploration Behavior
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

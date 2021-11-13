@@ -29,10 +29,51 @@
 extern "C" {
 #include "ray/thirdparty/sha256.h"
 }
+namespace ray {
+typedef int SchedulingClass;
+
+struct SchedulingClassDescriptor {
+ public:
+  explicit SchedulingClassDescriptor(ResourceSet rs, FunctionDescriptor fd, int64_t d)
+      : resource_set(std::move(rs)), function_descriptor(std::move(fd)), depth(d) {}
+  ResourceSet resource_set;
+  FunctionDescriptor function_descriptor;
+  int64_t depth;
+
+  bool operator==(const SchedulingClassDescriptor &other) const {
+    return depth == other.depth && resource_set == other.resource_set &&
+           function_descriptor == other.function_descriptor;
+  }
+
+  std::string DebugString() const {
+    std::stringstream buffer;
+    buffer << "{"
+           << "depth=" << depth << " "
+           << "function_descriptor=" << function_descriptor->ToString() << " "
+           << "resource_set="
+           << "{";
+    for (const auto &pair : resource_set.GetResourceMap()) {
+      buffer << pair.first << " : " << pair.second << ", ";
+    }
+    buffer << "}}";
+    return buffer.str();
+  }
+};
+}  // namespace ray
+
+namespace std {
+template <>
+struct hash<ray::SchedulingClassDescriptor> {
+  size_t operator()(const ray::SchedulingClassDescriptor &sched_cls) const {
+    size_t hash = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
+    hash ^= sched_cls.function_descriptor->Hash();
+    hash ^= sched_cls.depth;
+    return hash;
+  }
+};
+}  // namespace std
 
 namespace ray {
-typedef ResourceSet SchedulingClassDescriptor;
-typedef int SchedulingClass;
 
 /// ConcurrencyGroup is a group of actor methods that shares
 /// a executing thread pool.
@@ -43,6 +84,20 @@ struct ConcurrencyGroup {
   uint32_t max_concurrency;
   // Function descriptors of the actor methods in this group.
   std::vector<ray::FunctionDescriptor> function_descriptors;
+
+  ConcurrencyGroup() = default;
+
+  ConcurrencyGroup(const std::string &name, uint32_t max_concurrency,
+                   const std::vector<ray::FunctionDescriptor> &fds)
+      : name(name), max_concurrency(max_concurrency), function_descriptors(fds) {}
+
+  std::string GetName() const { return name; }
+
+  uint32_t GetMaxConcurrency() const { return max_concurrency; }
+
+  std::vector<ray::FunctionDescriptor> GetFunctionDescriptors() const {
+    return function_descriptors;
+  }
 };
 
 static inline rpc::ObjectReference GetReferenceForActorDummyObject(
@@ -172,6 +227,11 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::string GetDebuggerBreakpoint() const;
 
+  /// Return the depth of this task. The depth of a graph, is the number of
+  /// `f.remote()` calls from the driver.
+  /// \return The depth.
+  int64_t GetDepth() const;
+
   bool IsDriverTask() const;
 
   Language GetLanguage() const;
@@ -231,7 +291,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
 
   // Compute a static key that represents the given resource shape.
-  static SchedulingClass GetSchedulingClass(const ResourceSet &sched_cls);
+  static SchedulingClass GetSchedulingClass(const SchedulingClassDescriptor &sched_cls);
 
   // Placement Group bundle that this task or actor creation is associated with.
   const BundleID PlacementGroupBundleId() const;

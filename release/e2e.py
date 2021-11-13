@@ -81,22 +81,14 @@ only want to trigger rebuilds once per day, use `DATESTAMP` instead:
 
 Local testing
 -------------
-For local testing, make sure to authenticate with the ray-ossci AWS user
-(e.g. by setting the respective environment variables obtained from go/aws),
-or use the `--no-report` command line argument.
-
-Also make sure to set these environment variables:
+Make sure to set these environment variables:
 
 - ANYSCALE_CLI_TOKEN (should contain your anyscale credential token)
 - ANYSCALE_PROJECT (should point to a project ID you have access to)
 
 A test can then be run like this:
 
-python e2e.py --no-report --test-config ~/ray/release/xgboost_tests/xgboost_tests.yaml --test-name tune_small
-
-The `--no-report` option disables storing the results in the DB and
-artifacts on S3. If you set this option, you do not need access to the
-ray-ossci AWS user.
+python e2e.py --test-config ~/ray/release/xgboost_tests/xgboost_tests.yaml --test-name tune_small
 
 Using Compilation on Product + App Config Override
 --------------------------------------------------
@@ -109,7 +101,7 @@ After kicking off the app build, you can give the app config ID to this script
 as an app config override, where the indicated app config will be used instead
 of the app config given in the test config. E.g., running
 
-python e2e.py --no-report --test-config ~/ray/benchmarks/benchmark_tests.yaml --test-name=single_node --app-config-id-override=apt_TBngEXXXrhipMXgexVcrpC9i
+python e2e.py --test-config ~/ray/benchmarks/benchmark_tests.yaml --test-name=single_node --app-config-id-override=apt_TBngEXXXrhipMXgexVcrpC9i
 
 would run the single_node benchmark test with the apt_TBngEXXXrhipMXgexVcrpC9i
 app config instead of the app config given in
@@ -193,6 +185,7 @@ import requests
 import shutil
 import subprocess
 import sys
+import re
 import tempfile
 import time
 from queue import Empty
@@ -230,7 +223,7 @@ GLOBAL_CONFIG = {
     "ANYSCALE_CLI_TOKEN": getenv_default("ANYSCALE_CLI_TOKEN"),
     "ANYSCALE_CLOUD_ID": getenv_default(
         "ANYSCALE_CLOUD_ID",
-        "cld_4F7k8814aZzGG8TNUGPKnc"),  # cld_4F7k8814aZzGG8TNUGPKnc
+        "cld_4F7k8814aZzGG8TNUGPKnc"),  # anyscale_default_cloud
     "ANYSCALE_PROJECT": getenv_default("ANYSCALE_PROJECT", ""),
     "RAY_VERSION": getenv_default("RAY_VERSION", "2.0.0.dev0"),
     "RAY_REPO": getenv_default("RAY_REPO",
@@ -261,6 +254,7 @@ GLOBAL_CONFIG = {
                           datetime.timedelta(days=2)).strftime("%Y-%m-%d")),
     "EXPIRATION_3D": str((datetime.datetime.now() +
                           datetime.timedelta(days=3)).strftime("%Y-%m-%d")),
+    "REPORT_RESULT": getenv_default("REPORT_RESULT", ""),
 }
 
 REPORT_S = 30
@@ -372,6 +366,31 @@ def wheel_exists(ray_version, git_branch, git_commit):
     return requests.head(url).status_code == 200
 
 
+def commit_or_url(commit_or_url: str) -> str:
+    if commit_or_url.startswith("http"):
+        url = None
+        # Directly return the S3 url
+        if "s3" in commit_or_url and "amazonaws.com" in commit_or_url:
+            url = commit_or_url
+        # Resolve the redirects for buildkite artifacts
+        # This is needed because otherwise pip won't recognize the file name.
+        elif "buildkite.com" in commit_or_url and "artifacts" in commit_or_url:
+            url = requests.head(commit_or_url, allow_redirects=True).url
+        if url is not None:
+            # Extract commit from url so that we can do the
+            # commit sanity check later.
+            p = re.compile("/([a-f0-9]{40})/")
+            m = p.search(url)
+            if m is not None:
+                os.environ["RAY_COMMIT"] = m.group(1)
+            return url
+
+    # Else, assume commit
+    os.environ["RAY_COMMIT"] = commit_or_url
+    return wheel_url(GLOBAL_CONFIG["RAY_VERSION"], GLOBAL_CONFIG["RAY_BRANCH"],
+                     commit_or_url)
+
+
 def get_latest_commits(repo: str, branch: str = "master") -> List[str]:
     cur = os.getcwd()
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -480,8 +499,39 @@ def _load_config(local_dir: str, config_file: Optional[str]) -> Optional[Dict]:
     return yaml.safe_load(content)
 
 
+def _wrap_app_config_pip_installs(app_config: Dict[Any, Any]):
+    """Wrap pip package install in quotation marks"""
+    if app_config.get("python", {}).get("pip_packages"):
+        new_pip_packages = []
+        for pip_package in app_config["python"]["pip_packages"]:
+            new_pip_packages.append(f"\"{pip_package}\"")
+        app_config["python"]["pip_packages"] = new_pip_packages
+
+
 def has_errored(result: Dict[Any, Any]) -> bool:
     return result.get("status", "invalid") != "finished"
+
+
+def maybe_get_alert_for_result(result_dict: Dict[str, Any]) -> Optional[str]:
+    # If we get a result dict, check if any alerts should be raised
+    from alert import SUITE_TO_FN, default_handle_result
+
+    logger.info("Checking if results are valid...")
+
+    # Copy dict because we modify kwargs here
+    handle_result_kwargs = result_dict.copy()
+    handle_result_kwargs["created_on"] = None
+
+    test_suite = handle_result_kwargs.get("test_suite", None)
+
+    handle_fn = SUITE_TO_FN.get(test_suite, None)
+    if not handle_fn:
+        logger.warning(f"No handle for suite {test_suite}")
+        alert = default_handle_result(**handle_result_kwargs)
+    else:
+        alert = handle_fn(**handle_result_kwargs)
+
+    return alert
 
 
 def report_result(test_suite: str, test_name: str, status: str, last_logs: str,
@@ -603,6 +653,32 @@ def search_running_session(sdk: AnyscaleSDK, project_id: str,
         logger.info("Found existing session.")
         session_id = result.results[0].id
     return session_id
+
+
+def find_cloud_by_name(sdk: AnyscaleSDK, cloud_name: str,
+                       _repeat: bool = True) -> Optional[str]:
+    cloud_id = None
+    logger.info(f"Looking up cloud with name `{cloud_name}`. ")
+
+    paging_token = None
+    while not cloud_id:
+        result = sdk.search_clouds(
+            clouds_query=dict(
+                paging=dict(count=50, paging_token=paging_token)))
+
+        paging_token = result.metadata.next_paging_token
+
+        for res in result.results:
+            if res.name == cloud_name:
+                cloud_id = res.id
+                logger.info(
+                    f"Found cloud with name `{cloud_name}` as `{cloud_id}`")
+                break
+
+        if not paging_token or cloud_id or not len(result.results):
+            break
+
+    return cloud_id
 
 
 def create_or_find_compute_template(
@@ -727,6 +803,20 @@ def create_or_find_app_config(
             logger.info(f"App config created with ID {app_config_id}")
 
     return app_config_id, app_config_name
+
+
+def run_bash_script(local_dir: str, bash_script: str):
+    previous_dir = os.getcwd()
+
+    bash_script_local_dir = os.path.dirname(bash_script)
+    file_name = os.path.basename(bash_script)
+
+    full_local_dir = os.path.join(local_dir, bash_script_local_dir)
+    os.chdir(full_local_dir)
+
+    subprocess.run("./" + file_name, shell=True, check=True)
+
+    os.chdir(previous_dir)
 
 
 def install_app_config_packages(app_config: Dict[Any, Any]):
@@ -1135,18 +1225,6 @@ def run_test_config(
                 Key: Name
                 Value: S3 URL
     """
-    # Todo (mid-term): Support other cluster definitions
-    #  (not only cluster configs)
-    cluster_config_rel_path = test_config["cluster"].get(
-        "cluster_config", None)
-    cluster_config = _load_config(local_dir, cluster_config_rel_path)
-
-    app_config_rel_path = test_config["cluster"].get("app_config", None)
-    app_config = _load_config(local_dir, app_config_rel_path)
-
-    compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
-    compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
-
     stop_event = multiprocessing.Event()
     result_queue = multiprocessing.Queue()
 
@@ -1189,6 +1267,34 @@ def run_test_config(
         anyscale_api_client=sdk.api_client,
     )
 
+    cloud_id = test_config["cluster"].get("cloud_id", None)
+    cloud_name = test_config["cluster"].get("cloud_name", None)
+    if cloud_id and cloud_name:
+        raise RuntimeError(
+            f"You can't supply both a `cloud_name` ({cloud_name}) and a "
+            f"`cloud_id` ({cloud_id}) in the test cluster configuration. "
+            f"Please provide only one.")
+    elif cloud_name and not cloud_id:
+        cloud_id = find_cloud_by_name(sdk, cloud_name)
+        if not cloud_id:
+            raise RuntimeError(
+                f"Couldn't find cloud with name `{cloud_name}`.")
+    else:
+        cloud_id = cloud_id or GLOBAL_CONFIG["ANYSCALE_CLOUD_ID"]
+
+    # Overwrite global config so that `_load_config` sets the correct cloud
+    GLOBAL_CONFIG["ANYSCALE_CLOUD_ID"] = cloud_id
+
+    cluster_config_rel_path = test_config["cluster"].get(
+        "cluster_config", None)
+    cluster_config = _load_config(local_dir, cluster_config_rel_path)
+
+    app_config_rel_path = test_config["cluster"].get("app_config", None)
+    app_config = _load_config(local_dir, app_config_rel_path)
+
+    compute_tpl_rel_path = test_config["cluster"].get("compute_template", None)
+    compute_tpl = _load_config(local_dir, compute_tpl_rel_path)
+
     timeout = test_config["run"].get("timeout", 1800)
     if "RELEASE_OVERRIDE_TIMEOUT" in os.environ:
         previous_timeout = timeout
@@ -1218,6 +1324,9 @@ def run_test_config(
     elif "autosuspend_mins" in test_config["run"]:
         raise ValueError(
             "'autosuspend_mins' is only supported if 'use_connect' is True.")
+
+    # Only wrap pip packages after we installed the app config packages
+    _wrap_app_config_pip_installs(app_config)
 
     # Add information to results dict
     def _update_results(results: Dict):
@@ -1351,8 +1460,7 @@ def run_test_config(
                     logging.info("Starting session with cluster config")
                     cluster_config_str = json.dumps(cluster_config)
                     session_options["cluster_config"] = cluster_config_str
-                    session_options["cloud_id"] = (
-                        GLOBAL_CONFIG["ANYSCALE_CLOUD_ID"], )
+                    session_options["cloud_id"] = cloud_id
                     session_options["uses_app_config"] = False
                 else:
                     logging.info("Starting session with app/compute config")
@@ -1695,6 +1803,7 @@ def run_test_config(
             target=_check_progress, args=(logger, ))
 
     build_timeout = test_config["run"].get("build_timeout", 1800)
+    prepare_timeout = test_config["run"].get("prepare_timeout", timeout)
 
     project_url = anyscale_project_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"])
@@ -1708,7 +1817,8 @@ def run_test_config(
     logger.info(msg)
 
     logger.info(f"Starting process with timeout {timeout} "
-                f"(build timeout {build_timeout})")
+                f"(prepare timeout {prepare_timeout}, "
+                f"build timeout {build_timeout})")
     process.start()
 
     # The timeout time will be updated after the build finished
@@ -1749,7 +1859,7 @@ def run_test_config(
 
         if state.state == "CMD_PREPARE":
             # Reset timeout after build finished
-            timeout_time = state.timestamp + timeout
+            timeout_time = state.timestamp + prepare_timeout
 
         if state.state == "CMD_RUN":
             # Reset timeout after prepare command or build finished
@@ -1841,6 +1951,11 @@ def run_test(test_config_file: str,
                 "Saving artifacts are not yet supported when running with "
                 "Anyscale connect.")
 
+    # Perform necessary driver side setup.
+    driver_setup_script = test_config.get("driver_setup", None)
+    if driver_setup_script:
+        run_bash_script(local_dir, driver_setup_script)
+
     result = run_test_config(
         local_dir,
         project_id,
@@ -1891,6 +2006,26 @@ def run_test(test_config_file: str,
             category=category,
         )
 
+        if not has_errored(result):
+            # Check if result are met if test succeeded
+            alert = maybe_get_alert_for_result(report_kwargs)
+
+            if alert:
+                # If we get an alert, the test failed.
+                logger.error(f"Alert has been raised for "
+                             f"{test_suite}/{test_name} "
+                             f"({category}): {alert}")
+                result["status"] = "error (alert raised)"
+                report_kwargs["status"] = "error (alert raised)"
+
+                # For printing/reporting to the database
+                report_kwargs["last_logs"] = alert
+                last_logs = alert
+            else:
+                logger.info(f"No alert raised for test "
+                            f"{test_suite}/{test_name} "
+                            f"({category}) - the test successfully passed!")
+
         if report:
             report_result(**report_kwargs)
         else:
@@ -1918,7 +2053,7 @@ if __name__ == "__main__":
         default=False,
         help="Don't terminate session after failure")
     parser.add_argument(
-        "--no-report",
+        "--report",
         action="store_true",
         default=False,
         help="Do not report any results or upload to S3")
@@ -1962,11 +2097,17 @@ if __name__ == "__main__":
         raise RuntimeError(
             "You have to set the ANYSCALE_PROJECT environment variable!")
 
+    ray_wheels = args.ray_wheels or os.environ.get("RAY_WHEELS", "")
+
     maybe_fetch_api_token()
-    if args.ray_wheels:
-        os.environ["RAY_WHEELS"] = str(args.ray_wheels)
-        url = str(args.ray_wheels)
-    elif not args.check and not os.environ.get("RAY_WHEELS"):
+    if ray_wheels:
+        logger.info(f"Using Ray wheels provided from URL/commit: "
+                    f"{ray_wheels}")
+        url = commit_or_url(str(ray_wheels))
+        logger.info(f"Resolved url link is: {url}")
+        # Overwrite with actual URL
+        os.environ["RAY_WHEELS"] = url
+    elif not args.check:
         url = find_ray_wheels(
             GLOBAL_CONFIG["RAY_REPO"],
             GLOBAL_CONFIG["RAY_BRANCH"],
@@ -1977,17 +2118,19 @@ if __name__ == "__main__":
                                f"Ray {GLOBAL_CONFIG['RAY_VERSION']}, "
                                f"branch {GLOBAL_CONFIG['RAY_BRANCH']}")
 
-        # RAY_COMMIT is set by find_ray_wheels
-    elif os.environ.get("RAY_WHEELS"):
-        logger.info(f"Using Ray wheels provided from URL: "
-                    f"{os.environ.get('RAY_WHEELS')}")
-        url = os.environ.get("RAY_WHEELS")
-
+    # RAY_COMMIT is set by commit_or_url and find_ray_wheels
     populate_wheels_sanity_check(os.environ.get("RAY_COMMIT", ""))
 
     test_config_file = os.path.abspath(os.path.expanduser(args.test_config))
 
-    result_dict = run_test(
+    # Override it from the global variable.
+    report = GLOBAL_CONFIG["REPORT_RESULT"]
+    if report.lower() == "1" or report.lower() == "true":
+        report = True
+    else:
+        report = args.report
+
+    run_test(
         test_config_file=test_config_file,
         test_name=args.test_name,
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"],
@@ -1997,35 +2140,8 @@ if __name__ == "__main__":
         no_terminate=args.no_terminate or args.kick_off_only,
         kick_off_only=args.kick_off_only,
         check_progress=args.check,
-        report=not args.no_report,
+        report=report,
         session_name=args.session_name,
         keep_results_dir=args.keep_results_dir,
         app_config_id_override=args.app_config_id_override,
     )
-
-    if result_dict:
-        # If we get a result dict, check if any alerts should be raised
-        from alert import SUITE_TO_FN, default_handle_result
-
-        logger.info("Checking if results are valid...")
-
-        handle_result_kwargs = result_dict.copy()
-        handle_result_kwargs["created_on"] = None
-
-        test_suite = handle_result_kwargs.get("test_suite", None)
-        test_name = handle_result_kwargs.get("test_name", None)
-        category = handle_result_kwargs.get("category", None)
-
-        handle_fn = SUITE_TO_FN.get(test_suite, None)
-        if not handle_fn:
-            logger.warning(f"No handle for suite {test_suite}")
-            alert = default_handle_result(**handle_result_kwargs)
-        else:
-            alert = handle_fn(**handle_result_kwargs)
-
-        if alert:
-            # If we get an alert, the test failed.
-            raise RuntimeError(alert)
-        else:
-            logger.info(f"No alert raised for test {test_suite}/{test_name} "
-                        f"({category}) - the test successfully passed!")

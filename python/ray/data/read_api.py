@@ -16,6 +16,7 @@ import ray
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource, RangeDatasource, \
     JSONDatasource, CSVDatasource, ParquetDatasource, BinaryDatasource, \
@@ -23,7 +24,8 @@ from ray.data.datasource import Datasource, RangeDatasource, \
 from ray.data.impl.arrow_block import ArrowRow, \
     DelegatingArrowBlockBuilder
 from ray.data.impl.block_list import BlockList
-from ray.data.impl.lazy_block_list import LazyBlockList
+from ray.data.impl.lazy_block_list import LazyBlockList, BlockPartition, \
+    BlockPartitionMetadata
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.util import _get_spread_resources_iter
 
@@ -42,6 +44,7 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
     Args:
         items: List of local Python objects.
         parallelism: The amount of parallelism to use for the dataset.
+            Parallelism may be limited by the number of items.
 
     Returns:
         Dataset holding the items.
@@ -74,6 +77,7 @@ def range(n: int, *, parallelism: int = 200) -> Dataset[int]:
     Args:
         n: The upper bound of the range of integers.
         parallelism: The amount of parallelism to use for the dataset.
+            Parallelism may be limited by the number of items.
 
     Returns:
         Dataset holding the integers.
@@ -96,6 +100,7 @@ def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
     Args:
         n: The upper bound of the range of integer records.
         parallelism: The amount of parallelism to use for the dataset.
+            Parallelism may be limited by the number of items.
 
     Returns:
         Dataset holding the integers as Arrow records.
@@ -106,23 +111,24 @@ def range_arrow(n: int, *, parallelism: int = 200) -> Dataset[ArrowRow]:
 
 @PublicAPI(stability="beta")
 def range_tensor(n: int, *, shape: Tuple = (1, ),
-                 parallelism: int = 200) -> Dataset[np.ndarray]:
+                 parallelism: int = 200) -> Dataset[ArrowRow]:
     """Create a Tensor dataset from a range of integers [0..n).
 
     Examples:
         >>> ds = ray.data.range_tensor(1000, shape=(3, 10))
-        >>> ds.map_batches(lambda arr: arr ** 2).show()
+        >>> ds.map_batches(lambda arr: arr * 2, batch_format="pandas").show()
 
-    This is similar to range(), but uses np.ndarrays to hold the integers
-    in tensor form. The dataset has overall the shape ``(n,) + shape``.
+    This is similar to range_arrow(), but uses the ArrowTensorArray extension
+    type. The dataset elements take the form {"value": array(N, shape=shape)}.
 
     Args:
         n: The upper bound of the range of integer records.
         shape: The shape of each record.
         parallelism: The amount of parallelism to use for the dataset.
+            Parallelism may be limited by the number of items.
 
     Returns:
-        Dataset holding the integers as tensors.
+        Dataset holding the integers as Arrow tensor records.
     """
     return read_datasource(
         RangeDatasource(),
@@ -143,7 +149,8 @@ def read_datasource(datasource: Datasource[T],
 
     Args:
         datasource: The datasource to read data from.
-        parallelism: The requested parallelism of the read.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the available partitioning of the datasource.
         read_args: Additional kwargs to pass to the datasource impl.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
 
@@ -152,8 +159,10 @@ def read_datasource(datasource: Datasource[T],
     """
 
     read_tasks = datasource.prepare_read(parallelism, **read_args)
+    context = DatasetContext.get_current()
 
     def remote_read(task: ReadTask) -> Block:
+        DatasetContext._set_current(context)
         return task()
 
     if ray_remote_args is None:
@@ -176,8 +185,8 @@ def read_datasource(datasource: Datasource[T],
         # If no spread resource prefix given, yield an empty dictionary.
         resource_iter = itertools.repeat({})
 
-    calls: List[Callable[[], ObjectRef[Block]]] = []
-    metadata: List[BlockMetadata] = []
+    calls: List[Callable[[], ObjectRef[BlockPartition]]] = []
+    metadata: List[BlockPartitionMetadata] = []
 
     for task in read_tasks:
         calls.append(
@@ -191,16 +200,7 @@ def read_datasource(datasource: Datasource[T],
 
     # Get the schema from the first block synchronously.
     if metadata and metadata[0].schema is None:
-        get_schema = cached_remote_fn(_get_schema)
-        schema0 = ray.get(get_schema.remote(next(iter(block_list))))
-        block_list.set_metadata(
-            0,
-            BlockMetadata(
-                num_rows=metadata[0].num_rows,
-                size_bytes=metadata[0].size_bytes,
-                schema=schema0,
-                input_files=metadata[0].input_files,
-            ))
+        block_list.ensure_schema_for_first_block()
 
     return Dataset(block_list, 0)
 
@@ -228,7 +228,8 @@ def read_parquet(paths: Union[str, List[str]],
         paths: A single file path or a list of file paths (or directories).
         filesystem: The filesystem implementation to read from.
         columns: A list of column names to read.
-        parallelism: The amount of parallelism to use for the dataset.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files of the dataset.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         _tensor_column_schema: A dict of column name --> tensor dtype and shape
             mappings for converting a Parquet column containing serialized
@@ -301,7 +302,8 @@ def read_json(paths: Union[str, List[str]],
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
-        parallelism: The amount of parallelism to use for the dataset.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files of the dataset.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
@@ -344,7 +346,8 @@ def read_csv(paths: Union[str, List[str]],
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
-        parallelism: The amount of parallelism to use for the dataset.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files of the dataset.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
@@ -385,7 +388,8 @@ def read_text(
         paths: A single file path or a list of file paths (or directories).
         encoding: The encoding of the files (e.g., "utf-8" or "ascii").
         filesystem: The filesystem implementation to read from.
-        parallelism: The amount of parallelism to use for the dataset.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files of the dataset.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
 
@@ -424,7 +428,8 @@ def read_numpy(paths: Union[str, List[str]],
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
-        parallelism: The amount of parallelism to use for the dataset.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files of the dataset.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
         numpy_load_args: Other options to pass to np.load.
@@ -467,7 +472,8 @@ def read_binary_files(
             tuple of the file path and the file contents.
         filesystem: The filesystem implementation to read from.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
-        parallelism: The amount of parallelism to use for the dataset.
+        parallelism: The requested parallelism of the read. Parallelism may be
+            limited by the number of files of the dataset.
         arrow_open_stream_args: kwargs passed to
             pyarrow.fs.FileSystem.open_input_stream
 
@@ -505,8 +511,7 @@ def from_dask(df: "dask.DataFrame") -> Dataset[ArrowRow]:
 
 
 @PublicAPI(stability="beta")
-def from_mars(df: "mars.DataFrame", *,
-              parallelism: int = 200) -> Dataset[ArrowRow]:
+def from_mars(df: "mars.DataFrame") -> Dataset[ArrowRow]:
     """Create a dataset from a MARS dataframe.
 
     Args:
@@ -535,30 +540,39 @@ def from_modin(df: "modin.DataFrame") -> Dataset[ArrowRow]:
 
 
 @PublicAPI(stability="beta")
-def from_pandas(dfs: List["pandas.DataFrame"]) -> Dataset[ArrowRow]:
+def from_pandas(dfs: Union["pandas.DataFrame", List["pandas.DataFrame"]]
+                ) -> Dataset[ArrowRow]:
     """Create a dataset from a list of Pandas dataframes.
 
     Args:
-        dfs: A list of Pandas dataframes.
+        dfs: A Pandas dataframe or a list of Pandas dataframes.
 
     Returns:
         Dataset holding Arrow records read from the dataframes.
     """
+    import pandas as pd
+
+    if isinstance(dfs, pd.DataFrame):
+        dfs = [dfs]
     return from_pandas_refs([ray.put(df) for df in dfs])
 
 
 @DeveloperAPI
-def from_pandas_refs(
-        dfs: List[ObjectRef["pandas.DataFrame"]]) -> Dataset[ArrowRow]:
+def from_pandas_refs(dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef[
+        "pandas.DataFrame"]]]) -> Dataset[ArrowRow]:
     """Create a dataset from a list of Ray object references to Pandas
     dataframes.
 
     Args:
-        dfs: A list of Ray object references to pandas dataframes.
+        dfs: A Ray object references to pandas dataframe, or a list of
+             Ray object references to pandas dataframes.
 
     Returns:
         Dataset holding Arrow records read from the dataframes.
     """
+    if isinstance(dfs, ray.ObjectRef):
+        dfs = [dfs]
+
     df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
@@ -583,32 +597,40 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
 
 
 @PublicAPI(stability="beta")
-def from_arrow(
-        tables: List[Union["pyarrow.Table", bytes]]) -> Dataset[ArrowRow]:
+def from_arrow(tables: Union["pyarrow.Table", bytes, List[Union[
+        "pyarrow.Table", bytes]]]) -> Dataset[ArrowRow]:
     """Create a dataset from a list of Arrow tables.
 
     Args:
-        tables: A list of Ray object references to Arrow tables,
+        tables: An Arrow table, or a list of Arrow tables,
                 or its streaming format in bytes.
 
     Returns:
         Dataset holding Arrow records from the tables.
     """
+    import pyarrow as pa
+
+    if isinstance(tables, (pa.Table, bytes)):
+        tables = [tables]
     return from_arrow_refs([ray.put(t) for t in tables])
 
 
 @DeveloperAPI
-def from_arrow_refs(tables: List[ObjectRef[Union["pyarrow.Table", bytes]]]
-                    ) -> Dataset[ArrowRow]:
+def from_arrow_refs(
+        tables: Union[ObjectRef[Union["pyarrow.Table", bytes]], List[ObjectRef[
+            Union["pyarrow.Table", bytes]]]]) -> Dataset[ArrowRow]:
     """Create a dataset from a set of Arrow tables.
 
     Args:
-        tables: A list of Ray object references to Arrow tables,
-                or its streaming format in bytes.
+        tables: A Ray object reference to Arrow table, or list of Ray object
+                references to Arrow tables, or its streaming format in bytes.
 
     Returns:
         Dataset holding Arrow records from the tables.
     """
+    if isinstance(tables, ray.ObjectRef):
+        tables = [tables]
+
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = [get_metadata.remote(t) for t in tables]
     return Dataset(BlockList(tables, ray.get(metadata)), 0)
@@ -647,10 +669,6 @@ def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
     table = pa.Table.from_pydict({"value": TensorArray(ndarray)})
     return (table,
             BlockAccessor.for_block(table).get_metadata(input_files=None))
-
-
-def _get_schema(block: Block) -> Any:
-    return BlockAccessor.for_block(block).schema()
 
 
 def _get_metadata(table: "pyarrow.Table") -> BlockMetadata:

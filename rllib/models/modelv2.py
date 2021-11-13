@@ -11,6 +11,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import NullContextManager
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
@@ -204,18 +205,18 @@ class ModelV2:
         # where tensors get automatically converted).
         if isinstance(input_dict, SampleBatch):
             restored = input_dict.copy(shallow=True)
-            # Backward compatibility.
-            if seq_lens is None:
-                seq_lens = input_dict.get(SampleBatch.SEQ_LENS)
-            if not state:
-                state = []
-                i = 0
-                while "state_in_{}".format(i) in input_dict:
-                    state.append(input_dict["state_in_{}".format(i)])
-                    i += 1
-            input_dict["is_training"] = input_dict.is_training
         else:
             restored = input_dict.copy()
+
+        # Backward compatibility.
+        if not state:
+            state = []
+            i = 0
+            while "state_in_{}".format(i) in input_dict:
+                state.append(input_dict["state_in_{}".format(i)])
+                i += 1
+        if seq_lens is None:
+            seq_lens = input_dict.get(SampleBatch.SEQ_LENS)
 
         # No Preprocessor used: `config._disable_preprocessor_api`=True.
         # TODO: This is unnecessary for when no preprocessor is used.
@@ -242,6 +243,11 @@ class ModelV2:
         with self.context():
             res = self.forward(restored, state or [], seq_lens)
 
+        if isinstance(input_dict, SampleBatch):
+            input_dict.accessed_keys = restored.accessed_keys - {"obs_flat"}
+            input_dict.deleted_keys = restored.deleted_keys
+            input_dict.added_keys = restored.added_keys - {"obs_flat"}
+
         if ((not isinstance(res, list) and not isinstance(res, tuple))
                 or len(res) != 2):
             raise ValueError(
@@ -256,9 +262,7 @@ class ModelV2:
         self._last_output = outputs
         return outputs, state_out if len(state_out) > 0 else (state or [])
 
-    # TODO: (sven) obsolete this method at some point (replace by
-    #  simply calling model directly with a sample_batch as only input).
-    @PublicAPI
+    @Deprecated(new="ModelV2.__call__()", error=False)
     def from_batch(self, train_batch: SampleBatch,
                    is_training: bool = True) -> (TensorType, List[TensorType]):
         """Convenience function that calls this model with a tensor batch.
@@ -385,6 +389,9 @@ def restore_original_dimensions(obs: TensorType,
     elif tensorlib == "torch":
         assert torch is not None
         tensorlib = torch
+    elif tensorlib == "numpy":
+        assert np is not None
+        tensorlib = np
     original_space = getattr(obs_space, "original_space", obs_space)
     return _unpack_obs(obs, original_space, tensorlib=tensorlib)
 

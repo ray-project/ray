@@ -1,16 +1,16 @@
 # coding: utf-8
-from abc import ABCMeta, abstractmethod
+from abc import abstractmethod
 from functools import lru_cache
 import logging
 import os
 import time
 from typing import Dict, List, Optional
+import warnings
 
 import ray
 from ray.tune.resources import Resources
 from ray.util.annotations import DeveloperAPI
 from ray.tune.trial import Trial, Checkpoint
-from ray.tune.error import TuneError
 from ray.tune.cluster_info import is_ray_cluster
 
 logger = logging.getLogger(__name__)
@@ -24,11 +24,8 @@ def _get_cluster_resources_no_autoscaler() -> Dict:
 
 
 def _get_trial_cpu_and_gpu(trial: Trial) -> Dict:
-    cpu = trial.resources.cpu + trial.resources.extra_cpu
-    gpu = trial.resources.gpu + trial.resources.extra_gpu
-    if trial.placement_group_factory is not None:
-        cpu = trial.placement_group_factory.required_resources.get("CPU", 0)
-        gpu = trial.placement_group_factory.required_resources.get("GPU", 0)
+    cpu = trial.placement_group_factory.required_resources.get("CPU", 0)
+    gpu = trial.placement_group_factory.required_resources.get("GPU", 0)
     return {"CPU": cpu, "GPU": gpu}
 
 
@@ -92,24 +89,34 @@ def _get_insufficient_resources_error_msg(trial: Trial) -> str:
         f"and/or add more resources to your Ray runtime.")
 
 
+# Signals when a class is directly inherited from TrialExecutor.
+# A warning is printed to inform users of TrialExecutor deprecation.
+class _WarnOnDirectInheritanceMeta(type):
+    def __new__(mcls, name, bases, module, **kwargs):
+        if name not in ("RayTrialExecutor", "_MockTrialExecutor",
+                        "TrialExecutor") and "TrialExecutor" in tuple(
+                            base.__name__ for base in bases):
+            deprecation_msg = (
+                f"{name} inherits from TrialExecutor, which is being "
+                "deprecated. "
+                "RFC: https://github.com/ray-project/ray/issues/17593. "
+                "Please reach out on the Ray Github if you have any concerns.")
+            warnings.warn(deprecation_msg, DeprecationWarning)
+        cls = super().__new__(mcls, name, bases, module, **kwargs)
+        return cls
+
+
 @DeveloperAPI
-class TrialExecutor(metaclass=ABCMeta):
+class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
     """Module for interacting with remote trainables.
 
     Manages platform-specific details such as resource handling
     and starting/stopping trials.
     """
 
-    def __init__(self, queue_trials: bool = False):
+    def __init__(self):
         """Initializes a new TrialExecutor.
-
-        Args:
-            queue_trials (bool): Whether to queue trials when the cluster does
-                not currently have enough resources to launch one. This should
-                be set to True when running on an autoscaling cluster to enable
-                automatic scale-up.
         """
-        self._queue_trials = queue_trials
         self._cached_trial_state = {}
         self._trials_to_cache = set()
         # The next two variables are used to keep track of if there is any
@@ -320,33 +327,7 @@ class TrialExecutor(metaclass=ABCMeta):
             trials (List[Trial]): The list of trials. Note, refrain from
                 providing TrialRunner directly here.
         """
-        if self._queue_trials:
-            return
         self._may_warn_insufficient_resources(trials)
-        for trial in trials:
-            if trial.uses_placement_groups:
-                return
-            if trial.status == Trial.PENDING:
-                if not self.has_resources_for_trial(trial):
-                    resource_string = trial.resources.summary_string()
-                    trial_resource_help_msg = trial.get_trainable_cls(
-                    ).resource_help(trial.config)
-                    autoscaling_msg = ""
-                    if is_ray_cluster():
-                        autoscaling_msg = (
-                            "Pass `queue_trials=True` in ray.tune.run() or "
-                            "on the command line to queue trials until the "
-                            "cluster scales up or resources become available. "
-                        )
-                    raise TuneError(
-                        "Insufficient cluster resources to launch trial: "
-                        f"trial requested {resource_string}, but the cluster "
-                        f"has only {self.resource_string()}. "
-                        f"{autoscaling_msg}"
-                        f"{trial_resource_help_msg} ")
-            elif trial.status == Trial.PAUSED:
-                raise TuneError("There are paused trials, but no more pending "
-                                "trials with sufficient resources.")
 
     @abstractmethod
     def get_next_available_trial(self) -> Optional[Trial]:
@@ -381,11 +362,6 @@ class TrialExecutor(metaclass=ABCMeta):
     @abstractmethod
     def debug_string(self) -> str:
         """Returns a human readable message for printing to the console."""
-        pass
-
-    @abstractmethod
-    def resource_string(self) -> str:
-        """Returns a string describing the total resources available."""
         pass
 
     @abstractmethod

@@ -4,58 +4,83 @@ import logging
 import os
 from pathlib import Path
 import sys
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union, Tuple
 import yaml
 
 import ray
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import import_attr
-
-# We need to setup this variable before
-# using this module
-PKG_DIR = None
+from ray._private.runtime_env import conda
 
 logger = logging.getLogger(__name__)
 
-FILE_SIZE_WARNING = 10 * 1024 * 1024  # 10MiB
-# NOTE(edoakes): we should be able to support up to 512 MiB based on the GCS'
-# limit, but for some reason that causes failures when downloading.
-GCS_STORAGE_MAX_SIZE = 100 * 1024 * 1024  # 100MiB
+
+def _encode_plugin_uri(plugin: str, uri: str) -> str:
+    return plugin + "|" + uri
 
 
-def parse_and_validate_working_dir(working_dir: str,
-                                   is_task_or_actor: bool = False) -> str:
-    """Parses and validates a user-provided 'working_dir' option.
+def _decode_plugin_uri(plugin_uri: str) -> Tuple[str, str]:
+    if "|" not in plugin_uri:
+        raise ValueError(
+            f"Plugin URI must be of the form 'plugin|uri', not {plugin_uri}")
+    return tuple(plugin_uri.split("|", 2))
 
-    The working_dir may not be specified per-task or per-actor.
 
-    Otherwise, it should be a valid path to a local directory.
+def validate_uri(uri: str):
+    if not isinstance(uri, str):
+        raise TypeError("URIs for working_dir and py_modules must be "
+                        f"strings, got {type(uri)}.")
+
+    try:
+        from ray._private.runtime_env.packaging import parse_uri, Protocol
+        protocol, path = parse_uri(uri)
+    except ValueError:
+        raise ValueError(
+            f"{uri} is not a valid URI. Passing directories or modules to "
+            "be dynamically uploaded is only supported at the job level "
+            "(i.e., passed to `ray.init`).")
+
+    if protocol == Protocol.S3 and not path.endswith(".zip"):
+        raise ValueError("Only .zip files supported for S3 URIs.")
+
+
+def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
+    """Parses and validates a 'py_modules' option.
+
+    This should be a list of URIs.
+    """
+    if not isinstance(py_modules, list):
+        raise TypeError("`py_modules` must be a list of strings, got "
+                        f"{type(py_modules)}.")
+
+    for uri in py_modules:
+        validate_uri(uri)
+
+    return py_modules
+
+
+def parse_and_validate_working_dir(working_dir: str) -> str:
+    """Parses and validates a 'working_dir' option.
+
+    This should be a URI.
     """
     assert working_dir is not None
 
-    if is_task_or_actor:
-        raise NotImplementedError(
-            "Overriding working_dir for tasks and actors isn't supported. "
-            "Please use ray.init(runtime_env={'working_dir': ...}) "
-            "to configure the environment per-job instead.")
-    elif not isinstance(working_dir, str):
+    if not isinstance(working_dir, str):
         raise TypeError("`working_dir` must be a string, got "
                         f"{type(working_dir)}.")
-    elif not Path(working_dir).is_dir():
-        raise ValueError(
-            f"working_dir {working_dir} is not a valid directory.")
+
+    validate_uri(working_dir)
 
     return working_dir
 
 
-def parse_and_validate_conda(conda: Union[str, dict],
-                             is_task_or_actor: bool = False
-                             ) -> Union[str, dict]:
+def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     """Parses and validates a user-provided 'conda' option.
 
     Conda can be one of three cases:
         1) A dictionary describing the env. This is passed through directly.
-        2) A string referring to a preinstalled conda env.
+        2) A string referring to the name of a preinstalled conda env.
         3) A string pointing to a local conda YAML file. This is detected
            by looking for a '.yaml' or '.yml' suffix. In this case, the file
            will be read as YAML and passed through as a dictionary.
@@ -89,9 +114,7 @@ def parse_and_validate_conda(conda: Union[str, dict],
     return result
 
 
-def parse_and_validate_pip(pip: Union[str, List[str]],
-                           is_task_or_actor: bool = False
-                           ) -> Optional[List[str]]:
+def parse_and_validate_pip(pip: Union[str, List[str]]) -> Optional[List[str]]:
     """Parses and validates a user-provided 'pip' option.
 
     Conda can be one of two cases:
@@ -124,18 +147,7 @@ def parse_and_validate_pip(pip: Union[str, List[str]],
     return result
 
 
-def parse_and_validate_uris(uris: List[str],
-                            is_task_or_actor: bool = False) -> List[str]:
-    """Parses and validates a user-provided 'uris' option.
-
-    These are passed through without validation (for now).
-    """
-    assert uris is not None
-    return uris
-
-
-def parse_and_validate_container(container: List[str],
-                                 is_task_or_actor: bool = False) -> List[str]:
+def parse_and_validate_container(container: List[str]) -> List[str]:
     """Parses and validates a user-provided 'container' option.
 
     This is passed through without validation (for now).
@@ -144,8 +156,7 @@ def parse_and_validate_container(container: List[str],
     return container
 
 
-def parse_and_validate_excludes(excludes: List[str],
-                                is_task_or_actor: bool = False) -> List[str]:
+def parse_and_validate_excludes(excludes: List[str]) -> List[str]:
     """Parses and validates a user-provided 'excludes' option.
 
     This is validated to verify that it is of type List[str].
@@ -165,9 +176,8 @@ def parse_and_validate_excludes(excludes: List[str],
                         f"List[str], got {type(excludes)}")
 
 
-def parse_and_validate_env_vars(env_vars: Dict[str, str],
-                                is_task_or_actor: bool = False
-                                ) -> Optional[Dict[str, str]]:
+def parse_and_validate_env_vars(
+        env_vars: Dict[str, str]) -> Optional[Dict[str, str]]:
     """Parses and validates a user-provided 'env_vars' option.
 
     This is validated to verify that all keys and vals are strings.
@@ -190,11 +200,11 @@ def parse_and_validate_env_vars(env_vars: Dict[str, str],
 # Dictionary mapping runtime_env options with the function to parse and
 # validate them.
 OPTION_TO_VALIDATION_FN = {
+    "py_modules": parse_and_validate_py_modules,
     "working_dir": parse_and_validate_working_dir,
     "excludes": parse_and_validate_excludes,
     "conda": parse_and_validate_conda,
     "pip": parse_and_validate_pip,
-    "uris": parse_and_validate_uris,
     "env_vars": parse_and_validate_env_vars,
     "container": parse_and_validate_container,
 }
@@ -209,12 +219,11 @@ class ParsedRuntimeEnv(dict):
     All options in the resulting dictionary will have non-None values.
 
     Currently supported options:
-        working_dir (Path): Specifies the working directory of the worker.
-            This can either be a local directory or zip file.
-            Examples:
-                "."  # cwd
-                "local_project.zip"  # archive is unpacked into directory
-        uris (List[str]): A list of URIs that define the working_dir.
+        py_modules (List[URI]): List of URIs (either in the GCS or external
+            storage), each of which is a zip file that will be unpacked and
+            inserted into the PYTHONPATH of the workers.
+        working_dir (URI): URI (either in the GCS or external storage) of a zip
+            file that will be unpacked in the directory of each task/actor.
         pip (List[str] | str): Either a list of pip packages, or a string
             containing the path to a pip requirements.txt file.
         conda (dict | str): Either the conda YAML config, the name of a
@@ -247,15 +256,21 @@ class ParsedRuntimeEnv(dict):
     """
 
     known_fields: Set[str] = {
-        "working_dir", "conda", "pip", "uris", "containers", "excludes",
-        "env_vars", "_ray_release", "_ray_commit", "_inject_current_ray",
-        "plugins"
+        "py_modules",
+        "working_dir",
+        "conda",
+        "pip",
+        "container",
+        "excludes",
+        "env_vars",
+        "_ray_release",
+        "_ray_commit",
+        "_inject_current_ray",
+        "plugins",
+        "eager_install",
     }
 
-    def __init__(self,
-                 runtime_env: Dict[str, Any],
-                 is_task_or_actor: bool = False,
-                 _validate: bool = True):
+    def __init__(self, runtime_env: Dict[str, Any], _validate: bool = True):
         super().__init__()
 
         # Blindly trust that the runtime_env has already been validated.
@@ -281,8 +296,7 @@ class ParsedRuntimeEnv(dict):
         for option, validate_fn in OPTION_TO_VALIDATION_FN.items():
             option_val = runtime_env.get(option)
             if option_val is not None:
-                validated_option_val = validate_fn(
-                    option_val, is_task_or_actor=is_task_or_actor)
+                validated_option_val = validate_fn(option_val)
                 if validated_option_val is not None:
                     self[option] = validated_option_val
 
@@ -331,6 +345,23 @@ class ParsedRuntimeEnv(dict):
         if all(val is None for val in self.values()):
             self.clear()
 
+    def get_uris(self) -> List[str]:
+        # TODO(architkulkarni): this should programmatically be extended with
+        # URIs from all plugins.
+        plugin_uris = []
+        if "working_dir" in self:
+            plugin_uris.append(
+                _encode_plugin_uri("working_dir", self["working_dir"]))
+        if "py_modules" in self:
+            for uri in self["py_modules"]:
+                plugin_uris.append(_encode_plugin_uri("py_modules", uri))
+        if "conda" or "pip" in self:
+            uri = conda.get_uri(self)
+            if uri is not None:
+                plugin_uris.append(_encode_plugin_uri("conda", uri))
+
+        return plugin_uris
+
     @classmethod
     def deserialize(cls, serialized: str) -> "ParsedRuntimeEnv":
         return cls(json.loads(serialized), _validate=False)
@@ -350,8 +381,7 @@ def override_task_or_actor_runtime_env(
     task, and the current runtime env comes from the current TaskSpec.
 
     By default, the child runtime env inherits non-specified options from the
-    parent. There are two exceptions to this:
-        - working_dir is not inherited (only URIs).
+    parent. There is one exception to this:
         - The env_vars dictionaries are merged, so environment variables
           not specified by the child are still inherited from the parent.
 
@@ -371,8 +401,6 @@ def override_task_or_actor_runtime_env(
     result.update(child_runtime_env)
     if len(result_env_vars) > 0:
         result["env_vars"] = result_env_vars
-    if "working_dir" in result:
-        del result["working_dir"]  # working_dir should not be in child env.
 
     # NOTE(architkulkarni): This allows worker caching code in C++ to
     # check if a runtime env is empty without deserializing it.

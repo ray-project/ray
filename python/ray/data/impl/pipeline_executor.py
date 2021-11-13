@@ -1,6 +1,7 @@
 from typing import Any, Callable, List, Optional, TYPE_CHECKING
 
 import ray
+from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T
 from ray.data.impl.progress_bar import ProgressBar, \
     set_progress_bars
@@ -11,7 +12,9 @@ if TYPE_CHECKING:
 
 
 @ray.remote(num_cpus=0, placement_group=None)
-def pipeline_stage(fn: Callable[[], Dataset[T]]) -> Dataset[T]:
+def pipeline_stage(fn: Callable[[], Dataset[T]],
+                   context: DatasetContext) -> Dataset[T]:
+    DatasetContext._set_current(context)
     try:
         prev = set_progress_bars(False)
         return fn()
@@ -25,7 +28,8 @@ class PipelineExecutor:
         self._stages: List[ObjectRef[Dataset[
             Any]]] = [None] * (len(self._pipeline._stages) + 1)
         self._iter = iter(self._pipeline._base_iterable)
-        self._stages[0] = pipeline_stage.remote(next(self._iter))
+        self._stages[0] = pipeline_stage.remote(
+            next(self._iter), DatasetContext.get_current())
 
         if self._pipeline._length and self._pipeline._length != float("inf"):
             length = self._pipeline._length
@@ -74,13 +78,14 @@ class PipelineExecutor:
                     output = result
                 else:
                     fn = self._pipeline._stages[i]
-                    self._stages[i +
-                                 1] = pipeline_stage.remote(lambda: fn(result))
+                    self._stages[i + 1] = pipeline_stage.remote(
+                        lambda: fn(result), DatasetContext.get_current())
 
             # Pull a new element for the initial slot if possible.
             if self._stages[0] is None:
                 try:
-                    self._stages[0] = pipeline_stage.remote(next(self._iter))
+                    self._stages[0] = pipeline_stage.remote(
+                        next(self._iter), DatasetContext.get_current())
                 except StopIteration:
                     pass
 
@@ -90,7 +95,9 @@ class PipelineExecutor:
 @ray.remote(num_cpus=0, placement_group=None)
 class PipelineSplitExecutorCoordinator:
     def __init__(self, pipeline: "DatasetPipeline[T]", n: int,
-                 splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
+                 splitter: Callable[[Dataset], "DatasetPipeline[T]"],
+                 context: DatasetContext):
+        DatasetContext._set_current(context)
         self.executor = PipelineExecutor(pipeline)
         self.n = n
         self.splitter = splitter

@@ -228,10 +228,13 @@ We will show how this works using a Ray serve application. Copy the following co
 
     import time
 
-    import ray
-    from ray import serve
     from sklearn.datasets import load_iris
     from sklearn.ensemble import GradientBoostingClassifier
+
+    import ray
+    from ray import serve
+
+    serve.start()
 
     # Train model
     iris_dataset = load_iris()
@@ -239,23 +242,23 @@ We will show how this works using a Ray serve application. Copy the following co
     model.fit(iris_dataset["data"], iris_dataset["target"])
 
     # Define Ray Serve model,
+    @serve.deployment(route_prefix="/iris")
     class BoostingModel:
         def __init__(self):
             self.model = model
             self.label_list = iris_dataset["target_names"].tolist()
 
-        def __call__(self, flask_request):
-            payload = flask_request.json["vector"]
-            print("Worker: received flask request with data", payload)
+        await def __call__(self, starlette_request):
+            payload = await starlette_request.json()["vector"]
+            print(f"Worker: received request with data: {payload}")
 
             prediction = self.model.predict([payload])[0]
             human_name = self.label_list[prediction]
             return {"result": human_name}
 
     # Deploy model
-    client = serve.start()
-    client.create_backend("iris:v1", BoostingModel)
-    client.create_endpoint("iris_classifier", backend="iris:v1", route="/iris")
+    serve.start()
+    BoostingModel.deploy()
 
     time.sleep(3600.0)
 

@@ -32,7 +32,7 @@ namespace internal {
 
 /// Execute remote functions by networking stream.
 msgpack::sbuffer TaskExecutionHandler(const std::string &func_name,
-                                      const std::vector<msgpack::sbuffer> &args_buffer,
+                                      const ArgsBufferList &args_buffer,
                                       msgpack::sbuffer *actor_ptr);
 
 BOOST_DLL_ALIAS(internal::TaskExecutionHandler, TaskExecutionHandler);
@@ -82,7 +82,9 @@ class TaskExecutor {
       const std::vector<ObjectID> &return_ids, const std::string &debugger_breakpoint,
       std::vector<std::shared_ptr<ray::RayObject>> *results,
       std::shared_ptr<ray::LocalMemoryBuffer> &creation_task_exception_pb_bytes,
-      bool *is_application_level_error);
+      bool *is_application_level_error,
+      const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
+      const std::string name_of_concurrency_group_to_execute);
 
   virtual ~TaskExecutor(){};
 

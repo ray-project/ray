@@ -33,11 +33,11 @@ body:
         - "Ray Core"
         - "Ray Tune"
         - "Ray Serve"
+        - "Ray Train"
         - "RLlib"
         - "Ray Clusters"
         - "Monitoring & Debugging"
         - "Dashboard"
-        - "RaySGD"
         - "Others"
     validations:
       required: true

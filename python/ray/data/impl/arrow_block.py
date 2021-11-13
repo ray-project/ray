@@ -1,5 +1,6 @@
 import collections
 import random
+import heapq
 from typing import Iterator, List, Union, Tuple, Any, TypeVar, Optional, \
     TYPE_CHECKING
 
@@ -13,6 +14,8 @@ except ImportError:
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
+from ray.data.aggregate import AggregateFn
+from ray.data.impl.size_estimator import SizeEstimator
 
 if TYPE_CHECKING:
     import pandas
@@ -22,6 +25,11 @@ T = TypeVar("T")
 # An Arrow block can be sorted by a list of (column, asc/desc) pairs,
 # e.g. [("column1", "ascending"), ("column2", "descending")]
 SortKeyT = List[Tuple[str, str]]
+GroupKeyT = Union[None, str]
+
+# The max size of Python tuples to buffer before compacting them into an Arrow
+# table in the BlockBuilder.
+MAX_UNCOMPACTED_SIZE_BYTES = 50 * 1024 * 1024
 
 
 class ArrowRow:
@@ -57,10 +65,13 @@ class ArrowRow:
         return self.as_pydict() == other
 
     def __str__(self):
-        return "ArrowRow({})".format(self.as_pydict())
+        return str(self.as_pydict())
 
     def __repr__(self):
         return str(self)
+
+    def __len__(self):
+        return self._row.num_columns
 
 
 class DelegatingArrowBlockBuilder(BlockBuilder[T]):
@@ -94,14 +105,25 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
     def num_rows(self) -> int:
         return self._builder.num_rows() if self._builder is not None else 0
 
+    def get_estimated_memory_usage(self) -> int:
+        if self._builder is None:
+            return 0
+        return self._builder.get_estimated_memory_usage()
+
 
 class ArrowBlockBuilder(BlockBuilder[T]):
     def __init__(self):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
+        # The set of uncompacted Python values buffered.
         self._columns = collections.defaultdict(list)
+        # The set of compacted tables we have built so far.
         self._tables: List["pyarrow.Table"] = []
+        self._tables_nbytes = 0
+        # Size estimator for un-compacted table values.
+        self._uncompacted_size = SizeEstimator()
         self._num_rows = 0
+        self._num_compactions = 0
 
     def add(self, item: Union[dict, ArrowRow]) -> None:
         if isinstance(item, ArrowRow):
@@ -113,10 +135,13 @@ class ArrowBlockBuilder(BlockBuilder[T]):
         for key, value in item.items():
             self._columns[key].append(value)
         self._num_rows += 1
+        self._compact_if_needed()
+        self._uncompacted_size.add(item)
 
     def add_block(self, block: "pyarrow.Table") -> None:
         assert isinstance(block, pyarrow.Table), block
         self._tables.append(block)
+        self._tables_nbytes += block.nbytes
         self._num_rows += block.num_rows
 
     def build(self) -> Block:
@@ -126,7 +151,7 @@ class ArrowBlockBuilder(BlockBuilder[T]):
             tables = []
         tables.extend(self._tables)
         if len(tables) > 1:
-            return pyarrow.concat_tables(tables)
+            return pyarrow.concat_tables(tables, promote=True)
         elif len(tables) > 0:
             return tables[0]
         else:
@@ -134,6 +159,22 @@ class ArrowBlockBuilder(BlockBuilder[T]):
 
     def num_rows(self) -> int:
         return self._num_rows
+
+    def get_estimated_memory_usage(self) -> int:
+        if self._num_rows == 0:
+            return 0
+        return self._tables_nbytes + self._uncompacted_size.size_bytes()
+
+    def _compact_if_needed(self) -> None:
+        assert self._columns
+        if self._uncompacted_size.size_bytes() < MAX_UNCOMPACTED_SIZE_BYTES:
+            return
+        block = pyarrow.Table.from_pydict(self._columns)
+        self._tables.append(block)
+        self._tables_nbytes += block.nbytes
+        self._uncompacted_size = SizeEstimator()
+        self._columns.clear()
+        self._num_compactions += 1
 
 
 class ArrowBlockAccessor(BlockAccessor):
@@ -169,11 +210,8 @@ class ArrowBlockAccessor(BlockAccessor):
     def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
         if copy:
-            # TODO(ekl) there must be a cleaner way to force a copy of a table.
-            copy = [c.to_pandas() for c in view.itercolumns()]
-            return pyarrow.Table.from_arrays(copy, schema=self._table.schema)
-        else:
-            return view
+            view = _copy_table(view)
+        return view
 
     def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
         random = np.random.RandomState(random_seed)
@@ -238,10 +276,14 @@ class ArrowBlockAccessor(BlockAccessor):
     def builder() -> ArrowBlockBuilder[T]:
         return ArrowBlockBuilder()
 
-    def sample(self, n_samples: int, key: SortKeyT) -> List[T]:
+    def sample(self, n_samples: int, key: SortKeyT) -> "pyarrow.Table":
         if key is None or callable(key):
             raise NotImplementedError(
                 "Arrow sort key must be a column name, was: {}".format(key))
+        if self._table.num_rows == 0:
+            # If the pyarrow table is empty we may not have schema
+            # so calling table.select() will raise an error.
+            return pyarrow.Table.from_pydict({})
         k = min(n_samples, self._table.num_rows)
         indices = random.sample(range(self._table.num_rows), k)
         return self._table.select([k[0] for k in key]).take(indices)
@@ -251,6 +293,14 @@ class ArrowBlockAccessor(BlockAccessor):
         if len(key) > 1:
             raise NotImplementedError(
                 "sorting by multiple columns is not supported yet")
+
+        if self._table.num_rows == 0:
+            # If the pyarrow table is empty we may not have schema
+            # so calling sort_indices() will raise an error.
+            return [
+                pyarrow.Table.from_pydict({})
+                for _ in range(len(boundaries) + 1)
+            ]
 
         import pyarrow.compute as pac
 
@@ -267,22 +317,217 @@ class ArrowBlockAccessor(BlockAccessor):
         # *greater than* the boundary value instead.
         col, _ = key[0]
         comp_fn = pac.greater if descending else pac.less
+
+        # TODO(ekl) this is O(n^2) but in practice it's much faster than the
+        # O(n) algorithm, could be optimized.
         boundary_indices = [
             pac.sum(comp_fn(table[col], b)).as_py() for b in boundaries
         ]
+        ### Compute the boundary indices in O(n) time via scan.  # noqa
+        # boundary_indices = []
+        # remaining = boundaries.copy()
+        # values = table[col]
+        # for i, x in enumerate(values):
+        #     while remaining and not comp_fn(x, remaining[0]).as_py():
+        #         remaining.pop(0)
+        #         boundary_indices.append(i)
+        # for _ in remaining:
+        #     boundary_indices.append(len(values))
+
         ret = []
         prev_i = 0
         for i in boundary_indices:
-            ret.append(table.slice(prev_i, i - prev_i))
+            # Slices need to be copied to avoid including the base table
+            # during serialization.
+            ret.append(_copy_table(table.slice(prev_i, i - prev_i)))
             prev_i = i
-        ret.append(table.slice(prev_i))
+        ret.append(_copy_table(table.slice(prev_i)))
         return ret
+
+    def combine(self, key: GroupKeyT,
+                aggs: Tuple[AggregateFn]) -> Block[ArrowRow]:
+        """Combine rows with the same key into an accumulator.
+
+        This assumes the block is already sorted by key in ascending order.
+
+        Args:
+            key: The column name of key or None for global aggregation.
+            aggs: The aggregations to do.
+
+        Returns:
+            A sorted block of [k, v_1, ..., v_n] columns where k is the groupby
+            key and v_i is the partially combined accumulator for the ith given
+            aggregation.
+            If key is None then the k column is omitted.
+        """
+        # TODO(jjyao) This can be implemented natively in Arrow
+        key_fn = (lambda r: r[key]) if key is not None else (lambda r: None)
+        iter = self.iter_rows()
+        next_row = None
+        builder = ArrowBlockBuilder()
+        while True:
+            try:
+                if next_row is None:
+                    next_row = next(iter)
+                next_key = key_fn(next_row)
+
+                def gen():
+                    nonlocal iter
+                    nonlocal next_row
+                    while key_fn(next_row) == next_key:
+                        yield next_row
+                        try:
+                            next_row = next(iter)
+                        except StopIteration:
+                            next_row = None
+                            break
+
+                # Accumulate.
+                accumulators = [agg.init(next_key) for agg in aggs]
+                for r in gen():
+                    for i in range(len(aggs)):
+                        accumulators[i] = aggs[i].accumulate(
+                            accumulators[i], r)
+
+                # Build the row.
+                row = {}
+                if key is not None:
+                    row[key] = next_key
+
+                count = collections.defaultdict(int)
+                for agg, accumulator in zip(aggs, accumulators):
+                    name = agg.name
+                    # Check for conflicts with existing aggregation name.
+                    if count[name] > 0:
+                        name = self._munge_conflict(name, count[name])
+                    count[name] += 1
+                    row[name] = accumulator
+
+                builder.add(row)
+            except StopIteration:
+                break
+        return builder.build()
+
+    @staticmethod
+    def _munge_conflict(name, count):
+        return f"{name}_{count+1}"
 
     @staticmethod
     def merge_sorted_blocks(
             blocks: List[Block[T]], key: SortKeyT,
             _descending: bool) -> Tuple[Block[T], BlockMetadata]:
-        ret = pyarrow.concat_tables(blocks)
-        indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
-        ret = ret.take(indices)
+        blocks = [b for b in blocks if b.num_rows > 0]
+        if len(blocks) == 0:
+            ret = pyarrow.Table.from_pydict({})
+        else:
+            ret = pyarrow.concat_tables(blocks, promote=True)
+            indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
+            ret = ret.take(indices)
         return ret, ArrowBlockAccessor(ret).get_metadata(None)
+
+    @staticmethod
+    def aggregate_combined_blocks(
+            blocks: List[Block[ArrowRow]], key: GroupKeyT,
+            aggs: Tuple[AggregateFn]) -> Tuple[Block[ArrowRow], BlockMetadata]:
+        """Aggregate sorted, partially combined blocks with the same key range.
+
+        This assumes blocks are already sorted by key in ascending order,
+        so we can do merge sort to get all the rows with the same key.
+
+        Args:
+            blocks: A list of partially combined and sorted blocks.
+            key: The column name of key or None for global aggregation.
+            aggs: The aggregations to do.
+
+        Returns:
+            A block of [k, v_1, ..., v_n] columns and its metadata where k is
+            the groupby key and v_i is the corresponding aggregation result for
+            the ith given aggregation.
+            If key is None then the k column is omitted.
+        """
+
+        key_fn = (lambda r: r[r._row.schema.names[0]]
+                  ) if key is not None else (lambda r: 0)
+
+        iter = heapq.merge(
+            *[ArrowBlockAccessor(block).iter_rows() for block in blocks],
+            key=key_fn)
+        next_row = None
+        builder = ArrowBlockBuilder()
+        while True:
+            try:
+                if next_row is None:
+                    next_row = next(iter)
+                next_key = key_fn(next_row)
+                next_key_name = next_row._row.schema.names[
+                    0] if key is not None else None
+
+                def gen():
+                    nonlocal iter
+                    nonlocal next_row
+                    while key_fn(next_row) == next_key:
+                        yield next_row
+                        try:
+                            next_row = next(iter)
+                        except StopIteration:
+                            next_row = None
+                            break
+
+                # Merge.
+                first = True
+                accumulators = [None] * len(aggs)
+                resolved_agg_names = [None] * len(aggs)
+                for r in gen():
+                    if first:
+                        count = collections.defaultdict(int)
+                        for i in range(len(aggs)):
+                            name = aggs[i].name
+                            # Check for conflicts with existing aggregation
+                            # name.
+                            if count[name] > 0:
+                                name = ArrowBlockAccessor._munge_conflict(
+                                    name, count[name])
+                            count[name] += 1
+                            resolved_agg_names[i] = name
+                            accumulators[i] = r[name]
+                        first = False
+                    else:
+                        for i in range(len(aggs)):
+                            accumulators[i] = aggs[i].merge(
+                                accumulators[i], r[resolved_agg_names[i]])
+                # Build the row.
+                row = {}
+                if key is not None:
+                    row[next_key_name] = next_key
+
+                for agg, agg_name, accumulator in zip(aggs, resolved_agg_names,
+                                                      accumulators):
+                    row[agg_name] = agg.finalize(accumulator)
+
+                builder.add(row)
+            except StopIteration:
+                break
+
+        ret = builder.build()
+        return ret, ArrowBlockAccessor(ret).get_metadata(None)
+
+
+def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
+    """Copy the provided Arrow table."""
+    import pyarrow as pa
+
+    # Copy the table by copying each column and constructing a new table with
+    # the same schema.
+    cols = table.columns
+    new_cols = []
+    for col in cols:
+        if col.num_chunks > 0 and isinstance(col.chunk(0), pa.ExtensionArray):
+            # If an extension array, we copy the underlying storage arrays.
+            chunk = col.chunk(0)
+            arr = type(chunk).from_storage(
+                chunk.type, pa.concat_arrays([c.storage for c in col.chunks]))
+        else:
+            # Otherwise, we copy the top-level chunk arrays.
+            arr = col.combine_chunks()
+        new_cols.append(arr)
+    return pa.Table.from_arrays(new_cols, schema=table.schema)
