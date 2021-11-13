@@ -14,8 +14,10 @@ from ray._private.runtime_env.packaging import (download_and_unpack_package,
 default_logger = logging.getLogger(__name__)
 
 
-def upload_ray_libraries_if_needed(runtime_env: Dict[str, Any],
-                                   scratch_dir: str) -> Dict[str, Any]:
+def upload_ray_libraries_if_needed(
+        runtime_env: Dict[str, Any],
+        scratch_dir: str,
+        logger: Optional[logging.Logger] = default_logger) -> Dict[str, Any]:
     """Uploads the libraries and replaces them with a dict of name->URI."""
     libraries = runtime_env.get("ray_libraries")
     if libraries is None:
@@ -51,7 +53,8 @@ def upload_ray_libraries_if_needed(runtime_env: Dict[str, Any],
 
         full_path = os.path.join(ray_path, relative_path)
         library_uri = get_uri_for_directory(full_path)
-        upload_package_if_needed(library_uri, scratch_dir, full_path)
+        upload_package_if_needed(
+            library_uri, scratch_dir, full_path, logger=logger)
 
         libraries_uris[relative_path] = library_uri
 
