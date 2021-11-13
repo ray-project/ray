@@ -1095,6 +1095,7 @@ def _start_redis_instance(executable,
             # the number of retries. This means we got the wrong redis
             # or there is some error in starting up redis.
             # Try the next port by looping again.
+            pass
         else:
             r = redis.StrictRedis(
                 host="127.0.0.1", port=port, password=password)
