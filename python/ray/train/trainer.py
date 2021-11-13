@@ -185,7 +185,7 @@ class Trainer:
                 raise ValueError(f"Invalid backend: {backend}. "
                                  f"Supported string values are: "
                                  f"{BACKEND_NAME_TO_CONFIG_CLS_NAME.keys()}")
-            return get_backend_config_cls(backend)
+            return get_backend_config_cls(backend)()
         else:
             raise TypeError(f"Invalid type for backend: {type(backend)}.")
 
