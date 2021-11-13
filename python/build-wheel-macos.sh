@@ -40,7 +40,7 @@ mkdir -p .whl
 # Use the latest version of Node.js in order to build the dashboard.
 source "$HOME"/.nvm/nvm.sh
 nvm install $NODE_VERSION
-nvm use node
+nvm use $NODE_VERSION
 
 # Build the dashboard so its static assets can be included in the wheel.
 pushd python/ray/dashboard/client
@@ -82,7 +82,8 @@ for ((i=0; i<${#PY_VERSIONS[@]}; ++i)); do
 
   pushd python
     # Setuptools on CentOS is too old to install arrow 0.9.0, therefore we upgrade.
-    $PIP_CMD install --upgrade setuptools
+    # TODO: Unpin after https://github.com/pypa/setuptools/issues/2849 is fixed.
+    $PIP_CMD install --upgrade setuptools==58.4
     # Install setuptools_scm because otherwise when building the wheel for
     # Python 3.6, we see an error.
     $PIP_CMD install -q setuptools_scm==3.1.0

@@ -97,6 +97,8 @@ class RayParams:
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        runtime_env_dir_name (str): If provided, specifies the directory that
+            will be created in the session dir to hold runtime_env files.
         include_log_monitor (bool): If True, then start a log monitor to
             monitor the log files for all processes on this node and push their
             contents to Redis.
@@ -159,6 +161,7 @@ class RayParams:
                  plasma_store_socket_name=None,
                  raylet_socket_name=None,
                  temp_dir=None,
+                 runtime_env_dir_name=None,
                  include_log_monitor=None,
                  autoscaling_config=None,
                  start_initial_python_workers_for_first_job=False,
@@ -207,6 +210,8 @@ class RayParams:
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
+        self.runtime_env_dir_name = (
+            runtime_env_dir_name or ray_constants.DEFAULT_RUNTIME_ENV_DIR_NAME)
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
         self.metrics_agent_port = metrics_agent_port
@@ -228,7 +233,6 @@ class RayParams:
                 self._system_config = dict()
             print(self._system_config)
             self._system_config["lineage_pinning_enabled"] = True
-            self._system_config["free_objects_period_milliseconds"] = -1
 
     def update(self, **kwargs):
         """Update the settings according to the keyword arguments.

@@ -110,11 +110,20 @@ class DataOrganizer:
         pid_to_worker_stats = {}
         pid_to_language = {}
         pid_to_job_id = {}
+        pids_on_node = set()
         for core_worker_stats in node_stats.get("coreWorkersStats", []):
             pid = core_worker_stats["pid"]
+            pids_on_node.add(pid)
             pid_to_worker_stats.setdefault(pid, []).append(core_worker_stats)
             pid_to_language[pid] = core_worker_stats["language"]
             pid_to_job_id[pid] = core_worker_stats["jobId"]
+
+    # Clean up logs from a dead pid.
+        dead_pids = set(node_logs.keys()) - pids_on_node
+        for dead_pid in dead_pids:
+            if dead_pid in node_logs:
+                node_logs.mutable().pop(dead_pid)
+
         for worker in node_physical_stats.get("workers", []):
             worker = dict(worker)
             pid = worker["pid"]

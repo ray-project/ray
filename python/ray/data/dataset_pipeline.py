@@ -1,9 +1,10 @@
-import functools
+import inspect
 import time
 from typing import Any, Callable, List, Iterator, Iterable, Generic, Union, \
     Optional, TYPE_CHECKING
 
 import ray
+from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T, U, BatchType
 from ray.data.impl.pipeline_executor import PipelineExecutor, \
     PipelineSplitExecutorCoordinator
@@ -14,10 +15,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 # Operations that can be naively applied per dataset row in the pipeline.
-PER_DATASET_OPS = [
-    "map", "map_batches", "flat_map", "filter", "write_json", "write_csv",
-    "write_parquet", "write_datasource"
-]
+PER_DATASET_OPS = ["map", "map_batches", "flat_map", "filter"]
 
 # Operations that apply to each dataset holistically in the pipeline.
 HOLISTIC_PER_DATASET_OPS = ["repartition", "random_shuffle", "sort"]
@@ -28,7 +26,9 @@ PER_DATASET_OUTPUT_OPS = [
 ]
 
 # Operations that operate over the stream of output batches from the pipeline.
-OUTPUT_ITER_OPS = ["take", "show", "iter_rows", "to_tf", "to_torch"]
+OUTPUT_ITER_OPS = [
+    "take", "take_all", "show", "iter_rows", "to_tf", "to_torch"
+]
 
 
 @PublicAPI(stability="beta")
@@ -198,7 +198,7 @@ class DatasetPipeline(Generic[T]):
                splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
 
         coordinator = PipelineSplitExecutorCoordinator.remote(
-            self, n, splitter)
+            self, n, splitter, DatasetContext.get_current())
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
@@ -238,8 +238,9 @@ class DatasetPipeline(Generic[T]):
             # Disable progress bars for the split readers since they would
             # overwhelm the console.
             DatasetPipeline(
-                SplitIterator(idx, coordinator), progress_bars=False)
-            for idx in range(n)
+                SplitIterator(idx, coordinator),
+                length=self._length,
+                progress_bars=False) for idx in range(n)
         ]
 
     def rewindow(self, *, blocks_per_window: int,
@@ -301,8 +302,13 @@ class DatasetPipeline(Generic[T]):
             def __iter__(self):
                 return WindowIterator(self._original_iter)
 
+        if self._length == float("inf"):
+            length = float("inf")
+        else:
+            length = None
+
         return DatasetPipeline(
-            WindowIterable(self.iter_datasets()), length=None)
+            WindowIterable(self.iter_datasets()), length=length)
 
     def repeat(self, times: int = None) -> "DatasetPipeline[T]":
         """Repeat this pipeline a given number or times, or indefinitely.
@@ -401,6 +407,9 @@ class DatasetPipeline(Generic[T]):
         Returns:
             The number of records in the dataset pipeline.
         """
+        if self._length == float("inf"):
+            raise ValueError("Cannot count a pipeline of infinite length.")
+
         pipe = self.map_batches(lambda batch: [len(batch)])
         total = 0
         for elem in pipe.iter_rows():
@@ -417,6 +426,9 @@ class DatasetPipeline(Generic[T]):
         Returns:
             The sum of the records in the dataset pipeline.
         """
+        if self._length == float("inf"):
+            raise ValueError("Cannot sum a pipeline of infinite length.")
+
         pipe = self.map_batches(
             lambda batch: [batch.sum()[0]], batch_format="pandas")
         total = 0
@@ -590,15 +602,19 @@ for method in PER_DATASET_OPS:
     def make_impl(method):
         delegate = getattr(Dataset, method)
 
-        @functools.wraps(delegate)
-        def impl(self, *args, **kwargs):
+        def impl(self, *args, **kwargs) -> "DatasetPipeline[U]":
             return self.foreach_window(
                 lambda ds: getattr(ds, method)(*args, **kwargs))
 
-        if impl.__annotations__.get("return"):
-            impl.__annotations__["return"] = impl.__annotations__[
-                "return"].replace("Dataset", "DatasetPipeline")
-
+        impl.__name__ = delegate.__name__
+        impl.__doc__ = """
+Apply ``Dataset.{method}`` to each dataset/window in this pipeline.
+""".format(method=method)
+        setattr(
+            impl,
+            "__signature__",
+            inspect.signature(delegate).replace(
+                return_annotation="DatasetPipeline[U]"))
         return impl
 
     setattr(DatasetPipeline, method, make_impl(method))
@@ -608,15 +624,19 @@ for method in HOLISTIC_PER_DATASET_OPS:
     def make_impl(method):
         delegate = getattr(Dataset, method)
 
-        @functools.wraps(delegate)
-        def impl(self, *args, **kwargs):
+        def impl(self, *args, **kwargs) -> "DatasetPipeline[U]":
             return self.foreach_window(
                 lambda ds: getattr(ds, method)(*args, **kwargs))
 
-        if impl.__annotations__.get("return"):
-            impl.__annotations__["return"] = impl.__annotations__[
-                "return"].replace("Dataset", "DatasetPipeline")
-
+        impl.__name__ = delegate.__name__
+        impl.__doc__ = """
+Apply ``Dataset.{method}`` to each dataset/window in this pipeline.
+""".format(method=method)
+        setattr(
+            impl,
+            "__signature__",
+            inspect.signature(delegate).replace(
+                return_annotation="DatasetPipeline[U]"))
         return impl
 
     def deprecation_warning(method: str):
@@ -635,7 +655,6 @@ for method in PER_DATASET_OUTPUT_OPS:
     def make_impl(method):
         delegate = getattr(Dataset, method)
 
-        @functools.wraps(delegate)
         def impl(self, *args, **kwargs):
             uuid = None
             for i, ds in enumerate(self.iter_datasets()):
@@ -644,6 +663,11 @@ for method in PER_DATASET_OUTPUT_OPS:
                 ds._set_uuid(f"{uuid}_{i:06}")
                 getattr(ds, method)(*args, **kwargs)
 
+        impl.__name__ = delegate.__name__
+        impl.__doc__ = """
+Call ``Dataset.{method}`` on each output dataset of this pipeline.
+""".format(method=method)
+        setattr(impl, "__signature__", inspect.signature(delegate))
         return impl
 
     setattr(DatasetPipeline, method, make_impl(method))
@@ -653,10 +677,14 @@ for method in OUTPUT_ITER_OPS:
     def make_impl(method):
         delegate = getattr(Dataset, method)
 
-        @functools.wraps(delegate)
         def impl(self, *args, **kwargs):
             return delegate(self, *args, **kwargs)
 
+        impl.__name__ = delegate.__name__
+        impl.__doc__ = """
+Call ``Dataset.{method}`` over the stream of output batches from the pipeline.
+""".format(method=method)
+        setattr(impl, "__signature__", inspect.signature(delegate))
         return impl
 
     setattr(DatasetPipeline, method, make_impl(method))

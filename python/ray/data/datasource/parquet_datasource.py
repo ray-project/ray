@@ -1,6 +1,6 @@
 import logging
 import itertools
-from typing import Callable, Optional, List, Union, TYPE_CHECKING
+from typing import Any, Callable, Dict, Optional, List, Union, TYPE_CHECKING
 
 import numpy as np
 
@@ -11,7 +11,7 @@ from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import (
-    FileBasedDatasource, _resolve_paths_and_filesystem)
+    FileBasedDatasource, _resolve_paths_and_filesystem, _resolve_kwargs)
 from ray.data.impl.block_list import BlockMetadata
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -29,7 +29,7 @@ class ParquetDatasource(FileBasedDatasource):
     Examples:
         >>> source = ParquetDatasource()
         >>> ray.data.read_datasource(source, paths="/path/to/dir").take()
-        ... [ArrowRow({"a": 1, "b": "foo"}), ...]
+        ... [{"a": 1, "b": "foo"}, ...]
     """
 
     def prepare_read(
@@ -139,19 +139,22 @@ class ParquetDatasource(FileBasedDatasource):
             if len(piece_data) == 0:
                 continue
             pieces, serialized_pieces, metadata = zip(*piece_data)
-            block_metadata = _build_block_metadata(pieces, metadata,
-                                                   inferred_schema)
+            meta = _build_block_metadata(pieces, metadata, inferred_schema)
             read_tasks.append(
                 ReadTask(
-                    lambda pieces_=serialized_pieces: read_pieces(pieces_),
-                    block_metadata))
+                    lambda pieces_=serialized_pieces: [read_pieces(pieces_)],
+                    meta))
 
         return read_tasks
 
-    def _write_block(self, f: "pyarrow.NativeFile", block: BlockAccessor,
+    def _write_block(self,
+                     f: "pyarrow.NativeFile",
+                     block: BlockAccessor,
+                     writer_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
                      **writer_args):
         import pyarrow.parquet as pq
 
+        writer_args = _resolve_kwargs(writer_args_fn, **writer_args)
         pq.write_table(block.to_arrow(), f, **writer_args)
 
     def _file_format(self) -> str:

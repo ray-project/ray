@@ -230,8 +230,8 @@ Example: Per-Epoch Shuffle Pipeline
 .. tip::
 
     If you interested in distributed ingest for deep learning, it is
-    recommended to use Ray Datasets in conjunction with :ref:`Ray SGD <sgd-v2-docs>`.
-    See the :ref:`example below<dataset-pipeline-ray-sgd>` for more info.
+    recommended to use Ray Datasets in conjunction with :ref:`Ray Train <train-docs>`.
+    See the :ref:`example below<dataset-pipeline-ray-train>` for more info.
 
 ..
   https://docs.google.com/drawings/d/1vWQ-Zfxy2_Gthq8l3KmNsJ7nOCuYUQS9QMZpj5GHYx0/edit
@@ -300,13 +300,13 @@ Similar to how you can ``.split()`` a Dataset, you can also split a DatasetPipel
 
 .. image:: dataset-repeat-2.svg
 
-.. _dataset-pipeline-ray-sgd:
+.. _dataset-pipeline-ray-train:
 
-Distributed Ingest with Ray SGD
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Ray Datasets integrates with :ref:`Ray SGD <sgd-v2-docs>`, further simplifying your distributed ingest pipeline.
+Distributed Ingest with Ray Train
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Ray Datasets integrates with :ref:`Ray Train <train-docs>`, further simplifying your distributed ingest pipeline.
 
-Ray SGD is a lightweight library for scalable deep learning on Ray.
+Ray Train is a lightweight library for scalable deep learning on Ray.
 
 1. It allows you to focus on the training logic and automatically handles distributed setup for your framework of choice (PyTorch, Tensorflow, or Horovod).
 2. It has out of the box fault-tolerance and elastic training
@@ -319,7 +319,7 @@ Ray SGD is a lightweight library for scalable deep learning on Ray.
     def train_func():
         # This is a dummy train function just iterating over the dataset shard.
         # You should replace this with your training logic.
-        shard = ray.sgd.get_dataset_shard()
+        shard = ray.train.get_dataset_shard()
         for row in shard.iter_rows():
             print(row)
 
@@ -338,8 +338,8 @@ Ray SGD is a lightweight library for scalable deep learning on Ray.
         config={"worker_batch_size": 64, "num_epochs": 2},
         dataset=pipe)
 
-Ray SGD is responsible for the orchestration of the training workers and will automatically split the Dataset for you.
-See :ref:`the SGD User Guide <sgd-dataset-pipeline>` for more details.
+Ray Train is responsible for the orchestration of the training workers and will automatically split the Dataset for you.
+See :ref:`the Train User Guide <train-dataset-pipeline>` for more details.
 
 Changing Pipeline Structure
 ---------------------------

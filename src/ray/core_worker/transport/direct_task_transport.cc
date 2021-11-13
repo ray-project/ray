@@ -25,7 +25,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) {
     if (!status.ok()) {
-      RAY_LOG(ERROR) << "Resolving task dependencies failed " << status.ToString();
+      RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
       RAY_UNUSED(task_finisher_->PendingTaskFailed(
           task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
       return;
@@ -38,7 +38,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
       auto actor_id = task_spec.ActorCreationId();
       auto task_id = task_spec.TaskId();
-      RAY_LOG(INFO) << "Creating actor via GCS actor id = : " << actor_id;
+      RAY_LOG(DEBUG) << "Creating actor via GCS actor id = : " << actor_id;
       RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
           task_spec,
           [this, actor_id, task_id](Status status, const rpc::CreateActorReply &reply) {
@@ -513,7 +513,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   // Create a TaskSpecification with an overwritten TaskID to make sure we don't reuse the
   // same TaskID to request a worker
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
-  resource_spec_msg.set_task_id(TaskID::ForFakeTask().Binary());
+  resource_spec_msg.set_task_id(TaskID::FromRandom(job_id_).Binary());
   const TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
   rpc::Address best_node_address;
   if (raylet_address == nullptr) {
@@ -576,19 +576,26 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           // A lease request to a remote raylet failed. Retry locally if the lease is
           // still needed.
           // TODO(swang): Fail after some number of retries?
-          RAY_LOG(ERROR) << "Retrying attempt to schedule task at remote node. Error: "
-                         << status.ToString();
+          RAY_LOG(INFO) << "Retrying attempt to schedule task at remote node. Try again "
+                           "on a local node. Error: "
+                        << status.ToString();
 
           RequestNewWorkerIfNeeded(scheduling_key);
 
         } else {
-          // A local request failed. This shouldn't happen if the raylet is still alive
-          // and we don't currently handle raylet failures, so treat it as a fatal
-          // error.
-          RAY_LOG(ERROR) << "The worker failed to receive a response from the local "
-                            "raylet. This is most "
-                            "likely because the local raylet has crashed.";
-          RAY_LOG(FATAL) << status.ToString();
+          if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+            RAY_LOG(WARNING)
+                << "The worker failed to receive a response from the local "
+                   "raylet because the raylet is crashed. Terminating the worker.";
+            QuickExit();
+          } else {
+            RAY_LOG(INFO)
+                << "The worker failed to receive a response from the local raylet, but "
+                   "raylet is still alive. Try again on a local node. Error: "
+                << status;
+            // TODO(sang): Maybe we should raise FATAL error if it happens too many times.
+            RequestNewWorkerIfNeeded(scheduling_key);
+          }
         }
       },
       task_queue.size());

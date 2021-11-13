@@ -25,7 +25,7 @@ class TestES(unittest.TestCase):
         num_iterations = 1
 
         for _ in framework_iterator(config):
-            for env in ["CartPole-v0", "Pendulum-v0"]:
+            for env in ["CartPole-v0", "Pendulum-v1"]:
                 plain_config = config.copy()
                 trainer = es.ESTrainer(config=plain_config, env=env)
                 for i in range(num_iterations):

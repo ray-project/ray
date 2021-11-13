@@ -187,21 +187,35 @@ class MLflowTest(unittest.TestCase):
                              ["existing_experiment", "test_exp"])
         self.assertEqual(logger.experiment_id, 1)
 
+        # Using tags
+        tags = {"user_name": "John", "git_commit_hash": "abc123"}
+        clear_env_vars()
+        os.environ["MLFLOW_EXPERIMENT_NAME"] = "test_tags"
+        os.environ["MLFLOW_EXPERIMENT_ID"] = "0"
+        logger = MLflowLoggerCallback(tags=tags)
+        logger.setup()
+        self.assertEqual(logger.tags, tags)
+
     @patch("mlflow.tracking.MlflowClient", MockMlflowClient)
     def testMlFlowLoggerLogging(self):
         clear_env_vars()
-        trial_config = {"par1": 4, "par2": 9.}
+        trial_config = {"par1": 4, "par2": 9.0}
         trial = MockTrial(trial_config, "trial1", 0, "artifact")
 
         logger = MLflowLoggerCallback(
-            experiment_name="test1", save_artifact=True)
+            experiment_name="test1",
+            save_artifact=True,
+            tags={"hello": "world"})
         logger.setup()
 
-        # Check if run is created.
+        # Check if run is created with proper tags.
         logger.on_trial_start(iteration=0, trials=[], trial=trial)
         # New run should be created for this trial with correct tag.
         mock_run = logger.client.runs[1][0]
-        self.assertDictEqual(mock_run.tags, {"trial_name": "trial1"})
+        self.assertDictEqual(mock_run.tags, {
+            "hello": "world",
+            "trial_name": "trial1"
+        })
         self.assertTupleEqual(mock_run.run_id, (1, 0))
         self.assertTupleEqual(logger._trial_runs[trial], mock_run.run_id)
         # Params should be logged.
@@ -241,7 +255,7 @@ class MLflowTest(unittest.TestCase):
         mlflow = MockMlflowClient()
         with patch.dict("sys.modules", mlflow=mlflow):
             clear_env_vars()
-            trial_config = {"par1": 4, "par2": 9.}
+            trial_config = {"par1": 4, "par2": 9.0}
             trial = MockTrial(trial_config, "trial1", 0, "artifact")
 
             # No experiment_id is passed in config, should raise an error.
@@ -270,7 +284,7 @@ class MLflowTest(unittest.TestCase):
            lambda: MockMlflowClient())
     def testMlFlowMixinConfig(self):
         clear_env_vars()
-        trial_config = {"par1": 4, "par2": 9.}
+        trial_config = {"par1": 4, "par2": 9.0}
 
         @mlflow_mixin
         def train_fn(config):
@@ -319,4 +333,5 @@ class MLflowTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
+
     sys.exit(pytest.main(["-v", __file__]))

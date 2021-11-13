@@ -35,7 +35,7 @@ observation space. Thereby, the following simple rules apply:
   via the following line of code (e.g. put this into your loss function to access the original
   observations: ``dict_or_tuple_obs = restore_original_dimensions(input_dict["obs"], self.obs_space, "tf|torch")``
 
-For Atari observation spaces, RLlib defaults to using the `DeepMind preprocessors <https://github.com/ray-project/ray/blob/master/rllib/env/atari_wrappers.py>`__
+For Atari observation spaces, RLlib defaults to using the `DeepMind preprocessors <https://github.com/ray-project/ray/blob/master/rllib/env/wrappers/atari_wrappers.py>`__
 (``preprocessor_pref=deepmind``). However, if the Trainer's config key ``preprocessor_pref`` is set to "rllib",
 the following mappings apply for Atari-type observation spaces:
 
@@ -184,6 +184,8 @@ If you would like to provide your own model logic (instead of using RLlib's buil
 can sub-class either ``TFModelV2`` (for TensorFlow) or ``TorchModelV2`` (for PyTorch) and then
 register and specify your sub-class in the config as follows:
 
+.. _tensorflow-models:
+
 Custom TensorFlow Models
 ````````````````````````
 
@@ -239,6 +241,8 @@ See the `keras model example <https://github.com/ray-project/ray/blob/master/rll
 More examples and explanations on how to implement custom Tuple/Dict processing models
 (also check out `this test case here <https://github.com/ray-project/ray/blob/master/rllib/tests/test_nested_observation_spaces.py>`__),
 custom RNNs, custom model APIs (on top of default models) follow further below.
+
+.. _torch-models:
 
 Custom PyTorch Models
 `````````````````````

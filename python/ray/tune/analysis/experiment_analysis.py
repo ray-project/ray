@@ -21,6 +21,8 @@ from ray.tune.error import TuneError
 from ray.tune.result import DEFAULT_METRIC, EXPR_PROGRESS_FILE, \
     EXPR_RESULT_FILE, EXPR_PARAM_FILE, CONFIG_PREFIX, TRAINING_ITERATION
 from ray.tune.trial import Trial
+from ray.tune.trial_runner import (find_newest_experiment_checkpoint,
+                                   load_trials_from_experiment_checkpoint)
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils.util import unflattened_lookup
 
@@ -428,10 +430,25 @@ class ExperimentAnalysis(Analysis):
                  default_mode: Optional[str] = None):
         experiment_checkpoint_path = os.path.expanduser(
             experiment_checkpoint_path)
-        if not os.path.isfile(experiment_checkpoint_path):
+
+        if os.path.isdir(experiment_checkpoint_path):
+            # Case 1: Dir specified, find latest checkpoint.
+            latest_checkpoint = find_newest_experiment_checkpoint(
+                experiment_checkpoint_path)
+            if not latest_checkpoint:
+                raise ValueError(
+                    f"The directory `{experiment_checkpoint_path}` does not "
+                    f"contain a Ray Tune experiment checkpoint.")
+        elif not os.path.isfile(experiment_checkpoint_path):
+            # Case 2: File specified, but does not exist.
             raise ValueError(
-                "{} is not a valid file.".format(experiment_checkpoint_path))
-        with open(experiment_checkpoint_path) as f:
+                f"The file `{experiment_checkpoint_path}` does not "
+                f"exist and cannot be loaded for experiment analysis.")
+        else:
+            # Case 3: File specified, use as latest checkpoint.
+            latest_checkpoint = experiment_checkpoint_path
+
+        with open(latest_checkpoint) as f:
             _experiment_state = json.load(f, cls=TuneFunctionDecoder)
             self._experiment_state = _experiment_state
 
@@ -444,9 +461,12 @@ class ExperimentAnalysis(Analysis):
         ]
         self.trials = trials
 
-        super(ExperimentAnalysis, self).__init__(
-            os.path.dirname(experiment_checkpoint_path), default_metric,
-            default_mode)
+        # Use current dir per default
+        experiment_dir = os.path.dirname(
+            os.path.abspath(latest_checkpoint)) or os.getcwd()
+
+        super(ExperimentAnalysis, self).__init__(experiment_dir,
+                                                 default_metric, default_mode)
 
     @property
     def best_trial(self) -> Trial:
@@ -501,6 +521,11 @@ class ExperimentAnalysis(Analysis):
                 "`get_best_checkpoint(trial, metric, mode)` method to set the "
                 "metric and mode explicitly.")
         best_trial = self.best_trial
+        if not best_trial:
+            raise ValueError(
+                f"No best trial found. Please check if you specified the "
+                f"correct default metric ({self.default_metric}) and mode "
+                f"({self.default_mode}).")
         return self.get_best_checkpoint(best_trial, self.default_metric,
                                         self.default_mode)
 
@@ -758,6 +783,17 @@ class ExperimentAnalysis(Analysis):
             _trial_paths = [
                 checkpoint["logdir"] for checkpoint in self._checkpoints
             ]
+            try:
+                self.trials = load_trials_from_experiment_checkpoint(
+                    self._experiment_state, stub=True)
+            except Exception as e:
+                logger.warning(
+                    f"Could not load trials from experiment checkpoint. "
+                    f"This means your experiment checkpoint is likely faulty "
+                    f"or incomplete, and you won't have access to all "
+                    f"analysis methods. "
+                    f"Observed error: {e}")
+
         if not _trial_paths:
             raise TuneError("No trials found.")
         return _trial_paths

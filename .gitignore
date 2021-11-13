@@ -177,6 +177,10 @@ streaming/java/**/.classpath
 streaming/java/**/.project
 streaming/java/**/*.log
 
+# pom.xml files generated from pom_template.xml
+java/**/pom.xml
+streaming/java/**/pom.xml
+
 # python virtual env
 venv
 
@@ -210,3 +214,6 @@ test_state.json
 
 # workflow storage
 workflow_data/
+
+# vscode java extention generated
+.factorypath

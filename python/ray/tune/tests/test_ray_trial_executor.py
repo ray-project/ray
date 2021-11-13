@@ -85,7 +85,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
         os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
 
-        self.trial_executor = RayTrialExecutor(queue_trials=False)
+        self.trial_executor = RayTrialExecutor()
         ray.init(num_cpus=2, ignore_reinit_error=True)
         _register_all()  # Needed for flaky tests
 
@@ -190,7 +190,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
 
         # Need a new trial executor so the ENV vars are parsed again
-        self.trial_executor = RayTrialExecutor(queue_trials=False)
+        self.trial_executor = RayTrialExecutor()
 
         base = max(result_buffer_length, 1)
 
@@ -298,7 +298,7 @@ class RayTrialExecutorTest(unittest.TestCase):
         }, "grid_search")
         trial = trials[0]
         os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "1"
-        self.trial_executor = RayTrialExecutor(queue_trials=False)
+        self.trial_executor = RayTrialExecutor()
         os.environ["TUNE_FORCE_TRIAL_CLEANUP_S"] = "0"
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
@@ -336,74 +336,6 @@ class RayTrialExecutorTest(unittest.TestCase):
         trial.on_checkpoint(checkpoint)
 
 
-class RayExecutorQueueTest(unittest.TestCase):
-    def setUp(self):
-        self.cluster = Cluster(
-            initialize_head=True,
-            connect=True,
-            head_node_args={
-                "num_cpus": 1,
-                "_system_config": {
-                    "num_heartbeats_timeout": 10
-                }
-            })
-        self.trial_executor = RayTrialExecutor(
-            queue_trials=True, refresh_period=0)
-        # Pytest doesn't play nicely with imports
-        _register_all()
-
-    def tearDown(self):
-        ray.shutdown()
-        self.cluster.shutdown()
-        _register_all()  # re-register the evicted objects
-
-    def testQueueTrial(self):
-        """Tests that reset handles NotImplemented properly."""
-
-        def create_trial(cpu, gpu=0):
-            return Trial("__fake", resources=Resources(cpu=cpu, gpu=gpu))
-
-        cpu_only = create_trial(1, 0)
-        self.assertTrue(self.trial_executor.has_resources_for_trial(cpu_only))
-        self.trial_executor.start_trial(cpu_only)
-
-        gpu_only = create_trial(0, 1)
-        self.assertTrue(self.trial_executor.has_resources_for_trial(gpu_only))
-
-    def testHeadBlocking(self):
-        # Once resource requests are deprecated, remove this test
-        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
-
-        def create_trial(cpu, gpu=0):
-            return Trial("__fake", resources=Resources(cpu=cpu, gpu=gpu))
-
-        gpu_trial = create_trial(1, 1)
-        self.assertTrue(self.trial_executor.has_resources_for_trial(gpu_trial))
-        self.trial_executor.start_trial(gpu_trial)
-
-        # TODO(rliaw): This behavior is probably undesirable, but right now
-        #  trials with different resource requirements is not often used.
-        cpu_only_trial = create_trial(1, 0)
-        self.assertFalse(
-            self.trial_executor.has_resources_for_trial(cpu_only_trial))
-
-        self.cluster.add_node(num_cpus=1, num_gpus=1)
-        self.cluster.wait_for_nodes()
-
-        self.assertTrue(
-            self.trial_executor.has_resources_for_trial(cpu_only_trial))
-        self.trial_executor.start_trial(cpu_only_trial)
-
-        cpu_only_trial2 = create_trial(1, 0)
-        self.assertTrue(
-            self.trial_executor.has_resources_for_trial(cpu_only_trial2))
-        self.trial_executor.start_trial(cpu_only_trial2)
-
-        cpu_only_trial3 = create_trial(1, 0)
-        self.assertFalse(
-            self.trial_executor.has_resources_for_trial(cpu_only_trial3))
-
-
 class RayExecutorPlacementGroupTest(unittest.TestCase):
     def setUp(self):
         self.head_cpus = 8
@@ -430,37 +362,6 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         ray.shutdown()
         self.cluster.shutdown()
         _register_all()  # re-register the evicted objects
-
-    def testResourcesAvailableNoPlacementGroup(self):
-        def train(config):
-            tune.report(metric=0, resources=ray.available_resources())
-
-        out = tune.run(
-            train,
-            resources_per_trial={
-                "cpu": 1,
-                "gpu": 1,
-                "custom_resources": {
-                    "custom": 3
-                },
-                "extra_cpu": 3,
-                "extra_gpu": 1,
-                "extra_custom_resources": {
-                    "custom": 4
-                },
-            })
-
-        # Only `cpu`, `gpu`, and `custom_resources` will be "really" reserved,
-        # the extra_* will just be internally reserved by Tune.
-        self.assertDictEqual({
-            key: val
-            for key, val in out.trials[0].last_result["resources"].items()
-            if key in ["CPU", "GPU", "custom"]
-        }, {
-            "CPU": self.head_cpus - 1.0,
-            "GPU": self.head_gpus - 1.0,
-            "custom": self.head_custom - 3.0
-        })
 
     def testResourcesAvailableWithPlacementGroup(self):
         def train(config):
@@ -537,7 +438,7 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
 class LocalModeExecutorTest(RayTrialExecutorTest):
     def setUp(self):
         ray.init(local_mode=True)
-        self.trial_executor = RayTrialExecutor(queue_trials=False)
+        self.trial_executor = RayTrialExecutor()
 
     def tearDown(self):
         ray.shutdown()

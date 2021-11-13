@@ -93,7 +93,7 @@ async def trial(result_json, intermediate_handles, num_replicas,
         name=deployment_name,
         num_replicas=num_replicas,
         max_concurrent_queries=max_concurrent_queries)
-    class Backend:
+    class D:
         @serve.batch(max_batch_size=max_batch_size)
         async def batch(self, reqs):
             return [b"ok"] * len(reqs)
@@ -104,7 +104,7 @@ async def trial(result_json, intermediate_handles, num_replicas,
             else:
                 return b"ok"
 
-    Backend.deploy()
+    D.deploy()
     routes = requests.get("http://localhost:8000/-/routes").json()
     assert f"/{deployment_name}" in routes, routes
 

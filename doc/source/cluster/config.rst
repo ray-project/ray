@@ -271,7 +271,7 @@ The maximum number of workers the cluster will have at any given time.
 ``upscaling_speed``
 ~~~~~~~~~~~~~~~~~~~
 
-The number of nodes allowed to be pending as a multiple of the current number of nodes. For example, if set to 1.0, the cluster can grow in size by at most 100% at any time, so if the cluster currently has 20 nodes, at most 20 pending launches are allowed.
+The number of nodes allowed to be pending as a multiple of the current number of nodes. For example, if set to 1.0, the cluster can grow in size by at most 100% at any time, so if the cluster currently has 20 nodes, at most 20 pending launches are allowed. Note that although the autoscaler will scale down to `min_workers` (which could be 0), it will always scale up to 5 nodes at a minimum when scaling up. 
 
 * **Required:** No
 * **Importance:** Medium
@@ -815,6 +815,8 @@ The user that Ray will authenticate with when launching new nodes.
     .. group-tab:: AWS
 
         A string specifying a comma-separated list of availability zone(s) that nodes may be launched in.
+        Nodes will be launched in the first listed availability zone and will be tried in the following availability
+        zones if launching fails.
 
         * **Required:** No
         * **Importance:** Low

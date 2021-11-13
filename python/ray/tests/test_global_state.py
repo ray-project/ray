@@ -17,7 +17,7 @@ from ray._raylet import GlobalStateAccessor
 @pytest.mark.skipif(
     pytest_timeout is None,
     reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(30)
 def test_replenish_resources(ray_start_regular):
     cluster_resources = ray.cluster_resources()
     available_resources = ray.available_resources()
@@ -39,7 +39,7 @@ def test_replenish_resources(ray_start_regular):
 @pytest.mark.skipif(
     pytest_timeout is None,
     reason="Timeout package not installed; skipping test that may hang.")
-@pytest.mark.timeout(10)
+@pytest.mark.timeout(30)
 def test_uses_resources(ray_start_regular):
     cluster_resources = ray.cluster_resources()
 
@@ -198,14 +198,6 @@ def test_load_report(shutdown_only, max_shapes):
     print(checker.report)
 
     if max_shapes > 0:
-        # Check that we always include the 1-CPU resource shape.
-        one_cpu_shape = {"CPU": 1}
-        one_cpu_found = False
-        for demand in checker.report:
-            if demand.shape == one_cpu_shape:
-                one_cpu_found = True
-        assert one_cpu_found
-
         # Check that we differentiate between infeasible and ready tasks.
         for demand in checker.report:
             if resource2 in demand.shape:

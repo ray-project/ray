@@ -4,6 +4,7 @@ import logging
 import os
 import sys
 import time
+import subprocess
 
 import numpy as np
 import pytest
@@ -14,9 +15,11 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
     wait_for_condition,
 )
+from ray.autoscaler._private.constants import RAY_PROCESSES
 from pathlib import Path
 
 import ray
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +70,7 @@ def test_auto_global_gc(shutdown_only):
     assert ray.get(test.collected.remote())
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows")
 def test_many_fractional_resources(shutdown_only):
     ray.init(num_cpus=2, num_gpus=2, resources={"Custom": 2})
 
@@ -134,6 +138,7 @@ def test_many_fractional_resources(shutdown_only):
         assert False, "Did not get correct available resources."
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_background_tasks_with_max_calls(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -166,7 +171,7 @@ def test_background_tasks_with_max_calls(shutdown_only):
         wait_for_pid_to_exit(pid)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows")
 def test_fair_queueing(shutdown_only):
     ray.init(
         num_cpus=1,
@@ -193,11 +198,13 @@ def test_fair_queueing(shutdown_only):
 
     # This will never finish without fair queueing of {f, g, h}:
     # https://github.com/ray-project/ray/issues/3644
+    timeout = 510.0 if sys.platform == "win32" else 60.0
     ready, _ = ray.wait(
-        [f.remote() for _ in range(1000)], timeout=60.0, num_returns=1000)
+        [f.remote() for _ in range(1000)], timeout=timeout, num_returns=1000)
     assert len(ready) == 1000, len(ready)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows")
 def test_actor_killing(shutdown_only):
     # This is to test create and kill an actor immediately
     import ray
@@ -240,6 +247,7 @@ def test_actor_scheduling(shutdown_only):
         ray.get([a.get.remote()])
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_worker_startup_count(ray_start_cluster):
     """Test that no extra workers started while no available cpu resources
     in cluster."""
@@ -281,8 +289,9 @@ def test_worker_startup_count(ray_start_cluster):
         return None
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
+    timeout_limit = 40 if sys.platform == "win32" else 10
     start = time.time()
-    wait_for_condition(lambda: get_num_workers() == 16)
+    wait_for_condition(lambda: get_num_workers() == 16, timeout=timeout_limit)
     time_waited = time.time() - start
     print(f"Waited {time_waited} for debug_state.txt to be updated")
 
@@ -300,6 +309,7 @@ def test_worker_startup_count(ray_start_cluster):
         time.sleep(0.1)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Hangs on windows")
 def test_function_unique_export(ray_start_regular):
     @ray.remote
     def f():
@@ -313,6 +323,85 @@ def test_function_unique_export(ray_start_regular):
     num_exports = ray.worker.global_worker.redis_client.llen("Exports")
     ray.get([g.remote() for _ in range(5)])
     assert ray.worker.global_worker.redis_client.llen("Exports") == num_exports
+
+
+@pytest.mark.skipif(
+    sys.platform not in ["win32", "darwin"],
+    reason="Only listen on localhost by default on mac and windows.")
+@pytest.mark.parametrize("start_ray", ["ray_start_regular", "call_ray_start"])
+def test_listen_on_localhost(start_ray, request):
+    """All ray processes should listen on localhost by default
+       on mac and windows to prevent security popups.
+    """
+    request.getfixturevalue(start_ray)
+
+    process_infos = []
+    for proc in psutil.process_iter(["name", "cmdline"]):
+        try:
+            process_infos.append((proc, proc.name(), proc.cmdline()))
+        except psutil.Error:
+            pass
+
+    for keyword, filter_by_cmd in RAY_PROCESSES:
+        for candidate in process_infos:
+            proc, proc_cmd, proc_cmdline = candidate
+            corpus = (proc_cmd if filter_by_cmd else
+                      subprocess.list2cmdline(proc_cmdline))
+            if keyword not in corpus:
+                continue
+
+            for connection in proc.connections():
+                if connection.status != psutil.CONN_LISTEN:
+                    continue
+                # ip can be 127.0.0.1 or ::127.0.0.1
+                assert "127.0.0.1" in connection.laddr.ip
+
+
+def test_job_id_consistency(ray_start_regular):
+    @ray.remote
+    def foo():
+        return "bar"
+
+    @ray.remote
+    class Foo:
+        def ping(self):
+            return "pong"
+
+    @ray.remote
+    def verify_job_id(job_id, new_thread):
+        def verify():
+            current_task_id = ray.runtime_context.get_runtime_context().task_id
+            assert job_id == current_task_id.job_id()
+            obj1 = foo.remote()
+            assert job_id == obj1.job_id()
+            obj2 = ray.put(1)
+            assert job_id == obj2.job_id()
+            a = Foo.remote()
+            assert job_id == a._actor_id.job_id
+            obj3 = a.ping.remote()
+            assert job_id == obj3.job_id()
+
+        if not new_thread:
+            verify()
+        else:
+            exc = []
+
+            def run():
+                try:
+                    verify()
+                except BaseException as e:
+                    exc.append(e)
+
+            import threading
+            t = threading.Thread(target=run)
+            t.start()
+            t.join()
+            if len(exc) > 0:
+                raise exc[0]
+
+    job_id = ray.runtime_context.get_runtime_context().job_id
+    ray.get(verify_job_id.remote(job_id, False))
+    ray.get(verify_job_id.remote(job_id, True))
 
 
 if __name__ == "__main__":

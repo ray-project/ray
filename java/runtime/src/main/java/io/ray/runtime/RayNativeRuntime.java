@@ -54,7 +54,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private void updateSessionDir(GcsClient gcsClient) {
     // Fetch session dir from GCS.
-    final String sessionDir = gcsClient.getInternalKV("session_dir");
+    final String sessionDir = gcsClient.getInternalKV("@:session:session_dir");
     Preconditions.checkNotNull(sessionDir);
     rayConfig.setSessionDir(sessionDir);
   }
@@ -87,8 +87,6 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
         gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
       }
 
-      gcsClient = new GcsClient(rayConfig.getRedisAddress(), rayConfig.redisPassword);
-
       if (rayConfig.workerMode == WorkerType.DRIVER) {
         GcsNodeInfo nodeInfo = gcsClient.getNodeToConnectForDriver(rayConfig.nodeIp);
         rayConfig.rayletSocketName = nodeInfo.getRayletSocketName();
@@ -108,7 +106,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
             JobConfig.newBuilder()
                 .setNumJavaWorkersPerProcess(rayConfig.numWorkersPerProcess)
                 .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
-                .addAllCodeSearchPath(rayConfig.codeSearchPath);
+                .addAllCodeSearchPath(rayConfig.codeSearchPath)
+                .setRayNamespace(rayConfig.namespace);
         RuntimeEnv.Builder runtimeEnvBuilder = RuntimeEnv.newBuilder();
         if (!rayConfig.workerEnv.isEmpty()) {
           // TODO(SongGuyang): Suppport complete runtime env interface for users.
@@ -136,7 +135,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
           new GcsClientOptions(rayConfig),
           numWorkersPerProcess,
           rayConfig.logDir,
-          serializedJobConfig);
+          serializedJobConfig,
+          rayConfig.getStartupToken());
 
       taskExecutor = new NativeTaskExecutor(this);
       workerContext = new NativeWorkerContext();
@@ -239,6 +239,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
     return nativeGetResourceIds();
   }
 
+  @Override
+  public String getNamespace() {
+    return nativeGetNamespace();
+  }
+
   private static native void nativeInitialize(
       int workerMode,
       String ndoeIpAddress,
@@ -250,7 +255,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
       GcsClientOptions gcsClientOptions,
       int numWorkersPerProcess,
       String logDir,
-      byte[] serializedJobConfig);
+      byte[] serializedJobConfig,
+      int startupToken);
 
   private static native void nativeRunTaskExecutor(TaskExecutor taskExecutor);
 
@@ -263,6 +269,8 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
   private static native void nativeSetCoreWorker(byte[] workerId);
 
   private static native Map<String, List<ResourceValue>> nativeGetResourceIds();
+
+  private static native String nativeGetNamespace();
 
   static class AsyncContext {
 

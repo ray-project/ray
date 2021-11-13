@@ -1,5 +1,4 @@
 import asyncio
-import errno
 import io
 import fnmatch
 import os
@@ -15,11 +14,19 @@ import traceback
 from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
+import logging
+import tempfile
+import grpc
 
 import ray
 import ray._private.services
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
+import ray._private.memory_monitor as memory_monitor
+from ray.core.generated import node_manager_pb2
+from ray.core.generated import node_manager_pb2_grpc
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsSubscriber
+from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray.util.queue import Queue, _QueueActor, Empty
 from ray.scripts.scripts import main as ray_main
 try:
@@ -31,9 +38,6 @@ except (ImportError, ModuleNotFoundError):
 
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
-
-if sys.platform == "win32":
-    import _winapi
 
 
 class RayTestTimeoutException(Exception):
@@ -50,22 +54,10 @@ def _pid_alive(pid):
     Returns:
         This returns false if the process is dead. Otherwise, it returns true.
     """
-    no_such_process = errno.EINVAL if sys.platform == "win32" else errno.ESRCH
     alive = True
     try:
-        if sys.platform == "win32":
-            SYNCHRONIZE = 0x00100000  # access mask defined in <winnt.h>
-            handle = _winapi.OpenProcess(SYNCHRONIZE, False, pid)
-            try:
-                alive = (_winapi.WaitForSingleObject(handle, 0) !=
-                         _winapi.WAIT_OBJECT_0)
-            finally:
-                _winapi.CloseHandle(handle)
-        else:
-            os.kill(pid, 0)
-    except OSError as ex:
-        if ex.errno != no_such_process:
-            raise
+        psutil.Process(pid)
+    except psutil.NoSuchProcess:
         alive = False
     return alive
 
@@ -298,7 +290,10 @@ def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
         "It took too much time to kill an actor: {}".format(actor_id))
 
 
-def wait_for_condition(condition_predictor, timeout=10, retry_interval_ms=100):
+def wait_for_condition(condition_predictor,
+                       timeout=10,
+                       retry_interval_ms=100,
+                       **kwargs: Any):
     """Wait until a condition is met or time out with an exception.
 
     Args:
@@ -311,7 +306,7 @@ def wait_for_condition(condition_predictor, timeout=10, retry_interval_ms=100):
     """
     start = time.time()
     while time.time() - start <= timeout:
-        if condition_predictor():
+        if condition_predictor(**kwargs):
             return
         time.sleep(retry_interval_ms / 1000.0)
     raise RuntimeError("The condition wasn't met before the timeout expired.")
@@ -338,8 +333,7 @@ def wait_until_succeeded_without_exception(func,
         Whether exception occurs within a timeout.
     """
     if type(exceptions) != tuple:
-        print("exceptions arguments should be given as a tuple")
-        return False
+        raise Exception("exceptions arguments should be given as a tuple")
 
     time_elapsed = 0
     start = time.time()
@@ -508,24 +502,39 @@ def get_non_head_nodes(cluster):
 
 def init_error_pubsub():
     """Initialize redis error info pub/sub"""
-    p = ray.worker.global_worker.redis_client.pubsub(
-        ignore_subscribe_messages=True)
-    error_pubsub_channel = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
-    p.psubscribe(error_pubsub_channel)
-    return p
+    if gcs_pubsub_enabled():
+        s = GcsSubscriber(channel=ray.worker.global_worker.gcs_channel)
+        s.subscribe_error()
+    else:
+        s = ray.worker.global_worker.redis_client.pubsub(
+            ignore_subscribe_messages=True)
+        s.psubscribe(gcs_utils.RAY_ERROR_PUBSUB_PATTERN)
+    return s
 
 
-def get_error_message(pub_sub, num, error_type=None, timeout=20):
-    """Get errors through pub/sub."""
-    start_time = time.time()
+def get_error_message(subscriber, num, error_type=None, timeout=20):
+    """Get errors through subscriber."""
+    deadline = time.time() + timeout
     msgs = []
-    while time.time() - start_time < timeout and len(msgs) < num:
-        msg = pub_sub.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            continue
-        pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
-        error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
+    while time.time() < deadline and len(msgs) < num:
+        if isinstance(subscriber, GcsSubscriber):
+            try:
+                _, error_data = subscriber.poll_error(timeout=deadline -
+                                                      time.time())
+            except grpc.RpcError as e:
+                # Failed to match error message before timeout.
+                if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+                    logging.warning("get_error_message() timed out")
+                    return []
+                # Otherwise, the error is unexpected.
+                raise
+        else:
+            msg = subscriber.get_message()
+            if msg is None:
+                time.sleep(0.01)
+                continue
+            pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
+            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
         if error_type is None or error_type == error_data.type:
             msgs.append(error_data)
         else:
@@ -543,7 +552,28 @@ def init_log_pubsub():
     return p
 
 
-def get_log_message(pub_sub, num, timeout=20):
+def get_log_message(pub_sub,
+                    num: int,
+                    timeout: float = 20,
+                    job_id: Optional[str] = None) -> List[str]:
+    """Get errors through pub/sub."""
+    start_time = time.time()
+    msgs = []
+    while time.time() - start_time < timeout and len(msgs) < num:
+        msg = pub_sub.get_message()
+        if msg is None:
+            time.sleep(0.01)
+            continue
+        structured = json.loads(ray._private.utils.decode(msg["data"]))
+        if job_id and job_id != structured["job"]:
+            continue
+        log_lines = structured["lines"]
+        msgs = log_lines
+
+    return msgs
+
+
+def get_all_log_message(pub_sub, num, timeout=20):
     """Get errors through pub/sub."""
     start_time = time.time()
     msgs = []
@@ -553,7 +583,7 @@ def get_log_message(pub_sub, num, timeout=20):
             time.sleep(0.01)
             continue
         log_lines = json.loads(ray._private.utils.decode(msg["data"]))["lines"]
-        msgs = log_lines
+        msgs.extend(log_lines)
 
     return msgs
 
@@ -692,3 +722,259 @@ def is_placement_group_removed(pg):
     if "state" not in table:
         return False
     return table["state"] == "REMOVED"
+
+
+def placement_group_assert_no_leak(pgs_created):
+    for pg in pgs_created:
+        ray.util.remove_placement_group(pg)
+
+    def wait_for_pg_removed():
+        for pg_entry in ray.util.placement_group_table().values():
+            if pg_entry["state"] != "REMOVED":
+                return False
+        return True
+
+    wait_for_condition(wait_for_pg_removed)
+
+    cluster_resources = ray.cluster_resources()
+    cluster_resources.pop("memory")
+    cluster_resources.pop("object_store_memory")
+
+    def wait_for_resource_recovered():
+        for resource, val in ray.available_resources().items():
+            if (resource in cluster_resources
+                    and cluster_resources[resource] != val):
+                return False
+            if "_group_" in resource:
+                return False
+        return True
+
+    wait_for_condition(wait_for_resource_recovered)
+
+
+def monitor_memory_usage(print_interval_s: int = 30,
+                         record_interval_s: int = 5,
+                         warning_threshold: float = 0.9):
+    """Run the memory monitor actor that prints the memory usage.
+
+    The monitor will run on the same node as this function is called.
+
+    Params:
+        interval_s (int): The interval memory usage information is printed
+        warning_threshold (float): The threshold where the
+            memory usage warning is printed.
+
+    Returns:
+        The memory monitor actor.
+    """
+    assert ray.is_initialized(), (
+        "The API is only available when Ray is initialized.")
+
+    @ray.remote(num_cpus=0)
+    class MemoryMonitorActor:
+        def __init__(self,
+                     print_interval_s: float = 20,
+                     record_interval_s: float = 5,
+                     warning_threshold: float = 0.9,
+                     n: int = 10):
+            """The actor that monitor the memory usage of the cluster.
+
+            Params:
+                print_interval_s (float): The interval where
+                    memory usage is printed.
+                record_interval_s (float): The interval where
+                    memory usage is recorded.
+                warning_threshold (float): The threshold where
+                    memory warning is printed
+                n (int): When memory usage is printed,
+                    top n entries are printed.
+            """
+            # -- Interval the monitor prints the memory usage information. --
+            self.print_interval_s = print_interval_s
+            # -- Interval the monitor records the memory usage information. --
+            self.record_interval_s = record_interval_s
+            # -- Whether or not the monitor is running. --
+            self.is_running = False
+            # -- The used_gb/total_gb threshold where warning message omits. --
+            self.warning_threshold = warning_threshold
+            # -- The monitor that calculates the memory usage of the node. --
+            self.monitor = memory_monitor.MemoryMonitor()
+            # -- The top n memory usage of processes are printed. --
+            self.n = n
+            # -- The peak memory usage in GB during lifetime of monitor. --
+            self.peak_memory_usage = 0
+            # -- The top n memory usage of processes
+            # during peak memory usage. --
+            self.peak_top_n_memory_usage = ""
+            # -- The last time memory usage was printed --
+            self._last_print_time = 0
+            # -- logger. --
+            logging.basicConfig(level=logging.INFO)
+
+        def ready(self):
+            pass
+
+        async def run(self):
+            """Run the monitor.
+            """
+            self.is_running = True
+            while self.is_running:
+                now = time.time()
+                used_gb, total_gb = self.monitor.get_memory_usage()
+                top_n_memory_usage = memory_monitor.get_top_n_memory_usage(
+                    n=self.n)
+                if used_gb > self.peak_memory_usage:
+                    self.peak_memory_usage = used_gb
+                    self.peak_top_n_memory_usage = top_n_memory_usage
+
+                if used_gb > total_gb * self.warning_threshold:
+                    logging.warning("The memory usage is high: "
+                                    f"{used_gb / total_gb * 100}%")
+                if now - self._last_print_time > self.print_interval_s:
+                    logging.info(f"Memory usage: {used_gb} / {total_gb}")
+                    logging.info(f"Top {self.n} process memory usage:")
+                    logging.info(top_n_memory_usage)
+                    self._last_print_time = now
+                await asyncio.sleep(self.record_interval_s)
+
+        async def stop_run(self):
+            """Stop running the monitor.
+
+            Returns:
+                True if the monitor is stopped. False otherwise.
+            """
+            was_running = self.is_running
+            self.is_running = False
+            return was_running
+
+        async def get_peak_memory_info(self):
+            """Return the tuple of the peak memory usage and the
+                top n process information during the peak memory usage.
+            """
+            return self.peak_memory_usage, self.peak_top_n_memory_usage
+
+    current_node_ip = ray.worker.global_worker.node_ip_address
+    # Schedule the actor on the current node.
+    memory_monitor_actor = MemoryMonitorActor.options(resources={
+        f"node:{current_node_ip}": 0.001
+    }).remote(
+        print_interval_s=print_interval_s,
+        record_interval_s=record_interval_s,
+        warning_threshold=warning_threshold)
+    print("Waiting for memory monitor actor to be ready...")
+    ray.get(memory_monitor_actor.ready.remote())
+    print("Memory monitor actor is ready now.")
+    memory_monitor_actor.run.remote()
+    return memory_monitor_actor
+
+
+def setup_tls():
+    """Sets up required environment variables for tls"""
+    import pytest
+    if sys.platform == "darwin":
+        pytest.skip("Cryptography doesn't install in Mac build pipeline")
+    cert, key = generate_self_signed_tls_certs()
+    temp_dir = tempfile.mkdtemp("ray-test-certs")
+    cert_filepath = os.path.join(temp_dir, "server.crt")
+    key_filepath = os.path.join(temp_dir, "server.key")
+    with open(cert_filepath, "w") as fh:
+        fh.write(cert)
+    with open(key_filepath, "w") as fh:
+        fh.write(key)
+
+    os.environ["RAY_USE_TLS"] = "1"
+    os.environ["RAY_TLS_SERVER_CERT"] = cert_filepath
+    os.environ["RAY_TLS_SERVER_KEY"] = key_filepath
+    os.environ["RAY_TLS_CA_CERT"] = cert_filepath
+
+    return key_filepath, cert_filepath, temp_dir
+
+
+def teardown_tls(key_filepath, cert_filepath, temp_dir):
+    os.remove(key_filepath)
+    os.remove(cert_filepath)
+    os.removedirs(temp_dir)
+    del os.environ["RAY_USE_TLS"]
+    del os.environ["RAY_TLS_SERVER_CERT"]
+    del os.environ["RAY_TLS_SERVER_KEY"]
+    del os.environ["RAY_TLS_CA_CERT"]
+
+
+def get_and_run_node_killer(node_kill_interval_s):
+    assert ray.is_initialized(), (
+        "The API is only available when Ray is initialized.")
+
+    @ray.remote(num_cpus=0)
+    class NodeKillerActor:
+        def __init__(self, head_node_id, node_kill_interval_s: float = 60):
+            self.node_kill_interval_s = node_kill_interval_s
+            self.is_running = False
+            self.head_node_id = head_node_id
+            self.killed_nodes = set()
+            # -- logger. --
+            logging.basicConfig(level=logging.INFO)
+
+        def ready(self):
+            pass
+
+        async def run(self):
+            self.is_running = True
+            while self.is_running:
+                node_to_kill_ip = None
+                node_to_kill_port = None
+                nodes = ray.nodes()
+                alive_nodes = self._get_alive_nodes(nodes)
+                for node in nodes:
+                    node_id = node["NodeID"]
+                    # make sure at least 1 worker node is alive.
+                    if (node["Alive"] and node_id != self.head_node_id
+                            and node_id not in self.killed_nodes
+                            and alive_nodes > 2):
+                        node_to_kill_ip = node["NodeManagerAddress"]
+                        node_to_kill_port = node["NodeManagerPort"]
+                        break
+
+                if node_to_kill_port is not None:
+                    self._kill_raylet(
+                        node_to_kill_ip, node_to_kill_port, graceful=False)
+                    logging.info(
+                        "Killing a node of address: "
+                        f"{node_to_kill_ip}, port: {node_to_kill_port}")
+                    self.killed_nodes.add(node_id)
+                await asyncio.sleep(self.node_kill_interval_s)
+
+        async def stop_run(self):
+            was_running = self.is_running
+            self.is_running = False
+            return was_running
+
+        async def get_total_killed_nodes(self):
+            """Get the total number of killed nodes"""
+            return len(self.killed_nodes)
+
+        def _kill_raylet(self, ip, port, graceful=False):
+            raylet_address = f"{ip}:{port}"
+            channel = grpc.insecure_channel(raylet_address)
+            stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+            stub.ShutdownRaylet(
+                node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+
+        def _get_alive_nodes(self, nodes):
+            alive_nodes = 0
+            for node in nodes:
+                if node["Alive"]:
+                    alive_nodes += 1
+            return alive_nodes
+
+    head_node_ip = ray.worker.global_worker.node_ip_address
+    head_node_id = ray.worker.global_worker.current_node_id.hex()
+    # Schedule the actor on the current node.
+    node_killer = NodeKillerActor.options(resources={
+        f"node:{head_node_ip}": 0.001
+    }).remote(
+        head_node_id, node_kill_interval_s=node_kill_interval_s)
+    print("Waiting for node killer actor to be ready...")
+    ray.get(node_killer.ready.remote())
+    print("Node killer actor is ready now.")
+    node_killer.run.remote()
+    return node_killer

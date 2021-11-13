@@ -34,6 +34,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
+#include "ray/core_worker/transport/direct_actor_task_submitter.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
@@ -43,247 +44,108 @@ namespace core {
 /// The max time to wait for out-of-order tasks.
 const int kMaxReorderWaitSeconds = 30;
 
-/// In direct actor call task submitter and receiver, a task is directly submitted
-/// to the actor that will execute it.
-
-// Interface for testing.
-class CoreWorkerDirectActorTaskSubmitterInterface {
+/// The class that manages fiber states for Python asyncio actors.
+///
+/// We'll create one fiber state for every concurrency group. And
+/// create one default fiber state for default concurrency group if
+/// necessary.
+class FiberStateManager final {
  public:
-  virtual void AddActorQueueIfNotExists(const ActorID &actor_id) = 0;
-  virtual void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
-                            int64_t num_restarts) = 0;
-  virtual void DisconnectActor(
-      const ActorID &actor_id, int64_t num_restarts, bool dead,
-      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr) = 0;
-  virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
-
-  virtual void CheckTimeoutTasks() = 0;
-
-  virtual ~CoreWorkerDirectActorTaskSubmitterInterface() {}
-};
-
-// This class is thread-safe.
-class CoreWorkerDirectActorTaskSubmitter
-    : public CoreWorkerDirectActorTaskSubmitterInterface {
- public:
-  CoreWorkerDirectActorTaskSubmitter(
-      rpc::CoreWorkerClientPool &core_worker_client_pool, CoreWorkerMemoryStore &store,
-      TaskFinisherInterface &task_finisher, ActorCreatorInterface &actor_creator,
-      std::function<void(const ActorID &, int64_t)> warn_excess_queueing)
-      : core_worker_client_pool_(core_worker_client_pool),
-        resolver_(store, task_finisher, actor_creator),
-        task_finisher_(task_finisher),
-        warn_excess_queueing_(warn_excess_queueing) {
-    next_queueing_warn_threshold_ =
-        ::RayConfig::instance().actor_excess_queueing_warn_threshold();
+  explicit FiberStateManager(const std::vector<ConcurrencyGroup> &concurrency_groups = {},
+                             const int32_t default_group_max_concurrency = 1000) {
+    for (auto &group : concurrency_groups) {
+      const auto name = group.name;
+      const auto max_concurrency = group.max_concurrency;
+      auto fiber = std::make_shared<FiberState>(max_concurrency);
+      auto &fds = group.function_descriptors;
+      for (auto fd : fds) {
+        functions_to_fiber_index_[fd->ToString()] = fiber;
+      }
+      name_to_fiber_index_[name] = fiber;
+    }
+    /// Create default fiber state for default concurrency group.
+    if (default_group_max_concurrency >= 1) {
+      default_fiber_ = std::make_shared<FiberState>(default_group_max_concurrency);
+    }
   }
 
-  /// Add an actor queue. This should be called whenever a reference to an
-  /// actor is created in the language frontend.
-  /// TODO(swang): Remove the actor queue once it is sure that this worker will
-  /// not receive another reference to the same actor.
+  /// Get the corresponding fiber state by the give concurrency group or function
+  /// descriptor.
   ///
-  /// \param[in] actor_id The actor for whom to add a queue.
-  void AddActorQueueIfNotExists(const ActorID &actor_id);
+  /// Return the corresponding fiber state of the concurrency group
+  /// if concurrency_group_name is given.
+  /// Otherwise return the corresponding fiber state by the given function descriptor.
+  std::shared_ptr<FiberState> GetFiber(const std::string &concurrency_group_name,
+                                       ray::FunctionDescriptor fd) {
+    if (!concurrency_group_name.empty()) {
+      auto it = name_to_fiber_index_.find(concurrency_group_name);
+      RAY_CHECK(it != name_to_fiber_index_.end())
+          << "Failed to look up the fiber state of the given concurrency group "
+          << concurrency_group_name << " . It might be that you didn't define "
+          << "the concurrency group " << concurrency_group_name;
+      return it->second;
+    }
 
-  /// Submit a task to an actor for execution.
-  ///
-  /// \param[in] task The task spec to submit.
-  /// \return Status::Invalid if the task is not yet supported.
-  Status SubmitTask(TaskSpecification task_spec);
-
-  /// Tell this actor to exit immediately.
-  ///
-  /// \param[in] actor_id The actor_id of the actor to kill.
-  /// \param[in] force_kill Whether to force kill the actor, or let the actor
-  /// try a clean exit.
-  /// \param[in] no_restart If set to true, the killed actor will not be
-  /// restarted anymore.
-  void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
-
-  /// Create connection to actor and send all pending tasks.
-  ///
-  /// \param[in] actor_id Actor ID.
-  /// \param[in] address The new address of the actor.
-  /// \param[in] num_restarts How many times this actor has been restarted
-  /// before. If we've already seen a later incarnation of the actor, we will
-  /// ignore the command to connect.
-  void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
-                    int64_t num_restarts);
-
-  /// Disconnect from a failed actor.
-  ///
-  /// \param[in] actor_id Actor ID.
-  /// \param[in] num_restarts How many times this actor has been restarted
-  /// before. If we've already seen a later incarnation of the actor, we will
-  /// ignore the command to connect.
-  /// \param[in] dead Whether the actor is permanently dead. In this case, all
-  /// pending tasks for the actor should be failed.
-  /// \param[in] creation_task_exception Reason why the actor is dead, only applies when
-  /// dead = true. If this arg is set, it means this actor died because of an exception
-  /// thrown in creation task.
-  void DisconnectActor(
-      const ActorID &actor_id, int64_t num_restarts, bool dead,
-      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
-
-  /// Set the timerstamp for the caller.
-  void SetCallerCreationTimestamp(int64_t timestamp);
-
-  /// Check timeout tasks that are waiting for Death info.
-  void CheckTimeoutTasks();
+    /// Code path of that this task wasn't specified in a concurrency group addtionally.
+    /// Use the predefined concurrency group.
+    if (functions_to_fiber_index_.find(fd->ToString()) !=
+        functions_to_fiber_index_.end()) {
+      return functions_to_fiber_index_[fd->ToString()];
+    }
+    return default_fiber_;
+  }
 
  private:
-  struct ClientQueue {
-    /// The current state of the actor. If this is ALIVE, then we should have
-    /// an RPC client to the actor. If this is DEAD, then all tasks in the
-    /// queue will be marked failed and all other ClientQueue state is ignored.
-    rpc::ActorTableData::ActorState state = rpc::ActorTableData::DEPENDENCIES_UNREADY;
-    /// Only applies when state=DEAD.
-    std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
-    /// How many times this actor has been restarted before. Starts at -1 to
-    /// indicate that the actor is not yet created. This is used to drop stale
-    /// messages from the GCS.
-    int64_t num_restarts = -1;
-    /// The RPC client. We use shared_ptr to enable shared_from_this for
-    /// pending client callbacks.
-    std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client = nullptr;
-    /// The intended worker ID of the actor.
-    std::string worker_id = "";
+  // Map from the name to their corresponding fibers.
+  absl::flat_hash_map<std::string, std::shared_ptr<FiberState>> name_to_fiber_index_;
 
-    /// The actor's pending requests, ordered by the task number (see below
-    /// diagram) in the request. The bool indicates whether the dependencies
-    /// for that task have been resolved yet. A task will be sent after its
-    /// dependencies have been resolved and its task number matches
-    /// next_send_position.
-    std::map<uint64_t, std::pair<TaskSpecification, bool>> requests;
+  // Map from the FunctionDescriptors to their corresponding fibers.
+  absl::flat_hash_map<std::string, std::shared_ptr<FiberState>> functions_to_fiber_index_;
 
-    /// Diagram of the sequence numbers assigned to actor tasks during actor
-    /// crash and restart:
-    ///
-    /// The actor starts, and 10 tasks are submitted. We have sent 6 tasks
-    /// (0-5) so far, and have received a successful reply for 4 tasks (0-3).
-    /// 0 1 2 3 4 5 6 7 8 9
-    ///             ^ next_send_position
-    ///         ^ next_task_reply_position
-    /// ^ caller_starts_at
-    ///
-    /// Suppose the actor crashes and recovers. Then, caller_starts_at is reset
-    /// to the current next_task_reply_position. caller_starts_at is then subtracted
-    /// from each task's counter, so the recovered actor will receive the
-    /// sequence numbers 0, 1, 2 (and so on) for tasks 4, 5, 6, respectively.
-    /// Therefore, the recovered actor will restart execution from task 4.
-    /// 0 1 2 3 4 5 6 7 8 9
-    ///             ^ next_send_position
-    ///         ^ next_task_reply_position
-    ///         ^ caller_starts_at
-    ///
-    /// New actor tasks will continue to be sent even while tasks are being
-    /// resubmitted, but the receiving worker will only execute them after the
-    /// resent tasks. For example, this diagram shows what happens if task 6 is
-    /// sent for the first time, tasks 4 and 5 have been resent, and we have
-    /// received a successful reply for task 4.
-    /// 0 1 2 3 4 5 6 7 8 9
-    ///               ^ next_send_position
-    ///           ^ next_task_reply_position
-    ///         ^ caller_starts_at
-    ///
-    /// The send position of the next task to send to this actor. This sequence
-    /// number increases monotonically.
-    uint64_t next_send_position = 0;
-    /// The offset at which the the actor should start its counter for this
-    /// caller. This is used for actors that can be restarted, so that the new
-    /// instance of the actor knows from which task to start executing.
-    uint64_t caller_starts_at = 0;
-    /// Out of the tasks sent by this worker to the actor, the number of tasks
-    /// that we will never send to the actor again. This is used to reset
-    /// caller_starts_at if the actor dies and is restarted. We only include
-    /// tasks that will not be sent again, to support automatic task retry on
-    /// actor failure. This value only tracks consecutive tasks that are completed.
-    /// Tasks completed out of order will be cached in out_of_completed_tasks first.
-    uint64_t next_task_reply_position = 0;
-
-    /// The temporary container for tasks completed out of order. It can happen in
-    /// async or threaded actor mode. This map is used to store the seqno and task
-    /// spec for (1) increment next_task_reply_position later when the in order tasks are
-    /// returned (2) resend the tasks to restarted actor so retried tasks can maintain
-    /// ordering.
-    // NOTE(simon): consider absl::btree_set for performance, but it requires updating
-    // abseil.
-    std::map<uint64_t, TaskSpecification> out_of_order_completed_tasks;
-
-    /// Tasks that can't be sent because 1) the callee actor is dead. 2) network error.
-    /// For 1) the task will wait for the DEAD state notification, then mark task as
-    /// failed using the death_info in notification. For 2) we'll never receive a DEAD
-    /// notification, in this case we'll wait for a fixed timeout value and then mark it
-    /// as failed.
-    /// pair key: timestamp in ms when this task should be considered as timeout.
-    /// pair value: task specification
-    std::deque<std::pair<int64_t, TaskSpecification>> wait_for_death_info_tasks;
-
-    /// A force-kill request that should be sent to the actor once an RPC
-    /// client to the actor is available.
-    absl::optional<rpc::KillActorRequest> pending_force_kill;
-  };
-
-  /// Push a task to a remote actor via the given client.
-  /// Note, this function doesn't return any error status code. If an error occurs while
-  /// sending the request, this task will be treated as failed.
-  ///
-  /// \param[in] queue The actor queue. Contains the RPC client state.
-  /// \param[in] task_spec The task to send.
-  /// \param[in] skip_queue Whether to skip the task queue. This will send the
-  /// task for execution immediately.
-  /// \return Void.
-  void PushActorTask(const ClientQueue &queue, const TaskSpecification &task_spec,
-                     bool skip_queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  /// Send all pending tasks for an actor.
-  ///
-  /// \param[in] actor_id Actor ID.
-  /// \return Void.
-  void SendPendingTasks(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  /// Resend all previously-received, out-of-order, received tasks for an actor.
-  /// When sending these tasks, the tasks will have the flag skip_execution=true.
-  ///
-  /// \param[in] actor_id Actor ID.
-  /// \return Void.
-  void ResendOutOfOrderTasks(const ActorID &actor_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  /// Disconnect the RPC client for an actor.
-  void DisconnectRpcClient(ClientQueue &queue) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  /// Whether the specified actor is alive.
-  ///
-  /// \param[in] actor_id The actor ID.
-  /// \return Whether this actor is alive.
-  bool IsActorAlive(const ActorID &actor_id) const;
-
-  /// Pool for producing new core worker clients.
-  rpc::CoreWorkerClientPool &core_worker_client_pool_;
-
-  /// Mutex to protect the various maps below.
-  mutable absl::Mutex mu_;
-
-  absl::flat_hash_map<ActorID, ClientQueue> client_queues_ GUARDED_BY(mu_);
-
-  /// Resolve direct call object dependencies.
-  LocalDependencyResolver resolver_;
-
-  /// Used to complete tasks.
-  TaskFinisherInterface &task_finisher_;
-
-  /// Used to warn of excessive queueing.
-  std::function<void(const ActorID &, int64_t num_queued)> warn_excess_queueing_;
-
-  /// Warn the next time the number of queued task submissions to an actor
-  /// exceeds this quantity. This threshold is doubled each time it is hit.
-  int64_t next_queueing_warn_threshold_;
-
-  friend class CoreWorkerTest;
+  // The fiber for default concurrency group. It's nullptr if its max concurrency
+  // is 1.
+  std::shared_ptr<FiberState> default_fiber_ = nullptr;
 };
 
-class BoundedExecutor;
+/// Wraps a thread-pool to block posts until the pool has free slots. This is used
+/// by the SchedulingQueue to provide backpressure to clients.
+class BoundedExecutor {
+ public:
+  BoundedExecutor(int max_concurrency)
+      : num_running_(0), max_concurrency_(max_concurrency), pool_(max_concurrency){};
+
+  /// Posts work to the pool, blocking if no free threads are available.
+  void PostBlocking(std::function<void()> fn) {
+    mu_.LockWhen(absl::Condition(this, &BoundedExecutor::ThreadsAvailable));
+    num_running_ += 1;
+    mu_.Unlock();
+    boost::asio::post(pool_, [this, fn]() {
+      fn();
+      absl::MutexLock lock(&mu_);
+      num_running_ -= 1;
+    });
+  }
+
+  /// Stop the thread pool.
+  void Stop() { pool_.stop(); }
+
+  /// Join the thread pool.
+  void Join() { pool_.join(); }
+
+ private:
+  bool ThreadsAvailable() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return num_running_ < max_concurrency_;
+  }
+
+  /// Protects access to the counters below.
+  absl::Mutex mu_;
+  /// The number of currently running tasks.
+  int num_running_ GUARDED_BY(mu_);
+  /// The max number of concurrently running tasks allowed.
+  const int max_concurrency_;
+  /// The underlying thread pool for running tasks.
+  boost::asio::thread_pool pool_;
+};
 
 /// A manager that manages a set of thread pool. which will perform
 /// the methods defined in one concurrency group.
@@ -325,6 +187,26 @@ class PoolManager final {
       return functions_to_thread_pool_index_[fd->ToString()];
     }
     return default_thread_pool_;
+  }
+
+  /// Stop and join the thread pools that the pool manager owns.
+  void Stop() {
+    if (default_thread_pool_) {
+      RAY_LOG(DEBUG) << "Default pool is stopping.";
+      default_thread_pool_->Stop();
+      RAY_LOG(INFO) << "Default pool is joining. If the 'Default pool is joined.' "
+                       "message is not printed after this, the worker is probably "
+                       "hanging because the actor task is running an infinite loop.";
+      default_thread_pool_->Join();
+      RAY_LOG(INFO) << "Default pool is joined.";
+    }
+
+    for (const auto &it : name_to_thread_pool_index_) {
+      it.second->Stop();
+    }
+    for (const auto &it : name_to_thread_pool_index_) {
+      it.second->Join();
+    }
   }
 
  private:
@@ -426,40 +308,6 @@ class DependencyWaiterImpl : public DependencyWaiter {
   DependencyWaiterInterface &dependency_client_;
 };
 
-/// Wraps a thread-pool to block posts until the pool has free slots. This is used
-/// by the SchedulingQueue to provide backpressure to clients.
-class BoundedExecutor {
- public:
-  BoundedExecutor(int max_concurrency)
-      : num_running_(0), max_concurrency_(max_concurrency), pool_(max_concurrency){};
-
-  /// Posts work to the pool, blocking if no free threads are available.
-  void PostBlocking(std::function<void()> fn) {
-    mu_.LockWhen(absl::Condition(this, &BoundedExecutor::ThreadsAvailable));
-    num_running_ += 1;
-    mu_.Unlock();
-    boost::asio::post(pool_, [this, fn]() {
-      fn();
-      absl::MutexLock lock(&mu_);
-      num_running_ -= 1;
-    });
-  }
-
- private:
-  bool ThreadsAvailable() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return num_running_ < max_concurrency_;
-  }
-
-  /// Protects access to the counters below.
-  absl::Mutex mu_;
-  /// The number of currently running tasks.
-  int num_running_ GUARDED_BY(mu_);
-  /// The max number of concurrently running tasks allowed.
-  const int max_concurrency_;
-  /// The underlying thread pool for running tasks.
-  boost::asio::thread_pool pool_;
-};
-
 /// Used to implement task queueing at the worker. Abstraction to provide a common
 /// interface for actor tasks as well as normal ones.
 class SchedulingQueue {
@@ -477,6 +325,7 @@ class SchedulingQueue {
   virtual bool TaskQueueEmpty() const = 0;
   virtual size_t Size() const = 0;
   virtual size_t Steal(rpc::StealTasksReply *reply) = 0;
+  virtual void Stop() = 0;
   virtual bool CancelTaskIfFound(TaskID task_id) = 0;
   virtual ~SchedulingQueue(){};
 };
@@ -489,6 +338,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
       instrumented_io_context &main_io_service, DependencyWaiter &waiter,
       std::shared_ptr<PoolManager> pool_manager = std::make_shared<PoolManager>(),
       bool is_asyncio = false, int fiber_max_concurrency = 1,
+      const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       int64_t reorder_wait_seconds = kMaxReorderWaitSeconds)
       : reorder_wait_seconds_(reorder_wait_seconds),
         wait_timer_(main_io_service),
@@ -497,13 +347,26 @@ class ActorSchedulingQueue : public SchedulingQueue {
         pool_manager_(pool_manager),
         is_asyncio_(is_asyncio) {
     if (is_asyncio_) {
-      RAY_LOG(INFO) << "Setting actor as async with max_concurrency="
-                    << fiber_max_concurrency << ", creating new fiber thread.";
-      fiber_state_ = std::make_unique<FiberState>(fiber_max_concurrency);
+      std::stringstream ss;
+      ss << "Setting actor as asyncio with max_concurrency=" << fiber_max_concurrency
+         << ", and defined concurrency groups are:" << std::endl;
+      for (const auto &concurrency_group : concurrency_groups) {
+        ss << "\t" << concurrency_group.name << " : "
+           << concurrency_group.max_concurrency;
+      }
+      RAY_LOG(INFO) << ss.str();
+      fiber_state_manager_ =
+          std::make_unique<FiberStateManager>(concurrency_groups, fiber_max_concurrency);
     }
   }
 
   virtual ~ActorSchedulingQueue() = default;
+
+  void Stop() {
+    if (pool_manager_) {
+      pool_manager_->Stop();
+    }
+  }
 
   bool TaskQueueEmpty() const {
     RAY_CHECK(false) << "TaskQueueEmpty() not implemented for actor queues";
@@ -595,7 +458,9 @@ class ActorSchedulingQueue : public SchedulingQueue {
 
       if (is_asyncio_) {
         // Process async actor task.
-        fiber_state_->EnqueueFiber([request]() mutable { request.Accept(); });
+        auto fiber = fiber_state_manager_->GetFiber(request.ConcurrencyGroupName(),
+                                                    request.FunctionDescriptor());
+        fiber->EnqueueFiber([request]() mutable { request.Accept(); });
       } else {
         // Process actor tasks.
         RAY_CHECK(pool_manager_ != nullptr);
@@ -661,9 +526,10 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
   /// will instantiate all tasks as fibers that can be yielded.
   bool is_asyncio_ = false;
-  /// If is_asyncio_ is true, fiber_state_ contains the running state required
-  /// to enable continuation and work together with python asyncio.
-  std::unique_ptr<FiberState> fiber_state_;
+  /// Manage the running fiber states of actors in this worker. It works with
+  /// python asyncio if this is an asyncio actor.
+  std::unique_ptr<FiberStateManager> fiber_state_manager_;
+
   friend class SchedulingQueueTest;
 };
 
@@ -672,6 +538,10 @@ class ActorSchedulingQueue : public SchedulingQueue {
 class NormalSchedulingQueue : public SchedulingQueue {
  public:
   NormalSchedulingQueue(){};
+
+  void Stop() {
+    // No-op
+  }
 
   bool TaskQueueEmpty() const {
     absl::MutexLock lock(&mu_);
@@ -821,6 +691,12 @@ class CoreWorkerDirectTaskReceiver {
                         rpc::SendReplyCallback send_reply_callback);
 
   bool CancelQueuedNormalTask(TaskID task_id);
+
+  void Stop();
+
+ protected:
+  /// Cache the concurrency groups of actors.
+  absl::flat_hash_map<ActorID, std::vector<ConcurrencyGroup>> concurrency_groups_cache_;
 
  private:
   // Worker context.

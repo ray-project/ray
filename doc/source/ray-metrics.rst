@@ -1,3 +1,5 @@
+.. _ray-metrics:
+
 Exporting Metrics
 =================
 To help monitoring Ray applications, Ray
@@ -19,7 +21,7 @@ First, install Ray with the proper dependencies:
 
 .. code-block:: bash
 
-  pip install 'ray[default]'
+  pip install "ray[default]"
 
 Ray exposes its metrics in Prometheus format. This allows us to easily scrape them using Prometheus.
 

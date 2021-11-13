@@ -50,17 +50,37 @@ There are a couple steps to merge a contribution.
      git remote add upstream https://github.com/ray-project/ray.git
      git pull . upstream/master
 
-2. Make sure all existing tests `pass <getting-involved.html#testing>`__.
+2. Make sure all existing `tests <getting-involved.html#testing>`__ and `linters <getting-involved.html#lint-and-formatting>`__ pass.
+   Run ``setup_hooks.sh`` to create a git hook that will run the linter before you push your changes.
 3. If introducing a new feature or patching a bug, be sure to add new test cases
-   in the relevant file in `ray/python/ray/tests/`.
+   in the relevant file in ``ray/python/ray/tests/``.
 4. Document the code. Public functions need to be documented, and remember to provide an usage
-   example if applicable.
-5. Request code reviews from other contributors and address their comments. During the review
+   example if applicable. See ``doc/README.md`` for instructions on editing and building public documentation.
+5. Address comments on your PR. During the review
    process you may need to address merge conflicts with other changes. To resolve merge conflicts,
    run ``git pull . upstream/master`` on your branch (please do not use rebase, as it is less
    friendly to the GitHub review tool. All commits will be squashed on merge.)
 6. Reviewers will merge and approve the pull request; be sure to ping them if
    the pull request is getting stale.
+
+PR Review Process
+-----------------
+
+For contributors who are in the ``ray-project`` organization:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- When you first create a PR, add an reviewer to the `assignee` section.
+- Assignees will review your PR and add the `@author-action-required` label if further actions are required.
+- Address their comments and remove the `@author-action-required` label from the PR.
+- Repeat this process until assignees approve your PR.
+- Once the PR is approved, the author is in charge of ensuring the PR passes the build. Add the `test-ok` label if the build succeeds.
+- Committers will merge the PR once the build is passing.
+
+For contributors who are not in the ``ray-project`` organization:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Your PRs will have assignees shortly. Assignees of PRs will be actively engaging with contributors to merge the PR.
+- Please actively ping assignees after you address your comments!
 
 Testing
 -------
@@ -188,6 +208,8 @@ In addition, there are other formatting and semantic checkers for components lik
 .. code-block:: shell
 
     ./ci/travis/check-git-clang-tidy-output.sh
+
+You can run ``setup_hooks.sh`` to create a git hook that will run the linter before you push your changes.
 
 Understanding CI test jobs
 --------------------------

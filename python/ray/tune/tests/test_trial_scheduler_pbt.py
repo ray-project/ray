@@ -64,6 +64,10 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
                 with open(path, "rb") as fp:
                     self.large_object, self.iter, self.a = pickle.load(fp)
 
+            def reset_config(self, new_config):
+                self.a = new_config["a"]
+                return True
+
         class CustomExecutor(RayTrialExecutor):
             def save(self, *args, **kwargs):
                 checkpoint = super(CustomExecutor, self).save(*args, **kwargs)
@@ -89,8 +93,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
             checkpoint_freq=1,
             fail_fast=True,
             config={"a": tune.sample_from(lambda _: param_a())},
-            trial_executor=CustomExecutor(
-                queue_trials=False, reuse_actors=False),
+            trial_executor=CustomExecutor(reuse_actors=False),
         )
 
 
@@ -122,6 +125,10 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
             def load_checkpoint(self, path):
                 with open(path, "rb") as fp:
                     self.iter, self.a = pickle.load(fp)
+
+            def reset_config(self, new_config):
+                self.a = new_config["a"]
+                return True
 
         from ray.tune.callback import Callback
 
@@ -175,7 +182,6 @@ class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
 class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def setUp(self):
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
-        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
         ray.init(num_cpus=2)
 
         def MockTrainingFuncSync(config, checkpoint_dir=None):
@@ -211,7 +217,7 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
 
     def synchSetup(self, synch, param=None):
         if param is None:
-            param = [10, 20, 30]
+            param = [10, 20, 40]
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
@@ -245,14 +251,14 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
         self.assertTrue(
             any(
                 analysis.dataframe(metric="mean_accuracy", mode="max")
-                ["mean_accuracy"] != 33))
+                ["mean_accuracy"] != 43))
 
     def testSynchPass(self):
         analysis = self.synchSetup(True)
         self.assertTrue(
             all(
                 analysis.dataframe(metric="mean_accuracy", mode="max")[
-                    "mean_accuracy"] == 33))
+                    "mean_accuracy"] == 43))
 
     def testSynchPassLast(self):
         analysis = self.synchSetup(True, param=[30, 20, 10])
@@ -342,6 +348,12 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
                                                "model.mock")
                 with open(checkpoint_path, "rb") as fp:
                     self.a, self.b, self.iter = pickle.load(fp)
+
+            def reset_config(self, new_config):
+                self.a = new_config["a"]
+                self.b = new_config["b"]
+                self.c = new_config["c"]
+                return True
 
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",

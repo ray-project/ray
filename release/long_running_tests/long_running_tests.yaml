@@ -15,7 +15,7 @@
 
 - name: apex
   cluster:
-    app_config: app_config.yaml
+    app_config: ../rllib_tests/app_config.yaml
     compute_template: tpl_cpu_3.yaml
 
   run:
@@ -31,7 +31,7 @@
 
 - name: impala
   cluster:
-    app_config: app_config_np.yaml
+    app_config: ../rllib_tests/app_config.yaml
     compute_template: tpl_cpu_1.yaml
 
   run:
@@ -78,17 +78,18 @@
 - name: many_ppo
   cluster:
     app_config: app_config.yaml
-    compute_template: tpl_cpu_3.yaml
+    compute_template: many_ppo.yaml
 
   run:
     timeout: 86400
-    prepare: python wait_cluster.py 3 600
+    prepare: python wait_cluster.py 1 600
     script: python workloads/many_ppo.py
     long_running: True
 
   smoke_test:
     run:
       timeout: 3600
+  stable: false
 
 
 - name: many_tasks
@@ -139,7 +140,7 @@
 
 - name: pbt
   cluster:
-    app_config: app_config_np.yaml
+    app_config: ../rllib_tests/app_config.yaml
     compute_template: tpl_cpu_1.yaml
 
   run:

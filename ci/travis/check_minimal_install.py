@@ -15,7 +15,6 @@ DEFAULT_BLACKLIST = [
     "aioredis",
     "colorful",
     "py-spy",
-    "jsonschema",
     # "requests",
     "gpustat",
     "opencensus",

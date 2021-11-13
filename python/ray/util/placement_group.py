@@ -1,7 +1,4 @@
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Union
+from typing import Dict, Union, List, Optional
 
 import ray
 from ray._raylet import ObjectRef
@@ -13,6 +10,7 @@ from ray._private.client_mode_hook import client_mode_should_convert
 from ray._private.client_mode_hook import client_mode_wrap
 
 bundle_reservation_check = None
+BUNDLE_RESOURCE_LABEL = "bundle"
 
 
 # We need to import this method to use for ready API.
@@ -46,6 +44,10 @@ class PlacementGroup:
         self.id = id
         self.bundle_cache = bundle_cache
 
+    @property
+    def is_empty(self):
+        return self.id.is_nil()
+
     def ready(self) -> ObjectRef:
         """Returns an ObjectRef to check ready status.
 
@@ -71,7 +73,7 @@ class PlacementGroup:
 
         return bundle_reservation_check.options(
             placement_group=self, resources={
-                "bundle": 0.001
+                BUNDLE_RESOURCE_LABEL: 0.001
             }).remote(self)
 
     def wait(self, timeout_seconds: Union[float, int]) -> bool:
@@ -184,6 +186,11 @@ def placement_group(bundles: List[Dict[str, float]],
             will fate share with its creator and will be deleted once its
             creator is dead, or "detached", which means the placement group
             will live as a global object independent of the creator.
+
+    Raises:
+        ValueError if bundle type is not a list.
+        ValueError if empty bundle or empty resource bundles are given.
+        ValueError if the wrong lifetime arguments are given.
 
     Return:
         PlacementGroup: Placement group object.
@@ -330,3 +337,117 @@ def check_placement_group_index(placement_group: PlacementGroup,
         raise ValueError(f"placement group bundle index {bundle_index} "
                          f"is invalid. Valid placement group indexes: "
                          f"0-{placement_group.bundle_count}")
+
+
+def _validate_resource_shape(placement_group, resources, placement_resources,
+                             task_or_actor_repr):
+    def valid_resource_shape(resources, bundle_specs):
+        """
+        If the resource shape cannot fit into every
+        bundle spec, return False
+        """
+        for bundle in bundle_specs:
+            fit_in_bundle = True
+            for resource, requested_val in resources.items():
+                # Skip "bundle" resource as it is automatically added
+                # to all nodes with bundles by the placement group.
+                if resource == BUNDLE_RESOURCE_LABEL:
+                    continue
+                if bundle.get(resource, 0) < requested_val:
+                    fit_in_bundle = False
+                    break
+            if fit_in_bundle:
+                # If resource request fits in any bundle, it is valid.
+                return True
+        return False
+
+    bundles = placement_group.bundle_specs
+    resources_valid = valid_resource_shape(resources, bundles)
+    placement_resources_valid = valid_resource_shape(placement_resources,
+                                                     bundles)
+
+    if not resources_valid:
+        raise ValueError(f"Cannot schedule {task_or_actor_repr} with "
+                         "the placement group because the resource request "
+                         f"{resources} cannot fit into any bundles for "
+                         f"the placement group, {bundles}.")
+    if not placement_resources_valid:
+        # Happens for the default actor case.
+        # placement_resources is not an exposed concept to users,
+        # so we should write more specialized error messages.
+        raise ValueError(f"Cannot schedule {task_or_actor_repr} with "
+                         "the placement group because the actor requires "
+                         f"{placement_resources.get('CPU', 0)} CPU for "
+                         "creation, but it cannot "
+                         f"fit into any bundles for the placement group, "
+                         f"{bundles}. Consider "
+                         "creating a placement group with CPU resources.")
+
+
+def configure_placement_group_based_on_context(
+        placement_group_capture_child_tasks: bool,
+        bundle_index: int,
+        resources: Dict,
+        placement_resources: Dict,
+        task_or_actor_repr: str,
+        placement_group: Union[PlacementGroup, str, None] = "default")\
+            -> PlacementGroup:
+    """Configure the placement group based on the given context.
+
+    Based on the given context, this API returns the placement group instance
+    for task/actor scheduling.
+
+    Params:
+        placement_group_capture_child_tasks: Whether or not the
+            placement group needs to be captured from the global
+            context.
+        bundle_index: The bundle index for tasks/actor scheduling.
+        resources: The scheduling resources.
+        placement_resources: The scheduling placement resources for
+            actors.
+        task_or_actor_repr: The repr of task or actor
+            function/class descriptor.
+        placement_group: The placement group instance.
+            - "default": Default placement group argument. Currently,
+                the default behavior is to capture the parent task'
+                placement group if placement_group_capture_child_tasks
+                is set.
+            - None: means placement group is explicitly not configured.
+            - Placement group instance: In this case, do nothing.
+
+    Returns:
+        Placement group instance based on the given context.
+
+    Raises:
+        ValueError: If the bundle index is invalid for the placement group
+            or the requested resources shape doesn't fit to any
+            bundles.
+    """
+    # Validate inputs.
+    assert placement_group_capture_child_tasks is not None
+    assert resources is not None
+
+    # Validate and get the PlacementGroup instance.
+    # Placement group could be None, default, or placement group.
+    # Default behavior is "do not capture child tasks".
+    if placement_group != "default":
+        if not placement_group:
+            placement_group = PlacementGroup.empty()
+    elif placement_group == "default":
+        if placement_group_capture_child_tasks:
+            placement_group = get_current_placement_group()
+        else:
+            placement_group = PlacementGroup.empty()
+
+    if not placement_group:
+        placement_group = PlacementGroup.empty()
+    assert isinstance(placement_group, PlacementGroup)
+
+    # Validate the index.
+    check_placement_group_index(placement_group, bundle_index)
+
+    # Validate the shape.
+    if not placement_group.is_empty:
+        _validate_resource_shape(placement_group, resources,
+                                 placement_resources, task_or_actor_repr)
+    return placement_group

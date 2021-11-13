@@ -4,11 +4,13 @@ import logging
 import json
 import aiohttp.web
 from aioredis.pubsub import Receiver
-from grpc.experimental import aio as aiogrpc
 
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
+from ray import ray_constants
 from ray.dashboard.modules.node import node_consts
+from ray.dashboard.modules.node.node_consts import (MAX_LOGS_TO_CACHE,
+                                                    LOG_PRUNE_THREASHOLD)
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.utils import async_loop_forever
@@ -66,7 +68,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             address = "{}:{}".format(node_info["nodeManagerAddress"],
                                      int(node_info["nodeManagerPort"]))
             options = (("grpc.enable_http_proxy", 0), )
-            channel = aiogrpc.insecure_channel(address, options=options)
+            channel = ray._private.utils.init_grpc_channel(
+                address, options, asynchronous=True)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
             self._stubs[node_id] = stub
 
@@ -91,7 +94,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
     async def _update_nodes(self):
         # TODO(fyrestone): Refactor code for updating actor / node / job.
         # Subscribe actor channel.
-        aioredis_client = self._dashboard_head.aioredis_client
         while True:
             try:
                 nodes = await self._get_nodes()
@@ -115,7 +117,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 for node_id in alive_node_ids:
                     key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}" \
                           f"{node_id}"
-                    agent_port = await aioredis_client.get(key)
+                    # TODO: Use async version if performance is an issue
+                    agent_port = ray.experimental.internal_kv._internal_kv_get(
+                        key, namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
                     if agent_port:
                         agents[node_id] = json.loads(agent_port)
                 for node_id in agents.keys() - set(alive_node_ids):
@@ -249,49 +253,70 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 data = json.loads(ray._private.utils.decode(msg))
                 ip = data["ip"]
                 pid = str(data["pid"])
-                logs_for_ip = dict(DataSource.ip_and_pid_to_logs.get(ip, {}))
-                logs_for_pid = list(logs_for_ip.get(pid, []))
-                logs_for_pid.extend(data["lines"])
-                logs_for_ip[pid] = logs_for_pid
-                DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
+                if pid != "autoscaler":
+                    logs_for_ip = dict(
+                        DataSource.ip_and_pid_to_logs.get(ip, {}))
+                    logs_for_pid = list(logs_for_ip.get(pid, []))
+                    logs_for_pid.extend(data["lines"])
+
+                    # Only cache upto MAX_LOGS_TO_CACHE
+                    logs_length = len(logs_for_pid)
+                    if logs_length > MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD:
+                        offset = logs_length - MAX_LOGS_TO_CACHE
+                        del logs_for_pid[:offset]
+
+                    logs_for_ip[pid] = logs_for_pid
+                    DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
                 logger.info(f"Received a log for {ip} and {pid}")
             except Exception:
                 logger.exception("Error receiving log info.")
 
     async def _update_error_info(self):
-        aioredis_client = self._dashboard_head.aioredis_client
-        receiver = Receiver()
+        def process_error(error_data):
+            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
+            message = error_data.error_message
+            message = re.sub(r"\x1b\[\d+m", "", message)
+            match = re.search(r"\(pid=(\d+), ip=(.*?)\)", message)
+            if match:
+                pid = match.group(1)
+                ip = match.group(2)
+                errs_for_ip = dict(DataSource.ip_and_pid_to_errors.get(ip, {}))
+                pid_errors = list(errs_for_ip.get(pid, []))
+                pid_errors.append({
+                    "message": message,
+                    "timestamp": error_data.timestamp,
+                    "type": error_data.type
+                })
+                errs_for_ip[pid] = pid_errors
+                DataSource.ip_and_pid_to_errors[ip] = errs_for_ip
+                logger.info(f"Received error entry for {ip} {pid}")
 
-        key = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
-        pattern = receiver.pattern(key)
-        await aioredis_client.psubscribe(pattern)
-        logger.info("Subscribed to %s", key)
+        if self._dashboard_head.gcs_subscriber:
+            while True:
+                _, error_data = await \
+                    self._dashboard_head.gcs_subscriber.poll_error()
+                try:
+                    process_error(error_data)
+                except Exception:
+                    logger.exception("Error receiving error info from GCS.")
+        else:
+            aioredis_client = self._dashboard_head.aioredis_client
+            receiver = Receiver()
 
-        async for sender, msg in receiver.iter():
-            try:
-                _, data = msg
-                pubsub_msg = gcs_utils.PubSubMessage.FromString(data)
-                error_data = gcs_utils.ErrorTableData.FromString(
-                    pubsub_msg.data)
-                message = error_data.error_message
-                message = re.sub(r"\x1b\[\d+m", "", message)
-                match = re.search(r"\(pid=(\d+), ip=(.*?)\)", message)
-                if match:
-                    pid = match.group(1)
-                    ip = match.group(2)
-                    errs_for_ip = dict(
-                        DataSource.ip_and_pid_to_errors.get(ip, {}))
-                    pid_errors = list(errs_for_ip.get(pid, []))
-                    pid_errors.append({
-                        "message": message,
-                        "timestamp": error_data.timestamp,
-                        "type": error_data.type
-                    })
-                    errs_for_ip[pid] = pid_errors
-                    DataSource.ip_and_pid_to_errors[ip] = errs_for_ip
-                    logger.info(f"Received error entry for {ip} {pid}")
-            except Exception:
-                logger.exception("Error receiving error info.")
+            key = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
+            pattern = receiver.pattern(key)
+            await aioredis_client.psubscribe(pattern)
+            logger.info("Subscribed to %s", key)
+
+            async for _, msg in receiver.iter():
+                try:
+                    _, data = msg
+                    pubsub_msg = gcs_utils.PubSubMessage.FromString(data)
+                    error_data = gcs_utils.ErrorTableData.FromString(
+                        pubsub_msg.data)
+                    process_error(error_data)
+                except Exception:
+                    logger.exception("Error receiving error info from Redis.")
 
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
