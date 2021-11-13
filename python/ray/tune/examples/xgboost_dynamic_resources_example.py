@@ -220,7 +220,7 @@ def tune_xgboost(use_class_trainable=True):
             total_available_cpus // len(trial_runner.get_live_trials()))
 
         # Assign new CPUs to the trial in a PlacementGroupFactory
-        return PlacementGroupFactory([{"CPU": cpu_to_use, "GPU": 0}])
+        return PlacementGroupFactory([{"CPU": cpu_to_use}])
 
     # You can either define your own resources_allocation_function, or
     # use the default one - evenly_distribute_cpus_gpus

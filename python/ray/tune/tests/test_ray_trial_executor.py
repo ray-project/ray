@@ -363,37 +363,6 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
         self.cluster.shutdown()
         _register_all()  # re-register the evicted objects
 
-    def testResourcesAvailableNoPlacementGroup(self):
-        def train(config):
-            tune.report(metric=0, resources=ray.available_resources())
-
-        out = tune.run(
-            train,
-            resources_per_trial={
-                "cpu": 1,
-                "gpu": 1,
-                "custom_resources": {
-                    "custom": 3
-                },
-                "extra_cpu": 3,
-                "extra_gpu": 1,
-                "extra_custom_resources": {
-                    "custom": 4
-                },
-            })
-
-        # Only `cpu`, `gpu`, and `custom_resources` will be "really" reserved,
-        # the extra_* will just be internally reserved by Tune.
-        self.assertDictEqual({
-            key: val
-            for key, val in out.trials[0].last_result["resources"].items()
-            if key in ["CPU", "GPU", "custom"]
-        }, {
-            "CPU": self.head_cpus - 1.0,
-            "GPU": self.head_gpus - 1.0,
-            "custom": self.head_custom - 3.0
-        })
-
     def testResourcesAvailableWithPlacementGroup(self):
         def train(config):
             tune.report(metric=0, resources=ray.available_resources())

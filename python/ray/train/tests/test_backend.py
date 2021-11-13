@@ -8,11 +8,11 @@ import pytest
 import ray
 import ray.train as train
 from ray.cluster_utils import Cluster
-from ray.train.backends.backend import Backend, \
+from ray.train.backend import Backend, \
     InactiveWorkerGroupError, TrainBackendError, TrainingWorkerError
-from ray.train.backends.backend import BackendConfig, BackendExecutor
-from ray.train.backends.tensorflow import TensorflowConfig
-from ray.train.backends.torch import TorchConfig
+from ray.train.backend import BackendConfig, BackendExecutor
+from ray.train.tensorflow import TensorflowConfig
+from ray.train.torch import TorchConfig
 from ray.train.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV, \
     TRAIN_ENABLE_WORKER_SPREAD_ENV
 from ray.train.worker_group import WorkerGroup
