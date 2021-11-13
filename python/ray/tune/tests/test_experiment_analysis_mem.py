@@ -72,7 +72,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
 
         experiment_analysis = ExperimentAnalysis(experiment_checkpoint_path)
         self.assertEqual(len(experiment_analysis._checkpoints), 1)
-        self.assertTrue(experiment_analysis.trials is None)
+        self.assertFalse(experiment_analysis.trials)
 
     def testInit(self):
         experiment_checkpoint_path = os.path.join(self.test_dir,
@@ -93,7 +93,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
 
         experiment_analysis = ExperimentAnalysis(experiment_checkpoint_path)
         self.assertEqual(len(experiment_analysis._checkpoints), 1)
-        self.assertTrue(experiment_analysis.trials is None)
+        self.assertFalse(experiment_analysis.trials)
 
     def testInitException(self):
         experiment_checkpoint_path = os.path.join(self.test_dir, "mock.json")
