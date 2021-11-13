@@ -1,5 +1,6 @@
 import math
 import json
+import pickle
 import time
 from collections import defaultdict, OrderedDict
 from enum import Enum
@@ -7,7 +8,7 @@ import os
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import ray
-from ray import cloudpickle, ObjectRef
+from ray import ObjectRef
 from ray.actor import ActorHandle
 from ray.serve.async_goal_manager import AsyncGoalManager
 from ray.serve.common import (DeploymentInfo, Duration, GoalId, ReplicaTag,
@@ -109,17 +110,6 @@ class ActorReplicaWrapper:
 
         # Populated in self.stop().
         self._graceful_shutdown_ref: ObjectRef = None
-
-    def __get_state__(self) -> Dict[Any, Any]:
-        clean_dict = self.__dict__.copy()
-        del clean_dict["_ready_obj_ref"]
-        del clean_dict["_graceful_shutdown_ref"]
-        return clean_dict
-
-    def __set_state__(self, d: Dict[Any, Any]) -> None:
-        self.__dict__ = d
-        self._ready_obj_ref = None
-        self._graceful_shutdown_ref = None
 
     @property
     def replica_tag(self) -> str:
@@ -371,12 +361,6 @@ class DeploymentReplica(VersionedReplica):
         self._version = version
         self._start_time = None
         self._prev_slow_startup_warning_time = None
-
-    def __get_state__(self) -> Dict[Any, Any]:
-        return self.__dict__.copy()
-
-    def __set_state__(self, d: Dict[Any, Any]) -> None:
-        self.__dict__ = d
 
     def get_running_replica_info(self) -> RunningReplicaInfo:
         return RunningReplicaInfo(
@@ -664,36 +648,14 @@ class DeploymentState:
         """
         return (self._target_info, self._target_replicas, self._target_version)
 
-    def get_current_state_checkpoint_data(self):
-        """
-        Return deployment's current state specific to the ray cluster it's
-        running in. Might be lost or re-constructed upon ray cluster failure.
-        """
-        return (self._rollback_info, self._curr_goal,
-                self._prev_startup_warning,
-                self._replica_constructor_retry_counter, self._replicas)
-
     def get_checkpoint_data(self):
-        return (self.get_target_state_checkpoint_data(),
-                self.get_current_state_checkpoint_data())
+        return self.get_target_state_checkpoint_data()
 
     def recover_target_state_from_checkpoint(self, target_state_checkpoint):
         logger.info("Recovering target state for deployment "
                     f"{self._name} from checkpoint..")
         (self._target_info, self._target_replicas,
          self._target_version) = target_state_checkpoint
-
-    def recover_current_state_from_checkpoint(self, current_state_checkpoint):
-        logger.info("Recovering current state for deployment "
-                    f"{self._name} from checkpoint..")
-        (self._rollback_info, self._curr_goal, self._prev_startup_warning,
-         self._replica_constructor_retry_counter,
-         self._replicas) = current_state_checkpoint
-
-        if self._curr_goal is not None:
-            self._goal_manager.create_goal(self._curr_goal)
-
-        self._notify_running_replicas_changed()
 
     def recover_current_state_from_replica_actor_names(
             self, replica_actor_names: List[str]):
@@ -1288,23 +1250,19 @@ class DeploymentStateManager:
         checkpoint = self._kv_store.get(CHECKPOINT_KEY)
         if checkpoint is not None:
             (deployment_state_info,
-             self._deleted_deployment_metadata) = cloudpickle.loads(checkpoint)
+             self._deleted_deployment_metadata) = pickle.loads(checkpoint)
 
             for deployment_tag, checkpoint_data in deployment_state_info.items(
             ):
                 deployment_state = self._create_deployment_state(
                     deployment_tag)
-                (target_state_checkpoint,
-                 current_state_checkpoint) = checkpoint_data
 
+                target_state_checkpoint = checkpoint_data
                 deployment_state.recover_target_state_from_checkpoint(
                     target_state_checkpoint)
                 if len(deployment_to_current_replicas[deployment_tag]) > 0:
                     deployment_state.recover_current_state_from_replica_actor_names(  # noqa: E501
                         deployment_to_current_replicas[deployment_tag])
-                else:
-                    deployment_state.recover_current_state_from_checkpoint(
-                        current_state_checkpoint)
                 self._deployment_states[deployment_tag] = deployment_state
 
     def shutdown(self) -> List[GoalId]:
@@ -1342,8 +1300,11 @@ class DeploymentStateManager:
         }
         self._kv_store.put(
             CHECKPOINT_KEY,
-            cloudpickle.dumps((deployment_state_info,
-                               self._deleted_deployment_metadata)))
+            # NOTE(simon): Make sure to use pickle so we don't save any ray
+            # object that relies on external state (e.g. gcs). For code object,
+            # we are explicitly using cloudpickle to serialize them.
+            pickle.dumps((deployment_state_info,
+                          self._deleted_deployment_metadata)))
 
     def get_running_replica_infos(
             self,

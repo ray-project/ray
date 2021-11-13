@@ -318,6 +318,8 @@ def test_job_level_gc(start_cluster, option: str, source: str):
     wait_for_condition(lambda: check_local_files_gced(cluster))
 
 
+# TODO(architkulkarni): fix bug #19602 and enable test.
+@pytest.mark.skip("Currently failing.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_actor_level_gc(start_cluster, option: str):

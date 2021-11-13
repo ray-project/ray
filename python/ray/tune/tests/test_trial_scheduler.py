@@ -255,11 +255,8 @@ class _MockTrialExecutor(TrialExecutor):
     def get_running_trials(self):
         return []
 
-    def has_resources(self):
-        return False
-
-    def resource_string(self):
-        return "This is a mock resource_string."
+    def has_resources_for_trial(self, trial: Trial):
+        return True
 
 
 class _MockTrialRunner():
@@ -291,12 +288,6 @@ class _MockTrialRunner():
 
     def get_trials(self):
         return self.trials
-
-    def has_resources_for_trial(self, trial):
-        return True
-
-    def has_resources(self, resources):
-        return True
 
     def _pause_trial(self, trial):
         self.trial_executor.save(trial, Checkpoint.MEMORY, None)
