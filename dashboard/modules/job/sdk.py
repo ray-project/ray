@@ -1,11 +1,14 @@
-import dataclasses
+from dataclasses import dataclass
 import importlib
 import logging
 from pathlib import Path
 import tempfile
 from typing import Any, Dict, List, Optional
 
-import requests
+try:
+    import requests
+except ImportError:
+    requests = None
 
 from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
@@ -21,7 +24,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-@dataclasses.dataclass
+@dataclass
 class ClusterInfo:
     address: str
     cookies: Optional[Dict[str, Any]]
@@ -77,6 +80,11 @@ def parse_cluster_info(address: str,
 
 class JobSubmissionClient:
     def __init__(self, address: str, create_cluster_if_needed=False):
+        if requests is None:
+            raise RuntimeError(
+                "The Ray jobs CLI & SDK require the ray[default] "
+                "installation: `pip install 'ray[default']``")
+
         cluster_info = parse_cluster_info(address, create_cluster_if_needed)
         self._address = cluster_info.address
         self._cookies = cluster_info.cookies
