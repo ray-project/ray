@@ -33,7 +33,6 @@ class ModelV2:
         obs -> forward() -> model_out
                value_function() -> V(s)
     """
-
     def __init__(self, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space, num_outputs: int,
                  model_config: ModelConfigDict, name: str, framework: str):
@@ -87,8 +86,8 @@ class ModelV2:
         return []
 
     @PublicAPI
-    def forward(self, input_dict: Dict[str, TensorType],
-                state: List[TensorType],
+    def forward(self, input_dict: Dict[str,
+                                       TensorType], state: List[TensorType],
                 seq_lens: TensorType) -> (TensorType, List[TensorType]):
         """Call the model with the given input tensors and state.
 
@@ -263,7 +262,8 @@ class ModelV2:
         return outputs, state_out if len(state_out) > 0 else (state or [])
 
     @Deprecated(new="ModelV2.__call__()", error=False)
-    def from_batch(self, train_batch: SampleBatch,
+    def from_batch(self,
+                   train_batch: SampleBatch,
                    is_training: bool = True) -> (TensorType, List[TensorType]):
         """Convenience function that calls this model with a tensor batch.
 
@@ -307,8 +307,10 @@ class ModelV2:
         return NullContextManager()
 
     @PublicAPI
-    def variables(self, as_dict: bool = False
-                  ) -> Union[List[TensorType], Dict[str, TensorType]]:
+    def variables(
+        self,
+        as_dict: bool = False
+    ) -> Union[List[TensorType], Dict[str, TensorType]]:
         """Returns the list (or a dict) of variables for this model.
 
         Args:
@@ -323,7 +325,8 @@ class ModelV2:
 
     @PublicAPI
     def trainable_variables(
-            self, as_dict: bool = False
+        self,
+        as_dict: bool = False
     ) -> Union[List[TensorType], Dict[str, TensorType]]:
         """Returns the list of trainable variables for this model.
 
@@ -400,7 +403,8 @@ def restore_original_dimensions(obs: TensorType,
 _cache = {}
 
 
-def _unpack_obs(obs: TensorType, space: gym.Space,
+def _unpack_obs(obs: TensorType,
+                space: gym.Space,
                 tensorlib: Any = tf) -> TensorStructType:
     """Unpack a flattened Dict or Tuple observation array/tensor.
 
@@ -446,11 +450,10 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
                 obs_slice = obs[..., offset:offset + p.size]
                 offset += p.size
                 u.append(
-                    _unpack_obs(
-                        tensorlib.reshape(obs_slice,
-                                          batch_dims + list(p.shape)),
-                        v,
-                        tensorlib=tensorlib))
+                    _unpack_obs(tensorlib.reshape(obs_slice,
+                                                  batch_dims + list(p.shape)),
+                                v,
+                                tensorlib=tensorlib))
         elif isinstance(space, gym.spaces.Dict):
             assert len(prep.preprocessors) == len(space.spaces), \
                 (len(prep.preprocessors) == len(space.spaces))
@@ -458,10 +461,10 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
             for p, (k, v) in zip(prep.preprocessors, space.spaces.items()):
                 obs_slice = obs[..., offset:offset + p.size]
                 offset += p.size
-                u[k] = _unpack_obs(
-                    tensorlib.reshape(obs_slice, batch_dims + list(p.shape)),
-                    v,
-                    tensorlib=tensorlib)
+                u[k] = _unpack_obs(tensorlib.reshape(
+                    obs_slice, batch_dims + list(p.shape)),
+                                   v,
+                                   tensorlib=tensorlib)
         # Repeated space.
         else:
             assert isinstance(prep, RepeatedValuesPreprocessor), prep
@@ -472,10 +475,12 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
             with_repeat_dim = tensorlib.reshape(
                 obs[..., 1:], batch_dims + [space.max_len, child_size])
             # Retry the unpack, dropping the List container space.
-            u = _unpack_obs(
-                with_repeat_dim, space.child_space, tensorlib=tensorlib)
-            return RepeatedValues(
-                u, lengths=lengths, max_len=prep._obs_space.max_len)
+            u = _unpack_obs(with_repeat_dim,
+                            space.child_space,
+                            tensorlib=tensorlib)
+            return RepeatedValues(u,
+                                  lengths=lengths,
+                                  max_len=prep._obs_space.max_len)
         return u
     else:
         return obs
