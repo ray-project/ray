@@ -26,6 +26,7 @@ DOCKER_HUB_DESCRIPTION = {
                  "https://hub.docker.com/r/rayproject/ray"),
     "ray": "Official Docker Images for Ray, the distributed computing API.",
     "ray-ml": "Developer ready Docker Image for Ray.",
+    "ray-worker-container": "Internal Image for CI test",
 }
 
 PY_MATRIX = {
@@ -636,7 +637,8 @@ if __name__ == "__main__":
         # If manually triggered, request user for branch and SHA value to use.
         _configure_human_version()
     if (build_type in {HUMAN, MERGE, BUILDKITE}
-            or _check_if_docker_files_modified()):
+            or _check_if_docker_files_modified()
+            or args.only_build_worker_container):
         DOCKER_CLIENT = docker.from_env()
         is_merge = build_type == MERGE
         # Buildkite is authenticated in the background.

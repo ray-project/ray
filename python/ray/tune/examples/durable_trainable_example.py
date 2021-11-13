@@ -5,7 +5,7 @@ import logging
 import os
 import ray
 from ray import tune
-from ray.tune import DurableTrainable
+from ray.tune import Trainable
 from ray.tune.sync_client import get_sync_client
 
 from ray import cloudpickle
@@ -13,7 +13,7 @@ from ray import cloudpickle
 logger = logging.getLogger(__name__)
 
 
-class MockDurableTrainable(DurableTrainable):
+class MockDurableTrainable(Trainable):
     """Mocks the storage client on initialization to store data locally."""
 
     def __init__(self, remote_checkpoint_dir, *args, **kwargs):
@@ -24,10 +24,11 @@ class MockDurableTrainable(DurableTrainable):
         # Disallow malformed relative paths for delete safety.
         assert os.path.abspath(remote_checkpoint_dir).startswith(
             ray._private.utils.get_user_temp_dir())
+        kwargs["remote_checkpoint_dir"] = remote_checkpoint_dir
+        super(MockDurableTrainable, self).__init__(*args, **kwargs)
+
         logger.info("Using %s as the mocked remote checkpoint directory.",
                     self.remote_checkpoint_dir)
-        super(MockDurableTrainable, self).__init__(remote_checkpoint_dir,
-                                                   *args, **kwargs)
 
     def _create_storage_client(self):
         sync = "mkdir -p {target} && rsync -avz {source} {target}"
@@ -103,7 +104,6 @@ if __name__ == "__main__":
     ray.init(address=address)
 
     sync_config = tune.SyncConfig(
-        sync_to_driver=False,
         sync_on_checkpoint=False,
         upload_dir="s3://ray-tune-test/exps/",
     )
@@ -116,7 +116,7 @@ if __name__ == "__main__":
         "param3": tune.sample_from(lambda _: np.random.rand()),
     }
 
-    parent = MockDurableTrainable if args.mock_storage else DurableTrainable
+    parent = MockDurableTrainable if args.mock_storage else Trainable
     analysis = tune.run(
         get_optimus_trainable(parent),
         name="durableTrainable" + str(time.time()),

@@ -12,23 +12,6 @@ if not os.environ.get("CI"):
     os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
 
 
-@pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
-def start_cluster(ray_start_cluster, request):
-    assert request.param in {"ray_client", "no_ray_client"}
-    use_ray_client: bool = request.param == "ray_client"
-
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4)
-    if use_ray_client:
-        cluster.head_node._ray_params.ray_client_server_port = "10004"
-        cluster.head_node.start_ray_client_server()
-        address = "ray://localhost:10004"
-    else:
-        address = cluster.address
-
-    yield cluster, address
-
-
 def check_local_files_gced(cluster):
     for node in cluster.list_all_nodes():
         for subdir in ["conda"]:
@@ -39,7 +22,7 @@ def check_local_files_gced(cluster):
             # TODO(architkulkarni): these files should get cleaned up too!
             if len(
                     list(
-                        filter(lambda f: not f.endswith(".lock", ".txt"),
+                        filter(lambda f: not f.endswith((".lock", ".txt")),
                                all_files))) > 0:
                 print(str(all_files))
                 return False
@@ -114,6 +97,7 @@ def test_detached_actor_gc(start_cluster, field, spec_format, tmp_path):
 
     ray.init(
         address,
+        namespace="test",
         runtime_env=generate_runtime_env_dict(field, spec_format, tmp_path))
 
     @ray.remote
@@ -138,3 +122,39 @@ def test_detached_actor_gc(start_cluster, field, spec_format, tmp_path):
     ray.kill(a)
 
     wait_for_condition(lambda: check_local_files_gced(cluster), timeout=30)
+
+
+# TODO(architkulkarni): fix bug #19602 and enable test.
+@pytest.mark.skip("Currently failing")
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="Requires PR wheels built in CI, so only run on linux CI machines.")
+@pytest.mark.parametrize("field", ["conda", "pip"])
+@pytest.mark.parametrize("spec_format", ["file", "python_object"])
+def test_actor_level_gc(start_cluster, field, spec_format, tmp_path):
+    """Tests that actor-level working_dir is GC'd when the actor exits."""
+    cluster, address = start_cluster
+
+    ray.init(address)
+
+    runtime_env = generate_runtime_env_dict(field, spec_format, tmp_path)
+
+    @ray.remote
+    class A:
+        def test_import(self):
+            import pip_install_test  # noqa: F401
+            return True
+
+    NUM_ACTORS = 5
+    actors = [
+        A.options(runtime_env=runtime_env).remote() for _ in range(NUM_ACTORS)
+    ]
+    ray.get([a.test_import.remote() for a in actors])
+    for i in range(5):
+        assert not check_local_files_gced(cluster)
+        ray.kill(actors[i])
+    wait_for_condition(lambda: check_local_files_gced(cluster))
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-sv", __file__]))

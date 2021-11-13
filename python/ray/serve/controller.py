@@ -24,7 +24,6 @@ from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S, SERVE_ROOT_URL_ENV_KEY
 from ray.serve.endpoint_state import EndpointState
 from ray.serve.http_state import HTTPState
-from ray.serve.replica import create_replica_wrapper
 from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.long_poll import LongPollHost
 from ray.serve.storage.kv_store import RayInternalKVStore
@@ -181,21 +180,30 @@ class ServeController:
                 deployment_name, new_deployment_info)
 
     async def run_control_loop(self) -> None:
+        # NOTE(edoakes): we catch all exceptions here and simply log them,
+        # because an unhandled exception would cause the main control loop to
+        # halt, which should *never* happen.
         while True:
             try:
                 self.autoscale()
             except Exception:
-                logger.exception("Exception while autoscaling deployments.")
+                logger.exception("Exception in autoscaling.")
+
             async with self.write_lock:
                 try:
                     self.http_state.update()
                 except Exception:
                     logger.exception("Exception updating HTTP state.")
+
                 try:
                     self.deployment_state_manager.update()
                 except Exception:
                     logger.exception("Exception updating deployment state.")
-            self._put_serve_snapshot()
+
+            try:
+                self._put_serve_snapshot()
+            except Exception:
+                logger.exception("Exception putting serve snapshot.")
             await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
 
     def _put_serve_snapshot(self) -> None:
@@ -311,9 +319,8 @@ class ServeController:
             autoscaling_policy = None
 
         deployment_info = DeploymentInfo(
-            actor_def=ray.remote(
-                create_replica_wrapper(
-                    name, replica_config.serialized_deployment_def)),
+            actor_name=name,
+            serialized_deployment_def=replica_config.serialized_deployment_def,
             version=version,
             deployment_config=deployment_config,
             replica_config=replica_config,

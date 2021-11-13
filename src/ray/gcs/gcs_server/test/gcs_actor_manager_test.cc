@@ -562,7 +562,7 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
                                                   /*detached=*/true, /*name=*/"actor2");
   status = gcs_actor_manager_->RegisterActor(request3,
                                              [](std::shared_ptr<gcs::GcsActor> actor) {});
-  ASSERT_TRUE(status.IsInvalid());
+  ASSERT_TRUE(status.IsNotFound());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor2", "").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
 
@@ -571,7 +571,7 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
                                                   /*detached=*/true, /*name=*/"actor2");
   status = gcs_actor_manager_->RegisterActor(request4,
                                              [](std::shared_ptr<gcs::GcsActor> actor) {});
-  ASSERT_TRUE(status.IsInvalid());
+  ASSERT_TRUE(status.IsNotFound());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor2", "").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
 }
@@ -713,7 +713,7 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
                                                   /*detached=*/true, /*name=*/"actor");
   status = gcs_actor_manager_->RegisterActor(request2,
                                              [](std::shared_ptr<gcs::GcsActor> actor) {});
-  ASSERT_TRUE(status.IsInvalid());
+  ASSERT_TRUE(status.IsNotFound());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
 }
@@ -948,7 +948,7 @@ TEST_F(GcsActorManagerTest, TestRayNamespace) {
   {  // Actors from different jobs, in the same namespace should still collide.
     Status status = gcs_actor_manager_->RegisterActor(
         request3, [](std::shared_ptr<gcs::GcsActor> actor) {});
-    ASSERT_TRUE(status.IsInvalid());
+    ASSERT_TRUE(status.IsNotFound());
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "").Binary(),
               request1.task_spec().actor_creation_task_spec().actor_id());
   }

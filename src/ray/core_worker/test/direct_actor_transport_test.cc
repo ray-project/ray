@@ -41,7 +41,7 @@ TaskSpecification CreateActorTaskHelper(ActorID actor_id, WorkerID caller_worker
                                         int64_t counter,
                                         TaskID caller_id = TaskID::Nil()) {
   TaskSpecification task;
-  task.GetMutableMessage().set_task_id(TaskID::ForFakeTask().Binary());
+  task.GetMutableMessage().set_task_id(TaskID::FromRandom(actor_id.JobId()).Binary());
   task.GetMutableMessage().set_caller_id(caller_id.Binary());
   task.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
   task.GetMutableMessage().mutable_caller_address()->set_worker_id(

@@ -71,6 +71,7 @@ class WorkflowStepFunction:
                 catch_exceptions: bool = False,
                 name: str = None,
                 metadata: Dict[str, Any] = None,
+                allow_inplace: bool = False,
                 **ray_options) -> "WorkflowStepFunction":
         """This function set how the step function is going to be executed.
 
@@ -87,6 +88,7 @@ class WorkflowStepFunction:
                 directly as the step id if possible, otherwise deduplicated by
                 appending .N suffixes.
             metadata: metadata to add to the step.
+            allow_inplace: Execute the workflow step inplace.
             **ray_options: All parameters in this fields will be passed
                 to ray remote function options.
 
@@ -100,6 +102,7 @@ class WorkflowStepFunction:
             step_type=StepType.FUNCTION,
             catch_exceptions=catch_exceptions,
             max_retries=max_retries,
+            allow_inplace=allow_inplace,
             ray_options=ray_options,
         )
         return WorkflowStepFunction(
