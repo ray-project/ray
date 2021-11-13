@@ -48,6 +48,10 @@ BACKEND_NAME_TO_CONFIG_CLS_NAME = {
 # Import backend configurations dynamically since not all subdependencies
 # may be installed.
 def get_backend_config_cls(backend_name) -> type:
+    if backend_name not in BACKEND_NAME_TO_CONFIG_CLS_NAME:
+        raise ValueError(f"Invalid backend: {backend_name}. "
+                         f"Supported string values are: "
+                         f"{BACKEND_NAME_TO_CONFIG_CLS_NAME.keys()}")
     import importlib
     config_cls = getattr(
         importlib.import_module(f"ray.train"
@@ -181,10 +185,6 @@ class Trainer:
         if isinstance(backend, BackendConfig):
             return backend
         elif isinstance(backend, str):
-            if backend not in BACKEND_NAME_TO_CONFIG_CLS_NAME:
-                raise ValueError(f"Invalid backend: {backend}. "
-                                 f"Supported string values are: "
-                                 f"{BACKEND_NAME_TO_CONFIG_CLS_NAME.keys()}")
             return get_backend_config_cls(backend)()
         else:
             raise TypeError(f"Invalid type for backend: {type(backend)}.")
