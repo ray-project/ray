@@ -112,13 +112,13 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     // Do not hold the lock while calling into task_finisher_.
     task_finisher_.MarkTaskCanceled(task_id);
     rpc::ErrorType error_type;
-    std::shared_ptr<rpc::RayException> creation_task_exception;
+    const rpc::RayException *creation_task_exception = nullptr;
     {
       absl::MutexLock lock(&mu_);
       auto queue = client_queues_.find(task_spec.ActorId());
       auto &death_cause = queue->second.death_cause;
-      error_type = GenErrorTypeFromDeathCause(death_cause);
-      creation_task_exception = GetCreationTaskExceptionFromDeathCause(death_cause);
+      error_type = GenErrorTypeFromDeathCause(death_cause.get());
+      creation_task_exception = GetCreationTaskExceptionFromDeathCause(death_cause.get());
     }
     auto status = Status::IOError("cancelling task of dead actor");
     // No need to increment the number of completed tasks since the actor is
@@ -221,7 +221,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     const ActorID &actor_id, int64_t num_restarts, bool dead,
-    const std::shared_ptr<rpc::ActorDeathCause> &death_cause) {
+    const rpc::ActorDeathCause *death_cause) {
   RAY_LOG(DEBUG) << "Disconnecting from actor " << actor_id << ", death context type="
                  << static_cast<int>(death_cause->context_case());
 
@@ -254,7 +254,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     if (dead) {
       queue->second.state = rpc::ActorTableData::DEAD;
       if (death_cause != nullptr) {
-        queue->second.death_cause = death_cause;
+        queue->second.death_cause = std::make_unique<rpc::ActorDeathCause>(*death_cause);
       }
       // If there are pending requests, treat the pending tasks as failed.
       RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id
@@ -264,7 +264,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 
       auto status = Status::IOError("cancelling all pending tasks of dead actor");
       rpc::ErrorType error_type = GenErrorTypeFromDeathCause(death_cause);
-      std::shared_ptr<rpc::RayException> creation_task_exception =
+      const rpc::RayException *creation_task_exception =
           GetCreationTaskExceptionFromDeathCause(death_cause);
       if (creation_task_exception != nullptr) {
         RAY_LOG(INFO) << "Creation task formatted exception: "
@@ -426,8 +426,8 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
 
           bool immediately_mark_object_fail = (queue.state == rpc::ActorTableData::DEAD);
           bool will_retry = task_finisher_.PendingTaskFailed(
-              task_id, GenErrorTypeFromDeathCause(queue.death_cause), &status,
-              GetCreationTaskExceptionFromDeathCause(queue.death_cause),
+              task_id, GenErrorTypeFromDeathCause(queue.death_cause.get()), &status,
+              GetCreationTaskExceptionFromDeathCause(queue.death_cause.get()),
               immediately_mark_object_fail);
           if (will_retry) {
             increment_completed_tasks = false;

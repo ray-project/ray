@@ -95,7 +95,7 @@ inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     const NodeID &raylet_id, const WorkerID &worker_id, const std::string &address,
     int32_t port, int64_t timestamp, rpc::WorkerExitType disconnect_type,
-    const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr) {
+    const rpc::RayException *creation_task_exception = nullptr) {
   auto worker_failure_info_ptr = std::make_shared<ray::rpc::WorkerTableData>();
   worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(raylet_id.Binary());
   worker_failure_info_ptr->mutable_worker_address()->set_worker_id(worker_id.Binary());
@@ -113,20 +113,19 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
 
 /// Get actor creation task exception from ActorDeathCause.
 /// Returns nullptr if actor isn't dead due to creation task failure.
-inline std::shared_ptr<rpc::RayException> GetCreationTaskExceptionFromDeathCause(
-    const std::shared_ptr<rpc::ActorDeathCause> &death_cause) {
+inline const rpc::RayException *GetCreationTaskExceptionFromDeathCause(
+    const rpc::ActorDeathCause *death_cause) {
   if (death_cause == nullptr ||
       death_cause->context_case() !=
           rpc::ActorDeathCause::ContextCase::kCreationTaskFailureContext) {
     return nullptr;
   }
-  return std::make_shared<rpc::RayException>(
-      death_cause->creation_task_failure_context().creation_task_exception());
+  return &(death_cause->creation_task_failure_context().creation_task_exception());
 }
 
 /// Generate object error type from ActorDeathCause.
 inline rpc::ErrorType GenErrorTypeFromDeathCause(
-    const std::shared_ptr<rpc::ActorDeathCause> &death_cause) {
+    const rpc::ActorDeathCause *death_cause) {
   if (death_cause == nullptr) {
     return rpc::ErrorType::ACTOR_DIED;
   }

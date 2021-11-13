@@ -718,20 +718,20 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
   OnWorkerDead(node_id, worker_id, rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
 }
 
-void GcsActorManager::OnWorkerDead(
-    const ray::NodeID &node_id, const ray::WorkerID &worker_id,
-    const rpc::WorkerExitType disconnect_type,
-    const std::shared_ptr<rpc::RayException> &creation_task_exception) {
+void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
+                                   const ray::WorkerID &worker_id,
+                                   const rpc::WorkerExitType disconnect_type,
+                                   const rpc::RayException *creation_task_exception) {
   std::string message = absl::StrCat(
       "Worker ", worker_id.Hex(), " on node ", node_id.Hex(),
       " exits, type=", rpc::WorkerExitType_Name(disconnect_type),
       ", has creation_task_exception = ", (creation_task_exception != nullptr));
-  std::shared_ptr<rpc::ActorDeathCause> death_cause = nullptr;
+  std::unique_ptr<rpc::ActorDeathCause> death_cause = nullptr;
   if (creation_task_exception != nullptr) {
     absl::StrAppend(&message, " Formatted creation task exception: ",
                     creation_task_exception->formatted_exception_string());
 
-    death_cause = std::make_shared<rpc::ActorDeathCause>();
+    death_cause = std::make_unique<rpc::ActorDeathCause>();
     death_cause->mutable_creation_task_failure_context()
         ->mutable_creation_task_exception()
         ->CopyFrom(*creation_task_exception);
@@ -786,7 +786,7 @@ void GcsActorManager::OnWorkerDead(
 
   // Otherwise, try to reconstruct the actor that was already created or in the creation
   // process.
-  ReconstructActor(actor_id, /*need_reschedule=*/need_reconstruct, death_cause);
+  ReconstructActor(actor_id, /*need_reschedule=*/need_reconstruct, death_cause.get());
 }
 
 void GcsActorManager::OnNodeDead(const NodeID &node_id) {
@@ -839,9 +839,8 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id) {
   ReconstructActor(actor_id, /*need_reschedule=*/true);
 }
 
-void GcsActorManager::ReconstructActor(
-    const ActorID &actor_id, bool need_reschedule,
-    const std::shared_ptr<rpc::ActorDeathCause> &death_cause) {
+void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_reschedule,
+                                       const rpc::ActorDeathCause *death_cause) {
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before reconstruction.
   auto iter = registered_actors_.find(actor_id);
@@ -934,13 +933,13 @@ void GcsActorManager::OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
     return;
   }
 
-  auto death_cause = std::make_shared<rpc::ActorDeathCause>();
+  auto death_cause = std::make_unique<rpc::ActorDeathCause>();
   // TODO(sang, lixin) 1. Make this message more friendly 2. Show this message in
   // object.get()'s error.
   death_cause->mutable_runtime_env_setup_failure_context()->set_error_message(
       "Cannot create an actor because the associated runtime env couldn't be created.");
   // If there is runtime env failure, mark this actor as dead immediately.
-  ReconstructActor(actor->GetActorID(), /*need_reschedule=*/false, death_cause);
+  ReconstructActor(actor->GetActorID(), /*need_reschedule=*/false, death_cause.get());
 }
 
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,

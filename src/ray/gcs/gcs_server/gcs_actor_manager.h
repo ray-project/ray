@@ -300,10 +300,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param exit_type exit reason of the dead worker.
   /// \param creation_task_exception if this arg is set, this worker is died because of an
   /// exception thrown in actor's creation task.
-  void OnWorkerDead(
-      const NodeID &node_id, const WorkerID &worker_id,
-      const rpc::WorkerExitType disconnect_type,
-      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
+  void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id,
+                    const rpc::WorkerExitType disconnect_type,
+                    const rpc::RayException *creation_task_exception = nullptr);
 
   void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id);
 
@@ -400,9 +399,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// again.
   /// \param death_cause Context about why this actor is dead. Should only be set when
   /// need_reschedule=false.
-  void ReconstructActor(
-      const ActorID &actor_id, bool need_reschedule,
-      const std::shared_ptr<rpc::ActorDeathCause> &death_cause = nullptr);
+  void ReconstructActor(const ActorID &actor_id, bool need_reschedule,
+                        const rpc::ActorDeathCause *death_cause = nullptr);
 
   /// Reconstruct the specified actor and reschedule it.
   void ReconstructActor(const ActorID &actor_id);
