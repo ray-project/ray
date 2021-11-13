@@ -40,10 +40,10 @@ class Protocol(Enum):
         return self
 
     GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
-    S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
     CONDA = "conda", "For conda environments installed locally on each node."
     HTTPS = "https", ("Remote https path, "
                       "assumes everything packed in one zip file.")
+    S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
     GS = "gs", ("Remote google storage path, "
                 "assumes everything packed in one zip file.")
 
@@ -51,7 +51,7 @@ class Protocol(Enum):
     def remote_protocols(cls):
         # Returns a lit of protocols that support remote storage
         # These protocols should only be used with paths that end in ".zip"
-        return [cls.S3, cls.HTTPS, cls.GS]
+        return [cls.HTTPS, cls.S3, cls.GS]
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -133,15 +133,6 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
                 netloc='_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip'
             )
             -> ("gcs", "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
-    For S3 URIs, the bucket and path will have '/' replaced with '_'. The
-    package name will be the adjusted path with 's3_' prepended.
-        urlparse("s3://bucket/dir/file.zip")
-            -> ParseResult(
-                scheme='s3',
-                netloc='bucket',
-                path='/dir/file.zip'
-            )
-            -> ("s3", "bucket_dir_file.zip")
     For HTTPS URIs, the netloc will have '.' replaced with '_', and
     the path will have '/' replaced with '_'. The package name will be the
     adjusted path with 'https_' prepended.
@@ -155,16 +146,25 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             )
             -> ("https",
             "github_com_shrekris-anyscale_test_repo_archive_HEAD.zip")
+    For S3 URIs, the bucket and path will have '/' replaced with '_'. The
+    package name will be the adjusted path with 's3_' prepended.
+        urlparse("s3://bucket/dir/file.zip")
+            -> ParseResult(
+                scheme='s3',
+                netloc='bucket',
+                path='/dir/file.zip'
+            )
+            -> ("s3", "bucket_dir_file.zip")
     For GS URIs, the path will have '/' replaced with '_'. The package name
     will be the adjusted path with 'gs_' prepended.
-        urlparse("gs://shreyas-runtime-env-test1/test_module/test_module.zip")
+        urlparse("gs://public-runtime-env-test/test_module.zip")
             -> ParseResult(
                 scheme='gs',
-                netloc='shreyas-runtime-env-test1',
-                path='/test_module/test_module.zip'
+                netloc='public-runtime-env-test',
+                path='/test_module.zip'
             )
             -> ("gs",
-            "shreyas-runtime-env-test1_test_module_test_module.zip")
+            "gs_public-runtime-env-test_test_module.zip")
     """
     uri = urlparse(pkg_uri)
     protocol = Protocol(uri.scheme)

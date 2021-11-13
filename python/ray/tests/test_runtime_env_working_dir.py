@@ -21,11 +21,11 @@ from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
-S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
-GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 HTTPS_PACKAGE_URI = ("https://github.com/shrekris-anyscale/"
                      "test_module/archive/HEAD.zip")
-REMOTE_URIS = [S3_PACKAGE_URI, HTTPS_PACKAGE_URI, GS_PACKAGE_URI]
+S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
+GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
+REMOTE_URIS = [HTTPS_PACKAGE_URI, S3_PACKAGE_URI, GS_PACKAGE_URI]
 
 
 @pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
@@ -261,7 +261,7 @@ def test_input_validation(start_cluster, option: str):
 
     ray.shutdown()
 
-    for uri in ["s3://no_dot_zip", "https://no_dot_zip", "gs://no_dot_zip"]:
+    for uri in ["https://no_dot_zip", "s3://no_dot_zip", "gs://no_dot_zip"]:
         with pytest.raises(ValueError):
             if option == "working_dir":
                 ray.init(address, runtime_env={"working_dir": uri})
