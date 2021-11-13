@@ -113,7 +113,7 @@ def train_func(config):
             feature_column_dtypes=[torch.float],
             batch_size=batch_size)
 
-        device = train.torch.get_torch_device()
+        device = train.torch.get_device()
 
         train_epoch(train_torch_dataset, model, loss_fn, optimizer, device)
         result = validate_epoch(validation_torch_dataset, model, loss_fn,
