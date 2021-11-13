@@ -6,8 +6,8 @@ import ray
 from ray.util.annotations import PublicAPI
 from ray.data.dataset import Dataset
 from ray.data.impl import sort
-from ray.data.aggregate import AggregateFn, Count, Sum, Max, Min, \
-    Mean, Std, AggregateOnT
+from ray.data.aggregate import Aggregation, AggregateFn, Count, Sum, Max, \
+    Min, Mean, Std, AggregateOnT
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.progress_bar import ProgressBar
@@ -45,8 +45,8 @@ class GroupedDataset(Generic[T]):
         else:
             self._key = key
 
-    def agg(self, aggs: Union[Union[str, AggregateFn], List[Union[
-            str, AggregateFn]], Dict[str, Union[str, AggregateFn]]]):
+    def agg(self, aggs: Union[str, AggregateFn, List[Union[str, AggregateFn]],
+                              Dict[str, Union[str, AggregateFn]]]):
         """Aggregate using one or more operations over the specified columns.
 
         This is a blocking operation.
@@ -96,7 +96,7 @@ class GroupedDataset(Generic[T]):
         aggs_ = self._dataset._build_multi_agg(aggs, skip_cols=self._key)
         return self.apply_aggregations(*aggs_)
 
-    def apply_aggregations(self, *aggs: AggregateFn) -> Dataset[U]:
+    def apply_aggregations(self, *aggs: Aggregation) -> Dataset[U]:
         """Implements the accumulator-based aggregation.
 
         This is a blocking operation.
@@ -167,8 +167,7 @@ class GroupedDataset(Generic[T]):
         metadata = ray.get(metadata)
         return Dataset(BlockList(blocks, metadata), self._dataset._epoch)
 
-    def _aggregate_on(self, agg_cls: type, on: Optional[AggregateOnTs], *args,
-                      **kwargs):
+    def _aggregate_on(self, agg_fn: AggregateFn, on: AggregateOnTs):
         """Helper for aggregating on a particular subset of the dataset.
 
         This validates the `on` argument, and converts a list of column names
@@ -177,7 +176,7 @@ class GroupedDataset(Generic[T]):
         aggregation on the entire row for a simple Dataset.
         """
         aggs = self._dataset._build_multicolumn_aggs(
-            agg_cls, on, *args, skip_cols=self._key, **kwargs)
+            agg_fn, on, skip_cols=self._key)
         return self.apply_aggregations(*aggs)
 
     def count(self) -> Dataset[U]:
@@ -197,7 +196,7 @@ class GroupedDataset(Generic[T]):
             number of rows with that key.
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self.apply_aggregations(Count())
+        return self.apply_aggregations(Aggregation(Count()))
 
     def sum(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
         """Compute grouped sum aggregation.
@@ -250,7 +249,7 @@ class GroupedDataset(Generic[T]):
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Sum, on)
+        return self._aggregate_on(Sum(), on)
 
     def min(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
         """Compute grouped min aggregation.
@@ -303,7 +302,7 @@ class GroupedDataset(Generic[T]):
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Min, on)
+        return self._aggregate_on(Min(), on)
 
     def max(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
         """Compute grouped max aggregation.
@@ -356,7 +355,7 @@ class GroupedDataset(Generic[T]):
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Max, on)
+        return self._aggregate_on(Max(), on)
 
     def mean(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
         """Compute grouped mean aggregation.
@@ -410,7 +409,7 @@ class GroupedDataset(Generic[T]):
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Mean, on)
+        return self._aggregate_on(Mean(), on)
 
     def std(self, on: Optional[AggregateOnTs] = None,
             ddof: int = 1) -> Dataset[U]:
@@ -474,12 +473,12 @@ class GroupedDataset(Generic[T]):
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self._aggregate_on(Std, on, ddof=ddof)
+        return self._aggregate_on(Std(ddof=ddof), on)
 
 
 def _partition_and_combine_block(block: Block[T], boundaries: List[KeyType],
                                  key: GroupKeyT,
-                                 aggs: Tuple[AggregateFn]) -> List[Block]:
+                                 aggs: Tuple[Aggregation]) -> List[Block]:
     """Partition the block and combine rows with the same key."""
     if key is None:
         partitions = [block]
@@ -491,7 +490,7 @@ def _partition_and_combine_block(block: Block[T], boundaries: List[KeyType],
 
 
 def _aggregate_combined_blocks(
-        num_reducers: int, key: GroupKeyT, aggs: Tuple[AggregateFn],
+        num_reducers: int, key: GroupKeyT, aggs: Tuple[Aggregation],
         *blocks: Tuple[Block, ...]) -> Tuple[Block[U], BlockMetadata]:
     """Aggregate sorted and partially combined blocks."""
     if num_reducers == 1:

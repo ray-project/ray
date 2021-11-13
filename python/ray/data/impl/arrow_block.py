@@ -14,7 +14,7 @@ except ImportError:
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
-from ray.data.aggregate import AggregateFn
+from ray.data.aggregate import Aggregation
 from ray.data.impl.size_estimator import SizeEstimator
 
 if TYPE_CHECKING:
@@ -345,7 +345,7 @@ class ArrowBlockAccessor(BlockAccessor):
         return ret
 
     def combine(self, key: GroupKeyT,
-                aggs: Tuple[AggregateFn]) -> Block[ArrowRow]:
+                aggs: Tuple[Aggregation]) -> Block[ArrowRow]:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -383,11 +383,11 @@ class ArrowBlockAccessor(BlockAccessor):
                             break
 
                 # Accumulate.
-                accumulators = [agg.init(next_key) for agg in aggs]
+                accumulators = [agg.agg_fn.init(next_key) for agg in aggs]
                 for r in gen():
                     for i in range(len(aggs)):
-                        accumulators[i] = aggs[i].accumulate(
-                            accumulators[i], r)
+                        accumulators[i] = aggs[i].agg_fn.accumulate(
+                            accumulators[i], aggs[i].on_fn(r))
 
                 # Build the row.
                 row = {}
@@ -428,7 +428,7 @@ class ArrowBlockAccessor(BlockAccessor):
     @staticmethod
     def aggregate_combined_blocks(
             blocks: List[Block[ArrowRow]], key: GroupKeyT,
-            aggs: Tuple[AggregateFn]) -> Tuple[Block[ArrowRow], BlockMetadata]:
+            aggs: Tuple[Aggregation]) -> Tuple[Block[ArrowRow], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
         This assumes blocks are already sorted by key in ascending order,
@@ -493,7 +493,7 @@ class ArrowBlockAccessor(BlockAccessor):
                         first = False
                     else:
                         for i in range(len(aggs)):
-                            accumulators[i] = aggs[i].merge(
+                            accumulators[i] = aggs[i].agg_fn.merge(
                                 accumulators[i], r[resolved_agg_names[i]])
                 # Build the row.
                 row = {}
@@ -502,7 +502,7 @@ class ArrowBlockAccessor(BlockAccessor):
 
                 for agg, agg_name, accumulator in zip(aggs, resolved_agg_names,
                                                       accumulators):
-                    row[agg_name] = agg.finalize(accumulator)
+                    row[agg_name] = agg.agg_fn.finalize(accumulator)
 
                 builder.add(row)
             except StopIteration:

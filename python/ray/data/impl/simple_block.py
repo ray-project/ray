@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 from ray.data.impl.block_builder import BlockBuilder
-from ray.data.aggregate import AggregateFn
+from ray.data.aggregate import Aggregation
 from ray.data.impl.size_estimator import SizeEstimator
 from ray.data.block import Block, BlockAccessor, BlockMetadata, \
     T, U, KeyType, AggType
@@ -149,7 +149,7 @@ class SimpleBlockAccessor(BlockAccessor):
         return ret
 
     def combine(self, key: GroupKeyT,
-                aggs: Tuple[AggregateFn]) -> Block[Tuple[KeyType, AggType]]:
+                aggs: Tuple[Aggregation]) -> Block[Tuple[KeyType, AggType]]:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -194,11 +194,11 @@ class SimpleBlockAccessor(BlockAccessor):
                             next_row = None
                             break
 
-                accumulators = [agg.init(next_key) for agg in aggs]
+                accumulators = [agg.agg_fn.init(next_key) for agg in aggs]
                 for r in gen():
                     for i in range(len(aggs)):
-                        accumulators[i] = aggs[i].accumulate(
-                            accumulators[i], r)
+                        accumulators[i] = aggs[i].agg_fn.accumulate(
+                            accumulators[i], aggs[i].on_fn(r))
                 if key is None:
                     ret.append(tuple(accumulators))
                 else:
@@ -218,7 +218,7 @@ class SimpleBlockAccessor(BlockAccessor):
     @staticmethod
     def aggregate_combined_blocks(
             blocks: List[Block[Tuple[KeyType, AggType]]], key: GroupKeyT,
-            aggs: Tuple[AggregateFn]
+            aggs: Tuple[Aggregation]
     ) -> Tuple[Block[Tuple[KeyType, U]], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 
@@ -271,16 +271,16 @@ class SimpleBlockAccessor(BlockAccessor):
                         first = False
                     else:
                         for i in range(len(aggs)):
-                            accumulators[i] = aggs[i].merge(
+                            accumulators[i] = aggs[i].agg_fn.merge(
                                 accumulators[i], r[i + 1] if key else r[i])
                 if key is None:
                     ret.append(
                         tuple(
-                            agg.finalize(accumulator)
+                            agg.agg_fn.finalize(accumulator)
                             for agg, accumulator in zip(aggs, accumulators)))
                 else:
                     ret.append((next_key, ) + tuple(
-                        agg.finalize(accumulator)
+                        agg.agg_fn.finalize(accumulator)
                         for agg, accumulator in zip(aggs, accumulators)))
             except StopIteration:
                 break

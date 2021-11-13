@@ -30,8 +30,8 @@ from ray.data.context import DatasetContext
 from ray.data.datasource import (
     Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
     ParquetDatasource, BlockWritePathProvider, DefaultBlockWritePathProvider)
-from ray.data.aggregate import AggregateFn, Sum, Max, Min, \
-    Mean, Std, AGGS_TABLE
+from ray.data.aggregate import Aggregation, AggregateFn, Sum, \
+    Max, Min, Mean, Std, AGGS_TABLE
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
@@ -845,8 +845,8 @@ class Dataset(Generic[T]):
         from ray.data.grouped_dataset import GroupedDataset
         return GroupedDataset(self, key)
 
-    def agg(self, aggs: Union[Union[str, AggregateFn], List[Union[
-            str, AggregateFn]], Dict[str, Union[str, AggregateFn]]]):
+    def agg(self, aggs: Union[str, AggregateFn, List[Union[str, AggregateFn]],
+                              Dict[str, Union[str, AggregateFn]]]):
         """Aggregate using one or more operations over the specified columns.
 
         Examples:
@@ -896,9 +896,9 @@ class Dataset(Generic[T]):
 
     def _build_multi_agg(
             self,
-            aggs: Union[Union[str, AggregateFn], List[Union[str, AggregateFn]],
-                        Dict[str, Union[str, AggregateFn]]],
-            skip_cols: Optional[List[str]] = None):
+            aggs: Union[str, AggregateFn, List[Union[str, AggregateFn]], Dict[
+                str, Union[str, AggregateFn]]],
+            skip_cols: Optional[List[str]] = None) -> List[Aggregation]:
         """Build set of aggregations for applying multiple aggregations to
         one or more columns.
         """
@@ -933,20 +933,19 @@ class Dataset(Generic[T]):
             if not isinstance(on, list):
                 on = [on]
             for agg in on_aggs:
+                if isinstance(agg, str):
+                    try:
+                        agg = AGGS_TABLE[agg]()
+                    except KeyError as e:
+                        raise ValueError(
+                            f"{e!s} is not a supported aggregation: "
+                            f"{list(AGGS_TABLE.keys())}") from None
                 for on_ in on:
-                    if isinstance(agg, str):
-                        try:
-                            agg_ = AGGS_TABLE[agg](on_)
-                        except KeyError as e:
-                            raise ValueError(
-                                f"{e!s} is not a supported aggregation: "
-                                f"{list(AGGS_TABLE.keys())}")
-                    else:
-                        agg_ = agg.with_on(on_)
+                    agg_ = Aggregation(agg, on_)
                     aggs_.append(agg_)
         return aggs_
 
-    def apply_aggregations(self, *aggs: AggregateFn) -> U:
+    def apply_aggregations(self, *aggs: Aggregation) -> U:
         """Aggregate the entire dataset as one group.
 
         This is a blocking operation.
@@ -1059,8 +1058,7 @@ class Dataset(Generic[T]):
                     "it's an Arrow dataset")
             return isinstance(schema, pa.Schema)
 
-    def _aggregate_on(self, agg_cls: type, on: Optional["AggregateOnTs"],
-                      *args, **kwargs):
+    def _aggregate_on(self, agg_fn: AggregateFn, on: "AggregateOnTs"):
         """Helper for aggregating on a particular subset of the dataset.
 
         This validates the `on` argument, and converts a list of column names
@@ -1068,23 +1066,21 @@ class Dataset(Generic[T]):
         multi-aggregation on all columns for an Arrow Dataset, and a single
         aggregation on the entire row for a simple Dataset.
         """
-        aggs = self._build_multicolumn_aggs(
-            agg_cls, on, *args, skip_cols=None, **kwargs)
+        aggs = self._build_multicolumn_aggs(agg_fn, on, skip_cols=None)
         return self.apply_aggregations(*aggs)
 
-    def _build_multicolumn_aggs(self,
-                                agg_cls: type,
-                                on: Optional["AggregateOnTs"],
-                                *args,
-                                skip_cols: Optional[List[str]] = None,
-                                **kwargs):
+    def _build_multicolumn_aggs(
+            self,
+            agg_fn: AggregateFn,
+            on: "AggregateOnTs",
+            skip_cols: Optional[List[str]] = None) -> List[Aggregation]:
         """Build set of aggregations for applying a single aggregation to
         multiple columns.
         """
         on = self._check_and_normalize_agg_on(on, skip_cols=skip_cols)
         if not isinstance(on, list):
             on = [on]
-        return [agg_cls(on_, *args, **kwargs) for on_ in on]
+        return [Aggregation(agg_fn, on_) for on_ in on]
 
     def sum(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute sum over entire dataset.
@@ -1133,7 +1129,7 @@ class Dataset(Generic[T]):
 
             If the dataset is empty, then the output is 0.
         """
-        ret = self._aggregate_on(Sum, on)
+        ret = self._aggregate_on(Sum(), on)
         if ret is None:
             return 0
         elif len(ret) == 1:
@@ -1188,7 +1184,7 @@ class Dataset(Generic[T]):
 
             If the dataset is empty, then a ``ValueError`` is raised.
         """
-        ret = self._aggregate_on(Min, on)
+        ret = self._aggregate_on(Min(), on)
         if ret is None:
             raise ValueError("Cannot compute min on an empty dataset")
         elif len(ret) == 1:
@@ -1243,7 +1239,7 @@ class Dataset(Generic[T]):
 
             If the dataset is empty, then a ``ValueError`` is raised.
         """
-        ret = self._aggregate_on(Max, on)
+        ret = self._aggregate_on(Max(), on)
         if ret is None:
             raise ValueError("Cannot compute max on an empty dataset")
         elif len(ret) == 1:
@@ -1298,7 +1294,7 @@ class Dataset(Generic[T]):
 
             If the dataset is empty, then a ``ValueError`` is raised.
         """
-        ret = self._aggregate_on(Mean, on)
+        ret = self._aggregate_on(Mean(), on)
         if ret is None:
             raise ValueError("Cannot compute mean on an empty dataset")
         elif len(ret) == 1:
@@ -1363,7 +1359,7 @@ class Dataset(Generic[T]):
 
             If the dataset is empty, then a ``ValueError`` is raised.
         """
-        ret = self._aggregate_on(Std, on, ddof=ddof)
+        ret = self._aggregate_on(Std(ddof=ddof), on)
         if ret is None:
             raise ValueError("Cannot compute std on an empty dataset")
         elif len(ret) == 1:

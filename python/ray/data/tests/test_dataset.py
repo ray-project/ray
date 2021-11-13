@@ -22,7 +22,8 @@ from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.impl.block_list import BlockList
-from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
+from ray.data.aggregate import Aggregation, AggregateFn, Count, Sum, Min, \
+    Max, Mean, Std
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD)
@@ -2879,17 +2880,19 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
         "B": x
     } for x in xs]).repartition(num_parts).groupby("A")
     agg_ds = grouped_ds.apply_aggregations(
-        AggregateFn(
-            init=lambda k: [0, 0],
-            accumulate=lambda a, r: [a[0] + r["B"], a[1] + 1],
-            merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
-            finalize=lambda a: a[0] / a[1],
+        Aggregation(
+            AggregateFn(
+                init=lambda k: [0, 0],
+                accumulate=lambda a, r: [a[0] + r["B"], a[1] + 1],
+                merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
+                finalize=lambda a: a[0] / a[1]),
             name="foo"),
-        AggregateFn(
-            init=lambda k: [0, 0],
-            accumulate=lambda a, r: [a[0] + r["B"], a[1] + 1],
-            merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
-            finalize=lambda a: a[0] / a[1],
+        Aggregation(
+            AggregateFn(
+                init=lambda k: [0, 0],
+                accumulate=lambda a, r: [a[0] + r["B"], a[1] + 1],
+                merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
+                finalize=lambda a: a[0] / a[1]),
             name="foo"))
     assert agg_ds.count() == 3
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
@@ -3141,12 +3144,12 @@ def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
     agg_ds = ray.data.from_pandas(df).repartition(num_parts).groupby(
         "A").apply_aggregations(
-            Count(),
-            Sum("B"),
-            Min("B"),
-            Max("B"),
-            Mean("B"),
-            Std("B"),
+            Aggregation(Count()),
+            Aggregation(Sum(), on="B"),
+            Aggregation(Min(), on="B"),
+            Aggregation(Max(), on="B"),
+            Aggregation(Mean(), on="B"),
+            Aggregation(Std(), on="B"),
         )
     assert agg_ds.count() == 3
     agg_df = agg_ds.to_pandas()
@@ -3163,11 +3166,11 @@ def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
     df = pd.DataFrame({"A": xs})
     result_row = ray.data.from_pandas(df).repartition(
         num_parts).apply_aggregations(
-            Sum("A"),
-            Min("A"),
-            Max("A"),
-            Mean("A"),
-            Std("A"),
+            Aggregation(Sum(), on="A"),
+            Aggregation(Min(), on="A"),
+            Aggregation(Max(), on="A"),
+            Aggregation(Mean(), on="A"),
+            Aggregation(Std(), on="A"),
         )
     for agg in ["sum", "min", "max", "mean", "std"]:
         result = result_row[f"{agg}(A)"]
@@ -3251,11 +3254,12 @@ def test_groupby_simple(ray_start_regular_shared):
     ds = ray.data.from_items(xs, parallelism=parallelism)
     # Mean aggregation
     agg_ds = ds.groupby(lambda r: r[0]).apply_aggregations(
-        AggregateFn(
-            init=lambda k: (0, 0),
-            accumulate=lambda a, r: (a[0] + r[1], a[1] + 1),
-            merge=lambda a1, a2: (a1[0] + a2[0], a1[1] + a2[1]),
-            finalize=lambda a: a[0] / a[1]))
+        Aggregation(
+            AggregateFn(
+                init=lambda k: (0, 0),
+                accumulate=lambda a, r: (a[0] + r[1], a[1] + 1),
+                merge=lambda a1, a2: (a1[0] + a2[0], a1[1] + a2[1]),
+                finalize=lambda a: a[0] / a[1])))
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [("A", 5), ("B", 15),
                                                        ("C", 7)]
@@ -3267,10 +3271,11 @@ def test_groupby_simple(ray_start_regular_shared):
     ds = ray.data.from_items(xs, parallelism=parallelism)
     # Count aggregation
     agg_ds = ds.groupby(lambda r: str(r)).apply_aggregations(
-        AggregateFn(
-            init=lambda k: 0,
-            accumulate=lambda a, r: a + 1,
-            merge=lambda a1, a2: a1 + a2))
+        Aggregation(
+            AggregateFn(
+                init=lambda k: 0,
+                accumulate=lambda a, r: a + 1,
+                merge=lambda a1, a2: a1 + a2)))
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: str(r[0])).take(3) == [("A", 3), ("B", 1),
                                                             ("None", 3)]
@@ -3278,11 +3283,12 @@ def test_groupby_simple(ray_start_regular_shared):
     # Test empty dataset.
     ds = ray.data.from_items([])
     agg_ds = ds.groupby(lambda r: r[0]).apply_aggregations(
-        AggregateFn(
-            init=lambda k: 1 / 0,  # should never reach here
-            accumulate=lambda a, r: 1 / 0,
-            merge=lambda a1, a2: 1 / 0,
-            finalize=lambda a: 1 / 0))
+        Aggregation(
+            AggregateFn(
+                init=lambda k: 1 / 0,  # should never reach here
+                accumulate=lambda a, r: 1 / 0,
+                merge=lambda a1, a2: 1 / 0,
+                finalize=lambda a: 1 / 0)))
     assert agg_ds.count() == 0
     assert agg_ds == ds
     agg_ds = ray.data.range(10).filter(lambda r: r > 10).groupby(
@@ -3458,12 +3464,12 @@ def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
     agg_ds = ray.data.from_items(xs).repartition(num_parts).groupby(
         lambda x: x % 3).apply_aggregations(
-            Count(),
-            Sum(),
-            Min(),
-            Max(),
-            Mean(),
-            Std(),
+            Aggregation(Count()),
+            Aggregation(Sum()),
+            Aggregation(Min()),
+            Aggregation(Max()),
+            Aggregation(Mean()),
+            Aggregation(Std()),
         )
     assert agg_ds.count() == 3
     result = agg_ds.sort(key=lambda r: r[0]).take(3)
@@ -3491,11 +3497,11 @@ def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
     # Test built-in global multi-aggregation
     result_row = ray.data.from_items(xs).repartition(
         num_parts).apply_aggregations(
-            Sum(),
-            Min(),
-            Max(),
-            Mean(),
-            Std(),
+            Aggregation(Sum()),
+            Aggregation(Min()),
+            Aggregation(Max()),
+            Aggregation(Mean()),
+            Aggregation(Std()),
         )
     series = pd.Series(xs)
     for idx, agg in enumerate(["sum", "min", "max", "mean", "std"]):
