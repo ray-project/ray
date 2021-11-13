@@ -549,7 +549,9 @@ def unzip_package(package_path: str,
             package_path)
         if top_level_directory is None:
             raise ValueError("The package at package_path must contain "
-                             "a single top level directory.")
+                             "a single top level directory. Make sure there "
+                             "are no hidden files at the same level as the "
+                             "top level directory.")
         with ZipFile(str(package_path), "r") as zip_ref:
             for fname in zip_ref.namelist():
                 extract_file_and_remove_top_level_dir(
