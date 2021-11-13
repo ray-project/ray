@@ -47,12 +47,6 @@ class TestTrialExecutorInheritance(unittest.TestCase):
             def get_running_trials(self):
                 return []
 
-            def has_resources(self):
-                return False
-
-            def resource_string(self):
-                return "This is a resource string."
-
         msg = ("_MyTrialExecutor inherits from TrialExecutor, which is being "
                "deprecated. "
                "RFC: https://github.com/ray-project/ray/issues/17593. "

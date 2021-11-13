@@ -101,7 +101,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   if (log_dir.empty()) {
     std::string session_dir = ConfigInternal::Instance().session_dir;
     if (session_dir.empty()) {
-      session_dir = *global_state_accessor->GetInternalKV("session_dir");
+      session_dir = *global_state_accessor->GetInternalKV("@:session:session_dir");
     }
     log_dir = session_dir + "/logs";
   }

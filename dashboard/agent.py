@@ -9,16 +9,22 @@ import socket
 import json
 import traceback
 
-from grpc.experimental import aio as aiogrpc
+try:
+    from grpc import aio as aiogrpc
+except ImportError:
+    from grpc.experimental import aio as aiogrpc
 from distutils.version import LooseVersion
 
 import ray
+import ray.experimental.internal_kv as internal_kv
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_utils import GcsClient
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
+from ray._private.gcs_utils import GcsClient, \
+    get_gcs_address_from_redis
 from ray.core.generated import agent_manager_pb2
 from ray.core.generated import agent_manager_pb2_grpc
 from ray._private.ray_logging import setup_component_logger
@@ -151,7 +157,7 @@ class DashboardAgent(object):
 
         # Start a grpc asyncio server.
         await self.server.start()
-        # TODO: use grpc address directly
+        # TODO: redis-removal bootstrap
         gcs_address = await self.aioredis_client.get(
             dashboard_consts.REDIS_KEY_GCS_SERVER_ADDRESS)
         self.gcs_client = GcsClient(gcs_address.decode())
@@ -194,9 +200,11 @@ class DashboardAgent(object):
         logger.info("Registered %s routes.", len(dump_routes))
 
         # Write the dashboard agent port to redis.
-        await self.aioredis_client.set(
+        # TODO: Use async version if performance is an issue
+        internal_kv._internal_kv_put(
             f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{self.node_id}",
-            json.dumps([http_port, self.grpc_port]))
+            json.dumps([http_port, self.grpc_port]),
+            namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
 
         # Register agent to agent manager.
         raylet_stub = agent_manager_pb2_grpc.AgentManagerServiceStub(
@@ -225,6 +233,11 @@ if __name__ == "__main__":
         required=True,
         type=str,
         help="the IP address of this node.")
+    parser.add_argument(
+        "--gcs-address",
+        required=False,
+        type=str,
+        help="The address (ip:port) of GCS.")
     parser.add_argument(
         "--redis-address",
         required=True,
@@ -374,6 +387,12 @@ if __name__ == "__main__":
             # impact of the issue.
             redis_client = ray._private.services.create_redis_client(
                 args.redis_address, password=args.redis_password)
+            gcs_publisher = None
+            if args.gcs_address:
+                gcs_publisher = GcsPublisher(args.gcs_address)
+            elif gcs_pubsub_enabled():
+                gcs_publisher = GcsPublisher(
+                    address=get_gcs_address_from_redis(redis_client))
             traceback_str = ray._private.utils.format_error_message(
                 traceback.format_exc())
             message = (
@@ -387,9 +406,11 @@ if __name__ == "__main__":
                 "\n  3. runtime_env APIs won't work."
                 "\nCheck out the `dashboard_agent.log` to see the "
                 "detailed failure messages.")
-            ray._private.utils.push_error_to_driver_through_redis(
-                redis_client, ray_constants.DASHBOARD_AGENT_DIED_ERROR,
-                message)
+            ray._private.utils.publish_error_to_driver(
+                ray_constants.DASHBOARD_AGENT_DIED_ERROR,
+                message,
+                redis_client=redis_client,
+                gcs_publisher=gcs_publisher)
             logger.error(message)
         logger.exception(e)
         exit(1)
