@@ -1,6 +1,7 @@
 import copy
 import logging
 import os
+import re
 import sys
 
 import yaml
@@ -444,6 +445,14 @@ def create_test_step(
         test_file: str,
         test_name: ReleaseTest,
 ):
+    custom_commit_str = "custom_wheels_url"
+    if ray_wheels:
+        # Extract commit from url
+        p = re.compile("/([a-f0-9]{40})/")
+        m = p.search(ray_wheels)
+        if m is not None:
+            custom_commit_str = m.group(1)
+
     ray_wheels_str = f" ({ray_wheels}) " if ray_wheels else ""
 
     logging.info(f"Creating step for {test_file}/{test_name}{ray_wheels_str}")
@@ -484,7 +493,7 @@ def create_test_step(
 
     step_conf["label"] = (
         f"{test_name} "
-        f"({'custom_wheels_url' if ray_wheels_str else ray_branch}) - "
+        f"({custom_commit_str if ray_wheels_str else ray_branch}) - "
         f"{ray_test_branch}/{ray_test_repo}")
     return step_conf
 
