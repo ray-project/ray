@@ -117,7 +117,7 @@ training.
         +   data_loader = train.torch.prepare_data_loader(data_loader)
 
             for X, y in data_loader:
-        -       X = X.to_device(device),
+        -       X = X.to_device(device)
         -       y = y.to_device(device)
 
   .. group-tab:: TensorFlow
