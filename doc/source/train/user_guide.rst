@@ -71,6 +71,7 @@ training.
     ``DistributedDataParallel``
 
     .. code-block:: diff
+
         import torch
         from torch.nn.parallel import DistributedDataParallel
         +from ray import train
@@ -94,10 +95,11 @@ training.
             ...
 
 
-    Then, use the ``prepare_data_loader`` function to automatically add a ``DistributedSampler`` to your ``DataLoader``s
+    Then, use the ``prepare_data_loader`` function to automatically add a ``DistributedSampler`` to your ``DataLoader``
     and move the batches to the right device.
 
     .. code-block:: diff
+
         import torch
         from torch.utils.data import DataLoader, DistributedSampler
         +from ray import train
@@ -105,7 +107,7 @@ training.
 
         def train_func():
             -device = torch.device(f"cuda:{train.local_rank()}" if
-            -      torch.cuda.is_available() else "cpu")
+            -       torch.cuda.is_available() else "cpu")
             -torch.cuda.set_device(device)
 
             ...
