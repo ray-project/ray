@@ -78,19 +78,18 @@ training.
 
 
         def train_func():
-            -device = torch.device(f"cuda:{train.local_rank()}" if
-            -      torch.cuda.is_available() else "cpu")
-            -torch.cuda.set_device(device)
+        -   device = torch.device(f"cuda:{train.local_rank()}" if
+        -         torch.cuda.is_available() else "cpu")
+        -   torch.cuda.set_device(device)
 
             # Create model.
             model = NeuralNetwork()
 
-            -model = model.to(device)
-            -model = DistributedDataParallel(
-            -    model,
-            -    device_ids=[train.local_rank()] if torch.cuda.is_available() else None)
+        -   model = model.to(device)
+        -   model = DistributedDataParallel(model,
+        -       device_ids=[train.local_rank()] if torch.cuda.is_available() else None)
 
-            +model = train.torch.prepare_model(model)
+        +   model = train.torch.prepare_model(model)
 
             ...
 
@@ -106,20 +105,20 @@ training.
 
 
         def train_func():
-            -device = torch.device(f"cuda:{train.local_rank()}" if
-            -       torch.cuda.is_available() else "cpu")
-            -torch.cuda.set_device(device)
+        -   device = torch.device(f"cuda:{train.local_rank()}" if
+        -          torch.cuda.is_available() else "cpu")
+        -   torch.cuda.set_device(device)
 
             ...
 
-            -data_loader = DataLoader(my_dataset, sampler=DistributedSampler(dataset))
+        -   data_loader = DataLoader(my_dataset, sampler=DistributedSampler(dataset))
 
-            +data_loader = DataLoader(my_dataset)
-            +data_loader = train.torch.prepare_data_loader(data_loader)
+        +   data_loader = DataLoader(my_dataset)
+        +   data_loader = train.torch.prepare_data_loader(data_loader)
 
             for X, y in data_loader:
-                -X = X.to_device(device),
-                -y = y.to_device(device)
+        -       X = X.to_device(device),
+        -       y = y.to_device(device)
 
   .. group-tab:: TensorFlow
 
