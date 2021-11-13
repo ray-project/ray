@@ -89,7 +89,15 @@ py_test(
     name = "test_callbacks",
     size = "medium",
     srcs = ["tests/test_callbacks.py"],
-    tags = ["tema:ml", "exclusive"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_examples",
+    size = "large",
+    srcs = ["tests/test_examples.py"],
+    tags = ["team:ml", "exclusive"],
     deps = [":train_lib"]
 )
 

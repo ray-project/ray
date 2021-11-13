@@ -280,6 +280,18 @@ class CheckpointManager:
         else:
             return None
 
+    @property
+    def latest_checkpoint_id(self) -> Optional[int]:
+        """The checkpoint id of most recently saved checkpoint.
+
+        If no checkpoint has been saved yet, then return None.
+        """
+        checkpoint_id = self._latest_checkpoint_id
+        if checkpoint_id == 0:
+            return None
+        else:
+            return checkpoint_id
+
 
 class TuneCheckpointManager(CheckpointManager):
     def create_logdir(self, log_dir: Optional[Union[str, Path]]):
