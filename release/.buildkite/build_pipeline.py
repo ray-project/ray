@@ -448,7 +448,7 @@ def create_test_step(
     custom_commit_str = "custom_wheels_url"
     if ray_wheels:
         # Extract commit from url
-        p = re.compile("/([a-f0-9]{40})/")
+        p = re.compile(r"([a-f0-9]{40})")
         m = p.search(ray_wheels)
         if m is not None:
             custom_commit_str = m.group(1)
