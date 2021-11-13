@@ -118,10 +118,10 @@ train.world_size
 PyTorch Training Function Utilities
 -----------------------------------
 
-train.torch.prepare
-~~~~~~~~~~~~~~~~~~~
+train.torch.prepare_model
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. autofunction:: ray.train.torch.prepare
+.. autofunction:: ray.train.torch.prepare_model
 
 train.torch.prepare_data_loader
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

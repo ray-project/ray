@@ -429,7 +429,7 @@ def save_checkpoint(**kwargs) -> None:
 
 
 def world_size() -> int:
-    """Get the current world size for this training run.
+    """Get the current world size (i.e. total number of workers) for this run.
 
     .. code-block:: python
 

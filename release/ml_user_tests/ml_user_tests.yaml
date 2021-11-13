@@ -98,7 +98,7 @@
 
 - name: tune_rllib_connect_test
   cluster:
-    app_config: tune_rllib/app_config.yaml
+    app_config: ../rllib_tests/app_config.yaml
     compute_template: tune_rllib/compute_tpl.yaml
 
 
