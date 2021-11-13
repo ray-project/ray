@@ -1,4 +1,4 @@
-base_image: "anyscale/ray-ml:pinned-nightly-py37"
+base_image: "anyscale/ray:nightly-py37"
 env_vars: {}
 debian_packages:
   - curl
@@ -6,6 +6,9 @@ debian_packages:
 
 python:
   pip_packages:
+    - gym[atari]
+    - pytest
+    - tensorflow
   conda_packages: []
 
 post_build_cmds:
@@ -16,4 +19,5 @@ post_build_cmds:
   - pip3 install pytest || true
   - pip3 install -U ray[all] gym[atari] autorom[accept-rom-license]
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install ray[all]
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

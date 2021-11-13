@@ -52,6 +52,33 @@ public class NamespaceTest {
                 }));
   }
 
+  private static String getNamespace() {
+    return Ray.getRuntimeContext().getNamespace();
+  }
+
+  private static class GetNamespaceActor {
+    public String getNamespace() {
+      return Ray.getRuntimeContext().getNamespace();
+    }
+  }
+
+  public void testGetNamespace() {
+    final String thisNamespace = "test_get_current_namespace";
+    System.setProperty("ray.job.namespace", thisNamespace);
+    try {
+      Ray.init();
+      /// Test in driver.
+      Assert.assertEquals(thisNamespace, Ray.getRuntimeContext().getNamespace());
+      /// Test in task.
+      Assert.assertEquals(thisNamespace, Ray.task(NamespaceTest::getNamespace).remote().get());
+      /// Test in actor.
+      ActorHandle<GetNamespaceActor> a = Ray.actor(GetNamespaceActor::new).remote();
+      Assert.assertEquals(thisNamespace, a.task(GetNamespaceActor::getNamespace).remote().get());
+    } finally {
+      Ray.shutdown();
+    }
+  }
+
   public static class MainClassForNamespaceTest {
     public static void main(String[] args) throws IOException, InterruptedException {
       System.setProperty("ray.job.namespace", "test1");

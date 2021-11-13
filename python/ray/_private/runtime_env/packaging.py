@@ -8,7 +8,6 @@ import shutil
 from typing import Callable, List, Optional, Tuple
 from urllib.parse import urlparse
 from zipfile import ZipFile
-
 from ray.experimental.internal_kv import (_internal_kv_put, _internal_kv_get,
                                           _internal_kv_exists)
 from ray._private.thirdparty.pathspec import PathSpec
@@ -461,6 +460,7 @@ def download_and_unpack_package(
                 with open(pkg_uri, "rb", transport_params=tp) as package_zip:
                     with open(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
+
                 unzip_package(package_path=pkg_file, target_dir=local_dir, remove_top_level_directory=True, unlink_zip=True, logger=logger)
             else:
                 raise NotImplementedError(

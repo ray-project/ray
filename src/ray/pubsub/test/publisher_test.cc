@@ -285,8 +285,8 @@ TEST_F(PublisherTest, TestSubscriber) {
   ASSERT_FALSE(subscriber->PublishIfPossible());
   // Try connecting it. Should return true.
   ASSERT_TRUE(subscriber->ConnectToSubscriber(&reply, send_reply_callback));
-  // If connecting it again, it should fail the request.
-  ASSERT_FALSE(subscriber->ConnectToSubscriber(&reply, send_reply_callback));
+  // Polling when there is already an inflight polling request should still work.
+  ASSERT_TRUE(subscriber->ConnectToSubscriber(&reply, send_reply_callback));
   // Since there's no published objects, it should return false.
   ASSERT_FALSE(subscriber->PublishIfPossible());
 
