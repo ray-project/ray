@@ -24,6 +24,7 @@ from ray.dashboard.modules.job.common import (
     JOBS_API_ROUTE_STOP,
     JOBS_API_ROUTE_STATUS,
     JOBS_API_ROUTE_PACKAGE,
+    validate_request_type,
 )
 from ray.dashboard.modules.job.job_manager import JobManager
 
@@ -55,25 +56,34 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         Response object with status 400 and stacktrace instead.
         """
         try:
-            # TODO: (jiaodong) Validate if job request is valid without using
-            # pydantic.
-            result = request_type(**(await req.json()))
-        except Exception:
+            return validate_request_type(await req.json(), request_type)
+        except Exception as e:
+            logger.info(f"Got invalid request type: {e}")
             return aiohttp.web.Response(
-                reason=traceback.format_exc().encode("utf-8"),
+                text=traceback.format_exc(),
                 status=aiohttp.web.HTTPBadRequest.status_code)
-        return result
+
+    def _get_query_param(self, req: aiohttp.web.Request, param: str):
+        try:
+            return req.query[param]
+        except KeyError:
+            return aiohttp.web.Response(
+                text=f"Missing query parameter {param}",
+                status=aiohttp.web.HTTPBadRequest.status_code)
 
     @routes.get(JOBS_API_ROUTE_PACKAGE)
     @_ensure_ray_initialized
     async def get_package(self,
                           req: aiohttp.web.Request) -> aiohttp.web.Response:
-        package_uri = req.query["package_uri"]
+        package_uri = self._get_query_param(req, "package_uri")
+        if isinstance(package_uri, aiohttp.web.Response):
+            return package_uri
+
         try:
             exists = package_exists(package_uri)
         except Exception:
             return aiohttp.web.Response(
-                reason=traceback.format_exc().encode("utf-8"),
+                text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code)
 
         resp = GetPackageResponse(package_exists=exists)
@@ -84,13 +94,16 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     @routes.put(JOBS_API_ROUTE_PACKAGE)
     @_ensure_ray_initialized
     async def upload_package(self, req: aiohttp.web.Request):
-        package_uri = req.query["package_uri"]
+        package_uri = self._get_query_param(req, "package_uri")
+        if isinstance(package_uri, aiohttp.web.Response):
+            return package_uri
+
         logger.info(f"Uploading package {package_uri} to the GCS.")
         try:
             upload_package_to_gcs(package_uri, await req.read())
         except Exception:
             return aiohttp.web.Response(
-                reason=traceback.format_exc().encode("utf-8"),
+                text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code)
 
         return aiohttp.web.Response(status=aiohttp.web.HTTPOk.status_code, )
@@ -115,7 +128,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             resp = JobSubmitResponse(job_id=job_id)
         except Exception:
             return aiohttp.web.Response(
-                reason=traceback.format_exc().encode("utf-8"),
+                text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code)
 
         return aiohttp.web.Response(
@@ -127,13 +140,16 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     @routes.post(JOBS_API_ROUTE_STOP)
     @_ensure_ray_initialized
     async def stop(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
-        job_id = req.query["job_id"]
+        job_id = self._get_query_param(req, "job_id")
+        if isinstance(job_id, aiohttp.web.Response):
+            return job_id
+
         try:
             stopped = self._job_manager.stop_job(job_id)
             resp = JobStopResponse(stopped=stopped)
         except Exception:
             return aiohttp.web.Response(
-                reason=traceback.format_exc().encode("utf-8"),
+                text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code)
 
         return aiohttp.web.Response(
@@ -143,7 +159,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     @routes.get(JOBS_API_ROUTE_STATUS)
     @_ensure_ray_initialized
     async def status(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
-        job_id = req.query["job_id"]
+        job_id = self._get_query_param(req, "job_id")
+        if isinstance(job_id, aiohttp.web.Response):
+            return job_id
+
         status: JobStatus = self._job_manager.get_job_status(job_id)
         resp = JobStatusResponse(job_status=status)
         return aiohttp.web.Response(
@@ -153,7 +172,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     @routes.get(JOBS_API_ROUTE_LOGS)
     @_ensure_ray_initialized
     async def logs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
-        job_id = req.query["job_id"]
+        job_id = self._get_query_param(req, "job_id")
+        if isinstance(job_id, aiohttp.web.Response):
+            return job_id
 
         logs: str = self._job_manager.get_job_logs(job_id)
         # TODO(jiaodong): Support log streaming #19415

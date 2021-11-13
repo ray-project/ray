@@ -59,6 +59,11 @@ class JobStatusStorageClient:
             return pickle.loads(pickled_status)
 
 
+def validate_request_type(json_data: Dict[str, Any],
+                          request_type: dataclass) -> Any:
+    return request_type(**json_data)
+
+
 # ==== Get Package ====
 
 
@@ -72,16 +77,51 @@ class GetPackageResponse:
 
 @dataclass
 class JobSubmitRequest:
-    # Dict to setup execution environment.
-    runtime_env: Dict[str, Any]
     # Command to start execution, ex: "python script.py"
     entrypoint: str
     # Optional job_id to specify for the job. If the job_id is not specified,
     # one will be generated. If a job with the same job_id already exists, it
     # will be rejected.
-    job_id: Optional[str]
+    job_id: Optional[str] = None
+    # Dict to setup execution environment.
+    runtime_env: Optional[Dict[str, Any]] = None
     # Metadata to pass in to the JobConfig.
-    metadata: Dict[str, str]
+    metadata: Optional[Dict[str, str]] = None
+
+    def __post_init__(self):
+        if not isinstance(self.entrypoint, str):
+            raise TypeError(
+                f"entrypoint must be a string, got {type(self.entrypoint)}")
+
+        if self.job_id is not None and not isinstance(self.job_id, str):
+            raise TypeError(
+                f"job_id must be a string if provided, got {type(self.job_id)}"
+            )
+
+        if self.runtime_env is not None:
+            if not isinstance(self.runtime_env, dict):
+                raise TypeError(
+                    f"runtime_env must be a dict, got {type(self.runtime_env)}"
+                )
+            else:
+                for k in self.runtime_env.keys():
+                    if not isinstance(k, str):
+                        raise TypeError(
+                            f"runtime_env keys must be strings, got {type(k)}")
+
+        if self.metadata is not None:
+            if not isinstance(self.metadata, dict):
+                raise TypeError(
+                    f"metadata must be a dict, got {type(self.metadata)}")
+            else:
+                for k in self.metadata.keys():
+                    if not isinstance(k, str):
+                        raise TypeError(
+                            f"metadata keys must be strings, got {type(k)}")
+                for v in self.metadata.values():
+                    if not isinstance(v, str):
+                        raise TypeError(
+                            f"metadata values must be strings, got {type(v)}")
 
 
 @dataclass

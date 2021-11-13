@@ -9,7 +9,9 @@ import pytest
 from ray.dashboard.tests.conftest import *  # noqa
 from ray._private.test_utils import (format_web_url, wait_for_condition,
                                      wait_until_server_available)
-from ray.dashboard.modules.job.common import JobStatus, JOBS_API_ROUTE_SUBMIT
+from ray.dashboard.modules.job.common import (
+    JobStatus, JobSubmitResponse, JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_STATUS,
+    JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_PACKAGE, JOBS_API_ROUTE_STOP)
 from ray.dashboard.modules.job.sdk import JobSubmissionClient
 
 logger = logging.getLogger(__name__)
@@ -245,6 +247,39 @@ def test_nonexistent_job(job_sdk_client):
     client = job_sdk_client
 
     _check_job_does_not_exist(client, "nonexistent_job")
+
+
+def test_submit_optional_args(job_sdk_client):
+    """Check that job_id, runtime_env, and metadata are optional."""
+    client = job_sdk_client
+
+    response = client._do_request(
+        "POST",
+        JOBS_API_ROUTE_SUBMIT,
+        json_data={"entrypoint": "ls"},
+        response_type=JobSubmitResponse,
+    )
+
+    wait_for_condition(
+        _check_job_succeeded, client=client, job_id=response.job_id)
+
+
+@pytest.mark.parametrize("condition",
+                         [(JOBS_API_ROUTE_LOGS, "GET", "job_id"),
+                          (JOBS_API_ROUTE_STATUS, "GET", "job_id"),
+                          (JOBS_API_ROUTE_PACKAGE, "GET", "package_uri"),
+                          (JOBS_API_ROUTE_PACKAGE, "PUT", "package_uri"),
+                          (JOBS_API_ROUTE_STOP, "POST", "job_id")])
+def test_missing_query_params(job_sdk_client, condition):
+    """Check that a sensible error is raised for missing query params."""
+    client = job_sdk_client
+
+    route, method, param = condition
+    with pytest.raises(RuntimeError, match=f"Missing query parameter {param}"):
+        client._do_request(
+            method,
+            route,
+        )
 
 
 if __name__ == "__main__":

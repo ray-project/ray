@@ -43,7 +43,9 @@ class JobSubmissionClient:
                      f"json: {json_data}, params: {params}.")
         r = requests.request(
             method, url, data=data, json=json_data, params=params)
-        r.raise_for_status()
+        if r.status_code != 200:
+            raise RuntimeError(
+                f"Request failed with status code {r.status_code}: {r.text}.")
         if response_type is None:
             return None
         else:
