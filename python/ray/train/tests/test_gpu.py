@@ -1,4 +1,5 @@
 import pytest
+import torch
 
 import ray
 from ray.train import Trainer
@@ -17,6 +18,40 @@ def ray_start_4_cpus_2_gpus():
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
+
+
+def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
+    """Tests if GPU tensors are auto converted to CPU on driver."""
+
+    num_workers = 2
+
+    def train_func():
+        model = torch.nn.Linear(1, 1)
+
+        # Move to GPU device.
+        model = ray.train.torch.prepare_model(model)
+
+        assert next(model.parameters()).is_cuda
+
+        ray.train.save_checkpoint(model=model)
+
+    trainer = Trainer("torch", num_workers=num_workers, use_gpu=True)
+    trainer.run(train_func)
+    trainer.shutdown()
+
+    def train_func():
+        model = torch.nn.Linear(1, 1)
+
+        # Move to GPU device.
+        model = ray.train.torch.prepare_model(model)
+
+        assert next(model.parameters()).is_cuda
+
+        ray.train.save_checkpoint(model=model.state_dict())
+
+    trainer = Trainer("torch", num_workers=num_workers, use_gpu=True)
+    trainer.run(train_func)
+    trainer.shutdown()
 
 
 def test_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):

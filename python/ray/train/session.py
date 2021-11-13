@@ -52,9 +52,12 @@ class Session:
 
         # Function to encode checkpoint dict before sending to the driver.
         if not encode_checkpoint_fn:
-            encode_checkpoint_fn = lambda x: x
-        self._encode_checkpoint_fn = encode_checkpoint_fn
 
+            def noop(x):
+                return x
+
+            encode_checkpoint_fn = noop
+        self._encode_checkpoint_fn = encode_checkpoint_fn
 
         # This lock is used to control the execution of the training thread.
         self.continue_lock = threading.Semaphore(0)
@@ -426,7 +429,7 @@ def save_checkpoint(**kwargs) -> None:
 
 
 def world_size() -> int:
-    """Get the current world size (i.e. total number of workers) for this training execution.
+    """Get the current world size for this training run.
 
     .. code-block:: python
 

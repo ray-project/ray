@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import horovod.torch as hvd_torch
 import pytest
+import torch
 
 import ray
 import ray.train as train
@@ -629,6 +630,25 @@ def test_torch_non_distributed(ray_start_2_cpus):
     trainer = Trainer(backend="torch", num_workers=1)
     trainer.start()
     trainer.run(torch_quick_start_train_func)
+    trainer.shutdown()
+
+
+def test_torch_auto_unwrap(ray_start_2_cpus):
+    """Tests if underlying model from DDP is extracted when saving ckpt."""
+
+    def train_fn():
+        model = torch.nn.Linear(1, 1)
+
+        # Wrap in DDP.
+        model = train.torch.prepare_model(model)
+
+        # Save DDP wrapped model.
+        train.save_checkpoint(model=model)
+
+    num_workers = 2
+    trainer = Trainer("torch", num_workers)
+    trainer.start()
+    trainer.run(train_fn)
     trainer.shutdown()
 
 

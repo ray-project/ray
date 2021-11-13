@@ -132,10 +132,11 @@ class CheckpointManager:
             checkpoint_strategy is None else checkpoint_strategy
         self.run_dir = run_dir
 
-    def _process_checkpoint(self,
-                            checkpoint_results: List[TrainingResult],
-                            decode_checkpoint_fn: Callable,
-                            ) -> None:
+    def _process_checkpoint(
+            self,
+            checkpoint_results: List[TrainingResult],
+            decode_checkpoint_fn: Callable,
+    ) -> None:
         """Perform all processing for a checkpoint. """
 
         # Get checkpoint from first worker.

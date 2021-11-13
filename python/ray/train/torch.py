@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import io
 import logging
 import os
 
@@ -148,11 +149,16 @@ class TorchBackend(Backend):
         # out the underlying module. If not, then deserialization will fail
         # since the torch process group is not initialized on the driver.
 
-        for k, v in checkpoint:
+        for k, v in checkpoint.items():
             if isinstance(v, DistributedDataParallel) and hasattr(v, "module"):
                 checkpoint[k] = v.module
 
-        #
+        # Convert the checkpoint dict to bytes, so that any GPU tensors that
+        # are in the checkpoint dict can be properly deserialized on the
+        # driver side, even if the driver does not have access to a GPU device.
+        _buffer = io.BytesIO()
+        torch.save(checkpoint, _buffer)
+        return _buffer.getvalue()
 
     @staticmethod
     def decode_checkpoint(data: C) -> Dict:
@@ -162,7 +168,10 @@ class TorchBackend(Backend):
         encoded checkpoint from the worker.
         """
 
-        return data
+        # When decoding the bytes on the driver side, always map to CPU.
+        _buffer = io.BytesIO(data)
+        checkpoint_dict = torch.load(_buffer, map_location="cpu")
+        return checkpoint_dict
 
 
 class _WrappedDataLoader(DataLoader):

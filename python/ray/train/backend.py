@@ -478,8 +478,9 @@ class BackendExecutor:
                 result_data = [r.data for r in results]
                 return result_data
             elif result_type is TrainingResultType.CHECKPOINT:
-                self.checkpoint_manager._process_checkpoint(results,
-                                                            decode_checkpoint_fn=self._backend.decode_checkpoint)
+                self.checkpoint_manager._process_checkpoint(
+                    results,
+                    decode_checkpoint_fn=self._backend.decode_checkpoint)
                 # Iterate until next REPORT call or training has finished.
             else:
                 raise TrainBackendError(f"Unexpected result type: "
