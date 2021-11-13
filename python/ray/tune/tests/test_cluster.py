@@ -313,6 +313,7 @@ def test_trial_migration(start_connected_emptyhead_cluster, trainable_id):
     with pytest.raises(TuneError):
         runner.step()
 
+
 # TODO(xwjiang): Uncomment this when pg caching is removed.
 # @pytest.mark.parametrize("trainable_id", ["__fake", "__fake_durable"])
 # def test_trial_requeue(start_connected_emptyhead_cluster, trainable_id):
