@@ -55,43 +55,55 @@ class GroupedDataset(Generic[T]):
             >>> grouped_ds.agg("sum")
             >>> grouped_ds.agg(["sum", Std(ddof=0)])
             >>> grouped_ds.agg({
-                    "A": ["mean", Std(ddof=0)],
-                    "B": ["min", "max"]})
+            ...     "A": ["mean", Std(ddof=0)],
+            ...     "B": ["min", "max"]})
 
         Args:
             aggs: Aggregations to compute. This can be:
 
-                - Union[str, AggregateFn]: The (name of an) aggregation that we
-                    want to apply to all columns (other than the groupby key
-                    column).
-                - List[Union[str, AggregateFn]]: A list of the (names of)
-                    aggregations that we want to apply to all columns (other
-                    than the groupby key column).
-                - Dict[str, Union[str, AggregateFn]]: A map from column names
-                    to the (names of the) aggregations that we wish to apply to
-                    those specific columns. This can only be applied to Arrow
-                    Datasets.
+                - ``Union[str, AggregateFn]:`` The (name of an) aggregation
+                  that we want to apply to all columns (other than the groupby
+                  key column).
+                - ``List[Union[str, AggregateFn]]``: A list of the (names of)
+                  aggregations that we want to apply to all columns (other
+                  than the groupby key column).
+                - ``Dict[str, Union[str, AggregateFn]]``: A map from column
+                  names to the (names of the) aggregations that we wish to
+                  apply to those specific columns. This can only be applied to
+                  Arrow Datasets.
 
         Returns:
-            If the input dataset is simple dataset then the output is
-            a simple dataset of (k, v_1, ..., v_n) tuples where k is the
-            groupby key and v_i is the result of the ith given aggregation.
-            If the input dataset is Arrow dataset then the output is
-            an Arrow dataset of n + 1 columns where first column is
-            the groupby key and the second through n + 1 columns are the
-            results of the aggregations.
-            When `aggs` is given as a list, the aggregation columns are ordered
-            in accordance with the aggregation list ordering (aggs, cols):
+            If the input dataset is simple dataset then the output is a simple
+            dataset of ``(k, v_1, ..., v_n)`` tuples where ``k`` is the groupby
+            key and ``v_i`` is the result of the ith given aggregation.
+
+            If the input dataset is Arrow dataset then the output is an Arrow
+            dataset of ``n + 1`` columns where first column is the groupby key
+            and the second through ``n + 1`` columns are the results of the
+            aggregations.
+
+            When ``aggs`` is given as a list, the aggregation columns are
+            ordered in accordance with the aggregation list ordering
+            (aggs, cols)::
+
                 [agg1, agg2]
-            on a dataset with columns col1 and col2 would yield aggregation
-            columns:
+
+            on a dataset with columns ``col1`` and ``col2`` would yield
+            aggregation columns::
+
                 col1_agg1, col2_agg1, col1_agg2, col2_agg2
-            When `aggs` is given as a dict, the aggregation columns are ordered
-            in accordance with the depth-first dict ordering (cols, aggs):
+
+            When ``aggs`` is given as a dict, the aggregation columns are
+            ordered in accordance with the depth-first dict ordering
+            (cols, aggs)::
+
                 {col1: [agg1, agg2], col2: [agg2, agg1]}
-            would yield aggregation columns:
+
+            would yield aggregation columns::
+
                 col1_agg1, col1_agg2, col2_agg2, col2_agg1
-            If the dataset is empty, return None.
+
+            If the dataset is empty, return ``None`.
         """
         aggs_ = self._dataset._build_multi_agg(aggs, skip_cols=self._key)
         return self.apply_aggregations(*aggs_)
@@ -116,10 +128,12 @@ class GroupedDataset(Generic[T]):
             If the input dataset is simple dataset then the output is a simple
             dataset of ``(k, v_1, ..., v_n)`` tuples where ``k`` is the groupby
             key and ``v_i`` is the result of the ith given aggregation.
+
             If the input dataset is an Arrow dataset then the output is an
             Arrow dataset of ``n + 1`` columns where the first column is the
             groupby key and the second through ``n + 1`` columns are the
             results of the aggregations.
+
             If groupby key is ``None`` then the key part of return is omitted.
         """
 
@@ -194,6 +208,7 @@ class GroupedDataset(Generic[T]):
             A simple dataset of ``(k, v)`` pairs or an Arrow dataset of
             ``[k, v]`` columns where ``k`` is the groupby key and ``v`` is the
             number of rows with that key.
+
             If groupby key is ``None`` then the key part of return is omitted.
         """
         return self.apply_aggregations(Aggregation(Count()))

@@ -849,47 +849,61 @@ class Dataset(Generic[T]):
                               Dict[str, Union[str, AggregateFn]]]):
         """Aggregate using one or more operations over the specified columns.
 
+        This is a blocking operation.
+
         Examples:
             >>> ray.data.range(100).agg("sum")
             >>> ray.data.range(100).agg(["sum", Std(ddof=0)])
             >>> ray.data.from_items([
-                        {"A": x, "B": x**2} for x in range(100)]) \
-                    .agg({
-                        "A": ["mean", Std(ddof=0)],
-                        "B": ["min", "max"],
-                    })
+            ...         {"A": x, "B": x**2} for x in range(100)]) \
+            ...     .agg({
+            ...         "A": ["mean", Std(ddof=0)],
+            ...         "B": ["min", "max"],
+            ...     })
 
         Args:
             aggs: Aggregations to compute. This can be:
 
-                - Union[str, AggregateFn]: The (name of an) aggregation that we
-                    want to apply to all columns.
-                - List[Union[str, AggregateFn]]: A list of the (names of)
-                    aggregations that we want to apply to all columns.
-                - Dict[str, Union[str, AggregateFn]]: A map from column names
-                    to the (names of the) aggregations that we wish to apply to
-                    those specific columns. This can only be applied to Arrow
-                    Datasets.
+                - ``Union[str, AggregateFn]``: The (name of an) aggregation
+                  that we want to apply to all columns.
+                - ``List[Union[str, AggregateFn]]``: A list of the (names of)
+                  aggregations that we want to apply to all columns.
+                - ``Dict[str, Union[str, AggregateFn]]``: A map from column
+                  names to the (names of the) aggregations that we wish to
+                  apply to those specific columns. This can only be applied to
+                  Arrow Datasets.
 
         Returns:
             If the input dataset is a simple dataset then the output is
-            a tuple of (agg1, agg2, ...) where each tuple element is
+            a tuple of ``(agg1, agg2, ...)`` where each tuple element is
             the corresponding aggregation result.
+
             If the input dataset is an Arrow dataset then the output is
-            an ArrowRow where each column is the corresponding
+            an ``ArrowRow`` where each column is the corresponding
             aggregation result.
-            When `aggs` is given as a list, the aggregation columns are ordered
-            in accordance with the aggregation list ordering (aggs, cols):
+
+            When ``aggs`` is given as a list, the aggregation columns are
+            ordered in accordance with the aggregation list ordering
+            (aggs, cols)::
+
                 [agg1, agg2]
-            on a dataset with columns col1 and col2 would yield aggregation
-            columns:
+
+            on a dataset with columns ``col1`` and ``col2`` would yield
+            aggregation columns::
+
                 col1_agg1, col2_agg1, col1_agg2, col2_agg2
-            When `aggs` is given as a dict, the aggregation columns are ordered
-            in accordance with the depth-first dict ordering (cols, aggs):
+
+            When ``aggs`` is given as a dict, the aggregation columns are
+            ordered in accordance with the depth-first dict ordering
+            (cols, aggs)::
+
                 {col1: [agg1, agg2], col2: [agg2, agg1]}
-            would yield aggregation columns:
+
+            would yield aggregation columns::
+
                 col1_agg1, col1_agg2, col2_agg2, col2_agg1
-            If the dataset is empty, return None.
+
+            If the dataset is empty, return ``None``.
         """
         aggs_ = self._build_multi_agg(aggs)
         return self.apply_aggregations(*aggs_)
@@ -964,9 +978,11 @@ class Dataset(Generic[T]):
             If the input dataset is a simple dataset then the output is
             a tuple of ``(agg1, agg2, ...)`` where each tuple element is
             the corresponding aggregation result.
+
             If the input dataset is an Arrow dataset then the output is
             an ``ArrowRow`` where each column is the corresponding
             aggregation result.
+
             If the dataset is empty, return ``None``.
         """
         ret = self.groupby(None).apply_aggregations(*aggs).take(1)
