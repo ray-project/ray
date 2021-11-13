@@ -590,7 +590,8 @@ class PopulationBasedTraining(FIFOScheduler):
             else:
                 # Stop trial, but do not free resources (so we can use them
                 # again right away)
-                trial_executor.stop_trial(trial)
+                trial_executor.stop_trial(
+                    trial, destroy_pg_if_cannot_replace=False)
                 trial.set_experiment_tag(new_tag)
                 trial.set_config(new_config)
 
@@ -640,7 +641,7 @@ class PopulationBasedTraining(FIFOScheduler):
         candidates = []
         for trial in trial_runner.get_trials():
             if trial.status in [Trial.PENDING, Trial.PAUSED] and \
-                    trial_runner.has_resources_for_trial(trial):
+                    trial_runner.trial_executor.has_resources_for_trial(trial):
                 if not self._synch:
                     candidates.append(trial)
                 elif self._trial_state[trial].last_train_time < \
@@ -820,7 +821,8 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         if reset_successful:
             trial_executor.restore(trial, checkpoint, block=True)
         else:
-            trial_executor.stop_trial(trial)
+            trial_executor.stop_trial(
+                trial, destroy_pg_if_cannot_replace=False)
             trial.set_experiment_tag(new_tag)
             trial.set_config(new_config)
             trial_executor.start_trial(trial, checkpoint, train=False)

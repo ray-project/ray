@@ -125,11 +125,12 @@ def create_gcs_channel(address: str, aio=False):
 def _auto_reconnect(f):
     @wraps(f)
     def wrapper(self, *args, **kwargs):
+        remaining_retry = self._nums_reconnect_retry
         while True:
             try:
                 return f(self, *args, **kwargs)
             except grpc.RpcError as e:
-                if self._enable_auto_reconnect is False:
+                if remaining_retry == 0:
                     raise
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
                     logger.error(
@@ -137,10 +138,10 @@ def _auto_reconnect(f):
                         f"Error {e.code()}")
                     try:
                         self._connect()
-                    except Exception as e:
-                        import traceback
+                    except Exception:
                         logger.error(f"Connecting to gcs failed. Error {e}")
                     time.sleep(1)
+                    remaining_retry -= 1
                     continue
                 raise
 
@@ -148,7 +149,10 @@ def _auto_reconnect(f):
 
 
 class GcsChannel:
-    def __init__(self, redis_client=None, gcs_address: Optional[str] = None, aio: bool=False):
+    def __init__(self,
+                 redis_client=None,
+                 gcs_address: Optional[str] = None,
+                 aio: bool = False):
         if redis_client is None and gcs_address is None:
             raise ValueError(
                 "One of `redis_client` or `gcs_address` has to be set")
@@ -157,8 +161,7 @@ class GcsChannel:
                 "Only one of `redis_client` or `gcs_address` can be set")
         self._redis_client = redis_client
         self._gcs_address = gcs_address
-        self._aio_channel = aio
-        self._channel = None
+        self._aio = aio
 
     def connect(self):
         if self._redis_client is not None:
@@ -166,7 +169,7 @@ class GcsChannel:
         else:
             gcs_address = self._gcs_address
 
-        self._channel = create_gcs_channel(gcs_address, aio)
+        self._channel = create_gcs_channel(gcs_address, self._aio)
 
     def channel(self):
         return self._channel
@@ -184,14 +187,14 @@ class GcsClient:
     def __init__(self,
                  channel: Optional[GcsChannel] = None,
                  address: Optional[str] = None,
-                 auto_reconnect: bool = True):
+                 nums_reconnect_retry: int = 5):
         if channel is None:
             assert isinstance(address, str)
             channel = GcsChannel(gcs_address=address)
         assert isinstance(channel, GcsChannel)
         self._channel = channel
         self._connect()
-        self._enable_auto_reconnect = auto_reconnect
+        self._nums_reconnect_retry = nums_reconnect_retry
 
     def _connect(self):
         self._channel.connect()

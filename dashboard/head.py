@@ -9,8 +9,11 @@ from concurrent.futures import Future
 from queue import Queue
 
 from distutils.version import LooseVersion
-from grpc.experimental import aio as aiogrpc
 import grpc
+try:
+    from grpc import aio as aiogrpc
+except ImportError:
+    from grpc.experimental import aio as aiogrpc
 
 import ray.experimental.internal_kv as internal_kv
 import ray._private.utils

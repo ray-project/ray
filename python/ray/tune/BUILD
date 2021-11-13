@@ -304,7 +304,7 @@ py_test(
 
 py_test(
     name = "test_trial_scheduler_pbt",
-    size = "large",
+    size = "medium",
     srcs = ["tests/test_trial_scheduler_pbt.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "flaky", "tests_dir_T"],
@@ -397,7 +397,7 @@ py_test(
 
 py_test(
     name = "blendsearch_example",
-    size = "medium",
+    size = "small",
     srcs = ["examples/blendsearch_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
