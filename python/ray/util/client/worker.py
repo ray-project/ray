@@ -38,6 +38,7 @@ from ray.util.debug import log_once
 import ray._private.utils
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+from ray._private.runtime_env.ray_libraries import upload_ray_libraries_if_needed  # noqa: E501
 
 if TYPE_CHECKING:
     from ray.actor import ActorClass
@@ -682,6 +683,8 @@ class Worker:
                         runtime_env, tmp_dir, logger=logger)
                     runtime_env = upload_working_dir_if_needed(
                         runtime_env, tmp_dir, logger=logger)
+                    runtime_env = upload_ray_libraries_if_needed(
+                        runtime_env, tmp_dir)
                     # Remove excludes, it isn't relevant after the upload step.
                     runtime_env.pop("excludes", None)
                     job_config.set_runtime_env(runtime_env)

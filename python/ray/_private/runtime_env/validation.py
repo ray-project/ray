@@ -75,6 +75,22 @@ def parse_and_validate_working_dir(working_dir: str) -> str:
     return working_dir
 
 
+def parse_and_validate_ray_libraries(ray_libraries: List[str]) -> List[str]:
+    """Parses and validates a user-provided 'ray_libraries' option.
+    This should be a list of URIs.
+    """
+    if not isinstance(ray_libraries, dict):
+        raise TypeError("`ray_libraries` must be a Dict[str, str], got "
+                        f"{type(ray_libraries)}.")
+
+    for path, uri in ray_libraries.items():
+        if not isinstance(path, str):
+            raise "Keys in `ray_libraries` must be strings."
+        validate_uri(uri)
+
+    return ray_libraries
+
+
 def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     """Parses and validates a user-provided 'conda' option.
 
@@ -202,6 +218,7 @@ def parse_and_validate_env_vars(
 OPTION_TO_VALIDATION_FN = {
     "py_modules": parse_and_validate_py_modules,
     "working_dir": parse_and_validate_working_dir,
+    "ray_libraries": parse_and_validate_ray_libraries,
     "excludes": parse_and_validate_excludes,
     "conda": parse_and_validate_conda,
     "pip": parse_and_validate_pip,
@@ -258,6 +275,7 @@ class ParsedRuntimeEnv(dict):
     known_fields: Set[str] = {
         "py_modules",
         "working_dir",
+        "ray_libraries",
         "conda",
         "pip",
         "container",

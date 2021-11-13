@@ -31,6 +31,7 @@ from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher, \
     GcsSubscriber
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+from ray._private.runtime_env.ray_libraries import upload_ray_libraries_if_needed  # noqa: E501
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 import ray._private.import_thread as import_thread
 from ray.util.tracing.tracing_helper import import_from_string
@@ -1471,6 +1472,8 @@ def connect(node,
         runtime_env = upload_py_modules_if_needed(
             runtime_env, scratch_dir, logger=logger)
         runtime_env = upload_working_dir_if_needed(
+            runtime_env, scratch_dir, logger=logger)
+        runtime_env = upload_ray_libraries_if_needed(
             runtime_env, scratch_dir, logger=logger)
         # Remove excludes, it isn't relevant after the upload step.
         runtime_env.pop("excludes", None)

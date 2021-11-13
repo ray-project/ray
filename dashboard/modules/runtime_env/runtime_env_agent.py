@@ -21,9 +21,10 @@ from ray.experimental.internal_kv import _internal_kv_initialized, \
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaManager
 from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.py_modules import PyModulesManager
 from ray._private.runtime_env.working_dir import WorkingDirManager
-from ray._private.runtime_env.container import ContainerManager
+from ray._private.runtime_env.ray_libraries import RayLibrariesManager
 
 logger = logging.getLogger(__name__)
 
@@ -69,9 +70,11 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         assert _internal_kv_initialized()
 
         self._conda_manager = CondaManager(self._runtime_env_dir)
+        self._container_manager = ContainerManager(dashboard_agent.temp_dir)
         self._py_modules_manager = PyModulesManager(self._runtime_env_dir)
         self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
-        self._container_manager = ContainerManager(dashboard_agent.temp_dir)
+        self._ray_libraries_manager = RayLibrariesManager(
+            self._runtime_env_dir)
 
     def get_or_create_logger(self, job_id: bytes):
         job_id = job_id.decode()
@@ -104,6 +107,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 self._conda_manager.setup(
                     runtime_env, context, logger=per_job_logger)
                 self._py_modules_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
+                self._ray_libraries_manager.setup(
                     runtime_env, context, logger=per_job_logger)
                 self._working_dir_manager.setup(
                     runtime_env, context, logger=per_job_logger)
