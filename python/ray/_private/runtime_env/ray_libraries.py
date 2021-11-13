@@ -47,7 +47,8 @@ def upload_ray_libraries_if_needed(
             relative_path = library_path
         elif not library_path.startswith(ray_path):
             raise ValueError("ray_libraries entries must be a sub-directory "
-                             f"of Ray, not {library_path}.")
+                             f"of Ray (should start with '{ray_path}'), got "
+                             f"{library_path}.")
         else:
             relative_path = os.path.relpath(library_path, ray_path)
 
