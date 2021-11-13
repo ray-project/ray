@@ -1092,15 +1092,16 @@ def _start_redis_instance(executable,
             wait_for_redis_to_start("127.0.0.1", port, password=password)
         except (redis.exceptions.ResponseError, RuntimeError):
             # Connected to redis with the wrong password, or exceeded
-            # the number of retires. This means we got the wrong redis
+            # the number of retries. This means we got the wrong redis
             # or there is some error in starting up redis.
-            # Try the next port.
-            continue
-        r = redis.StrictRedis(host="127.0.0.1", port=port, password=password)
-        # Check if Redis successfully started and we connected
-        # to the right server.
-        if r.config_get("pidfile")["pidfile"] == pidfile:
-            break
+            # Try the next port by looping again.
+        else:
+            r = redis.StrictRedis(
+                host="127.0.0.1", port=port, password=password)
+            # Check if Redis successfully started and we connected
+            # to the right server.
+            if r.config_get("pidfile")["pidfile"] == pidfile:
+                break
         port = new_port(denylist=port_denylist)
         counter += 1
     if counter == num_retries:
