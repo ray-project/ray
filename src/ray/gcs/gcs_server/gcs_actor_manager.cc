@@ -601,7 +601,8 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
       });
 }
 
-void GcsActorManager::DestroyActor(const ActorID &actor_id) {
+void GcsActorManager::DestroyActor(const ActorID &actor_id,
+                                   const rpc::ActorDeathCause *death_cause) {
   RAY_LOG(INFO) << "Destroying actor, actor id = " << actor_id
                 << ", job id = " << actor_id.JobId();
   actor_to_register_callbacks_.erase(actor_id);
@@ -670,6 +671,9 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   auto time = current_sys_time_ms();
   mutable_actor_table_data->set_end_time(time);
   mutable_actor_table_data->set_timestamp(time);
+  if (death_cause != nullptr) {
+    mutable_actor_table_data->mutable_death_cause()->CopyFrom(*death_cause);
+  }
 
   auto actor_table_data =
       std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
@@ -939,7 +943,7 @@ void GcsActorManager::OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
   death_cause->mutable_runtime_env_setup_failure_context()->set_error_message(
       "Cannot create an actor because the associated runtime env couldn't be created.");
   // If there is runtime env failure, mark this actor as dead immediately.
-  ReconstructActor(actor->GetActorID(), /*need_reschedule=*/false, death_cause.get());
+  DestroyActor(actor->GetActorID(), death_cause.get());
 }
 
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,

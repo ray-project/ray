@@ -381,7 +381,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// scope or the owner has died.
   /// NOTE: This method can be called multiple times in out-of-order and should be
   /// idempotent.
-  void DestroyActor(const ActorID &actor_id);
+  void DestroyActor(const ActorID &actor_id,
+                    const rpc::ActorDeathCause *death_cause = nullptr);
 
   /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerNode(
