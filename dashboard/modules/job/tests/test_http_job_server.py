@@ -9,9 +9,9 @@ import pytest
 from ray.dashboard.tests.conftest import *  # noqa
 from ray._private.test_utils import (format_web_url, wait_for_condition,
                                      wait_until_server_available)
-from ray._private.job_manager import JobStatus
-from ray.dashboard.modules.job.sdk import JobSubmissionClient
-from ray.dashboard.modules.job.job_head import JOBS_API_ROUTE_SUBMIT
+from ray.dashboard.modules.job.common import JobStatus, JOBS_API_ROUTE_SUBMIT
+from ray.dashboard.modules.job.sdk import (ClusterInfo, JobSubmissionClient,
+                                           parse_cluster_info)
 
 logger = logging.getLogger(__name__)
 
@@ -246,6 +246,24 @@ def test_nonexistent_job(job_sdk_client):
     client = job_sdk_client
 
     _check_job_does_not_exist(client, "nonexistent_job")
+
+
+@pytest.mark.parametrize("address", [
+    "http://127.0.0.1", "https://127.0.0.1", "ray://127.0.0.1",
+    "fake_module://127.0.0.1"
+])
+def test_parse_cluster_info(address: str):
+    if address.startswith("ray"):
+        assert parse_cluster_info(address, False) == ClusterInfo(
+            address="http" + address[address.index("://"):],
+            cookies=None,
+            metadata=None)
+    elif address.startswith("http") or address.startswith("https"):
+        assert parse_cluster_info(address, False) == ClusterInfo(
+            address=address, cookies=None, metadata=None)
+    else:
+        with pytest.raises(RuntimeError):
+            parse_cluster_info(address, False)
 
 
 if __name__ == "__main__":
