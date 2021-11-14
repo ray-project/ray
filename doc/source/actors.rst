@@ -529,7 +529,7 @@ exist. See :ref:`actor-lifetimes` for more details.
 
     .. code-block:: java
 
-      # Create an actor with a name.
+      // Create an actor with a name.
       ActorHandle<Counter> counter = Ray.actor(Counter::new).setlName("some_name").remote();
 
       ...
