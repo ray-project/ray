@@ -457,7 +457,7 @@ def download_and_unpack_package(
                 elif protocol == Protocol.GS:
                     try:
                         from smart_open import open
-                        from google.cloud import storage
+                        from google.cloud import storage  # noqa: F401
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` and "
