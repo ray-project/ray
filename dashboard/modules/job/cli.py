@@ -56,7 +56,7 @@ def job_cli_group():
     type=str,
     default=None,
     required=False,
-    help="Path to a local YAML file containing a runtime_env definition.")
+    help="JSON-serialized runtime_env dictionary.")
 @click.option(
     "--working-dir",
     type=str,
