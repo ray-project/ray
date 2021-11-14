@@ -5,7 +5,10 @@ from pathlib import Path
 import tempfile
 from typing import Any, Dict, List, Optional
 
-import requests
+try:
+    import requests
+except ImportError:
+    requests = None
 
 from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
@@ -28,12 +31,38 @@ class ClusterInfo:
     metadata: Optional[Dict[str, Any]]
 
 
+def get_job_submission_client_cluster_info(
+        address: str, create_cluster_if_needed: bool) -> ClusterInfo:
+    """Get address, cookies, and metadata used for JobSubmissionClient.
+
+        Args:
+            address (str): Address without the module prefix that is passed
+                to JobSubmissionClient.
+            create_cluster_if_needed (bool): Indicates whether the cluster
+                of the address returned needs to be running. Ray doesn't
+                start a cluster before interacting with jobs, but other
+                implementations may do so.
+
+        Returns:
+            ClusterInfo object consisting of address, cookies, and metadata
+            for JobSubmissionClient to use.
+        """
+    return ClusterInfo(
+        address="http://" + address, cookies=None, metadata=None)
+
+
 def parse_cluster_info(address: str,
                        create_cluster_if_needed: bool) -> ClusterInfo:
     module_string, inner_address = _split_address(address.rstrip("/"))
 
+    # If user passes in a raw HTTP(S) address, just pass it through.
     if module_string == "http" or module_string == "https":
         return ClusterInfo(address=address, cookies=None, metadata=None)
+    # If user passes in a Ray address, convert it to HTTP.
+    elif module_string == "ray":
+        return get_job_submission_client_cluster_info(
+            inner_address, create_cluster_if_needed)
+    # Try to dynamically import the function to get cluster info.
     else:
         try:
             module = importlib.import_module(module_string)
@@ -51,6 +80,11 @@ def parse_cluster_info(address: str,
 
 class JobSubmissionClient:
     def __init__(self, address: str, create_cluster_if_needed=False):
+        if requests is None:
+            raise RuntimeError(
+                "The Ray jobs CLI & SDK require the ray[default] "
+                "installation: `pip install 'ray[default']``")
+
         cluster_info = parse_cluster_info(address, create_cluster_if_needed)
         self._address = cluster_info.address
         self._cookies = cluster_info.cookies
