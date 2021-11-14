@@ -9,7 +9,7 @@ from typing import Union, Callable, List, TypeVar, Optional, Any, Dict, \
 import ray
 from ray.actor import ActorHandle
 from ray.train.backend import BackendConfig, BackendExecutor, \
-    InactiveWorkerGroupError, TrainBackendError, TrainingWorkerError, Backend
+    InactiveWorkerGroupError, TrainBackendError, TrainingWorkerError
 from ray.train.callbacks.callback import TrainingCallback
 from ray.train.session import TrainingResultType
 from ray.train.utils import RayDataset
@@ -122,7 +122,6 @@ class Trainer:
 
         # Setup executor.
         self._backend_config = self._get_backend_config(backend)
-        self._backend = self._backend_config.backend_cls()
 
         num_cpus = 1
         num_gpus = int(use_gpu)
@@ -152,7 +151,6 @@ class Trainer:
 
         self._backend_executor_actor = remote_executor.remote(
             backend_config=self._backend_config,
-            backend=self._backend,
             num_workers=num_workers,
             num_cpus_per_worker=num_cpus,
             num_gpus_per_worker=num_gpus,
@@ -272,7 +270,7 @@ class Trainer:
         try:
             iterator = TrainingIterator(
                 backend_executor_actor=self._backend_executor_actor,
-                backend=self._backend,
+                backend_config=self._backend_config,
                 train_func=train_func,
                 dataset=dataset,
                 checkpoint_manager=self.checkpoint_manager,
@@ -348,7 +346,7 @@ class Trainer:
 
         return TrainingIterator(
             backend_executor_actor=self._backend_executor_actor,
-            backend=self._backend,
+            backend_config=self._backend_config,
             train_func=train_func,
             run_dir=self.latest_run_dir,
             dataset=dataset,
@@ -566,7 +564,8 @@ class TrainingIterator:
     """An iterator over Train results. Returned by ``trainer.run_iterator``."""
 
     def __init__(
-            self, backend_executor_actor: ActorHandle, backend: Backend,
+            self, backend_executor_actor: ActorHandle,
+            backend_config: BackendConfig,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             run_dir: Path,
             dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]],
@@ -574,7 +573,7 @@ class TrainingIterator:
             checkpoint: Optional[Union[Dict, str, Path]],
             checkpoint_strategy: Optional[CheckpointStrategy]):
         self._backend_executor_actor = backend_executor_actor
-        self._backend = backend
+        self._backend = backend_config.backend_cls()
         self._train_func = train_func
         self._dataset = dataset
         self._run_dir = run_dir

@@ -50,7 +50,7 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
     trainer.start()
     trainer.run(train_func, callbacks=[ValidateCPUCallback()])
     model = trainer.latest_checkpoint["model"]
-    assert not next(model.parameters().is_cuda)
+    assert not next(model.parameters()).is_cuda
     trainer.shutdown()
 
     # Test the same thing for state dict.

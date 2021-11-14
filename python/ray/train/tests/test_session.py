@@ -163,9 +163,9 @@ def test_encode_data():
         checkpoint.update({"encoded": True})
         return checkpoint
 
-    def validate_encoded():
+    def validate_encoded(result_type: TrainingResultType):
         next = session.get_next()
-        assert next is not None
+        assert next.type is result_type
         assert next.data["encoded"] is True
 
     init_session(
@@ -178,9 +178,9 @@ def test_encode_data():
     session = get_session()
     session.start()
     # Validate checkpoint is encoded.
-    validate_encoded()
+    validate_encoded(TrainingResultType.CHECKPOINT)
     # Validate report is encoded.
-    validate_encoded()
+    validate_encoded(TrainingResultType.REPORT)
     session.finish()
     shutdown_session()
 

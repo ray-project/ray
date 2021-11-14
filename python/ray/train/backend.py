@@ -1,4 +1,3 @@
-import abc
 import logging
 import os
 from collections import defaultdict
@@ -13,8 +12,7 @@ from ray.train.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV, TRAIN_ENABLE_WORKER_SPREAD_ENV
 from ray.train.session import TrainingResult
 from ray.train.session import init_session, get_session, shutdown_session
-from ray.train.utils import RayDataset
-from ray.train.utils import check_for_failure
+from ray.train.utils import RayDataset, check_for_failure, Singleton
 from ray.train.worker_group import WorkerGroup
 from ray.util.placement_group import get_current_placement_group, \
     remove_placement_group
@@ -34,8 +32,8 @@ class BackendConfig:
         raise NotImplementedError
 
 
-class Backend(metaclass=abc.ABCMeta):
-    """Metaclass for distributed communication backend.
+class Backend(metaclass=Singleton):
+    """Singleton for distributed communication backend.
 
     Attributes:
         share_cuda_visible_devices (bool): If True, each worker
@@ -122,14 +120,13 @@ class BackendExecutor:
     def __init__(
             self,
             backend_config: BackendConfig,
-            backend: Backend,
             num_workers: int = 1,
             num_cpus_per_worker: float = 1,
             num_gpus_per_worker: float = 0,
             additional_resources_per_worker: Optional[Dict[str, float]] = None,
             max_retries: int = 3):
         self._backend_config = backend_config
-        self._backend = backend
+        self._backend = backend_config.backend_cls()
         self._num_workers = num_workers
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
