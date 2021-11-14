@@ -69,7 +69,7 @@ class PettingZooEnv(MultiAgentEnv):
     def __init__(self, env):
         self.env = env
         env.reset()
-        # agent idx list
+
         # Get first observation space, assuming all agents have equal space
         self.observation_space = self.env.observation_space(self.env.agents[0])
 
