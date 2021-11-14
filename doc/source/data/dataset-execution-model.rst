@@ -93,7 +93,7 @@ Mapping individual records using ``.map(fn)`` can be quite slow. Instead, consid
 Parquet Column Pruning
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Current Datasets will read all Parquet columns into memory. Make sure to specify the list of columns explicitly when calling ``ray.data.read_parquet()`` to avoid loading them.
+Current Datasets will read all Parquet columns into memory. Make sure to specify the list of columns explicitly when calling ``ray.data.read_parquet()`` to avoid loading unnecessary data.
 
 Tuning Read Parallelism
 ~~~~~~~~~~~~~~~~~~~~~~~
