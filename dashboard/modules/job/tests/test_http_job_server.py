@@ -8,9 +8,7 @@ import pytest
 from ray.dashboard.tests.conftest import *  # noqa
 from ray._private.test_utils import (format_web_url, wait_for_condition,
                                      wait_until_server_available)
-from ray.dashboard.modules.job.common import (
-    JobStatus, JobSubmitResponse, JOBS_API_ROUTE_LOGS, JOBS_API_ROUTE_STATUS,
-    JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_PACKAGE, JOBS_API_ROUTE_STOP)
+from ray.dashboard.modules.job.common import (JobStatus, JobSubmitResponse)
 from ray.dashboard.modules.job.sdk import JobSubmissionClient
 
 logger = logging.getLogger(__name__)
@@ -122,7 +120,7 @@ def test_http_bad_request(job_sdk_client):
     with pytest.raises(RuntimeError) as e:
         _ = client._do_request(
             "POST",
-            JOBS_API_ROUTE_SUBMIT,
+            "/api/jobs/",
             json_data={"key": "baaaad request"},
         )
 
@@ -134,8 +132,7 @@ def test_http_bad_request(job_sdk_client):
     with pytest.raises(RuntimeError) as e:
         _ = client._do_request(
             "GET",
-            JOBS_API_ROUTE_SUBMIT,
-            json_data={"key": "baaaad request"},
+            "/api/jobs/fake_job_id",
         )
     ex_message = str(e.value)
     assert "status code 405" in ex_message
@@ -254,7 +251,7 @@ def test_submit_optional_args(job_sdk_client):
 
     response = client._do_request(
         "POST",
-        JOBS_API_ROUTE_SUBMIT,
+        "/api/jobs/",
         json_data={"entrypoint": "ls"},
         response_type=JobSubmitResponse,
     )
@@ -263,22 +260,19 @@ def test_submit_optional_args(job_sdk_client):
         _check_job_succeeded, client=client, job_id=response.job_id)
 
 
-@pytest.mark.parametrize("condition",
-                         [(JOBS_API_ROUTE_LOGS, "GET", "job_id"),
-                          (JOBS_API_ROUTE_STATUS, "GET", "job_id"),
-                          (JOBS_API_ROUTE_PACKAGE, "GET", "package_uri"),
-                          (JOBS_API_ROUTE_PACKAGE, "PUT", "package_uri"),
-                          (JOBS_API_ROUTE_STOP, "POST", "job_id")])
-def test_missing_query_params(job_sdk_client, condition):
-    """Check that a sensible error is raised for missing query params."""
+def test_missing_resources(job_sdk_client):
+    """Check that 404s are raised for resources that don't exist."""
     client = job_sdk_client
 
-    route, method, param = condition
-    with pytest.raises(RuntimeError, match=f"Missing query parameter {param}"):
-        client._do_request(
-            method,
-            route,
-        )
+    conditions = [("GET",
+                   "/api/jobs/fake_job_id"), ("GET",
+                                              "/api/jobs/fake_job_id/logs"),
+                  ("POST", "/api/jobs/fake_job_id/stop"),
+                  ("GET", "/api/packages/fake_package_uri")]
+
+    for method, route in conditions:
+        with pytest.raises(RuntimeError, match="404"):
+            client._do_request(method, route)
 
 
 if __name__ == "__main__":

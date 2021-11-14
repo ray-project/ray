@@ -1,4 +1,5 @@
 import aiohttp.web
+from aiohttp.web import Request, Response
 import dataclasses
 from functools import wraps
 import logging
@@ -12,18 +13,13 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private.runtime_env.packaging import (package_exists,
                                                 upload_package_to_gcs)
 from ray.dashboard.modules.job.common import (
-    GetPackageResponse,
+    http_uri_components_to_uri,
     JobStatus,
     JobSubmitRequest,
     JobSubmitResponse,
     JobStopResponse,
     JobStatusResponse,
     JobLogsResponse,
-    JOBS_API_ROUTE_LOGS,
-    JOBS_API_ROUTE_SUBMIT,
-    JOBS_API_ROUTE_STOP,
-    JOBS_API_ROUTE_STATUS,
-    JOBS_API_ROUTE_PACKAGE,
     validate_request_type,
 )
 from ray.dashboard.modules.job.job_manager import JobManager
@@ -31,7 +27,7 @@ from ray.dashboard.modules.job.job_manager import JobManager
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
-RAY_INTERNAL_JOBS_NAMESPACE = "_ray_internal_jobs_"
+RAY_INTERNAL_JOBS_NAMESPACE = "_ray_internal_jobs"
 
 
 def _ensure_ray_initialized(f: Callable) -> Callable:
@@ -50,7 +46,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         self._job_manager = None
 
-    async def _parse_and_validate_request(self, req: aiohttp.web.Request,
+    async def _parse_and_validate_request(self, req: Request,
                                           request_type: dataclass) -> Any:
         """Parse request and cast to request type. If parsing failed, return a
         Response object with status 400 and stacktrace instead.
@@ -59,61 +55,50 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             return validate_request_type(await req.json(), request_type)
         except Exception as e:
             logger.info(f"Got invalid request type: {e}")
-            return aiohttp.web.Response(
+            return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPBadRequest.status_code)
 
-    def _get_query_param(self, req: aiohttp.web.Request, param: str):
-        try:
-            return req.query[param]
-        except KeyError:
-            return aiohttp.web.Response(
-                text=f"Missing query parameter {param}",
-                status=aiohttp.web.HTTPBadRequest.status_code)
+    def job_exists(self, job_id: str) -> bool:
+        status: JobStatus = self._job_manager.get_job_status(job_id)
+        return status != JobStatus.DOES_NOT_EXIST
 
-    @routes.get(JOBS_API_ROUTE_PACKAGE)
+    @routes.get("/api/packages/{protocol}/{package_name}")
     @_ensure_ray_initialized
-    async def get_package(self,
-                          req: aiohttp.web.Request) -> aiohttp.web.Response:
-        package_uri = self._get_query_param(req, "package_uri")
-        if isinstance(package_uri, aiohttp.web.Response):
-            return package_uri
+    async def get_package(self, req: Request) -> Response:
+        package_uri = http_uri_components_to_uri(
+            protocol=req.match_info["protocol"],
+            package_name=req.match_info["package_name"])
 
-        try:
-            exists = package_exists(package_uri)
-        except Exception:
-            return aiohttp.web.Response(
-                text=traceback.format_exc(),
-                status=aiohttp.web.HTTPInternalServerError.status_code)
+        if not package_exists(package_uri):
+            return Response(
+                text=f"Package {package_uri} does not exist.",
+                status=aiohttp.web.HTTPNotFound.status_code)
 
-        resp = GetPackageResponse(package_exists=exists)
-        return aiohttp.web.Response(
-            text=json.dumps(dataclasses.asdict(resp)),
-            content_type="application/json")
+        return Response()
 
-    @routes.put(JOBS_API_ROUTE_PACKAGE)
+    @routes.put("/api/packages/{protocol}/{package_name}")
     @_ensure_ray_initialized
-    async def upload_package(self, req: aiohttp.web.Request):
-        package_uri = self._get_query_param(req, "package_uri")
-        if isinstance(package_uri, aiohttp.web.Response):
-            return package_uri
-
+    async def upload_package(self, req: Request):
+        package_uri = http_uri_components_to_uri(
+            protocol=req.match_info["protocol"],
+            package_name=req.match_info["package_name"])
         logger.info(f"Uploading package {package_uri} to the GCS.")
         try:
             upload_package_to_gcs(package_uri, await req.read())
         except Exception:
-            return aiohttp.web.Response(
+            return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code)
 
-        return aiohttp.web.Response(status=aiohttp.web.HTTPOk.status_code, )
+        return Response(status=aiohttp.web.HTTPOk.status_code)
 
-    @routes.post(JOBS_API_ROUTE_SUBMIT)
+    @routes.post("/api/jobs/")
     @_ensure_ray_initialized
-    async def submit(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+    async def submit_job(self, req: Request) -> Response:
         result = await self._parse_and_validate_request(req, JobSubmitRequest)
         # Request parsing failed, returned with Response object.
-        if isinstance(result, aiohttp.web.Response):
+        if isinstance(result, Response):
             return result
         else:
             submit_request = result
@@ -127,63 +112,69 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
             resp = JobSubmitResponse(job_id=job_id)
         except (TypeError, ValueError):
-            return aiohttp.web.Response(
+            return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPBadRequest.status_code)
         except Exception:
-            return aiohttp.web.Response(
+            return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code)
 
-        return aiohttp.web.Response(
+        return Response(
             text=json.dumps(dataclasses.asdict(resp)),
             content_type="application/json",
             status=aiohttp.web.HTTPOk.status_code,
         )
 
-    @routes.post(JOBS_API_ROUTE_STOP)
+    @routes.post("/api/jobs/{job_id}/stop")
     @_ensure_ray_initialized
-    async def stop(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
-        job_id = self._get_query_param(req, "job_id")
-        if isinstance(job_id, aiohttp.web.Response):
-            return job_id
+    async def stop_job(self, req: Request) -> Response:
+        job_id = req.match_info["job_id"]
+        if not self.job_exists(job_id):
+            return Response(
+                text=f"Job {job_id} does not exist.",
+                status=aiohttp.web.HTTPNotFound.status_code)
 
         try:
             stopped = self._job_manager.stop_job(job_id)
             resp = JobStopResponse(stopped=stopped)
         except Exception:
-            return aiohttp.web.Response(
+            return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code)
 
-        return aiohttp.web.Response(
+        return Response(
             text=json.dumps(dataclasses.asdict(resp)),
             content_type="application/json")
 
-    @routes.get(JOBS_API_ROUTE_STATUS)
+    @routes.get("/api/jobs/{job_id}")
     @_ensure_ray_initialized
-    async def status(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
-        job_id = self._get_query_param(req, "job_id")
-        if isinstance(job_id, aiohttp.web.Response):
-            return job_id
+    async def get_job_status(self, req: Request) -> Response:
+        job_id = req.match_info["job_id"]
+        if not self.job_exists(job_id):
+            return Response(
+                text=f"Job {job_id} does not exist.",
+                status=aiohttp.web.HTTPNotFound.status_code)
 
         status: JobStatus = self._job_manager.get_job_status(job_id)
-        resp = JobStatusResponse(job_status=status)
-        return aiohttp.web.Response(
+        resp = JobStatusResponse(status=status)
+        return Response(
             text=json.dumps(dataclasses.asdict(resp)),
             content_type="application/json")
 
-    @routes.get(JOBS_API_ROUTE_LOGS)
+    @routes.get("/api/jobs/{job_id}/logs")
     @_ensure_ray_initialized
-    async def logs(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
-        job_id = self._get_query_param(req, "job_id")
-        if isinstance(job_id, aiohttp.web.Response):
-            return job_id
+    async def get_job_logs(self, req: Request) -> Response:
+        job_id = req.match_info["job_id"]
+        if not self.job_exists(job_id):
+            return Response(
+                text=f"Job {job_id} does not exist.",
+                status=aiohttp.web.HTTPNotFound.status_code)
 
         logs: str = self._job_manager.get_job_logs(job_id)
         # TODO(jiaodong): Support log streaming #19415
         resp = JobLogsResponse(logs=logs)
-        return aiohttp.web.Response(
+        return Response(
             text=json.dumps(dataclasses.asdict(resp)),
             content_type="application/json")
 

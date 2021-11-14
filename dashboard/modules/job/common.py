@@ -1,24 +1,19 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 import pickle
+
 from ray import ray_constants
 from ray.experimental.internal_kv import (
     _internal_kv_initialized,
     _internal_kv_get,
     _internal_kv_put,
 )
+from ray._private.runtime_env.packaging import parse_uri
 
 # NOTE(edoakes): constant should be considered a public API because it's
 # exposed in the snapshot API.
 JOB_ID_METADATA_KEY = "job_submission_id"
-
-JOBS_API_PREFIX = "/api/jobs/"
-JOBS_API_ROUTE_LOGS = JOBS_API_PREFIX + "logs"
-JOBS_API_ROUTE_SUBMIT = JOBS_API_PREFIX + "submit"
-JOBS_API_ROUTE_STOP = JOBS_API_PREFIX + "stop"
-JOBS_API_ROUTE_STATUS = JOBS_API_PREFIX + "status"
-JOBS_API_ROUTE_PACKAGE = JOBS_API_PREFIX + "package"
 
 
 class JobStatus(str, Enum):
@@ -59,20 +54,25 @@ class JobStatusStorageClient:
             return pickle.loads(pickled_status)
 
 
+def uri_to_http_components(package_uri: str) -> Tuple[str, str]:
+    if not package_uri.endswith(".zip"):
+        raise ValueError(f"package_uri ({package_uri}) does not end in .zip")
+    # We need to strip the gcs:// prefix and .zip suffix to make it
+    # possible to pass the package_uri over HTTP.
+    protocol, package_name = parse_uri(package_uri)
+    return protocol.value, package_name[:-len(".zip")]
+
+
+def http_uri_components_to_uri(protocol: str, package_name: str) -> str:
+    if package_name.endswith(".zip"):
+        raise ValueError(
+            f"package_name ({package_name}) should not end in .zip")
+    return f"{protocol}://{package_name}.zip"
+
+
 def validate_request_type(json_data: Dict[str, Any],
                           request_type: dataclass) -> Any:
     return request_type(**json_data)
-
-
-# ==== Get Package ====
-
-
-@dataclass
-class GetPackageResponse:
-    package_exists: bool
-
-
-# ==== Job Submit ====
 
 
 @dataclass
@@ -129,23 +129,14 @@ class JobSubmitResponse:
     job_id: str
 
 
-# ==== Job Stop ====
-
-
 @dataclass
 class JobStopResponse:
     stopped: bool
 
 
-# ==== Job Status ====
-
-
 @dataclass
 class JobStatusResponse:
-    job_status: JobStatus
-
-
-# ==== Job Logs ====
+    status: JobStatus
 
 
 # TODO(jiaodong): Support log streaming #19415

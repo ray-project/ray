@@ -9,10 +9,8 @@ import requests
 from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
 from ray.dashboard.modules.job.common import (
-    GetPackageResponse, JobSubmitRequest, JobSubmitResponse, JobStopResponse,
-    JobStatus, JobStatusResponse, JobLogsResponse, JOBS_API_ROUTE_LOGS,
-    JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP, JOBS_API_ROUTE_STATUS,
-    JOBS_API_ROUTE_PACKAGE)
+    JobSubmitRequest, JobSubmitResponse, JobStopResponse, JobStatus,
+    JobStatusResponse, JobLogsResponse, uri_to_http_components)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -30,64 +28,65 @@ class JobSubmissionClient:
             raise ConnectionError(
                 f"Failed to connect to Ray at address: {self._address}.")
 
-    def _do_request(self,
-                    method: str,
-                    endpoint: str,
-                    *,
-                    data: Optional[bytes] = None,
-                    json_data: Optional[dict] = None,
-                    params: Optional[dict] = None,
-                    response_type: Optional[type] = None) -> Optional[object]:
+    def _raise_error(self, r: requests.Response):
+        raise RuntimeError(
+            f"Request failed with status code {r.status_code}: {r.text}.")
+
+    def _do_request(
+            self,
+            method: str,
+            endpoint: str,
+            *,
+            data: Optional[bytes] = None,
+            json_data: Optional[dict] = None,
+    ) -> Optional[object]:
         url = self._address + endpoint
-        logger.debug(f"Sending request to {url} with "
-                     f"json: {json_data}, params: {params}.")
-        r = requests.request(
-            method, url, data=data, json=json_data, params=params)
-        if r.status_code != 200:
-            raise RuntimeError(
-                f"Request failed with status code {r.status_code}: {r.text}.")
-        if response_type is None:
-            return None
-        else:
-            response = r.json()
-            logger.debug(f"Got response: {response}.")
-            return response_type(**response)
+        logger.debug(
+            f"Sending request to {url} with json data: {json_data or {}}.")
+        return requests.request(method, url, data=data, json=json_data)
 
     def _package_exists(self, package_uri: str) -> bool:
-        resp = self._do_request(
-            "GET",
-            JOBS_API_ROUTE_PACKAGE,
-            params={"package_uri": package_uri},
-            response_type=GetPackageResponse)
-        return resp.package_exists
+        protocol, package_name = uri_to_http_components(package_uri)
+        r = self._do_request("GET", f"/api/packages/{protocol}/{package_name}")
+
+        if r.status_code == 200:
+            logger.debug(f"Package {package_uri} already exists.")
+            return True
+        elif r.status_code == 404:
+            logger.debug(f"Package {package_uri} does not exist.")
+            return False
+        else:
+            self._raise_error(r)
 
     def _upload_package(self,
                         package_uri: str,
                         package_path: str,
                         include_parent_dir: Optional[bool] = False,
                         excludes: Optional[List[str]] = None) -> bool:
+        logger.info(f"Uploading package {package_uri}.")
         with tempfile.TemporaryDirectory() as tmp_dir:
-            package_name = parse_uri(package_uri)[1]
+            protocol, package_name = uri_to_http_components(package_uri)
             package_file = Path(tmp_dir) / package_name
             create_package(
                 package_path,
                 package_file,
                 include_parent_dir=include_parent_dir,
                 excludes=excludes)
-            self._do_request(
-                "PUT",
-                JOBS_API_ROUTE_PACKAGE,
-                data=package_file.read_bytes(),
-                params={"package_uri": package_uri})
-            package_file.unlink()
+            try:
+                r = self._do_request(
+                    "PUT",
+                    f"/api/packages/{protocol}/{package_name}",
+                    data=package_file.read_bytes())
+                if r.status_code != 200:
+                    self._raise_error(r)
+            finally:
+                package_file.unlink()
 
     def _upload_package_if_needed(self,
                                   package_path: str,
                                   excludes: Optional[List[str]] = None) -> str:
-        package_uri: str = get_uri_for_directory(
-            package_path, excludes=excludes)
+        package_uri = get_uri_for_directory(package_path, excludes=excludes)
         if not self._package_exists(package_uri):
-            logger.info(f"Uploading package {package_uri}.")
             self._upload_package(package_uri, package_path, excludes=excludes)
         else:
             logger.info(
@@ -126,33 +125,40 @@ class JobSubmissionClient:
             job_id=job_id,
             runtime_env=runtime_env,
             metadata=metadata)
-        resp = self._do_request(
-            "POST",
-            JOBS_API_ROUTE_SUBMIT,
-            json_data=dataclasses.asdict(req),
-            response_type=JobSubmitResponse)
-        return resp.job_id
+
+        logger.debug(f"Submitting job with job_id={job_id}.")
+        r = self._do_request(
+            "POST", "/api/jobs/", json_data=dataclasses.asdict(req))
+
+        if r.status_code == 200:
+            return JobSubmitResponse(**r.json()).job_id
+        else:
+            self._raise_error(r)
 
     def stop_job(self, job_id: str) -> bool:
-        resp = self._do_request(
+        logger.debug(f"Stopping job with job_id={job_id}.")
+        r = self._do_request(
             "POST",
-            JOBS_API_ROUTE_STOP,
-            params={"job_id": job_id},
-            response_type=JobStopResponse)
-        return resp.stopped
+            f"/api/jobs/{job_id}/stop",
+        )
+
+        if r.status_code == 200:
+            return JobStopResponse(**r.json()).stopped
+        else:
+            self._raise_error(r)
 
     def get_job_status(self, job_id: str) -> JobStatus:
-        resp = self._do_request(
-            "GET",
-            JOBS_API_ROUTE_STATUS,
-            params={"job_id": job_id},
-            response_type=JobStatusResponse)
-        return resp.job_status
+        r = self._do_request("GET", f"/api/jobs/{job_id}")
+
+        if r.status_code == 200:
+            return JobStatusResponse(**r.json()).status
+        else:
+            self._raise_error(r)
 
     def get_job_logs(self, job_id: str) -> str:
-        resp = self._do_request(
-            "GET",
-            JOBS_API_ROUTE_LOGS,
-            params={"job_id": job_id},
-            response_type=JobLogsResponse)
-        return resp.logs
+        r = self._do_request("GET", f"/api/jobs/{job_id}/logs")
+
+        if r.status_code == 200:
+            return JobLogsResponse(**r.json()).logs
+        else:
+            self._raise_error(r)
