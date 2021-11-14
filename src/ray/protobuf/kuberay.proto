@@ -5,7 +5,7 @@ package ray.rpc;
 option go_package = "github.com/ray-project/kuberay";
 
 // Interface for getting and returning nodes from a Kuberay operator.
-service NodeProvider {
+service KuberayNodeProvider {
   // Creates a number of nodes. Returns a map from created node ids to node metadata.
   rpc CreateNode (CreateNodeRequest) returns (CreateNodeResponse);
   // Returns the internal ip (Ray ip) of the given node.
