@@ -83,7 +83,7 @@ def working_dir_option(request):
     elif request.param == "s3_working_dir":
         yield {
             "runtime_env": {
-                "working_dir": "s3://runtime-env-test/script.zip",
+                "working_dir": "s3://runtime-env-test/script_runtime_env.zip",
             },
             "entrypoint": "python script.py",
             "expected_logs": "Executing main() from script.py !!\n",
@@ -124,7 +124,7 @@ def test_http_bad_request(job_sdk_client):
 
     # 500 - HTTPInternalServerError
     with pytest.raises(
-            RuntimeError, match="Only .zip files supported for S3 URIs"):
+            RuntimeError, match="Only .zip files supported for remote URIs"):
         r = client.submit_job(
             entrypoint="echo hello",
             runtime_env={"working_dir": "s3://does_not_exist"})
