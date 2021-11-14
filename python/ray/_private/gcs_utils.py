@@ -200,8 +200,7 @@ def _get_key(key: bytes) -> bytes:
     assert isinstance(key, bytes)
     if not key.startswith(__NS_START_CHAR):
         return key
-
-    _, key = key.split(b":", 2)
+    _, key = key.split(b":", 1)
     return key
 
 

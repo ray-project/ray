@@ -786,7 +786,8 @@ class Node:
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info,
         ]
-        ray.experimental.internal_kv._internal_kv_reset()
+        # Init gcs client
+        self.get_gcs_client()
 
     def start_raylet(self,
                      plasma_directory,
@@ -900,7 +901,6 @@ class Node:
         self.start_redis()
 
         self.start_gcs_server()
-
         if not self._ray_params.no_monitor:
             self.start_monitor()
 
