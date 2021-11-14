@@ -128,11 +128,10 @@ class ClassMethodRouteTable:
                     #   * (self, Request)
                     req = args[-1]
                     return await handler(bind_info.instance, req)
-                except Exception as e:
-                    logger.exception(f"{method} {path} failed: {e}")
-                    return aiohttp.web.Response(
-                        text=traceback.format_exc(),
-                        status=aiohttp.web.HTTPInternalServerError.status_code)
+                except Exception:
+                    logger.exception("Handle %s %s failed.", method, path)
+                    return rest_response(
+                        success=False, message=traceback.format_exc())
 
             cls._bind_map[method][path] = bind_info
             _handler_route.__route_method__ = method
@@ -350,12 +349,9 @@ def aiohttp_cache(
                 def _update_cache(task):
                     try:
                         response = task.result()
-                    except Exception as e:
-                        logger.exception(f"Updating cache failed: {e}")
-                        return aiohttp.web.Response(
-                            text=traceback.format_exc(),
-                            status=aiohttp.web.HTTPInternalServerError.
-                            status_code)
+                    except Exception:
+                        response = rest_response(
+                            success=False, message=traceback.format_exc())
                     data = {
                         "status": response.status,
                         "headers": dict(response.headers),

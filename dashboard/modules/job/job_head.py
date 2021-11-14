@@ -30,12 +30,18 @@ routes = dashboard_utils.ClassMethodRouteTable
 RAY_INTERNAL_JOBS_NAMESPACE = "_ray_internal_jobs"
 
 
-def _ensure_ray_initialized(f: Callable) -> Callable:
+def _init_ray_and_catch_exceptions(f: Callable) -> Callable:
     @wraps(f)
     def check(self, *args, **kwargs):
         if not ray.is_initialized():
             ray.init(address="auto", namespace=RAY_INTERNAL_JOBS_NAMESPACE)
-        return f(self, *args, **kwargs)
+        try:
+            return f(self, *args, **kwargs)
+        except Exception as e:
+            logger.exception(f"Unexpected error in handler: {e}")
+            return Response(
+                text=traceback.format_exc(),
+                status=aiohttp.web.HTTPInternalServerError.status_code)
 
     return check
 
@@ -64,7 +70,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return status != JobStatus.DOES_NOT_EXIST
 
     @routes.get("/api/packages/{protocol}/{package_name}")
-    @_ensure_ray_initialized
+    @_init_ray_and_catch_exceptions
     async def get_package(self, req: Request) -> Response:
         package_uri = http_uri_components_to_uri(
             protocol=req.match_info["protocol"],
@@ -78,7 +84,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return Response()
 
     @routes.put("/api/packages/{protocol}/{package_name}")
-    @_ensure_ray_initialized
+    @_init_ray_and_catch_exceptions
     async def upload_package(self, req: Request):
         package_uri = http_uri_components_to_uri(
             protocol=req.match_info["protocol"],
@@ -94,7 +100,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         return Response(status=aiohttp.web.HTTPOk.status_code)
 
     @routes.post("/api/jobs/")
-    @_ensure_ray_initialized
+    @_init_ray_and_catch_exceptions
     async def submit_job(self, req: Request) -> Response:
         result = await self._parse_and_validate_request(req, JobSubmitRequest)
         # Request parsing failed, returned with Response object.
@@ -127,7 +133,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.post("/api/jobs/{job_id}/stop")
-    @_ensure_ray_initialized
+    @_init_ray_and_catch_exceptions
     async def stop_job(self, req: Request) -> Response:
         job_id = req.match_info["job_id"]
         if not self.job_exists(job_id):
@@ -148,7 +154,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             content_type="application/json")
 
     @routes.get("/api/jobs/{job_id}")
-    @_ensure_ray_initialized
+    @_init_ray_and_catch_exceptions
     async def get_job_status(self, req: Request) -> Response:
         job_id = req.match_info["job_id"]
         if not self.job_exists(job_id):
@@ -163,7 +169,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             content_type="application/json")
 
     @routes.get("/api/jobs/{job_id}/logs")
-    @_ensure_ray_initialized
+    @_init_ray_and_catch_exceptions
     async def get_job_logs(self, req: Request) -> Response:
         job_id = req.match_info["job_id"]
         if not self.job_exists(job_id):
