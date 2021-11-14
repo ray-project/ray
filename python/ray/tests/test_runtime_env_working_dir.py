@@ -314,7 +314,7 @@ def test_remote_package_uri(start_cluster, remote_uri, option, per_task_actor):
     "source", [*REMOTE_URIS, lazy_fixture("tmp_working_dir")])
 def test_multi_node(start_cluster, option: str, source: str):
     """Tests that the working_dir is propagated across multi-node clusters."""
-    NUM_NODES = 2
+    NUM_NODES = 3
     cluster, address = start_cluster
     for i in range(NUM_NODES - 1):  # Head node already added.
         cluster.add_node(
