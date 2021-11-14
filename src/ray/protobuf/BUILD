@@ -185,7 +185,7 @@ python_grpc_compile(
 # Kuberay node provider interface.
 proto_library(
     name = "kuberay_proto",
-    src = ["kuberay.proto"],
+    srcs = ["kuberay.proto"],
 )
 
 python_grpc_compile(

@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package ray.rpc;
+
+option go_package = "github.com/ray-project/kuberay";
+
+// Interface for getting and returning nodes from a Kuberay operator.
+service NodeProvider {
+  // Creates a number of nodes. Returns a map from created node ids to node metadata.
+  rpc CreateNode (CreateNodeRequest) returns (CreateNodeResponse);
+  // Returns the internal ip (Ray ip) of the given node.
+  rpc InternalIp (InternalIpRequest) returns (InternalIpResponse);
+  // Returns the tags of the given node (string dict).
+  rpc NodeTags (NodeTagsRequest) returns (NodeTagsResponse);
+  // Return a list of node ids filtered by the specified tags dict.
+  rpc NonTerminatedNodes (NonTerminatedNodesRequest) returns (NonTerminatedNodesResponse);
+  // Terminates a list of nodes. Returns a map from deleted node ids to node metadata.
+  rpc TerminateNodes (TerminateNodesRequest) returns (TerminateNodesResponse);
+}
+
+message CreateNodeRequest {
+  map<string, string> tags = 1;
+  int32 count = 2;
+}
+
+// Node metdata (string-string map)
+message NodeMeta {
+  map<string, string> node_meta = 1;
+}
+
+// Map of ids of nodes requested for creation
+// to node metadata.
+message CreateNodeResponse {
+  map<string, NodeMeta> node_to_meta = 1;
+}
+
+message InternalIpRequest {
+  string node_id = 1;
+}
+
+message InternalIpResponse {
+  string node_ip = 1;
+}
+
+message NodeTagsRequest {
+  string node_id = 1;
+}
+
+message NodeTagsResponse {
+  map<string, string> node_tags = 1;
+}
+
+message NonTerminatedNodesRequest {
+  map<string, string> tag_filters = 1;
+  string cluster_name = 2;
+}
+
+// Need this for NonTerminatedNodesResponse,
+// as `repeated map<string, string>` is not allowed.
+message NodeTags {
+  map<string, string> node_tags = 1;
+}
+
+message NonTerminatedNodesResponse {
+  repeated string node_ids = 1;
+  repeated string node_ips = 2;
+  repeated NodeTags node_tags_list = 3;
+}
+
+message TerminateNodesRequest {
+  repeated string node_ids = 1;
+}
+
+// Map of ids of nodes requested for deletion
+// to node metadata.
+message TerminateNodesResponse {
+  map<string, NodeMeta> node_to_meta = 1;
+}
