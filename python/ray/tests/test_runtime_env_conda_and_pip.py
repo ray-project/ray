@@ -14,7 +14,7 @@ if not os.environ.get("CI"):
 
 def check_local_files_gced(cluster):
     for node in cluster.list_all_nodes():
-        for subdir in ["conda"]:
+        for subdir in ["conda", "pip"]:
             all_files = os.listdir(
                 os.path.join(node.get_runtime_env_dir_path(), subdir))
             # Check that there are no files remaining except for .lock files

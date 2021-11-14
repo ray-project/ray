@@ -19,6 +19,7 @@ import ray.dashboard.modules.runtime_env.runtime_env_consts \
 from ray.experimental.internal_kv import _internal_kv_initialized, \
     _initialize_internal_kv
 from ray._private.ray_logging import setup_component_logger
+from ray._private.runtime_env.pip import PipManager
 from ray._private.runtime_env.conda import CondaManager
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.py_modules import PyModulesManager
@@ -68,6 +69,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         _initialize_internal_kv(self._dashboard_agent.gcs_client)
         assert _internal_kv_initialized()
 
+        self._pip_manager = PipManager(self._runtime_env_dir)
         self._conda_manager = CondaManager(self._runtime_env_dir)
         self._py_modules_manager = PyModulesManager(self._runtime_env_dir)
         self._working_dir_manager = WorkingDirManager(self._runtime_env_dir)
@@ -101,6 +103,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                                      f"{allocated_resource}")
                 context = RuntimeEnvContext(
                     env_vars=runtime_env.get("env_vars"))
+                self._pip_manager.setup(
+                    runtime_env, context, logger=per_job_logger)
                 self._conda_manager.setup(
                     runtime_env, context, logger=per_job_logger)
                 self._py_modules_manager.setup(
@@ -214,6 +218,9 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     failed_uris.append(uri)
             elif plugin == "conda":
                 if not self._conda_manager.delete_uri(uri):
+                    failed_uris.append(uri)
+            elif plugin == "pip":
+                if not self._pip_manager.delete_uri(uri):
                     failed_uris.append(uri)
             else:
                 raise ValueError(

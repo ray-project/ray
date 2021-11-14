@@ -10,7 +10,8 @@ import yaml
 import ray
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import import_attr
-from ray._private.runtime_env import conda
+from ray._private.runtime_env.conda import get_uri as get_conda_uri
+from ray._private.runtime_env.pip import get_uri as get_pip_uri
 
 logger = logging.getLogger(__name__)
 
@@ -355,10 +356,14 @@ class ParsedRuntimeEnv(dict):
         if "py_modules" in self:
             for uri in self["py_modules"]:
                 plugin_uris.append(_encode_plugin_uri("py_modules", uri))
-        if "conda" or "pip" in self:
-            uri = conda.get_uri(self)
+        if "conda" in self:
+            uri = get_conda_uri(self)
             if uri is not None:
                 plugin_uris.append(_encode_plugin_uri("conda", uri))
+        if "pip" in self:
+            uri = get_pip_uri(self)
+            if uri is not None:
+                plugin_uris.append(_encode_plugin_uri("pip", uri))
 
         return plugin_uris
 
