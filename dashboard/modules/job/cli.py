@@ -36,13 +36,15 @@ def job_cli_group():
     type=str,
     default=None,
     required=False,
-)
+    help=("Address of the Ray cluster to connect to. Can also be specified "
+          "using the RAY_ADDRESS environment variable."))
 @click.option(
     "--job-id",
     type=str,
     default=None,
     required=False,
-)
+    help=("Job ID to specify for the job. "
+          "If not provided, one will be generated."))
 @click.option(
     "--runtime-env",
     type=str,
@@ -109,7 +111,8 @@ def job_submit(address: Optional[str], job_id: Optional[str],
     type=str,
     default=None,
     required=False,
-)
+    help=("Address of the Ray cluster to connect to. Can also be specified "
+          "using the RAY_ADDRESS environment variable."))
 @click.argument("job-id", type=str)
 def job_status(address: Optional[str], job_id: str):
     """Queries for the current status of a job.
@@ -127,7 +130,8 @@ def job_status(address: Optional[str], job_id: str):
     type=str,
     default=None,
     required=False,
-)
+    help=("Address of the Ray cluster to connect to. Can also be specified "
+          "using the RAY_ADDRESS environment variable."))
 @click.argument("job-id", type=str)
 def job_stop(address: Optional[str], job_id: str):
     """Attempts to stop a job.
@@ -146,7 +150,8 @@ def job_stop(address: Optional[str], job_id: str):
     type=str,
     default=None,
     required=False,
-)
+    help=("Address of the Ray cluster to connect to. Can also be specified "
+          "using the RAY_ADDRESS environment variable."))
 @click.argument("job-id", type=str)
 def job_logs(address: Optional[str], job_id: str):
     """Gets the logs of a job.
