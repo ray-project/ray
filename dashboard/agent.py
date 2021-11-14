@@ -9,7 +9,10 @@ import socket
 import json
 import traceback
 
-from grpc.experimental import aio as aiogrpc
+try:
+    from grpc import aio as aiogrpc
+except ImportError:
+    from grpc.experimental import aio as aiogrpc
 from distutils.version import LooseVersion
 
 import ray

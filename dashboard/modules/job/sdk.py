@@ -1,10 +1,14 @@
 import dataclasses
+import importlib
 import logging
 from pathlib import Path
 import tempfile
 from typing import Any, Dict, List, Optional
 
-import requests
+try:
+    import requests
+except ImportError:
+    requests = None
 
 from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
@@ -14,13 +18,78 @@ from ray.dashboard.modules.job.common import (
     JOBS_API_ROUTE_SUBMIT, JOBS_API_ROUTE_STOP, JOBS_API_ROUTE_STATUS,
     JOBS_API_ROUTE_PACKAGE)
 
+from ray.client_builder import _split_address
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+@dataclasses.dataclass
+class ClusterInfo:
+    address: str
+    cookies: Optional[Dict[str, Any]]
+    metadata: Optional[Dict[str, Any]]
+
+
+def get_job_submission_client_cluster_info(
+        address: str, create_cluster_if_needed: bool) -> ClusterInfo:
+    """Get address, cookies, and metadata used for JobSubmissionClient.
+
+        Args:
+            address (str): Address without the module prefix that is passed
+                to JobSubmissionClient.
+            create_cluster_if_needed (bool): Indicates whether the cluster
+                of the address returned needs to be running. Ray doesn't
+                start a cluster before interacting with jobs, but other
+                implementations may do so.
+
+        Returns:
+            ClusterInfo object consisting of address, cookies, and metadata
+            for JobSubmissionClient to use.
+        """
+    return ClusterInfo(
+        address="http://" + address, cookies=None, metadata=None)
+
+
+def parse_cluster_info(address: str,
+                       create_cluster_if_needed: bool) -> ClusterInfo:
+    module_string, inner_address = _split_address(address.rstrip("/"))
+
+    # If user passes in a raw HTTP(S) address, just pass it through.
+    if module_string == "http" or module_string == "https":
+        return ClusterInfo(address=address, cookies=None, metadata=None)
+    # If user passes in a Ray address, convert it to HTTP.
+    elif module_string == "ray":
+        return get_job_submission_client_cluster_info(
+            inner_address, create_cluster_if_needed)
+    # Try to dynamically import the function to get cluster info.
+    else:
+        try:
+            module = importlib.import_module(module_string)
+        except Exception:
+            raise RuntimeError(
+                f"Module: {module_string} does not exist.\n"
+                f"This module was parsed from Address: {address}") from None
+        assert "get_job_submission_client_cluster_info" in dir(module), (
+            f"Module: {module_string} does "
+            "not have `get_job_submission_client_cluster_info`.")
+
+        return module.get_job_submission_client_cluster_info(
+            inner_address, create_cluster_if_needed)
+
+
 class JobSubmissionClient:
-    def __init__(self, address: str):
-        self._address: str = address.rstrip("/")
+    def __init__(self, address: str, create_cluster_if_needed=False):
+        if requests is None:
+            raise RuntimeError(
+                "The Ray jobs CLI & SDK require the ray[default] "
+                "installation: `pip install 'ray[default']``")
+
+        cluster_info = parse_cluster_info(address, create_cluster_if_needed)
+        self._address = cluster_info.address
+        self._cookies = cluster_info.cookies
+        self._default_metadata = cluster_info.metadata or {}
+
         self._test_connection()
 
     def _test_connection(self):
@@ -42,7 +111,12 @@ class JobSubmissionClient:
         logger.debug(f"Sending request to {url} with "
                      f"json: {json_data}, params: {params}.")
         r = requests.request(
-            method, url, data=data, json=json_data, params=params)
+            method,
+            url,
+            cookies=self._cookies,
+            data=data,
+            json=json_data,
+            params=params)
         r.raise_for_status()
         if response_type is None:
             return None
@@ -117,6 +191,7 @@ class JobSubmissionClient:
                    metadata: Optional[Dict[str, str]] = None) -> str:
         runtime_env = runtime_env or {}
         metadata = metadata or {}
+        metadata.update(self._default_metadata)
 
         self._upload_working_dir_if_needed(runtime_env)
         req = JobSubmitRequest(
