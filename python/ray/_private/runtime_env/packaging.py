@@ -559,7 +559,10 @@ def unzip_package(package_path: str,
 
             # Remove now-empty top_level_directory and any empty subdirectories
             # left over from extract_file_and_remove_top_level_dir operations
-            shutil.rmtree(os.path.join(target_dir, top_level_directory))
+            leftover_top_level_directory = os.path.join(
+                target_dir, top_level_directory)
+            if os.path.isdir(leftover_top_level_directory):
+                shutil.rmtree(leftover_top_level_directory)
     else:
         with ZipFile(str(package_path), "r") as zip_ref:
             zip_ref.extractall(target_dir)
