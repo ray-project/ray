@@ -123,6 +123,8 @@ class WorkflowStepRuntimeOptions:
     catch_exceptions: bool
     # The num of retry for application exception.
     max_retries: int
+    # Run the workflow step inplace.
+    allow_inplace: bool
     # ray_remote options
     ray_options: Dict[str, Any]
 
@@ -132,6 +134,7 @@ class WorkflowStepRuntimeOptions:
              step_type,
              catch_exceptions=None,
              max_retries=None,
+             allow_inplace=False,
              ray_options=None):
         if max_retries is None:
             max_retries = 3
@@ -149,6 +152,7 @@ class WorkflowStepRuntimeOptions:
             step_type=step_type,
             catch_exceptions=catch_exceptions,
             max_retries=max_retries,
+            allow_inplace=allow_inplace,
             ray_options=ray_options)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -156,6 +160,7 @@ class WorkflowStepRuntimeOptions:
             "step_type": self.step_type,
             "max_retries": self.max_retries,
             "catch_exceptions": self.catch_exceptions,
+            "allow_inplace": self.allow_inplace,
             "ray_options": self.ray_options,
         }
 
@@ -165,6 +170,7 @@ class WorkflowStepRuntimeOptions:
             step_type=StepType[value["step_type"]],
             max_retries=value["max_retries"],
             catch_exceptions=value["catch_exceptions"],
+            allow_inplace=value["allow_inplace"],
             ray_options=value["ray_options"],
         )
 
