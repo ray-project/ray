@@ -23,7 +23,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
     TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED,
-    NODE_KIND_WORKER, NODE_KIND_UNMANAGED, NODE_KIND_HEAD)
+    NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
 from ray.autoscaler._private.load_metrics import LoadMetrics
@@ -272,7 +272,6 @@ class StandardAutoscaler:
                 self.attempt_to_recover_unhealthy_nodes(now)
                 self.set_prometheus_updater_data()
 
-
         # Dict[NodeType, int], List[ResourceDict]
         to_launch, unfulfilled = (
             self.resource_demand_scheduler.get_nodes_to_launch(
@@ -288,7 +287,6 @@ class StandardAutoscaler:
 
         if not self.provider.is_readonly():
             self.launch_required_nodes(to_launch)
-
 
     def terminate_nodes_to_enforce_config_constraints(self, now: float):
         """Terminates nodes to enforce constraints defined by the autoscaling
@@ -410,7 +408,9 @@ class StandardAutoscaler:
             self.prom_metrics.stopped_nodes.inc()
 
         # Update internal node lists
-        not_terminating = lambda node: node not in self.nodes_to_terminate
+        def not_terminating(node):
+            return node not in self.nodes_to_terminate
+
         self.workers = list(
             self.workers.filter(not_terminating)
         )
@@ -503,7 +503,6 @@ class StandardAutoscaler:
         if to_launch:
             for node_type, count in to_launch.items():
                 self.launch_new_node(count, node_type=node_type)
-            self.update_worker_list()
 
     def update_nodes(self):
         """Run NodeUpdaterThreads to run setup commands, sync files,
@@ -1116,7 +1115,7 @@ class StandardAutoscaler:
         # Managed and unmanaged worker nodes
         # (node kinds "worker" and "unmanaged"):
         self.all_workers = []
-        for node in all_nodes:
+        for node in self.all_nodes:
             node_kind = self.provider.node_tags(node)[TAG_RAY_NODE_KIND]
             if node_kind == NODE_KIND_WORKER:
                 self.workers.append(node)

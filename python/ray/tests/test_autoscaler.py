@@ -2134,7 +2134,7 @@ class AutoscalingTest(unittest.TestCase):
             assert "empty_node" not in event
 
         node_type_counts = defaultdict(int)
-        autoscaler.update_worker_list()
+        autoscaler.update_node_lists()
         for node_id in autoscaler.workers:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
@@ -3134,7 +3134,7 @@ MemAvailable:   33000000 kB
         # Node 0 was terminated during the last update.
         # Node 1's updater failed, but node 1 won't be terminated until the
         # next autoscaler update.
-        autoscaler.update_worker_list()
+        autoscaler.update_node_lists()
         assert 0 not in autoscaler.workers, "Node zero still non-terminated."
         assert not self.provider.is_terminated(1),\
             "Node one terminated prematurely."
@@ -3165,7 +3165,7 @@ MemAvailable:   33000000 kB
         fill_in_raylet_ids(self.provider, lm)
         autoscaler.update()
         self.waitForNodes(2)
-        autoscaler.update_worker_list()
+        autoscaler.update_node_lists()
         assert set(autoscaler.workers) == {2, 3},\
             "Unexpected node_ids"
 
