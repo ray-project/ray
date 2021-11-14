@@ -454,6 +454,15 @@ def download_and_unpack_package(
                             "`pip install boto3` to fetch URIs in s3 "
                             "bucket.")
                     tp = {"client": boto3.client("s3")}
+                elif protocol == Protocol.GS:
+                    try:
+                        from smart_open import open
+                        from google.cloud import storage
+                    except ImportError:
+                        raise ImportError(
+                            "You must `pip install smart_open` and "
+                            "`pip install pip install google-cloud-storage` "
+                            "to fetch URIs in Google Cloud Storage bucket.")
                 else:
                     try:
                         from smart_open import open
