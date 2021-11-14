@@ -130,7 +130,7 @@ def _auto_reconnect(f):
             try:
                 return f(self, *args, **kwargs)
             except grpc.RpcError as e:
-                if remaining_retry == 0:
+                if remaining_retry <= 0:
                     raise
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
                     logger.error(
