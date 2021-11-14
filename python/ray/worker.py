@@ -60,9 +60,9 @@ from ray._private.ray_logging import setup_logger
 from ray._private.ray_logging import global_worker_stdstream_dispatcher
 from ray._private.utils import check_oversized_function
 from ray.util.inspect import is_cython
-from ray.experimental.internal_kv import _internal_kv_get, \
-    _internal_kv_initialized, _initialize_internal_kv, \
-    _internal_kv_reset, _internal_kv_put
+from ray.experimental.internal_kv import (_internal_kv_initialized,
+                                          _initialize_internal_kv,
+                                          _internal_kv_reset, _internal_kv_get)
 from ray._private.client_mode_hook import client_mode_hook
 
 SCRIPT_MODE = 0
@@ -2127,7 +2127,7 @@ def remote(*args, **kwargs):
         @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
         def f():
             return 1, 2
-        g = f.options(num_gpus=2, max_calls=None)
+        g = f.options(num_gpus=2)
 
         @ray.remote(num_cpus=2, resources={"CustomResource": 1})
         class Foo:

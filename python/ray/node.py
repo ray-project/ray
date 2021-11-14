@@ -454,8 +454,9 @@ class Node:
             num_retries = NUM_REDIS_GET_RETRIES
             for i in range(num_retries):
                 try:
-                    self._gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(
-                        self.create_redis_client())
+                    self._gcs_client = \
+                        ray._private.gcs_utils.GcsClient.create_from_redis(
+                            self.create_redis_client())
                     break
                 except Exception as e:
                     time.sleep(1)

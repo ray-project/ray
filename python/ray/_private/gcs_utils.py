@@ -1,6 +1,5 @@
 import enum
 import logging
-
 from typing import List, Optional
 from functools import wraps
 import time
@@ -135,7 +134,7 @@ def _auto_reconnect(f):
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
                     logger.error(
                         "Failed to send request to gcs, reconnecting. "
-                        f"Error {e.code()}")
+                        f"Error {e}")
                     try:
                         self._connect()
                     except Exception:
