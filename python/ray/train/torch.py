@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any
 
 import ray
 from ray import train
-from ray.train.backend import BackendConfig, Backend, C
+from ray.train.backend import BackendConfig, Backend, EncodedData
 from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
 
@@ -142,34 +142,28 @@ class TorchBackend(Backend):
             shutdown_torch, destroy_process_group=len(worker_group) > 1)
 
     @staticmethod
-    def encode_checkpoint(checkpoint: Dict) -> C:
+    def encode_data(data_dict: Dict) -> EncodedData:
         """Special handling for moving model from worker to driver."""
 
         # If model is being checkpointed and is wrapped in DDP, then extract
         # out the underlying module. If not, then deserialization will fail
         # since the torch process group is not initialized on the driver.
 
-        for k, v in checkpoint.items():
+        for k, v in data_dict.items():
             if isinstance(v, DistributedDataParallel) and hasattr(v, "module"):
-                checkpoint[k] = v.module
+                data_dict[k] = v.module
 
         # Convert the checkpoint dict to bytes, so that any GPU tensors that
         # are in the checkpoint dict can be properly deserialized on the
         # driver side, even if the driver does not have access to a GPU device.
         _buffer = io.BytesIO()
-        torch.save(checkpoint, _buffer)
+        torch.save(data_dict, _buffer)
         return _buffer.getvalue()
 
     @staticmethod
-    def decode_checkpoint(data: C) -> Dict:
-        """Logic to decode an encoded checkpoint.
-
-        This function will be called on the driver after receiving the
-        encoded checkpoint from the worker.
-        """
-
+    def decode_data(encoded_data: EncodedData) -> Dict:
         # When decoding the bytes on the driver side, always map to CPU.
-        _buffer = io.BytesIO(data)
+        _buffer = io.BytesIO(encoded_data)
         checkpoint_dict = torch.load(_buffer, map_location="cpu")
         return checkpoint_dict
 

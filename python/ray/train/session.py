@@ -37,7 +37,7 @@ class Session:
                  world_size: int,
                  dataset_shard: Optional[RayDataset] = None,
                  checkpoint: Optional[Dict] = None,
-                 encode_checkpoint_fn: Callable = None,
+                 encode_data_fn: Callable = None,
                  detailed_autofilled_metrics: bool = False):
 
         self.dataset_shard = dataset_shard
@@ -51,13 +51,13 @@ class Session:
         self.loaded_checkpoint = checkpoint
 
         # Function to encode checkpoint dict before sending to the driver.
-        if not encode_checkpoint_fn:
+        if not encode_data_fn:
 
             def noop(x):
                 return x
 
-            encode_checkpoint_fn = noop
-        self._encode_checkpoint_fn = encode_checkpoint_fn
+            encode_data_fn = noop
+        self._encode_data_fn = encode_data_fn
 
         # This lock is used to control the execution of the training thread.
         self.continue_lock = threading.Semaphore(0)
@@ -171,9 +171,9 @@ class Session:
         if self.ignore_report:
             return
 
-        kwargs = self._auto_fill_metrics(kwargs)
+        kwargs = self._encode_data_fn(self._auto_fill_metrics(kwargs))
 
-        result = TrainingResult(TrainingResultType.REPORT, kwargs.copy())
+        result = TrainingResult(TrainingResultType.REPORT, kwargs)
 
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
@@ -206,8 +206,8 @@ class Session:
         if self.world_rank != 0:
             kwargs = {}
         else:
-            kwargs = self._auto_fill_checkpoint_metrics(kwargs)
-            kwargs = self._encode_checkpoint_fn(kwargs)
+            kwargs = self._encode_data_fn(
+                self._auto_fill_checkpoint_metrics(kwargs))
 
         result = TrainingResult(TrainingResultType.CHECKPOINT, kwargs)
         # Add result to a thread-safe queue.

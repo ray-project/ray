@@ -575,10 +575,28 @@ def test_torch_auto_unwrap(ray_start_2_cpus):
         # Save DDP wrapped model.
         train.save_checkpoint(model=model)
 
+        # Report DDP wrapped model.
+        train.report(model=model)
+
     num_workers = 2
     trainer = Trainer("torch", num_workers)
     trainer.start()
-    trainer.run(train_fn)
+
+    class ValidateEncodedCallback(TrainingCallback):
+        def handle_result(self, results, **info):
+            for result in results:
+                model = result["model"]
+                assert isinstance(model, torch.nn.Module) and not \
+                    isinstance(model,
+                               torch.nn.parallel.DistributedDataParallel)
+
+    trainer.run(train_fn, callbacks=[ValidateEncodedCallback()])
+
+    last_checkpoint = trainer.latest_checkpoint
+    model = last_checkpoint["model"]
+    assert isinstance(model, torch.nn.Module) and not \
+        isinstance(model, torch.nn.parallel.DistributedDataParallel)
+
     trainer.shutdown()
 
 

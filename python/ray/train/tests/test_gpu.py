@@ -1,8 +1,9 @@
+import os
 import pytest
 import torch
 
 import ray
-from ray.train import Trainer
+from ray.train import Trainer, TrainingCallback
 from ray.train.examples.horovod.horovod_example import train_func as \
     horovod_torch_train_func
 from ray.train.examples.tensorflow_mnist_example import train_func as \
@@ -23,7 +24,16 @@ def ray_start_4_cpus_2_gpus():
 def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
     """Tests if GPU tensors are auto converted to CPU on driver."""
 
+    # Disable GPU on the driver.
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
     num_workers = 2
+
+    class ValidateCPUCallback(TrainingCallback):
+        def handle_result(self, results, **info):
+            for result in results:
+                model = result["model"]
+                assert not next(model.parameters()).is_cuda
 
     def train_func():
         model = torch.nn.Linear(1, 1)
@@ -34,10 +44,23 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
         assert next(model.parameters()).is_cuda
 
         ray.train.save_checkpoint(model=model)
+        ray.train.report(model=model)
 
     trainer = Trainer("torch", num_workers=num_workers, use_gpu=True)
-    trainer.run(train_func)
+    trainer.start()
+    trainer.run(train_func, callbacks=[ValidateCPUCallback()])
+    model = trainer.latest_checkpoint["model"]
+    assert not next(model.parameters().is_cuda)
     trainer.shutdown()
+
+    # Test the same thing for state dict.
+
+    class ValidateCPUStateDictCallback(TrainingCallback):
+        def handle_result(self, results, **info):
+            for result in results:
+                state_dict = result["state_dict"]
+                for tensor in state_dict.values():
+                    assert not tensor.is_cuda
 
     def train_func():
         model = torch.nn.Linear(1, 1)
@@ -47,11 +70,25 @@ def test_torch_auto_gpu_to_cpu(ray_start_4_cpus_2_gpus):
 
         assert next(model.parameters()).is_cuda
 
-        ray.train.save_checkpoint(model=model.state_dict())
+        state_dict = model.state_dict()
+
+        for tensor in state_dict.values():
+            assert tensor.is_cuda
+
+        ray.train.save_checkpoint(state_dict=state_dict)
+        ray.train.report(state_dict=state_dict)
 
     trainer = Trainer("torch", num_workers=num_workers, use_gpu=True)
-    trainer.run(train_func)
+    trainer.start()
+    trainer.run(train_func, callbacks=[ValidateCPUStateDictCallback()])
+
+    state_dict = trainer.latest_checkpoint["state_dict"]
+    for tensor in state_dict.values():
+        assert not tensor.is_cuda
     trainer.shutdown()
+
+    # Reset the env var.
+    os.environ.pop("CUDA_VISIBLE_DEVICES")
 
 
 def test_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
