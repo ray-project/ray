@@ -25,6 +25,7 @@ pydantic >= 1.8
 pyyaml
 redis >= 3.5.0
 requests
+tblib
 
 ## setup.py extras
 dm_tree
