@@ -7,7 +7,6 @@ import redis
 import ray
 from ray import ray_constants
 from ray import cloudpickle as pickle
-from ray.experimental.internal_kv import _internal_kv_get
 from ray._private.client_mode_hook import disable_client_hook
 import ray._private.profiling as profiling
 import logging
@@ -35,6 +34,7 @@ class ImportThread:
         self.worker = worker
         self.mode = mode
         self.redis_client = worker.redis_client
+        self.gcs_client = worker.gcs_client
         self.threads_stopped = threads_stopped
         self.imported_collision_identifiers = defaultdict(int)
 
@@ -191,11 +191,9 @@ class ImportThread:
                 job_id=ray.JobID(job_id))
 
     def _internal_kv_multiget(self, key, fields):
-        with disable_client_hook():
-            vals = _internal_kv_get(
-                key, namespace=ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
-            if vals is None:
-                vals = {}
-            else:
-                vals = pickle.loads(vals)
-            return (vals.get(field) for field in fields)
+        vals = self.gcs_client.internal_kv_get(key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+        if vals is None:
+            vals = {}
+        else:
+            vals = pickle.loads(vals)
+        return (vals.get(field) for field in fields)

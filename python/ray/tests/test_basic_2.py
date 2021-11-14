@@ -17,7 +17,6 @@ from ray._private.test_utils import client_test_enabled
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.exceptions import GetTimeoutError
 from ray.exceptions import RayTaskError
-from ray.experimental import internal_kv
 from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 if client_test_enabled():
     from ray.util.client import ray
@@ -749,8 +748,8 @@ def test_use_dynamic_function_and_class():
     key_func = (
         b"RemoteFunction:" + ray.worker.global_worker.current_job_id.binary() +
         b":" + f._function_descriptor.function_id.binary())
-    assert internal_kv._internal_kv_exists(
-        key_func, namespace=KV_NAMESPACE_FUNCTION_TABLE)
+    assert ray.worker.global_worker.gcs_client.internal_kv_exists(
+        key_func, KV_NAMESPACE_FUNCTION_TABLE)
     foo_actor = Foo.remote()
 
     assert ray.get(foo_actor.foo.remote()) == "OK"
@@ -761,7 +760,7 @@ def test_use_dynamic_function_and_class():
         b"ActorClass:" + ray.worker.global_worker.current_job_id.binary() +
         b":" +
         foo_actor._ray_actor_creation_function_descriptor.function_id.binary())
-    assert internal_kv._internal_kv_exists(
+    assert ray.worker.global_worker.gcs_client.internal_kv_exists(
         key_cls, namespace=KV_NAMESPACE_FUNCTION_TABLE)
 
 
