@@ -22,7 +22,7 @@ from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
-S3_PACKAGE_URI = "s3://runtime-env-test/remote_runtime_env.zip"
+S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 
 
 @contextmanager

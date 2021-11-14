@@ -2127,7 +2127,7 @@ def remote(*args, **kwargs):
         @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
         def f():
             return 1, 2
-        g = f.options(num_gpus=2, max_calls=None)
+        g = f.options(num_gpus=2)
 
         @ray.remote(num_cpus=2, resources={"CustomResource": 1})
         class Foo:

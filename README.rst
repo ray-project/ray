@@ -39,7 +39,7 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 .. _`MARS`: https://docs.ray.io/en/latest/data/mars-on-ray.html
 .. _`Dask`: https://docs.ray.io/en/latest/data/dask-on-ray.html
 .. _`Horovod`: https://horovod.readthedocs.io/en/stable/ray_include.html
-.. _`Scikit-learn`: joblib.html
+.. _`Scikit-learn`: https://docs.ray.io/en/master/joblib.html
 .. _`Serve`: https://docs.ray.io/en/master/serve/index.html
 .. _`Datasets`: https://docs.ray.io/en/master/data/dataset.html
 .. _`Workflows`: https://docs.ray.io/en/master/workflows/concepts.html
@@ -155,9 +155,9 @@ If TensorBoard is installed, automatically visualize all trial results:
     tensorboard --logdir ~/ray_results
 
 .. _`Tune`: https://docs.ray.io/en/master/tune.html
-.. _`Population Based Training (PBT)`: https://docs.ray.io/en/master/tune-schedulers.html#population-based-training-pbt
-.. _`Vizier's Median Stopping Rule`: https://docs.ray.io/en/master/tune-schedulers.html#median-stopping-rule
-.. _`HyperBand/ASHA`: https://docs.ray.io/en/master/tune-schedulers.html#asynchronous-hyperband
+.. _`Population Based Training (PBT)`: https://docs.ray.io/en/master/tune/api_docs/schedulers.html#population-based-training-tune-schedulers-populationbasedtraining
+.. _`Vizier's Median Stopping Rule`: https://docs.ray.io/en/master/tune/api_docs/schedulers.html#median-stopping-rule-tune-schedulers-medianstoppingrule
+.. _`HyperBand/ASHA`: https://docs.ray.io/en/master/tune/api_docs/schedulers.html#asha-tune-schedulers-ashascheduler
 
 RLlib Quick Start
 -----------------
@@ -203,7 +203,7 @@ RLlib Quick Start
             "num_workers": 4,
             "env_config": {"corridor_length": 5}})
 
-.. _`RLlib`: https://docs.ray.io/en/master/rllib.html
+.. _`RLlib`: https://docs.ray.io/en/master/rllib/index.html
 
 
 Ray Serve Quick Start
