@@ -72,7 +72,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         if not package_exists(package_uri):
             return Response(
-                text=f"Package {package_uri} does not exist.",
+                text=f"Package {package_uri} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code)
 
         return Response()
@@ -132,7 +132,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         job_id = req.match_info["job_id"]
         if not self.job_exists(job_id):
             return Response(
-                text=f"Job {job_id} does not exist.",
+                text=f"Job {job_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code)
 
         try:
@@ -153,7 +153,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         job_id = req.match_info["job_id"]
         if not self.job_exists(job_id):
             return Response(
-                text=f"Job {job_id} does not exist.",
+                text=f"Job {job_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code)
 
         status: JobStatus = self._job_manager.get_job_status(job_id)
@@ -168,7 +168,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         job_id = req.match_info["job_id"]
         if not self.job_exists(job_id):
             return Response(
-                text=f"Job {job_id} does not exist.",
+                text=f"Job {job_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code)
 
         logs: str = self._job_manager.get_job_logs(job_id)

@@ -6,20 +6,21 @@ import tempfile
 import pytest
 
 from ray.dashboard.tests.conftest import *  # noqa
+from ray.tests.conftest import _ray_start
 from ray._private.test_utils import (format_web_url, wait_for_condition,
                                      wait_until_server_available)
-from ray.dashboard.modules.job.common import (JobStatus, JobSubmitResponse)
+from ray.dashboard.modules.job.common import JobStatus
 from ray.dashboard.modules.job.sdk import JobSubmissionClient
 
 logger = logging.getLogger(__name__)
 
 
-@pytest.fixture
-def job_sdk_client(ray_start_with_dashboard, disable_aiohttp_cache,
-                   enable_test_module):
-    address = ray_start_with_dashboard["webui_url"]
-    assert wait_until_server_available(address)
-    yield JobSubmissionClient(format_web_url(address))
+@pytest.fixture(scope="module")
+def job_sdk_client():
+    with _ray_start(include_dashboard=True, num_cpus=1) as address_info:
+        address = address_info["webui_url"]
+        assert wait_until_server_available(address)
+        yield JobSubmissionClient(format_web_url(address))
 
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
@@ -40,14 +41,8 @@ def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
     return status == JobStatus.STOPPED
 
 
-def _check_job_does_not_exist(client: JobSubmissionClient,
-                              job_id: str) -> bool:
-    status = client.get_job_status(job_id)
-    return status == JobStatus.DOES_NOT_EXIST
-
-
 @pytest.fixture(
-    scope="function",
+    scope="module",
     params=["no_working_dir", "local_working_dir", "s3_working_dir"])
 def working_dir_option(request):
     if request.param == "no_working_dir":
@@ -117,34 +112,21 @@ def test_http_bad_request(job_sdk_client):
     client = job_sdk_client
 
     # 400 - HTTPBadRequest
-    with pytest.raises(RuntimeError) as e:
-        _ = client._do_request(
-            "POST",
-            "/api/jobs/",
-            json_data={"key": "baaaad request"},
-        )
+    r = client._do_request(
+        "POST",
+        "/api/jobs/",
+        json_data={"key": "baaaad request"},
+    )
 
-    ex_message = str(e.value)
-    assert "status code 400" in ex_message
-    assert "TypeError: __init__() got an unexpected keyword argument" in ex_message  # noqa: E501
-
-    # 405 - HTTPMethodNotAllowed
-    with pytest.raises(RuntimeError) as e:
-        _ = client._do_request(
-            "GET",
-            "/api/jobs/fake_job_id",
-        )
-    ex_message = str(e.value)
-    assert "status code 405" in ex_message
+    assert r.status_code == 400
+    assert "TypeError: __init__() got an unexpected keyword argument" in r.text
 
     # 500 - HTTPInternalServerError
-    with pytest.raises(RuntimeError) as e:
-        _ = client.submit_job(
+    with pytest.raises(
+            RuntimeError, match="Only .zip files supported for S3 URIs"):
+        r = client.submit_job(
             entrypoint="echo hello",
             runtime_env={"working_dir": "s3://does_not_exist"})
-    ex_message = str(e.value)
-    assert "status code 500" in ex_message
-    assert "Only .zip files supported for S3 URIs" in ex_message
 
 
 def test_submit_job_with_exception_in_driver(job_sdk_client):
@@ -242,22 +224,22 @@ def test_pass_job_id(job_sdk_client):
 def test_nonexistent_job(job_sdk_client):
     client = job_sdk_client
 
-    _check_job_does_not_exist(client, "nonexistent_job")
+    with pytest.raises(RuntimeError, match="nonexistent_job does not exist"):
+        client.get_job_status("nonexistent_job")
 
 
 def test_submit_optional_args(job_sdk_client):
     """Check that job_id, runtime_env, and metadata are optional."""
     client = job_sdk_client
 
-    response = client._do_request(
+    r = client._do_request(
         "POST",
         "/api/jobs/",
         json_data={"entrypoint": "ls"},
-        response_type=JobSubmitResponse,
     )
 
     wait_for_condition(
-        _check_job_succeeded, client=client, job_id=response.job_id)
+        _check_job_succeeded, client=client, job_id=r.json()["job_id"])
 
 
 def test_missing_resources(job_sdk_client):
@@ -271,8 +253,7 @@ def test_missing_resources(job_sdk_client):
                   ("GET", "/api/packages/fake_package_uri")]
 
     for method, route in conditions:
-        with pytest.raises(RuntimeError, match="404"):
-            client._do_request(method, route)
+        assert client._do_request(method, route).status_code == 404
 
 
 if __name__ == "__main__":
