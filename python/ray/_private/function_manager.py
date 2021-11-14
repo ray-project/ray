@@ -152,12 +152,13 @@ class FunctionActorManager:
                                  "remote function", self._worker)
         key = (b"RemoteFunction:" + self._worker.current_job_id.binary() + b":"
                + remote_function._function_descriptor.function_id.binary())
-        if self._worker.gcs_client.internal_kv_exists(key, KV_NAMESPACE_FUNCTION_TABLE):
+        if self._worker.gcs_client.internal_kv_exists(
+                key, KV_NAMESPACE_FUNCTION_TABLE):
             return
         val = pickle.dumps({
             "job_id": self._worker.current_job_id.binary(),
-            "function_id": remote_function._function_descriptor.
-            function_id.binary(),
+            "function_id": remote_function._function_descriptor.function_id.
+            binary(),
             "function_name": remote_function._function_name,
             "module": function.__module__,
             "function": pickled_function,
@@ -165,13 +166,14 @@ class FunctionActorManager:
                 function),
             "max_calls": remote_function._max_calls
         })
-        self._worker.gcs_client.internal_kv_put(
-            key, val, True, KV_NAMESPACE_FUNCTION_TABLE)
+        self._worker.gcs_client.internal_kv_put(key, val, True,
+                                                KV_NAMESPACE_FUNCTION_TABLE)
         self._worker.redis_client.rpush("Exports", key)
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
-        vals = self._worker.gcs_client.internal_kv_get(key, KV_NAMESPACE_FUNCTION_TABLE)
+        vals = self._worker.gcs_client.internal_kv_get(
+            key, KV_NAMESPACE_FUNCTION_TABLE)
         if vals is None:
             vals = {}
         else:
@@ -364,11 +366,10 @@ class FunctionActorManager:
         """
         # We set the driver ID here because it may not have been available when
         # the actor class was defined.
-        self._worker.gcs_client.internal_kv_put(
-            key,
-            pickle.dumps(actor_class_info),
-            True,
-            KV_NAMESPACE_FUNCTION_TABLE)
+        self._worker.gcs_client.internal_kv_put(key,
+                                                pickle.dumps(actor_class_info),
+                                                True,
+                                                KV_NAMESPACE_FUNCTION_TABLE)
         self._worker.redis_client.rpush("Exports", key)
 
     def export_actor_class(self, Class, actor_creation_function_descriptor,

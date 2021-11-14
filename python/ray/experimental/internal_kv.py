@@ -75,7 +75,8 @@ def _internal_kv_put(key: Union[str, bytes],
         value = value.encode()
     assert isinstance(key, bytes) and isinstance(value, bytes) and isinstance(
         overwrite, bool)
-    return global_gcs_client.internal_kv_put(key, value, overwrite, namespace) == 0
+    return global_gcs_client.internal_kv_put(key, value, overwrite,
+                                             namespace) == 0
 
 
 @client_mode_hook(auto_init=False)

@@ -395,9 +395,7 @@ class Worker:
             function({"worker": self})
             # Check if the function has already been put into redis.
             function_exported = self.gcs_client.internal_kv_put(
-                b"Lock:" + key,
-                b"1",
-                False,
+                b"Lock:" + key, b"1", False,
                 ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
             if function_exported:
                 # In this case, the function has already been exported, so
@@ -414,9 +412,7 @@ class Worker:
                     "job_id": self.current_job_id.binary(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
-                }),
-                True,
-                ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+                }), True, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
             # successfully completes the hset and rpush, then the program will
@@ -1556,9 +1552,8 @@ def connect(node,
     worker.cached_functions_to_run = None
 
     # Setup tracing here
-    if worker.gcs_client.internal_kv_get(
-            b"tracing_startup_hook",
-            ray_constants.KV_NAMESPACE_TRACING):
+    if worker.gcs_client.internal_kv_get(b"tracing_startup_hook",
+                                         ray_constants.KV_NAMESPACE_TRACING):
         ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
         if not getattr(ray, "__traced__", False):
             _setup_tracing = import_from_string(

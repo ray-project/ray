@@ -181,12 +181,10 @@ class GcsCode(enum.IntEnum):
     NotFound = 17
 
 
-
-
-
 # b'@:' will be the leading characters for namespace
 # If the key in storage has this, it'll contain namespace
 __NS_START_CHAR = b"@namespace_"
+
 
 def _make_key(namespace: Optional[str], key: bytes) -> bytes:
     if namespace is None:
@@ -206,7 +204,6 @@ def _get_key(key: bytes) -> bytes:
 
     _, key = key.split(b":", 2)
     return key
-
 
 
 class GcsClient:
@@ -229,9 +226,8 @@ class GcsClient:
         self._kv_stub = gcs_service_pb2_grpc.InternalKVGcsServiceStub(
             self._channel.channel())
 
-
     @_auto_reconnect
-    def internal_kv_get(self, key: bytes, namespace:Optional[str]) -> bytes:
+    def internal_kv_get(self, key: bytes, namespace: Optional[str]) -> bytes:
         logger.debug(f"internal_kv_get {key} {namespace}")
         key = _make_key(namespace, key)
         req = gcs_service_pb2.InternalKVGetRequest(key=key)
@@ -245,8 +241,8 @@ class GcsClient:
                                f"due to error {reply.status.message}")
 
     @_auto_reconnect
-    def internal_kv_put(self, key: bytes, value: bytes,
-                        overwrite: bool, namespace:Optional[str]) -> int:
+    def internal_kv_put(self, key: bytes, value: bytes, overwrite: bool,
+                        namespace: Optional[str]) -> int:
         logger.debug(f"internal_kv_put {key} {value} {overwrite} {namespace}")
         key = _make_key(namespace, key)
         req = gcs_service_pb2.InternalKVPutRequest(
@@ -259,7 +255,7 @@ class GcsClient:
                                f"due to error {reply.status.message}")
 
     @_auto_reconnect
-    def internal_kv_del(self, key: bytes, namespace:Optional[str]) -> int:
+    def internal_kv_del(self, key: bytes, namespace: Optional[str]) -> int:
         logger.debug(f"internal_kv_del {key} {namespace}")
         key = _make_key(namespace, key)
         req = gcs_service_pb2.InternalKVDelRequest(key=key)
@@ -271,7 +267,7 @@ class GcsClient:
                                f"due to error {reply.status.message}")
 
     @_auto_reconnect
-    def internal_kv_exists(self, key: bytes, namespace:Optional[str]) -> bool:
+    def internal_kv_exists(self, key: bytes, namespace: Optional[str]) -> bool:
         logger.debug(f"internal_kv_exists {key} {namespace}")
         key = _make_key(namespace, key)
         req = gcs_service_pb2.InternalKVExistsRequest(key=key)
@@ -283,7 +279,8 @@ class GcsClient:
                                f"due to error {reply.status.message}")
 
     @_auto_reconnect
-    def internal_kv_keys(self, prefix: bytes, namespace:Optional[str]=None) -> List[bytes]:
+    def internal_kv_keys(self, prefix: bytes,
+                         namespace: Optional[str] = None) -> List[bytes]:
         logger.debug(f"internal_kv_keys {prefix} {namespace}")
         prefix = _make_key(namespace, prefix)
         req = gcs_service_pb2.InternalKVKeysRequest(prefix=prefix)

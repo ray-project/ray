@@ -215,28 +215,20 @@ class Node:
             self.start_head_processes()
             # Make sure gcs is up
             self.get_gcs_client().internal_kv_put(
-                b"session_name",
-                self.session_name.encode(),
-                True,
+                b"session_name", self.session_name.encode(), True,
                 ray_constants.KV_NAMESPACE_SESSION)
             self.get_gcs_client().internal_kv_put(
-                b"session_dir",
-                self._session_dir.encode(),
-                True,
+                b"session_dir", self._session_dir.encode(), True,
                 ray_constants.KV_NAMESPACE_SESSION)
             self.get_gcs_client().internal_kv_put(
-                b"temp_dir",
-                self._temp_dir.encode(),
-                True,
+                b"temp_dir", self._temp_dir.encode(), True,
                 ray_constants.KV_NAMESPACE_SESSION)
             # Add tracing_startup_hook to redis / internal kv manually
             # since internal kv is not yet initialized.
             if ray_params.tracing_startup_hook:
                 self.get_gcs_client().internal_kv_put(
-                    b"tracing_startup_hook",
-                    ray_params.tracing_startup_hook,
-                    True,
-                    ray_constants.KV_NAMESPACE_TRACING)
+                    b"tracing_startup_hook", ray_params.tracing_startup_hook,
+                    True, ray_constants.KV_NAMESPACE_TRACING)
 
         if not connect_only:
             self.start_ray_processes()
@@ -472,7 +464,6 @@ class Node:
                 self._gcs_client)
 
         return self._gcs_client
-
 
     def get_temp_dir_path(self):
         """Get the path of the temporary directory."""
@@ -770,9 +761,7 @@ class Node:
                 process_info,
             ]
             self.get_gcs_client().internal_kv_put(
-                b"webui:url",
-                self._webui_url.encode(),
-                True,
+                b"webui:url", self._webui_url.encode(), True,
                 ray_constants.KV_NAMESPACE_DASHBOARD)
 
     def start_gcs_server(self):

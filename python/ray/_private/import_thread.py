@@ -191,7 +191,8 @@ class ImportThread:
                 job_id=ray.JobID(job_id))
 
     def _internal_kv_multiget(self, key, fields):
-        vals = self.gcs_client.internal_kv_get(key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+        vals = self.gcs_client.internal_kv_get(
+            key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
         if vals is None:
             vals = {}
         else:
