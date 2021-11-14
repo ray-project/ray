@@ -529,26 +529,13 @@ exist. See :ref:`actor-lifetimes` for more details.
 
     .. code-block:: java
 
-      // Create an actor with a globally unique name
-      ActorHandle<Counter> counter = Ray.actor(Counter::new).setGlobalName("some_name").remote();
+      # Create an actor with a name.
+      ActorHandle<Counter> counter = Ray.actor(Counter::new).setlName("some_name").remote();
 
       ...
 
       // Retrieve the actor later somewhere
-      Optional<ActorHandle<Counter>> counter = Ray.getGlobalActor("some_name");
-      Assert.assertTrue(counter.isPresent());
-
-    We also support non-global named actors in Java, which means that the actor name is only valid within the job and the actor cannot be accessed from another job.
-
-    .. code-block:: java
-
-      // Create an actor with a job-scope-unique name
-      ActorHandle<Counter> counter = Ray.actor(Counter::new).setName("some_name_in_job").remote();
-
-      ...
-
-      // Retrieve the actor later somewhere in the same job
-      Optional<ActorHandle<Counter>> counter = Ray.getActor("some_name_in_job");
+      Optional<ActorHandle<Counter>> counter = Ray.getActor("some_name");
       Assert.assertTrue(counter.isPresent());
 
   .. group-tab:: C++
@@ -579,7 +566,8 @@ exist. See :ref:`actor-lifetimes` for more details.
 
      Named actors are only accessible in the same namespace.
 
-    .. code-block:: python
+  .. tabs::
+    .. code-tab:: python
 
         import ray
 
@@ -602,6 +590,37 @@ exist. See :ref:`actor-lifetimes` for more details.
         # Job 3 connects to the original "colors" namespace
         ray.init(address="auto", namespace="colors")
         # This returns the "orange" actor we created in the first job.
+
+  .. group-tab:: Java
+
+    .. code-block:: java
+
+        import ray
+
+        class Actor {
+        }
+
+        // Driver1.java
+        // Job 1 creates an actor, "orange" in the "colors" namespace.
+        System.setProperty("ray.job.namespace", "colors");
+        Ray.init();
+        Ray.actor(Actor::new).setName("orange").remote();
+
+        // Driver2.java
+        // Job 2 is now connecting to a different namespace.
+        System.setProperty("ray.job.namespace", "fruits");
+        Ray.init();
+        // This fails because "orange" was defined in the "colors" namespace.
+        Optional<ActorHandle<Actor>> actor = Ray.getActor("orange");
+        Assert.assertFalse(actor.isPresent());  // actor.isPresent() is false.
+
+        // Driver2.java
+        System.setProperty("ray.job.namespace", "colors");
+        Ray.init();
+        // This returns the "orange" actor we created in the first job.
+        Optional<ActorHandle<Actor>> actor = Ray.getActor("orange");
+        Assert.assertTrue(actor.isPresent());  // actor.isPresent() is true.
+
 
 .. _actor-lifetimes:
 
