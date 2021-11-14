@@ -2,7 +2,7 @@ import logging
 import threading
 from typing import Any, Dict, List, Union
 
-from anyscale_node_provider.generated import node_provider_pb2, node_provider_pb2_grpc
+from ray.core.generated import kuberay_pb2
 import grpc
 from ray.autoscaler.node_provider import NodeProvider
 
@@ -50,7 +50,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         server_address = self.provider_config.get("server_address")
         assert server_address is not None
         self._grpc_channel = grpc.insecure_channel(server_address)
-        self._node_provider_stub = node_provider_pb2_grpc.NodeProviderStub(
+        self._node_provider_stub = kuberay_pb2_grpc.KuberayNodeProviderStub(
             self._grpc_channel
         )
 
@@ -65,7 +65,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         Returns a mapping from created node ids to node metadata.
         """
         tags["ray-cluster-name"] = self.cluster_name
-        request = node_provider_pb2.CreateNodeRequest(tags=tags, count=count)
+        request = kuberay_pb2.CreateNodeRequest(tags=tags, count=count)
         response = self._node_provider_stub.CreateNode(request)
         node_to_meta = _node_meta_response_to_dict(response)
         return node_to_meta
@@ -73,13 +73,13 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
     def _internal_ip_rpc(self, node_id: str) -> str:
         """Returns the ip of the given node by direct RPC to the operator.
         """
-        request = node_provider_pb2.InternalIpRequest(node_id=node_id)
+        request = kuberay_pb2.InternalIpRequest(node_id=node_id)
         response = self._node_provider_stub.InternalIp(request)
         return response.node_ip
 
     def _node_tags_rpc(self, node_id: str) -> Dict[str, str]:
         """Returns the tags of the given node (string dict) by direct RPC to the operator."""
-        request = node_provider_pb2.NodeTagsRequest(node_id=node_id)
+        request = kuberay_pb2.NodeTagsRequest(node_id=node_id)
         response = self._node_provider_stub.NodeTags(request)
         return response.node_tags
 
@@ -111,7 +111,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         """Return a list of node ids filtered by the specified tags dict.
         Also updates caches of ips and tags.
         """
-        request = node_provider_pb2.NonTerminatedNodesRequest(
+        request = kuberay_pb2.NonTerminatedNodesRequest(
             tag_filters=tag_filters, cluster_name=self.cluster_name
         )
         response = self._node_provider_stub.NonTerminatedNodes(request)
@@ -142,7 +142,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
         """Terminates a set of nodes.
         Returns map of deleted node ids to node metadata.
         """
-        request = node_provider_pb2.TerminateNodesRequest(node_ids=node_ids)
+        request = kuberay_pb2.TerminateNodesRequest(node_ids=node_ids)
         response = self._node_provider_stub.TerminateNodes(request)
         node_to_meta = _node_meta_response_to_dict(response)
         return node_to_meta
@@ -150,7 +150,7 @@ class KuberayNodeProvider(NodeProvider):  # type: ignore
 
 def _node_meta_response_to_dict(
     response: Union[
-        node_provider_pb2.CreateNodeResponse, node_provider_pb2.TerminateNodesResponse
+        kuberay_pb2.CreateNodeResponse, kuberay_pb2.TerminateNodesResponse
     ]
 ) -> Dict[str, Dict[str, str]]:
     # Convert response values to dicts
