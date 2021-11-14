@@ -162,8 +162,15 @@ class StandardAutoscaler:
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
 
-        # Tracks active worker nodes
+        # Track active nodes
+        # Managed worker nodes (node kind "worker"):
         self.workers = []
+        # Managed and unmanaged worker nodes
+        # (node kinds "worker" and "unmanaged"):
+        self.all_workers = []
+        # All nodes (worker and head)
+        self.all_nodes = []
+
         # Tracks nodes scheduled for termination
         self.nodes_to_terminate = []
 
@@ -241,20 +248,35 @@ class StandardAutoscaler:
             return
 
         self.last_update_time = now
-        self.update_worker_list()
+
+        # Query node provider to update workers, all_workers, and all_nodes.
+        self.update_node_lists()
 
         # Remove from LoadMetrics the ips unknown to the NodeProvider.
         self.load_metrics.prune_active_ips([
             self.provider.internal_ip(node_id) for node_id in self.all_workers
         ])
 
+        # Update status strings
+        logger.info(self.info_string())
+        legacy_log_info_string(self, self.workers)
+
         if not self.provider.is_readonly():
             self.terminate_nodes_to_enforce_config_constraints(now)
+
+            if self.disable_node_updaters:
+                self.terminate_unhealthy_nodes(now)
+            else:
+                self.process_completed_updates()
+                self.update_nodes()
+                self.attempt_to_recover_unhealthy_nodes(now)
+                self.set_prometheus_updater_data()
+
 
         # Dict[NodeType, int], List[ResourceDict]
         to_launch, unfulfilled = (
             self.resource_demand_scheduler.get_nodes_to_launch(
-                self.provider.non_terminated_nodes(tag_filters={}),
+                self.all_nodes,
                 self.pending_launches.breakdown(),
                 self.load_metrics.get_resource_demand_vector(),
                 self.load_metrics.get_resource_utilization(),
@@ -267,16 +289,6 @@ class StandardAutoscaler:
         if not self.provider.is_readonly():
             self.launch_required_nodes(to_launch)
 
-            if self.disable_node_updaters:
-                self.terminate_unhealthy_nodes(now)
-            else:
-                self.process_completed_updates()
-                self.update_nodes()
-                self.attempt_to_recover_unhealthy_nodes(now)
-                self.set_prometheus_updater_data()
-
-        logger.info(self.info_string())
-        legacy_log_info_string(self, self.workers)
 
     def terminate_nodes_to_enforce_config_constraints(self, now: float):
         """Terminates nodes to enforce constraints defined by the autoscaling
@@ -397,8 +409,19 @@ class StandardAutoscaler:
             self.node_tracker.untrack(node)
             self.prom_metrics.stopped_nodes.inc()
 
+        # Update internal node lists
+        not_terminating = lambda node: node not in self.nodes_to_terminate
+        self.workers = list(
+            self.workers.filter(not_terminating)
+        )
+        self.all_workers = list(
+            self.all_workers.filter(not_terminating)
+        )
+        self.all_nodes = list(
+            self.all_nodes.filter(not_terminating)
+        )
+
         self.nodes_to_terminate = []
-        self.update_worker_list()
 
     def drain_nodes_via_gcs(self, provider_node_ids_to_drain: List[NodeID]):
         """Send an RPC request to the GCS to drain (prepare for termination)
@@ -1090,20 +1113,26 @@ class StandardAutoscaler:
                                    node_type))
             count -= self.max_launch_batch
 
-    @property
-    def all_workers(self):
-        return self.workers + self.unmanaged_workers
+    def update_node_lists(self):
+        """Updates the internal lists of
+        all nodes, worker nodes, and unmanaged workers.
+        """
+        self.all_nodes = self.provider.non_terminated_nodes(tag_filters={})
+        # Managed worker nodes (node kind "worker"):
+        self.workers = []
+        # Managed and unmanaged worker nodes
+        # (node kinds "worker" and "unmanaged"):
+        self.all_workers = []
+        for node in all_nodes:
+            node_kind = self.provider.node_tags(node)[TAG_RAY_NODE_KIND]
+            if node_kind == NODE_KIND_WORKER:
+                self.workers.append(node)
+                self.all_workers.append(node)
+            elif node_kind == NODE_KIND_UNMANAGED:
+                self.all_workers.append(node)
 
-    def update_worker_list(self):
-        self.workers = self.provider.non_terminated_nodes(
-            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
-        # Update running nodes gauge whenever we check workers
+        # Update running nodes gauge
         self.prom_metrics.running_workers.set(len(self.workers))
-
-    @property
-    def unmanaged_workers(self):
-        return self.provider.non_terminated_nodes(
-            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_UNMANAGED})
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
@@ -1127,14 +1156,12 @@ class StandardAutoscaler:
         Returns:
             AutoscalerSummary: The summary.
         """
-        all_node_ids = self.provider.non_terminated_nodes(tag_filters={})
-
         active_nodes = Counter()
         pending_nodes = []
         failed_nodes = []
         non_failed = set()
 
-        for node_id in all_node_ids:
+        for node_id in self.all_nodes:
             ip = self.provider.internal_ip(node_id)
             node_tags = self.provider.node_tags(node_id)
 
