@@ -461,7 +461,7 @@ def download_and_unpack_package(
                     except ImportError:
                         raise ImportError(
                             "You must `pip install smart_open` and "
-                            "`pip install pip install google-cloud-storage` "
+                            "`pip install google-cloud-storage` "
                             "to fetch URIs in Google Cloud Storage bucket.")
                 else:
                     try:
