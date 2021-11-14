@@ -671,18 +671,11 @@ class StandardAutoscaler:
             # Legacy yaml might include {} in the resources field.
             # TODO(ameer): this is somewhat duplicated in
             # resource_demand_scheduler.py.
-            head_id: List[NodeID] = self.provider.non_terminated_nodes({
-                TAG_RAY_NODE_KIND: NODE_KIND_HEAD
-            })
-            if head_id:
-                head_ip = self.provider.internal_ip(head_id[0])
-                static_nodes: Dict[
-                    NodeIP,
-                    ResourceDict] = \
-                    self.load_metrics.get_static_node_resources_by_ip()
-                head_node_resources = static_nodes.get(head_ip, {})
-            else:
-                head_node_resources = {}
+            static_nodes: Dict[
+                NodeIP,
+                ResourceDict] = \
+                self.load_metrics.get_static_node_resources_by_ip()
+            head_node_resources = static_nodes.get(self.head_node_ip, {})
 
         max_node_resources: List[ResourceDict] = [head_node_resources]
         resource_demand_vector_worker_node_ids = []
