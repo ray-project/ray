@@ -1091,14 +1091,6 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 750 * 1024 * 1024);
     ASSERT_EQ(total["object_store_memory"], 1000 * 1024 * 1024);
-    ASSERT_EQ(resource_scheduler.GetLocalNodeResources()
-                  .predefined_resources[OBJECT_STORE_MEM]
-                  .available.Double(),
-              750 * 1024 * 1024);
-    ASSERT_EQ(resource_scheduler.GetLocalNodeResources()
-                  .predefined_resources[OBJECT_STORE_MEM]
-                  .total.Double(),
-              1000 * 1024 * 1024);
   }
 
   used_object_store_memory = 450 * 1024 * 1024;
@@ -1108,14 +1100,6 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     auto available = data.resources_available();
     auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 550 * 1024 * 1024);
-    ASSERT_EQ(resource_scheduler.GetLocalNodeResources()
-                  .predefined_resources[OBJECT_STORE_MEM]
-                  .available.Double(),
-              550 * 1024 * 1024);
-    ASSERT_EQ(resource_scheduler.GetLocalNodeResources()
-                  .predefined_resources[OBJECT_STORE_MEM]
-                  .total.Double(),
-              1000 * 1024 * 1024);
   }
 
   used_object_store_memory = 0;
@@ -1125,14 +1109,6 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     auto available = data.resources_available();
     auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 1000 * 1024 * 1024);
-    ASSERT_EQ(resource_scheduler.GetLocalNodeResources()
-                  .predefined_resources[OBJECT_STORE_MEM]
-                  .available.Double(),
-              1000 * 1024 * 1024);
-    ASSERT_EQ(resource_scheduler.GetLocalNodeResources()
-                  .predefined_resources[OBJECT_STORE_MEM]
-                  .total.Double(),
-              1000 * 1024 * 1024);
   }
 
   used_object_store_memory = 9999999999;
@@ -1142,14 +1118,6 @@ TEST_F(ClusterResourceSchedulerTest, ObjectStoreMemoryUsageTest) {
     auto available = data.resources_available();
     auto total = data.resources_total();
     ASSERT_EQ(available["object_store_memory"], 0);
-    ASSERT_EQ(resource_scheduler.GetLocalNodeResources()
-                  .predefined_resources[OBJECT_STORE_MEM]
-                  .available.Double(),
-              0);
-    ASSERT_EQ(resource_scheduler.GetLocalNodeResources()
-                  .predefined_resources[OBJECT_STORE_MEM]
-                  .total.Double(),
-              1000 * 1024 * 1024);
   }
 }
 
