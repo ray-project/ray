@@ -23,7 +23,7 @@ class JobSubmissionClient:
 
     def _test_connection(self):
         try:
-            assert not self._package_exists("gcs://FAKE_URI")
+            assert not self._package_exists("gcs://FAKE_URI.zip")
         except requests.exceptions.ConnectionError:
             raise ConnectionError(
                 f"Failed to connect to Ray at address: {self._address}.")
