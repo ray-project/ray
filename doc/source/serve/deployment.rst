@@ -1,10 +1,11 @@
 ===================
 Deploying Ray Serve
 ===================
+This section should help you:
 
-In the :doc:`core-apis`, you saw some of the basics of how to write Serve applications.
-This section will dive deeper into how Ray Serve runs on a Ray cluster and how you're able
-to deploy and update your Serve application over time.
+- understand how Ray Serve runs on a Ray cluster beyond the basics mentioned in :doc:`core-apis`
+- deploy and update your Serve application over time
+- monitor your Serve application using the Ray Dashboard and logging
 
 .. contents:: Deploying Ray Serve
 

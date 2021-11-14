@@ -4,7 +4,10 @@ import aiohttp.web
 import ray._private.utils
 from ray.dashboard.modules.actor import actor_utils
 from aioredis.pubsub import Receiver
-from grpc.experimental import aio as aiogrpc
+try:
+    from grpc import aio as aiogrpc
+except ImportError:
+    from grpc.experimental import aio as aiogrpc
 
 import ray._private.gcs_utils as gcs_utils
 import ray.dashboard.utils as dashboard_utils

@@ -520,28 +520,50 @@ def test_local_store_recovery(ray_shutdown):
     def hello(_):
         return "hello"
 
-    def check():
+    # https://github.com/ray-project/ray/issues/19987
+    @serve.deployment
+    def world(_):
+        return "world"
+
+    def check(name):
         try:
-            resp = requests.get("http://localhost:8000/hello")
-            assert resp.text == "hello"
+            resp = requests.get(f"http://localhost:8000/{name}")
+            assert resp.text == name
             return True
         except Exception:
             return False
 
+    # https://github.com/ray-project/ray/issues/20159
+    # https://github.com/ray-project/ray/issues/20158
+    def clean_up_leaked_processes():
+        import psutil
+        for proc in psutil.process_iter():
+            try:
+                cmdline = " ".join(proc.cmdline())
+                if "ray::" in cmdline:
+                    print(f"Kill {proc} {cmdline}")
+                    proc.kill()
+            except Exception:
+                pass
+
     def crash():
         subprocess.call(["ray", "stop", "--force"])
+        clean_up_leaked_processes()
         ray.shutdown()
         serve.shutdown()
 
     serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
     hello.deploy()
-    assert check()
+    world.deploy()
+    assert check("hello")
+    assert check("world")
     crash()
 
     # Simulate a crash
 
     serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
-    wait_for_condition(check)
+    wait_for_condition(lambda: check("hello"))
+    # wait_for_condition(lambda: check("world"))
     crash()
 
 

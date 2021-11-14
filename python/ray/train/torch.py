@@ -6,16 +6,12 @@ from datetime import timedelta
 from typing import Optional
 
 import ray
-from ray.train.backends.backend import BackendConfig, Backend
+from ray.train.backend import BackendConfig, Backend
 from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
 
-try:
-    import torch
-    import torch.distributed as dist
-except ImportError:
-    torch = None
-    dist = None
+import torch
+import torch.distributed as dist
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +36,6 @@ class TorchConfig(BackendConfig):
     backend: Optional[str] = None
     init_method: str = "env"
     timeout_s: int = 1800
-
-    def __post_init__(self):
-        if torch is None:
-            raise ValueError("`torch` is not installed. "
-                             "Please install torch to use this backend.")
 
     @property
     def backend_cls(self):
