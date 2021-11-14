@@ -32,11 +32,11 @@ RAY_INTERNAL_JOBS_NAMESPACE = "_ray_internal_jobs"
 
 def _init_ray_and_catch_exceptions(f: Callable) -> Callable:
     @wraps(f)
-    def check(self, *args, **kwargs):
+    async def check(self, *args, **kwargs):
         if not ray.is_initialized():
             ray.init(address="auto", namespace=RAY_INTERNAL_JOBS_NAMESPACE)
         try:
-            return f(self, *args, **kwargs)
+            return await f(self, *args, **kwargs)
         except Exception as e:
             logger.exception(f"Unexpected error in handler: {e}")
             return Response(
