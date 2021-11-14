@@ -1,11 +1,15 @@
 import math
-from typing import List, Iterator, Tuple
+from typing import List, Iterator, Tuple, Any, Union, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pyarrow
 
 import numpy as np
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockMetadata, BlockAccessor
+from ray.data.impl.remote_fn import cached_remote_fn
 
 
 class BlockList:
@@ -28,7 +32,7 @@ class BlockList:
         self._metadata[i] = metadata
 
     def get_metadata(self) -> List[BlockMetadata]:
-        """Get the metadata for a given block."""
+        """Get the metadata for all blocks."""
         return self._metadata.copy()
 
     def copy(self) -> "BlockList":
@@ -117,3 +121,24 @@ class BlockList:
         doesn't know how many blocks will be produced until tasks finish.
         """
         return len(list(self.iter_blocks()))
+
+    def ensure_schema_for_first_block(
+            self) -> Optional[Union["pyarrow.Schema", type]]:
+        """Ensure that the schema is set for the first block.
+
+        Returns None if the block list is empty.
+        """
+        get_schema = cached_remote_fn(_get_schema)
+        try:
+            block = next(self.iter_blocks())
+        except (StopIteration, ValueError):
+            # Dataset is empty (no blocks) or was manually cleared.
+            return None
+        schema = ray.get(get_schema.remote(block))
+        # Set the schema.
+        self._metadata[0].schema = schema
+        return schema
+
+
+def _get_schema(block: Block) -> Any:
+    return BlockAccessor.for_block(block).schema()
