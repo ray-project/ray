@@ -56,8 +56,8 @@ Or specify per-actor or per-task in the ``@ray.remote()`` decorator or by using 
 
 The ``runtime_env`` is a Python dictionary including one or more of the following arguments:
 
-- ``working_dir`` (str): Specifies the working directory for your job. This must be either an Path of an existing local directory with total size at most 100 MiB.
-  Alternatively, it can be a URI to a zip file containing the working directory for your job. See the "Remote URIs" section below for more info.
+- ``working_dir`` (str): Specifies the working directory for your job. This can be the path of an existing local directory with a total size of at most 100 MiB.
+  Alternatively, it can be a URI to a remotely-stored zip file containing the working directory for your job. See the "Remote URIs" section below for more info.
   The directory will be cached on the cluster, so the next time you connect with Ray Client you will be able to skip uploading the directory contents.
   All Ray workers for your job will be started in their node's local copy of this working directory.
 
@@ -120,7 +120,7 @@ The runtime environment is inheritable, so it will apply to all tasks/actors wit
 If a child actor or task specifies a new ``runtime_env``, it will be merged with the parent’s ``runtime_env`` via a simple dict update.
 For example, if ``runtime_env["pip"]`` is specified, it will override the ``runtime_env["pip"]`` field of the parent.
 The one exception is the field ``runtime_env["env_vars"]``.  This field will be `merged` with the ``runtime_env["env_vars"]`` dict of the parent.
-This allows for an environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.
+This allows for environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.
 
 Here are some examples of runtime environments combining multiple options:
 
@@ -143,7 +143,7 @@ Remote URIs
 
 The ``working_dir`` and ``py_modules`` arguments in the ``runtime_env`` dictionary can specify either local path(s) or remote URI(s).
 
-A local path must be a a directory path. The directory's contents will be directly accessed as the ``working_dir`` or a ``py_module``.
+A local path must be a directory path. The directory's contents will be directly accessed as the ``working_dir`` or a ``py_module``.
 A remote URI must be a link directly to a zip file. **The zip file must contain only a single top-level directory.**
 The contents of this directory will be directly accessed as the ``working_dir`` or a ``py_module``.
 
@@ -157,7 +157,7 @@ If you want to specify this directory as a local path, your ``runtime_env`` dict
 Suppose instead you want to host its contents remotely and provide a remote URI.
 You would need to first compress the ``example_dir`` directory into a zip file.
 There should be no other files or directories at the top level of the zip file, other than ``example_dir``.
-In general, the the zip file's name and the top-level directory's name can be anything.
+In general, the zip file's name and the top-level directory's name can be anything.
 The top-level directory's contents will be used as the ``working_dir`` (or ``py_module``).
 Suppose you upload the compressed ``example_dir`` directory to AWS S3 at the S3 URI ``s3://example_bucket/example.zip``.
 Your ``runtime_env`` dictionary should contain:
@@ -185,7 +185,7 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
 
 - ``S3``: ``S3`` refers to URIs starting with ``s3://`` that point to compressed packages stored in `AWS S3 <https://aws.amazon.com/s3/>`_.
   To use packages via ``S3`` URIs, you must have the ``smart_open`` and ``boto3`` libraries (you can install them using ``pip install smart_open`` and ``pip install boto3``).
-  Ray does not explictly pass in any credentials to ``boto3`` for authentication.
+  Ray does not explicitly pass in any credentials to ``boto3`` for authentication.
   ``boto3`` will use your environment variables, shared credentials file, and/or AWS config file to authenticate access.
   See the `AWS boto3 documentation <https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html>`_ to learn how to configure these.
 
@@ -206,7 +206,7 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
 Hosting a Dependency on a Remote Git Provider: Step-by-Step Guide
 -----------------------------------------------------------------
 
-You can store your dependencies in repositories on a remote Git provider (e.g. GitHub, Bitbucket, GitLab, etc.), and you can periodicially push changes to keep them updated.
+You can store your dependencies in repositories on a remote Git provider (e.g. GitHub, Bitbucket, GitLab, etc.), and you can periodically push changes to keep them updated.
 In this section, you will learn how to store a dependency on GitHub and use it in your runtime environment.
 
 .. note::
@@ -215,7 +215,7 @@ In this section, you will learn how to store a dependency on GitHub and use it i
 
 First, create a repository on GitHub to store your ``working_dir`` contents or your ``py_module`` dependency.
 By default, when you download a zip file of your repository, the zip file will already contain a single top-level directory that holds the repository contents,
-so you can directly upload your ``working_dir`` contents or your ``py_module`` dependency to the GitHub respository.
+so you can directly upload your ``working_dir`` contents or your ``py_module`` dependency to the GitHub repository.
 
 Once you have uploaded your ``working_dir`` contents or your ``py_module`` dependency, you need the ``HTTPS`` URL of the repository zip file, so you can specify it in your ``runtime_env`` dictionary.
 You can craft this URL by pattern-matching your specific use case with one of the following examples.
@@ -227,7 +227,7 @@ If ``example_repository`` is public and you want to retrieve the latest commit, 
 
     runtime_env = {"working_dir": "https://github.com/example_user/example_repository/archive/HEAD.zip"}
 
-Here is a list of different use cases and corrseponding URLs:
+Here is a list of different use cases and corresponding URLs:
 
 - Example: Retrieve package from a GitHub public repository's latest commit
 
@@ -235,21 +235,29 @@ Here is a list of different use cases and corrseponding URLs:
 
     runtime_env = {"working_dir": "https://github.com/[username]/[repository]/archive/HEAD.zip"}
 
-- Example: Retrieve package from a specific commmit hash on a GitHub public repository
-  
-  - ``runtime_env = {"working_dir": "https://github.com/[username]/[repository]/archive/[commit hash].zip"}``
+- Example: Retrieve package from a specific commit hash on a GitHub public repository
+
+.. code-block:: python
+
+    runtime_env = {"working_dir": "https://github.com/[username]/[repository]/archive/[commit hash].zip"}
 
 - Example: Retrieve package from a GitHub private repository using username and password
-  
-  - ``runtime_env = {"working_dir": "https://[username]:[password]@github.com/[username]/[private repository]/archive/[commit hash].zip"}``
+
+.. code-block:: python
+
+    runtime_env = {"working_dir": "https://[username]:[password]@github.com/[username]/[private repository]/archive/[commit hash].zip"}
 
 - Example: Retrieve package from a GitHub private repository using a Personal Access Token
-  
-  - ``runtime_env = {"working_dir": "https://[username]:[personal access token]@github.com/[username]/[private repository]/archive/[commit hash].zip"}``
+
+.. code-block:: python
+
+    runtime_env = {"working_dir": "https://[username]:[personal access token]@github.com/[username]/[private repository]/archive/[commit hash].zip"}
 
 - Example: Retrieve package from a specific commit hash on a Bitbucket public repository
-  
-  - ``runtime_env = {"working_dir": "https://bitbucket.org/[owner]/[repository]/get/[commit hash].tar.gz"}``
+
+.. code-block:: python
+
+    runtime_env = {"working_dir": "https://bitbucket.org/[owner]/[repository]/get/[commit hash].tar.gz"}
 
 .. tip::
 
