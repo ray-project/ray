@@ -67,12 +67,14 @@ enum class UnscheduledWorkCause {
 class Work {
  public:
   RayTask task;
+  const bool grant_or_reject;
   rpc::RequestWorkerLeaseReply *reply;
   std::function<void(void)> callback;
   std::shared_ptr<TaskResourceInstances> allocated_instances;
-  Work(RayTask task, rpc::RequestWorkerLeaseReply *reply,
+  Work(RayTask task, bool grant_or_reject, rpc::RequestWorkerLeaseReply *reply,
        std::function<void(void)> callback, WorkStatus status = WorkStatus::WAITING)
       : task(task),
+        grant_or_reject(grant_or_reject),
         reply(reply),
         callback(callback),
         allocated_instances(nullptr),
@@ -158,9 +160,12 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Queue task and schedule. This hanppens when processing the worker lease request.
   ///
   /// \param task: The incoming task to be queued and scheduled.
+  /// \param grant_or_reject: True if we we should either grant or reject the request
+  ///                         but no spillback.
   /// \param reply: The reply of the lease request.
   /// \param send_reply_callback: The function used during dispatching.
-  void QueueAndScheduleTask(const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
+  void QueueAndScheduleTask(const RayTask &task, bool grant_or_reject,
+                            rpc::RequestWorkerLeaseReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
   /// Move tasks from waiting to ready for dispatch. Called when a task's
@@ -292,6 +297,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   // Try to spill waiting tasks to a remote node, starting from the end of the
   // queue.
   void SpillWaitingTasks();
+
+  /// Helper method to get the best node for running the task.
+  std::string GetBestSchedulableNode(const internal::Work &work,
+                                     bool requires_object_store_memory,
+                                     bool force_spillback, bool *is_infeasible);
 
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.
