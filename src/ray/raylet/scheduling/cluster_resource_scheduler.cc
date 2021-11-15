@@ -266,8 +266,8 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
                  << "forcing spillback: " << force_spillback
                  << ". Best node: " << best_node_id << " "
                  << (best_node_id == -1
-                         ? "NA"
-                         : NodeID::FromBinary(string_to_int_map_.Get(best_node_id)).Hex())
+                         ? NodeID::Nil()
+                         : NodeID::FromBinary(string_to_int_map_.Get(best_node_id)))
                  << ", is infeasible: " << *is_infeasible;
   return best_node_id;
 }
