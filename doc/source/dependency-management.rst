@@ -220,17 +220,20 @@ so you can directly upload your ``working_dir`` contents or your ``py_module`` d
 Once you have uploaded your ``working_dir`` contents or your ``py_module`` dependency, you need the ``HTTPS`` URL of the repository zip file, so you can specify it in your ``runtime_env`` dictionary.
 You can craft this URL by pattern-matching your specific use case with one of the following examples.
 Fill in all parameters in brackets (e.g. [username], [repository], etc.) with the specific values from your repository.
-For instance, suppose your GitHub username is `example_user` and the repository's name is `example_repository`.
-If `example_repository` is public and you want to retrieve the latest commit, the URL would be:
+For instance, suppose your GitHub username is ``example_user`` and the repository's name is ``example_repository``.
+If ``example_repository`` is public and you want to retrieve the latest commit, the URL would be:
 
 .. code-block:: python
+
     runtime_env = {"working_dir": "https://github.com/example_user/example_repository/archive/HEAD.zip"}
 
 Here is a list of different use cases and corrseponding URLs:
 
 - Example: Retrieve package from a GitHub public repository's latest commit
-  
-  - ``runtime_env = {"working_dir": "https://github.com/[username]/[repository]/archive/HEAD.zip"}``
+
+.. code-block:: python
+
+    runtime_env = {"working_dir": "https://github.com/[username]/[repository]/archive/HEAD.zip"}
 
 - Example: Retrieve package from a specific commmit hash on a GitHub public repository
   
