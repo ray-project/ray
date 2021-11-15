@@ -21,6 +21,8 @@ from ray.train.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
 # Ray Train should be usable even if Tune is not installed.
 from ray.train.utils import construct_path
 from ray.train.worker_group import WorkerGroup
+from ray.util import PublicAPI
+from ray.util.annotations import DeveloperAPI
 from ray.util.ml_utils.node import force_on_current_node, \
     get_current_node_resource_key
 
@@ -64,6 +66,7 @@ def get_backend_config_cls(backend_name) -> type:
     return config_cls
 
 
+@PublicAPI(stability="beta")
 class Trainer:
     """A class for enabling seamless distributed deep learning.
 
@@ -515,6 +518,7 @@ class Trainer:
         return TrainWorkerGroup(worker_group)
 
 
+@DeveloperAPI
 class TrainWorkerGroup:
     """A container for a group of Ray actors.
 
@@ -560,6 +564,7 @@ class TrainWorkerGroup:
         self._worker_group.shutdown(patience_s=patience_s)
 
 
+@DeveloperAPI
 class TrainingIterator:
     """An iterator over Train results. Returned by ``trainer.run_iterator``."""
 

@@ -14,6 +14,7 @@ from ray.train.constants import (
     DETAILED_AUTOFILLED_KEYS, TIME_THIS_ITER_S, PID, TIMESTAMP, TIME_TOTAL_S,
     NODE_IP, TRAINING_ITERATION, HOSTNAME, DATE, RESULT_FETCH_TIMEOUT)
 from ray.train.utils import PropagatingThread, RayDataset
+from ray.util import PublicAPI
 
 
 class TrainingResultType(Enum):
@@ -245,6 +246,7 @@ def shutdown_session():
     _session = None
 
 
+@PublicAPI(stability="beta")
 def get_dataset_shard(
         dataset_name: Optional[str] = None) -> Optional[RayDataset]:
     """Returns the Ray Dataset or DatasetPipeline shard for this worker.
@@ -299,6 +301,7 @@ def get_dataset_shard(
     return shard
 
 
+@PublicAPI(stability="beta")
 def report(**kwargs) -> None:
     """Reports all keyword arguments to Train as intermediate results.
 
@@ -326,6 +329,7 @@ def report(**kwargs) -> None:
     session.report(**kwargs)
 
 
+@PublicAPI(stability="beta")
 def world_rank() -> int:
     """Get the world rank of this worker.
 
@@ -350,6 +354,7 @@ def world_rank() -> int:
     return session.world_rank
 
 
+@PublicAPI(stability="beta")
 def local_rank() -> int:
     """Get the local rank of this worker (rank of the worker on its node).
 
@@ -373,6 +378,7 @@ def local_rank() -> int:
     return session.local_rank
 
 
+@PublicAPI(stability="beta")
 def load_checkpoint() -> Optional[Dict]:
     """Loads checkpoint data onto the worker.
 
@@ -403,6 +409,7 @@ def load_checkpoint() -> Optional[Dict]:
     return session.loaded_checkpoint
 
 
+@PublicAPI(stability="beta")
 def save_checkpoint(**kwargs) -> None:
     """Checkpoints all keyword arguments to Train as restorable state.
 
@@ -428,6 +435,7 @@ def save_checkpoint(**kwargs) -> None:
     session.checkpoint(**kwargs)
 
 
+@PublicAPI(stability="beta")
 def world_size() -> int:
     """Get the current world size (i.e. total number of workers) for this run.
 

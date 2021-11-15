@@ -6,13 +6,13 @@ import ray
 
 from ray.tune import Trainable
 from ray.tune.utils.placement_groups import PlacementGroupFactory
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 from ray.util.sgd.tf.tf_runner import TFRunner
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class TFTrainer:
     def __init__(self,
                  model_creator,
