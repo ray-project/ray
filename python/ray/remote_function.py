@@ -114,7 +114,7 @@ class RemoteFunction:
                 self._runtime_env = ParsedRuntimeEnv(runtime_env
                                                      or {}).serialize()
         else:
-            self._runtime_env = "{}"
+            self._runtime_env = None
         self._placement_group = placement_group
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
@@ -331,7 +331,7 @@ class RemoteFunction:
                 num_returns, resources, max_retries, retry_exceptions,
                 placement_group.id, placement_group_bundle_index,
                 placement_group_capture_child_tasks,
-                worker.debugger_breakpoint, runtime_env)
+                worker.debugger_breakpoint, runtime_env or "{}")
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
             worker.debugger_breakpoint = b""

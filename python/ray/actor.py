@@ -809,7 +809,7 @@ class ActorClass:
             placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
-            serialized_runtime_env=new_runtime_env,
+            serialized_runtime_env=new_runtime_env or "{}",
             concurrency_groups_dict=concurrency_groups_dict or dict())
 
         actor_handle = ActorHandle(
