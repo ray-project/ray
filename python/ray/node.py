@@ -227,8 +227,9 @@ class Node:
             # since internal kv is not yet initialized.
             if ray_params.tracing_startup_hook:
                 self.get_gcs_client().internal_kv_put(
-                    b"tracing_startup_hook", ray_params.tracing_startup_hook.encode(),
-                    True, ray_constants.KV_NAMESPACE_TRACING)
+                    b"tracing_startup_hook",
+                    ray_params.tracing_startup_hook.encode(), True,
+                    ray_constants.KV_NAMESPACE_TRACING)
 
         if not connect_only:
             self.start_ray_processes()

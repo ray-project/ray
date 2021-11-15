@@ -1552,12 +1552,13 @@ def connect(node,
     worker.cached_functions_to_run = None
 
     # Setup tracing here
-    tracing_hook_val = worker.gcs_client.internal_kv_get(b"tracing_startup_hook",
-                                         ray_constants.KV_NAMESPACE_TRACING)
+    tracing_hook_val = worker.gcs_client.internal_kv_get(
+        b"tracing_startup_hook", ray_constants.KV_NAMESPACE_TRACING)
     if tracing_hook_val is not None:
         ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
         if not getattr(ray, "__traced__", False):
-            _setup_tracing = import_from_string(tracing_hook_val.decode("utf-8"))
+            _setup_tracing = import_from_string(
+                tracing_hook_val.decode("utf-8"))
             _setup_tracing()
             ray.__traced__ = True
 
