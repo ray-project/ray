@@ -396,8 +396,8 @@ class Worker:
             # Check if the function has already been put into redis.
             function_exported = self.gcs_client.internal_kv_put(
                 b"Lock:" + key, b"1", False,
-                ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
-            if function_exported:
+                ray_constants.KV_NAMESPACE_FUNCTION_TABLE) == 0
+            if function_exported is True:
                 # In this case, the function has already been exported, so
                 # we don't need to export it again.
                 return
@@ -1552,14 +1552,12 @@ def connect(node,
     worker.cached_functions_to_run = None
 
     # Setup tracing here
-    if worker.gcs_client.internal_kv_get(b"tracing_startup_hook",
-                                         ray_constants.KV_NAMESPACE_TRACING):
+    tracing_hook_val = worker.gcs_client.internal_kv_get(b"tracing_startup_hook",
+                                         ray_constants.KV_NAMESPACE_TRACING)
+    if tracing_hook_val is not None:
         ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
         if not getattr(ray, "__traced__", False):
-            _setup_tracing = import_from_string(
-                worker.gcs_client.internal_kv_get(
-                    b"tracing_startup_hook",
-                    ray_constants.KV_NAMESPACE_TRACING))
+            _setup_tracing = import_from_string(tracing_hook_val.decode("utf-8"))
             _setup_tracing()
             ray.__traced__ = True
 
