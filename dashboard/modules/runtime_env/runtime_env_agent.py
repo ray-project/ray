@@ -32,12 +32,12 @@ default_logger = logging.getLogger(__name__)
 SLEEP_FOR_TESTING_S = os.environ.get("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S")
 
 DEFAULT_MAX_URI_CACHE_SIZE_BYTES = (1024**4) * 10  # 10 GB
-WORKING_DIR_CACHE_SIZE_BYTES = (1024**4) * os.environ.get(
-    "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB", 10)
-PY_MODULES_CACHE_SIZE_BYTES = (1024**4) * os.environ.get(
-    "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB", 10)
-CONDA_CACHE_SIZE_BYTES = (1024**4) * os.environ.get(
-    "RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB", 10)
+WORKING_DIR_CACHE_SIZE_BYTES = int((1024**4) * float(
+    os.environ.get("RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB", 10)))
+PY_MODULES_CACHE_SIZE_BYTES = int((1024**4) * float(
+    os.environ.get("RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB", 10)))
+CONDA_CACHE_SIZE_BYTES = int((1024**4) * float(
+    os.environ.get("RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB", 10)))
 
 
 @dataclass
@@ -210,22 +210,22 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     self._working_dir_manager.modify_context(
                         working_dir_uri, runtime_env, context)
 
-                # Set up conda
-                conda_uri = self._conda_manager.get_uri(runtime_env)
-                if conda_uri is not None:
-                    if conda_uri not in self._conda_uri_cache:
-                        size_bytes = self._conda_manager.create(
-                            conda_uri,
-                            runtime_env,
-                            context,
-                            logger=per_job_logger)
-                        self._conda_uri_cache.add(
-                            conda_uri, size_bytes, logger=per_job_logger)
-                    else:
-                        self._conda_uri_cache.mark_used(
-                            conda_uri, logger=per_job_logger)
-                    self._conda_manager.modify_context(conda_uri, runtime_env,
-                                                       context)
+                # # Set up conda
+                # conda_uri = self._conda_manager.get_uri(runtime_env)
+                # if conda_uri is not None:
+                #     if conda_uri not in self._conda_uri_cache:
+                #         size_bytes = self._conda_manager.create(
+                #             conda_uri,
+                #             runtime_env,
+                #             context,
+                #             logger=per_job_logger)
+                #         self._conda_uri_cache.add(
+                #             conda_uri, size_bytes, logger=per_job_logger)
+                #     else:
+                #         self._conda_uri_cache.mark_used(
+                #             conda_uri, logger=per_job_logger)
+                #     self._conda_manager.modify_context(conda_uri, runtime_env,
+                #                                        context)
 
                 # Set up py_modules
                 py_modules_uris = self._py_modules_manager.get_uris(

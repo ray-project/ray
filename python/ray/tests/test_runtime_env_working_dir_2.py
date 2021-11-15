@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+from unittest import mock
 
 import pytest
 from pytest_lazyfixture import lazy_fixture
@@ -31,6 +32,19 @@ def chdir(d: str):
     os.chdir(d)
     yield
     os.chdir(old_dir)
+
+
+# Set scope to "class" to force this to run before start_cluster, whose scope
+# is "function".  We need these env vars to be set before Ray is started.
+@pytest.fixture(scope="class")
+def disable_URI_cache():
+    with mock.patch.dict(
+            os.environ, {
+                "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0",
+                "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0"
+            }):
+        print("URI caching disabled (cache size set to 0).")
+        yield
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
@@ -265,147 +279,156 @@ def check_local_files_gced(cluster):
     return True
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-@pytest.mark.parametrize(
-    "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
-def test_job_level_gc(start_cluster, option: str, source: str):
-    """Tests that job-level working_dir is GC'd when the job exits."""
-    NUM_NODES = 3
-    cluster, address = start_cluster
-    for i in range(NUM_NODES - 1):  # Head node already added.
-        cluster.add_node(
-            num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
+class TestGC:
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Fail to create temp dir.")
+    @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
+    @pytest.mark.parametrize(
+        "source",
+        [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
+    def test_job_level_gc(self, start_cluster, disable_URI_cache, option: str,
+                          source: str):
+        """Tests that job-level working_dir is GC'd when the job exits."""
+        NUM_NODES = 3
+        cluster, address = start_cluster
+        for i in range(NUM_NODES - 1):  # Head node already added.
+            cluster.add_node(
+                num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
 
-    if option == "working_dir":
-        ray.init(address, runtime_env={"working_dir": source})
-    elif option == "py_modules":
-        if source != S3_PACKAGE_URI:
-            source = str(Path(source) / "test_module")
-        ray.init(address, runtime_env={"py_modules": [source]})
+        if option == "working_dir":
+            ray.init(address, runtime_env={"working_dir": source})
+        elif option == "py_modules":
+            if source != S3_PACKAGE_URI:
+                source = str(Path(source) / "test_module")
+            ray.init(address, runtime_env={"py_modules": [source]})
 
-    # For a local directory, the package should be in the GCS.
-    # For an S3 URI, there should be nothing in the GCS because
-    # it will be downloaded from S3 directly on each node.
-    if source == S3_PACKAGE_URI:
-        assert check_internal_kv_gced()
-    else:
-        assert not check_internal_kv_gced()
+        # For a local directory, the package should be in the GCS.
+        # For an S3 URI, there should be nothing in the GCS because
+        # it will be downloaded from S3 directly on each node.
+        if source == S3_PACKAGE_URI:
+            assert check_internal_kv_gced()
+        else:
+            assert not check_internal_kv_gced()
 
-    @ray.remote(num_cpus=1)
-    class A:
-        def test_import(self):
-            import test_module
-            test_module.one()
+        @ray.remote(num_cpus=1)
+        class A:
+            def test_import(self):
+                import test_module
+                test_module.one()
 
-    num_cpus = int(ray.available_resources()["CPU"])
-    actors = [A.remote() for _ in range(num_cpus)]
-    ray.get([a.test_import.remote() for a in actors])
+        num_cpus = int(ray.available_resources()["CPU"])
+        actors = [A.remote() for _ in range(num_cpus)]
+        ray.get([a.test_import.remote() for a in actors])
 
-    if source == S3_PACKAGE_URI:
-        assert check_internal_kv_gced()
-    else:
-        assert not check_internal_kv_gced()
-    assert not check_local_files_gced(cluster)
-
-    ray.shutdown()
-
-    # Need to re-connect to use internal_kv.
-    ray.init(address=address)
-    wait_for_condition(check_internal_kv_gced)
-    wait_for_condition(lambda: check_local_files_gced(cluster))
-
-
-# TODO(architkulkarni): fix bug #19602 and enable test.
-@pytest.mark.skip("Currently failing.")
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-def test_actor_level_gc(start_cluster, option: str):
-    """Tests that actor-level working_dir is GC'd when the actor exits."""
-    NUM_NODES = 5
-    cluster, address = start_cluster
-    for i in range(NUM_NODES - 1):  # Head node already added.
-        cluster.add_node(
-            num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
-
-    ray.init(address)
-
-    @ray.remote(num_cpus=1)
-    class A:
-        def check(self):
-            import test_module
-            test_module.one()
-
-    if option == "working_dir":
-        A = A.options(runtime_env={"working_dir": S3_PACKAGE_URI})
-    else:
-        A = A.options(runtime_env={"py_modules": [S3_PACKAGE_URI]})
-
-    num_cpus = int(ray.available_resources()["CPU"])
-    actors = [A.remote() for _ in range(num_cpus)]
-    ray.get([a.check.remote() for a in actors])
-    for i in range(num_cpus):
+        if source == S3_PACKAGE_URI:
+            assert check_internal_kv_gced()
+        else:
+            assert not check_internal_kv_gced()
         assert not check_local_files_gced(cluster)
-        ray.kill(actors[i])
-    wait_for_condition(lambda: check_local_files_gced(cluster))
 
+        ray.shutdown()
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-@pytest.mark.parametrize(
-    "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
-def test_detached_actor_gc(start_cluster, option: str, source: str):
-    """Tests that URIs for detached actors are GC'd only when they exit."""
-    cluster, address = start_cluster
+        # Need to re-connect to use internal_kv.
+        ray.init(address=address)
+        wait_for_condition(check_internal_kv_gced)
+        wait_for_condition(lambda: check_local_files_gced(cluster))
 
-    if option == "working_dir":
-        ray.init(
-            address, namespace="test", runtime_env={"working_dir": source})
-    elif option == "py_modules":
-        if source != S3_PACKAGE_URI:
-            source = str(Path(source) / "test_module")
-        ray.init(
-            address, namespace="test", runtime_env={"py_modules": [source]})
+    # TODO(architkulkarni): fix bug #19602 and enable test.
+    @pytest.mark.skip("Currently failing.")
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Fail to create temp dir.")
+    @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
+    def test_actor_level_gc(self, start_cluster, disable_URI_cache,
+                            option: str):
+        """Tests that actor-level working_dir is GC'd when the actor exits."""
+        NUM_NODES = 5
+        cluster, address = start_cluster
+        for i in range(NUM_NODES - 1):  # Head node already added.
+            cluster.add_node(
+                num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
 
-    # For a local directory, the package should be in the GCS.
-    # For an S3 URI, there should be nothing in the GCS because
-    # it will be downloaded from S3 directly on each node.
-    if source == S3_PACKAGE_URI:
-        assert check_internal_kv_gced()
-    else:
-        assert not check_internal_kv_gced()
+        ray.init(address)
 
-    @ray.remote
-    class A:
-        def test_import(self):
-            import test_module
-            test_module.one()
+        @ray.remote(num_cpus=1)
+        class A:
+            def check(self):
+                import test_module
+                test_module.one()
 
-    a = A.options(name="test", lifetime="detached").remote()
-    ray.get(a.test_import.remote())
+        if option == "working_dir":
+            A = A.options(runtime_env={"working_dir": S3_PACKAGE_URI})
+        else:
+            A = A.options(runtime_env={"py_modules": [S3_PACKAGE_URI]})
 
-    if source == S3_PACKAGE_URI:
-        assert check_internal_kv_gced()
-    else:
-        assert not check_internal_kv_gced()
-    assert not check_local_files_gced(cluster)
+        num_cpus = int(ray.available_resources()["CPU"])
+        actors = [A.remote() for _ in range(num_cpus)]
+        ray.get([a.check.remote() for a in actors])
+        for i in range(num_cpus):
+            assert not check_local_files_gced(cluster)
+            ray.kill(actors[i])
+        wait_for_condition(lambda: check_local_files_gced(cluster))
 
-    ray.shutdown()
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Fail to create temp dir.")
+    @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
+    @pytest.mark.parametrize(
+        "source",
+        [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
+    def test_detached_actor_gc(self, start_cluster, disable_URI_cache,
+                               option: str, source: str):
+        """Tests that URIs for detached actors are GC'd only when they exit."""
+        cluster, address = start_cluster
 
-    ray.init(address, namespace="test")
+        if option == "working_dir":
+            ray.init(
+                address, namespace="test", runtime_env={"working_dir": source})
+        elif option == "py_modules":
+            if source != S3_PACKAGE_URI:
+                source = str(Path(source) / "test_module")
+            ray.init(
+                address,
+                namespace="test",
+                runtime_env={"py_modules": [source]})
 
-    if source == S3_PACKAGE_URI:
-        assert check_internal_kv_gced()
-    else:
-        assert not check_internal_kv_gced()
-    assert not check_local_files_gced(cluster)
+        # For a local directory, the package should be in the GCS.
+        # For an S3 URI, there should be nothing in the GCS because
+        # it will be downloaded from S3 directly on each node.
+        if source == S3_PACKAGE_URI:
+            assert check_internal_kv_gced()
+        else:
+            assert not check_internal_kv_gced()
 
-    a = ray.get_actor("test")
-    ray.get(a.test_import.remote())
+        @ray.remote
+        class A:
+            def test_import(self):
+                import test_module
+                test_module.one()
 
-    ray.kill(a)
-    wait_for_condition(check_internal_kv_gced)
-    wait_for_condition(lambda: check_local_files_gced(cluster))
+        a = A.options(name="test", lifetime="detached").remote()
+        ray.get(a.test_import.remote())
+
+        if source == S3_PACKAGE_URI:
+            assert check_internal_kv_gced()
+        else:
+            assert not check_internal_kv_gced()
+        assert not check_local_files_gced(cluster)
+
+        ray.shutdown()
+
+        ray.init(address, namespace="test")
+
+        if source == S3_PACKAGE_URI:
+            assert check_internal_kv_gced()
+        else:
+            assert not check_internal_kv_gced()
+        assert not check_local_files_gced(cluster)
+
+        a = ray.get_actor("test")
+        ray.get(a.test_import.remote())
+
+        ray.kill(a)
+        wait_for_condition(check_internal_kv_gced)
+        wait_for_condition(lambda: check_local_files_gced(cluster))
 
 
 if __name__ == "__main__":
