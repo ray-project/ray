@@ -184,6 +184,20 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   return inserted;
 }
 
+void ActorManager::OnActorKilled(const ActorID &actor_id) {
+  const auto &actor_handle = GetActorHandle(actor_id);
+  const auto &actor_name = actor_handle->GetName();
+  const auto &ray_namespace = actor_handle->GetNamespace();
+
+  /// Invalidate named actor cache.
+  if (!actor_name.empty()) {
+    RAY_LOG(DEBUG) << "Actor name cache is invalided for the actor of name " << actor_name
+                   << " namespace " << ray_namespace << " id " << actor_id;
+    absl::MutexLock lock(&cache_mutex_);
+    cached_actor_name_to_ids_.erase(GenerateCachedActorName(ray_namespace, actor_name));
+  }
+}
+
 void ActorManager::WaitForActorOutOfScope(
     const ActorID &actor_id,
     std::function<void(const ActorID &)> actor_out_of_scope_callback) {
@@ -224,11 +238,7 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
   if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
     direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false);
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
-    if (!actor_data.name().empty()) {
-      absl::MutexLock lock(&cache_mutex_);
-      cached_actor_name_to_ids_.erase(
-          GenerateCachedActorName(actor_data.ray_namespace(), actor_data.name()));
-    }
+    OnActorKilled(actor_id);
     std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
     if (actor_data.has_creation_task_exception()) {
       RAY_LOG(INFO) << "Creation task formatted exception: "

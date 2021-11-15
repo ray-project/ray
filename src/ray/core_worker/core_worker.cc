@@ -1799,11 +1799,16 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       actor_creation_options.serialized_runtime_env,
                       actor_creation_options.runtime_env_uris);
 
+  // If the namespace is not specified, get it from the job.
+  const auto &ray_namespace = (actor_creation_options.ray_namespace.empty()
+                                   ? job_config_->ray_namespace()
+                                   : actor_creation_options.ray_namespace);
   auto actor_handle = std::make_unique<ActorHandle>(
       actor_id, GetCallerId(), rpc_address_, job_id,
       /*actor_cursor=*/ObjectID::FromIndex(actor_creation_task_id, 1),
       function.GetLanguage(), function.GetFunctionDescriptor(), extension_data,
-      actor_creation_options.max_task_retries, actor_creation_options.max_pending_calls);
+      actor_creation_options.max_task_retries, actor_name, ray_namespace,
+      actor_creation_options.max_pending_calls);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   builder.SetActorCreationTaskSpec(
@@ -1811,7 +1816,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.max_task_retries,
       actor_creation_options.dynamic_worker_options,
       actor_creation_options.max_concurrency, actor_creation_options.is_detached,
-      actor_name, actor_creation_options.ray_namespace, actor_creation_options.is_asyncio,
+      actor_name, ray_namespace, actor_creation_options.is_asyncio,
       actor_creation_options.concurrency_groups, extension_data);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
@@ -2081,7 +2086,9 @@ Status CoreWorker::KillActor(const ActorID &actor_id, bool force_kill, bool no_r
       cb(Status::Invalid(stream.str()));
     }
   });
-  return f.get();
+  const auto &status = f.get();
+  actor_manager_->OnActorKilled(actor_id);
+  return status;
 }
 
 Status CoreWorker::KillActorLocalMode(const ActorID &actor_id) {
