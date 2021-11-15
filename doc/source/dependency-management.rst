@@ -143,32 +143,32 @@ Remote URIs
 
 The ``working_dir`` and ``py_modules`` arguments in the ``runtime_env`` dictionary can specify either local path(s) or remote URI(s).
 
-A local path must be a path to a directory. The directory's contents will be directly accessed as the ``working_dir`` or a ``py_module``.
-A remote URI must be a link directly to a zip file. The zip file must contain only a single top-level directory.
+A local path must be a a directory path. The directory's contents will be directly accessed as the ``working_dir`` or a ``py_module``.
+A remote URI must be a link directly to a zip file. **The zip file must contain only a single top-level directory.**
 The contents of this directory will be directly accessed as the ``working_dir`` or a ``py_module``.
 
-For example, suppose you want to use the contents in the local ``/some_path/example_dir`` directory as your ``working_dir``.
-If you wanted to specify the directory as a local path, your ``runtime_env`` dictionary should contain:
+For example, suppose you want to use the contents in your local ``/some_path/example_dir`` directory as your ``working_dir``.
+If you want to specify this directory as a local path, your ``runtime_env`` dictionary should contain:
 
 .. code-block:: python
 
     runtime_env = {..., "working_dir": "/some_path/example_dir", ...}
 
-Suppose instead you want to host it remotely and provide a remote URI.
+Suppose instead you want to host its contents remotely and provide a remote URI.
 You would need to first compress the ``example_dir`` directory into a zip file.
 There should be no other files or directories at the top level of the zip file, other than ``example_dir``.
-The name of the zip file, and the name of the top-level directory can be anything.
+In general, the the zip file's name and the top-level directory's name can be anything.
 The top-level directory's contents will be used as the ``working_dir`` (or ``py_module``).
-Suppose you upload the compressed ``example_dir`` directory to an AWS S3 at the S3 URI ``s3://exampe_bucket/example.zip``.
+Suppose you upload the compressed ``example_dir`` directory to AWS S3 at the S3 URI ``s3://example_bucket/example.zip``.
 Your ``runtime_env`` dictionary should contain:
 
 .. code-block:: python
 
-    runtime_env = {..., "working_dir": "s3://exampe_bucket/example.zip", ...}
+    runtime_env = {..., "working_dir": "s3://example_bucket/example.zip", ...}
 
 .. tip::
 
-  Check for hidden files in zip files.
+  Check for hidden files in zipped dependencies.
   Sometimes zipping a top-level directory will cause unwanted hidden files to appear in the zip file at the top level.
   This will cause Ray to throw an error because the structure of the zip file is invalid since there is more than a single directory at the top level.
 
@@ -176,16 +176,16 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
 
 - ``HTTPS``: ``HTTPS`` refers to URLs that start with ``https``.
   These are particularly useful because remote Git providers (e.g. GitHub, Bitbucket, GitLab, etc.) use ``https`` URLs as download links for repository archives.
-  This allows you to host your dependencies on remote Git providers, push updates to them, and specify which versions of packages your jobs should use.
+  This allows you to host your dependencies on remote Git providers, push updates to them, and specify which dependency versions (i.e. commits) your jobs should use.
   To use packages via ``HTTPS`` URIs, you must have the ``smart_open`` library (you can install it using ``pip install smart_open``).
 
   - Example:
 
 .. code-block:: python
-  runtime_env = {"working_dir": "https://github.com/example_username/example_respository/archive/HEAD.zip"}
+    runtime_env = {"working_dir": "https://github.com/example_username/example_respository/archive/HEAD.zip"}
 
-- ``S3``: ``S3`` refers to URIs pointing to compressed packages stored in `AWS S3 <https://aws.amazon.com/s3/>`_.
-  To use packages via ``S3`` URIs, you must have the ``smart_open`` and ``boto3`` libraries (you can install them using ``pip install smart_open`` and `pip install boto3`).
+- ``S3``: ``S3`` refers to URIs starting with ``s3://`` that point to compressed packages stored in `AWS S3 <https://aws.amazon.com/s3/>`_.
+  To use packages via ``S3`` URIs, you must have the ``smart_open`` and ``boto3`` libraries (you can install them using ``pip install smart_open`` and ``pip install boto3``).
   Ray does not explictly pass in any credentials to ``boto3`` for authentication.
   ``boto3`` will use your environment variables, shared credentials file, and/or AWS config file to authenticate access.
   See the `AWS boto3 documentation <https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html>`_ to learn how to configure these.
@@ -193,73 +193,73 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
   - Example:
 
 .. code-block:: python
-  runtime_env = {"working_dir": "s3://example_bucket/example_file.zip"}
+    runtime_env = {"working_dir": "s3://example_bucket/example_file.zip"}
 
-- ``GS``: ``GS`` refers to URIs pointing to compressed packages stored in `Google Cloud Storage <https://cloud.google.com/storage>`_.
-  To use packages via ``GS`` URIs, you must have the ``smart_open`` and ``google-cloud-storage`` libraries (you can install them using ``pip install smart_open`` and `pip install google-cloud-storage`).
+- ``GS``: ``GS`` refers to URIs starting with ``gs://`` that point to compressed packages stored in `Google Cloud Storage <https://cloud.google.com/storage>`_.
+  To use packages via ``GS`` URIs, you must have the ``smart_open`` and ``google-cloud-storage`` libraries (you can install them using ``pip install smart_open`` and ``pip install google-cloud-storage``).
   Ray does not explicitly pass in any credentials to the ``google-cloud-storage``'s ``Client`` object.
   ``google-cloud-storage`` will use your local service account key(s) and environment variables by default.
-  Follow the steps on Google Cloud Storage's "Getting started with authentication <https://cloud.google.com/docs/authentication/getting-started>"_ guide to set up your credentials and to provide Ray with access to your remote package.
+  Follow the steps on Google Cloud Storage's `Getting started with authentication <https://cloud.google.com/docs/authentication/getting-started>`_ guide to set up your credentials and to provide Ray with access to your remote package.
 
   - Example:
 
 .. code-block:: python
-  runtime_env = {"working_dir": "gs://example_bucket/example_file.zip"}
+    runtime_env = {"working_dir": "gs://example_bucket/example_file.zip"}
 
 Hosting a Dependency on a Remote Git Provider: Step-by-Step Guide
 -----------------------------------------------------------------
 
-You can store your dependencies on GitHub repositories, and you can periodicially push changes to keep them updated.
+You can store your dependencies in repositories on a remote Git provider (e.g. GitHub, Bitbucket, GitLab, etc.), and you can periodicially push changes to keep them updated.
 In this section, you will learn how to store a dependency on GitHub and use it in your runtime environment.
 
 .. note::
-  These steps will also be useful if you use another large, remote Git provider (e.g. BitBucket, GitLab).
+  These steps will also be useful if you use another large, remote Git provider (e.g. BitBucket, GitLab, etc.).
   For simplicity, this section refers to GitHub alone, but you can follow along on your provider.
 
 First, create a repository on GitHub to store your ``working_dir`` contents or your ``py_module`` dependency.
-By default, when you download a zip file of your repository, the zip file will contain a single top-level directory that holds the repository contents,
+By default, when you download a zip file of your repository, the zip file will already contain a single top-level directory that holds the repository contents,
 so you can directly upload your ``working_dir`` contents or your ``py_module`` dependency to the GitHub respository.
 
 Once you have uploaded your ``working_dir`` contents or your ``py_module`` dependency, you need the ``HTTPS`` URL of the repository zip file, so you can specify it in your ``runtime_env`` dictionary.
 You can craft this URL by pattern-matching your specific use case with one of the following examples.
-Fill in any parameter in brackets (e.g. [username], [repository], etc.) with the specific values from your repository.
+Fill in all parameters in brackets (e.g. [username], [repository], etc.) with the specific values from your repository.
 For instance, suppose your GitHub username is `example_user` and the repository's name is `example_repository`.
 If `example_repository` is public and you want to retrieve the latest commit, the URL would be:
 
 .. code-block:: python
-  runtime_env = {"working_dir": "https://github.com/example_user/example_repository/archive/HEAD.zip"}
+    runtime_env = {"working_dir": "https://github.com/example_user/example_repository/archive/HEAD.zip"}
 
 Here is a list of different use cases and corrseponding URLs:
 
-  - Example: Retrieve package from a GitHub public repository's latest commit
+- Example: Retrieve package from a GitHub public repository's latest commit
 
 .. code-block:: python
-  runtime_env = {"working_dir": "https://github.com/[username]/[repository]/archive/HEAD.zip"}
+    runtime_env = {"working_dir": "https://github.com/[username]/[repository]/archive/HEAD.zip"}
 
-  - Example: Retrieve package from a specific commmit hash on a GitHub public repository
-
-.. code-block:: python
-  runtime_env = {"working_dir": "https://github.com/[username]/[repository]/archive/[commit hash].zip"}
-
-  - Example: Retrieve package from a GitHub private repository using username and password
+- Example: Retrieve package from a specific commmit hash on a GitHub public repository
 
 .. code-block:: python
-  runtime_env = {"working_dir": "https://[username]:[password]@github.com/[username]/[private repository]/archive/[commit hash].zip"}
+    runtime_env = {"working_dir": "https://github.com/[username]/[repository]/archive/[commit hash].zip"}
 
-  - Example: Retrieve package from a GitHub private repository using a Personal Access Token
-
-.. code-block:: python
-  runtime_env = {"working_dir": "https://[username]:[personal access token]@github.com/[username]/[private repository]/archive/[commit hash].zip"}
-
-  - Example: Retrieve package from a specific commit hash on a Bitbucket public repository
+- Example: Retrieve package from a GitHub private repository using username and password
 
 .. code-block:: python
-  runtime_env = {"working_dir": "https://bitbucket.org/[owner]/[repository]/get/[commit hash].tar.gz"}
+    runtime_env = {"working_dir": "https://[username]:[password]@github.com/[username]/[private repository]/archive/[commit hash].zip"}
+
+- Example: Retrieve package from a GitHub private repository using a Personal Access Token
+
+.. code-block:: python
+    runtime_env = {"working_dir": "https://[username]:[personal access token]@github.com/[username]/[private repository]/archive/[commit hash].zip"}
+
+- Example: Retrieve package from a specific commit hash on a Bitbucket public repository
+
+.. code-block:: python
+    runtime_env = {"working_dir": "https://bitbucket.org/[owner]/[repository]/get/[commit hash].tar.gz"}
 
 .. tip::
 
   Consider specifying a particular commit instead of always using the latest commit.
-  If your Ray Cluster always uses the latest commit, there's a risk that if you push an update while your cluster's nodes are pulling the repository's contents, 
+  If your Ray Cluster always uses the latest commit, there's a risk that if you push an update to your remote Git repository while your cluster's nodes are pulling the repository's contents, 
   some nodes may pull the version of your package just before you pushed, and some nodes may pull the version just after.
   For consistency, it can be better to specify a particular commit, so all the nodes use the same package.
 
