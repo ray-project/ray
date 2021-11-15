@@ -490,6 +490,7 @@ void ClusterTaskManager::QueueAndScheduleTask(
   } else {
     tasks_to_schedule_[scheduling_class].push_back(work);
   }
+  RAY_LOG(ERROR) << "Queued.";
   ScheduleAndDispatchTasks();
 }
 
@@ -1356,7 +1357,9 @@ bool ClusterTaskManager::ReturnCpuResourcesToBlockedWorker(
 
 void ClusterTaskManager::ScheduleAndDispatchTasks() {
   SchedulePendingTasks();
+  RAY_LOG(ERROR) << "Scheduled";
   DispatchScheduledTasksToWorkers(worker_pool_, leased_workers_);
+  RAY_LOG(ERROR) << "Dispatched";
   // TODO(swang): Spill from waiting queue first? Otherwise, we may end up
   // spilling a task whose args are already local.
   // TODO(swang): Invoke ScheduleAndDispatchTasks() when we run out of memory

@@ -1775,9 +1775,11 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
   local_node_resources[ray::kGPU_ResourceLabel] = 4;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
 
+  RAY_LOG(ERROR) << "1";
   auto scheduler_ = std::make_shared<ClusterResourceScheduler>(
       ClusterResourceScheduler(id_.Binary(), local_node_resources, *gcs_client_));
 
+  RAY_LOG(ERROR) << "2";
   ClusterTaskManager task_manager_(
       id_, scheduler_, dependency_manager_,
       /* is_owner_alive= */
@@ -1809,6 +1811,7 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
       },
       /*max_pinned_task_arguments_bytes=*/1000);
 
+  RAY_LOG(ERROR) << "3";
   RayTask task = CreateTask({}, /*num_args=*/0, /*args=*/{});
   RayTask task2 = CreateTask({}, /*num_args=*/0, /*args=*/{});
   RayTask task3 = CreateTask({}, /*num_args=*/0, /*args=*/{});
@@ -1821,15 +1824,21 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
     pool_.TriggerCallbacks();
     workers.push_back(worker);
   }
+  RAY_LOG(ERROR) << "4";
   rpc::RequestWorkerLeaseReply reply;
   int num_callbacks = 0;
   auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
     num_callbacks++;
   };
+  RAY_LOG(ERROR) << "4.1";
   task_manager_.QueueAndScheduleTask(task, false, &reply, callback);
+  RAY_LOG(ERROR) << "4.2";
   task_manager_.QueueAndScheduleTask(task2, false, &reply, callback);
+  RAY_LOG(ERROR) << "4.3";
   task_manager_.QueueAndScheduleTask(task3, false, &reply, callback);
+  RAY_LOG(ERROR) << "4.4";
   pool_.TriggerCallbacks();
+  RAY_LOG(ERROR) << "5";
 
   // We shouldn't cap anything for zero cpu tasks (and shouldn't crash before
   // this point).
@@ -1839,6 +1848,7 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
     RayTask buf;
     task_manager_.TaskFinished(worker, &buf);
   }
+  RAY_LOG(ERROR) << "6";
 
   AssertNoLeaks();
 }
