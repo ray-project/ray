@@ -408,18 +408,13 @@ class StandardAutoscaler:
             self.prom_metrics.stopped_nodes.inc()
 
         # Update internal node lists
-        def not_terminating(node):
-            return node not in self.nodes_to_terminate
+        def filter_out_terminating(node_list):
+            return [node for node in node_list
+                    if node not in self.nodes_to_terminate]
 
-        self.workers = list(
-            self.workers.filter(not_terminating)
-        )
-        self.all_workers = list(
-            self.all_workers.filter(not_terminating)
-        )
-        self.all_nodes = list(
-            self.all_nodes.filter(not_terminating)
-        )
+        self.workers = filter_out_terminating(self.workers)
+        self.all_workers = filter_out_terminating(self.all_workers)
+        self.all_nodes = filter_out_terminating(self.all_nodes)
 
         self.nodes_to_terminate = []
 
@@ -565,7 +560,6 @@ class StandardAutoscaler:
                 # during an update (for being idle after missing a heartbeat).
 
                 # Update the list of non-terminated workers.
-                self.update_worker_list()
                 for node_id in failed_nodes:
                     # Check if the node has already been terminated.
                     if node_id in self.workers:

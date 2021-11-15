@@ -383,7 +383,6 @@ class MockProvider(NodeProvider):
                 if node.state == "pending":
                     node.state = "running"
 
-
 SMALL_CLUSTER = {
     "cluster_name": "default",
     "min_workers": 2,
@@ -410,6 +409,48 @@ SMALL_CLUSTER = {
     },
     "worker_nodes": {
         "TestProp": 2,
+    },
+    "file_mounts": {},
+    "cluster_synced_files": [],
+    "initialization_commands": ["init_cmd"],
+    "setup_commands": ["setup_cmd"],
+    "head_setup_commands": ["head_setup_cmd"],
+    "worker_setup_commands": ["worker_setup_cmd"],
+    "head_start_ray_commands": ["start_ray_head"],
+    "worker_start_ray_commands": ["start_ray_worker"],
+}
+
+SMALL_CLUSTER_2 = {
+    "cluster_name": "default",
+    "max_workers": 2,
+    "idle_timeout_minutes": 5,
+    "provider": {
+        "type": "mock",
+        "region": "us-east-1",
+        "availability_zone": "us-east-1a",
+    },
+    "docker": {
+        "image": "example",
+        "container_name": "mock",
+    },
+    "auth": {
+        "ssh_user": "ubuntu",
+        "ssh_private_key": os.devnull,
+    },
+    "head_node_type": "ray.head.default",
+    "available_node_types": {
+        "ray.head.default": {
+            "max_workers": 0,
+            "min_workers": 0,
+            "resources": {"CPU": 1},
+            "node_config": {"TestProp": 1},
+        },
+        "ray.worker.default":{
+            "min_workers": 2,
+            "max_workers": 2,
+            "resources": {"CPU": 1},
+            "node_config": {"TestProp": 2},
+        }
     },
     "file_mounts": {},
     "cluster_synced_files": [],
@@ -577,6 +618,13 @@ class AutoscalingTest(unittest.TestCase):
             time.sleep(.1)
         fail_msg = fail_msg or "Timed out waiting for {}".format(condition)
         raise RayTestTimeoutException(fail_msg)
+
+    def waitForUpdatersToFinish(self, autoscaler):
+        self.waitFor(
+            lambda: all(not updater.is_alive()
+                        for updater in autoscaler.updaters.values()),
+            num_retries=500,
+            fail_msg="Last round of updaters didn't complete on time.")
 
     def waitForNodes(self, expected, comparison=None, tag_filters=None):
         if tag_filters is None:
@@ -2005,7 +2053,6 @@ class AutoscalingTest(unittest.TestCase):
             process_runner=runner,
             update_interval_s=0)
         autoscaler.update()
-        autoscaler.update()
         self.waitForNodes(2)
         self.provider.finish_starting_nodes()
         fill_in_raylet_ids(self.provider, lm)
@@ -2120,7 +2167,7 @@ class AutoscalingTest(unittest.TestCase):
         fill_in_raylet_ids(self.provider, lm)
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
-        assert autoscaler.pending_launches.value == 0
+        self.waitFor(lambda: autoscaler.pending_launches.value == 0)
         self.waitForNodes(8, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         assert autoscaler.pending_launches.value == 0
         events = autoscaler.event_summarizer.summary()
@@ -3116,11 +3163,7 @@ MemAvailable:   33000000 kB
         mock_metrics.recovering_nodes.set.assert_called_with(2)
         autoscaler.process_runner.ready_to_run.set()
         # Wait for updaters spawned by last autoscaler update to finish.
-        self.waitFor(
-            lambda: all(not updater.is_alive()
-                        for updater in autoscaler.updaters.values()),
-            num_retries=500,
-            fail_msg="Last round of updaters didn't complete on time.")
+        self.waitForUpdatersToFinish(autoscaler)
         # Check that updaters processed some commands in the last autoscaler
         # update.
         assert len(autoscaler.process_runner.calls) > num_calls,\
