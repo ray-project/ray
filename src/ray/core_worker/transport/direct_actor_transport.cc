@@ -17,8 +17,10 @@
 #include <thread>
 
 #include "ray/common/task/task.h"
+#include "ray/gcs/pb_util.h"
 
 using ray::rpc::ActorTableData;
+using namespace ray::gcs;
 
 namespace ray {
 namespace core {

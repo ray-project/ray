@@ -220,7 +220,7 @@ class ResourceChangingScheduler(TrialScheduler):
     If the functional API is used, the current trial resources can be obtained
     by calling `tune.get_trial_resources()` inside the training function.
     The function should be able to
-    :ref:`load and save checkpoints <tune-checkpoint>`
+    :ref:`load and save checkpoints <tune-checkpoint-syncing>`
     (the latter preferably every iteration).
 
     If the Trainable (class) API is used, when the resources of a

@@ -1,13 +1,13 @@
 import gym
-from typing import Optional, Dict
+from typing import Dict, List, Optional
 
 import ray
-from ray.rllib.agents.ppo.ppo_torch_policy import ValueNetworkMixin
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -97,16 +97,73 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     }
 
 
-def model_value_predictions(
-        policy: Policy, input_dict: Dict[str, TensorType], state_batches,
-        model: ModelV2,
-        action_dist: ActionDistribution) -> Dict[str, TensorType]:
-    return {SampleBatch.VF_PREDS: model.value_function()}
+def vf_preds_fetches(
+        policy: Policy, input_dict: Dict[str, TensorType],
+        state_batches: List[TensorType], model: ModelV2,
+        action_dist: TorchDistributionWrapper) -> Dict[str, TensorType]:
+    """Defines extra fetches per action computation.
+
+    Args:
+        policy (Policy): The Policy to perform the extra action fetch on.
+        input_dict (Dict[str, TensorType]): The input dict used for the action
+            computing forward pass.
+        state_batches (List[TensorType]): List of state tensors (empty for
+            non-RNNs).
+        model (ModelV2): The Model object of the Policy.
+        action_dist (TorchDistributionWrapper): The instantiated distribution
+            object, resulting from the model's outputs and the given
+            distribution class.
+
+    Returns:
+        Dict[str, TensorType]: Dict with extra tf fetches to perform per
+            action computation.
+    """
+    # Return value function outputs. VF estimates will hence be added to the
+    # SampleBatches produced by the sampler(s) to generate the train batches
+    # going into the loss function.
+    return {
+        SampleBatch.VF_PREDS: model.value_function(),
+    }
 
 
 def torch_optimizer(policy: Policy,
                     config: TrainerConfigDict) -> LocalOptimizer:
     return torch.optim.Adam(policy.model.parameters(), lr=config["lr"])
+
+
+class ValueNetworkMixin:
+    """Assigns the `_value()` method to the PPOPolicy.
+
+    This way, Policy can call `_value()` to get the current VF estimate on a
+    single(!) observation (as done in `postprocess_trajectory_fn`).
+    Note: When doing this, an actual forward pass is being performed.
+    This is different from only calling `model.value_function()`, where
+    the result of the most recent forward pass is being used to return an
+    already calculated tensor.
+    """
+
+    def __init__(self, obs_space, action_space, config):
+        # When doing GAE, we need the value function estimate on the
+        # observation.
+        if config["use_gae"]:
+            # Input dict is provided to us automatically via the Model's
+            # requirements. It's a single-timestep (last one in trajectory)
+            # input_dict.
+
+            def value(**input_dict):
+                input_dict = SampleBatch(input_dict)
+                input_dict = self._lazy_tensor_dict(input_dict)
+                model_out, _ = self.model(input_dict)
+                # [0] = remove the batch dim.
+                return self.model.value_function()[0].item()
+
+        # When not doing GAE, we do not require the value function's output.
+        else:
+
+            def value(*args, **kwargs):
+                return 0.0
+
+        self._value = value
 
 
 def setup_mixins(policy: Policy, obs_space: gym.spaces.Space,
@@ -133,7 +190,7 @@ A3CTorchPolicy = build_policy_class(
     loss_fn=actor_critic_loss,
     stats_fn=stats,
     postprocess_fn=compute_gae_for_sample_batch,
-    extra_action_out_fn=model_value_predictions,
+    extra_action_out_fn=vf_preds_fetches,
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=torch_optimizer,
     before_loss_init=setup_mixins,

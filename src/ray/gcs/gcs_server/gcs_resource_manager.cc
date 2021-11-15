@@ -19,7 +19,7 @@
 
 DEFINE_stats(placement_group_resource_persist_latency_ms,
              "Time to persist placement resources to Redis.", (),
-             ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::Histogram);
+             ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
 
 namespace ray {
 namespace gcs {

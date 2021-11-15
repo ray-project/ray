@@ -61,11 +61,11 @@ public class PlacementGroupTest extends BaseTest {
   public void testGetPlacementGroup() {
     PlacementGroup firstPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-            "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group", false);
+            "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group");
 
     PlacementGroup secondPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-            "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group", false);
+            "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group");
     Assert.assertTrue(firstPlacementGroup.wait(60));
     Assert.assertTrue(secondPlacementGroup.wait(60));
 
@@ -100,11 +100,11 @@ public class PlacementGroupTest extends BaseTest {
   public void testRemovePlacementGroup() {
     PlacementGroup firstPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-            "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group", false);
+            "CPU", 1, PlacementStrategy.PACK, 1.0, "first_placement_group");
 
     PlacementGroup secondPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-            "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group", false);
+            "CPU", 1, PlacementStrategy.PACK, 1.0, "second_placement_group");
     Assert.assertTrue(firstPlacementGroup.wait(60));
     Assert.assertTrue(secondPlacementGroup.wait(60));
 
@@ -164,21 +164,10 @@ public class PlacementGroupTest extends BaseTest {
     String pgName = "named_placement_group";
     PlacementGroup firstPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-            "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
+            "CPU", 1, PlacementStrategy.PACK, 1.0, pgName);
     Assert.assertTrue(firstPlacementGroup.wait(60));
     // Make sure we can get it by name successfully.
     PlacementGroup placementGroup = PlacementGroups.getPlacementGroup(pgName);
-    Assert.assertNotNull(placementGroup);
-    Assert.assertEquals(placementGroup.getBundles().size(), 1);
-
-    // Test global placement group.
-    String pgGlobalName = "global_placement_group";
-    PlacementGroup secondPlacementGroup =
-        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-            "CPU", 1, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
-    Assert.assertTrue(secondPlacementGroup.wait(60));
-    // Make sure we can get it by name successfully.
-    placementGroup = PlacementGroups.getGlobalPlacementGroup(pgGlobalName);
     Assert.assertNotNull(placementGroup);
     Assert.assertEquals(placementGroup.getBundles().size(), 1);
   }
@@ -188,29 +177,12 @@ public class PlacementGroupTest extends BaseTest {
     String pgName = "named_placement_group";
     PlacementGroup firstPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-            "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
+            "CPU", 1, PlacementStrategy.PACK, 1.0, pgName);
     Assert.assertTrue(firstPlacementGroup.wait(60));
     int exceptionCount = 0;
     try {
       PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-          "CPU", 1, PlacementStrategy.PACK, 1.0, pgName, false);
-    } catch (IllegalArgumentException e) {
-      ++exceptionCount;
-    }
-    Assert.assertEquals(exceptionCount, 1);
-  }
-
-  @Test(groups = {"cluster"})
-  public void testCreateGlobalPlacementGroupWithSameName() {
-    String pgGlobalName = "global_placement_group";
-    PlacementGroup firstPlacementGroup =
-        PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-            "CPU", 1, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
-    Assert.assertTrue(firstPlacementGroup.wait(60));
-    int exceptionCount = 0;
-    try {
-      PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-          "CPU", 1, PlacementStrategy.PACK, 1.0, pgGlobalName, true);
+          "CPU", 1, PlacementStrategy.PACK, 1.0, pgName);
     } catch (IllegalArgumentException e) {
       ++exceptionCount;
     }
@@ -223,7 +195,7 @@ public class PlacementGroupTest extends BaseTest {
     String pgName = "named_placement_group";
     PlacementGroup nonExistPlacementGroup =
         PlacementGroupTestUtils.createNameSpecifiedSimpleGroup(
-            "non-exist-resource", 1, PlacementStrategy.PACK, 1.0, pgName, false);
+            "non-exist-resource", 1, PlacementStrategy.PACK, 1.0, pgName);
 
     // Make sure its creation will failed.
     Assert.assertFalse(nonExistPlacementGroup.wait(60));
