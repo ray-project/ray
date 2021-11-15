@@ -34,6 +34,7 @@ class Session:
                  training_func: Callable,
                  world_rank: int,
                  local_rank: int,
+                 world_size: int,
                  dataset_shard: Optional[RayDataset] = None,
                  checkpoint: Optional[Dict] = None,
                  detailed_autofilled_metrics: bool = False):
@@ -45,6 +46,7 @@ class Session:
             target=training_func, daemon=True)
         self.world_rank = world_rank
         self.local_rank = local_rank
+        self.world_size = world_size
         self.loaded_checkpoint = checkpoint
 
         # This lock is used to control the execution of the training thread.
@@ -413,3 +415,23 @@ def save_checkpoint(**kwargs) -> None:
     """
     session = get_session()
     session.checkpoint(**kwargs)
+
+
+def world_size() -> int:
+    """Get the current world size (i.e. total number of workers) for this run.
+
+    .. code-block:: python
+
+        import time
+        from ray import train
+
+        def train_func():
+            assert train.world_size() == 4
+
+        trainer = Trainer(backend="torch", num_workers=4)
+        trainer.start()
+        trainer.run(train_func)
+        trainer.shutdown()
+    """
+    session = get_session()
+    return session.world_size

@@ -27,18 +27,18 @@
 // are committed to nodes and available).
 DEFINE_stats(placement_group_creation_latency_ms,
              "end to end latency of placement group creation", (),
-             ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::Histogram);
+             ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
 // The time from placement group scheduling has started
 // <-> Placement group creation succeeds.
 DEFINE_stats(placement_group_scheduling_latency_ms,
              "scheduling latency of placement groups", (),
-             ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::Histogram);
+             ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
 DEFINE_stats(pending_placement_group, "Number of total pending placement groups", (), (),
-             ray::stats::Gauge);
+             ray::stats::GAUGE);
 DEFINE_stats(registered_placement_group, "Number of total registered placement groups",
-             (), (), ray::stats::Gauge);
+             (), (), ray::stats::GAUGE);
 DEFINE_stats(infeasible_placement_group, "Number of total infeasible placement groups",
-             (), (), ray::stats::Gauge);
+             (), (), ray::stats::GAUGE);
 
 namespace ray {
 namespace gcs {
