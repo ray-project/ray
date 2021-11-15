@@ -409,8 +409,10 @@ class StandardAutoscaler:
 
         # Update internal node lists
         def filter_out_terminating(node_list):
-            return [node for node in node_list
-                    if node not in self.nodes_to_terminate]
+            return [
+                node for node in node_list
+                if node not in self.nodes_to_terminate
+            ]
 
         self.workers = filter_out_terminating(self.workers)
         self.all_workers = filter_out_terminating(self.all_workers)

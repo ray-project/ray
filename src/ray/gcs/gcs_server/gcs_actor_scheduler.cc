@@ -229,6 +229,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   // backlog in GCS.
   lease_client->RequestWorkerLease(
       actor->GetActorTableData().task_spec(),
+      RayConfig::instance().gcs_actor_scheduling_enabled(),
       [this, actor, node](const Status &status,
                           const rpc::RequestWorkerLeaseReply &reply) {
         HandleWorkerLeaseReply(actor, node, status, reply);

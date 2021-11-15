@@ -385,10 +385,12 @@ class MockProvider(NodeProvider):
                 if node.state == "pending":
                     node.state = "running"
 
+
 class MockAutoscaler(StandardAutoscaler):
     """Test autoscaler constructed to verify the property that each
     autoscaler update issues at most one provider.non_terminated_nodes call.
     """
+
     def _update(self):
         # Only works with MockProvider
         assert isinstance(self.provider, MockProvider)
@@ -399,6 +401,7 @@ class MockAutoscaler(StandardAutoscaler):
         # Strict inequality if update is called twice within the throttling
         # interval `self.update_interval_s`
         assert end_calls <= start_calls + 1
+
 
 SMALL_CLUSTER = {
     "cluster_name": "default",
@@ -459,14 +462,22 @@ SMALL_CLUSTER_2 = {
         "ray.head.default": {
             "max_workers": 0,
             "min_workers": 0,
-            "resources": {"CPU": 1},
-            "node_config": {"TestProp": 1},
+            "resources": {
+                "CPU": 1
+            },
+            "node_config": {
+                "TestProp": 1
+            },
         },
-        "ray.worker.default":{
+        "ray.worker.default": {
             "min_workers": 2,
             "max_workers": 2,
-            "resources": {"CPU": 1},
-            "node_config": {"TestProp": 2},
+            "resources": {
+                "CPU": 1
+            },
+            "node_config": {
+                "TestProp": 2
+            },
         }
     },
     "file_mounts": {},

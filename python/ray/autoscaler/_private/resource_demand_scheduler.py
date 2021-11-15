@@ -61,8 +61,8 @@ class ResourceDemandScheduler:
         self.head_node_type = head_node_type
         self.upscaling_speed = upscaling_speed
 
-    def _get_head_and_workers(self, nodes: List[NodeID]) -> Tuple[NodeID,
-                                                                 List[NodeID]]:
+    def _get_head_and_workers(
+            self, nodes: List[NodeID]) -> Tuple[NodeID, List[NodeID]]:
         """Returns the head node's id and the list of all worker node ids,
         given a list `nodes` of all node ids in the cluster.
         """
@@ -75,7 +75,6 @@ class ResourceDemandScheduler:
             elif tags[TAG_RAY_NODE_KIND] == NODE_KIND_WORKER:
                 workers.append(node)
         return head, workers
-
 
     def reset_config(self,
                      provider: NodeProvider,
@@ -178,7 +177,8 @@ class ResourceDemandScheduler:
         if self.is_legacy_yaml():
             # When using legacy yaml files we need to infer the head & worker
             # node resources from the static node resources from LoadMetrics.
-            self._infer_legacy_node_resources_if_needed(nodes, max_resources_by_ip)
+            self._infer_legacy_node_resources_if_needed(
+                nodes, max_resources_by_ip)
 
         self._update_node_resources_from_runtime(nodes, max_resources_by_ip)
 
@@ -350,9 +350,8 @@ class ResourceDemandScheduler:
                     self.node_resource_updated.add(node_type)
 
     def _infer_legacy_node_resources_if_needed(
-        self,
-        nodes: List[NodeIP],
-        max_resources_by_ip: Dict[NodeIP, ResourceDict]
+            self, nodes: List[NodeIP],
+            max_resources_by_ip: Dict[NodeIP, ResourceDict]
     ) -> (bool, Dict[NodeType, int]):
         """Infers node resources for legacy config files.
 

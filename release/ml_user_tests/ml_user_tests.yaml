@@ -34,6 +34,7 @@
     driver_setup: train/driver_setup.sh
 
     run:
+        use_connect: True
         timeout: 36000
         script: python train/train_tensorflow_mnist_test.py
 
@@ -43,6 +44,7 @@
         compute_template: train/compute_tpl.yaml
 
     run:
+        use_connect: True
         timeout: 36000
         script: python train/train_torch_linear_test.py
 
@@ -98,7 +100,7 @@
 
 - name: tune_rllib_connect_test
   cluster:
-    app_config: tune_rllib/app_config.yaml
+    app_config: ../rllib_tests/app_config.yaml
     compute_template: tune_rllib/compute_tpl.yaml
 
 
