@@ -162,7 +162,7 @@ You can use the following command in the Terminal to do so:
 
     zip -r example.zip /some_path/example_dir
 
-In general, the command is
+In general, to compress a directory called ``directory_to_zip`` into a zip file called ``zip_file_name.zip``, the command is:
 
 .. code-block:: bash
 
