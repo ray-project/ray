@@ -27,8 +27,7 @@ from ray.workflow.common import (
 )
 
 if TYPE_CHECKING:
-    from ray.workflow.common import (WorkflowRef, WorkflowInputs,
-                                     WorkflowStepRuntimeOptions)
+    from ray.workflow.common import (WorkflowRef, WorkflowStepRuntimeOptions)
     from ray.workflow.workflow_context import WorkflowStepContext
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
@@ -405,15 +404,6 @@ class _BakedWorkflowInputs:
     args: "ObjectRef"
     workflow_outputs: "List[ObjectRef]"
     workflow_refs: "List[WorkflowRef]"
-
-    @classmethod
-    def from_workflow_inputs(cls, inputs: "WorkflowInputs"):
-        with workflow_context.fork_workflow_step_context(
-                outer_most_step_id=None, last_step_of_workflow=False):
-            workflow_outputs = [
-                execute_workflow(w).persisted_output for w in inputs.workflows
-            ]
-        return cls(inputs.args, workflow_outputs, inputs.workflow_refs)
 
     def resolve(self) -> Tuple[List, Dict]:
         """
