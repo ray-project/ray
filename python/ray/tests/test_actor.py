@@ -279,7 +279,8 @@ def test_actor_class_name(ray_start_regular):
                                     ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
     assert len(actor_keys) == 1
     actor_class_info = pickle.loads(
-        g.internal_kv_get(actor_keys[0], ray_constants.KV_NAMESPACE_FUNCTION_TABLE))
+        g.internal_kv_get(actor_keys[0],
+                          ray_constants.KV_NAMESPACE_FUNCTION_TABLE))
     assert actor_class_info["class_name"] == "Foo"
     assert "test_actor" in actor_class_info["module"]
 
