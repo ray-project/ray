@@ -258,7 +258,7 @@ class ESTrainer(Trainer):
         return self.policy
 
     @override(Trainer)
-    def step_attempt(self):
+    def step(self):
         config = self.config
 
         theta = self.policy.get_flat_weights()
