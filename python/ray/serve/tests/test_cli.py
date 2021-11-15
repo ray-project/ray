@@ -1,4 +1,6 @@
 import json
+import os
+from pathlib import Path
 import subprocess
 import sys
 
@@ -6,6 +8,7 @@ import pytest
 import requests
 
 from ray import serve
+from ray.tests.test_runtime_env_working_dir import tmp_working_dir  # noqa: F401, E501
 
 
 @pytest.fixture
@@ -37,18 +40,27 @@ class A:
         self.value = value
         self.increment = increment
         self.decrement = 0
+        self.multiplier = int(os.environ["SERVE_TEST_MULTIPLIER"])
+
+        p = Path("hello")
+        assert p.exists()
+        with open(p) as f:
+            assert f.read() == "world"
 
     def reconfigure(self, config):
         self.decrement = config["decrement"]
 
     def __call__(self, inp):
-        return self.value + self.increment - self.decrement
+        return (self.value + self.increment - self.decrement) * self.multiplier
 
 
-def test_deploy(ray_start_stop):
+def test_deploy(ray_start_stop, tmp_working_dir):  # noqa: F811
     subprocess.check_output(["serve", "start"])
     subprocess.check_output([
-        "serve", "deploy", "ray.serve.tests.test_cli.A", "--options-json",
+        "serve", "--runtime-env-json",
+        json.dumps({
+            "working_dir": tmp_working_dir,
+        }), "deploy", "ray.serve.tests.test_cli.A", "--options-json",
         json.dumps({
             "name": "B",
             "init_args": [42],
@@ -59,11 +71,18 @@ def test_deploy(ray_start_stop):
             "user_config": {
                 "decrement": 5
             },
+            "ray_actor_options": {
+                "runtime_env": {
+                    "env_vars": {
+                        "SERVE_TEST_MULTIPLIER": "2",
+                    },
+                }
+            }
         })
     ])
     resp = requests.get("http://127.0.0.1:8000/B")
     resp.raise_for_status()
-    assert resp.text == "47", resp.text
+    assert resp.text == "94", resp.text
 
 
 if __name__ == "__main__":

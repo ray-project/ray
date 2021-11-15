@@ -30,8 +30,19 @@ from ray.serve.constants import (DEFAULT_CHECKPOINT_PATH, DEFAULT_HTTP_HOST,
     required=False,
     type=str,
     help="Ray namespace to connect to. Defaults to \"serve\".")
-def cli(address, namespace):
-    ray.init(address=address, namespace=namespace)
+@click.option(
+    "--runtime-env-json",
+    default=r'{}',
+    required=False,
+    type=str,
+    help=("Runtime environment dictionary to pass into ray.init. "
+          "Defaults to empty."))
+def cli(address, namespace, runtime_env_json):
+    ray.init(
+        address=address,
+        namespace=namespace,
+        runtime_env=json.loads(runtime_env_json),
+    )
 
 
 @cli.command(help="Start a detached Serve instance on the Ray cluster.")
@@ -79,12 +90,15 @@ def shutdown():
     serve.shutdown()
 
 
-@cli.command(help="""
+@cli.command(
+    help="""
 [Experimental]
 Create a deployment in running Serve instance. The required argument is the
 import path for the deployment: ``my_module.sub_module.file.MyClass``. The
 class should already be decorated with ``@serve.deployment``.
-""")
+""",
+    hidden=True,
+)
 @click.argument("deployment")
 @click.option(
     "--options-json",
