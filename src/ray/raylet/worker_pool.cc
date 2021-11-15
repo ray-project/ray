@@ -1381,8 +1381,7 @@ std::unordered_set<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersByPro
 std::string WorkerPool::DebugString() const {
   std::stringstream result;
   result << "WorkerPool:";
-  result << "\n- registered jobs: "
-         << all_jobs_.size() - finished_jobs_.size();
+  result << "\n- registered jobs: " << all_jobs_.size() - finished_jobs_.size();
   for (const auto &entry : states_by_lang_) {
     result << "\n- num " << Language_Name(entry.first)
            << " workers: " << entry.second.registered_workers.size();
