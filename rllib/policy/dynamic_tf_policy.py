@@ -703,7 +703,7 @@ class DynamicTFPolicy(TFPolicy):
                             "automatically remove non-used items from the "
                             "data stream. Remove the `del` from your "
                             "postprocessing function.".format(key))
-                    # If we are not writing output to disk, save to erase
+                    # If we are not writing output to disk, safe to erase
                     # this key to save space in the sample batch.
                     elif self.config["output"] is None:
                         del self.view_requirements[key]
