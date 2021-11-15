@@ -24,7 +24,7 @@ LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = (10, 30)
 # up to other requests. If the host returned timeout, this means there is
 # unlikely to be any meaninful changes, so it is ok to wait a bit before
 # pulling again.
-CLIENT_SIDE_TIMEOUT_WAIT_S = (10, 60)
+CLIENT_SIDE_TIMEOUT_WAIT_S = (5, 20)
 
 
 class LongPollNamespace(Enum):

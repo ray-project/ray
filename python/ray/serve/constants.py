@@ -1,3 +1,13 @@
+import os
+from typing import Optional
+
+
+def _getenv_default(key: str, default: Optional[str] = None):
+    """Return environment variable with default value"""
+    # If the environment variable is set but "", still return default
+    return os.environ.get(key, None) or default
+
+
 #: Actor name used to register controller
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 
@@ -66,4 +76,8 @@ MAX_CACHED_HANDLES = 100
 
 #: Because ServeController will accept one long poll request per handle, its
 #: concurrency needs to scale as O(num_handles)
-CONTROLLER_MAX_CONCURRENCY = 15000
+CONTROLLER_MAX_CONCURRENCY = int(
+    _getenv_default(
+        "SERVE_CONTROLLER_MAX_CONCURRENCY",
+        "1000000",
+    ))
