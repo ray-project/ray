@@ -116,3 +116,15 @@ class Counter(object):
     def increase(self, delta):
         self.value += int(delta)
         return str(self.value).encode("utf-8")
+
+@ray.remote
+def py_func_create_named_actor():
+    counter = Counter.options(name="py_named_actor", lifetime="detached").remote(100)
+    assert ray.get(counter.increase.remote(1)) == b"101"
+    return b"true"
+
+@ray.remote
+def py_func_get_and_invoke_named_actor():
+    java_named_actor = ray.get_actor("java_named_actor")
+    assert ray.get(java_named_actor.concat.remote(b"world")) == b"helloworld"
+    return b"true"
