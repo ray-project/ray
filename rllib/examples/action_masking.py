@@ -22,8 +22,10 @@ them. This only works with discrete actions.
 Run this example with defaults (using Tune and action masking):
 $ python action_masking.py
 Then run again without action masking, which will likely lead to errors due to
-invalid actions being selected:
+invalid actions being selected (ValueError "Invalid action sent to env!"):
 $ python action_masking.py --no-masking
+Other options for running this example:
+$ python action_masking.py --help
 """
 
 import argparse
@@ -42,6 +44,12 @@ from ray.tune.logger import pretty_print
 def get_cli_args():
     """Create CLI parser and return parsed arguments"""
     parser = argparse.ArgumentParser()
+
+    # example-specific args
+    parser.add_argument(
+        "--no-masking",
+        action="store_true",
+        help="Do NOT mask invalid actions. This will likely lead to errors.")
 
     # general args
     parser.add_argument(
@@ -104,6 +112,10 @@ if __name__ == "__main__":
         "model": {
             "custom_model": ActionMaskModel
             if args.framework != "torch" else TorchActionMaskModel,
+            # disable action masking according to CLI
+            "custom_model_config": {
+                "no_masking": args.no_masking
+            }
         },
 
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
@@ -156,4 +168,5 @@ if __name__ == "__main__":
     else:
         results = tune.run(args.run, config=config, stop=stop, verbose=2)
 
+    print("Finished successfully without selecting invalid actions.")
     ray.shutdown()

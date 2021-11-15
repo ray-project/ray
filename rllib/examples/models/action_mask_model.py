@@ -35,6 +35,11 @@ class ActionMaskModel(TFModelV2):
             orig_space["observations"], action_space, num_outputs,
             model_config, name + "_internal")
 
+        # disable action masking --> will likely lead to invalid actions
+        self.no_masking = False
+        if "custom_model_config" in model_config and "no_masking" in model_config["custom_model_config"]:
+            self.no_masking = model_config["custom_model_config"]["no_masking"]
+
     def forward(self, input_dict, state, seq_lens):
         # Extract the available actions tensor from the observation.
         action_mask = input_dict["obs"]["action_mask"]
@@ -43,6 +48,10 @@ class ActionMaskModel(TFModelV2):
         logits, _ = self.internal_model({
             "obs": input_dict["obs"]["observations"]
         })
+
+        # If action masking is disabled, directly return unmasked logits
+        if self.no_masking:
+            return logits, state
 
         # Convert action_mask into a [0.0 || -inf]-type mask.
         inf_mask = tf.maximum(tf.math.log(action_mask), tf.float32.min)
@@ -80,6 +89,11 @@ class TorchActionMaskModel(TorchModelV2, nn.Module):
                                       num_outputs, model_config,
                                       name + "_internal")
 
+        # disable action masking --> will likely lead to invalid actions
+        self.no_masking = False
+        if "custom_model_config" in model_config and "no_masking" in model_config["custom_model_config"]:
+            self.no_masking = model_config["custom_model_config"]["no_masking"]
+
     def forward(self, input_dict, state, seq_lens):
         # Extract the available actions tensor from the observation.
         action_mask = input_dict["obs"]["action_mask"]
@@ -88,6 +102,10 @@ class TorchActionMaskModel(TorchModelV2, nn.Module):
         logits, _ = self.internal_model({
             "obs": input_dict["obs"]["observations"]
         })
+
+        # If action masking is disabled, directly return unmasked logits
+        if self.no_masking:
+            return logits, state
 
         # Convert action_mask into a [0.0 || -inf]-type mask.
         inf_mask = torch.clamp(torch.log(action_mask), min=FLOAT_MIN)
