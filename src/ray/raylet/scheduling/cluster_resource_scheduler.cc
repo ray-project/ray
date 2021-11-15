@@ -18,20 +18,17 @@
 
 #include "ray/common/grpc_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/raylet/scheduling/scheduling_policy.h"
 
 namespace ray {
-
-ClusterResourceScheduler::ClusterResourceScheduler()
-    : spread_threshold_(RayConfig::instance().scheduler_spread_threshold()){};
 
 ClusterResourceScheduler::ClusterResourceScheduler(
     int64_t local_node_id, const NodeResources &local_node_resources,
     gcs::GcsClient &gcs_client)
-    : spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
-      local_node_id_(local_node_id),
+    : local_node_id_(local_node_id),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()),
       gcs_client_(&gcs_client) {
+  scheduling_policy_ = std::make_unique<raylet_scheduling_policy::SchedulingPolicy>(
+      local_node_id_, nodes_, RayConfig::instance().scheduler_spread_threshold());
   InitResourceUnitInstanceInfo();
   AddOrUpdateNode(local_node_id_, local_node_resources);
   InitLocalResources(local_node_resources);
@@ -42,10 +39,11 @@ ClusterResourceScheduler::ClusterResourceScheduler(
     const absl::flat_hash_map<std::string, double> &local_node_resources,
     gcs::GcsClient &gcs_client, std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity)
-    : spread_threshold_(RayConfig::instance().scheduler_spread_threshold()),
-      get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
+    : get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
       gcs_client_(&gcs_client) {
   local_node_id_ = string_to_int_map_.Insert(local_node_id);
+  scheduling_policy_ = std::make_unique<raylet_scheduling_policy::SchedulingPolicy>(
+      local_node_id_, nodes_, RayConfig::instance().scheduler_spread_threshold());
   NodeResources node_resources = ResourceMapToNodeResources(
       string_to_int_map_, local_node_resources, local_node_resources);
 
@@ -174,23 +172,19 @@ bool ClusterResourceScheduler::RemoveNode(const std::string &node_id_string) {
 
 bool ClusterResourceScheduler::IsNodeAvailable(int64_t node_id,
                                                const SchedulingContext &context) const {
-  bool has =
-      context.task_spec.HasRuntimeEnvFailureAtNode(string_to_int_map_.Get(node_id));
   return NodeAlive(node_id) &&
          !context.task_spec.HasRuntimeEnvFailureAtNode(string_to_int_map_.Get(node_id));
 }
 
-int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
-                                                int64_t node_id,
-                                                const NodeResources &resources) const {
-  int violations = 0;
-
+bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_request,
+                                             int64_t node_id,
+                                             const NodeResources &resources) const {
   if (resource_request.requires_object_store_memory && resources.object_pulls_queued &&
       node_id != local_node_id_) {
     // It's okay if the local node's pull manager is at capacity because we
     // will eventually spill the task back from the waiting queue if its args
     // cannot be pulled.
-    return -1;
+    return false;
   }
 
   // First, check predefined resources.
@@ -199,7 +193,7 @@ int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_
         resources.predefined_resources[i].available) {
       // A hard constraint has been violated, so we cannot schedule
       // this resource request.
-      return -1;
+      return false;
     }
   }
 
@@ -210,16 +204,16 @@ int64_t ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_
     if (it == resources.custom_resources.end()) {
       // Requested resource doesn't exist at this node.
       // This is a hard constraint so cannot schedule this resource request.
-      return -1;
+      return false;
     } else {
       if (task_req_custom_resource.second > it->second.available) {
         // Resource constraint is violated.
-        return -1;
+        return false;
       }
     }
   }
 
-  return violations;
+  return true;
 }
 
 int64_t ClusterResourceScheduler::GetBestSchedulableNode(
@@ -254,16 +248,10 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     return best_node;
   }
 
-  auto spread_threshold = spread_threshold_;
-  // If the scheduling decision is made by gcs, we ignore the spread threshold
-  if (actor_creation && RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    spread_threshold = 1.0;
-  }
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
   // remain bug compatible with the legacy scheduling algorithms.
-  int64_t best_node_id = raylet_scheduling_policy::HybridPolicy(
-      resource_request, local_node_id_, nodes_, spread_threshold, force_spillback,
-      force_spillback,
+  int64_t best_node_id = scheduling_policy_->HybridPolicy(
+      resource_request, force_spillback, force_spillback,
       /*is_node_available=*/[this, &task_spec](auto node_id) {
         return this->IsNodeAvailable(node_id, {task_spec});
       });
@@ -310,7 +298,7 @@ bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
   NodeResources *resources = it->second.GetMutableLocalView();
 
   // Just double check this node can still schedule the resource request.
-  if (IsSchedulable(resource_request, node_id, *resources) == -1) {
+  if (!IsSchedulable(resource_request, node_id, *resources)) {
     return false;
   }
 
@@ -981,16 +969,6 @@ void ClusterResourceScheduler::FillResourceUsage(rpc::ResourcesData &resources_d
     last_report_resources_.reset(new NodeResources(node_resources));
   }
 
-  // Reset all local views for remote nodes. This is needed in case tasks that
-  // we spilled back to a remote node were not actually scheduled on the
-  // node. Then, the remote node's resource availability may not change and
-  // so it may not send us another update.
-  for (auto &node : nodes_) {
-    if (node.first != local_node_id_) {
-      node.second.ResetLocalView();
-    }
-  }
-
   // Automatically report object store usage.
   // XXX: this MUTATES the resources field, which is needed since we are storing
   // it in last_report_resources_.
@@ -1095,7 +1073,7 @@ bool ClusterResourceScheduler::IsLocallySchedulable(
     const absl::flat_hash_map<std::string, double> &shape) {
   auto resource_request = ResourceMapToResourceRequest(
       string_to_int_map_, shape, /*requires_object_store_memory=*/false);
-  return IsSchedulable(resource_request, local_node_id_, GetLocalNodeResources()) == 0;
+  return IsSchedulable(resource_request, local_node_id_, GetLocalNodeResources());
 }
 
 }  // namespace ray
