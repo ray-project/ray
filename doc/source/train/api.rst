@@ -109,3 +109,26 @@ train.local_rank
 ~~~~~~~~~~~~~~~~
 
 .. autofunction:: ray.train.local_rank
+
+train.world_size
+~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.world_size
+
+PyTorch Training Function Utilities
+-----------------------------------
+
+train.torch.prepare_model
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.prepare_model
+
+train.torch.prepare_data_loader
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.prepare_data_loader
+
+train.torch.get_device
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.train.torch.get_device
