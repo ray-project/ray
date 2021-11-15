@@ -67,7 +67,7 @@ The ``runtime_env`` is a Python dictionary including one or more of the followin
 
     - ``"/code/my_project"``
 
-    - ``"gs://bucket/file.zip"``
+    - ``"gs://bucket/file.zip" # Google Cloud Storage URI``
 
   Note: Setting this option per-task or per-actor is currently unsupported.
 
