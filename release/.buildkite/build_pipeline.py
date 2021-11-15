@@ -1,6 +1,7 @@
 import copy
 import logging
 import os
+import re
 import sys
 
 import yaml
@@ -78,7 +79,8 @@ CORE_NIGHTLY_TESTS = {
         SmokeTest("stress_test_dead_actors"),
         "shuffle_data_loader",
         "dask_on_ray_1tb_sort",
-        "many_nodes_actor_test",
+        SmokeTest("threaded_actors_stress_test"),
+        "placement_group_performance_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",
@@ -92,6 +94,23 @@ CORE_NIGHTLY_TESTS = {
         "shuffle_data_loader",
         "pipelined_training_50_gb",
         "pipelined_ingestion_1500_gb_15_windows",
+    ],
+    "~/ray/release/nightly_tests/chaos_test.yaml": [
+        "chaos_many_actors",
+        "chaos_many_tasks_no_object_store",
+    ],
+}
+
+SERVE_NIGHTLY_TESTS = {
+    "~/ray/release/long_running_tests/long_running_tests.yaml": [
+        SmokeTest("serve"),
+        SmokeTest("serve_failure"),
+    ],
+    "~/ray/release/serve_tests/serve_tests.yaml": [
+        "single_deployment_1k_noop_replica",
+        "multi_deployment_1k_noop_replica",
+        "serve_micro_benchmark",
+        "serve_cluster_fault_tolerance",
     ],
 }
 
@@ -108,6 +127,8 @@ NIGHTLY_TESTS = {
         "dask_on_ray_large_scale_test_no_spilling",
         "dask_on_ray_large_scale_test_spilling",
         "pg_autoscaling_regression_test",
+        "threaded_actors_stress_test",
+        "many_nodes_actor_test",
     ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("actor_deaths"),
@@ -122,6 +143,10 @@ NIGHTLY_TESTS = {
         SmokeTest("pbt"),
         # SmokeTest("serve"),
         # SmokeTest("serve_failure"),
+    ],
+    "~/ray/release/nightly_tests/chaos_test.yaml": [
+        "chaos_dask_on_ray_large_scale_test_no_spilling",
+        "chaos_dask_on_ray_large_scale_test_spilling",
     ],
     "~/ray/release/microbenchmark/microbenchmark.yaml": [
         "microbenchmark",
@@ -164,12 +189,6 @@ NIGHTLY_TESTS = {
         "multi_gpu_with_attention_learning_tests",
         # We'll have these as per-PR tests soon.
         # "example_scripts_on_gpu_tests",
-    ],
-    "~/ray/release/serve_tests/serve_tests.yaml": [
-        "single_deployment_1k_noop_replica",
-        "multi_deployment_1k_noop_replica",
-        "serve_micro_benchmark",
-        "serve_cluster_fault_tolerance",
     ],
     "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
         "rte_many_tasks_actors", "wheel_urls", "rte_ray_client"
@@ -219,13 +238,6 @@ WEEKLY_TESTS = {
     ],
 }
 
-MANUAL_TESTS = {
-    "~/ray/release/long_running_tests/long_running_tests.yaml": [
-        SmokeTest("serve"),
-        SmokeTest("serve_failure"),
-    ],
-}
-
 # This test suite holds "user" tests to test important user workflows
 # in a particular environment.
 # All workloads in this test suite should:
@@ -245,12 +257,12 @@ USER_TESTS = {
 
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
+    "serve-nightly": SERVE_NIGHTLY_TESTS,
     "nightly": {
         **NIGHTLY_TESTS,
         **USER_TESTS
     },
     "weekly": WEEKLY_TESTS,
-    "manual": MANUAL_TESTS,
 }
 
 DEFAULT_STEP_TEMPLATE = {
@@ -434,6 +446,14 @@ def create_test_step(
         test_file: str,
         test_name: ReleaseTest,
 ):
+    custom_commit_str = "custom_wheels_url"
+    if ray_wheels:
+        # Extract commit from url
+        p = re.compile(r"([a-f0-9]{40})")
+        m = p.search(ray_wheels)
+        if m is not None:
+            custom_commit_str = m.group(1)
+
     ray_wheels_str = f" ({ray_wheels}) " if ray_wheels else ""
 
     logging.info(f"Creating step for {test_file}/{test_name}{ray_wheels_str}")
@@ -474,7 +494,7 @@ def create_test_step(
 
     step_conf["label"] = (
         f"{test_name} "
-        f"({'custom_wheels_url' if ray_wheels_str else ray_branch}) - "
+        f"({custom_commit_str if ray_wheels_str else ray_branch}) - "
         f"{ray_test_branch}/{ray_test_repo}")
     return step_conf
 

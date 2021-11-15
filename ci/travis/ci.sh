@@ -152,10 +152,6 @@ test_python() {
       -python/ray/tests:test_autoscaler_aws
       -python/ray/tests:test_component_failures
       -python/ray/tests:test_component_failures_3 # timeout
-      -python/ray/tests:test_basic_2  # hangs on shared cluster tests
-      -python/ray/tests:test_basic_2_client_mode
-      -python/ray/tests:test_basic_3  # timeout
-      -python/ray/tests:test_basic_3_client_mode
       -python/ray/tests:test_cli
       -python/ray/tests:test_client_init # timeout
       -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
@@ -165,14 +161,13 @@ test_python() {
       -python/ray/serve:test_get_deployment # address violation
       -python/ray/tests:test_global_gc
       -python/ray/tests:test_job
-      -python/ray/tests:test_job_manager
       -python/ray/tests:test_memstat
       -python/ray/tests:test_metrics
       -python/ray/tests:test_metrics_agent # timeout
       -python/ray/tests:test_multi_node
       -python/ray/tests:test_multi_node_2
       -python/ray/tests:test_multi_node_3
-      -python/ray/tests:test_multi_node_failures_2
+      -python/ray/tests:test_multinode_failures_2
       -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
       -python/ray/tests:test_multiprocessing_client_mode  # timeout
       -python/ray/tests:test_node_manager
@@ -187,6 +182,7 @@ test_python() {
       -python/ray/tests:test_runtime_env_plugin # runtime_env not supported on Windows
       -python/ray/tests:test_runtime_env_env_vars # runtime_env not supported on Windows
       -python/ray/tests:test_runtime_env_complicated # conda install slow leading to timeout
+      -python/ray/tests:test_runtime_env_conda # conda not supported on Windows
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_k8s_operator_unit_tests

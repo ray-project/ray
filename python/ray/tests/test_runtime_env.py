@@ -43,23 +43,6 @@ def test_get_release_wheel_url():
                 assert requests.head(url).status_code == 200, url
 
 
-@pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
-def start_cluster(ray_start_cluster, request):
-    assert request.param in {"ray_client", "no_ray_client"}
-    use_ray_client: bool = request.param == "ray_client"
-
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4)
-    if use_ray_client:
-        cluster.head_node._ray_params.ray_client_server_port = "10003"
-        cluster.head_node.start_ray_client_server()
-        address = "ray://localhost:10003"
-    else:
-        address = cluster.address
-
-    yield cluster, address
-
-
 @pytest.mark.skipif(
     sys.platform == "win32", reason="runtime_env unsupported on Windows.")
 def test_decorator_task(start_cluster):
@@ -164,10 +147,8 @@ def test_invalid_conda_env(shutdown_only):
     # Check that another valid task can run.
     ray.get(f.remote())
 
-    # Check actor is also broken.
-    # TODO(sang): It should raise RuntimeEnvSetupError
     a = A.options(runtime_env=bad_env).remote()
-    with pytest.raises(ray.exceptions.RayActorError):
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
         ray.get(a.f.remote())
 
     # The second time this runs it should be faster as the error is cached.
@@ -298,8 +279,7 @@ def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
     Test actor task raises an exception.
     """
     a = A.options(runtime_env=runtime_env).remote()
-    # TODO(sang): Raise a RuntimeEnvSetupError with proper error.
-    with pytest.raises(ray.exceptions.RayActorError):
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
         ray.get(a.ready.remote())
 
 

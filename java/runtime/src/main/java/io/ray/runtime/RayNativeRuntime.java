@@ -54,7 +54,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private void updateSessionDir(GcsClient gcsClient) {
     // Fetch session dir from GCS.
-    final String sessionDir = gcsClient.getInternalKV("session_dir");
+    final String sessionDir = gcsClient.getInternalKV("@:session:session_dir");
     Preconditions.checkNotNull(sessionDir);
     rayConfig.setSessionDir(sessionDir);
   }
@@ -187,11 +187,11 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   @SuppressWarnings("unchecked")
   @Override
-  public <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global) {
+  public <T extends BaseActorHandle> Optional<T> getActor(String name, String namespace) {
     if (name.isEmpty()) {
       return Optional.empty();
     }
-    byte[] actorIdBytes = nativeGetActorIdOfNamedActor(name, global);
+    byte[] actorIdBytes = nativeGetActorIdOfNamedActor(name, namespace);
     ActorId actorId = ActorId.fromBytes(actorIdBytes);
     if (actorId.isNil()) {
       return Optional.empty();
@@ -264,7 +264,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
 
   private static native void nativeKillActor(byte[] actorId, boolean noRestart);
 
-  private static native byte[] nativeGetActorIdOfNamedActor(String actorName, boolean global);
+  private static native byte[] nativeGetActorIdOfNamedActor(String actorName, String namespace);
 
   private static native void nativeSetCoreWorker(byte[] workerId);
 

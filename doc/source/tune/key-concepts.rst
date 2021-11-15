@@ -66,19 +66,19 @@ See the documentation: :ref:`trainable-docs` and :ref:`examples <tune-general-ex
 tune.run and Trials
 -------------------
 
-Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint>`, and :ref:`early stopping <tune-stopping>`.
+Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint-syncing>`, and :ref:`early stopping <tune-stopping>`.
 
 .. code-block:: python
 
-    # Pass in a Trainable class or function to tune.run.
-    tune.run(trainable)
+    # Pass in a Trainable class or function to tune.run, along with configs
+    tune.run(trainable, config={"a": 2, "b": 4})
 
-``tune.run`` will generate a couple hyperparameter configurations from its arguments, wrapping them into :ref:`Trial objects <trial-docstring>`.
+``tune.run`` will generate a couple of hyperparameter configurations from its arguments, wrapping them into :ref:`Trial objects <trial-docstring>`.
 
 Each trial has
 
 - a hyperparameter configuration (``trial.config``), id (``trial.trial_id``)
-- a resource specification (``resources_per_trial`` or ``trial.resources``)
+- a resource specification (``resources_per_trial`` or ``trial.placement_group_factory``)
 - And other configuration values.
 
 Each trial is also associated with one instance of a :ref:`Trainable <trainable-docs>`. You can access trial objects through the :ref:`Analysis object <tune-concepts-analysis>` provided after ``tune.run`` finishes.
@@ -104,7 +104,7 @@ You can also easily run 10 trials. Tune automatically :ref:`determines how many 
 
 .. code-block:: python
 
-    tune.run(trainable, num_samples=10)
+    tune.run(trainable, config={"a": 2, "b": 4}, num_samples=10)
 
 Finally, you can randomly sample or grid search hyperparameters via Tune's :ref:`search space API <tune-default-search-space>`:
 

@@ -26,8 +26,8 @@ from ray._private.utils import binary_to_hex
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
-from ray.dashboard.optional_deps import (aiohttp, aioredis, hdrs, FrozenList,
-                                         PathLike, RouteDef)
+from ray.dashboard.optional_deps import (aiohttp, aiosignal, aioredis, hdrs,
+                                         FrozenList, PathLike, RouteDef)
 
 try:
     create_task = asyncio.create_task
@@ -401,7 +401,7 @@ class SignalManager:
             sig.freeze()
 
 
-class Signal(aiohttp.signals.Signal):
+class Signal(aiosignal.Signal):
     __slots__ = ()
 
     def __init__(self, owner):
