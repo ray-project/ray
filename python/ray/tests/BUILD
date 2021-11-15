@@ -28,6 +28,7 @@ py_test_module_list(
     "test_component_failures_2.py",
     "test_component_failures_3.py",
     "test_error_ray_not_initialized.py",
+    "test_gcs_pubsub.py",
     "test_global_gc.py",
     "test_grpc_client_credentials.py",
     "test_iter.py",
@@ -79,7 +80,6 @@ py_test_module_list(
     "test_placement_group_2.py",
     "test_placement_group_3.py",
     "test_ray_init.py",
-    "test_reconstruction.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
     "test_runtime_env_env_vars.py",
@@ -134,6 +134,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler.py",
+    "test_autoscaler_drain_node_api.py",
     "test_autoscaler_gcp.py",
     "test_autoscaler_yaml.py",
     "test_cli_logger.py",
@@ -158,6 +159,7 @@ py_test_module_list(
     "test_failure.py",
     "test_actor_advanced.py",
     "test_stress_failure.py",
+    "test_reconstruction.py",
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -246,7 +248,8 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_runtime_env.py",
-    "test_runtime_env_working_dir.py"
+    "test_runtime_env_working_dir.py",
+    "test_runtime_env_working_dir_2.py"
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -305,14 +308,6 @@ py_test(
     size = "small",
     srcs = SRCS + ["test_typing.py"] + glob(["typing_files"]),
     tags = ["exclusive", "team:core"],
-    deps = ["//:ray_lib"],
-)
-
-py_test(
-    name = "test_job_manager",
-    size = "small",
-    srcs = SRCS + ["test_job_manager.py"] + glob(["subprocess_driver_scripts/**/*.py"]),
-    tags = ["exclusive", "team:serve"],
     deps = ["//:ray_lib"],
 )
 

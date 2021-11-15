@@ -631,7 +631,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   } else {
     runtime_env_manager_.RemoveURIReference(actor->GetActorID().Hex());
   }
-
   RemoveActorNameFromRegistry(actor);
   // The actor is already dead, most likely due to process or node failure.
   if (actor->GetState() == rpc::ActorTableData::DEAD) {
