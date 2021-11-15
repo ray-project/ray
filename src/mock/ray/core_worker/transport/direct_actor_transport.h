@@ -24,7 +24,7 @@ class MockCoreWorkerDirectActorTaskSubmitterInterface
               (override));
   MOCK_METHOD(void, DisconnectActor,
               (const ActorID &actor_id, int64_t num_restarts, bool dead,
-               const std::shared_ptr<rpc::RayException> &creation_task_exception),
+               const rpc::RayException *creation_task_exception),
               (override));
   MOCK_METHOD(void, KillActor,
               (const ActorID &actor_id, bool force_kill, bool no_restart), (override));
