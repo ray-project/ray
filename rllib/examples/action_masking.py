@@ -19,7 +19,11 @@ actions and then sets the logits of all invalid actions to zero, thus disabling
 them. This only works with discrete actions.
 
 ---
-
+Run this example with defaults (using Tune and action masking):
+$ python action_masking.py
+Then run again without action masking, which will likely lead to errors due to
+invalid actions being selected:
+$ python action_masking.py --no-masking
 """
 
 import argparse
@@ -28,15 +32,18 @@ import os
 from gym.spaces import Box, Discrete
 import ray
 from ray import tune
+from ray.rllib.agents import ppo
 from ray.rllib.examples.env.action_mask_env import ActionMaskEnv
 from ray.rllib.examples.models.action_mask_model import \
     ActionMaskModel, TorchActionMaskModel
+from ray.tune.logger import pretty_print
 
 
 def get_cli_args():
     """Create CLI parser and return parsed arguments"""
     parser = argparse.ArgumentParser()
 
+    # general args
     parser.add_argument(
         "--run",
         type=str,
@@ -52,18 +59,23 @@ def get_cli_args():
     parser.add_argument(
         "--stop-iters",
         type=int,
-        default=200,
+        default=10,
         help="Number of iterations to train.")
     parser.add_argument(
         "--stop-timesteps",
         type=int,
-        default=100000,
+        default=10000,
         help="Number of timesteps to train.")
     parser.add_argument(
         "--stop-reward",
         type=float,
         default=80.0,
         help="Reward at which we stop training.")
+    parser.add_argument(
+        "--no-tune",
+        action="store_true",
+        help="Run without Tune using a manual train loop instead. Here,"
+        "there is no TensorBoard support.")
     parser.add_argument(
         "--local-mode",
         action="store_true",
@@ -107,6 +119,41 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    results = tune.run(args.run, config=config, stop=stop, verbose=2)
+    # manual training loop (no Ray tune)
+    if args.no_tune:
+        if args.run not in {"APPO", "PPO"}:
+            raise ValueError("This example only supports APPO and PPO.")
+        ppo_config = ppo.DEFAULT_CONFIG.copy()
+        ppo_config.update(config)
+        trainer = ppo.PPOTrainer(config=ppo_config, env=ActionMaskEnv)
+        # run manual training loop and print results after each iteration
+        for _ in range(args.stop_iters):
+            result = trainer.train()
+            print(pretty_print(result))
+            # stop training if the target train steps or reward are reached
+            if result["timesteps_total"] >= args.stop_timesteps or \
+                    result["episode_reward_mean"] >= args.stop_reward:
+                break
+
+        # manual test loop
+        print("Finished training. Running manual test/inference loop.")
+        # prepare environment with max 10 steps
+        config["env_config"]["max_episode_len"] = 10
+        env = ActionMaskEnv(config["env_config"])
+        obs = env.reset()
+        done = False
+        # run one iteration until done
+        print(f"ActionMaskEnv with {config['env_config']}")
+        while not done:
+            action = trainer.compute_single_action(obs)
+            next_obs, reward, done, _ = env.step(action)
+            # observations contain original observations and the action mask
+            # reward is random and irrelevant here and therefore not printed
+            print(f"Obs: {obs}, Action: {action}")
+            obs = next_obs
+
+    # run with tune for auto trainer creation, stopping, TensorBoard, etc.
+    else:
+        results = tune.run(args.run, config=config, stop=stop, verbose=2)
 
     ray.shutdown()
