@@ -8,16 +8,24 @@ from typing import Callable, TypeVar, List, Optional, Dict, Union, Type, Tuple
 import ray
 from ray.exceptions import RayActorError
 from ray.ray_constants import env_integer
+from ray.train.checkpoint import CheckpointManager, CheckpointStrategy, \
+    TuneCheckpointManager
 from ray.train.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
-    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV, \
-    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV, TRAIN_ENABLE_WORKER_SPREAD_ENV
-from ray.train.session import TrainingResult
+    TUNE_INSTALLED, ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV, \
+    TRAIN_ENABLE_WORKER_SPREAD_ENV, \
+    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV
+from ray.train.session import TrainingResultType, TrainingResult
 from ray.train.session import init_session, get_session, shutdown_session
 from ray.train.utils import RayDataset
 from ray.train.utils import check_for_failure
 from ray.train.worker_group import WorkerGroup
 from ray.util.placement_group import get_current_placement_group, \
     remove_placement_group
+
+if TUNE_INSTALLED:
+    from ray import tune
+else:
+    tune = None
 
 T = TypeVar("T")
 
@@ -59,6 +67,15 @@ class BackendExecutor:
             and ``num_gpus_per_worker``.
         max_retries (int): Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
+
+    Attributes:
+        latest_checkpoint_dir (Optional[Path]): Path to the file directory for
+            the checkpoints from the latest run. Configured through
+            ``start_training``
+        best_checkpoint_path (Optional[Path]): Path to the best persisted
+            checkpoint from the latest run.
+        latest_checkpoint (Optional[Dict]): The latest saved checkpoint. This
+            checkpoint may not be saved to disk.
     """
 
     def __init__(
@@ -82,8 +99,15 @@ class BackendExecutor:
         self._initialization_hook = None
         self._placement_group = None
 
+        if tune is not None and tune.is_session_enabled():
+            self.checkpoint_manager = TuneCheckpointManager()
+        else:
+            self.checkpoint_manager = CheckpointManager()
+
         self.worker_group = InactiveWorkerGroup()
         self.dataset_shards = None
+
+        self.checkpoint_manager.on_init()
 
     def start(self,
               initialization_hook: Optional[Callable[[], None]] = None,
@@ -280,7 +304,10 @@ class BackendExecutor:
             train_func: Callable[[], T],
             run_dir: Path,
             dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]] = None,
-            checkpoint: Optional[Dict] = None) -> None:
+            checkpoint: Optional[Union[Dict, str, Path]] = None,
+            checkpoint_strategy: Optional[CheckpointStrategy] = None,
+            latest_checkpoint_id: Optional[int] = None,
+    ) -> None:
         """Executes a training function on all workers in a separate thread.
 
         ``finish_training`` should be called after this.
@@ -297,11 +324,22 @@ class BackendExecutor:
                 and each Dataset can be accessed from the training function
                 by passing in a `dataset_name` argument to
                 ``train.get_dataset_shard()``.
-            checkpoint (Optional[Dict]): The checkpoint data that
+            checkpoint (Optional[Dict|str|Path]): The checkpoint data that
                 should be loaded onto each worker and accessed by the
-                training function via ``train.load_checkpoint()``. If this
+                training function via ``train.load_checkpoint()``. If this is a
+                ``str`` or ``Path`` then the value is expected to be a path
+                to a file that contains a serialized checkpoint dict. If this
                 is ``None`` then no checkpoint will be loaded.
+            checkpoint_strategy (Optional[CheckpointStrategy]): The
+                configurations for saving checkpoints.
+            latest_checkpoint_id (Optional[int]): The checkpoint id of the
+                most recently saved checkpoint.
         """
+        self.checkpoint_manager.on_start_training(
+            checkpoint_strategy=checkpoint_strategy,
+            run_dir=run_dir,
+            latest_checkpoint_id=latest_checkpoint_id)
+
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
 
@@ -327,6 +365,8 @@ class BackendExecutor:
         if self.dataset_shards is None:
             self.dataset_shards = self._get_dataset_shards(dataset)
 
+        checkpoint_dict = self.checkpoint_manager._load_checkpoint(checkpoint)
+
         local_rank_map = self._create_local_rank_map()
 
         futures = []
@@ -339,7 +379,7 @@ class BackendExecutor:
                     local_rank=local_rank_map[index],
                     train_func=train_func,
                     dataset_shard=self.dataset_shards[index],
-                    checkpoint=checkpoint))
+                    checkpoint=checkpoint_dict))
 
         self.get_with_failure_handling(futures)
 
@@ -350,7 +390,7 @@ class BackendExecutor:
 
         self.worker_group.execute_async(train_async)
 
-    def get_next_results(self) -> Optional[List[TrainingResult]]:
+    def _get_next_results(self) -> Optional[List[TrainingResult]]:
         """Fetches the next ``TrainingResult`` from each worker.
 
         Each ``TrainingResult`` is expected to correspond to the same step from
@@ -363,15 +403,24 @@ class BackendExecutor:
         """
 
         def get_next():
-            session = _get_session("get_next_results")
+            # Get the session for this worker.
+            try:
+                session = get_session()
+            except ValueError:
+                # Session is not initialized yet.
+                raise TrainBackendError("`fetch_next_result` has been called "
+                                        "before `start_training`. Please call "
+                                        "`start_training` before "
+                                        "`fetch_next_result`.")
+
             try:
                 result = session.get_next()
             except RuntimeError:
                 # Training thread has not been started yet.
-                raise TrainBackendError("`get_next_results` has been called "
+                raise TrainBackendError("`fetch_next_result` has been called "
                                         "before `start_training`. Please call "
                                         "`start_training` before "
-                                        "`get_next_results`.")
+                                        "`fetch_next_result`.")
 
             return result
 
@@ -402,21 +451,37 @@ class BackendExecutor:
                                "each worker.")
         return results
 
-    def pause_reporting(self):
-        """ Disable workers from enqueuing results from `train.report()`.
+    def fetch_next_result(self) -> Optional[List[Dict]]:
+        """Fetch next results produced by ``train.report()`` from each worker.
 
-            Note: Already reported results may still be enqueued at this point,
-                  and should be handled appropriately.
+        Assumes ``start_training`` has already been called.
+
+        Returns:
+            A list of dictionaries of values passed to ``train.report()`` from
+                each worker. Each item corresponds to an intermediate result
+                a single worker. If there are no more items to fetch,
+                returns None.
         """
 
-        def pause_session_reporting():
-            session = _get_session("pause_reporting")
-            return session.pause_reporting()
+        while True:
+            results = self._get_next_results()
+            if results is None:
+                return None
+            first_result = results[0]
+            result_type = first_result.type
+            if result_type is TrainingResultType.REPORT:
+                result_data = [r.data for r in results]
+                return result_data
+            elif result_type is TrainingResultType.CHECKPOINT:
+                self.checkpoint_manager._process_checkpoint(results)
+                # Iterate until next REPORT call or training has finished.
+            else:
+                raise TrainBackendError(f"Unexpected result type: "
+                                        f"{result_type}. "
+                                        f"Expected one of "
+                                        f"{[type in TrainingResultType]}")
 
-        futures = self.worker_group.execute_async(pause_session_reporting)
-        self.get_with_failure_handling(futures)
-
-    def finish_training(self):
+    def finish_training(self) -> List[T]:
         """Finish training and return final results. Propagate any exceptions.
 
         Blocks until training is finished on all workers.
@@ -428,8 +493,30 @@ class BackendExecutor:
                 Each item corresponds to the return value from a single worker.
         """
 
+        def pause_reporting():
+            # Get the session for this worker.
+            try:
+                session = get_session()
+            except ValueError:
+                # Session is not initialized yet.
+                raise TrainBackendError("`finish_training` has been called "
+                                        "before `start_training`. Please call "
+                                        "`start_training` before "
+                                        "`finish_training`.")
+
+            return session.pause_reporting()
+
         def end_training():
-            session = _get_session("finish_training")
+            # Get the session for this worker.
+            try:
+                session = get_session()
+            except ValueError:
+                # Session is not initialized yet.
+                raise TrainBackendError("`finish_training` has been called "
+                                        "before `start_training`. Please call "
+                                        "`start_training` before "
+                                        "`finish_training`.")
+
             try:
                 # session.finish raises any Exceptions from training.
                 output = session.finish()
@@ -439,6 +526,23 @@ class BackendExecutor:
                 shutdown_session()
 
             return output
+
+        # Disable workers from enqueuing results from `train.report()`.
+        # Results will not be processed during the execution of `finish`.
+        # Note: Reported results may still be enqueued at this point,
+        #       and should be handled appropriately.
+        futures = self.worker_group.execute_async(pause_reporting)
+        self.get_with_failure_handling(futures)
+
+        # Finish up processing checkpoints. Reporting has been disabled.
+        while True:
+            results = self._get_next_results()
+            if results is None:
+                break
+            result_type = results[0].type
+            # Process checkpoints and ignore other result types.
+            if result_type is TrainingResultType.CHECKPOINT:
+                self.checkpoint_manager._process_checkpoint(results)
 
         futures = self.worker_group.execute_async(end_training)
         results = self.get_with_failure_handling(futures)
@@ -490,8 +594,36 @@ class BackendExecutor:
 
         self.dataset_shards = None
 
+    @property
     def is_started(self):
         return not isinstance(self.worker_group, InactiveWorkerGroup)
+
+    @property
+    def latest_checkpoint_dir(self) -> Optional[Path]:
+        """Path to the latest checkpoint directory."""
+        return self.checkpoint_manager.latest_checkpoint_dir
+
+    @property
+    def best_checkpoint_path(self) -> Optional[Path]:
+        """Path to the best persisted checkpoint."""
+        return self.checkpoint_manager.best_checkpoint_path
+
+    @property
+    def latest_checkpoint_id(self) -> Optional[int]:
+        """The checkpoint id of most recently saved checkpoint.
+
+        If no checkpoint has been saved yet, then return None.
+        """
+        checkpoint_id = self.checkpoint_manager._latest_checkpoint_id
+        if checkpoint_id == 0:
+            return None
+        else:
+            return checkpoint_id
+
+    @property
+    def latest_checkpoint(self) -> Optional[Dict]:
+        """Latest checkpoint object."""
+        return self.checkpoint_manager.latest_checkpoint
 
     def _restart(self):
         self.worker_group.shutdown()
@@ -513,12 +645,6 @@ class BackendExecutor:
                                "failure attempts by setting the "
                                "`max_retries` arg in your `Trainer`.") \
                 from None
-
-    def get_worker_group(self):
-        return self.worker_group
-
-    def _get_num_failures(self):
-        return self._num_failures
 
 
 class Backend(metaclass=abc.ABCMeta):
@@ -576,15 +702,3 @@ class InactiveWorkerGroup():
 
     def __len__(self):
         raise InactiveWorkerGroupError()
-
-
-def _get_session(method_name: str):
-    try:
-        # Get the session for this worker.
-        return get_session()
-    except ValueError:
-        # Session is not initialized yet.
-        raise TrainBackendError(f"`{method_name}` has been called "
-                                "before `start_training`. Please call "
-                                "`start_training` before "
-                                f"`{method_name}`.")

@@ -49,9 +49,7 @@ def validate_epoch(dataloader, model, loss_fn, device):
             pred = model(X)
             loss += loss_fn(pred, y).item()
     loss /= num_batches
-    import copy
-    model_copy = copy.deepcopy(model)
-    result = {"model": model_copy.cpu().state_dict(), "loss": loss}
+    result = {"model": model.state_dict(), "loss": loss}
     return result
 
 

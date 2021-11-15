@@ -93,13 +93,6 @@ py_test(
     deps = [":train_lib"]
 )
 
-py_test(
-    name = "test_examples",
-    size = "large",
-    srcs = ["tests/test_examples.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":train_lib"]
-)
 
 py_test(
     name = "test_gpu",
