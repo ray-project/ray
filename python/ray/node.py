@@ -104,7 +104,7 @@ class Node:
                 ray_params._system_config) > 0 and (not head
                                                     and not connect_only):
             raise ValueError(
-                "Internal config parameters can only be set on the head node.")
+                "System config parameters can only be set on the head node.")
 
         self._raylet_ip_address = raylet_ip_address
 
