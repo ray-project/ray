@@ -405,10 +405,13 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        if isinstance(runtime_env, str):
-            new_runtime_env = runtime_env
+        if runtime_env:
+            if isinstance(runtime_env, str):
+                new_runtime_env = runtime_env
+            else:
+                new_runtime_env = ParsedRuntimeEnv(runtime_env).serialize()
         else:
-            new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
+            new_runtime_env = None
 
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON, modified_class,
@@ -428,10 +431,13 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        if isinstance(runtime_env, str):
-            new_runtime_env = runtime_env
+        if runtime_env:
+            if isinstance(runtime_env, str):
+                new_runtime_env = runtime_env
+            else:
+                new_runtime_env = ParsedRuntimeEnv(runtime_env).serialize()
         else:
-            new_runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
+            new_runtime_env = None
 
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
@@ -497,7 +503,7 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        if runtime_env is not None:
+        if runtime_env:
             if isinstance(runtime_env, str):
                 new_runtime_env = runtime_env
             else:

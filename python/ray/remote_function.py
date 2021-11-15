@@ -107,10 +107,14 @@ class RemoteFunction:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        if isinstance(runtime_env, str):
-            self._runtime_env = runtime_env
+        if runtime_env:
+            if isinstance(runtime_env, str):
+                self._runtime_env = runtime_env
+            else:
+                self._runtime_env = ParsedRuntimeEnv(runtime_env
+                                                     or {}).serialize()
         else:
-            self._runtime_env = ParsedRuntimeEnv(runtime_env or {}).serialize()
+            self._runtime_env = "{}"
         self._placement_group = placement_group
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
@@ -169,13 +173,12 @@ class RemoteFunction:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        if runtime_env is not None:
+        if runtime_env:
             if isinstance(runtime_env, str):
                 # Serialzed protobuf runtime env from Ray client.
                 new_runtime_env = runtime_env
             else:
-                new_runtime_env = ParsedRuntimeEnv(runtime_env
-                                                   or {}).serialize()
+                new_runtime_env = ParsedRuntimeEnv(runtime_env).serialize()
         else:
             # Keep the runtime_env as None.  In .remote(), we need to know if
             # runtime_env is None to know whether or not to fall back to the
