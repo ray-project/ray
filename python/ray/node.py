@@ -369,7 +369,7 @@ class Node:
                     for required_ins in
                     set(required_cpu_instruction_sets) & set(
                         cpu_info.get(ray_constants.CPU_INSTRUCTION_SETS_FLAGS,
-                        []))
+                                    []))
                 })
             env_string = os.getenv(
                 ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
