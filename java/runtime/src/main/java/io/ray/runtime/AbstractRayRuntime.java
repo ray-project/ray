@@ -12,6 +12,7 @@ import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
+import io.ray.api.function.RayFuncR;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.PlacementGroupId;
@@ -44,6 +45,7 @@ import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import io.ray.runtime.util.ConcurrencyGroupUtils;
 
 /** Core functionality to implement Ray APIs. */
 public abstract class AbstractRayRuntime implements RayRuntimeInternal {
@@ -272,6 +274,11 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   public ConcurrencyGroup createConcurrencyGroup(
       String name, int maxConcurrency, List<RayFunc> funcs) {
     return new ConcurrencyGroupImpl(name, maxConcurrency, funcs);
+  }
+
+  @Override
+  public List<ConcurrencyGroup> extractConcurrencyGroups(RayFuncR<?> actorConstructorLambda) {
+    return ConcurrencyGroupUtils.extractConcurrencyGroupsByAnnotations(actorConstructorLambda);
   }
 
   private ObjectRef callNormalFunction(

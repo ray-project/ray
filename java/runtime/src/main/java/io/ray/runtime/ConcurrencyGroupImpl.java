@@ -7,6 +7,7 @@ import io.ray.runtime.functionmanager.FunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
 import java.util.ArrayList;
 import java.util.List;
+import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 
 public class ConcurrencyGroupImpl implements ConcurrencyGroup {
 
@@ -28,6 +29,15 @@ public class ConcurrencyGroupImpl implements ConcurrencyGroup {
                   .getFunction(Ray.getRuntimeContext().getCurrentJobId(), func);
           functionDescriptors.add(rayFunc.getFunctionDescriptor());
         });
+  }
+
+  public ConcurrencyGroupImpl(String name, int maxConcurrency) {
+    this.name = name;
+    this.maxConcurrency = maxConcurrency;
+  }
+
+  public void addJavaFunctionDescriptor(JavaFunctionDescriptor javaFunctionDescriptor) {
+    functionDescriptors.add(javaFunctionDescriptor);
   }
 
   public int getMaxConcurrency() {
