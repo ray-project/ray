@@ -16,6 +16,7 @@ post_build_cmds:
   - sudo rm -rf /home/ray/anaconda3/lib/python3.7/site-packages/numpy
   - pip3 install numpy || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install ray[default] # Needed for Ray Client to work.
   - pip3 install -U "xgboost<1.5" xgboost_ray petastorm  # Install latest releases, pin xgboost to <1.5
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   - sudo mkdir -p /data || true
