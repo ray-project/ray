@@ -7,6 +7,7 @@ from ray.util.iter_metrics import MetricsContext
 STEPS_SAMPLED_COUNTER = "num_steps_sampled"
 AGENT_STEPS_SAMPLED_COUNTER = "num_agent_steps_sampled"
 STEPS_TRAINED_COUNTER = "num_steps_trained"
+STEPS_TRAINED_THIS_ITER_COUNTER = "num_steps_trained_this_iter"
 AGENT_STEPS_TRAINED_COUNTER = "num_agent_steps_trained"
 
 # Counters to track target network updates.
@@ -21,9 +22,6 @@ GRAD_WAIT_TIMER = "grad_wait"
 SAMPLE_TIMER = "sample"
 LEARN_ON_BATCH_TIMER = "learn"
 LOAD_BATCH_TIMER = "load"
-
-# Instant metrics (keys for metrics.info).
-LEARNER_INFO = "learner"
 
 
 # Asserts that an object is a type of SampleBatch.

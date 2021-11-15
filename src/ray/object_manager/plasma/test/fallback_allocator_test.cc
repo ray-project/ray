@@ -33,8 +33,7 @@ TEST(FallbackPlasmaAllocatorTest, FallbackPassThroughTest) {
   auto fallback_directory = CreateTestDir();
   int64_t kLimit = 256 * sizeof(size_t) + 2 * kMB;
   PlasmaAllocator allocator(plasma_directory, fallback_directory,
-                            /* hugepage_enabled */ false, kLimit,
-                            /* fallback_enabled */ true);
+                            /* hugepage_enabled */ false, kLimit);
 
   EXPECT_EQ(kLimit, allocator.GetFootprintLimit());
 

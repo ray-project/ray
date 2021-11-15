@@ -5,6 +5,7 @@ from typing import List, Optional, Union
 import pyarrow.parquet as pq
 from pandas import DataFrame
 
+from ray.util.annotations import Deprecated
 import ray.util.iter as para_iter
 from .dataset import MLDataset
 from .interface import _SourceShard
@@ -34,6 +35,7 @@ class ParquetSourceShard(_SourceShard):
                 partitions=self._partitions).to_pandas()
 
 
+@Deprecated
 def read_parquet(paths: Union[str, List[str]],
                  num_shards: int,
                  rowgroup_split: bool = True,

@@ -28,6 +28,7 @@ public class FailureTest extends BaseTest {
     // Set one worker per process. Otherwise, if `badFunc2` and `slowFunc` run in the same
     // process, `sleep` will delay `System.exit`.
     System.setProperty("ray.job.num-java-workers-per-process", "1");
+    System.setProperty("ray.raylet.startup-token", "0");
   }
 
   public static int badFunc() {

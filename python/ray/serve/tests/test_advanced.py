@@ -5,16 +5,15 @@ import pytest
 
 import ray
 from ray import serve
-from ray.test_utils import SignalActor
+from ray._private.test_utils import SignalActor
 
 
 def test_serve_forceful_shutdown(serve_instance):
-    @serve.deployment
+    @serve.deployment(_graceful_shutdown_timeout_s=0.1)
     def sleeper():
         while True:
             time.sleep(1000)
 
-    sleeper._config.experimental_graceful_shutdown_timeout_s = 0.1
     sleeper.deploy()
 
     handle = sleeper.get_handle()
@@ -28,14 +27,15 @@ def test_serve_forceful_shutdown(serve_instance):
 def test_serve_graceful_shutdown(serve_instance):
     signal = SignalActor.remote()
 
-    @serve.deployment(name="wait", max_concurrent_queries=10)
+    @serve.deployment(
+        name="wait",
+        max_concurrent_queries=10,
+        _graceful_shutdown_timeout_s=1000,
+        _graceful_shutdown_wait_loop_s=0.5)
     class Wait:
         async def __call__(self, signal_actor):
             await signal_actor.wait.remote()
-            return ""
 
-    Wait._config.experimental_graceful_shutdown_wait_loop_s = 0.5
-    Wait._config.experimental_graceful_shutdown_timeout_s = 1000
     Wait.deploy()
     handle = Wait.get_handle()
     refs = [handle.remote(signal) for _ in range(10)]
@@ -48,7 +48,7 @@ def test_serve_graceful_shutdown(serve_instance):
     def do_blocking_delete():
         Wait.delete()
 
-    # Now delete the backend. This should trigger the shutdown sequence.
+    # Now delete the deployment. This should trigger the shutdown sequence.
     delete_ref = do_blocking_delete.remote()
 
     # The queries should be enqueued but not executed becuase they are blocked
@@ -66,7 +66,7 @@ def test_serve_graceful_shutdown(serve_instance):
 
 def test_parallel_start(serve_instance):
     # Test the ability to start multiple replicas in parallel.
-    # In the past, when Serve scale up a backend, it does so one by one and
+    # In the past, when Serve scale up a deployment, it does so one by one and
     # wait for each replica to initialize. This test avoid this by preventing
     # the first replica to finish initialization unless the second replica is
     # also started.

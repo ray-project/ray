@@ -22,23 +22,23 @@ PullManager::PullManager(
     NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
     const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
     const std::function<void(const ObjectID &)> cancel_pull_request,
+    const std::function<void(const ObjectID &)> fail_pull_request,
     const RestoreSpilledObjectCallback restore_spilled_object,
-    const std::function<double()> get_time, int pull_timeout_ms,
-    int64_t num_bytes_available, std::function<void()> object_store_full_callback,
+    const std::function<double()> get_time_seconds, int pull_timeout_ms,
+    int64_t num_bytes_available,
     std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object,
-    int min_active_pulls)
+    std::function<std::string(const ObjectID &)> get_locally_spilled_object_url)
     : self_node_id_(self_node_id),
       object_is_local_(object_is_local),
       send_pull_request_(send_pull_request),
       cancel_pull_request_(cancel_pull_request),
       restore_spilled_object_(restore_spilled_object),
-      get_time_(get_time),
-      min_active_pulls_(min_active_pulls),
+      get_time_seconds_(get_time_seconds),
       pull_timeout_ms_(pull_timeout_ms),
       num_bytes_available_(num_bytes_available),
-      // TODO(ekl) remove this callback once plasma unlimited is the only path.
-      object_store_full_callback_(object_store_full_callback),
       pin_object_(pin_object),
+      get_locally_spilled_object_url_(get_locally_spilled_object_url),
+      fail_pull_request_(fail_pull_request),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
@@ -81,7 +81,7 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
       // The first pull request doesn't need to be special case. Instead we can just let
       // the retry timer fire immediately.
       it = object_pull_requests_
-               .emplace(obj_id, ObjectPullRequest(/*next_pull_time=*/get_time_()))
+               .emplace(obj_id, ObjectPullRequest(/*next_pull_time=*/get_time_seconds_()))
                .first;
     } else {
       if (it->second.object_size_set) {
@@ -144,8 +144,7 @@ bool PullManager::ActivateNextPullBundleRequest(const Queue &bundles,
     }
 
     // Quota check.
-    if (respect_quota && num_active_bundles_ >= min_active_pulls_ &&
-        bytes_to_pull > RemainingQuota()) {
+    if (respect_quota && num_active_bundles_ >= 1 && bytes_to_pull > RemainingQuota()) {
       RAY_LOG(DEBUG) << "Bundle would exceed quota: "
                      << "num_bytes_being_pulled(" << num_bytes_being_pulled_
                      << ") + "
@@ -277,11 +276,10 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
                                    &highest_wait_req_id_being_pulled_,
                                    &object_ids_to_cancel);
 
-    // Activate the next get request if we have space, or are in unlimited allocation
-    // mode.
+    // Activate the next get request unconditionally.
     get_requests_remaining = ActivateNextPullBundleRequest(
         get_request_bundles_, &highest_get_req_id_being_pulled_,
-        /*respect_quota=*/!RayConfig::instance().plasma_unlimited(), &objects_to_pull);
+        /*respect_quota=*/false, &objects_to_pull);
   }
 
   // Do the same but for wait requests (medium priority).
@@ -309,27 +307,15 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
 
   // While we are over capacity, deactivate requests starting from the back of the queues.
   DeactivateUntilMarginAvailable(
-      "task args request", task_argument_bundles_, min_active_pulls_, /*quota_margin=*/0L,
+      "task args request", task_argument_bundles_, /*retain_min=*/1, /*quota_margin=*/0L,
       &highest_task_req_id_being_pulled_, &object_ids_to_cancel);
-  DeactivateUntilMarginAvailable("wait request", wait_request_bundles_, min_active_pulls_,
+  DeactivateUntilMarginAvailable("wait request", wait_request_bundles_, /*retain_min=*/1,
                                  /*quota_margin=*/0L, &highest_wait_req_id_being_pulled_,
                                  &object_ids_to_cancel);
-  // It should always be possible to stay under the available memory by
-  // canceling all requests.
-  if (!RayConfig::instance().plasma_unlimited()) {
-    DeactivateUntilMarginAvailable("get request", get_request_bundles_, min_active_pulls_,
-                                   /*quota_margin=*/0L, &highest_get_req_id_being_pulled_,
-                                   &object_ids_to_cancel);
-    RAY_CHECK(!OverQuota() || num_active_bundles_ <= min_active_pulls_) << DebugString();
-  }
 
   // Call the cancellation callbacks outside of the lock.
   for (const auto &obj_id : object_ids_to_cancel) {
     cancel_pull_request_(obj_id);
-  }
-
-  if (!RayConfig::instance().plasma_unlimited()) {
-    TriggerOutOfMemoryHandlingIfNeeded();
   }
 
   {
@@ -340,35 +326,6 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
       }
     }
   }
-}
-
-void PullManager::TriggerOutOfMemoryHandlingIfNeeded() {
-  if (highest_get_req_id_being_pulled_ > 0 || highest_wait_req_id_being_pulled_ > 0 ||
-      highest_task_req_id_being_pulled_ > 0) {
-    // At least one request is being actively pulled, so there is
-    // currently enough space. Note that if pull_manager_min_active_pulls > 0, then
-    // we will always return here.
-    return;
-  }
-
-  // No requests are being pulled. Check whether this is because we don't have
-  // object size information yet.
-  auto head = get_request_bundles_.begin();
-  if (head == get_request_bundles_.end()) {
-    head = wait_request_bundles_.begin();
-    if (head == wait_request_bundles_.end()) {
-      head = task_argument_bundles_.begin();
-      if (head == task_argument_bundles_.end()) {
-        // No requests queued.
-        return;
-      }
-    }
-  }
-  if (head->second.num_object_sizes_missing > 0) {
-    // Wait for the size information before triggering OOM.
-    return;
-  }
-  object_store_full_callback_();
 }
 
 std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
@@ -431,7 +388,8 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
 void PullManager::OnLocationChange(const ObjectID &object_id,
                                    const std::unordered_set<NodeID> &client_ids,
                                    const std::string &spilled_url,
-                                   const NodeID &spilled_node_id, size_t object_size) {
+                                   const NodeID &spilled_node_id, bool pending_creation,
+                                   size_t object_size) {
   // Exit if the Pull request has already been fulfilled or canceled.
   auto it = object_pull_requests_.find(object_id);
   if (it == object_pull_requests_.end()) {
@@ -444,7 +402,15 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
   it->second.client_locations = std::vector<NodeID>(client_ids.begin(), client_ids.end());
   it->second.spilled_url = spilled_url;
   it->second.spilled_node_id = spilled_node_id;
+  it->second.pending_object_creation = pending_creation;
   if (!it->second.object_size_set) {
+    // TODO(swang): This assumes that the object size will be set correctly on
+    // the first location update and that locations will soon appear after the
+    // object size has been set. This can block later requests whose metadata
+    // has already arrived. Instead, we should keep track of which pull
+    // requests are still waiting for object metadata and queue requests in the
+    // order that their metadata appears.
+    // See https://github.com/ray-project/ray/issues/13689.
     it->second.object_size = object_size;
     it->second.object_size_set = true;
     for (auto &bundle_request_id : it->second.bundle_request_ids) {
@@ -469,7 +435,7 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
                           "in too many objects being fetched to this node";
     }
   }
-  RAY_LOG(DEBUG) << "OnLocationChange " << spilled_url << " num clients "
+  RAY_LOG(DEBUG) << object_id << " OnLocationChange " << spilled_url << " num clients "
                  << client_ids.size();
 
   {
@@ -493,7 +459,7 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
   RAY_CHECK(it != object_pull_requests_.end());
   auto &request = it->second;
-  if (request.next_pull_time > get_time_()) {
+  if (request.next_pull_time > get_time_seconds_()) {
     return;
   }
 
@@ -505,13 +471,18 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
-  // If we can restore directly from this raylet, then try to do so.
-  bool can_restore_directly =
-      !request.spilled_url.empty() &&
-      (request.spilled_node_id.IsNil() || request.spilled_node_id == self_node_id_);
-  if (can_restore_directly) {
+  // check if we can restore the object directly in the current raylet.
+  // first check local spilled objects
+  std::string direct_restore_url = get_locally_spilled_object_url_(object_id);
+  if (direct_restore_url.empty()) {
+    if (!request.spilled_url.empty() && request.spilled_node_id.IsNil()) {
+      direct_restore_url = request.spilled_url;
+    }
+  }
+  if (!direct_restore_url.empty()) {
+    // Select an url from the object directory update
     UpdateRetryTimer(request, object_id);
-    restore_spilled_object_(object_id, request.spilled_url,
+    restore_spilled_object_(object_id, direct_restore_url,
                             [object_id](const ray::Status &status) {
                               if (!status.ok()) {
                                 RAY_LOG(ERROR) << "Object restore for " << object_id
@@ -521,8 +492,24 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
     return;
   }
 
-  // TODO(ekl) should we more directly mark the object as lost in this case?
-  RAY_LOG(WARNING) << "Object neither in memory nor external storage " << object_id.Hex();
+  if (request.expiration_time_seconds == 0) {
+    RAY_LOG(WARNING) << "Object neither in memory nor external storage "
+                     << object_id.Hex();
+    request.expiration_time_seconds =
+        get_time_seconds_() +
+        RayConfig::instance().fetch_warn_timeout_milliseconds() / 1e3;
+  } else if (request.pending_object_creation) {
+    // Object is pending creation, wait for the task that creates the object to
+    // finish.
+    RAY_LOG(INFO) << "Object pending creation " << object_id.Hex();
+    request.expiration_time_seconds =
+        get_time_seconds_() +
+        RayConfig::instance().fetch_warn_timeout_milliseconds() / 1e3;
+  } else if (get_time_seconds_() > request.expiration_time_seconds) {
+    // Object has no locations and is not being reconstructed by its owner.
+    fail_pull_request_(object_id);
+    request.expiration_time_seconds = 0;
+  }
 }
 
 bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
@@ -585,14 +572,14 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
 void PullManager::ResetRetryTimer(const ObjectID &object_id) {
   auto it = object_pull_requests_.find(object_id);
   if (it != object_pull_requests_.end()) {
-    it->second.next_pull_time = get_time_();
+    it->second.next_pull_time = get_time_seconds_();
     it->second.num_retries = 0;
   }
 }
 
 void PullManager::UpdateRetryTimer(ObjectPullRequest &request,
                                    const ObjectID &object_id) {
-  const auto time = get_time_();
+  const auto time = get_time_seconds_();
   auto retry_timeout_len = (pull_timeout_ms_ / 1000.) * (1UL << request.num_retries);
   request.next_pull_time = time + retry_timeout_len;
   if (retry_timeout_len > max_timeout_) {
@@ -630,9 +617,6 @@ void PullManager::PinNewObjectIfNeeded(const ObjectID &object_id) {
 }
 
 bool PullManager::TryPinObject(const ObjectID &object_id) {
-  if (!RayConfig::instance().pull_manager_pin_active_objects()) {
-    return true;
-  }
   if (pinned_objects_.count(object_id) == 0) {
     auto ref = pin_object_(object_id);
     if (ref != nullptr) {

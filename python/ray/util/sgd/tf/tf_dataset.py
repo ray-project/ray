@@ -3,9 +3,11 @@ from typing import Any, List, Optional
 
 import tensorflow as tf
 
+from ray.util.annotations import Deprecated
 from ray.util.data import MLDataset
 
 
+@Deprecated
 class TFMLDataset:
     """ A TFMLDataset which converted from MLDataset
 

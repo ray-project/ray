@@ -21,9 +21,9 @@ namespace streaming {
 using ray::core::CoreWorkerProcess;
 using ray::core::TaskOptions;
 
-void SendInternal(const ActorID &peer_actor_id, std::shared_ptr<LocalMemoryBuffer> buffer,
-                  RayFunction &function, int return_num,
-                  std::vector<ObjectID> &return_ids) {
+std::vector<rpc::ObjectReference> SendInternal(const ActorID &peer_actor_id,
+                                               std::shared_ptr<LocalMemoryBuffer> buffer,
+                                               RayFunction &function, int return_num) {
   std::unordered_map<std::string, double> resources;
   std::string name = function.GetFunctionDescriptor()->DefaultTaskName();
   TaskOptions options{name, return_num, resources};
@@ -38,14 +38,14 @@ void SendInternal(const ActorID &peer_actor_id, std::shared_ptr<LocalMemoryBuffe
     std::shared_ptr<LocalMemoryBuffer> dummyBuffer =
         std::make_shared<LocalMemoryBuffer>((uint8_t *)dummy, 13, true);
     args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
-        std::move(dummyBuffer), meta, std::vector<ObjectID>(), true)));
+        std::move(dummyBuffer), meta, std::vector<rpc::ObjectReference>(), true)));
   }
   args.emplace_back(new TaskArgByValue(std::make_shared<RayObject>(
-      std::move(buffer), meta, std::vector<ObjectID>(), true)));
+      std::move(buffer), meta, std::vector<rpc::ObjectReference>(), true)));
 
   std::vector<std::shared_ptr<RayObject>> results;
-  CoreWorkerProcess::GetCoreWorker().SubmitActorTask(peer_actor_id, function, args,
-                                                     options, &return_ids);
+  return CoreWorkerProcess::GetCoreWorker().SubmitActorTask(peer_actor_id, function, args,
+                                                            options);
 }
 }  // namespace streaming
 }  // namespace ray

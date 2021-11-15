@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray.test_utils import get_other_nodes
+from ray._private.test_utils import get_other_nodes
 import ray.ray_constants as ray_constants
 
 

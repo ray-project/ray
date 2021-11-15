@@ -1,5 +1,5 @@
-Debugging
-=========
+Debugging (internal)
+====================
 
 Starting processes in a debugger
 --------------------------------

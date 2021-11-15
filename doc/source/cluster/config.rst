@@ -109,6 +109,8 @@ Provider
             :ref:`region <cluster-configuration-region>`: str
             :ref:`availability_zone <cluster-configuration-availability-zone>`: str
             :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
+            :ref:`security_group <cluster-configuration-security-group>`:
+                :ref:`Security Group <cluster-configuration-security-group-type>`
 
     .. group-tab:: Azure
 
@@ -129,6 +131,20 @@ Provider
             :ref:`availability_zone <cluster-configuration-availability-zone>`: str
             :ref:`project_id <cluster-configuration-project-id>`: str
             :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
+
+.. _cluster-configuration-security-group-type:
+
+Security Group
+~~~~~~~~~~~~~~
+
+.. tabs::
+    .. group-tab:: AWS
+
+        .. parsed-literal::
+
+            :ref:`GroupName <cluster-configuration-group-name>`: str
+            :ref:`IpPermissions <cluster-configuration-ip-permissions>`:
+                - `IpPermission <https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_IpPermission.html>`_
 
 .. _cluster-configuration-node-types-type:
 
@@ -255,7 +271,7 @@ The maximum number of workers the cluster will have at any given time.
 ``upscaling_speed``
 ~~~~~~~~~~~~~~~~~~~
 
-The number of nodes allowed to be pending as a multiple of the current number of nodes. For example, if set to 1.0, the cluster can grow in size by at most 100% at any time, so if the cluster currently has 20 nodes, at most 20 pending launches are allowed.
+The number of nodes allowed to be pending as a multiple of the current number of nodes. For example, if set to 1.0, the cluster can grow in size by at most 100% at any time, so if the cluster currently has 20 nodes, at most 20 pending launches are allowed. Note that although the autoscaler will scale down to `min_workers` (which could be 0), it will always scale up to 5 nodes at a minimum when scaling up. 
 
 * **Required:** No
 * **Importance:** Medium
@@ -349,8 +365,6 @@ Each node type is identified by a user-specified key.
                         Ebs:
                             VolumeSize: 100
                 resources: {"CPU": 2}
-                min_workers: 0
-                max_workers: 0
             ray.worker.default:
                 node_config:
                   InstanceType: m5.large
@@ -801,6 +815,8 @@ The user that Ray will authenticate with when launching new nodes.
     .. group-tab:: AWS
 
         A string specifying a comma-separated list of availability zone(s) that nodes may be launched in.
+        Nodes will be launched in the first listed availability zone and will be tried in the following availability
+        zones if launching fails.
 
         * **Required:** No
         * **Importance:** Low
@@ -925,6 +941,52 @@ If enabled, nodes will be *stopped* when the cluster scales down. If disabled, n
 * **Type:** Boolean
 * **Default:** ``True``
 
+.. _cluster-configuration-security-group:
+
+``provider.security_group``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tabs::
+    .. group-tab:: AWS
+
+        A security group that can be used to specify custom inbound rules.
+
+        * **Required:** No
+        * **Importance:** Medium
+        * **Type:** :ref:`Security Group <cluster-configuration-security-group-type>`
+
+    .. group-tab:: Azure
+
+        Not available.
+
+    .. group-tab:: GCP
+
+        Not available.
+
+
+.. _cluster-configuration-group-name:
+
+``security_group.GroupName``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The name of the security group. This name must be unique within the VPC.
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** String
+* **Default:** ``"ray-autoscaler-{cluster-name}"``
+
+.. _cluster-configuration-ip-permissions:
+
+``security_group.IpPermissions``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The inbound rules associated with the security group.
+
+* **Required:** No
+* **Importance:** Medium
+* **Type:** `IpPermission <https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_IpPermission.html>`_
+
 .. _cluster-configuration-node-config:
 
 ``available_node_types.<node_type_name>.node_type.node_config``
@@ -970,6 +1032,8 @@ The minimum number of workers to maintain for this node type regardless of utili
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The maximum number of workers to have in the cluster for this node type regardless of utilization. This takes precedence over :ref:`minimum workers <cluster-configuration-node-min-workers>`. By default, the number of workers of a node type is unbounded, constrained only by the cluster-wide :ref:`max_workers <cluster-configuration-max-workers>`. (Prior to Ray 1.3.0, the default value for this field was 0.)
+
+Note, for the nodes of type ``head_node_type`` the default number of max workers is 0.
 
 * **Required:** No
 * **Importance:** High
@@ -1162,4 +1226,18 @@ Full configuration
     .. group-tab:: GCP
 
         .. literalinclude:: ../../../python/ray/autoscaler/gcp/example-full.yaml
+            :language: yaml
+
+TPU Configuration
+~~~~~~~~~~~~~~~~~
+
+It is possible to use `TPU VMs <https://cloud.google.com/tpu/docs/users-guide-tpu-vm>`_ on GCP. Currently, `TPU pods <https://cloud.google.com/tpu/docs/system-architecture-tpu-vm#pods>`_ (TPUs other than v2-8 and v3-8) are not supported.
+
+Before using a config with TPUs, ensure that the `TPU API is enabled for your GCP project <https://cloud.google.com/tpu/docs/users-guide-tpu-vm#enable_the_cloud_tpu_api>`_.
+
+.. tabs::
+
+    .. group-tab:: GCP
+
+        .. literalinclude:: ../../../python/ray/autoscaler/gcp/tpu.yaml
             :language: yaml

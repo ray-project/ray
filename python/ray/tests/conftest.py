@@ -6,10 +6,15 @@ from contextlib import contextmanager
 import pytest
 import subprocess
 import json
+import time
 
 import ray
-from ray.cluster_utils import Cluster
-from ray.test_utils import init_error_pubsub
+from ray.cluster_utils import Cluster, AutoscalingCluster
+from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
+from ray._private.test_utils import (init_error_pubsub, setup_tls,
+                                     teardown_tls, get_and_run_node_killer)
+import ray.util.client.server.server as ray_client_server
+import ray._private.gcs_utils as gcs_utils
 
 
 @pytest.fixture
@@ -34,7 +39,7 @@ def get_default_fixture_ray_kwargs():
         "num_cpus": 1,
         "object_store_memory": 150 * 1024 * 1024,
         "dashboard_port": None,
-        "namespace": "",
+        "namespace": "default_test_namespace",
         "_system_config": system_config,
     }
     return ray_kwargs
@@ -55,9 +60,9 @@ def _ray_start(**kwargs):
 @pytest.fixture
 def ray_start_with_dashboard(request):
     param = getattr(request, "param", {})
-
-    with _ray_start(
-            num_cpus=1, include_dashboard=True, **param) as address_info:
+    if param.get("num_cpus") is None:
+        param["num_cpus"] = 1
+    with _ray_start(include_dashboard=True, **param) as address_info:
         yield address_info
 
 
@@ -211,9 +216,54 @@ def call_ray_start(request):
 
 
 @pytest.fixture
+def call_ray_start_with_external_redis(request):
+    ports = getattr(request, "param", "6379")
+    port_list = ports.split(",")
+    for port in port_list:
+        _start_redis_instance(REDIS_EXECUTABLE, int(port), password="123")
+    address_str = ",".join(map(lambda x: "localhost:" + x, port_list))
+    cmd = f"ray start --head --address={address_str} --redis-password=123"
+    subprocess.call(cmd.split(" "))
+
+    yield address_str.split(",")[0]
+
+    # Disconnect from the Ray cluster.
+    ray.shutdown()
+    # Kill the Ray cluster.
+    subprocess.check_call(["ray", "stop"])
+
+
+@pytest.fixture
+def init_and_serve():
+    server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
+    yield server_handle
+    ray_client_server.shutdown_with_server(server_handle.grpc_server)
+    time.sleep(2)
+
+
+@pytest.fixture
 def call_ray_stop_only():
     yield
     subprocess.check_call(["ray", "stop"])
+
+
+# Used to test both Ray Client and non-Ray Client codepaths.
+# Usage: In your test, call `ray.init(address)`.
+@pytest.fixture(scope="function", params=["ray_client", "no_ray_client"])
+def start_cluster(ray_start_cluster, request):
+    assert request.param in {"ray_client", "no_ray_client"}
+    use_ray_client: bool = request.param == "ray_client"
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    if use_ray_client:
+        cluster.head_node._ray_params.ray_client_server_port = "10004"
+        cluster.head_node.start_ray_client_server()
+        address = "ray://localhost:10004"
+    else:
+        address = cluster.address
+
+    yield cluster, address
 
 
 @pytest.fixture
@@ -261,10 +311,19 @@ def error_pubsub():
 def log_pubsub():
     p = ray.worker.global_worker.redis_client.pubsub(
         ignore_subscribe_messages=True)
-    log_channel = ray.gcs_utils.LOG_FILE_CHANNEL
+    log_channel = gcs_utils.LOG_FILE_CHANNEL
     p.psubscribe(log_channel)
     yield p
     p.close()
+
+
+@pytest.fixture
+def use_tls(request):
+    if request.param:
+        key_filepath, cert_filepath, temp_dir = setup_tls()
+    yield request.param
+    if request.param:
+        teardown_tls(key_filepath, cert_filepath, temp_dir)
 
 
 """
@@ -358,3 +417,29 @@ def unstable_spilling_config(request, tmp_path):
     ])
 def slow_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
+
+
+@pytest.fixture
+def ray_start_chaos_cluster(request):
+    """Returns the cluster and chaos thread.
+    """
+    os.environ["RAY_num_heartbeats_timeout"] = "5"
+    os.environ["RAY_raylet_heartbeat_period_milliseconds"] = "100"
+    param = getattr(request, "param", {})
+    kill_interval = param.get("kill_interval", 2)
+    # Config of workers that are re-started.
+    head_resources = param["head_resources"]
+    worker_node_types = param["worker_node_types"]
+
+    cluster = AutoscalingCluster(head_resources, worker_node_types)
+    cluster.start()
+    ray.init("auto")
+    nodes = ray.nodes()
+    assert len(nodes) == 1
+    node_killer = get_and_run_node_killer(kill_interval)
+    yield node_killer
+    assert ray.get(node_killer.get_total_killed_nodes.remote()) > 0
+    ray.shutdown()
+    cluster.shutdown()
+    del os.environ["RAY_num_heartbeats_timeout"]
+    del os.environ["RAY_raylet_heartbeat_period_milliseconds"]

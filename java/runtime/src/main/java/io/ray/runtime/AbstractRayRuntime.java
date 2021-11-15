@@ -211,8 +211,10 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public PlacementGroup getPlacementGroup(String name, boolean global) {
-    return gcsClient.getPlacementGroupInfo(name, global);
+  public PlacementGroup getPlacementGroup(String name, String namespace) {
+    return namespace == null
+        ? gcsClient.getPlacementGroupInfo(name, runtimeContext.getNamespace())
+        : gcsClient.getPlacementGroupInfo(name, namespace);
   }
 
   @Override
@@ -221,8 +223,8 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutMs) {
-    return taskSubmitter.waitPlacementGroupReady(id, timeoutMs);
+  public boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutSeconds) {
+    return taskSubmitter.waitPlacementGroupReady(id, timeoutSeconds);
   }
 
   @SuppressWarnings("unchecked")

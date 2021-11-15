@@ -2,6 +2,11 @@
 Serving ML Models
 =================
 
+This section should help you:
+
+- batch requests to optimize performance
+- serve multiple models by composing deployments
+
 .. contents::
 
 .. _serve-batching:
@@ -54,7 +59,7 @@ To define a higher-level composed model you need to do three things:
    Ray Serve deployments.
 2. Define your composed model, using the handles of the underlying models
    (see the example below).
-3. Define an endpoint representing this composed model and query it!
+3. Define a deployment representing this composed model and query it!
 
 In order to avoid synchronous execution in the composed model (e.g., it's very
 slow to make calls to the composed model), you'll need to make the function
@@ -70,10 +75,10 @@ Integration with Model Registries
 Ray Serve is flexible.  If you can load your model as a Python
 function or class, then you can scale it up and serve it with Ray Serve.
 
-For example, if you are using the 
+For example, if you are using the
 `MLflow Model Registry <https://www.mlflow.org/docs/latest/model-registry.html>`_
 to manage your models, the following wrapper
-class will allow you to load a model using its MLflow `Model URI`: 
+class will allow you to load a model using its MLflow `Model URI`:
 
 .. code-block:: python
 
@@ -90,14 +95,22 @@ class will allow you to load a model using its MLflow `Model URI`:
           df = pd.read_csv(csv_text)
           return self.model.predict(df)
 
-  MLflowDeployment.deploy()
+  model_uri = "model:/my_registered_model/Production"
+  MLflowDeployment.deploy(model_uri)
 
-.. tip:: 
+To serve multiple different MLflow models in the same program, use the ``name`` option:
+
+.. code-block:: python
+
+  MLflowDeployment.options(name="my_mlflow_model_1").deploy(model_uri)
+
+
+.. tip::
 
   The above approach will work for any model registry, not just MLflow.
   Namely, load the model from the registry in ``__init__``, and forward the request to the model in ``__call__``.
 
-For an even more hands-off and seamless integration with MLflow, check out the 
+For an even more hands-off and seamless integration with MLflow, check out the
 `Ray Serve MLflow deployment plugin <https://github.com/ray-project/mlflow-ray-serve>`__.  A full
 tutorial is available `here <https://github.com/mlflow/mlflow/tree/master/examples/ray_serve>`__.
 

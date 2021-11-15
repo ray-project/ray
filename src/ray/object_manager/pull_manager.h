@@ -16,7 +16,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/error.hpp>
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 #include <map>
 
 #include "absl/container/flat_hash_map.h"
@@ -63,11 +63,12 @@ class PullManager {
       NodeID &self_node_id, const std::function<bool(const ObjectID &)> object_is_local,
       const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
       const std::function<void(const ObjectID &)> cancel_pull_request,
+      const std::function<void(const ObjectID &)> fail_pull_request,
       const RestoreSpilledObjectCallback restore_spilled_object,
-      const std::function<double()> get_time, int pull_timeout_ms,
-      int64_t num_bytes_available, std::function<void()> object_store_full_callback,
+      const std::function<double()> get_time_seconds, int pull_timeout_ms,
+      int64_t num_bytes_available,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
-      int min_active_pulls = RayConfig::instance().pull_manager_min_active_pulls());
+      std::function<std::string(const ObjectID &)> get_locally_spilled_object_url);
 
   /// Add a new pull request for a bundle of objects. The objects in the
   /// request will get pulled once:
@@ -104,10 +105,14 @@ class PullManager {
   /// non-empty, the object may no longer be on any node.
   /// \param spilled_node_id The node id of the object if it was spilled. If Nil, the
   /// object may no longer be on any node.
+  /// \param pending_creation Whether this object is pending creation. This is
+  /// used to time out objects that have had no locations for too long.
+  /// \param object_size The size of the object. Used to compute how many
+  /// objects we can safely pull.
   void OnLocationChange(const ObjectID &object_id,
                         const std::unordered_set<NodeID> &client_ids,
                         const std::string &spilled_url, const NodeID &spilled_node_id,
-                        size_t object_size);
+                        bool pending_creation, size_t object_size);
 
   /// Cancel an existing pull request.
   ///
@@ -170,7 +175,11 @@ class PullManager {
     std::vector<NodeID> client_locations;
     std::string spilled_url;
     NodeID spilled_node_id;
+    bool pending_object_creation = false;
     double next_pull_time;
+    // The pull will timeout at this time if there are still no locations for
+    // the object.
+    double expiration_time_seconds = 0;
     uint8_t num_retries;
     bool object_size_set = false;
     size_t object_size = 0;
@@ -265,11 +274,6 @@ class PullManager {
                                       uint64_t *highest_id_for_bundle,
                                       std::unordered_set<ObjectID> *objects_to_cancel);
 
-  /// Trigger out-of-memory handling if the first request in the queue needs
-  /// more space than the bytes available. This is needed to make room for the
-  /// request.
-  void TriggerOutOfMemoryHandlingIfNeeded();
-
   /// Return debug info about this bundle queue.
   std::string BundleInfo(const Queue &bundles, uint64_t highest_id_being_pulled) const;
 
@@ -284,9 +288,7 @@ class PullManager {
   const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
   const std::function<void(const ObjectID &)> cancel_pull_request_;
   const RestoreSpilledObjectCallback restore_spilled_object_;
-  const std::function<double()> get_time_;
-  /// The minimum number of pull bundles to keep active.
-  const int min_active_pulls_;
+  const std::function<double()> get_time_seconds_;
   uint64_t pull_timeout_ms_;
 
   /// The next ID to assign to a bundle pull request, so that the caller can
@@ -324,10 +326,6 @@ class PullManager {
 
   /// The number of currently active bundles.
   int64_t num_active_bundles_ = 0;
-
-  /// Triggered when the first request in the queue can't be pulled due to
-  /// out-of-memory. This callback should try to make more bytes available.
-  std::function<void()> object_store_full_callback_;
 
   /// Callback to pin plasma objects.
   std::function<std::unique_ptr<RayObject>(const ObjectID &object_ids)> pin_object_;
@@ -369,6 +367,13 @@ class PullManager {
 
   /// The total size of pinned objects.
   int64_t pinned_objects_size_ = 0;
+
+  // A callback to get the spilled object URL if the object is spilled locally.
+  // It will return an empty string otherwise.
+  std::function<std::string(const ObjectID &)> get_locally_spilled_object_url_;
+
+  // A callback to fail a hung pull request.
+  std::function<void(const ObjectID &)> fail_pull_request_;
 
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;

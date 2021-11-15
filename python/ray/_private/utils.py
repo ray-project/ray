@@ -13,9 +13,14 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Optional
+from typing import Optional, Sequence, Tuple, Any
 import uuid
+import grpc
 import warnings
+try:
+    from grpc import aio as aiogrpc
+except ImportError:
+    from grpc.experimental import aio as aiogrpc
 
 import inspect
 from inspect import signature
@@ -23,8 +28,10 @@ from pathlib import Path
 import numpy as np
 
 import ray
-import ray.gcs_utils
+import ray._private.gcs_utils as gcs_utils
 import ray.ray_constants as ray_constants
+from ray._private.gcs_pubsub import construct_error_message
+from ray._private.tls_utils import load_certs_from_env
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -110,10 +117,11 @@ def push_error_to_driver(worker, error_type, message, job_id=None):
     worker.core_worker.push_error(job_id, error_type, message, time.time())
 
 
-def push_error_to_driver_through_redis(redis_client,
-                                       error_type,
-                                       message,
-                                       job_id=None):
+def publish_error_to_driver(error_type,
+                            message,
+                            job_id=None,
+                            redis_client=None,
+                            gcs_publisher=None):
     """Push an error message to the driver to be printed in the background.
 
     Normally the push_error_to_driver function should be used. However, in some
@@ -122,25 +130,31 @@ def push_error_to_driver_through_redis(redis_client,
     backend processes.
 
     Args:
-        redis_client: The redis client to use.
         error_type (str): The type of the error.
         message (str): The message that will be printed in the background
             on the driver.
         job_id: The ID of the driver to push the error message to. If this
             is None, then the message will be pushed to all drivers.
+        redis_client: The redis client to use.
+        gcs_publisher: The GCS publisher to use. If specified, ignores
+            redis_client.
     """
     if job_id is None:
         job_id = ray.JobID.nil()
     assert isinstance(job_id, ray.JobID)
-    # Do everything in Python and through the Python Redis client instead
-    # of through the raylet.
-    error_data = ray.gcs_utils.construct_error_message(job_id, error_type,
-                                                       message, time.time())
-    pubsub_msg = ray.gcs_utils.PubSubMessage()
-    pubsub_msg.id = job_id.binary()
-    pubsub_msg.data = error_data
-    redis_client.publish("ERROR_INFO:" + job_id.hex(),
-                         pubsub_msg.SerializeToString())
+    error_data = construct_error_message(job_id, error_type, message,
+                                         time.time())
+    if gcs_publisher:
+        gcs_publisher.publish_error(job_id.hex().encode(), error_data)
+    elif redis_client:
+        pubsub_msg = gcs_utils.PubSubMessage()
+        pubsub_msg.id = job_id.binary()
+        pubsub_msg.data = error_data.SerializeToString()
+        redis_client.publish("ERROR_INFO:" + job_id.hex(),
+                             pubsub_msg.SerializeToString())
+    else:
+        raise ValueError(
+            "One of redis_client and gcs_publisher needs to be specified!")
 
 
 def random_string():
@@ -270,6 +284,9 @@ def set_cuda_visible_devices(gpu_ids):
     Args:
         gpu_ids (List[str]): List of strings representing GPU IDs.
     """
+
+    if os.environ.get("RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"):
+        return
 
     global last_set_gpu_ids
     if last_set_gpu_ids == gpu_ids:
@@ -599,7 +616,8 @@ def get_shared_memory_bytes():
     return shm_avail
 
 
-def check_oversized_function(pickled, name, obj_type, worker):
+def check_oversized_function(pickled: bytes, name: str, obj_type: str,
+                             worker: "ray.Worker") -> None:
     """Send a warning message if the pickled function is too large.
 
     Args:
@@ -607,7 +625,8 @@ def check_oversized_function(pickled, name, obj_type, worker):
         name: name of the pickled object.
         obj_type: type of the pickled object, can be 'function',
             'remote function', or 'actor'.
-        worker: the worker used to send warning message.
+        worker: the worker used to send warning message. message will be logged
+            locally if None.
     """
     length = len(pickled)
     if length <= ray_constants.FUNCTION_SIZE_WARN_THRESHOLD:
@@ -619,11 +638,12 @@ def check_oversized_function(pickled, name, obj_type, worker):
             "array or other object in scope. Tip: use ray.put() to put large "
             "objects in the Ray object store.").format(obj_type, name,
                                                        length // (1024 * 1024))
-        push_error_to_driver(
-            worker,
-            ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
-            "Warning: " + warning_message,
-            job_id=worker.current_job_id)
+        if worker:
+            push_error_to_driver(
+                worker,
+                ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR,
+                "Warning: " + warning_message,
+                job_id=worker.current_job_id)
     else:
         error = (
             "The {} {} is too large ({} MiB > FUNCTION_SIZE_ERROR_THRESHOLD={}"
@@ -1038,27 +1058,26 @@ def get_wheel_filename(
             `ray --version`.  Examples: "2.0.0.dev0"
         py_version (str):
             The major and minor Python versions concatenated.  Examples: "36",
-            "37", "38"
+            "37", "38", "39"
     Returns:
         The wheel file name.  Examples:
             ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
     """
-    assert py_version in ["36", "37", "38"], ("py_version must be one of '36',"
-                                              " '37', or '38'")
+    assert py_version in ["36", "37", "38", "39"], py_version
 
     os_strings = {
-        "darwin": "macosx_10_13_x86_64"
-        if py_version == "38" else "macosx_10_13_intel",
+        "darwin": "macosx_10_15_x86_64"
+        if py_version in ["38", "39"] else "macosx_10_15_intel",
         "linux": "manylinux2014_x86_64",
         "win32": "win_amd64"
     }
 
-    assert sys_platform in os_strings, ("sys_platform must be one of 'darwin',"
-                                        " 'linux', or 'win32'")
+    assert sys_platform in os_strings, sys_platform
 
-    wheel_filename = (f"ray-{ray_version}-cp{py_version}-"
-                      f"cp{py_version}{'m' if py_version != '38' else ''}"
-                      f"-{os_strings[sys_platform]}.whl")
+    wheel_filename = (
+        f"ray-{ray_version}-cp{py_version}-"
+        f"cp{py_version}{'m' if py_version in ['36', '37'] else ''}"
+        f"-{os_strings[sys_platform]}.whl")
 
     return wheel_filename
 
@@ -1094,3 +1113,46 @@ def get_release_wheel_url(
     # e.g. https://ray-wheels.s3-us-west-2.amazonaws.com/releases/1.4.0rc1/e7c7
     # f6371a69eb727fa469e4cd6f4fbefd143b4c/ray-1.4.0rc1-cp36-cp36m-manylinux201
     # 4_x86_64.whl
+
+
+def validate_namespace(namespace: str):
+    if not isinstance(namespace, str):
+        raise TypeError("namespace must be None or a string.")
+    elif namespace == "":
+        raise ValueError("\"\" is not a valid namespace. "
+                         "Pass None to not specify a namespace.")
+
+
+def init_grpc_channel(address: str,
+                      options: Optional[Sequence[Tuple[str, Any]]] = None,
+                      asynchronous: bool = False):
+    grpc_module = aiogrpc if asynchronous else grpc
+    if os.environ.get("RAY_USE_TLS", "0").lower() in ("1", "true"):
+        server_cert_chain, private_key, ca_cert = load_certs_from_env()
+        credentials = grpc.ssl_channel_credentials(
+            certificate_chain=server_cert_chain,
+            private_key=private_key,
+            root_certificates=ca_cert)
+        channel = grpc_module.secure_channel(
+            address, credentials, options=options)
+    else:
+        channel = grpc_module.insecure_channel(address, options=options)
+
+    return channel
+
+
+def check_dashboard_dependencies_installed() -> bool:
+    """Returns True if Ray Dashboard dependencies are installed.
+
+    Checks to see if we should start the dashboard agent or not based on the
+    Ray installation version the user has installed (ray vs. ray[default]).
+    Unfortunately there doesn't seem to be a cleaner way to detect this other
+    than just blindly importing the relevant packages.
+
+    """
+    try:
+        import ray.dashboard.optional_deps  # noqa: F401
+
+        return True
+    except ImportError:
+        return False

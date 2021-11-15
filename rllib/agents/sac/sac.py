@@ -17,7 +17,11 @@ from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.typing import TrainerConfigDict
+
+tf1, tf, tfv = try_import_tf()
+tfp = try_import_tfp()
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +96,19 @@ DEFAULT_CONFIG = with_common_config({
 
     # === Replay buffer ===
     # Size of the replay buffer (in time steps).
-    "buffer_size": int(1e6),
+    "buffer_size": DEPRECATED_VALUE,
+    "replay_buffer_config": {
+        "type": "LocalReplayBuffer",
+        "capacity": int(1e6),
+    },
+    # Set this to True, if you want the contents of your buffer(s) to be
+    # stored in any saved checkpoints as well.
+    # Warnings will be created if:
+    # - This is True AND restoring from a checkpoint that contains no buffer
+    #   data.
+    # - This is False AND restoring from a checkpoint that does contain
+    #   buffer data.
+    "store_buffer_in_checkpoints": False,
     # If True prioritized replay buffer will be used.
     "prioritized_replay": False,
     "prioritized_replay_alpha": 0.6,
@@ -181,6 +197,14 @@ def validate_config(config: TrainerConfigDict) -> None:
 
     if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
         raise ValueError("`grad_clip` value must be > 0.0!")
+
+    if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
+        logger.warning(
+            "You need `tensorflow_probability` in order to run SAC! "
+            "Install it via `pip install tensorflow_probability`. Your "
+            f"tf.__version__={tf.__version__ if tf else None}."
+            "Trying to import tfp results in the following error:")
+        try_import_tfp(error=True)
 
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:

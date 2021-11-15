@@ -1,7 +1,8 @@
 import ray
 import ray._private.services as services
 import ray.worker
-from ray import profiling
+import ray._private.profiling as profiling
+import ray._private.utils as utils
 from ray import ray_constants
 from ray.state import GlobalState
 
@@ -24,7 +25,7 @@ def memory_summary(address=None,
                    line_wrap=True,
                    stats_only=False,
                    num_entries=None):
-    from ray.new_dashboard.memory_utils import memory_summary
+    from ray.dashboard.memory_utils import memory_summary
     if not address:
         address = services.get_ray_address_to_use_or_die()
     if address == "auto":
@@ -41,7 +42,6 @@ def memory_summary(address=None,
 def get_store_stats(state, node_manager_address=None, node_manager_port=None):
     """Returns a formatted string describing memory usage in the cluster."""
 
-    import grpc
     from ray.core.generated import node_manager_pb2
     from ray.core.generated import node_manager_pb2_grpc
 
@@ -60,13 +60,15 @@ def get_store_stats(state, node_manager_address=None, node_manager_port=None):
     else:
         raylet_address = "{}:{}".format(node_manager_address,
                                         node_manager_port)
-    channel = grpc.insecure_channel(
+
+    channel = utils.init_grpc_channel(
         raylet_address,
         options=[
             ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
             ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
         ],
     )
+
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     reply = stub.FormatGlobalMemoryInfo(
         node_manager_pb2.FormatGlobalMemoryInfoRequest(
@@ -80,20 +82,20 @@ def node_stats(node_manager_address=None,
                include_memory_info=True):
     """Returns NodeStats object describing memory usage in the cluster."""
 
-    import grpc
     from ray.core.generated import node_manager_pb2
     from ray.core.generated import node_manager_pb2_grpc
 
     # We can ask any Raylet for the global memory info.
     assert (node_manager_address is not None and node_manager_port is not None)
     raylet_address = "{}:{}".format(node_manager_address, node_manager_port)
-    channel = grpc.insecure_channel(
+    channel = utils.init_grpc_channel(
         raylet_address,
         options=[
             ("grpc.max_send_message_length", MAX_MESSAGE_LENGTH),
             ("grpc.max_receive_message_length", MAX_MESSAGE_LENGTH),
         ],
     )
+
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     node_stats = stub.GetNodeStats(
         node_manager_pb2.GetNodeStatsRequest(

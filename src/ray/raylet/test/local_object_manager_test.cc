@@ -18,7 +18,7 @@
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/gcs/accessor.h"
+#include "ray/gcs/gcs_client/accessor.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet/test/util.h"
 #include "ray/raylet/worker_pool.h"
@@ -36,14 +36,16 @@ using ::testing::_;
 
 class MockSubscriber : public pubsub::SubscriberInterface {
  public:
-  void Subscribe(
+  bool Subscribe(
       const std::unique_ptr<rpc::SubMessage> sub_message,
       const rpc::ChannelType channel_type, const rpc::Address &owner_address,
       const std::string &key_id_binary,
-      pubsub::SubscriptionCallback subscription_callback,
+      pubsub::SubscribeDoneCallback subscribe_done_callback,
+      pubsub::SubscriptionItemCallback subscription_callback,
       pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
     callbacks.push_back(
         std::make_pair(ObjectID::FromBinary(key_id_binary), subscription_callback));
+    return true;
   }
 
   bool PublishObjectEviction() {
@@ -62,14 +64,29 @@ class MockSubscriber : public pubsub::SubscriberInterface {
     return true;
   }
 
+  MOCK_METHOD6(SubscribeChannel,
+               bool(std::unique_ptr<rpc::SubMessage> sub_message,
+                    const rpc::ChannelType channel_type,
+                    const rpc::Address &owner_address,
+                    pubsub::SubscribeDoneCallback subscribe_done_callback,
+                    pubsub::SubscriptionItemCallback subscription_callback,
+                    pubsub::SubscriptionFailureCallback subscription_failure_callback));
+
   MOCK_METHOD3(Unsubscribe, bool(const rpc::ChannelType channel_type,
                                  const rpc::Address &publisher_address,
                                  const std::string &key_id_binary));
 
+  MOCK_METHOD2(UnsubscribeChannel, bool(const rpc::ChannelType channel_type,
+                                        const rpc::Address &publisher_address));
+
+  MOCK_CONST_METHOD3(IsSubscribed, bool(const rpc::ChannelType channel_type,
+                                        const rpc::Address &publisher_address,
+                                        const std::string &key_id_binary));
+
   MOCK_CONST_METHOD0(DebugString, std::string());
 
   rpc::ChannelType channel_type_ = rpc::ChannelType::WORKER_OBJECT_EVICTION;
-  std::deque<std::pair<ObjectID, pubsub::SubscriptionCallback>> callbacks;
+  std::deque<std::pair<ObjectID, pubsub::SubscriptionItemCallback>> callbacks;
 };
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
@@ -92,7 +109,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  std::unordered_map<ObjectID, std::string> object_urls;
+  absl::flat_hash_map<ObjectID, std::string> object_urls;
   std::deque<rpc::ClientCallback<rpc::AddSpilledUrlReply>> spilled_url_callbacks;
 };
 
@@ -183,18 +200,11 @@ class MockIOWorker : public MockWorker {
 
 class MockIOWorkerPool : public IOWorkerPoolInterface {
  public:
-  MOCK_METHOD1(PushUtilWorker, void(const std::shared_ptr<WorkerInterface> &worker));
-
   MOCK_METHOD1(PushSpillWorker, void(const std::shared_ptr<WorkerInterface> &worker));
 
   MOCK_METHOD1(PushRestoreWorker, void(const std::shared_ptr<WorkerInterface> &worker));
 
   MOCK_METHOD1(PushDeleteWorker, void(const std::shared_ptr<WorkerInterface> &worker));
-
-  void PopUtilWorker(
-      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
-    callback(io_worker);
-  }
 
   void PopSpillWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) override {
@@ -228,62 +238,10 @@ class MockIOWorkerPool : public IOWorkerPoolInterface {
       std::make_shared<MockIOWorker>(WorkerID::FromRandom(), 1234, io_worker_client);
 };
 
-class MockObjectInfoAccessor : public gcs::ObjectInfoAccessor {
- public:
-  MOCK_METHOD2(
-      AsyncGetLocations,
-      Status(const ObjectID &object_id,
-             const gcs::OptionalItemCallback<rpc::ObjectLocationInfo> &callback));
-
-  MOCK_METHOD1(AsyncGetAll,
-               Status(const gcs::MultiItemCallback<rpc::ObjectLocationInfo> &callback));
-
-  MOCK_METHOD4(AsyncAddLocation,
-               Status(const ObjectID &object_id, const NodeID &node_id,
-                      size_t object_size, const gcs::StatusCallback &callback));
-
-  Status AsyncAddSpilledUrl(const ObjectID &object_id, const std::string &spilled_url,
-                            const NodeID &spilled_node_id, size_t object_size,
-                            const gcs::StatusCallback &callback) {
-    object_urls[object_id] = spilled_url;
-    callbacks.push_back(callback);
-    return Status();
-  }
-
-  bool ReplyAsyncAddSpilledUrl() {
-    if (callbacks.size() == 0) {
-      return false;
-    }
-    auto callback = callbacks.front();
-    callback(Status::OK());
-    callbacks.pop_front();
-    return true;
-  }
-
-  MOCK_METHOD3(AsyncRemoveLocation,
-               Status(const ObjectID &object_id, const NodeID &node_id,
-                      const gcs::StatusCallback &callback));
-
-  MOCK_METHOD3(AsyncSubscribeToLocations,
-               Status(const ObjectID &object_id,
-                      const gcs::SubscribeCallback<
-                          ObjectID, std::vector<rpc::ObjectLocationChange>> &subscribe,
-                      const gcs::StatusCallback &done));
-
-  MOCK_METHOD1(AsyncUnsubscribeToLocations, Status(const ObjectID &object_id));
-
-  MOCK_METHOD1(AsyncResubscribe, void(bool is_pubsub_server_restarted));
-
-  MOCK_METHOD1(IsObjectUnsubscribed, bool(const ObjectID &object_id));
-
-  std::unordered_map<ObjectID, std::string> object_urls;
-  std::list<gcs::StatusCallback> callbacks;
-};
-
 class MockObjectBuffer : public Buffer {
  public:
   MockObjectBuffer(size_t size, ObjectID object_id,
-                   std::shared_ptr<std::unordered_map<ObjectID, int>> unpins)
+                   std::shared_ptr<absl::flat_hash_map<ObjectID, int>> unpins)
       : size_(size), id_(object_id), unpins_(unpins) {}
 
   MOCK_CONST_METHOD0(Data, uint8_t *());
@@ -298,7 +256,7 @@ class MockObjectBuffer : public Buffer {
 
   size_t size_;
   ObjectID id_;
-  std::shared_ptr<std::unordered_map<ObjectID, int>> unpins_;
+  std::shared_ptr<absl::flat_hash_map<ObjectID, int>> unpins_;
 };
 
 class LocalObjectManagerTest : public ::testing::Test {
@@ -309,24 +267,25 @@ class LocalObjectManagerTest : public ::testing::Test {
         client_pool([&](const rpc::Address &addr) { return owner_client; }),
         manager_node_id_(NodeID::FromRandom()),
         max_fused_object_count_(15),
-        manager(manager_node_id_, "address", 1234, free_objects_batch_size,
-                /*free_objects_period_ms=*/1000, worker_pool, object_table, client_pool,
-                /*max_io_workers=*/2,
-                /*min_spilling_size=*/0,
-                /*is_external_storage_type_fs=*/true,
-                /*max_fused_object_count*/ max_fused_object_count_,
-                /*on_objects_freed=*/
-                [&](const std::vector<ObjectID> &object_ids) {
-                  for (const auto &object_id : object_ids) {
-                    freed.insert(object_id);
-                  }
-                },
-                /*is_plasma_object_spillable=*/
-                [&](const ray::ObjectID &object_id) {
-                  return unevictable_objects_.count(object_id) == 0;
-                },
-                /*core_worker_subscriber=*/subscriber_.get()),
-        unpins(std::make_shared<std::unordered_map<ObjectID, int>>()) {
+        manager(
+            manager_node_id_, "address", 1234, free_objects_batch_size,
+            /*free_objects_period_ms=*/1000, worker_pool, client_pool,
+            /*max_io_workers=*/2,
+            /*min_spilling_size=*/0,
+            /*is_external_storage_type_fs=*/true,
+            /*max_fused_object_count*/ max_fused_object_count_,
+            /*on_objects_freed=*/
+            [&](const std::vector<ObjectID> &object_ids) {
+              for (const auto &object_id : object_ids) {
+                freed.insert(object_id);
+              }
+            },
+            /*is_plasma_object_spillable=*/
+            [&](const ray::ObjectID &object_id) {
+              return unevictable_objects_.count(object_id) == 0;
+            },
+            /*core_worker_subscriber=*/subscriber_.get()),
+        unpins(std::make_shared<absl::flat_hash_map<ObjectID, int>>()) {
     RayConfig::instance().initialize(R"({"object_spilling_config": "dummy"})");
   }
 
@@ -343,7 +302,6 @@ class LocalObjectManagerTest : public ::testing::Test {
   std::shared_ptr<MockWorkerClient> owner_client;
   rpc::CoreWorkerClientPool client_pool;
   MockIOWorkerPool worker_pool;
-  MockObjectInfoAccessor object_table;
   NodeID manager_node_id_;
   size_t max_fused_object_count_;
   LocalObjectManager manager;
@@ -351,7 +309,7 @@ class LocalObjectManagerTest : public ::testing::Test {
   std::unordered_set<ObjectID> freed;
   // This hashmap is incremented when objects are unpinned by destroying their
   // unique_ptr.
-  std::shared_ptr<std::unordered_map<ObjectID, int>> unpins;
+  std::shared_ptr<absl::flat_hash_map<ObjectID, int>> unpins;
   // Object ids in this field won't be evictable.
   std::unordered_set<ObjectID> unevictable_objects_;
 };
@@ -369,8 +327,8 @@ TEST_F(LocalObjectManagerTest, TestPin) {
     std::string meta = std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
     auto metadata = const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
     auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
-    auto object =
-        std::make_unique<RayObject>(nullptr, meta_buffer, std::vector<ObjectID>());
+    auto object = std::make_unique<RayObject>(nullptr, meta_buffer,
+                                              std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -396,22 +354,23 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    auto object =
-        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
+    auto object = std::make_unique<RayObject>(data_buffer, nullptr,
+                                              std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
 
   manager.SpillObjects(object_ids,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
+
   std::vector<std::string> urls;
   for (size_t i = 0; i < object_ids.size(); i++) {
-    ASSERT_TRUE(manager.GetSpilledObjectURL(object_ids[i]).empty());
+    ASSERT_TRUE(manager.GetLocalSpilledObjectURL(object_ids[i]).empty());
     urls.push_back(BuildURL("url" + std::to_string(i)));
   }
   ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
   for (size_t i = 0; i < object_ids.size(); i++) {
-    ASSERT_FALSE(manager.GetSpilledObjectURL(object_ids[i]).empty());
+    ASSERT_FALSE(manager.GetLocalSpilledObjectURL(object_ids[i]).empty());
   }
   for (size_t i = 0; i < object_ids.size(); i++) {
     ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
@@ -451,8 +410,8 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    auto object =
-        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
+    auto object = std::make_unique<RayObject>(data_buffer, nullptr,
+                                              std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -496,8 +455,8 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    auto object =
-        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
+    auto object = std::make_unique<RayObject>(data_buffer, nullptr,
+                                              std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -550,8 +509,8 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
     total_size += object_size;
-    auto object =
-        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
+    auto object = std::make_unique<RayObject>(data_buffer, nullptr,
+                                              std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -617,8 +576,8 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
     total_size += object_size;
-    auto object =
-        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
+    auto object = std::make_unique<RayObject>(data_buffer, nullptr,
+                                              std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -663,8 +622,8 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectNotEvictable) {
   unevictable_objects_.emplace(object_id);
   auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
   total_size += object_size;
-  auto object =
-      std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
+  auto object = std::make_unique<RayObject>(data_buffer, nullptr,
+                                            std::vector<rpc::ObjectReference>());
   objects.push_back(std::move(object));
 
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -692,8 +651,8 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(object_size, object_id, unpins);
-    auto object =
-        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
+    auto object = std::make_unique<RayObject>(data_buffer, nullptr,
+                                              std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -759,7 +718,7 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
   ObjectID object_id = ObjectID::FromRandom();
   auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
   auto object = std::make_unique<RayObject>(std::move(data_buffer), nullptr,
-                                            std::vector<ObjectID>());
+                                            std::vector<rpc::ObjectReference>());
 
   std::vector<std::unique_ptr<RayObject>> objects;
   objects.push_back(std::move(object));
@@ -804,8 +763,8 @@ TEST_F(LocalObjectManagerTest, TestPartialSpillError) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    auto object =
-        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
+    auto object = std::make_unique<RayObject>(data_buffer, nullptr,
+                                              std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -821,9 +780,9 @@ TEST_F(LocalObjectManagerTest, TestPartialSpillError) {
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     if (i < urls.size()) {
-      ASSERT_EQ(urls[i], manager.GetSpilledObjectURL(object_ids[i]));
+      ASSERT_EQ(urls[i], manager.GetLocalSpilledObjectURL(object_ids[i]));
     } else {
-      ASSERT_TRUE(manager.GetSpilledObjectURL(object_ids[i]).empty());
+      ASSERT_TRUE(manager.GetLocalSpilledObjectURL(object_ids[i]).empty());
     }
   }
 }
@@ -841,7 +800,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteNoSpilledObjects) {
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
     auto object = std::make_unique<RayObject>(std::move(data_buffer), nullptr,
-                                              std::vector<ObjectID>());
+                                              std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -869,8 +828,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    auto object =
-        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
+    auto object = std::make_unique<RayObject>(data_buffer, nullptr,
+                                              std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -918,8 +877,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    auto object =
-        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
+    auto object = std::make_unique<RayObject>(data_buffer, nullptr,
+                                              std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -972,62 +931,73 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
   owner_address.set_worker_id(WorkerID::FromRandom().Binary());
   std::vector<ObjectID> object_ids;
   std::vector<std::unique_ptr<RayObject>> objects;
+  size_t spilled_urls_size = 2;
 
   // Objects are pinned.
-  for (size_t i = 0; i < free_objects_batch_size; i++) {
+  for (size_t i = 0; i < spilled_urls_size; i++) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    auto object =
-        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
+    auto object = std::make_unique<RayObject>(data_buffer, nullptr,
+                                              std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
   manager.WaitForObjectFree(owner_address, object_ids);
 
   // Objects are spilled.
-  std::vector<ObjectID> object_ids_to_spill;
-  int spilled_urls_size = free_objects_batch_size;
-  for (int i = 0; i < spilled_urls_size; i++) {
-    object_ids_to_spill.push_back(object_ids[i]);
+  std::vector<ObjectID> spill_set_1;
+  std::vector<ObjectID> spill_set_2;
+  size_t spill_set_1_size = spilled_urls_size / 2;
+  size_t spill_set_2_size = spilled_urls_size - spill_set_1_size;
+
+  for (size_t i = 0; i < spill_set_1_size; i++) {
+    spill_set_1.push_back(object_ids[i]);
   }
-  manager.SpillObjects(object_ids_to_spill,
+  for (size_t i = spill_set_1_size; i < spilled_urls_size; i++) {
+    spill_set_2.push_back(object_ids[i]);
+  }
+  manager.SpillObjects(spill_set_1,
+                       [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
+  manager.SpillObjects(spill_set_2,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
 
-  std::vector<std::string> urls;
-  // Only 1 object's spilling is done. Everything else is still spilling.
-  for (size_t i = 0; i < object_ids_to_spill.size(); i++) {
-    urls.push_back(BuildURL("url" + std::to_string(i)));
+  std::vector<std::string> urls_spill_set_1;
+  std::vector<std::string> urls_spill_set_2;
+  for (size_t i = 0; i < spill_set_1_size; i++) {
+    urls_spill_set_1.push_back(BuildURL("url" + std::to_string(i)));
   }
-  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls));
-  for (size_t i = 0; i < 1; i++) {
+  for (size_t i = spill_set_1_size; i < spilled_urls_size; i++) {
+    urls_spill_set_2.push_back(BuildURL("url" + std::to_string(i)));
+  }
+
+  // Spillset 1 objects are spilled.
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls_spill_set_1));
+  for (size_t i = 0; i < spill_set_1_size; i++) {
     ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
   }
   // Every object has gone out of scope.
-  for (size_t i = 0; i < free_objects_batch_size; i++) {
+  for (size_t i = 0; i < spilled_urls_size; i++) {
     EXPECT_CALL(*subscriber_, Unsubscribe(_, _, object_ids[i].Binary()));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
   }
-  // // Now, deletion queue would process only the first object. Everything else won't be
+  // Now, deletion queue would process only the first spill set. Everything else won't be
   // deleted although it is out of scope because they are still spilling.
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   // Only the first entry that is already spilled will be deleted.
-  ASSERT_EQ(deleted_urls_size, 1);
+  ASSERT_EQ(deleted_urls_size, spill_set_1_size);
 
   // Now spilling is completely done.
-  std::vector<std::string> new_urls;
-  for (size_t i = 1; i < object_ids_to_spill.size(); i++) {
-    new_urls.push_back(BuildURL("url" + std::to_string(i)));
-  }
-  for (size_t i = 1; i < object_ids_to_spill.size(); i++) {
+  ASSERT_TRUE(worker_pool.io_worker_client->ReplySpillObjects(urls_spill_set_2));
+  for (size_t i = 0; i < spill_set_2_size; i++) {
     ASSERT_TRUE(owner_client->ReplyAddSpilledUrl());
   }
 
   // Every object is now deleted.
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
-  ASSERT_EQ(deleted_urls_size, object_ids_to_spill.size() - 1);
+  ASSERT_EQ(deleted_urls_size, spill_set_2_size);
 }
 
 TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
@@ -1042,8 +1012,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    auto object =
-        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
+    auto object = std::make_unique<RayObject>(data_buffer, nullptr,
+                                              std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);
@@ -1094,8 +1064,8 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
     ObjectID object_id = ObjectID::FromRandom();
     object_ids.push_back(object_id);
     auto data_buffer = std::make_shared<MockObjectBuffer>(0, object_id, unpins);
-    auto object =
-        std::make_unique<RayObject>(data_buffer, nullptr, std::vector<ObjectID>());
+    auto object = std::make_unique<RayObject>(data_buffer, nullptr,
+                                              std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
   manager.PinObjects(object_ids, std::move(objects), owner_address);

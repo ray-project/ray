@@ -74,7 +74,8 @@ inline std::vector<std::unique_ptr<TaskArg>> ToTaskArgs(JNIEnv *env, jobject arg
           RAY_CHECK(java_owner_address);
           auto owner_address = JavaProtobufObjectToNativeProtobufObject<rpc::Address>(
               env, java_owner_address);
-          return std::unique_ptr<TaskArg>(new TaskArgByReference(id, owner_address));
+          return std::unique_ptr<TaskArg>(
+              new TaskArgByReference(id, owner_address, /*call_site=*/""));
         }
         auto java_value =
             static_cast<jbyteArray>(env->GetObjectField(arg, java_function_arg_value));
@@ -142,7 +143,6 @@ inline TaskOptions ToTaskOptions(JNIEnv *env, jint numReturns, jobject callOptio
 
 inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
                                                    jobject actorCreationOptions) {
-  bool global = false;
   std::string name = "";
   int64_t max_restarts = 0;
   std::unordered_map<std::string, double> resources;
@@ -152,8 +152,6 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   std::vector<ConcurrencyGroup> concurrency_groups;
 
   if (actorCreationOptions) {
-    global =
-        env->GetBooleanField(actorCreationOptions, java_actor_creation_options_global);
     auto java_name = (jstring)env->GetObjectField(actorCreationOptions,
                                                   java_actor_creation_options_name);
     if (java_name) {
@@ -218,7 +216,6 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         });
   }
 
-  auto full_name = GetFullName(global, name);
   // TODO(suquark): support passing namespace for Java. Currently
   // there is no use case.
   std::string ray_namespace = "";
@@ -230,13 +227,13 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       resources,
       dynamic_worker_options,
       /*is_detached=*/false,
-      full_name,
+      name,
       ray_namespace,
       /*is_asyncio=*/false,
       placement_options,
-      true,
-      "{}",
-      {},
+      /*placement_group_capture_child_tasks=*/true,
+      /*serialized_runtime_env=*/"{}",
+      /*runtime_env_uris=*/{},
       concurrency_groups};
   return actor_creation_options;
 }
@@ -257,8 +254,6 @@ inline PlacementStrategy ConvertStrategy(jint java_strategy) {
 inline PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
     JNIEnv *env, jobject placementGroupCreationOptions) {
   // We have make sure the placementGroupCreationOptions is not null in java api.
-  bool global = env->GetBooleanField(placementGroupCreationOptions,
-                                     java_placement_group_creation_options_global);
   std::string name = "";
   jstring java_name = (jstring)env->GetObjectField(
       placementGroupCreationOptions, java_placement_group_creation_options_name);
@@ -285,8 +280,7 @@ inline PlacementGroupCreationOptions ToPlacementGroupCreationOptions(
               return value;
             });
       });
-  auto full_name = GetFullName(global, name);
-  return PlacementGroupCreationOptions(full_name, ConvertStrategy(java_strategy), bundles,
+  return PlacementGroupCreationOptions(name, ConvertStrategy(java_strategy), bundles,
                                        /*is_detached=*/false);
 }
 
@@ -303,14 +297,18 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
   auto placement_group_options = ToPlacementGroupOptions(env, callOptions);
 
-  std::vector<ObjectID> return_ids;
   // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
-  CoreWorkerProcess::GetCoreWorker().SubmitTask(
-      ray_function, task_args, task_options, &return_ids,
+  auto return_refs = CoreWorkerProcess::GetCoreWorker().SubmitTask(
+      ray_function, task_args, task_options,
       /*max_retries=*/0,
+      /*retry_exceptions=*/false,
       /*placement_options=*/placement_group_options,
       /*placement_group_capture_child_tasks=*/true,
       /*debugger_breakpoint*/ "");
+  std::vector<ObjectID> return_ids;
+  for (const auto &ref : return_refs) {
+    return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
+  }
 
   // This is to avoid creating an empty java list and boost performance.
   if (return_ids.empty()) {
@@ -349,9 +347,12 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   RAY_CHECK(callOptions != nullptr);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
 
+  auto return_refs = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+      actor_id, ray_function, task_args, task_options);
   std::vector<ObjectID> return_ids;
-  CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, ray_function, task_args,
-                                                     task_options, &return_ids);
+  for (const auto &ref : return_refs) {
+    return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
+  }
 
   // This is to avoid creating an empty java list and boost performance.
   if (return_ids.empty()) {

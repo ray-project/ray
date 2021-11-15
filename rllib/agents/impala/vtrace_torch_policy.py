@@ -1,16 +1,18 @@
 import gym
 import logging
 import numpy as np
+from typing import Any, Dict
 
 import ray
 import ray.rllib.agents.impala.vtrace_torch as vtrace
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+from ray.rllib.utils.torch_utils import apply_grad_clipping, \
     explained_variance, global_norm, sequence_mask
 
 torch, nn = try_import_torch()
@@ -111,7 +113,7 @@ class VTraceLoss:
 
 
 def build_vtrace_loss(policy, model, dist_class, train_batch):
-    model_out, _ = model.from_batch(train_batch)
+    model_out, _ = model(train_batch)
     action_dist = dist_class(model_out, model)
 
     if isinstance(policy.action_space, gym.spaces.Discrete):
@@ -125,8 +127,8 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
         output_hidden_shape = 1
 
     def _make_time_major(*args, **kw):
-        return make_time_major(policy, train_batch.get("seq_lens"), *args,
-                               **kw)
+        return make_time_major(policy, train_batch.get(SampleBatch.SEQ_LENS),
+                               *args, **kw)
 
     actions = train_batch[SampleBatch.ACTIONS]
     dones = train_batch[SampleBatch.DONES]
@@ -145,8 +147,9 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     values = model.value_function()
 
     if policy.is_recurrent():
-        max_seq_len = torch.max(train_batch["seq_lens"])
-        mask_orig = sequence_mask(train_batch["seq_lens"], max_seq_len)
+        max_seq_len = torch.max(train_batch[SampleBatch.SEQ_LENS])
+        mask_orig = sequence_mask(train_batch[SampleBatch.SEQ_LENS],
+                                  max_seq_len)
         mask = torch.reshape(mask_orig, [-1])
     else:
         mask = torch.ones_like(rewards)
@@ -155,43 +158,49 @@ def build_vtrace_loss(policy, model, dist_class, train_batch):
     loss_actions = actions if is_multidiscrete else torch.unsqueeze(
         actions, dim=1)
 
-    # Inputs are reshaped from [B * T] => [T - 1, B] for V-trace calc.
+    # Inputs are reshaped from [B * T] => [(T|T-1), B] for V-trace calc.
+    drop_last = policy.config["vtrace_drop_last_ts"]
     loss = VTraceLoss(
-        actions=_make_time_major(loss_actions, drop_last=True),
+        actions=_make_time_major(loss_actions, drop_last=drop_last),
         actions_logp=_make_time_major(
-            action_dist.logp(actions), drop_last=True),
+            action_dist.logp(actions), drop_last=drop_last),
         actions_entropy=_make_time_major(
-            action_dist.entropy(), drop_last=True),
-        dones=_make_time_major(dones, drop_last=True),
+            action_dist.entropy(), drop_last=drop_last),
+        dones=_make_time_major(dones, drop_last=drop_last),
         behaviour_action_logp=_make_time_major(
-            behaviour_action_logp, drop_last=True),
+            behaviour_action_logp, drop_last=drop_last),
         behaviour_logits=_make_time_major(
-            unpacked_behaviour_logits, drop_last=True),
-        target_logits=_make_time_major(unpacked_outputs, drop_last=True),
+            unpacked_behaviour_logits, drop_last=drop_last),
+        target_logits=_make_time_major(unpacked_outputs, drop_last=drop_last),
         discount=policy.config["gamma"],
-        rewards=_make_time_major(rewards, drop_last=True),
-        values=_make_time_major(values, drop_last=True),
+        rewards=_make_time_major(rewards, drop_last=drop_last),
+        values=_make_time_major(values, drop_last=drop_last),
         bootstrap_value=_make_time_major(values)[-1],
         dist_class=TorchCategorical if is_multidiscrete else dist_class,
         model=model,
-        valid_mask=_make_time_major(mask, drop_last=True),
+        valid_mask=_make_time_major(mask, drop_last=drop_last),
         config=policy.config,
         vf_loss_coeff=policy.config["vf_loss_coeff"],
         entropy_coeff=policy.entropy_coeff,
         clip_rho_threshold=policy.config["vtrace_clip_rho_threshold"],
         clip_pg_rho_threshold=policy.config["vtrace_clip_pg_rho_threshold"])
 
-    # Store loss object only for multi-GPU tower 0.
-    if model is policy.model_gpu_towers[0]:
-        policy.loss = loss
-        values_batched = make_time_major(
-            policy,
-            train_batch.get("seq_lens"),
-            values,
-            drop_last=policy.config["vtrace"])
-        policy._vf_explained_var = explained_variance(
-            torch.reshape(loss.value_targets, [-1]),
-            torch.reshape(values_batched, [-1])),
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["pi_loss"] = loss.pi_loss
+    model.tower_stats["vf_loss"] = loss.vf_loss
+    model.tower_stats["entropy"] = loss.entropy
+    model.tower_stats["mean_entropy"] = loss.mean_entropy
+    model.tower_stats["total_loss"] = loss.total_loss
+
+    values_batched = make_time_major(
+        policy,
+        train_batch.get(SampleBatch.SEQ_LENS),
+        values,
+        drop_last=policy.config["vtrace"] and drop_last)
+    model.tower_stats["vf_explained_var"] = explained_variance(
+        torch.reshape(loss.value_targets, [-1]),
+        torch.reshape(values_batched, [-1]))
 
     return loss.total_loss
 
@@ -221,6 +230,8 @@ def make_time_major(policy, seq_lens, tensor, drop_last=False):
     else:
         # Important: chop the tensor into batches at known episode cut
         # boundaries.
+        # TODO: (sven) this is kind of a hack and won't work for
+        #  batch_mode=complete_episodes.
         T = policy.config["rollout_fragment_length"]
         B = tensor.shape[0] // T
     rs = torch.reshape(tensor, [B, T] + list(tensor.shape[1:]))
@@ -233,15 +244,21 @@ def make_time_major(policy, seq_lens, tensor, drop_last=False):
     return res
 
 
-def stats(policy, train_batch):
+def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, Any]:
+
     return {
         "cur_lr": policy.cur_lr,
-        "policy_loss": policy.loss.pi_loss,
-        "entropy": policy.loss.mean_entropy,
+        "total_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("total_loss"))),
+        "policy_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("pi_loss"))),
+        "entropy": torch.mean(
+            torch.stack(policy.get_tower_stats("mean_entropy"))),
         "entropy_coeff": policy.entropy_coeff,
         "var_gnorm": global_norm(policy.model.trainable_variables()),
-        "vf_loss": policy.loss.vf_loss,
-        "vf_explained_var": policy._vf_explained_var,
+        "vf_loss": torch.mean(torch.stack(policy.get_tower_stats("vf_loss"))),
+        "vf_explained_var": torch.mean(
+            torch.stack(policy.get_tower_stats("vf_explained_var"))),
     }
 
 

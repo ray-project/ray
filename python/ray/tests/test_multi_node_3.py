@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 import ray
-from ray.test_utils import (
+from ray._private.test_utils import (
     check_call_ray, run_string_as_driver, run_string_as_driver_nonblocking,
     wait_for_children_of_pid, wait_for_children_of_pid_to_exit,
     wait_for_children_names_of_pid, kill_process_by_name, Semaphore)
@@ -35,15 +35,15 @@ def test_calling_start_ray_head(call_ray_stop_only):
     # Test starting Ray with the object manager and node manager ports
     # specified.
     check_call_ray([
-        "start", "--head", "--object-manager-port", "12345",
+        "start", "--head", "--object-manager-port", "22345",
         "--node-manager-port", "54321", "--port", "0"
     ])
     check_call_ray(["stop"])
 
     # Test starting Ray with the worker port range specified.
     check_call_ray([
-        "start", "--head", "--min-worker-port", "50000", "--max-worker-port",
-        "51000", "--port", "0"
+        "start", "--head", "--min-worker-port", "51000", "--max-worker-port",
+        "51050", "--port", "0"
     ])
     check_call_ray(["stop"])
 
@@ -79,7 +79,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     # Test starting Ray with all arguments specified.
     check_call_ray([
         "start", "--head", "--redis-shard-ports", "6380,6381,6382",
-        "--object-manager-port", "12345", "--num-cpus", "2", "--num-gpus", "0",
+        "--object-manager-port", "22345", "--num-cpus", "2", "--num-gpus", "0",
         "--resources", "{\"Custom\": 1}", "--port", "0"
     ])
     check_call_ray(["stop"])
@@ -167,7 +167,7 @@ def train_func(config, reporter):  # add a reporter arg
         reporter(timesteps_total=i, mean_accuracy=i+97)  # report metrics
 
 os.environ["TUNE_RESUME_PROMPT_OFF"] = "True"
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="default_test_namespace")
 ray.tune.register_trainable("train_func", train_func)
 
 tune.run_experiments({{
@@ -326,13 +326,13 @@ def test_multi_driver_logging(ray_start_regular):
     driver_script_template = """
 import ray
 import sys
-from ray.test_utils import Semaphore
+from ray._private.test_utils import Semaphore
 
 @ray.remote(num_cpus=0)
 def remote_print(s, file=None):
     print(s, file=file)
 
-ray.init(address="{}", namespace="")
+ray.init(address="{}", namespace="default_test_namespace")
 
 driver_wait = ray.get_actor("{}")
 main_wait = ray.get_actor("main_wait")

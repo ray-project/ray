@@ -126,8 +126,8 @@ def trial(client,
         #                      max_branch=float("inf")).compute(
         #                          _ray_enable_progress_bar=True).head(10))
         print(
-            df.set_index("a", shuffle="tasks",
-                         max_branch=float("inf")).compute().head(10))
+            df.set_index("a", shuffle="tasks", max_branch=float("inf")).head(
+                10, npartitions=-1))
 
         trial_end = time.time()
         duration = trial_end - trial_start

@@ -1,16 +1,18 @@
 import gym
 from gym.spaces import Tuple, Dict
 import numpy as np
+from ray.rllib.utils.annotations import DeveloperAPI
 import tree  # pip install dm_tree
+from typing import Any, List, Optional, Union
 
 
-def flatten_space(space):
+def flatten_space(space: gym.Space) -> List[gym.Space]:
     """Flattens a gym.Space into its primitive components.
 
     Primitive components are any non Tuple/Dict spaces.
 
     Args:
-        space(gym.Space): The gym.Space to flatten. This may be any
+        space (gym.Space): The gym.Space to flatten. This may be any
             supported type (including nested Tuples and Dicts).
 
     Returns:
@@ -62,6 +64,76 @@ def get_base_struct_from_space(space):
             return space_
 
     return _helper_struct(space)
+
+
+def get_dummy_batch_for_space(
+        space: gym.Space,
+        batch_size: int = 32,
+        fill_value: Union[float, int, str] = 0.0,
+        time_size: Optional[int] = None,
+        time_major: bool = False,
+) -> np.ndarray:
+    """Returns batched dummy data (using `batch_size`) for the given `space`.
+
+    Note: The returned batch will not pass a `space.contains(batch)` test
+    as an additional batch dimension has to be added as dim=0.
+
+    Args:
+        space (gym.Space): The space to get a dummy batch for.
+        batch_size(int): The required batch size (B). Note that this can also
+            be 0 (only if `time_size` is None!), which will result in a
+            non-batched sample for the given space (no batch dim).
+        fill_value (Union[float, int, str]): The value to fill the batch with
+            or "random" for random values.
+        time_size (Optional[int]): If not None, add an optional time axis
+            of `time_size` size to the returned batch.
+        time_major (bool): If True AND `time_size` is not None, return batch
+            as shape [T x B x ...], otherwise as [B x T x ...]. If `time_size`
+            if None, ignore this setting and return [B x ...].
+
+    Returns:
+        The dummy batch of size `bqtch_size` matching the given space.
+    """
+    # Complex spaces. Perform recursive calls of this function.
+    if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
+        return tree.map_structure(
+            lambda s: get_dummy_batch_for_space(s, batch_size, fill_value),
+            get_base_struct_from_space(space),
+        )
+    # Primivite spaces: Box, Discrete, MultiDiscrete.
+    # Random values: Use gym's sample() method.
+    elif fill_value == "random":
+        if time_size is not None:
+            assert batch_size > 0 and time_size > 0
+            if time_major:
+                return np.array(
+                    [[space.sample() for _ in range(batch_size)]
+                     for t in range(time_size)],
+                    dtype=space.dtype)
+            else:
+                return np.array(
+                    [[space.sample() for t in range(time_size)]
+                     for _ in range(batch_size)],
+                    dtype=space.dtype)
+        else:
+            return np.array(
+                [space.sample() for _ in range(batch_size)]
+                if batch_size > 0 else space.sample(),
+                dtype=space.dtype)
+    # Fill value given: Use np.full.
+    else:
+        if time_size is not None:
+            assert batch_size > 0 and time_size > 0
+            if time_major:
+                shape = [time_size, batch_size]
+            else:
+                shape = [batch_size, time_size]
+        else:
+            shape = [batch_size] if batch_size > 0 else []
+        return np.full(
+            shape + list(space.shape),
+            fill_value=fill_value,
+            dtype=space.dtype)
 
 
 def flatten_to_single_ndarray(input_):
@@ -215,3 +287,35 @@ def normalize_action(action, action_space_struct):
         return a
 
     return tree.map_structure(map_, action, action_space_struct)
+
+
+@DeveloperAPI
+def convert_element_to_space_type(element: Any, sampled_element: Any) -> Any:
+    """Convert all the components of the element to match the space dtypes.
+
+    Args:
+        element: The element to be converted.
+        sampled_element: An element sampled from a space to be matched
+            to.
+
+    Returns:
+        The input element, but with all its components converted to match
+        the space dtypes.
+    """
+
+    def map_(elem, s):
+        if isinstance(s, np.ndarray):
+            if not isinstance(elem, np.ndarray):
+                raise ValueError(
+                    "Element should be of type np.ndarray but is instead of \
+                        type {}".format(type(elem)))
+            elif (s.dtype != elem.dtype):
+                elem = elem.astype(s.dtype)
+
+        elif isinstance(s, int):
+            if isinstance(elem, float):
+                elem = int(elem)
+        return elem
+
+    return tree.map_structure(
+        map_, element, sampled_element, check_types=False)

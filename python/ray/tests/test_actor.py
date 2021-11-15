@@ -11,11 +11,9 @@ import sys
 import tempfile
 import datetime
 
-from ray.test_utils import client_test_enabled
-from ray.test_utils import wait_for_condition
-from ray.test_utils import wait_for_pid_to_exit
+from ray._private.test_utils import (client_test_enabled, wait_for_condition,
+                                     wait_for_pid_to_exit)
 from ray.tests.client_test_utils import create_remote_signal_actor
-
 import ray
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
@@ -274,7 +272,7 @@ def test_actor_class_name(ray_start_regular):
             pass
 
     Foo.remote()
-
+    # TODO: redis-removal kv
     r = ray.worker.global_worker.redis_client
     actor_keys = r.keys("ActorClass*")
     assert len(actor_keys) == 1
@@ -354,13 +352,13 @@ def test_keyword_args(ray_start_regular_shared):
 
     # Make sure we get an exception if the constructor is called
     # incorrectly.
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         actor = Actor.remote()
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         actor = Actor.remote(0, 1, 2, arg3=3)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         actor = Actor.remote(0, arg0=1)
 
     # Make sure we get an exception if the method is called incorrectly.
@@ -733,6 +731,7 @@ def test_define_actor(ray_start_regular_shared):
         t.f(1)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_actor_deletion(ray_start_regular_shared):
     # Make sure that when an actor handles goes out of scope, the actor
     # destructor is called.
@@ -866,6 +865,23 @@ def test_get_non_existing_named_actor(ray_start_regular_shared):
         _ = ray.get_actor("non_existing_actor")
 
 
+# https://github.com/ray-project/ray/issues/17843
+def test_actor_namespace(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def f(self):
+            return "ok"
+
+    a = Actor.options(name="foo", namespace="f1").remote()
+
+    with pytest.raises(ValueError):
+        ray.get_actor(name="foo", namespace="f2")
+
+    a1 = ray.get_actor(name="foo", namespace="f1")
+    assert ray.get(a1.f.remote()) == "ok"
+    del a
+
+
 def test_named_actor_cache(ray_start_regular_shared):
     """Verify that named actor cache works well."""
 
@@ -896,6 +912,57 @@ def test_named_actor_cache(ray_start_regular_shared):
 
     get_after_restart = Counter.options(name="hi").remote()
     assert ray.get(get_after_restart.inc_and_get.remote()) == 1
+    get_by_name = ray.get_actor("hi")
+    assert ray.get(get_by_name.inc_and_get.remote()) == 2
+
+
+def test_named_actor_cache_via_another_actor(ray_start_regular_shared):
+    """Verify that named actor cache works well with another actor."""
+
+    @ray.remote(max_restarts=0)
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def inc_and_get(self):
+            self.count += 1
+            return self.count
+
+    # The third actor to get named actor. To indicates this cache doesn't
+    # break getting from the third party.
+    @ray.remote(max_restarts=0)
+    class ActorGetter:
+        def get_actor_count(self, name):
+            actor = ray.get_actor(name)
+            return ray.get(actor.inc_and_get.remote())
+
+    # Start a actor and get it by name in driver.
+    a = Counter.options(name="foo").remote()
+    first_get = ray.get_actor("foo")
+    assert ray.get(first_get.inc_and_get.remote()) == 1
+
+    # Start another actor as the third actor to get named actor.
+    actor_getter = ActorGetter.remote()
+    assert ray.get(actor_getter.get_actor_count.remote("foo")) == 2
+    ray.kill(a, no_restart=True)
+
+    def actor_removed():
+        try:
+            ray.get_actor("foo")
+            return False
+        except ValueError:
+            return True
+
+    wait_for_condition(actor_removed)
+
+    # Restart the named actor.
+    get_after_restart = Counter.options(name="foo").remote()
+    assert ray.get(get_after_restart.inc_and_get.remote()) == 1
+    # Get the named actor from the third actor again.
+    assert ray.get(actor_getter.get_actor_count.remote("foo")) == 2
+    # Get the named actor by name in driver again.
+    get_by_name = ray.get_actor("foo")
+    assert ray.get(get_by_name.inc_and_get.remote()) == 3
 
 
 def test_wrapped_actor_handle(ray_start_regular_shared):

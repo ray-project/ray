@@ -20,6 +20,9 @@ jmethodID java_boolean_init;
 jclass java_double_class;
 jmethodID java_double_double_value;
 
+jclass java_long_class;
+jmethodID java_long_init;
+
 jclass java_object_class;
 jmethodID java_object_equals;
 jmethodID java_object_hash_code;
@@ -91,7 +94,6 @@ jfieldID java_task_creation_options_bundle_index;
 jfieldID java_call_options_concurrency_group_name;
 
 jclass java_actor_creation_options_class;
-jfieldID java_actor_creation_options_global;
 jfieldID java_actor_creation_options_name;
 jfieldID java_actor_creation_options_max_restarts;
 jfieldID java_actor_creation_options_jvm_options;
@@ -102,7 +104,6 @@ jfieldID java_actor_creation_options_concurrency_groups;
 
 jclass java_placement_group_creation_options_class;
 jclass java_placement_group_creation_options_strategy_class;
-jfieldID java_placement_group_creation_options_global;
 jfieldID java_placement_group_creation_options_name;
 jfieldID java_placement_group_creation_options_bundles;
 jfieldID java_placement_group_creation_options_strategy;
@@ -134,6 +135,9 @@ jmethodID java_native_task_executor_on_worker_shutdown;
 jclass java_placement_group_class;
 jfieldID java_placement_group_id;
 
+jclass java_resource_value_class;
+jmethodID java_resource_value_init;
+
 JavaVM *jvm;
 
 inline jclass LoadClass(JNIEnv *env, const char *class_name) {
@@ -158,6 +162,9 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_double_class = LoadClass(env, "java/lang/Double");
   java_double_double_value = env->GetMethodID(java_double_class, "doubleValue", "()D");
+
+  java_long_class = LoadClass(env, "java/lang/Long");
+  java_long_init = env->GetMethodID(java_long_class, "<init>", "(J)V");
 
   java_object_class = LoadClass(env, "java/lang/Object");
   java_object_equals =
@@ -266,8 +273,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       LoadClass(env, "io/ray/api/options/PlacementGroupCreationOptions");
   java_placement_group_creation_options_strategy_class =
       LoadClass(env, "io/ray/api/placementgroup/PlacementStrategy");
-  java_placement_group_creation_options_global =
-      env->GetFieldID(java_placement_group_creation_options_class, "global", "Z");
   java_placement_group_creation_options_name = env->GetFieldID(
       java_placement_group_creation_options_class, "name", "Ljava/lang/String;");
   java_placement_group_creation_options_bundles = env->GetFieldID(
@@ -280,8 +285,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_actor_creation_options_class =
       LoadClass(env, "io/ray/api/options/ActorCreationOptions");
-  java_actor_creation_options_global =
-      env->GetFieldID(java_actor_creation_options_class, "global", "Z");
   java_actor_creation_options_name =
       env->GetFieldID(java_actor_creation_options_class, "name", "Ljava/lang/String;");
   java_actor_creation_options_max_restarts =
@@ -334,6 +337,10 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       LoadClass(env, "io/ray/runtime/task/NativeTaskExecutor");
   java_native_task_executor_on_worker_shutdown =
       env->GetMethodID(java_native_task_executor_class, "onWorkerShutdown", "([B)V");
+
+  java_resource_value_class = LoadClass(env, "io/ray/api/runtimecontext/ResourceValue");
+  java_resource_value_init =
+      env->GetMethodID(java_resource_value_class, "<init>", "(JD)V");
   return CURRENT_JNI_VERSION;
 }
 
@@ -345,6 +352,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_boolean_class);
   env->DeleteGlobalRef(java_double_class);
   env->DeleteGlobalRef(java_object_class);
+  env->DeleteGlobalRef(java_long_class);
   env->DeleteGlobalRef(java_list_class);
   env->DeleteGlobalRef(java_array_list_class);
   env->DeleteGlobalRef(java_map_class);
@@ -370,4 +378,5 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_task_executor_class);
   env->DeleteGlobalRef(java_native_task_executor_class);
   env->DeleteGlobalRef(java_concurrency_group_impl_class);
+  env->DeleteGlobalRef(java_resource_value_class);
 }

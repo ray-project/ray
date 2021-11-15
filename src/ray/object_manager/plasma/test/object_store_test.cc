@@ -30,13 +30,11 @@ T Random(T max = std::numeric_limits<T>::max()) {
   return absl::Uniform(bitgen, 0, max);
 }
 
-Allocation CreateAllocation(int64_t size) {
-  return Allocation(
-      /* address */ nullptr, size,
-      /* fd */ MEMFD_TYPE(),
-      /* offset */ Random<ptrdiff_t>(),
-      /* device_num */ 0,
-      /* mmap_size */ Random<int64_t>());
+Allocation CreateAllocation(Allocation alloc, int64_t size) {
+  alloc.size = size;
+  alloc.offset = Random<ptrdiff_t>();
+  alloc.mmap_size = Random<int64_t>();
+  return alloc;
 }
 
 const std::string Serialize(const Allocation &allocation) {
@@ -82,7 +80,7 @@ TEST(ObjectStoreTest, PassThroughTest) {
   ObjectStore store(allocator);
   {
     auto info = CreateObjectInfo(kId1, 10);
-    auto allocation = CreateAllocation(10);
+    auto allocation = CreateAllocation(Allocation(), 10);
     auto alloc_str = Serialize(allocation);
 
     EXPECT_CALL(allocator, Allocate(10)).Times(1).WillOnce(Invoke([&](size_t bytes) {
@@ -95,9 +93,6 @@ TEST(ObjectStoreTest, PassThroughTest) {
     EXPECT_EQ(entry->state, ObjectState::PLASMA_CREATED);
     EXPECT_EQ(alloc_str, Serialize(entry->allocation));
     EXPECT_EQ(info, entry->object_info);
-    EXPECT_EQ(store.GetNumBytesCreatedTotal(), 10);
-    EXPECT_EQ(store.GetNumBytesUnsealed(), 10);
-    EXPECT_EQ(store.GetNumObjectsUnsealed(), 1);
 
     // verify get
     auto entry1 = store.GetObject(kId1);
@@ -111,9 +106,6 @@ TEST(ObjectStoreTest, PassThroughTest) {
     auto entry3 = store.SealObject(kId1);
     EXPECT_EQ(entry3, entry);
     EXPECT_EQ(entry3->state, ObjectState::PLASMA_SEALED);
-    EXPECT_EQ(store.GetNumBytesCreatedTotal(), 10);
-    EXPECT_EQ(store.GetNumBytesUnsealed(), 0);
-    EXPECT_EQ(store.GetNumObjectsUnsealed(), 0);
 
     // seal non existing
     EXPECT_EQ(nullptr, store.SealObject(kId2));
@@ -134,7 +126,7 @@ TEST(ObjectStoreTest, PassThroughTest) {
   }
 
   {
-    auto allocation = CreateAllocation(12);
+    auto allocation = CreateAllocation(Allocation(), 12);
     auto alloc_str = Serialize(allocation);
     auto info = CreateObjectInfo(kId2, 12);
     // allocation failure
@@ -159,9 +151,6 @@ TEST(ObjectStoreTest, PassThroughTest) {
     EXPECT_EQ(entry->state, ObjectState::PLASMA_CREATED);
     EXPECT_EQ(alloc_str, Serialize(entry->allocation));
     EXPECT_EQ(info, entry->object_info);
-    EXPECT_EQ(store.GetNumBytesCreatedTotal(), 22);
-    EXPECT_EQ(store.GetNumBytesUnsealed(), 12);
-    EXPECT_EQ(store.GetNumObjectsUnsealed(), 1);
 
     // delete unsealed
     EXPECT_CALL(allocator, Free(_)).Times(1).WillOnce(Invoke([&](auto &&allocation) {
@@ -169,10 +158,6 @@ TEST(ObjectStoreTest, PassThroughTest) {
     }));
 
     EXPECT_TRUE(store.DeleteObject(kId2));
-
-    EXPECT_EQ(store.GetNumBytesCreatedTotal(), 22);
-    EXPECT_EQ(store.GetNumBytesUnsealed(), 0);
-    EXPECT_EQ(store.GetNumObjectsUnsealed(), 0);
   }
 }
 }  // namespace plasma

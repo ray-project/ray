@@ -1,5 +1,4 @@
-from ray.util import log_once
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated
 
 
 def override(cls):
@@ -51,30 +50,50 @@ def DeveloperAPI(obj):
     return obj
 
 
-def Deprecated(old=None, *, new=None, help=None, error):
-    """Annotation for documenting a (soon-to-be) deprecated method.
+def ExperimentalAPI(obj):
+    """Annotation for documenting experimental APIs.
 
-    Methods tagged with this decorator should produce a
-    `ray.rllib.utils.deprecation.deprecation_warning(old=..., error=False)`
-    to not break existing code at this point.
-    In a next major release, this warning can then be made an error
-    (error=True), which means at this point that the method is already
-    no longer supported but will still inform the user about the
-    deprecation event.
-    In a further major release, the method should be erased.
+    Experimental APIs are classes and methods that are in development and may
+    change at any time in their development process. You should not expect
+    these APIs to be stable until their tag is changed to `DeveloperAPI` or
+    `PublicAPI`.
+
+    Subclasses that inherit from a ``@ExperimentalAPI`` base class can be
+    assumed experimental as well.
     """
 
-    def _inner(obj):
-        def _ctor(*args, **kwargs):
-            if log_once(old or obj.__name__):
-                deprecation_warning(
-                    old=old or obj.__name__,
-                    new=new,
-                    help=help,
-                    error=error,
-                )
-            return obj(*args, **kwargs)
+    return obj
 
-        return _ctor
 
-    return _inner
+def OverrideToImplementCustomLogic(obj):
+    """Users should override this in their sub-classes to implement custom logic.
+
+    Used in Trainer and Policy to tag methods that need overriding, e.g.
+    `Policy.loss()`.
+    """
+    return obj
+
+
+def OverrideToImplementCustomLogic_CallToSuperRecommended(obj):
+    """Users should override this in their sub-classes to implement custom logic.
+
+    Thereby, it is recommended (but not required) to call the super-class'
+    corresponding method.
+
+    Used in Trainer and Policy to tag methods that need overriding, but the
+    super class' method should still be called, e.g.
+    `Trainer.setup()`.
+
+    Examples:
+    >>> @overrides(Trainable)
+    ... @OverrideToImplementCustomLogic_CallToSuperRecommended
+    ... def setup(self, config):
+    ...     # implement custom setup logic here ...
+    ...     super().setup(config)
+    ...     # ... or here (after having called super()'s setup method.
+    """
+    return obj
+
+
+# Backward compatibility.
+Deprecated = Deprecated

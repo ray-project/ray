@@ -1,5 +1,6 @@
 import inspect
 import logging
+import numpy as np
 import sys
 
 from ray.util.client.ray_client_helpers import ray_start_client_server
@@ -14,6 +15,19 @@ def benchmark_get_calls(ray, results):
         ray.get(value)
 
     results += timeit("client: get calls", get_small)
+
+
+def benchmark_tasks_and_get_batch(ray, results):
+    @ray.remote
+    def small_value():
+        return b"ok"
+
+    def small_value_batch():
+        submitted = [small_value.remote() for _ in range(1000)]
+        ray.get(submitted)
+        return 0
+
+    results += timeit("client: tasks and get batch", small_value_batch)
 
 
 def benchmark_put_calls(ray, results):
@@ -32,7 +46,16 @@ def benchmark_remote_put_calls(ray, results):
     def put_multi_small():
         ray.get([do_put_small.remote() for _ in range(10)])
 
-    results += timeit("client: remote put calls", put_multi_small, 1000)
+    results += timeit("client: tasks and put batch", put_multi_small, 1000)
+
+
+def benchmark_put_large(ray, results):
+    arr = np.zeros(100 * 1024 * 1024, dtype=np.int64)
+
+    def put_large():
+        ray.put(arr)
+
+    results += timeit("client: put gigabytes", put_large, 8 * 0.1)
 
 
 def benchmark_simple_actor(ray, results):
@@ -78,7 +101,7 @@ def main(results=None):
         "logging_level": logging.WARNING
     }
 
-    def ray_connect_handler(job_config=None):
+    def ray_connect_handler(job_config=None, **ray_init_kwargs):
         from ray._private.client_mode_hook import disable_client_hook
         with disable_client_hook():
             import ray as real_ray

@@ -23,9 +23,9 @@
 namespace ray {
 
 absl::Mutex TaskSpecification::mutex_;
-std::unordered_map<SchedulingClassDescriptor, SchedulingClass>
+absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass>
     TaskSpecification::sched_cls_to_id_;
-std::unordered_map<SchedulingClass, SchedulingClassDescriptor>
+absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor>
     TaskSpecification::sched_id_to_cls_;
 int TaskSpecification::next_sched_id_;
 
@@ -37,7 +37,8 @@ SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
   return it->second;
 }
 
-SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_cls) {
+SchedulingClass TaskSpecification::GetSchedulingClass(
+    const SchedulingClassDescriptor &sched_cls) {
   SchedulingClass sched_cls_id;
   absl::MutexLock lock(&mutex_);
   auto it = sched_cls_to_id_.find(sched_cls);
@@ -52,7 +53,7 @@ SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_c
                      << " types of tasks seen, this may reduce performance.";
     }
     sched_cls_to_id_[sched_cls] = sched_cls_id;
-    sched_id_to_cls_[sched_cls_id] = sched_cls;
+    sched_id_to_cls_.emplace(sched_cls_id, sched_cls);
   } else {
     sched_cls_id = it->second;
   }
@@ -90,12 +91,18 @@ void TaskSpecification::ComputeResources() {
   }
 
   if (!IsActorTask()) {
+    bool complex_scheduling_class = RayConfig::instance().complex_scheduling_class();
     // There is no need to compute `SchedulingClass` for actor tasks since
     // the actor tasks need not be scheduled.
-
+    const auto &resource_set = GetRequiredResources();
+    const auto &function_descriptor = complex_scheduling_class
+                                          ? FunctionDescriptor()
+                                          : FunctionDescriptorBuilder::Empty();
+    auto depth = complex_scheduling_class ? GetDepth() : 0;
+    auto sched_cls_desc =
+        SchedulingClassDescriptor(resource_set, function_descriptor, depth);
     // Map the scheduling class descriptor to an integer for performance.
-    auto sched_cls = GetRequiredPlacementResources();
-    sched_cls_id_ = GetSchedulingClass(sched_cls);
+    sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
   }
 }
 
@@ -132,8 +139,10 @@ ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
 
+rpc::RuntimeEnv TaskSpecification::RuntimeEnv() const { return message_->runtime_env(); }
+
 std::string TaskSpecification::SerializedRuntimeEnv() const {
-  return message_->serialized_runtime_env();
+  return message_->runtime_env().serialized_runtime_env();
 }
 
 bool TaskSpecification::HasRuntimeEnv() const {
@@ -141,12 +150,11 @@ bool TaskSpecification::HasRuntimeEnv() const {
 }
 
 int TaskSpecification::GetRuntimeEnvHash() const {
-  std::unordered_map<std::string, double> required_resource{};
+  absl::flat_hash_map<std::string, double> required_resource;
   if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = GetRequiredResources().GetResourceMap();
   }
-  WorkerCacheKey env = {OverrideEnvironmentVariables(), SerializedRuntimeEnv(),
-                        required_resource};
+  WorkerCacheKey env = {SerializedRuntimeEnv(), required_resource};
   return env.IntHash();
 }
 
@@ -171,7 +179,7 @@ ObjectID TaskSpecification::ArgId(size_t arg_index) const {
   return ObjectID::FromBinary(message_->args(arg_index).object_ref().object_id());
 }
 
-rpc::ObjectReference TaskSpecification::ArgRef(size_t arg_index) const {
+const rpc::ObjectReference &TaskSpecification::ArgRef(size_t arg_index) const {
   RAY_CHECK(ArgByRef(arg_index));
   return message_->args(arg_index).object_ref();
 }
@@ -192,8 +200,10 @@ size_t TaskSpecification::ArgMetadataSize(size_t arg_index) const {
   return message_->args(arg_index).metadata().size();
 }
 
-const std::vector<ObjectID> TaskSpecification::ArgInlinedIds(size_t arg_index) const {
-  return IdVectorFromProtobuf<ObjectID>(message_->args(arg_index).nested_inlined_ids());
+const std::vector<rpc::ObjectReference> TaskSpecification::ArgInlinedRefs(
+    size_t arg_index) const {
+  return VectorFromProtobuf<rpc::ObjectReference>(
+      message_->args(arg_index).nested_inlined_refs());
 }
 
 const ResourceSet &TaskSpecification::GetRequiredResources() const {
@@ -237,10 +247,7 @@ std::string TaskSpecification::GetDebuggerBreakpoint() const {
   return message_->debugger_breakpoint();
 }
 
-std::unordered_map<std::string, std::string>
-TaskSpecification::OverrideEnvironmentVariables() const {
-  return MapFromProtobuf(message_->override_environment_variables());
-}
+int64_t TaskSpecification::GetDepth() const { return message_->depth(); }
 
 bool TaskSpecification::IsDriverTask() const {
   return message_->type() == TaskType::DRIVER_TASK;
@@ -362,7 +369,7 @@ std::string TaskSpecification::DebugString() const {
 
   stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
          << ", job_id=" << JobId() << ", num_args=" << NumArgs()
-         << ", num_returns=" << NumReturns();
+         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
@@ -396,11 +403,9 @@ std::string TaskSpecification::CallSiteString() const {
 }
 
 WorkerCacheKey::WorkerCacheKey(
-    const std::unordered_map<std::string, std::string> override_environment_variables,
     const std::string serialized_runtime_env,
-    const std::unordered_map<std::string, double> required_resources)
-    : override_environment_variables(override_environment_variables),
-      serialized_runtime_env(serialized_runtime_env),
+    const absl::flat_hash_map<std::string, double> &required_resources)
+    : serialized_runtime_env(serialized_runtime_env),
       required_resources(std::move(required_resources)) {}
 
 bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
@@ -409,8 +414,7 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 }
 
 bool WorkerCacheKey::EnvIsEmpty() const {
-  return override_environment_variables.size() == 0 &&
-         (serialized_runtime_env == "" || serialized_runtime_env == "{}") &&
+  return (serialized_runtime_env == "" || serialized_runtime_env == "{}") &&
          required_resources.empty();
 }
 
@@ -422,19 +426,6 @@ std::size_t WorkerCacheKey::Hash() const {
       // runtime envs.
       hash_ = 0;
     } else {
-      std::vector<std::pair<std::string, std::string>> env_vars(
-          override_environment_variables.begin(), override_environment_variables.end());
-      // The environment doesn't depend the order of the variables, so the hash should not
-      // either.  Sort the variables so different permutations yield the same hash.
-      std::sort(env_vars.begin(), env_vars.end());
-      for (auto &pair : env_vars) {
-        // TODO(architkulkarni): boost::hash_combine isn't guaranteed to be equal during
-        // separate runs of a program, which may cause problems if these hashes are
-        // communicated between different Raylets and compared.
-        boost::hash_combine(hash_, pair.first);
-        boost::hash_combine(hash_, pair.second);
-      }
-
       boost::hash_combine(hash_, serialized_runtime_env);
 
       std::vector<std::pair<std::string, double>> resource_vars(

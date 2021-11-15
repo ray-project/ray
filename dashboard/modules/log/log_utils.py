@@ -1,5 +1,5 @@
 import mimetypes
-import ray.new_dashboard.modules.log.log_consts as log_consts
+import ray.dashboard.modules.log.log_consts as log_consts
 
 
 def register_mimetypes():

@@ -111,7 +111,7 @@ class ConvDecoder(nn.Module):
         orig_shape = list(x.size())
         x = self.model(x)
 
-        reshape_size = orig_shape[:-1] + self.shape
+        reshape_size = orig_shape[:-1] + list(self.shape)
         mean = x.view(*reshape_size)
 
         # Equivalent to making a multivariate diag
@@ -323,7 +323,7 @@ class RSSM(nn.Module):
                 ) -> Tuple[List[TensorType], List[TensorType]]:
         """Returns the corresponding states from the embedding from ConvEncoder
         and actions. This is accomplished by rolling out the RNN from the
-        starting state through eacn index of embed and action, saving all
+        starting state through each index of embed and action, saving all
         intermediate states between.
 
         Args:
@@ -336,6 +336,12 @@ class RSSM(nn.Module):
         """
         if state is None:
             state = self.get_initial_state(action.size()[0])
+
+        if embed.dim() <= 2:
+            embed = torch.unsqueeze(embed, 1)
+
+        if action.dim() <= 2:
+            action = torch.unsqueeze(action, 1)
 
         embed = embed.permute(1, 0, 2)
         action = action.permute(1, 0, 2)
@@ -481,7 +487,7 @@ class DreamerModel(TorchModelV2, nn.Module):
         and policy to obtain action.
         """
         if state is None:
-            self.initial_state()
+            self.state = self.get_initial_state(batch_size=obs.shape[0])
         else:
             self.state = state
         post = self.state[:4]

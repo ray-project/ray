@@ -150,6 +150,10 @@ class PopulationBasedTraining(FIFOScheduler):
             perturbation at this interval of `time_attr`. Note that
             perturbation incurs checkpoint overhead, so you shouldn't set this
             to be too frequent.
+        burn_in_period (float): Models will not be considered for
+            perturbation before this interval of `time_attr` has passed. This
+            guarantees that models are trained for at least a certain amount
+            of time or timesteps before being perturbed.
         hyperparam_mutations (dict): Hyperparams to mutate. The format is
             as follows: for each key, either a list, function,
             or a tune search space object (tune.loguniform, tune.uniform,
@@ -221,10 +225,10 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def __init__(self,
                  time_attr: str = "time_total_s",
-                 reward_attr: Optional[str] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  perturbation_interval: float = 60.0,
+                 burn_in_period: float = 0.,
                  hyperparam_mutations: Dict = None,
                  quantile_fraction: float = 0.25,
                  resample_probability: float = 0.25,
@@ -263,14 +267,6 @@ class PopulationBasedTraining(FIFOScheduler):
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
-        if reward_attr is not None:
-            mode = "max"
-            metric = reward_attr
-            logger.warning(
-                "`reward_attr` is deprecated and will be removed in a future "
-                "version of Tune. "
-                "Setting `metric={}` and `mode=max`.".format(reward_attr))
-
         FIFOScheduler.__init__(self)
         self._metric = metric
         self._mode = mode
@@ -281,6 +277,7 @@ class PopulationBasedTraining(FIFOScheduler):
             self._metric_op = -1.
         self._time_attr = time_attr
         self._perturbation_interval = perturbation_interval
+        self._burn_in_period = burn_in_period
         self._hyperparam_mutations = hyperparam_mutations
         self._quantile_fraction = quantile_fraction
         self._resample_probability = resample_probability
@@ -387,7 +384,11 @@ class PopulationBasedTraining(FIFOScheduler):
         time = result[self._time_attr]
         state = self._trial_state[trial]
 
-        # Continue training if perturbation interval has not been reached yet.
+        # Continue training if burn-in period has not been reached, yet.
+        if time < self._burn_in_period:
+            return TrialScheduler.CONTINUE
+
+        # Continue training if perturbation interval has not been reached, yet.
         if time - state.last_perturbation_time < self._perturbation_interval:
             return TrialScheduler.CONTINUE  # avoid checkpoint overhead
 
@@ -640,7 +641,7 @@ class PopulationBasedTraining(FIFOScheduler):
         candidates = []
         for trial in trial_runner.get_trials():
             if trial.status in [Trial.PENDING, Trial.PAUSED] and \
-                    trial_runner.has_resources_for_trial(trial):
+                    trial_runner.trial_executor.has_resources_for_trial(trial):
                 if not self._synch:
                     candidates.append(trial)
                 elif self._trial_state[trial].last_train_time < \

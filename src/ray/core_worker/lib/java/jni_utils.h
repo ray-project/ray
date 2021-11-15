@@ -37,6 +37,11 @@ extern jclass java_double_class;
 /// doubleValue method of Double class
 extern jmethodID java_double_double_value;
 
+/// Long class
+extern jclass java_long_class;
+/// longValue method of Long class
+extern jmethodID java_long_init;
+
 /// Object class
 extern jclass java_object_class;
 /// equals method of Object class
@@ -162,8 +167,6 @@ extern jfieldID java_call_options_concurrency_group_name;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
-/// global field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_global;
 /// name field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_name;
 /// maxRestarts field of ActorCreationOptions class
@@ -192,8 +195,6 @@ extern jfieldID java_concurrency_group_impl_max_concurrency;
 extern jclass java_placement_group_creation_options_class;
 /// PlacementStrategy class
 extern jclass java_placement_group_creation_options_strategy_class;
-/// global field of PlacementGroupCreationOptions class
-extern jfieldID java_placement_group_creation_options_global;
 /// name field of PlacementGroupCreationOptions class
 extern jfieldID java_placement_group_creation_options_name;
 /// bundles field of PlacementGroupCreationOptions class
@@ -239,6 +240,11 @@ extern jmethodID java_native_task_executor_on_worker_shutdown;
 extern jclass java_placement_group_class;
 /// id field of PlacementGroup class
 extern jfieldID java_placement_group_id;
+
+/// ResourceValue class that is used to convert resource_ids() to java class
+extern jclass java_resource_value_class;
+/// Construtor of ResourceValue class
+extern jmethodID java_resource_value_init;
 
 #define CURRENT_JNI_VERSION JNI_VERSION_1_8
 
@@ -542,7 +548,9 @@ inline std::shared_ptr<RayObject> JavaNativeRayObjectToNativeRayObject(
         return JavaByteArrayToId<ObjectID>(env, static_cast<jbyteArray>(id));
       });
   env->DeleteLocalRef(java_contained_ids);
-  return std::make_shared<RayObject>(data_buffer, metadata_buffer, contained_object_ids);
+  auto contained_object_refs =
+      CoreWorkerProcess::GetCoreWorker().GetObjectRefs(contained_object_ids);
+  return std::make_shared<RayObject>(data_buffer, metadata_buffer, contained_object_refs);
 }
 
 /// Convert a C++ RayObject to a Java NativeRayObject.
@@ -601,16 +609,6 @@ inline NativeT JavaProtobufObjectToNativeProtobufObject(JNIEnv *env, jobject jav
     env->DeleteLocalRef(bytes);
   }
   return native_obj;
-}
-
-// Return an actor or a placement group fullname with job id prepended if this is a global
-// actor or placement group.
-inline std::string GetFullName(bool global, std::string name) {
-  if (name.empty()) {
-    return "";
-  }
-  return global ? name
-                : CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" + name;
 }
 
 inline std::shared_ptr<LocalMemoryBuffer> SerializeActorCreationException(

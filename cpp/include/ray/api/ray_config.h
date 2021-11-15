@@ -16,6 +16,7 @@
 #include <ray/api/ray_exception.h>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include "boost/optional.hpp"
 
@@ -35,6 +36,11 @@ class RayConfig {
   // user code. This parameter is not used when the application runs in local mode.
   // Only searching the top level under a directory.
   std::vector<std::string> code_search_path;
+
+  // The command line args to be appended as parameters of the `ray start` command. It
+  // takes effect only if Ray head is started by a driver. Run `ray start --help` for
+  // details.
+  std::vector<std::string> head_args = {};
 
   /* The following are unstable parameters and their use is discouraged. */
 

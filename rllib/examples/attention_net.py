@@ -157,7 +157,7 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    # training loop
+    # Manual training loop (no Ray tune).
     if args.no_tune:
         # manual training loop using PPO and manually keeping track of state
         if args.run != "PPO":
@@ -174,7 +174,7 @@ if __name__ == "__main__":
                     result["episode_reward_mean"] >= args.stop_reward:
                 break
 
-        # run manual test loop (only for RepeatAfterMe env)
+        # Run manual test loop (only for RepeatAfterMe env).
         if args.env == "RepeatAfterMeEnv":
             print("Finished training. Running manual test/inference loop.")
             # prepare env
@@ -185,8 +185,10 @@ if __name__ == "__main__":
             # start with all zeros as state
             num_transformers = config["model"][
                 "attention_num_transformer_units"]
+            attention_dim = config["model"]["attention_dim"]
+            memory = config["model"]["attention_memory_inference"]
             init_state = state = [
-                np.zeros([100, 32], np.float32)
+                np.zeros([memory, attention_dim], np.float32)
                 for _ in range(num_transformers)
             ]
             # run one iteration until done
@@ -204,8 +206,8 @@ if __name__ == "__main__":
                 ]
             print(f"Total reward in test episode: {total_reward}")
 
+    # Run with Tune for auto env and trainer creation and TensorBoard.
     else:
-        # run with Tune for auto env and trainer creation and TensorBoard
         results = tune.run(args.run, config=config, stop=stop, verbose=2)
 
         if args.as_test:

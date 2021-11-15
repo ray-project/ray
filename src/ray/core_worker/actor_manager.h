@@ -15,61 +15,13 @@
 #pragma once
 
 #include "absl/container/flat_hash_map.h"
+#include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/gcs/gcs_client.h"
-
+#include "ray/gcs/gcs_client/gcs_client.h"
 namespace ray {
 namespace core {
-
-class ActorCreatorInterface {
- public:
-  virtual ~ActorCreatorInterface() = default;
-  /// Register actor to GCS synchronously.
-  ///
-  /// \param task_spec The specification for the actor creation task.
-  /// \return Status
-  virtual Status RegisterActor(const TaskSpecification &task_spec) = 0;
-
-  /// Asynchronously request GCS to create the actor.
-  ///
-  /// \param task_spec The specification for the actor creation task.
-  /// \param callback Callback that will be called after the actor info is written to GCS.
-  /// \return Status
-  virtual Status AsyncCreateActor(const TaskSpecification &task_spec,
-                                  const gcs::StatusCallback &callback) = 0;
-};
-
-class DefaultActorCreator : public ActorCreatorInterface {
- public:
-  explicit DefaultActorCreator(std::shared_ptr<gcs::GcsClient> gcs_client)
-      : gcs_client_(std::move(gcs_client)) {}
-
-  Status RegisterActor(const TaskSpecification &task_spec) override {
-    auto promise = std::make_shared<std::promise<void>>();
-    auto status = gcs_client_->Actors().AsyncRegisterActor(
-        task_spec, [promise](const Status &status) { promise->set_value(); });
-    if (status.ok() &&
-        promise->get_future().wait_for(std::chrono::seconds(
-            ::RayConfig::instance().gcs_server_request_timeout_seconds())) !=
-            std::future_status::ready) {
-      std::ostringstream stream;
-      stream << "There was timeout in registering an actor. It is probably "
-                "because GCS server is dead or there's a high load there.";
-      return Status::TimedOut(stream.str());
-    }
-    return status;
-  }
-
-  Status AsyncCreateActor(const TaskSpecification &task_spec,
-                          const gcs::StatusCallback &callback) override {
-    return gcs_client_->Actors().AsyncCreateActor(task_spec, callback);
-  }
-
- private:
-  std::shared_ptr<gcs::GcsClient> gcs_client_;
-};
 
 /// Class to manage lifetimes of actors that we create (actor children).
 /// Currently this class is only used to publish actor DEAD event
@@ -164,9 +116,10 @@ class ActorManager {
   /// This is used for debugging purpose.
   std::vector<ObjectID> GetActorHandleIDsFromHandles();
 
-  /// Check if named actor is cached locally.
-  /// If it has been cached, core worker will not get actor id by name from GCS.
-  ActorID GetCachedNamedActorID(const std::string &actor_name);
+  /// Function that's invoked when the actor is permanatly dead.
+  ///
+  /// \param actor_id The actor id of the handle that will be invalidated.
+  void OnActorKilled(const ActorID &actor_id);
 
  private:
   bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
@@ -199,6 +152,10 @@ class ActorManager {
                       const std::string &call_site, const rpc::Address &caller_address,
                       const ActorID &actor_id, const ObjectID &actor_creation_return_id,
                       bool is_self = false);
+
+  /// Check if named actor is cached locally.
+  /// If it has been cached, core worker will not get actor id by name from GCS.
+  ActorID GetCachedNamedActorID(const std::string &actor_name);
 
   /// Handle actor state notification published from GCS.
   ///

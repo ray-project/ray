@@ -21,7 +21,7 @@ import ray
 import ray.ray_constants as ray_constants
 import ray._private.services
 import ray._private.utils
-from ray.resource_spec import ResourceSpec
+from ray._private.resource_spec import ResourceSpec
 from ray._private.utils import (try_to_create_directory, try_to_symlink,
                                 open_log)
 
@@ -33,39 +33,6 @@ logger = logging.getLogger(__name__)
 SESSION_LATEST = "session_latest"
 NUM_PORT_RETRIES = 40
 NUM_REDIS_GET_RETRIES = 20
-
-
-def _get_with_retry(redis_client, key, num_retries=NUM_REDIS_GET_RETRIES):
-    result = None
-    for i in range(num_retries):
-        result = redis_client.get(key)
-        if result is not None:
-            break
-        else:
-            logger.debug(f"Fetched {key}=None from redis. Retrying.")
-            time.sleep(2)
-    if not result:
-        raise RuntimeError(f"Could not read '{key}' from GCS (redis). "
-                           "Has redis started correctly on the head node?")
-    return result
-
-
-def _hget_with_retry(redis_client,
-                     key,
-                     field,
-                     num_retries=NUM_REDIS_GET_RETRIES):
-    result = None
-    for i in range(num_retries):
-        result = redis_client.hget(key, field)
-        if result is not None:
-            break
-        else:
-            logger.debug(f"Fetched {key}=None from redis. Retrying.")
-            time.sleep(2)
-    if not result:
-        raise RuntimeError(f"Could not read '{key}' from GCS (redis). "
-                           "Has redis started correctly on the head node?")
-    return result
 
 
 class Node:
@@ -137,7 +104,7 @@ class Node:
                 ray_params._system_config) > 0 and (not head
                                                     and not connect_only):
             raise ValueError(
-                "Internal config parameters can only be set on the head node.")
+                "System config parameters can only be set on the head node.")
 
         self._raylet_ip_address = raylet_ip_address
 
@@ -171,17 +138,16 @@ class Node:
 
         # Register the temp dir.
         if head:
-            redis_client = None
             # date including microsecond
             date_str = datetime.datetime.today().strftime(
                 "%Y-%m-%d_%H-%M-%S_%f")
             self.session_name = f"session_{date_str}_{os.getpid()}"
         else:
-            redis_client = self.create_redis_client()
-            session_name = _get_with_retry(redis_client, "session_name")
+            session_name = self._internal_kv_get_with_retry(
+                "session_name", ray_constants.KV_NAMESPACE_SESSION)
             self.session_name = ray._private.utils.decode(session_name)
 
-        self._init_temp(redis_client)
+        self._init_temp()
 
         # If it is a head node, try validating if
         # external storage is configurable.
@@ -235,8 +201,8 @@ class Node:
                 ray_params.update_if_absent(gcs_server_port=gcs_server_port)
             self._webui_url = None
         else:
-            self._webui_url = (
-                ray._private.services.get_webui_url_from_redis(redis_client))
+            self._webui_url = \
+                ray._private.services.get_webui_url_from_internal_kv()
 
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
@@ -246,15 +212,25 @@ class Node:
         # Start processes.
         if head:
             self.start_head_processes()
-            redis_client = self.create_redis_client()
-            redis_client.set("session_name", self.session_name)
-            redis_client.hset("session_dir", "value", self._session_dir)
-            redis_client.set("temp_dir", self._temp_dir)
+            ray.experimental.internal_kv._internal_kv_put(
+                "session_name",
+                self.session_name,
+                namespace=ray_constants.KV_NAMESPACE_SESSION)
+            ray.experimental.internal_kv._internal_kv_put(
+                "session_dir",
+                self._session_dir,
+                namespace=ray_constants.KV_NAMESPACE_SESSION)
+            ray.experimental.internal_kv._internal_kv_put(
+                "temp_dir",
+                self._temp_dir,
+                namespace=ray_constants.KV_NAMESPACE_SESSION)
             # Add tracing_startup_hook to redis / internal kv manually
             # since internal kv is not yet initialized.
             if ray_params.tracing_startup_hook:
-                redis_client.hset("tracing_startup_hook", "value",
-                                  ray_params.tracing_startup_hook)
+                ray.experimental.internal_kv._internal_kv_put(
+                    "tracing_startup_hook",
+                    ray_params.tracing_startup_hook,
+                    namespace=ray_constants.KV_NAMESPACE_TRACING)
 
         if not connect_only:
             self.start_ray_processes()
@@ -291,14 +267,15 @@ class Node:
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
 
-    def _init_temp(self, redis_client):
+    def _init_temp(self):
         # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
         if self.head:
             self._temp_dir = self._ray_params.temp_dir
         else:
-            temp_dir = _get_with_retry(redis_client, "temp_dir")
+            temp_dir = self._internal_kv_get_with_retry(
+                "temp_dir", ray_constants.KV_NAMESPACE_SESSION)
             self._temp_dir = ray._private.utils.decode(temp_dir)
 
         try_to_create_directory(self._temp_dir)
@@ -306,8 +283,8 @@ class Node:
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self.session_name)
         else:
-            session_dir = _hget_with_retry(redis_client, "session_dir",
-                                           "value")
+            session_dir = self._internal_kv_get_with_retry(
+                "session_dir", ray_constants.KV_NAMESPACE_SESSION)
             self._session_dir = ray._private.utils.decode(session_dir)
         session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
 
@@ -323,11 +300,9 @@ class Node:
         old_logs_dir = os.path.join(self._logs_dir, "old")
         try_to_create_directory(old_logs_dir)
         # Create a directory to be used for runtime environment.
-        self._resource_dir = os.path.join(self._session_dir,
-                                          "runtime_resources")
-        try_to_create_directory(self._resource_dir)
-        import ray._private.runtime_env as runtime_env
-        runtime_env.PKG_DIR = self._resource_dir
+        self._runtime_env_dir = os.path.join(
+            self._session_dir, self._ray_params.runtime_env_dir_name)
+        try_to_create_directory(self._runtime_env_dir)
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
@@ -358,7 +333,11 @@ class Node:
             env_string = os.getenv(
                 ray_constants.RESOURCES_ENVIRONMENT_VARIABLE)
             if env_string:
-                env_resources = json.loads(env_string)
+                try:
+                    env_resources = json.loads(env_string)
+                except Exception:
+                    logger.exception("Failed to load {}".format(env_string))
+                    raise
                 logger.debug(
                     f"Autoscaler overriding resources: {env_resources}.")
             num_cpus, num_gpus, memory, object_store_memory, resources = \
@@ -472,6 +451,13 @@ class Node:
         return ray._private.services.create_redis_client(
             self._redis_address, self._ray_params.redis_password)
 
+    def initialize_internal_kv(self):
+        """Initialize internal kv."""
+        if not ray.experimental.internal_kv._internal_kv_initialized():
+            gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(
+                self.create_redis_client())
+            ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+
     def get_temp_dir_path(self):
         """Get the path of the temporary directory."""
         return self._temp_dir
@@ -574,7 +560,10 @@ class Node:
             log_stderr = os.path.join(self._logs_dir, f"{name}.err")
         return log_stdout, log_stderr
 
-    def _get_unused_port(self, close_on_exit=True):
+    def _get_unused_port(self, allocated_ports=None):
+        if allocated_ports is None:
+            allocated_ports = set()
+
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.bind(("", 0))
         port = s.getsockname()[1]
@@ -584,6 +573,10 @@ class Node:
         # from this method has been used by a different process.
         for _ in range(NUM_PORT_RETRIES):
             new_port = random.randint(port, 65535)
+            if new_port in allocated_ports:
+                # This port is allocated for other usage already,
+                # so we shouldn't use it even if it's not in use right now.
+                continue
             new_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
                 new_s.bind(("", new_port))
@@ -591,13 +584,11 @@ class Node:
                 new_s.close()
                 continue
             s.close()
-            if close_on_exit:
-                new_s.close()
-            return new_port, new_s
+            new_s.close()
+            return new_port
         logger.error("Unable to succeed in selecting a random port.")
-        if close_on_exit:
-            s.close()
-        return port, s
+        s.close()
+        return port
 
     def _prepare_socket_file(self, socket_path, default_prefix):
         """Prepare the socket file for raylet and plasma.
@@ -615,7 +606,7 @@ class Node:
         if sys.platform == "win32":
             if socket_path is None:
                 result = (f"tcp://{self._localhost}"
-                          f":{self._get_unused_port()[0]}")
+                          f":{self._get_unused_port()}")
         else:
             if socket_path is None:
                 result = self._make_inc_temp(
@@ -667,7 +658,8 @@ class Node:
             port = int(ports_by_node[self.unique_id][port_name])
         else:
             # Pick a new port to use and cache it at this node.
-            port = (default_port or self._get_unused_port()[0])
+            port = (default_port or self._get_unused_port(
+                set(ports_by_node[self.unique_id].values())))
             ports_by_node[self.unique_id][port_name] = port
             with open(file_path, "w") as f:
                 json.dump(ports_by_node, f)
@@ -693,10 +685,12 @@ class Node:
     def start_redis(self):
         """Start the Redis servers."""
         assert self._redis_address is None
-        redis_log_files = [self.get_log_file_handles("redis", unique=True)]
-        for i in range(self._ray_params.num_redis_shards):
-            redis_log_files.append(
-                self.get_log_file_handles(f"redis-shard_{i}", unique=True))
+        redis_log_files = []
+        if self._ray_params.external_addresses is None:
+            redis_log_files = [self.get_log_file_handles("redis", unique=True)]
+            for i in range(self._ray_params.num_redis_shards):
+                redis_log_files.append(
+                    self.get_log_file_handles(f"redis-shard_{i}", unique=True))
 
         (self._redis_address, redis_shards,
          process_infos) = ray._private.services.start_redis(
@@ -759,8 +753,11 @@ class Node:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
                 process_info,
             ]
-            redis_client = self.create_redis_client()
-            redis_client.hset("webui", mapping={"url": self._webui_url})
+            self.initialize_internal_kv()
+            ray.experimental.internal_kv._internal_kv_put(
+                "webui:url",
+                self._webui_url,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
 
     def start_gcs_server(self):
         """Start the gcs server.
@@ -769,6 +766,7 @@ class Node:
             "gcs_server", unique=True)
         process_info = ray._private.services.start_gcs_server(
             self._redis_address,
+            self._logs_dir,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
@@ -782,6 +780,14 @@ class Node:
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info,
         ]
+        ray.experimental.internal_kv._internal_kv_reset()
+        while True:
+            try:
+                self.initialize_internal_kv()
+                break
+            except Exception:
+                time.sleep(1)
+                logger.debug("Waiting for gcs up")
 
     def start_raylet(self,
                      plasma_directory,
@@ -806,11 +812,9 @@ class Node:
             self._plasma_store_socket_name,
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
-            self._ray_params.worker_setup_hook,
-            self._ray_params.runtime_env_setup_hook,
             self._temp_dir,
             self._session_dir,
-            self._resource_dir,
+            self._runtime_env_dir,
             self._logs_dir,
             self.get_resource_spec(),
             plasma_directory,
@@ -837,6 +841,7 @@ class Node:
             start_initial_python_workers_for_first_job=self._ray_params.
             start_initial_python_workers_for_first_job,
             ray_debugger_external=self._ray_params.ray_debugger_external,
+            env_updates=self._ray_params.env_vars,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
@@ -874,11 +879,13 @@ class Node:
             "ray_client_server", unique=True)
         process_info = ray._private.services.start_ray_client_server(
             self._redis_address,
+            self._node_ip_address,
             self._ray_params.ray_client_server_port,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
-            fate_share=self.kernel_fate_share)
+            fate_share=self.kernel_fate_share,
+            metrics_agent_port=self._ray_params.metrics_agent_port)
         assert (ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER not in
                 self.all_processes)
         self.all_processes[ray_constants.PROCESS_TYPE_RAY_CLIENT_SERVER] = [
@@ -1264,3 +1271,28 @@ class Node:
         from ray import external_storage
         external_storage.setup_external_storage(deserialized_config)
         external_storage.reset_external_storage()
+
+    def _internal_kv_get_with_retry(self,
+                                    key,
+                                    namespace,
+                                    num_retries=NUM_REDIS_GET_RETRIES):
+        result = None
+        for i in range(num_retries):
+            try:
+                self.initialize_internal_kv()
+                result = ray.experimental.internal_kv._internal_kv_get(
+                    key, namespace=namespace)
+            except Exception:
+                ray.experimental.internal_kv._internal_kv_reset()
+                self.initialize_internal_kv()
+                result = None
+
+            if result is not None:
+                break
+            else:
+                logger.debug(f"Fetched {key}=None from redis. Retrying.")
+                time.sleep(2)
+        if not result:
+            raise RuntimeError(f"Could not read '{key}' from GCS (redis). "
+                               "Has redis started correctly on the head node?")
+        return result

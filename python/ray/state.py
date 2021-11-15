@@ -1,15 +1,16 @@
 from collections import defaultdict
 import json
 import logging
-import os
 
 import ray
 
-from ray import gcs_utils
+import ray._private.gcs_utils as gcs_utils
 from ray.util.annotations import DeveloperAPI
 from google.protobuf.json_format import MessageToDict
+from ray.core.generated import gcs_pb2
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.utils import (decode, binary_to_hex, hex_to_binary)
+from ray._private.resource_spec import NODE_ID_PREFIX
 
 from ray._raylet import GlobalStateAccessor
 
@@ -49,10 +50,6 @@ class GlobalState:
 
         # _really_init_global_state should have set self.global_state_accessor
         if self.global_state_accessor is None:
-            if os.environ.get("RAY_ENABLE_AUTO_CONNECT", "") != "0":
-                ray.client().connect()
-                # Retry connect!
-                return self._check_connected()
             raise ray.exceptions.RaySystemError(
                 "Ray has not been started yet. You can start Ray with "
                 "'ray.init()'.")
@@ -86,55 +83,6 @@ class GlobalState:
         self.global_state_accessor = GlobalStateAccessor(
             self.redis_address, self.redis_password)
         self.global_state_accessor.connect()
-
-    def object_table(self, object_ref=None):
-        """Fetch and parse the object table info for one or more object refs.
-
-        Args:
-            object_ref: An object ref to fetch information about. If this is
-                None, then the entire object table is fetched.
-
-        Returns:
-            Information from the object table.
-        """
-        self._check_connected()
-
-        if object_ref is not None:
-            object_ref = ray.ObjectRef(hex_to_binary(object_ref))
-            object_info = self.global_state_accessor.get_object_info(
-                object_ref)
-            if object_info is None:
-                return {}
-            else:
-                object_location_info = gcs_utils.ObjectLocationInfo.FromString(
-                    object_info)
-                return self._gen_object_info(object_location_info)
-        else:
-            object_table = self.global_state_accessor.get_object_table()
-            results = {}
-            for i in range(len(object_table)):
-                object_location_info = gcs_utils.ObjectLocationInfo.FromString(
-                    object_table[i])
-                results[binary_to_hex(object_location_info.object_id)] = \
-                    self._gen_object_info(object_location_info)
-            return results
-
-    def _gen_object_info(self, object_location_info):
-        """Parse object location info.
-        Returns:
-            Information from object.
-        """
-        locations = []
-        for location in object_location_info.locations:
-            locations.append(
-                ray._private.utils.binary_to_hex(location.manager))
-
-        object_info = {
-            "ObjectRef": ray._private.utils.binary_to_hex(
-                object_location_info.object_id),
-            "Locations": locations,
-        }
-        return object_info
 
     def actor_table(self, actor_id):
         """Fetch and parse the actor table information for a single actor ID.
@@ -372,9 +320,9 @@ class GlobalState:
         from ray.core.generated.common_pb2 import PlacementStrategy
 
         def get_state(state):
-            if state == ray.gcs_utils.PlacementGroupTableData.PENDING:
+            if state == gcs_utils.PlacementGroupTableData.PENDING:
                 return "PENDING"
-            elif state == ray.gcs_utils.PlacementGroupTableData.CREATED:
+            elif state == gcs_utils.PlacementGroupTableData.CREATED:
                 return "CREATED"
             else:
                 return "REMOVED"
@@ -392,6 +340,7 @@ class GlobalState:
                 raise ValueError(
                     f"Invalid strategy returned: {PlacementStrategy}")
 
+        stats = placement_group_info.stats
         assert placement_group_info is not None
         return {
             "placement_group_id": binary_to_hex(
@@ -406,6 +355,17 @@ class GlobalState:
             },
             "strategy": get_strategy(placement_group_info.strategy),
             "state": get_state(placement_group_info.state),
+            "stats": {
+                "end_to_end_creation_latency_ms": (
+                    stats.end_to_end_creation_latency_us / 1000.0),
+                "scheduling_latency_ms": (
+                    stats.scheduling_latency_us / 1000.0),
+                "scheduling_attempt": stats.scheduling_attempt,
+                "highest_retry_delay_ms": stats.highest_retry_delay_ms,
+                "scheduling_state": gcs_pb2.PlacementGroupStats.
+                SchedulingState.DESCRIPTOR.values_by_number[
+                    stats.scheduling_state].name
+            }
         }
 
     def _seconds_to_microseconds(self, time_in_seconds):
@@ -673,14 +633,14 @@ class GlobalState:
 
         Args:
             worker_id: ID of this worker. Type is bytes.
-            worker_type: Type of this worker. Value is ray.gcs_utils.DRIVER or
-                ray.gcs_utils.WORKER.
+            worker_type: Type of this worker. Value is gcs_utils.DRIVER or
+                gcs_utils.WORKER.
             worker_info: Info of this worker. Type is dict{str: str}.
 
         Returns:
              Is operation success
         """
-        worker_data = ray.gcs_utils.WorkerTableData()
+        worker_data = gcs_utils.WorkerTableData()
         worker_data.is_alive = True
         worker_data.worker_address.worker_id = worker_id
         worker_data.worker_type = worker_type
@@ -719,12 +679,13 @@ class GlobalState:
 
     def _available_resources_per_node(self):
         """Returns a dictionary mapping node id to avaiable resources."""
+        self._check_connected()
         available_resources_by_id = {}
 
         all_available_resources = \
             self.global_state_accessor.get_all_available_resources()
         for available_resource in all_available_resources:
-            message = ray.gcs_utils.AvailableResources.FromString(
+            message = gcs_utils.AvailableResources.FromString(
                 available_resource)
             # Calculate available resources for this node.
             dynamic_resources = {}
@@ -810,7 +771,7 @@ def next_job_id():
 
 
 @DeveloperAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
 
@@ -839,7 +800,7 @@ def current_node_id():
     Returns:
         Id of the current node.
     """
-    return (ray.resource_spec.NODE_ID_PREFIX + ray.util.get_node_ip_address())
+    return NODE_ID_PREFIX + ray.util.get_node_ip_address()
 
 
 def node_ids():
@@ -855,7 +816,7 @@ def node_ids():
     node_ids = []
     for node in nodes():
         for k, v in node["Resources"].items():
-            if k.startswith(ray.resource_spec.NODE_ID_PREFIX):
+            if k.startswith(NODE_ID_PREFIX):
                 node_ids.append(k)
     return node_ids
 
@@ -874,7 +835,7 @@ def actors(actor_id=None):
 
 
 @DeveloperAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
 
@@ -916,7 +877,7 @@ def object_transfer_timeline(filename=None):
 
 
 @DeveloperAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def cluster_resources():
     """Get the current total cluster resources.
 
@@ -931,7 +892,7 @@ def cluster_resources():
 
 
 @DeveloperAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def available_resources():
     """Get the current available cluster resources.
 

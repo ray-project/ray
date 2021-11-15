@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import time
 
-from ray.test_utils import SignalActor
+from ray._private.test_utils import SignalActor
 
 
 @pytest.mark.parametrize(

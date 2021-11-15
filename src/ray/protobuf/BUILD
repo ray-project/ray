@@ -81,6 +81,7 @@ proto_library(
     deps = [
         ":common_proto",
         ":gcs_proto",
+        ":pubsub_proto",
     ],
 )
 
@@ -92,6 +93,25 @@ cc_proto_library(
 python_grpc_compile(
     name = "gcs_service_py_proto",
     deps = [":gcs_service_proto"],
+)
+
+proto_library(
+    name = "test_service_proto",
+    srcs = ["test_service.proto"],
+    deps = [
+        ":common_proto",
+        ":gcs_proto",
+    ],
+)
+
+cc_proto_library(
+    name = "test_service_cc_proto",
+    deps = [":test_service_proto"],
+)
+
+python_grpc_compile(
+    name = "test_service_py_proto",
+    deps = [":test_service_proto"],
 )
 
 proto_library(
@@ -198,7 +218,6 @@ proto_library(
     deps = [
         ":common_proto",
         ":gcs_proto",
-        ":gcs_service_proto",
     ],
 )
 
@@ -231,4 +250,9 @@ proto_library(
     name = "serve_proto",
     srcs = ["serve.proto"],
     visibility = ["//java:__subpackages__"],
+)
+
+python_grpc_compile(
+    name = "serve_py_proto",
+    deps = [":serve_proto"],
 )

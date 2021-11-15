@@ -1,4 +1,3 @@
-import copy
 import numpy as np
 import unittest
 
@@ -11,7 +10,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc, one_hot, huber_loss
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 
 tf1, tf, tfv = try_import_tf()
 
@@ -32,40 +31,20 @@ class TestSimpleQ(unittest.TestCase):
         config["num_workers"] = 0
         # Test with compression.
         config["compress_observations"] = True
+
         num_iterations = 2
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, with_eager_tracing=True):
             trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
             rw = trainer.workers.local_worker()
             for i in range(num_iterations):
                 sb = rw.sample()
                 assert sb.count == config["rollout_fragment_length"]
                 results = trainer.train()
+                check_train_results(results)
                 print(results)
 
             check_compute_single_action(trainer)
-
-    def test_simple_q_fake_multi_gpu_learning(self):
-        """Test whether SimpleQTrainer learns CartPole w/ fake GPUs."""
-        config = copy.deepcopy(dqn.SIMPLE_Q_DEFAULT_CONFIG)
-
-        # Fake GPU setup.
-        config["num_gpus"] = 2
-        config["_fake_gpus"] = True
-
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
-            num_iterations = 200
-            learnt = False
-            for i in range(num_iterations):
-                results = trainer.train()
-                print("reward={}".format(results["episode_reward_mean"]))
-                if results["episode_reward_mean"] > 75.0:
-                    learnt = True
-                    break
-            assert learnt, "SimpleQ multi-GPU (with fake-GPUs) did not " \
-                           "learn CartPole!"
-            trainer.stop()
 
     def test_simple_q_loss_function(self):
         """Tests the Simple-Q loss function results on all frameworks."""
@@ -100,7 +79,8 @@ class TestSimpleQ(unittest.TestCase):
             vars = policy.get_weights()
             if isinstance(vars, dict):
                 vars = list(vars.values())
-            vars_t = policy.target_q_func_vars
+
+            vars_t = policy.target_model.variables()
             if fw == "tf":
                 vars_t = policy.get_session().run(vars_t)
 

@@ -126,7 +126,12 @@ class ExternalStorage(metaclass=abc.ABCMeta):
             address_len = len(owner_address)
             metadata_len = len(metadata)
             if buf is None:
-                raise ValueError(f"object ref {ref.hex()} does not exist.")
+                error = f"object ref {ref.hex()} does not exist."
+                # empty data and 1 byte metadata, this object is
+                # marked as failed.
+                if metadata_len == 1:
+                    error += " This is probably since its owner has failed."
+                raise ValueError(error)
             buf_len = len(buf)
             payload = address_len.to_bytes(8, byteorder="little") + \
                 metadata_len.to_bytes(8, byteorder="little") + \
@@ -322,12 +327,15 @@ class FileSystemStorage(ExternalStorage):
         while os.path.isdir(directory_path):
             try:
                 shutil.rmtree(directory_path)
-            except FileNotFoundError:
+            except (FileNotFoundError):
                 # If exception occurs when other IO workers are
                 # deleting the file at the same time.
                 pass
             except Exception:
-                logger.exception("Error cleaning up spill files")
+                logger.exception(
+                    "Error cleaning up spill files. "
+                    "You might still have remaining spilled "
+                    "objects inside `ray_spilled_objects` directory.")
                 break
 
 

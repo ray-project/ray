@@ -9,13 +9,22 @@ Windows wheels are now available, but :ref:`Windows support <windows-support>` i
 Official Releases
 -----------------
 
-You can install the latest official version of Ray as follows. Official releases are produced according to the `release process doc <https://github.com/ray-project/ray/blob/master/release/RELEASE_PROCESS.rst>`__.
+You can install the latest official version of Ray as follows.
 
 .. code-block:: bash
 
-  pip install -U ray
+  pip install -U ray  # minimal install
 
-**Note for Windows Users:** To use Ray on Windows, Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section). If you run into any issues, please see the :ref:`Windows Support <windows-support>` section.
+  # To install Ray with support for the dashboard + cluster launcher, run
+  # `pip install -U "ray[default]"`
+
+To install Ray libraries:
+
+.. code-block:: bash
+
+  pip install -U "ray[tune]"  # installs Ray + dependencies for Ray Tune
+  pip install -U "ray[rllib]"  # installs Ray + dependencies for Ray RLlib
+  pip install -U "ray[serve]"  # installs Ray + dependencies for Ray Serve
 
 .. _install-nightlies:
 
@@ -26,7 +35,11 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
 .. code-block:: bash
 
-  pip install -U [link to wheel]
+  pip uninstall -y ray # clean removal of previous install, otherwise version number may cause pip not to upgrade
+  pip install -U LINK_TO_WHEEL.whl  # minimal install
+
+  # To install Ray with support for the dashboard + cluster launcher, run
+  # `pip install -U 'ray[default] @ LINK_TO_WHEEL.whl'`
 
 
 ===================  ===================  ======================
@@ -42,15 +55,20 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
   Python 3.9 support is currently experimental.
 
+.. note::
+
+  On Windows, support for multi-node Ray clusters is currently experimental and untested.
+  If you run into issues please file a report at https://github.com/ray-project/ray/issues.
+
 .. _`Linux Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
 .. _`Linux Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-manylinux2014_x86_64.whl
 .. _`Linux Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
 .. _`Linux Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-manylinux2014_x86_64.whl
 
-.. _`MacOS Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-macosx_10_13_x86_64.whl
-.. _`MacOS Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-macosx_10_13_x86_64.whl
-.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-macosx_10_13_intel.whl
-.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-macosx_10_13_intel.whl
+.. _`MacOS Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-macosx_10_15_x86_64.whl
+.. _`MacOS Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-macosx_10_15_x86_64.whl
+.. _`MacOS Python 3.7`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
+.. _`MacOS Python 3.6`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp36-cp36m-macosx_10_15_intel.whl
 
 .. _`Windows Python 3.9`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp39-cp39-win_amd64.whl
 .. _`Windows Python 3.8`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-2.0.0.dev0-cp38-cp38-win_amd64.whl
@@ -65,13 +83,20 @@ You can install the Ray wheels of any particular commit on ``master`` with the f
 
 .. code-block:: bash
 
-    pip install https://s3-us-west-2.amazonaws.com/ray-wheels/master/{COMMIT_HASH}/ray-{RAY_VERSION}-{PYTHON_VERSION}-{PYTHON_VERSION}m-{OS_VERSION}_intel.whl
+    pip install https://s3-us-west-2.amazonaws.com/ray-wheels/master/{COMMIT_HASH}/ray-{RAY_VERSION}-{PYTHON_VERSION}-{PYTHON_VERSION}m-{OS_VERSION}.whl
 
 For example, here are the Ray 2.0.0.dev0 wheels for Python 3.7, MacOS for commit ``ba6cebe30fab6925e5b2d9e859ad064d53015246``:
 
 .. code-block:: bash
 
-    pip install https://s3-us-west-2.amazonaws.com/ray-wheels/master/ba6cebe30fab6925e5b2d9e859ad064d53015246/ray-2.0.0.dev0-cp37-cp37m-macosx_10_13_intel.whl
+    pip install https://s3-us-west-2.amazonaws.com/ray-wheels/master/ba6cebe30fab6925e5b2d9e859ad064d53015246/ray-2.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
+
+There are minor variations to the format of the wheel filename; it's best to match against the format in the URLs listed in the :ref:`Nightlies section <install-nightlies>`.
+Here's a summary of the variations:
+
+* For Python 3.8 and 3.9, the ``m`` before the OS version should be deleted and the OS version for MacOS should read ``macosx_10_15_x86_64`` instead of ``macosx_10_15_intel``.
+
+* For MacOS, commits predating August 7, 2021 will have ``macosx_10_13`` in the filename instad of ``macosx_10_15``.
 
 .. _ray-install-java:
 
@@ -132,6 +157,21 @@ The latest Ray Java snapshot can be found in `sonatype repository <https://oss.s
 
   If you want to run your Java code in a multi-node Ray cluster, it's better to exclude Ray jars when packaging your code to avoid jar conficts if the versions (installed Ray with ``pip install`` and maven dependencies) don't match.
 
+.. _apple-silcon-supprt:
+
+Apple Silicon Support
+---------------------
+
+Ray has experimental support for machines running Apple Silicon (such as M1 macs). To get started:
+
+1. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
+2. Ensure that the ``grpcio`` package is installed via forge and **not pypi**: ``pip uninstall grpcio; conda install grpcio``.
+3. Install Ray as you normally would: ``pip install ray``.
+
+.. note::
+
+  At this time, Apple Silicon ray wheels are being published for **releases only**. As support stabilizes, nightly wheels will be published in the future.
+
 .. _windows-support:
 
 Windows Support
@@ -141,8 +181,6 @@ Windows support is currently limited and "alpha" quality.
 Bugs, process/resource leaks, or other incompatibilities may exist under various scenarios.
 Unusual, unattended, or production usage is **not** recommended.
 
-To use Ray on Windows, the Visual C++ runtime must be installed (see :ref:`Windows Dependencies <windows-dependencies>` section).
-
 If you encounter any issues, please try the following:
 
 - Check the `Windows Known Issues <https://github.com/ray-project/ray/issues/9114>`_ page on GitHub to see the latest updates on Windows support.
@@ -151,22 +189,6 @@ If you encounter any issues, please try the following:
 If your issue has not yet been addressed, comment on the `Windows Known Issues <https://github.com/ray-project/ray/issues/9114>`_ page.
 
 .. _windows-dependencies:
-
-Windows Dependencies
-~~~~~~~~~~~~~~~~~~~~
-
-For Windows, ensure the latest `Visual C++ runtime`_ (`install link`_) is installed before using Ray.
-
-Otherwise, you may receive an error similar to the following when Ray fails to find
-the runtime library files (e.g. ``VCRUNTIME140_1.dll``):
-
-.. code-block:: bash
-
-  FileNotFoundError: Could not find module '_raylet.pyd' (or one of its dependencies).
-
-.. _`Visual C++ Runtime`: https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
-.. _`install link`: https://aka.ms/vs/16/release/vc_redist.x64.exe
-
 
 Installing Ray on Arch Linux
 ----------------------------
@@ -253,7 +275,7 @@ Image releases are `tagged` using the following format:
      - A specific nightly build (uses a SHA from the Github ``master``).
 
 
-Each tag has `variants` that add or change functionality:
+Some tags also have `variants` that add or change functionality:
 
 .. list-table::
    :widths: 16 40
@@ -261,12 +283,14 @@ Each tag has `variants` that add or change functionality:
 
    * - Variant
      - Description
-   * - -gpu
-     - These are based off of an NVIDIA CUDA image. They require the Nvidia Docker Runtime.
    * - -cpu
      - These are based off of an Ubuntu image.
+   * - -cuXX
+     - These are based off of an NVIDIA CUDA image with the specified CUDA version. They require the Nvidia Docker Runtime.
+   * - -gpu
+     - Aliases to a specific ``-cuXX`` tagged image.
    * - <no tag>
-     - Aliases to ``-cpu`` tagged images
+     - Aliases to ``-cpu`` tagged images. For ``ray-ml`` image, aliases to ``-gpu`` tagged image.
 
 
 If you want to tweak some aspect of these images and build them locally, refer to the following script:

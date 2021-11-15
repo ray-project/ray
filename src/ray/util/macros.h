@@ -53,3 +53,16 @@
 #else
 #define RAY_MUST_USE_RESULT
 #endif
+
+// Suppress Undefined Behavior Sanitizer (recoverable only). Usage:
+// - __suppress_ubsan__("undefined")
+// - __suppress_ubsan__("signed-integer-overflow")
+// adaped from
+// https://github.com/google/flatbuffers/blob/master/include/flatbuffers/base.h
+#if defined(__clang__)
+#define __suppress_ubsan__(type) __attribute__((no_sanitize(type)))
+#elif defined(__GNUC__) && (__GNUC__ * 100 + __GNUC_MINOR__ >= 409)
+#define __suppress_ubsan__(type) __attribute__((no_sanitize_undefined))
+#else
+#define __suppress_ubsan__(type)
+#endif

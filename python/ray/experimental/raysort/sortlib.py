@@ -1,4 +1,4 @@
-from typing import Iterable, List
+from typing import Callable, Iterable, List
 
 import numpy as np
 
@@ -21,7 +21,9 @@ def sort_and_partition(part: np.ndarray,
     return blocks
 
 
-def merge_partitions(blocks: List[np.ndarray],
-                     _n: int) -> Iterable[memoryview]:
+def merge_partitions(
+        num_blocks: int,
+        get_block: Callable[[int, int], np.ndarray]) -> Iterable[memoryview]:
+    blocks = [get_block(i, 0) for i in range(num_blocks)]
     for block in blocks:
         yield block

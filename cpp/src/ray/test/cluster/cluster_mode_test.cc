@@ -14,25 +14,39 @@
 
 #include <gtest/gtest.h>
 #include <ray/api.h>
+
+#include "../../runtime/abstract_ray_runtime.h"
+#include "../../runtime/object/native_object_store.h"
 #include "../../util/process_helper.h"
+#include "absl/flags/flag.h"
+#include "absl/flags/parse.h"
 #include "counter.h"
-#include "gflags/gflags.h"
 #include "plus.h"
 
-int *cmd_argc = nullptr;
-char ***cmd_argv = nullptr;
+int cmd_argc = 0;
+char **cmd_argv = nullptr;
 
-DEFINE_bool(external_cluster, false, "");
-DEFINE_string(redis_password, "12345678", "");
-DEFINE_int32(redis_port, 6379, "");
+ABSL_FLAG(bool, external_cluster, false, "");
+ABSL_FLAG(std::string, redis_password, "12345678", "");
+ABSL_FLAG(int32_t, redis_port, 6379, "");
+
+TEST(RayClusterModeTest, Initialized) {
+  ray::Init();
+  EXPECT_TRUE(ray::IsInitialized());
+  ray::Shutdown();
+  EXPECT_TRUE(!ray::IsInitialized());
+}
 
 TEST(RayClusterModeTest, FullTest) {
   ray::RayConfig config;
-  if (FLAGS_external_cluster) {
-    ray::internal::ProcessHelper::GetInstance().StartRayNode(FLAGS_redis_port,
-                                                             FLAGS_redis_password);
-    config.address = "127.0.0.1:" + std::to_string(FLAGS_redis_port);
-    config.redis_password_ = FLAGS_redis_password;
+  config.head_args = {"--num-cpus", "2", "--resources",
+                      "{\"resource1\":1,\"resource2\":2}"};
+  if (absl::GetFlag<bool>(FLAGS_external_cluster)) {
+    auto port = absl::GetFlag<int32_t>(FLAGS_redis_port);
+    std::string password = absl::GetFlag<std::string>(FLAGS_redis_password);
+    ray::internal::ProcessHelper::GetInstance().StartRayNode(port, password);
+    config.address = "127.0.0.1:" + std::to_string(port);
+    config.redis_password_ = password;
   }
   ray::Init(config, cmd_argc, cmd_argv);
   /// put and get object
@@ -71,10 +85,17 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(2, *named_actor_obj1.Get());
   EXPECT_FALSE(ray::GetGlobalActor<Counter>("not_exist_actor"));
 
+  EXPECT_FALSE(
+      *named_actor_handle.Task(&Counter::CheckRestartInActorCreationTask).Remote().Get());
+  EXPECT_FALSE(
+      *named_actor_handle.Task(&Counter::CheckRestartInActorTask).Remote().Get());
   named_actor_handle.Kill(false);
   std::this_thread::sleep_for(std::chrono::seconds(2));
   auto named_actor_obj2 = named_actor_handle.Task(&Counter::Plus1).Remote();
   EXPECT_EQ(1, *named_actor_obj2.Get());
+  EXPECT_TRUE(
+      *named_actor_handle.Task(&Counter::CheckRestartInActorCreationTask).Remote().Get());
+  EXPECT_TRUE(*named_actor_handle.Task(&Counter::CheckRestartInActorTask).Remote().Get());
 
   named_actor_handle.Kill();
   std::this_thread::sleep_for(std::chrono::seconds(2));
@@ -111,9 +132,10 @@ TEST(RayClusterModeTest, FullTest) {
   EXPECT_EQ(result.ready.size(), 3);
   EXPECT_EQ(result.unready.size(), 0);
 
-  int result1 = *(ray::Get(r1));
-  int result0 = *(ray::Get(r0));
-  int result2 = *(ray::Get(r2));
+  auto result_vector = ray::Get(objects);
+  int result0 = *(result_vector[0]);
+  int result1 = *(result_vector[1]);
+  int result2 = *(result_vector[2]);
   EXPECT_EQ(result0, 1);
   EXPECT_EQ(result1, 31);
   EXPECT_EQ(result2, 25);
@@ -202,7 +224,7 @@ TEST(RayClusterModeTest, ResourcesManagementTest) {
   EXPECT_EQ(*r1.Get(), 1);
 
   auto actor2 = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
-                    .SetResources({{"CPU", 100.0}})
+                    .SetResources({{"CPU", 10000.0}})
                     .Remote();
   auto r2 = actor2.Task(&Counter::Plus1).Remote();
   std::vector<ray::ObjectRef<int>> objects{r2};
@@ -226,18 +248,176 @@ TEST(RayClusterModeTest, ExceptionTest) {
   auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate, int)).Remote(1);
   auto object1 = actor1.Task(&Counter::ExceptionFunc).Remote();
   EXPECT_THROW(object1.Get(), ray::internal::RayTaskException);
+
+  auto actor2 = ray::Actor(Counter::FactoryCreateException).Remote();
+  auto object2 = actor2.Task(&Counter::Plus1).Remote();
+  EXPECT_THROW(object2.Get(), ray::internal::RayActorException);
+}
+
+TEST(RayClusterModeTest, GetAllNodeInfoTest) {
+  const auto &gcs_client =
+      ray::internal::AbstractRayRuntime::GetInstance()->GetGlobalStateAccessor();
+  auto all_node_info = gcs_client->GetAllNodeInfo();
+  EXPECT_EQ(all_node_info.size(), 1);
+
+  ray::rpc::GcsNodeInfo node_info;
+  node_info.ParseFromString(all_node_info[0]);
+  EXPECT_EQ(node_info.state(),
+            ray::rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
+}
+
+bool CheckRefCount(
+    std::unordered_map<ray::ObjectID, std::pair<size_t, size_t>> expected) {
+  auto object_store = std::make_unique<ray::internal::NativeObjectStore>();
+  auto map = object_store->GetAllReferenceCounts();
+  return expected == map;
+}
+
+TEST(RayClusterModeTest, LocalRefrenceTest) {
+  auto r1 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Return1).Remote());
+  auto object_id = ray::ObjectID::FromBinary(r1->ID());
+  EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(1, 0)}}));
+  auto r2 = std::make_unique<ray::ObjectRef<int>>(*r1);
+  EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(2, 0)}}));
+  r1.reset();
+  EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(1, 0)}}));
+  r2.reset();
+  EXPECT_TRUE(CheckRefCount({}));
+}
+
+TEST(RayClusterModeTest, DependencyRefrenceTest) {
+  auto r1 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Return1).Remote());
+  auto object_id = ray::ObjectID::FromBinary(r1->ID());
+  EXPECT_TRUE(CheckRefCount({{object_id, std::make_pair(1, 0)}}));
+
+  auto r2 = std::make_unique<ray::ObjectRef<int>>(ray::Task(Plus1).Remote(*r1));
+  EXPECT_TRUE(
+      CheckRefCount({{object_id, std::make_pair(1, 1)},
+                     {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
+  r2->Get();
+  EXPECT_TRUE(
+      CheckRefCount({{object_id, std::make_pair(1, 0)},
+                     {ray::ObjectID::FromBinary(r2->ID()), std::make_pair(1, 0)}}));
+  r1.reset();
+  r2.reset();
+  EXPECT_TRUE(CheckRefCount({}));
+}
+
+TEST(RayClusterModeTest, GetActorTest) {
+  ray::ActorHandle<Counter> actor = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+                                        .SetMaxRestarts(1)
+                                        .SetName("named_actor")
+                                        .Remote();
+  auto named_actor_obj = actor.Task(&Counter::Plus1).Remote();
+  EXPECT_EQ(1, *named_actor_obj.Get());
+
+  auto named_actor_handle_optional = ray::GetActor<Counter>("named_actor");
+  EXPECT_TRUE(named_actor_handle_optional);
+  auto &named_actor_handle = *named_actor_handle_optional;
+  auto named_actor_obj1 = named_actor_handle.Task(&Counter::Plus1).Remote();
+  EXPECT_EQ(2, *named_actor_obj1.Get());
+  EXPECT_FALSE(ray::GetActor<Counter>("not_exist_actor"));
+}
+
+ray::PlacementGroup CreateSimplePlacementGroup(const std::string &name) {
+  std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}}};
+
+  ray::PlacementGroupCreationOptions options{false, name, bundles,
+                                             ray::PlacementStrategy::PACK};
+  return ray::CreatePlacementGroup(options);
+}
+
+TEST(RayClusterModeTest, CreateAndRemovePlacementGroup) {
+  auto first_placement_group = CreateSimplePlacementGroup("first_placement_group");
+  EXPECT_TRUE(first_placement_group.Wait(10));
+  EXPECT_THROW(CreateSimplePlacementGroup("first_placement_group"),
+               ray::internal::RayException);
+
+  auto groups = ray::GetAllPlacementGroups();
+  EXPECT_EQ(groups.size(), 1);
+
+  auto placement_group = ray::GetPlacementGroupById(first_placement_group.GetID());
+  EXPECT_EQ(placement_group.GetID(), first_placement_group.GetID());
+
+  auto placement_group1 = ray::GetPlacementGroup("first_placement_group");
+  EXPECT_EQ(placement_group1.GetID(), first_placement_group.GetID());
+
+  ray::RemovePlacementGroup(first_placement_group.GetID());
+  auto deleted_group = ray::GetPlacementGroupById(first_placement_group.GetID());
+  EXPECT_EQ(deleted_group.GetState(), ray::PlacementGroupState::REMOVED);
+
+  auto not_exist_group = ray::GetPlacementGroup("not_exist_placement_group");
+  EXPECT_TRUE(not_exist_group.GetID().empty());
+
+  ray::RemovePlacementGroup(first_placement_group.GetID());
+}
+
+TEST(RayClusterModeTest, CreatePlacementGroupExceedsClusterResource) {
+  std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 10000}}};
+
+  ray::PlacementGroupCreationOptions options{false, "first_placement_group", bundles,
+                                             ray::PlacementStrategy::PACK};
+  auto first_placement_group = ray::CreatePlacementGroup(options);
+  EXPECT_FALSE(first_placement_group.Wait(3));
+  ray::RemovePlacementGroup(first_placement_group.GetID());
+  auto deleted_group = ray::GetPlacementGroupById(first_placement_group.GetID());
+  EXPECT_EQ(deleted_group.GetState(), ray::PlacementGroupState::REMOVED);
+
+  auto not_exist_group = ray::GetPlacementGroup("not_exist_placement_group");
+  EXPECT_TRUE(not_exist_group.GetID().empty());
+}
+
+TEST(RayClusterModeTest, CreateActorWithPlacementGroup) {
+  auto placement_group = CreateSimplePlacementGroup("first_placement_group");
+  EXPECT_TRUE(placement_group.Wait(10));
+
+  auto actor1 = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+                    .SetResources({{"CPU", 1.0}})
+                    .SetPlacementGroup(placement_group, 0)
+                    .Remote();
+  auto r1 = actor1.Task(&Counter::Plus1).Remote();
+  std::vector<ray::ObjectRef<int>> objects{r1};
+  auto result = ray::Wait(objects, 1, 1000);
+  EXPECT_EQ(result.ready.size(), 1);
+  EXPECT_EQ(result.unready.size(), 0);
+  auto result_vector = ray::Get(objects);
+  EXPECT_EQ(*(result_vector[0]), 1);
+
+  // Exceeds the resources of PlacementGroup.
+  auto actor2 = ray::Actor(RAY_FUNC(Counter::FactoryCreate))
+                    .SetResources({{"CPU", 2.0}})
+                    .SetPlacementGroup(placement_group, 0)
+                    .Remote();
+  auto r2 = actor2.Task(&Counter::Plus1).Remote();
+  std::vector<ray::ObjectRef<int>> objects2{r2};
+  auto result2 = ray::Wait(objects2, 1, 1000);
+  EXPECT_EQ(result2.ready.size(), 0);
+  EXPECT_EQ(result2.unready.size(), 1);
+  ray::RemovePlacementGroup(placement_group.GetID());
+}
+
+TEST(RayClusterModeTest, TaskWithPlacementGroup) {
+  auto placement_group = CreateSimplePlacementGroup("first_placement_group");
+  EXPECT_TRUE(placement_group.Wait(10));
+
+  auto r = ray::Task(Return1)
+               .SetResources({{"CPU", 1.0}})
+               .SetPlacementGroup(placement_group, 0)
+               .Remote();
+  EXPECT_EQ(*r.Get(), 1);
+  ray::RemovePlacementGroup(placement_group.GetID());
 }
 
 int main(int argc, char **argv) {
-  gflags::ParseCommandLineFlags(&argc, &argv, false);
-  cmd_argc = &argc;
-  cmd_argv = &argv;
+  absl::ParseCommandLine(argc, argv);
+  cmd_argc = argc;
+  cmd_argv = argv;
   ::testing::InitGoogleTest(&argc, argv);
   int ret = RUN_ALL_TESTS();
 
   ray::Shutdown();
 
-  if (FLAGS_external_cluster) {
+  if (absl::GetFlag<bool>(FLAGS_external_cluster)) {
     ray::internal::ProcessHelper::GetInstance().StopRayNode();
   }
 

@@ -1,10 +1,12 @@
 import copy
 
 import pytest
+from unittest.mock import Mock, patch
 
-from ray.autoscaler._private.aws.config import _get_vpc_id_or_die, \
-    bootstrap_aws, log_to_cli, \
+from ray.autoscaler._private.aws.config import _configure_subnet, \
+    _get_vpc_id_or_die, bootstrap_aws, log_to_cli, \
     DEFAULT_AMI
+from ray.autoscaler._private.aws.node_provider import AWSNodeProvider
 from ray.autoscaler._private.providers import _get_node_provider
 import ray.tests.aws.utils.stubs as stubs
 import ray.tests.aws.utils.helpers as helpers
@@ -620,6 +622,102 @@ def test_launch_templates(ec2_client_stub, ec2_client_stub_fail_fast,
     ec2_client_stub.assert_no_pending_responses()
     ec2_client_stub_fail_fast.assert_no_pending_responses()
     ec2_client_stub_max_retries.assert_no_pending_responses()
+
+
+@pytest.mark.parametrize("num_on_demand_nodes", [0, 1001, 9999])
+@pytest.mark.parametrize("num_spot_nodes", [0, 1001, 9999])
+@pytest.mark.parametrize("stop", [True, False])
+def test_terminate_nodes(num_on_demand_nodes, num_spot_nodes, stop):
+    # This node makes sure that we stop or terminate all the nodes we're
+    # supposed to stop or terminate when we call "terminate_nodes". This test
+    # alse makes sure that we don't try to stop or terminate too many nodes in
+    # a single EC2 request. By default, only 1000 nodes can be
+    # stopped/terminated in one request. To terminate more nodes, we must break
+    # them up into multiple smaller requests.
+    #
+    # "num_on_demand_nodes" is the number of on-demand nodes to stop or
+    #   terminate.
+    # "num_spot_nodes" is the number of on-demand nodes to terminate.
+    # "stop" is True if we want to stop nodes, and False to terminate nodes.
+    #   Note that spot instances are always terminated, even if "stop" is True.
+
+    # Generate a list of unique instance ids to terminate
+    on_demand_nodes = {
+        "i-{:017d}".format(i)
+        for i in range(num_on_demand_nodes)
+    }
+    spot_nodes = {
+        "i-{:017d}".format(i + num_on_demand_nodes)
+        for i in range(num_spot_nodes)
+    }
+    node_ids = list(on_demand_nodes.union(spot_nodes))
+
+    with patch("ray.autoscaler._private.aws.node_provider.make_ec2_client"):
+        provider = AWSNodeProvider(
+            provider_config={
+                "region": "nowhere",
+                "cache_stopped_nodes": stop
+            },
+            cluster_name="default")
+
+    # "_get_cached_node" is used by the AWSNodeProvider to determine whether a
+    # node is a spot instance or an on-demand instance.
+    def mock_get_cached_node(node_id):
+        result = Mock()
+        result.spot_instance_request_id = "sir-08b93456" if \
+            node_id in spot_nodes else ""
+        return result
+
+    provider._get_cached_node = mock_get_cached_node
+
+    provider.terminate_nodes(node_ids)
+
+    stop_calls = provider.ec2.meta.client.stop_instances.call_args_list
+    terminate_calls = provider.ec2.meta.client.terminate_instances \
+        .call_args_list
+
+    nodes_to_stop = set()
+    nodes_to_terminate = spot_nodes
+
+    if stop:
+        nodes_to_stop.update(on_demand_nodes)
+    else:
+        nodes_to_terminate.update(on_demand_nodes)
+
+    for calls, nodes_to_include_in_call in (stop_calls, nodes_to_stop), (
+            terminate_calls, nodes_to_terminate):
+        nodes_included_in_call = set()
+        for call in calls:
+            assert len(call[1]["InstanceIds"]) <= provider.max_terminate_nodes
+            nodes_included_in_call.update(call[1]["InstanceIds"])
+
+        assert nodes_to_include_in_call == nodes_included_in_call
+
+
+def test_use_subnets_ordered_by_az(ec2_client_stub):
+    """
+    This test validates that when bootstrap_aws populates the SubnetIds field,
+    the subnets are ordered the same way as availability zones.
+
+    """
+    # Add a response with a twenty subnets round-robined across the 4 AZs in
+    # `us-west-2` (a,b,c,d). At the end we should only have 15 subnets, ordered
+    # first from `us-west-2c`, then `us-west-2d`, then `us-west-2a`.
+    stubs.describe_twenty_subnets_in_different_azs(ec2_client_stub)
+
+    base_config = helpers.load_aws_example_config_file("example-full.yaml")
+    base_config["provider"][
+        "availability_zone"] = "us-west-2c,us-west-2d,us-west-2a"
+    config = _configure_subnet(base_config)
+
+    # We've filtered down to only subnets in 2c, 2d & 2a
+    for node_type in config["available_node_types"].values():
+        node_config = node_type["node_config"]
+        assert len(node_config["SubnetIds"]) == 15
+        offsets = [int(s.split("-")[1]) % 4 for s in node_config["SubnetIds"]]
+        assert set(offsets[:5]) == {2}, "First 5 should be in us-west-2c"
+        assert set(offsets[5:10]) == {3}, "Next 5 should be in us-west-2d"
+        assert set(offsets[10:15]) == {0}, "Last 5 should be in us-west-2a"
 
 
 if __name__ == "__main__":

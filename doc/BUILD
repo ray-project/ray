@@ -3,32 +3,72 @@
 # Please keep these sorted alphabetically, but start with the
 # root directory.
 # --------------------------------------------------------------------
+
+# Support for Dask has been dropped in 3.6.
+py_test(
+    name = "dask_xgboost",
+    size = "medium",
+    main = "examples/dask_xgboost/dask_xgboost.py",
+    srcs = ["examples/dask_xgboost/dask_xgboost.py"],
+    tags = ["exclusive", "team:ml", "py37"],
+    args = ["--smoke-test", "--address ''", "--num-actors 4",
+            "--cpus-per-actor 1", "--num-actors-inference 4",
+             "--cpus-per-actor-inference 1"]
+)
+
+# Support for Modin has been dropped in 3.6.
+py_test(
+    name = "modin_xgboost",
+    size = "medium",
+    main = "examples/modin_xgboost/modin_xgboost.py",
+    srcs = ["examples/modin_xgboost/modin_xgboost.py"],
+    tags = ["exclusive", "team:ml", "py37"],
+    args = ["--smoke-test", "--address ''", "--num-actors 4",
+            "--cpus-per-actor 1", "--num-actors-inference 4",
+             "--cpus-per-actor-inference 1"]
+)
+
+py_test(
+    name = "big_data_ingestion",
+    size = "small",
+    srcs = ["source/data/_examples/big_data_ingestion.py"],
+    tags = ["exclusive", "team:core", "py37"]
+)
+
+py_test(
+    name = "datasets_train",
+    size = "medium",
+    srcs = ["examples/datasets_train/datasets_train.py"],
+    tags = ["exclusive", "team:ml", "py37", "datasets_train"],
+    args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
+)
+
 py_test(
     name = "plot_hyperparameter",
     size = "small",
     srcs = ["examples/plot_hyperparameter.py"],
-    tags = ["exclusive"]
+    tags = ["exclusive", "team:ml"]
 )
 
 py_test(
     name = "plot_parameter_server",
     size = "medium",
     srcs = ["examples/plot_parameter_server.py"],
-    tags = ["exclusive"]
+    tags = ["exclusive", "team:ml"]
 )
 
 py_test(
     name = "plot_pong_example",
     size = "large",
     srcs = ["examples/plot_pong_example.py"],
-    tags = ["exclusive"]
+    tags = ["exclusive", "team:ml"]
 )
 
 py_test(
     name = "progress_bar",
     size = "small",
     srcs = ["examples/progress_bar.py"],
-    tags = ["exclusive"]
+    tags = ["exclusive", "team:ml"]
 )
 
 
@@ -38,7 +78,7 @@ py_test(
     size = "small",
     main = "examples/doc_code/tf_example.py",
     srcs = ["examples/doc_code/tf_example.py"],
-    tags = ["exclusive", "tf"]
+    tags = ["exclusive", "tf", "team:ml"]
 )
 
 py_test(
@@ -46,7 +86,7 @@ py_test(
     size = "small",
     main = "examples/doc_code/torch_example.py",
     srcs = ["examples/doc_code/torch_example.py"],
-    tags = ["exclusive", "pytorch"]
+    tags = ["exclusive", "pytorch", "team:ml"]
 )
 
 py_test(
@@ -54,7 +94,7 @@ py_test(
     size = "small",
     main = "examples/doc_code/metrics_example.py",
     srcs = ["examples/doc_code/metrics_example.py"],
-    tags = ["exclusive"]
+    tags = ["exclusive", "team:serve"]
 )
 
 py_test(
@@ -62,7 +102,7 @@ py_test(
     size = "small",
     main = "examples/doc_code/runtime_env_example.py",
     srcs = ["examples/doc_code/runtime_env_example.py"],
-    tags = ["exclusive", "post_wheel_build"]
+    tags = ["exclusive", "post_wheel_build", "team:serve"]
 )
 
 # --------------------------------------------------------------------
@@ -75,7 +115,7 @@ py_test(
     size = "medium",
     main = "source/tune/_tutorials/tune-sklearn.py",
     srcs = ["source/tune/_tutorials/tune-sklearn.py"],
-    tags = ["exclusive", "example"],
+    tags = ["exclusive", "example", "team:ml"],
     args = ["--smoke-test"]
 )
 
@@ -84,6 +124,6 @@ py_test(
     size = "medium",
     main = "source/tune/_tutorials/tune-serve-integration-mnist.py",
     srcs = ["source/tune/_tutorials/tune-serve-integration-mnist.py"],
-    tags = ["exclusive", "example"],
+    tags = ["exclusive", "example", "team:ml"],
     args = ["--smoke-test", "--from_scratch", "--day 0"]
 )

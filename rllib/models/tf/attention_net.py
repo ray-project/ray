@@ -22,7 +22,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import one_hot
+from ray.rllib.utils.tf_utils import one_hot
 from ray.rllib.utils.typing import ModelConfigDict, TensorType, List
 
 tf1, tf, tfv = try_import_tf()
@@ -452,9 +452,8 @@ class AttentionWrapper(TFModelV2):
                         one_hot(input_dict[SampleBatch.PREV_ACTIONS][:, i],
                                 self.action_space))
             elif isinstance(self.action_space, MultiDiscrete):
-                for i in range(
-                        self.use_n_prev_actions,
-                        step=self.action_space.shape[0]):
+                for i in range(0, self.use_n_prev_actions,
+                               self.action_space.shape[0]):
                     prev_a_r.append(
                         one_hot(
                             tf.cast(
@@ -790,7 +789,7 @@ class Keras_AttentionWrapper(tf.keras.Model if tf else object):
 
     def call(self, input_dict: SampleBatch) -> \
             (TensorType, List[TensorType], Dict[str, TensorType]):
-        assert input_dict["seq_lens"] is not None
+        assert input_dict[SampleBatch.SEQ_LENS] is not None
         # Push obs through "unwrapped" net's `forward()` first.
         wrapped_out, _, _ = self.wrapped_keras_model(input_dict)
 
@@ -803,9 +802,8 @@ class Keras_AttentionWrapper(tf.keras.Model if tf else object):
                         one_hot(input_dict[SampleBatch.PREV_ACTIONS][:, i],
                                 self.action_space))
             elif isinstance(self.action_space, MultiDiscrete):
-                for i in range(
-                        self.use_n_prev_actions,
-                        step=self.action_space.shape[0]):
+                for i in range(0, self.use_n_prev_actions,
+                               self.action_space.shape[0]):
                     prev_a_r.append(
                         one_hot(
                             tf.cast(

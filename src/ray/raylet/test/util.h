@@ -41,12 +41,12 @@ class MockWorker : public WorkerInterface {
   const std::string IpAddress() const { return address_.ip_address(); }
 
   void SetAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     allocated_instances_ = allocated_instances;
   }
 
   void SetLifetimeAllocatedInstances(
-      std::shared_ptr<TaskResourceInstances> &allocated_instances) {
+      const std::shared_ptr<TaskResourceInstances> &allocated_instances) {
     lifetime_allocated_instances_ = allocated_instances;
   }
 
@@ -67,6 +67,7 @@ class MockWorker : public WorkerInterface {
   bool IsBlocked() const { return blocked_; }
 
   Process GetProcess() const { return Process::CreateNewDummy(); }
+  StartupToken GetStartupToken() const { return 0; }
   void SetProcess(Process proc) { RAY_CHECK(false) << "Method unused"; }
 
   Process GetShimProcess() const { return Process::CreateNewDummy(); }
@@ -126,39 +127,6 @@ class MockWorker : public WorkerInterface {
     return address_;
   }
 
-  const ResourceIdSet &GetLifetimeResourceIds() const {
-    RAY_CHECK(false) << "Method unused";
-    auto *t = new ResourceIdSet();
-    return *t;
-  }
-  void SetLifetimeResourceIds(ResourceIdSet &resource_ids) {
-    RAY_CHECK(false) << "Method unused";
-  }
-  void ResetLifetimeResourceIds() { RAY_CHECK(false) << "Method unused"; }
-
-  const ResourceIdSet &GetTaskResourceIds() const {
-    RAY_CHECK(false) << "Method unused";
-    auto *t = new ResourceIdSet();
-    return *t;
-  }
-  void SetTaskResourceIds(ResourceIdSet &resource_ids) {
-    RAY_CHECK(false) << "Method unused";
-  }
-  void ResetTaskResourceIds() { RAY_CHECK(false) << "Method unused"; }
-  ResourceIdSet ReleaseTaskCpuResources() {
-    RAY_CHECK(false) << "Method unused";
-    auto *t = new ResourceIdSet();
-    return *t;
-  }
-  void AcquireTaskCpuResources(const ResourceIdSet &cpu_resources) {
-    RAY_CHECK(false) << "Method unused";
-  }
-
-  Status AssignTask(const RayTask &task, const ResourceIdSet &resource_id_set) {
-    RAY_CHECK(false) << "Method unused";
-    Status s;
-    return s;
-  }
   void DirectActorCallArgWaitComplete(int64_t tag) {
     RAY_CHECK(false) << "Method unused";
   }
@@ -185,6 +153,16 @@ class MockWorker : public WorkerInterface {
     RAY_CHECK(false) << "Method unused";
     return nullptr;
   }
+
+  bool IsAvailableForScheduling() const {
+    RAY_CHECK(false) << "Method unused";
+    return true;
+  }
+
+ protected:
+  void SetStartupToken(StartupToken startup_token) {
+    RAY_CHECK(false) << "Method unused";
+  };
 
  private:
   WorkerID worker_id_;

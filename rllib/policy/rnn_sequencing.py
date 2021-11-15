@@ -13,6 +13,7 @@ current algorithms: https://github.com/ray-project/ray/issues/2992
 
 import logging
 import numpy as np
+import tree  # pip install dm_tree
 from typing import List, Optional
 
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -45,21 +46,22 @@ def pad_batch_to_sequences_of_same_size(
     Padding depends on episodes found in batch and `max_seq_len`.
 
     Args:
-        batch (SampleBatch): The SampleBatch object. All values in here have
+        batch: The SampleBatch object. All values in here have
             the shape [B, ...].
-        max_seq_len (int): The max. sequence length to use for chopping.
-        shuffle (bool): Whether to shuffle batch sequences. Shuffle may
+        max_seq_len: The max. sequence length to use for chopping.
+        shuffle: Whether to shuffle batch sequences. Shuffle may
             be done in-place. This only makes sense if you're further
             applying minibatch SGD after getting the outputs.
-        batch_divisibility_req (int): The int by which the batch dimension
+        batch_divisibility_req: The int by which the batch dimension
             must be dividable.
-        feature_keys (Optional[List[str]]): An optional list of keys to apply
-            sequence-chopping to. If None, use all keys in batch that are not
+        feature_keys: An optional list of keys to apply sequence-chopping
+            to. If None, use all keys in batch that are not
             "state_in/out_"-type keys.
-        view_requirements (Optional[ViewRequirementsDict]): An optional
-            Policy ViewRequirements dict to be able to infer whether
-            e.g. dynamic max'ing should be applied over the seq_lens.
+        view_requirements: An optional Policy ViewRequirements dict to
+            be able to infer whether e.g. dynamic max'ing should be
+            applied over the seq_lens.
     """
+    # If already zero-padded, skip.
     if batch.zero_padded:
         return
 
@@ -80,8 +82,8 @@ def pad_batch_to_sequences_of_same_size(
     if "state_in_0" in batch or "state_out_0" in batch:
         # Check, whether the state inputs have already been reduced to their
         # init values at the beginning of each max_seq_len chunk.
-        if batch.get("seq_lens") is not None and \
-                len(batch["state_in_0"]) == len(batch["seq_lens"]):
+        if batch.get(SampleBatch.SEQ_LENS) is not None and \
+                len(batch["state_in_0"]) == len(batch[SampleBatch.SEQ_LENS]):
             states_already_reduced_to_init = True
 
         # RNN (or single timestep state-in): Set the max dynamically.
@@ -109,7 +111,7 @@ def pad_batch_to_sequences_of_same_size(
         if k.startswith("state_in_"):
             state_keys.append(k)
         elif not feature_keys and not k.startswith("state_out_") and \
-                k not in ["infos", "seq_lens"] and isinstance(v, np.ndarray):
+                k not in ["infos", SampleBatch.SEQ_LENS]:
             feature_keys_.append(k)
 
     feature_sequences, initial_states, seq_lens = \
@@ -119,17 +121,19 @@ def pad_batch_to_sequences_of_same_size(
             episode_ids=batch.get(SampleBatch.EPS_ID),
             unroll_ids=batch.get(SampleBatch.UNROLL_ID),
             agent_indices=batch.get(SampleBatch.AGENT_INDEX),
-            seq_lens=batch.get("seq_lens"),
+            seq_lens=batch.get(SampleBatch.SEQ_LENS),
             max_seq_len=max_seq_len,
             dynamic_max=dynamic_max,
             states_already_reduced_to_init=states_already_reduced_to_init,
-            shuffle=shuffle)
+            shuffle=shuffle,
+            handle_nested_data=True,
+        )
 
     for i, k in enumerate(feature_keys_):
-        batch[k] = feature_sequences[i]
+        batch[k] = tree.unflatten_as(batch[k], feature_sequences[i])
     for i, k in enumerate(state_keys):
         batch[k] = initial_states[i]
-    batch["seq_lens"] = np.array(seq_lens)
+    batch[SampleBatch.SEQ_LENS] = np.array(seq_lens)
 
     if log_once("rnn_ma_feed_dict"):
         logger.info("Padded input for RNN/Attn.Nets/MA:\n\n{}\n".format(
@@ -187,18 +191,21 @@ def add_time_dimension(padded_inputs: TensorType,
 
 
 @DeveloperAPI
-def chop_into_sequences(*,
-                        feature_columns,
-                        state_columns,
-                        max_seq_len,
-                        episode_ids=None,
-                        unroll_ids=None,
-                        agent_indices=None,
-                        dynamic_max=True,
-                        shuffle=False,
-                        seq_lens=None,
-                        states_already_reduced_to_init=False,
-                        _extra_padding=0):
+def chop_into_sequences(
+        *,
+        feature_columns,
+        state_columns,
+        max_seq_len,
+        episode_ids=None,
+        unroll_ids=None,
+        agent_indices=None,
+        dynamic_max=True,
+        shuffle=False,
+        seq_lens=None,
+        states_already_reduced_to_init=False,
+        handle_nested_data=False,
+        _extra_padding=0,
+):
     """Truncate and pad experiences into fixed-length sequences.
 
     Args:
@@ -214,6 +221,10 @@ def chop_into_sequences(*,
             For example, if max len is 20 and the actual max seq len in the
             data is 7, it will be shrunk to 7.
         shuffle (bool): Whether to shuffle the sequence outputs.
+        handle_nested_data: If True, assume that the data in
+            `feature_columns` could be nested structures (of data).
+            If False, assumes that all items in `feature_columns` are
+            only np.ndarrays (no nested structured of np.ndarrays).
         _extra_padding (int): Add extra padding to the end of sequences.
 
     Returns:
@@ -259,32 +270,36 @@ def chop_into_sequences(*,
             seq_lens.append(seq_len)
         seq_lens = np.array(seq_lens, dtype=np.int32)
 
-    assert sum(seq_lens) == len(feature_columns[0])
-
     # Dynamically shrink max len as needed to optimize memory usage
     if dynamic_max:
         max_seq_len = max(seq_lens) + _extra_padding
 
     feature_sequences = []
-    for f in feature_columns:
-        # Save unnecessary copy.
-        if not isinstance(f, np.ndarray):
-            f = np.array(f)
-        length = len(seq_lens) * max_seq_len
-        if f.dtype == np.object or f.dtype.type is np.str_:
-            f_pad = [None] * length
-        else:
-            # Make sure type doesn't change.
-            f_pad = np.zeros((length, ) + np.shape(f)[1:], dtype=f.dtype)
-        seq_base = 0
-        i = 0
-        for len_ in seq_lens:
-            for seq_offset in range(len_):
-                f_pad[seq_base + seq_offset] = f[i]
-                i += 1
-            seq_base += max_seq_len
-        assert i == len(f), f
-        feature_sequences.append(f_pad)
+    for col in feature_columns:
+        if isinstance(col, list):
+            col = np.array(col)
+        feature_sequences.append([])
+
+        for f in tree.flatten(col):
+            # Save unnecessary copy.
+            if not isinstance(f, np.ndarray):
+                f = np.array(f)
+
+            length = len(seq_lens) * max_seq_len
+            if f.dtype == np.object or f.dtype.type is np.str_:
+                f_pad = [None] * length
+            else:
+                # Make sure type doesn't change.
+                f_pad = np.zeros((length, ) + np.shape(f)[1:], dtype=f.dtype)
+            seq_base = 0
+            i = 0
+            for len_ in seq_lens:
+                for seq_offset in range(len_):
+                    f_pad[seq_base + seq_offset] = f[i]
+                    i += 1
+                seq_base += max_seq_len
+            assert i == len(f), f
+            feature_sequences[-1].append(f_pad)
 
     if states_already_reduced_to_init:
         initial_states = state_columns
@@ -303,7 +318,7 @@ def chop_into_sequences(*,
 
     if shuffle:
         permutation = np.random.permutation(len(seq_lens))
-        for i, f in enumerate(feature_sequences):
+        for i, f in enumerate(tree.flatten(feature_sequences)):
             orig_shape = f.shape
             f = np.reshape(f, (len(seq_lens), -1) + f.shape[1:])
             f = f[permutation]
@@ -313,6 +328,11 @@ def chop_into_sequences(*,
             s = s[permutation]
             initial_states[i] = s
         seq_lens = seq_lens[permutation]
+
+    # Classic behavior: Don't assume data in feature_columns are nested
+    # structs. Don't return them as flattened lists, but as is (index 0).
+    if not handle_nested_data:
+        feature_sequences = [f[0] for f in feature_sequences]
 
     return feature_sequences, initial_states, seq_lens
 
@@ -330,7 +350,7 @@ def timeslice_along_seq_lens_with_overlap(
     Args:
         sample_batch (SampleBatch): The SampleBatch to timeslice.
         seq_lens (Optional[List[int]]): An optional list of seq_lens to slice
-            at. If None, use `sample_batch["seq_lens"]`.
+            at. If None, use `sample_batch[SampleBatch.SEQ_LENS]`.
         zero_pad_max_seq_len (int): If >0, already zero-pad the resulting
             slices up to this length. NOTE: This max-len will include the
             additional timesteps gained via setting pre_overlap (see Example).
@@ -360,7 +380,7 @@ def timeslice_along_seq_lens_with_overlap(
         #  count (makes sure each slice has exactly length 10).
     """
     if seq_lens is None:
-        seq_lens = sample_batch.get("seq_lens")
+        seq_lens = sample_batch.get(SampleBatch.SEQ_LENS)
     assert seq_lens is not None and len(seq_lens) > 0, \
         "Cannot timeslice along `seq_lens` when `seq_lens` is empty or None!"
     # Generate n slices based on seq_lens.
@@ -398,12 +418,12 @@ def timeslice_along_seq_lens_with_overlap(
                         shape=(zero_length, ) + v.shape[1:], dtype=v.dtype),
                     v[data_begin:end]
                 ])
-                for k, v in sample_batch.items() if k != "seq_lens"
+                for k, v in sample_batch.items() if k != SampleBatch.SEQ_LENS
             }
         else:
             data = {
                 k: v[begin:end]
-                for k, v in sample_batch.items() if k != "seq_lens"
+                for k, v in sample_batch.items() if k != SampleBatch.SEQ_LENS
             }
 
         if zero_init_states_:
@@ -411,7 +431,8 @@ def timeslice_along_seq_lens_with_overlap(
             key = "state_in_{}".format(i)
             while key in data:
                 data[key] = np.zeros_like(sample_batch[key][0:1])
-                del data["state_out_{}".format(i)]
+                # Del state_out_n from data if exists.
+                data.pop("state_out_{}".format(i), None)
                 i += 1
                 key = "state_in_{}".format(i)
         # TODO: This will not work with attention nets as their state_outs are
@@ -431,6 +452,7 @@ def timeslice_along_seq_lens_with_overlap(
     # Zero-pad each slice if necessary.
     if zero_pad_max_seq_len > 0:
         for ts in timeslices:
-            ts.zero_pad(max_seq_len=zero_pad_max_seq_len, exclude_states=True)
+            ts.right_zero_pad(
+                max_seq_len=zero_pad_max_seq_len, exclude_states=True)
 
     return timeslices

@@ -23,7 +23,13 @@
 *ray*ObjectID*
 *ray*ObjectReference*
 # Others
+*ray*metrics*
+*opencensus*
+*ray*stats*
+*ray*rpc*
+*ray*gcs*
 *ray*CoreWorker*
+*ray*PeriodicalRunner*;
 *PyInit*
 *init_raylet*
 *Java*

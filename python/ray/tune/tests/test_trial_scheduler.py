@@ -22,6 +22,7 @@ from ray.tune.schedulers import (FIFOScheduler, HyperBandScheduler,
 
 from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
 from ray.tune.suggest._mock import _MockSearcher
+from ray.tune.suggest.suggestion import ConcurrencyLimiter
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.resources import Resources
@@ -216,6 +217,7 @@ class EarlyStoppingSuite(unittest.TestCase):
         self._test_metrics(result2, "mean_loss", "min")
 
 
+# Only barebone impl for start/stop_trial. No internal state maintained.
 class _MockTrialExecutor(TrialExecutor):
     def start_trial(self, trial, checkpoint_obj=None, train=True):
         trial.logger_running = True
@@ -238,6 +240,27 @@ class _MockTrialExecutor(TrialExecutor):
 
     def reset_trial(self, trial, new_config, new_experiment_tag):
         return False
+
+    def debug_string(self):
+        return "This is a mock TrialExecutor."
+
+    def export_trial_if_needed(self):
+        return {}
+
+    def fetch_result(self):
+        return []
+
+    def get_next_available_trial(self):
+        return None
+
+    def get_next_failed_trial(self):
+        return None
+
+    def get_running_trials(self):
+        return []
+
+    def has_resources_for_trial(self, trial: Trial):
+        return True
 
 
 class _MockTrialRunner():
@@ -269,12 +292,6 @@ class _MockTrialRunner():
 
     def get_trials(self):
         return self.trials
-
-    def has_resources_for_trial(self, trial):
-        return True
-
-    def has_resources(self, resources):
-        return True
 
     def _pause_trial(self, trial):
         self.trial_executor.save(trial, Checkpoint.MEMORY, None)
@@ -791,7 +808,7 @@ class BOHBSuite(unittest.TestCase):
         config = {"test_variable": tune.uniform(0, 20)}
         sched = HyperBandForBOHB(
             max_t=10, reduction_factor=3, stop_last_trials=False)
-        alg = TuneBOHB(max_concurrent=4)
+        alg = ConcurrencyLimiter(TuneBOHB(), 4)
         analysis = tune.run(
             train,
             scheduler=sched,
@@ -821,6 +838,7 @@ class _MockTrial(Trial):
         self.resources = Resources(1, 0)
         self.custom_trial_name = None
         self.custom_dirname = None
+        self._default_result_or_future = None
 
     def on_checkpoint(self, checkpoint):
         self.restored_checkpoint = checkpoint.value

@@ -15,15 +15,19 @@ On top of **Ray Core** are several libraries for solving problems in machine lea
 
 - :doc:`../tune/index`
 - :ref:`rllib-index`
-- :ref:`sgd-index`
+- :ref:`train-docs`
+- :ref:`datasets` (beta)
+
+As well as libraries for taking ML and distributed apps to production:
+
 - :ref:`rayserve`
-- :ref:`datasets` (preview)
+- :ref:`workflows` (alpha)
 
 There are also many :ref:`community integrations <ray-oss-list>` with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the :ref:`full list of Ray distributed libraries here <ray-oss-list>`.
 
 .. _`Modin`: https://github.com/modin-project/modin
 .. _`Hugging Face`: https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search
-.. _`MARS`: https://docs.ray.io/en/master/mars-on-ray.html
-.. _`Dask`: https://docs.ray.io/en/master/dask-on-ray.html
+.. _`MARS`: https://docs.ray.io/en/latest/data/mars-on-ray.html
+.. _`Dask`: https://docs.ray.io/en/latest/data/dask-on-ray.html
 .. _`Horovod`: https://horovod.readthedocs.io/en/stable/ray_include.html
 .. _`Scikit-learn`: joblib.html

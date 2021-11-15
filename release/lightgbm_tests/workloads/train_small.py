@@ -11,7 +11,7 @@ import os
 import time
 
 import ray
-from ray.test_utils import wait_for_num_nodes
+from ray._private.test_utils import wait_for_num_nodes
 from lightgbm_ray import RayParams
 
 from ray.util.lightgbm.release_test_util import train_ray
@@ -20,7 +20,7 @@ if __name__ == "__main__":
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "train_small")
     if addr.startswith("anyscale://"):
-        ray.client(address=addr).job_name(job_name).connect()
+        ray.init(address=addr, job_name=job_name)
     else:
         ray.init(address="auto")
 

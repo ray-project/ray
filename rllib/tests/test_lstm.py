@@ -8,6 +8,7 @@ from ray.rllib.examples.env.debug_counter_env import DebugCounterEnv
 from ray.rllib.examples.models.rnn_spy_model import RNNSpyModel
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
 from ray.tune.registry import register_env
 
@@ -31,6 +32,31 @@ class TestLSTMUtils(unittest.TestCase):
             [[101], [102], [103], [0], [201], [202], [203], [204], [205], [0],
              [0], [0]],
         ])
+        self.assertEqual([s.tolist() for s in s_init], [[209, 109, 105]])
+        self.assertEqual(seq_lens.tolist(), [3, 4, 1])
+
+    def test_nested(self):
+        eps_ids = [1, 1, 1, 5, 5, 5, 5, 5]
+        agent_ids = [1, 1, 1, 1, 1, 1, 1, 1]
+        f = [{
+            "a": np.array([1, 2, 3, 4, 13, 14, 15, 16]),
+            "b": {
+                "ba": np.array([5, 6, 7, 8, 9, 10, 11, 12])
+            }
+        }]
+        s = [[209, 208, 207, 109, 108, 107, 106, 105]]
+
+        f_pad, s_init, seq_lens = chop_into_sequences(
+            episode_ids=eps_ids,
+            unroll_ids=np.ones_like(eps_ids),
+            agent_indices=agent_ids,
+            feature_columns=f,
+            state_columns=s,
+            max_seq_len=4,
+            handle_nested_data=True,
+        )
+        check(f_pad, [[[1, 2, 3, 0, 4, 13, 14, 15, 16, 0, 0, 0],
+                       [5, 6, 7, 0, 8, 9, 10, 11, 12, 0, 0, 0]]])
         self.assertEqual([s.tolist() for s in s_init], [[209, 109, 105]])
         self.assertEqual(seq_lens.tolist(), [3, 4, 1])
 
@@ -138,7 +164,7 @@ class TestRNNSequencing(unittest.TestCase):
         self.assertEqual(
             batch0["sequences"].tolist(),
             [[[0], [1], [2], [3]], [[4], [5], [6], [7]], [[8], [9], [0], [0]]])
-        self.assertEqual(batch0["seq_lens"].tolist(), [4, 4, 2])
+        self.assertEqual(batch0[SampleBatch.SEQ_LENS].tolist(), [4, 4, 2])
         self.assertEqual(batch0["state_in"][0][0].tolist(), [0, 0, 0])
         self.assertEqual(batch0["state_in"][1][0].tolist(), [0, 0, 0])
         self.assertGreater(abs(np.sum(batch0["state_in"][0][1])), 0)
@@ -158,7 +184,7 @@ class TestRNNSequencing(unittest.TestCase):
             [[0], [1], [2], [3]],
             [[4], [0], [0], [0]],
         ])
-        self.assertEqual(batch1["seq_lens"].tolist(), [4, 1, 4, 1])
+        self.assertEqual(batch1[SampleBatch.SEQ_LENS].tolist(), [4, 1, 4, 1])
         self.assertEqual(batch1["state_in"][0][2].tolist(), [0, 0, 0])
         self.assertEqual(batch1["state_in"][1][2].tolist(), [0, 0, 0])
         self.assertGreater(abs(np.sum(batch1["state_in"][0][0])), 0)
@@ -198,8 +224,8 @@ class TestRNNSequencing(unittest.TestCase):
             ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_1"))
         if batch0["sequences"][0][0][0] > batch1["sequences"][0][0][0]:
             batch0, batch1 = batch1, batch0  # sort minibatches
-        self.assertEqual(batch0["seq_lens"].tolist(), [4, 4, 2])
-        self.assertEqual(batch1["seq_lens"].tolist(), [2, 3, 4, 1])
+        self.assertEqual(batch0[SampleBatch.SEQ_LENS].tolist(), [4, 4, 2])
+        self.assertEqual(batch1[SampleBatch.SEQ_LENS].tolist(), [2, 3, 4, 1])
         check(batch0["sequences"], [
             [[0], [1], [2], [3]],
             [[4], [5], [6], [7]],
@@ -220,8 +246,8 @@ class TestRNNSequencing(unittest.TestCase):
             ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_3"))
         if batch2["sequences"][0][0][0] > batch3["sequences"][0][0][0]:
             batch2, batch3 = batch3, batch2
-        self.assertEqual(batch2["seq_lens"].tolist(), [4, 4, 2])
-        self.assertEqual(batch3["seq_lens"].tolist(), [4, 4, 2])
+        self.assertEqual(batch2[SampleBatch.SEQ_LENS].tolist(), [4, 4, 2])
+        self.assertEqual(batch3[SampleBatch.SEQ_LENS].tolist(), [4, 4, 2])
         check(batch2["sequences"], [
             [[0], [1], [2], [3]],
             [[4], [5], [6], [7]],

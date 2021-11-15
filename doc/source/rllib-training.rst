@@ -1,7 +1,4 @@
-
-.. important:: The ML team at `Anyscale Inc. <https://anyscale.io>`__, the company behind Ray, is looking for interns and full-time **reinforcement learning engineers** to help advance and maintain RLlib.
- If you have a background in ML/RL and are interested in making RLlib **the** industry-leading open-source RL library, `apply here today <https://jobs.lever.co/anyscale/186d9b8d-3fee-4e07-bb8e-49e85cf33d6b>`__.
- We'd be thrilled to welcome you on the team!
+.. include:: rllib/we_are_hiring.rst
 
 RLlib Training APIs
 ===================
@@ -15,11 +12,12 @@ be trained, checkpointed, or an action computed. In multi-agent training, the tr
 
 .. image:: rllib-api.svg
 
-You can train a simple DQN trainer with the following command:
+You can train a simple DQN trainer with the following commands:
 
 .. code-block:: bash
 
-    rllib train --run DQN --env CartPole-v0  # --config '{"framework": "tf2", "eager_tracing": True}' for eager execution
+    pip install "ray[rllib]" tensorflow
+    rllib train --run DQN --env CartPole-v0  # --config '{"framework": "tf2", "eager_tracing": true}' for eager execution
 
 By default, the results will be logged to a subdirectory of ``~/ray_results``.
 This subdirectory will contain a file ``params.json`` which contains the
@@ -398,6 +396,15 @@ Similar to accessing policy state, you may want to get a reference to the underl
 
 **Example: Preprocessing observations for feeding into a model**
 
+First, install the dependencies:
+
+.. code-block:: python
+
+    # The "Pong-v0" Atari environment requires a few additional gym installs:
+    pip install "ray[rllib]" tensorflow torch "gym[atari]" "gym[accept-rom-license]" atari_py
+
+Then for the code:
+
 .. code-block:: python
 
     >>> import gym
@@ -606,6 +613,8 @@ Visualizing Custom Metrics
 Custom metrics can be accessed and visualized like any other training result:
 
 .. image:: custom_metric.png
+
+.. _exploration-api:
 
 Customizing Exploration Behavior
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -947,7 +956,7 @@ Eager Mode
 
 Policies built with ``build_tf_policy`` (most of the reference algorithms are)
 can be run in eager mode by setting the
-``"framework": "[tf2|tfe]"`` / ``"eager_tracing": True`` config options or using
+``"framework": "[tf2|tfe]"`` / ``"eager_tracing": true`` config options or using
 ``rllib train --config '{"framework": "tf2"}' [--trace]``.
 This will tell RLlib to execute the model forward pass, action distribution,
 loss, and stats functions in eager mode.

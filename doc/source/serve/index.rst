@@ -1,16 +1,12 @@
 .. _rayserve:
 
-============================================
-Ray Serve: Scalable and Programmable Serving
-============================================
+========================================
+Serve: Scalable and Programmable Serving
+========================================
 
-.. warning::
-  Ray Serve is changing fast!  You're probably running the latest pip release and not the nightly build, so please ensure you're viewing the correct version of this documentation.
-  `Here's the documentation for the latest pip release of Ray Serve <https://docs.ray.io/en/latest/serve/index.html>`_.
+.. tip::
+   Get in touch with us if you're using or considering using `Ray Serve <https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU>`_.
 
-
-.. warning::
-  As of Ray 1.4, Serve has a new API centered around the concept of "Deployments." Deployments offer a more streamlined API and can be declaratively updated, which should improve both development and production workflows. The existing APIs have not changed from Ray 1.4 and will continue to work until Ray 1.5, at which point they will be removed (see the package reference if you're not sure about a specific API). Please see the `migration guide <https://docs.google.com/document/d/1Tgm-bHz6au0B8F_Ps0SLPXh9oyw8pIaGWKWunnK-Kuw>`_ for details on how to update your existing Serve application to use this new API and as always we welcome feedback on `Slack <https://docs.google.com/forms/u/1/d/e/1FAIpQLSfAcoiLCHOguOm8e7Jnn-JJdZaCxPGjgVCvFijHB5PLaQLeig/viewform?usp=send_form>`_, `GitHub <https://github.com/ray-project/ray/issues>`_, or the `Ray forum <http://discuss.ray.io/>`_!
 
 
 .. image:: logo.svg
@@ -101,6 +97,7 @@ or head over to the :doc:`tutorials/index` to get started building your Ray Serv
 
 For more, see the following blog posts about Ray Serve:
 
+- `Serving ML Models in Production: Common Patterns <https://www.anyscale.com/blog/serving-ml-models-in-production-common-patterns>`_ by Simon Mo, Edward Oakes, and Michael Galarnyk
 - `How to Scale Up Your FastAPI Application Using Ray Serve <https://medium.com/distributed-computing-with-ray/how-to-scale-up-your-fastapi-application-using-ray-serve-c9a7b69e786>`_ by Archit Kulkarni
 - `Machine Learning is Broken <https://medium.com/distributed-computing-with-ray/machine-learning-serving-is-broken-f59aff2d607f>`_ by Simon Mo
 - `The Simplest Way to Serve your NLP Model in Production with Pure Python <https://medium.com/distributed-computing-with-ray/the-simplest-way-to-serve-your-nlp-model-in-production-with-pure-python-d42b6a97ad55>`_ by Edward Oakes and Bill Chambers

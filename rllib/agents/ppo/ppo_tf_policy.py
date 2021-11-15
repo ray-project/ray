@@ -7,7 +7,7 @@ import logging
 from typing import Dict, List, Optional, Type, Union
 
 import ray
-from ray.rllib.evaluation.episode import MultiAgentEpisode
+from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch, \
     Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
@@ -17,10 +17,10 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.policy.tf_policy_template import build_tf_policy
-from ray.rllib.utils.annotations import Deprecated
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated, DEPRECATED_VALUE, \
+    deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, get_variable
-from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
+from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
 from ray.rllib.utils.typing import AgentID, LocalOptimizer, ModelGradients, \
     TensorType, TrainerConfigDict
 
@@ -50,7 +50,7 @@ def ppo_surrogate_loss(
         logits, state, extra_outs = model(train_batch)
         value_fn_out = extra_outs[SampleBatch.VF_PREDS]
     else:
-        logits, state = model.from_batch(train_batch)
+        logits, state = model(train_batch)
         value_fn_out = model.value_function()
 
     curr_action_dist = dist_class(logits, model)
@@ -60,10 +60,10 @@ def ppo_surrogate_loss(
         # Derive max_seq_len from the data itself, not from the seq_lens
         # tensor. This is in case e.g. seq_lens=[2, 3], but the data is still
         # 0-padded up to T=5 (as it's the case for attention nets).
-        B = tf.shape(train_batch["seq_lens"])[0]
+        B = tf.shape(train_batch[SampleBatch.SEQ_LENS])[0]
         max_seq_len = tf.shape(logits)[0] // B
 
-        mask = tf.sequence_mask(train_batch["seq_lens"], max_seq_len)
+        mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
         mask = tf.reshape(mask, [-1])
 
         def reduce_mean_valid(t):
@@ -81,7 +81,7 @@ def ppo_surrogate_loss(
         curr_action_dist.logp(train_batch[SampleBatch.ACTIONS]) -
         train_batch[SampleBatch.ACTION_LOGP])
     action_kl = prev_action_dist.kl(curr_action_dist)
-    mean_kl = reduce_mean_valid(action_kl)
+    mean_kl_loss = reduce_mean_valid(action_kl)
 
     curr_entropy = curr_action_dist.entropy()
     mean_entropy = reduce_mean_valid(curr_entropy)
@@ -119,7 +119,8 @@ def ppo_surrogate_loss(
     policy._mean_policy_loss = mean_policy_loss
     policy._mean_vf_loss = mean_vf_loss
     policy._mean_entropy = mean_entropy
-    policy._mean_kl = mean_kl
+    # Backward compatibility: Deprecate policy._mean_kl.
+    policy._mean_kl_loss = policy._mean_kl = mean_kl_loss
     policy._value_fn_out = value_fn_out
 
     return total_loss
@@ -144,7 +145,7 @@ def kl_and_loss_stats(policy: Policy,
         "vf_loss": policy._mean_vf_loss,
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS], policy._value_fn_out),
-        "kl": policy._mean_kl,
+        "kl": policy._mean_kl_loss,
         "entropy": policy._mean_entropy,
         "entropy_coeff": tf.cast(policy.entropy_coeff, tf.float64),
     }
@@ -356,7 +357,7 @@ def postprocess_ppo_gae(
         policy: Policy,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+        episode: Optional[Episode] = None) -> SampleBatch:
 
     return compute_gae_for_sample_batch(policy, sample_batch,
                                         other_agent_batches, episode)

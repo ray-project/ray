@@ -64,29 +64,8 @@ std::pair<PlasmaObject, PlasmaError> CreateRequestQueue::TryRequestImmediately(
   PlasmaObject result = {};
 
   // Immediately fulfill it using the fallback allocator.
-  if (RayConfig::instance().plasma_unlimited()) {
-    PlasmaError error = create_callback(/*fallback_allocator=*/true, &result,
-                                        /*spilling_required=*/nullptr);
-    return {result, error};
-  }
-
-  if (!queue_.empty()) {
-    // There are other requests queued. Return an out-of-memory error
-    // immediately because this request cannot be served.
-    return {result, PlasmaError::OutOfMemory};
-  }
-
-  auto req_id = AddRequest(object_id, client, create_callback, object_size);
-  if (!ProcessRequests().ok()) {
-    // If the request was not immediately fulfillable, finish it.
-    if (!queue_.empty()) {
-      // Some errors such as a transient OOM error doesn't finish the request, so we
-      // should finish it here.
-      FinishRequest(queue_.begin());
-    }
-  }
-  PlasmaError error;
-  RAY_CHECK(GetRequestResult(req_id, &result, &error));
+  PlasmaError error = create_callback(/*fallback_allocator=*/true, &result,
+                                      /*spilling_required=*/nullptr);
   return {result, error};
 }
 
@@ -139,11 +118,9 @@ Status CreateRequestQueue::ProcessRequests() {
         RAY_LOG(DEBUG) << "In grace period before fallback allocation / oom.";
         return Status::ObjectStoreFull("Waiting for grace period.");
       } else {
-        if (plasma_unlimited_) {
-          // Trigger the fallback allocator.
-          status = ProcessRequest(/*fallback_allocator=*/true, *request_it,
-                                  /*spilling_required=*/nullptr);
-        }
+        // Trigger the fallback allocator.
+        status = ProcessRequest(/*fallback_allocator=*/true, *request_it,
+                                /*spilling_required=*/nullptr);
         if (!status.ok()) {
           std::string dump = "";
           if (dump_debug_info_callback_ && !logged_oom) {

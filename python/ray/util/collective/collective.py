@@ -26,9 +26,6 @@ try:
         gloo_collective_group import GLOOGroup
 except ImportError:
     _GLOO_AVAILABLE = False
-    logger.warning("PyGloo seems unavailable. Please install PyGloo "
-                   "following the guide at: "
-                   "https://github.com/ray-project/pygloo.")
 
 
 def nccl_available():
@@ -101,6 +98,14 @@ class GroupManager(object):
         del self._name_group_map[group_name]
         # Release the communicator resources
         g.destroy_group()
+
+        # Release the detached actors spawned by `create_collective_group()`
+        name = "info_" + group_name
+        try:
+            store = ray.get_actor(name)
+            ray.kill(store)
+        except ValueError:
+            pass
 
 
 _group_mgr = GroupManager()
@@ -539,7 +544,8 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
 def send_multigpu(tensor,
                   dst_rank: int,
                   dst_gpu_index: int,
-                  group_name: str = "default"):
+                  group_name: str = "default",
+                  n_elements: int = 0):
     """Send a tensor to a remote GPU synchronously.
 
     The function asssume each process owns >1 GPUs, and the sender
@@ -550,6 +556,8 @@ def send_multigpu(tensor,
         dst_rank (int): the rank of the destination process.
         dst_gpu_index (int): the destination gpu index.
         group_name (str): the name of the collective group.
+        n_elements (int): if specified, send the next n elements
+            from the starting address of tensor.
 
     Returns:
         None
@@ -562,9 +570,13 @@ def send_multigpu(tensor,
     if dst_rank == g.rank:
         raise RuntimeError("The dst_rank '{}' is self. Considering "
                            "doing GPU to GPU memcpy instead?".format(dst_rank))
+    if n_elements < 0:
+        raise RuntimeError(
+            "The n_elements '{}' should >= 0.".format(n_elements))
     opts = types.SendOptions()
     opts.dst_rank = dst_rank
     opts.dst_gpu_index = dst_gpu_index
+    opts.n_elements = n_elements
     g.send([tensor], opts)
 
 
@@ -593,7 +605,8 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
 def recv_multigpu(tensor,
                   src_rank: int,
                   src_gpu_index: int,
-                  group_name: str = "default"):
+                  group_name: str = "default",
+                  n_elements: int = 0):
     """Receive a tensor from a remote GPU synchronously.
 
     The function asssume each process owns >1 GPUs, and the sender
@@ -616,10 +629,29 @@ def recv_multigpu(tensor,
     if src_rank == g.rank:
         raise RuntimeError("The dst_rank '{}' is self. Considering "
                            "doing GPU to GPU memcpy instead?".format(src_rank))
+    if n_elements < 0:
+        raise RuntimeError(
+            "The n_elements '{}' should be >= 0.".format(n_elements))
     opts = types.RecvOptions()
     opts.src_rank = src_rank
     opts.src_gpu_index = src_gpu_index
+    opts.n_elements = n_elements
     g.recv([tensor], opts)
+
+
+def synchronize(gpu_id: int):
+    """Synchronize the current process to a give device.
+
+    Args:
+        gpu_id (int): the GPU device id to synchronize.
+
+    Returns:
+        None
+    """
+    if not types.cupy_available():
+        raise RuntimeError("synchronize call requires CUDA and NCCL.")
+    import cupy as cp
+    cp.cuda.Device(gpu_id).synchronize()
 
 
 def _check_and_get_group(group_name):

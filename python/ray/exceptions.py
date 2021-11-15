@@ -3,6 +3,9 @@ from traceback import format_exception
 
 import ray.cloudpickle as pickle
 from ray.core.generated.common_pb2 import RayException, Language, PYTHON
+from ray.core.generated.common_pb2 import Address
+import ray.ray_constants as ray_constants
+from ray._raylet import WorkerID
 import colorama
 import setproctitle
 
@@ -25,7 +28,11 @@ class RayError(Exception):
         ray_exception = RayException()
         ray_exception.ParseFromString(b)
         if ray_exception.language == PYTHON:
-            return pickle.loads(ray_exception.serialized_exception)
+            try:
+                return pickle.loads(ray_exception.serialized_exception)
+            except Exception as e:
+                msg = "Failed to unpickle serialized exception"
+                raise RuntimeError(msg) from e
         else:
             return CrossLanguageError(ray_exception)
 
@@ -170,7 +177,7 @@ class RayTaskError(RayError):
                     # due to the dependency failure.
                     # Print out an user-friendly
                     # message to explain that..
-                    out.append("  Some of the input arguments for "
+                    out.append("  At least one of the input arguments for "
                                "this task could not be computed:")
                 if i + 1 < len(lines) and lines[i + 1].startswith("    "):
                     # If the next line is indented with 2 space,
@@ -279,17 +286,128 @@ class ObjectStoreFullError(RayError):
 
 
 class ObjectLostError(RayError):
-    """Indicates that an object has been lost due to node failure.
+    """Indicates that the object is lost from distributed memory, due to
+    node failure or system error.
 
     Attributes:
         object_ref_hex: Hex ID of the object.
     """
 
-    def __init__(self, object_ref_hex):
+    def __init__(self, object_ref_hex, owner_address, call_site):
         self.object_ref_hex = object_ref_hex
+        self.owner_address = owner_address
+        self.call_site = call_site.replace(
+            ray_constants.CALL_STACK_LINE_DELIMITER, "\n  ")
+
+    def _base_str(self):
+        msg = f"Failed to retrieve object {self.object_ref_hex}. "
+        if self.call_site:
+            msg += (f"The ObjectRef was created at: {self.call_site}")
+        else:
+            msg += (
+                "To see information about where this ObjectRef was created "
+                "in Python, set the environment variable "
+                "RAY_record_ref_creation_sites=1 during `ray start` and "
+                "`ray.init()`.")
+        return msg
 
     def __str__(self):
-        return (f"Object {self.object_ref_hex} is lost due to node failure.")
+        return self._base_str() + "\n\n" + (
+            f"All copies of {self.object_ref_hex} have been lost due to node "
+            "failure. Check cluster logs (`/tmp/ray/session_latest/logs`) for "
+            "more information about the failure.")
+
+
+class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
+    """Indicates that an object has been deleted while there was still a
+    reference to it.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return self._base_str() + "\n\n" + (
+            "The object has already been deleted by the reference counting "
+            "protocol. This should not happen.")
+
+
+class OwnerDiedError(ObjectLostError):
+    """Indicates that the owner of the object has died while there is still a
+    reference to the object.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        log_loc = "`/tmp/ray/session_latest/logs`"
+        if self.owner_address:
+            try:
+                addr = Address()
+                addr.ParseFromString(self.owner_address)
+                ip_addr = addr.ip_address
+                worker_id = WorkerID(addr.worker_id)
+                log_loc = (
+                    f"`/tmp/ray/session_latest/logs/*{worker_id.hex()}*`"
+                    f" at IP address {ip_addr}")
+            except Exception:
+                # Catch all to make sure we always at least print the default
+                # message.
+                pass
+
+        return self._base_str() + "\n\n" + (
+            "The object's owner has exited. This is the Python "
+            "worker that first created the ObjectRef via `.remote()` or "
+            "`ray.put()`. "
+            f"Check cluster logs ({log_loc}) for more "
+            "information about the Python worker failure.")
+
+
+class ObjectReconstructionFailedError(ObjectLostError):
+    """Indicates that the object cannot be reconstructed.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return self._base_str() + "\n\n" + (
+            "The object cannot be reconstructed "
+            "because it was created by an actor, ray.put() call, or its "
+            "ObjectRef was created by a different worker.")
+
+
+class ObjectReconstructionFailedMaxAttemptsExceededError(ObjectLostError):
+    """Indicates that the object cannot be reconstructed because the maximum
+    number of task retries has been exceeded.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return self._base_str() + "\n\n" + (
+            "The object cannot be reconstructed "
+            "because the maximum number of task retries has been exceeded. "
+            "To prevent this error, set "
+            "`@ray.remote(max_retries=<num retries>)` (default 3).")
+
+
+class ObjectReconstructionFailedLineageEvictedError(ObjectLostError):
+    """Indicates that the object cannot be reconstructed because its lineage
+    was evicted due to memory pressure.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return self._base_str() + "\n\n" + (
+            "The object cannot be reconstructed because its lineage has been "
+            "evicted to reduce memory pressure. "
+            "To prevent this error, set the environment variable "
+            "RAY_max_lineage_bytes=<bytes> (default 1GB) during `ray start`.")
 
 
 class GetTimeoutError(RayError):
@@ -325,6 +443,11 @@ RAY_EXCEPTION_TYPES = [
     RayActorError,
     ObjectStoreFullError,
     ObjectLostError,
+    ReferenceCountingAssertionError,
+    ObjectReconstructionFailedError,
+    ObjectReconstructionFailedMaxAttemptsExceededError,
+    ObjectReconstructionFailedLineageEvictedError,
+    OwnerDiedError,
     GetTimeoutError,
     AsyncioActorExit,
     RuntimeEnvSetupError,

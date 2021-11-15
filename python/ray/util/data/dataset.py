@@ -3,10 +3,12 @@ from typing import Callable, List, Iterable, Iterator
 
 import pandas as pd
 
+from ray.util.annotations import Deprecated
 from ray.util.iter import (_NextValueNotReady, LocalIterator, ParallelIterator,
                            T, U, _ActorSet, from_items)
 
 
+@Deprecated
 class MLDataset(ParallelIterator[pd.DataFrame]):
     """A distributed ML dataset implemented based on ParallelIterator
 

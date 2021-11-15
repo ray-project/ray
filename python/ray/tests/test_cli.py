@@ -39,7 +39,7 @@ from testfixtures.popen import MockPopen, PopenBehaviour
 import ray
 import ray.autoscaler._private.aws.config as aws_config
 import ray.scripts.scripts as scripts
-from ray.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition
 
 boto3_list = [{
     "InstanceType": "t1.micro",
@@ -204,9 +204,8 @@ def _check_output_via_pattern(name, result):
     expected_lines = _load_output_pattern(name)
 
     if result.exception is not None:
-        print(result.output)
         raise result.exception from None
-
+    print(result.output)
     expected = r" *\n".join(expected_lines) + "\n?"
     if re.fullmatch(expected, result.output) is None:
         _debug_check_line_by_line(result, expected_lines)
@@ -273,36 +272,6 @@ def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
             "--log-style=pretty", "--log-color", "False"
         ])
         _check_output_via_pattern("test_ray_up.txt", result)
-
-
-@pytest.mark.skipif(
-    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
-    reason=("Mac builds don't provide proper locale support"))
-@mock_ec2
-@mock_iam
-def test_ray_up_no_head_max_workers(configure_lang, _unlink_test_ssh_key,
-                                    configure_aws):
-    def commands_mock(command, stdin):
-        # if we want to have e.g. some commands fail,
-        # we can have overrides happen here.
-        # unfortunately, cutting out SSH prefixes and such
-        # is, to put it lightly, non-trivial
-        if "uptime" in command:
-            return PopenBehaviour(stdout=b"MOCKED uptime")
-        if "rsync" in command:
-            return PopenBehaviour(stdout=b"MOCKED rsync")
-        if "ray" in command:
-            return PopenBehaviour(stdout=b"MOCKED ray")
-        return PopenBehaviour(stdout=b"MOCKED GENERIC")
-
-    with _setup_popen_mock(commands_mock):
-        # config cache does not work with mocks
-        runner = CliRunner()
-        result = runner.invoke(scripts.up, [
-            MISSING_MAX_WORKER_CONFIG_PATH, "--no-config-cache", "-y",
-            "--log-style=pretty", "--log-color", "False"
-        ])
-        _check_output_via_pattern("test_ray_up_no_max_worker.txt", result)
 
 
 @pytest.mark.skipif(
@@ -499,7 +468,7 @@ def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
 
 def test_ray_status():
     import ray
-    address = ray.init().get("redis_address")
+    address = ray.init(num_cpus=3).get("redis_address")
     runner = CliRunner()
 
     def output_ready():
@@ -522,6 +491,27 @@ def test_ray_status():
 
     result_env_arg = runner.invoke(scripts.status, ["--address", address])
     _check_output_via_pattern("test_ray_status.txt", result_env_arg)
+    ray.shutdown()
+
+
+def test_ray_status_multinode():
+    from ray.cluster_utils import Cluster
+    cluster = Cluster()
+    for _ in range(4):
+        cluster.add_node(num_cpus=2)
+    runner = CliRunner()
+
+    def output_ready():
+        result = runner.invoke(scripts.status)
+        result.stdout
+        return not result.exception and "memory" in result.output
+
+    wait_for_condition(output_ready)
+
+    result = runner.invoke(scripts.status, [])
+    _check_output_via_pattern("test_ray_status_multinode.txt", result)
+    ray.shutdown()
+    cluster.shutdown()
 
 
 @pytest.mark.skipif(

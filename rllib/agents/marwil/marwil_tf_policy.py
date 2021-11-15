@@ -9,7 +9,7 @@ from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.framework import try_import_tf, get_variable
-from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
+from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.typing import TrainerConfigDict, TensorType, \
     PolicyID
@@ -30,7 +30,7 @@ class ValueNetworkMixin:
         # input_dict.
         @make_tf_callable(self.get_session())
         def value(**input_dict):
-            model_out, _ = self.model.from_batch(input_dict, is_training=False)
+            model_out, _ = self.model(input_dict)
             # [0] = remove the batch dim.
             return self.model.value_function()[0]
 
@@ -59,7 +59,7 @@ def postprocess_advantages(
         other_agent_batches (Optional[Dict[PolicyID, SampleBatch]]): Optional
             dict of AgentIDs mapping to other agents' trajectory data (from the
             same episode). NOTE: The other agents use the same policy.
-        episode (Optional[MultiAgentEpisode]): Optional multi-agent episode
+        episode (Optional[Episode]): Optional multi-agent episode
             object in which the agents operated.
 
     Returns:
@@ -150,7 +150,7 @@ class MARWILLoss:
 
 def marwil_loss(policy: Policy, model: ModelV2, dist_class: ActionDistribution,
                 train_batch: SampleBatch) -> TensorType:
-    model_out, _ = model.from_batch(train_batch)
+    model_out, _ = model(train_batch)
     action_dist = dist_class(model_out, model)
     value_estimates = model.value_function()
 

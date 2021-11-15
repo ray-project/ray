@@ -37,4 +37,10 @@ public interface RuntimeContext {
    * Get the handle to the current actor itself. Note that this method must be invoked in an actor.
    */
   <T extends BaseActorHandle> T getCurrentActorHandle();
+
+  /** Get available GPU(deviceIds) for this worker. */
+  List<Long> getGpuIds();
+
+  /** Get the namespace of this job. */
+  String getNamespace();
 }

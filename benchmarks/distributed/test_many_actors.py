@@ -1,7 +1,7 @@
 import json
 import os
 import ray
-from ray import test_utils
+import ray._private.test_utils as test_utils
 import time
 import tqdm
 
@@ -46,7 +46,7 @@ test_utils.wait_for_condition(no_resource_leaks)
 
 rate = MAX_ACTORS_IN_CLUSTER / (end_time - start_time)
 
-print(f"Sucess! Started {MAX_ACTORS_IN_CLUSTER} actors in "
+print(f"Success! Started {MAX_ACTORS_IN_CLUSTER} actors in "
       f"{end_time - start_time}s. ({rate} actors/s)")
 
 if "TEST_OUTPUT_JSON" in os.environ:

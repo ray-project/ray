@@ -78,8 +78,8 @@ public class NativeObjectStore extends ObjectStore {
   }
 
   @Override
-  public byte[] promoteAndGetOwnershipInfo(ObjectId objectId) {
-    return nativePromoteAndGetOwnershipInfo(objectId.getBytes());
+  public byte[] getOwnershipInfo(ObjectId objectId) {
+    return nativeGetOwnershipInfo(objectId.getBytes());
   }
 
   @Override
@@ -132,7 +132,7 @@ public class NativeObjectStore extends ObjectStore {
 
   private static native byte[] nativeGetOwnerAddress(byte[] objectId);
 
-  private static native byte[] nativePromoteAndGetOwnershipInfo(byte[] objectId);
+  private static native byte[] nativeGetOwnershipInfo(byte[] objectId);
 
   private static native void nativeRegisterOwnershipInfoAndResolveFuture(
       byte[] objectId, byte[] outerObjectId, byte[] ownerAddress);
