@@ -612,7 +612,7 @@ exist. See :ref:`actor-lifetimes` for more details.
         Optional<ActorHandle<Actor>> actor = Ray.getActor("orange");
         Assert.assertFalse(actor.isPresent());  // actor.isPresent() is false.
 
-        // Driver2.java
+        // Driver3.java
         System.setProperty("ray.job.namespace", "colors");
         Ray.init();
         // This returns the "orange" actor we created in the first job.
