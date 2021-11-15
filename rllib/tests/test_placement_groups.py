@@ -68,10 +68,7 @@ class TestPlacementGroups(unittest.TestCase):
         config["env"] = "CartPole-v0"
         config["framework"] = "tf"
 
-        # Create a trainer with an overridden default_resource_request
-        # method that returns a PlacementGroupFactory.
-
-        class MyTrainer(PGTrainer):
+        class DefaultResourceRequest:
             @classmethod
             def default_resource_request(cls, config):
                 head_bundle = {"CPU": 1, "GPU": 0}
@@ -80,6 +77,9 @@ class TestPlacementGroups(unittest.TestCase):
                     [head_bundle, child_bundle, child_bundle],
                     strategy=config["placement_strategy"])
 
+        # Create a trainer with an overridden default_resource_request
+        # method that returns a PlacementGroupFactory.
+        MyTrainer = PGTrainer.with_updates(mixins=[DefaultResourceRequest])
         tune.register_trainable("my_trainable", MyTrainer)
 
         global trial_executor

@@ -353,9 +353,11 @@ class CommandBasedClient(SyncClient):
         if not isinstance(sync_string, str):
             raise ValueError("{} is not a string.".format(sync_string))
         if "{source}" not in sync_string:
-            raise ValueError("Sync template missing `{source}`.")
+            raise ValueError("Sync template missing `{source}`: "
+                             f"{sync_string}.")
         if "{target}" not in sync_string:
-            raise ValueError("Sync template missing `{target}`.")
+            raise ValueError("Sync template missing `{target}`: "
+                             f"{sync_string}.")
 
     @staticmethod
     def _validate_exclude_template(exclude_template):

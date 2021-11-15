@@ -43,11 +43,11 @@ public class GcsClient {
    * Get a placement group by name.
    *
    * @param name Name of the placement group.
-   * @param global Whether the named placement group is global.
+   * @param namespace The namespace of the placement group.
    * @return The placement group.
    */
-  public PlacementGroup getPlacementGroupInfo(String name, boolean global) {
-    byte[] result = globalStateAccessor.getPlacementGroupInfo(name, global);
+  public PlacementGroup getPlacementGroupInfo(String name, String namespace) {
+    byte[] result = globalStateAccessor.getPlacementGroupInfo(name, namespace);
     return result == null ? null : PlacementGroupUtils.generatePlacementGroupFromByteArray(result);
   }
 
