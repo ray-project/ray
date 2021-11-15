@@ -377,7 +377,7 @@ TEST_F(ClusterTaskManagerTest, IdempotencyTest) {
     *callback_occurred_ptr = true;
   };
 
-  task_manager_.QueueAndScheduleTask(task, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task, false, &reply, callback);
   pool_.TriggerCallbacks();
   ASSERT_FALSE(callback_occurred);
   ASSERT_EQ(leased_workers_.size(), 0);
@@ -1704,9 +1704,9 @@ TEST_F(ClusterTaskManagerTest, CapRunningOnDispatchQueue) {
   auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
     num_callbacks++;
   };
-  task_manager_.QueueAndScheduleTask(task, &reply, callback);
-  task_manager_.QueueAndScheduleTask(task2, &reply, callback);
-  task_manager_.QueueAndScheduleTask(task3, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task, false, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task2, false, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task3, false, &reply, callback);
   pool_.TriggerCallbacks();
 
   ASSERT_EQ(num_callbacks, 2);
@@ -1752,9 +1752,9 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUTasks) {
   auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
     num_callbacks++;
   };
-  task_manager_.QueueAndScheduleTask(task, &reply, callback);
-  task_manager_.QueueAndScheduleTask(task2, &reply, callback);
-  task_manager_.QueueAndScheduleTask(task3, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task, false, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task2, false, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task3, false, &reply, callback);
   pool_.TriggerCallbacks();
 
   // We shouldn't cap anything for zero cpu tasks (and shouldn't crash before
@@ -1826,9 +1826,9 @@ TEST_F(ClusterTaskManagerTest, ZeroCPUNode) {
   auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
     num_callbacks++;
   };
-  task_manager_.QueueAndScheduleTask(task, &reply, callback);
-  task_manager_.QueueAndScheduleTask(task2, &reply, callback);
-  task_manager_.QueueAndScheduleTask(task3, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task, false, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task2, false, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task3, false, &reply, callback);
   pool_.TriggerCallbacks();
 
   // We shouldn't cap anything for zero cpu tasks (and shouldn't crash before
@@ -1870,7 +1870,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
     num_callbacks++;
   };
   for (const auto &task : tasks) {
-    task_manager_.QueueAndScheduleTask(task, &reply, callback);
+    task_manager_.QueueAndScheduleTask(task, false, &reply, callback);
   }
 
   auto runtime_env_hash = tasks[0].GetTaskSpecification().GetRuntimeEnvHash();
@@ -1926,7 +1926,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapIncrease) {
   // Now schedule another task of the same scheduling class.
   RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
                             /*num_args=*/0, /*args=*/{});
-  task_manager_.QueueAndScheduleTask(task, &reply, callback);
+  task_manager_.QueueAndScheduleTask(task, false, &reply, callback);
 
   std::shared_ptr<MockWorker> new_worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
@@ -1967,7 +1967,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
     num_callbacks++;
   };
   for (const auto &task : tasks) {
-    task_manager_.QueueAndScheduleTask(task, &reply, callback);
+    task_manager_.QueueAndScheduleTask(task, false, &reply, callback);
   }
 
   auto runtime_env_hash = tasks[0].GetTaskSpecification().GetRuntimeEnvHash();
@@ -1998,7 +1998,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
   for (int i = 0; i < 2; i++) {
     RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
                               /*num_args=*/0, /*args=*/{});
-    task_manager_.QueueAndScheduleTask(task, &reply, callback);
+    task_manager_.QueueAndScheduleTask(task, false, &reply, callback);
   }
 
   std::shared_ptr<MockWorker> worker3 =
@@ -2023,7 +2023,7 @@ TEST_F(ClusterTaskManagerTest, SchedulingClassCapResetTest) {
     // Ensure a class of a differenct scheduling class can still be scheduled.
     RayTask task5 = CreateTask({},
                                /*num_args=*/0, /*args=*/{});
-    task_manager_.QueueAndScheduleTask(task5, &reply, callback);
+    task_manager_.QueueAndScheduleTask(task5, false, &reply, callback);
     std::shared_ptr<MockWorker> worker5 =
         std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash);
     pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker5));
@@ -2051,7 +2051,7 @@ TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
   auto callback = [&num_callbacks](Status, std::function<void()>, std::function<void()>) {
     num_callbacks++;
   };
-  task_manager_.QueueAndScheduleTask(first_task, &reply, callback);
+  task_manager_.QueueAndScheduleTask(first_task, false, &reply, callback);
 
   auto runtime_env_hash = first_task.GetTaskSpecification().GetRuntimeEnvHash();
   std::vector<std::shared_ptr<MockWorker>> workers;
@@ -2068,7 +2068,7 @@ TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
 
   RayTask second_task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
                                    /*num_args=*/0, /*args=*/{});
-  task_manager_.QueueAndScheduleTask(second_task, &reply, callback);
+  task_manager_.QueueAndScheduleTask(second_task, false, &reply, callback);
   pool_.TriggerCallbacks();
 
   /// Can't schedule yet due to the cap.
@@ -2095,7 +2095,7 @@ TEST_F(ClusterTaskManagerTest, DispatchTimerAfterRequestTest) {
 
   RayTask third_task = CreateTask({{ray::kCPU_ResourceLabel, 8}},
                                   /*num_args=*/0, /*args=*/{});
-  task_manager_.QueueAndScheduleTask(third_task, &reply, callback);
+  task_manager_.QueueAndScheduleTask(third_task, false, &reply, callback);
   pool_.TriggerCallbacks();
 
   /// We still can't schedule the third task since the timer doesn't start

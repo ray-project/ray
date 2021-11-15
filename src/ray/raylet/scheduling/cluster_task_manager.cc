@@ -330,10 +330,6 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
           sched_cls_info.next_update_time =
               std::min(target_time, sched_cls_info.next_update_time);
           break;
-        } else {
-          // Force us to recalculate the next update time the next time a task
-          // comes through this queue.
-          sched_cls_info.next_update_time = std::numeric_limits<int64_t>::max();
         }
       }
 
@@ -419,6 +415,11 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
         }
         work_it = dispatch_queue.erase(work_it);
       } else {
+        // Force us to recalculate the next update time the next time a task
+        // comes through this queue. We should only do this when we're
+        // confident we're ready to dispatch the task after all checks have
+        // passed.
+        sched_cls_info.next_update_time = std::numeric_limits<int64_t>::max();
         sched_cls_info.running_tasks.insert(spec.TaskId());
         // The local node has the available resources to run the task, so we should run
         // it.
