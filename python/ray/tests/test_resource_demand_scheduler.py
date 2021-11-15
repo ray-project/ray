@@ -13,11 +13,10 @@ import ray.ray_constants
 from ray.autoscaler._private.util import prepare_config, format_info_string
 from ray.tests.test_autoscaler import SMALL_CLUSTER, MOCK_DEFAULT_CONFIG, \
     MULTI_WORKER_CLUSTER, TYPES_A, MockProvider, MockProcessRunner, \
-    MockNodeInfoStub, mock_raylet_id, fill_in_raylet_ids
+    MockNodeInfoStub, mock_raylet_id, fill_in_raylet_ids, MockAutoscaler
 from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
                                                _clear_provider_cache)
-from ray.autoscaler._private.autoscaler import StandardAutoscaler, \
-    AutoscalerSummary
+from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.load_metrics import LoadMetrics, \
     LoadMetricsSummary
 from ray.autoscaler._private.commands import get_or_create_head_node
@@ -1494,7 +1493,7 @@ class AutoscalingTest(unittest.TestCase):
         }, 1)
         head_ip = self.provider.non_terminated_node_ips({})[0]
         lm = LoadMetrics(local_ip=head_ip)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1572,7 +1571,7 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics("172.0.0.0"),
             MockNodeInfoStub(),
@@ -1599,7 +1598,7 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics("172.0.0.0"),
             MockNodeInfoStub(),
@@ -1629,7 +1628,7 @@ class AutoscalingTest(unittest.TestCase):
         }, 1)
         head_ip = self.provider.non_terminated_node_ips({})[0]
         lm = LoadMetrics(head_ip)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1699,7 +1698,7 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
         lm = LoadMetrics("172.0.0.0")
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1764,7 +1763,7 @@ class AutoscalingTest(unittest.TestCase):
         self.provider.finish_starting_nodes()
         runner = MockProcessRunner()
         lm = LoadMetrics(local_ip=head_ip)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1803,7 +1802,7 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
         }, 1)
         runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
             MockNodeInfoStub(),
@@ -1842,7 +1841,7 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics("172.0.0.0"),
             MockNodeInfoStub(),
@@ -1880,7 +1879,7 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics("172.0.0.0"),
             MockNodeInfoStub(),
@@ -1927,7 +1926,7 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
         lm = LoadMetrics("172.0.0.0")
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1976,7 +1975,7 @@ class AutoscalingTest(unittest.TestCase):
         }, 1)
         lm = LoadMetrics("172.0.0.0")
         lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 0}, {"CPU": 0}, {})
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2037,7 +2036,7 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics("172.0.0.0"),
             MockNodeInfoStub(),
@@ -2119,7 +2118,7 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
         lm = LoadMetrics("172.0.0.0")
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2150,7 +2149,7 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics("172.0.0.0"),
             MockNodeInfoStub(),
@@ -2201,7 +2200,7 @@ class AutoscalingTest(unittest.TestCase):
         }, 1)
         lm = LoadMetrics("172.0.0.0")
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2323,7 +2322,7 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
         lm = LoadMetrics("172.0.0.0")
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2439,7 +2438,7 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
         lm = LoadMetrics("172.0.0.0")
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2493,7 +2492,7 @@ class AutoscalingTest(unittest.TestCase):
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),

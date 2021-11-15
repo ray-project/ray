@@ -297,9 +297,11 @@ class MockProvider(NodeProvider):
         # different threads. This can be treated as a global lock for
         # everything.
         self.lock = threading.Lock()
+        self.num_non_terminated_nodes_calls = 0
         super().__init__(None, None)
 
     def non_terminated_nodes(self, tag_filters):
+        self.num_non_terminated_nodes_calls += 1
         with self.lock:
             if self.throw:
                 raise Exception("oops")
@@ -382,6 +384,21 @@ class MockProvider(NodeProvider):
             for node in self.mock_nodes.values():
                 if node.state == "pending":
                     node.state = "running"
+
+class MockAutoscaler(StandardAutoscaler):
+    """Test autoscaler constructed to verify the property that each
+    autoscaler update issues at most one provider.non_terminated_nodes call.
+    """
+    def _update(self):
+        # Only works with MockProvider
+        assert isinstance(self.provider, MockProvider)
+        start_calls = self.provider.num_non_terminated_nodes_calls
+        super()._update()
+        end_calls = self.provider.num_non_terminated_nodes_calls
+
+        # Strict inequality if update is called twice within the throttling
+        # interval `self.update_interval_s`
+        assert end_calls <= start_calls + 1
 
 SMALL_CLUSTER = {
     "cluster_name": "default",
@@ -664,7 +681,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(invalid_config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
             MockNodeInfoStub(),
@@ -819,7 +836,7 @@ class AutoscalingTest(unittest.TestCase):
             _runner=runner)
         self.waitForNodes(1)
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1317,7 +1334,7 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         runner = MockProcessRunner()
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
             MockNodeInfoStub(),
@@ -1376,7 +1393,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(10)])
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1468,7 +1485,7 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD
         }, 1)
         lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, {})
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             mock_node_info_stub,
@@ -1522,7 +1539,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(config)
         self.provider = MockProvider()
         runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
             MockNodeInfoStub(),
@@ -1562,7 +1579,7 @@ class AutoscalingTest(unittest.TestCase):
         lm = LoadMetrics()
         lm.local_ip = head_ip
         lm.update(head_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, {})
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1625,7 +1642,7 @@ class AutoscalingTest(unittest.TestCase):
         lm = LoadMetrics()
         lm.local_ip = head_ip
 
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1708,7 +1725,7 @@ class AutoscalingTest(unittest.TestCase):
         lm = LoadMetrics()
         lm.local_ip = head_ip
 
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1765,7 +1782,7 @@ class AutoscalingTest(unittest.TestCase):
         lm = LoadMetrics()
         lm.local_ip = head_ip
 
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1793,7 +1810,7 @@ class AutoscalingTest(unittest.TestCase):
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1832,7 +1849,7 @@ class AutoscalingTest(unittest.TestCase):
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(10)])
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
             MockNodeInfoStub(),
@@ -1873,7 +1890,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
             MockNodeInfoStub(),
@@ -1899,7 +1916,7 @@ class AutoscalingTest(unittest.TestCase):
         config_path = self.write_config(SMALL_CLUSTER)
         self.provider = MockProvider()
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1933,7 +1950,7 @@ class AutoscalingTest(unittest.TestCase):
         lm = LoadMetrics()
         lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, {})
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1980,7 +1997,7 @@ class AutoscalingTest(unittest.TestCase):
         self.provider.throw = True
         runner = MockProcessRunner()
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
             MockNodeInfoStub(),
@@ -2001,7 +2018,7 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(4)])
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
             MockNodeInfoStub(),
@@ -2022,7 +2039,7 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
             MockNodeInfoStub(),
@@ -2045,7 +2062,7 @@ class AutoscalingTest(unittest.TestCase):
         runner = MockProcessRunner(fail_cmds=["setup_cmd"])
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2084,7 +2101,7 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(4)])
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
             MockNodeInfoStub(),
@@ -2138,7 +2155,7 @@ class AutoscalingTest(unittest.TestCase):
             _runner=runner)
         self.waitForNodes(1)
 
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2205,7 +2222,7 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_USER_NODE_TYPE: NODE_TYPE_LEGACY_HEAD
         }, 1)
         lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 1}, {"CPU": 0}, {})
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2301,7 +2318,7 @@ class AutoscalingTest(unittest.TestCase):
         lm = LoadMetrics()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(12)])
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2369,7 +2386,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
         lm = LoadMetrics()
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2417,7 +2434,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
         lm = LoadMetrics()
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2478,7 +2495,7 @@ class AutoscalingTest(unittest.TestCase):
         runner = MockProcessRunner()
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2525,7 +2542,7 @@ class AutoscalingTest(unittest.TestCase):
             "module": "ray.autoscaler.node_provider.NodeProvider",
         }
         config_path = self.write_config(config)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
             MockNodeInfoStub(),
@@ -2563,7 +2580,7 @@ class AutoscalingTest(unittest.TestCase):
         }
         invalid_provider = self.write_config(config)
         with pytest.raises(ImportError):
-            StandardAutoscaler(
+            MockAutoscaler(
                 invalid_provider,
                 LoadMetrics(),
                 MockNodeInfoStub(),
@@ -2577,7 +2594,7 @@ class AutoscalingTest(unittest.TestCase):
         }
         invalid_provider = self.write_config(config, call_prepare_config=False)
         with pytest.raises(ValueError):
-            StandardAutoscaler(
+            MockAutoscaler(
                 invalid_provider,
                 LoadMetrics(),
                 MockNodeInfoStub(),
@@ -2592,7 +2609,7 @@ class AutoscalingTest(unittest.TestCase):
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2637,7 +2654,7 @@ class AutoscalingTest(unittest.TestCase):
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2707,7 +2724,7 @@ class AutoscalingTest(unittest.TestCase):
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2786,7 +2803,7 @@ class AutoscalingTest(unittest.TestCase):
         self.provider = MockProvider(cache_stopped=True)
         runner = MockProcessRunner()
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2839,7 +2856,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.respond_to_call("command -v docker",
                                ["docker" for _ in range(4)])
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2895,7 +2912,7 @@ class AutoscalingTest(unittest.TestCase):
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2942,7 +2959,7 @@ class AutoscalingTest(unittest.TestCase):
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2978,7 +2995,7 @@ MemAvailable:   33000000 kB
         runner.respond_to_call("nvidia-smi", 2 * ["works"])
         runner.respond_to_call("json .Config.Env", 2 * ["[]"])
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -3005,7 +3022,7 @@ MemAvailable:   33000000 kB
         self.provider = MockProvider()
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(1)])
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
             MockNodeInfoStub(),
@@ -3114,7 +3131,7 @@ MemAvailable:   33000000 kB
         runner = MockProcessRunner()
         lm = LoadMetrics()
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -3221,7 +3238,7 @@ MemAvailable:   33000000 kB
         self.provider.error_creates = True
         runner = MockProcessRunner()
         mock_metrics = Mock(spec=AutoscalerPrometheusMetrics())
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
             MockNodeInfoStub(),
