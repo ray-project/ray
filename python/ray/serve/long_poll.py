@@ -134,7 +134,7 @@ class LongPollClient:
                 # Some error happened in the controller. It could be a bug or
                 # some undesired state.
                 logger.error("LongPollHost errored\n" + updates.traceback_str)
-            poll_next_after_s = random.uniform(**CLIENT_SIDE_TIMEOUT_WAIT_S)
+            poll_next_after_s = random.uniform(*CLIENT_SIDE_TIMEOUT_WAIT_S)
             Timer(poll_next_after_s, self._poll_next).start()
             return
 
