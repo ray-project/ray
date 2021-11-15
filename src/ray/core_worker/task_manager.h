@@ -35,7 +35,7 @@ class TaskFinisherInterface {
 
   virtual bool PendingTaskFailed(
       const TaskID &task_id, rpc::ErrorType error_type, const Status *status,
-      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr,
+      const rpc::RayException *creation_task_exception = nullptr,
       bool immediately_mark_object_fail = true) = 0;
 
   virtual void OnTaskDependenciesInlined(
@@ -46,7 +46,7 @@ class TaskFinisherInterface {
 
   virtual void MarkPendingTaskFailed(
       const TaskSpecification &spec, rpc::ErrorType error_type,
-      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr) = 0;
+      const rpc::RayException *creation_task_exception = nullptr) = 0;
 
   virtual absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
 
@@ -145,17 +145,16 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] immediately_mark_object_fail whether immediately mark the task
   /// result object as failed.
   /// \return Whether the task will be retried or not.
-  bool PendingTaskFailed(
-      const TaskID &task_id, rpc::ErrorType error_type, const Status *status = nullptr,
-      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr,
-      bool immediately_mark_object_fail = true) override;
+  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+                         const Status *status = nullptr,
+                         const rpc::RayException *creation_task_exception = nullptr,
+                         bool immediately_mark_object_fail = true) override;
 
   /// Treat a pending task as failed. The lock should not be held when calling
   /// this method because it may trigger callbacks in this or other classes.
   void MarkPendingTaskFailed(const TaskSpecification &spec, rpc::ErrorType error_type,
-                             const std::shared_ptr<rpc::RayException>
-                                 &creation_task_exception = nullptr) override
-      LOCKS_EXCLUDED(mu_);
+                             const rpc::RayException *creation_task_exception =
+                                 nullptr) override LOCKS_EXCLUDED(mu_);
 
   /// A task's dependencies were inlined in the task spec. This will decrement
   /// the ref count for the dependency IDs. If the dependencies contained other

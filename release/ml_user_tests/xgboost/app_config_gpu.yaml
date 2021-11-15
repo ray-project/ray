@@ -1,4 +1,4 @@
-base_image: "anyscale/ray:1.5.0-py37-gpu"
+base_image: "anyscale/ray-ml:nightly-py37-gpu"
 env_vars: {}
 debian_packages:
   - curl
@@ -8,6 +8,7 @@ python:
     - pytest
     - xgboost_ray
     - petastorm
+    - tblib
   conda_packages: []
 
 post_build_cmds:

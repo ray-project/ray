@@ -10,7 +10,6 @@ import ray
 from ray.actor import ActorHandle
 from ray.train.backend import BackendConfig, BackendExecutor, \
     InactiveWorkerGroupError, TrainBackendError, TrainingWorkerError
-
 from ray.train.callbacks.callback import TrainingCallback
 from ray.train.session import TrainingResultType
 from ray.train.utils import RayDataset

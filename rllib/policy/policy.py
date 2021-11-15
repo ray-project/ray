@@ -892,7 +892,9 @@ class Policy(metaclass=ABCMeta):
                                 "automatically remove non-used items from the "
                                 "data stream. Remove the `del` from your "
                                 "postprocessing function.".format(key))
-                        else:
+                        # If we are not writing output to disk, save to erase
+                        # this key to save space in the sample batch.
+                        elif self.config["output"] is None:
                             del self.view_requirements[key]
 
     def _get_dummy_batch_from_view_requirements(
