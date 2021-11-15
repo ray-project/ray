@@ -265,7 +265,7 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
   RAY_LOG(DEBUG) << "Scheduling decision. "
                  << "forcing spillback: " << force_spillback
                  << ". Best node: " << best_node_id << " "
-                 << (best_node_id == -1
+                 << (string_to_int_map_.Get(best_node_id) == "-1"
                          ? NodeID::Nil()
                          : NodeID::FromBinary(string_to_int_map_.Get(best_node_id)))
                  << ", is infeasible: " << *is_infeasible;
