@@ -749,8 +749,8 @@ def run_learning_tests_from_yaml(
 
                 # TODO(jungong) : track trainer and env throughput separately.
                 throughput = timesteps_total / (total_time_s or 1.0)
-                # TODO(jungong) : enable throughput check again after TD3_HalfCheetahBulletEnv
-                # is fixed and verified.
+                # TODO(jungong) : enable throughput check again after
+                #   TD3_HalfCheetahBulletEnv is fixed and verified.
                 # desired_throughput = checks[experiment]["min_throughput"]
                 desired_throughput = None
 
