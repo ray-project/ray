@@ -591,9 +591,7 @@ exist. See :ref:`actor-lifetimes` for more details.
         ray.init(address="auto", namespace="colors")
         # This returns the "orange" actor we created in the first job.
 
-  .. group-tab:: Java
-
-    .. code-block:: java
+    .. code-tab:: java
 
         import ray
 
