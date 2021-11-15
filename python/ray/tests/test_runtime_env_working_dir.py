@@ -15,7 +15,11 @@ import ray
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
-S3_PACKAGE_URI = "s3://runtime-env-test/remote_runtime_env.zip"
+HTTPS_PACKAGE_URI = ("https://github.com/shrekris-anyscale/"
+                     "test_module/archive/HEAD.zip")
+S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
+GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
+REMOTE_URIS = [HTTPS_PACKAGE_URI, S3_PACKAGE_URI]
 
 
 @pytest.fixture(scope="function")
@@ -234,13 +238,14 @@ def test_input_validation(start_cluster, option: str):
 
     ray.shutdown()
 
-    with pytest.raises(ValueError):
-        if option == "working_dir":
-            ray.init(address, runtime_env={"working_dir": "s3://no_dot_zip"})
-        else:
-            ray.init(address, runtime_env={"py_modules": ["s3://no_dot_zip"]})
+    for uri in ["https://no_dot_zip", "s3://no_dot_zip", "gs://no_dot_zip"]:
+        with pytest.raises(ValueError):
+            if option == "working_dir":
+                ray.init(address, runtime_env={"working_dir": uri})
+            else:
+                ray.init(address, runtime_env={"py_modules": [uri]})
 
-    ray.shutdown()
+        ray.shutdown()
 
     if option == "py_modules":
         with pytest.raises(TypeError):
@@ -249,12 +254,13 @@ def test_input_validation(start_cluster, option: str):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("remote_uri", REMOTE_URIS)
 @pytest.mark.parametrize("option", ["failure", "working_dir", "py_modules"])
 @pytest.mark.parametrize("per_task_actor", [True, False])
-def test_s3_uri(start_cluster, option, per_task_actor):
+def test_remote_package_uri(start_cluster, remote_uri, option, per_task_actor):
     """Tests the case where we lazily read files or import inside a task/actor.
 
-    In this case, the files come from an S3 URI.
+    In this case, the files come from a remote location.
 
     This tests both that this fails *without* the working_dir and that it
     passes with it.
@@ -262,9 +268,9 @@ def test_s3_uri(start_cluster, option, per_task_actor):
     cluster, address = start_cluster
 
     if option == "working_dir":
-        env = {"working_dir": S3_PACKAGE_URI}
+        env = {"working_dir": remote_uri}
     elif option == "py_modules":
-        env = {"py_modules": [S3_PACKAGE_URI]}
+        env = {"py_modules": [remote_uri]}
 
     if option == "failure" or per_task_actor:
         ray.init(address)
@@ -305,7 +311,7 @@ def test_s3_uri(start_cluster, option, per_task_actor):
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 @pytest.mark.parametrize(
-    "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
+    "source", [*REMOTE_URIS, lazy_fixture("tmp_working_dir")])
 def test_multi_node(start_cluster, option: str, source: str):
     """Tests that the working_dir is propagated across multi-node clusters."""
     NUM_NODES = 3
@@ -317,7 +323,7 @@ def test_multi_node(start_cluster, option: str, source: str):
     if option == "working_dir":
         ray.init(address, runtime_env={"working_dir": source})
     elif option == "py_modules":
-        if source != S3_PACKAGE_URI:
+        if source not in REMOTE_URIS:
             source = str(Path(source) / "test_module")
         ray.init(address, runtime_env={"py_modules": [source]})
 
@@ -489,7 +495,7 @@ cache/
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize(
     "working_dir",
-    [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
+    [*REMOTE_URIS, lazy_fixture("tmp_working_dir")])
 def test_runtime_context(start_cluster, working_dir):
     """Tests that the working_dir is propagated in the runtime_context."""
     cluster, address = start_cluster
@@ -497,8 +503,8 @@ def test_runtime_context(start_cluster, working_dir):
 
     def check():
         wd = ray.get_runtime_context().runtime_env["working_dir"]
-        if working_dir == S3_PACKAGE_URI:
-            assert wd == S3_PACKAGE_URI
+        if working_dir in REMOTE_URIS:
+            assert wd == working_dir
         else:
             assert wd.startswith("gcs://_ray_pkg_")
 
