@@ -78,7 +78,8 @@ CORE_NIGHTLY_TESTS = {
         SmokeTest("stress_test_dead_actors"),
         "shuffle_data_loader",
         "dask_on_ray_1tb_sort",
-        "many_nodes_actor_test",
+        SmokeTest("threaded_actors_stress_test"),
+        "placement_group_performance_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",
@@ -99,6 +100,19 @@ CORE_NIGHTLY_TESTS = {
     ],
 }
 
+SERVE_NIGHTLY_TESTS = {
+    "~/ray/release/long_running_tests/long_running_tests.yaml": [
+        SmokeTest("serve"),
+        SmokeTest("serve_failure"),
+    ],
+    "~/ray/release/serve_tests/serve_tests.yaml": [
+        "single_deployment_1k_noop_replica",
+        "multi_deployment_1k_noop_replica",
+        "serve_micro_benchmark",
+        "serve_cluster_fault_tolerance",
+    ],
+}
+
 NIGHTLY_TESTS = {
     # "~/ray/release/horovod_tests/horovod_tests.yaml": [
     #     SmokeTest("horovod_test"),
@@ -112,6 +126,8 @@ NIGHTLY_TESTS = {
         "dask_on_ray_large_scale_test_no_spilling",
         "dask_on_ray_large_scale_test_spilling",
         "pg_autoscaling_regression_test",
+        "threaded_actors_stress_test",
+        "many_nodes_actor_test",
     ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("actor_deaths"),
@@ -173,12 +189,6 @@ NIGHTLY_TESTS = {
         # We'll have these as per-PR tests soon.
         # "example_scripts_on_gpu_tests",
     ],
-    "~/ray/release/serve_tests/serve_tests.yaml": [
-        "single_deployment_1k_noop_replica",
-        "multi_deployment_1k_noop_replica",
-        "serve_micro_benchmark",
-        "serve_cluster_fault_tolerance",
-    ],
     "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
         "rte_many_tasks_actors", "wheel_urls", "rte_ray_client"
     ],
@@ -227,13 +237,6 @@ WEEKLY_TESTS = {
     ],
 }
 
-MANUAL_TESTS = {
-    "~/ray/release/long_running_tests/long_running_tests.yaml": [
-        SmokeTest("serve"),
-        SmokeTest("serve_failure"),
-    ],
-}
-
 # This test suite holds "user" tests to test important user workflows
 # in a particular environment.
 # All workloads in this test suite should:
@@ -253,12 +256,12 @@ USER_TESTS = {
 
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
+    "serve-nightly": SERVE_NIGHTLY_TESTS,
     "nightly": {
         **NIGHTLY_TESTS,
         **USER_TESTS
     },
     "weekly": WEEKLY_TESTS,
-    "manual": MANUAL_TESTS,
 }
 
 DEFAULT_STEP_TEMPLATE = {

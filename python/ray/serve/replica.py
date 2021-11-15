@@ -151,7 +151,8 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
 
         async def prepare_for_shutdown(self):
             self.shutdown_event.set()
-            return await self.replica.prepare_for_shutdown()
+            if self.replica is not None:
+                return await self.replica.prepare_for_shutdown()
 
         async def run_forever(self):
             await self.shutdown_event.wait()
