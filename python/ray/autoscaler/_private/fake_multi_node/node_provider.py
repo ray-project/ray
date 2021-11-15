@@ -355,14 +355,15 @@ class FakeMultiNodeProvider(NodeProvider):
         self._update_docker_compose_config()
 
     def terminate_node(self, node_id):
+        if self.uses_docker:
         node = self._nodes.pop(node_id)["node"]
-        self._kill_ray_processes(node)
+        if not self.uses_docker:
+            self._kill_ray_processes(node)
+        else:
+            self._update_docker_compose_config()
 
     def _kill_ray_processes(self, node):
-        if self.uses_docker:
-            self._update_docker_compose_config()
-        else:
-            node.kill_all_processes(check_alive=False, allow_graceful=True)
+        node.kill_all_processes(check_alive=False, allow_graceful=True)
 
     @staticmethod
     def bootstrap_config(cluster_config):
