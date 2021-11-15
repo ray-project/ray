@@ -22,8 +22,7 @@ from ray.train.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
 # Ray Train should be usable even if Tune is not installed.
 from ray.train.utils import construct_path
 from ray.train.worker_group import WorkerGroup
-from ray.util.ml_utils.node import force_on_current_node, \
-    get_current_node_resource_key
+from ray.util.ml_utils.node import force_on_current_node
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -150,8 +149,11 @@ class Trainer:
 
         if not ray.is_initialized():
             ray.init()
-        # Assign BackendExecutor to head node.
-        remote_executor = force_on_current_node(remote_executor)
+        if not self._is_tune_enabled():
+            # Assign BackendExecutor to head node.
+            # This is needed for Ray Client mode to support fault tolerance.
+            # This is not needed in Tune as the Trial will be on the cluster.
+            remote_executor = force_on_current_node(remote_executor)
 
         self._backend_executor_actor = remote_executor.remote(
             backend_config=backend_config,
@@ -161,7 +163,7 @@ class Trainer:
             additional_resources_per_worker=resources_per_worker,
             max_retries=max_retries)
 
-        if tune is not None and tune.is_session_enabled():
+        if self._is_tune_enabled():
             self.checkpoint_manager = TuneCheckpointManager()
         else:
             self.checkpoint_manager = CheckpointManager()
@@ -206,6 +208,10 @@ class Trainer:
             return get_backend_config_cls(backend)()
         else:
             raise TypeError(f"Invalid type for backend: {type(backend)}.")
+
+    def _is_tune_enabled(self):
+        """Whether or not this Trainer is part of a Tune session."""
+        return tune is not None and tune.is_session_enabled()
 
     def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the training execution service.
@@ -786,9 +792,7 @@ def _create_tune_trainable(train_func, dataset, backend, num_workers, use_gpu,
         @classmethod
         def default_resource_request(cls,
                                      config: Dict) -> PlacementGroupFactory:
-            node_resource_key = get_current_node_resource_key()
             trainer_bundle = [{"CPU": 1}]
-            backend_executor_bundle = [{node_resource_key: 0.01}]
             worker_resources = {"CPU": 1, "GPU": int(use_gpu)}
             worker_resources_extra = {} if resources_per_worker is None else \
                 resources_per_worker
@@ -796,7 +800,7 @@ def _create_tune_trainable(train_func, dataset, backend, num_workers, use_gpu,
                 **worker_resources,
                 **worker_resources_extra
             } for _ in range(num_workers)]
-            bundles = trainer_bundle + backend_executor_bundle + worker_bundles
+            bundles = trainer_bundle + worker_bundles
             return PlacementGroupFactory(bundles, strategy="PACK")
 
     return TrainTrainable
