@@ -215,10 +215,9 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
           return ray::ConcurrencyGroup{concurrency_group_name, max_concurrency,
                                        native_func_descriptors};
         });
+    max_pending_calls = static_cast<int32_t>(env->GetIntField(
+        actorCreationOptions, java_actor_creation_options_max_pending_calls));
   }
-
-  max_pending_calls = static_cast<int32_t>(env->GetIntField(
-      actorCreationOptions, java_actor_creation_options_max_pending_calls));
 
   // TODO(suquark): support passing namespace for Java. Currently
   // there is no use case.
