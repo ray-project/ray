@@ -4,7 +4,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 import ray.train as train
-from ray.train import Trainer, TorchConfig
+from ray.train import Trainer
+from ray.train.torch import TorchConfig
 from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DistributedSampler
@@ -48,7 +49,9 @@ def validate_epoch(dataloader, model, loss_fn, device):
             pred = model(X)
             loss += loss_fn(pred, y).item()
     loss /= num_batches
-    result = {"model": model.state_dict(), "loss": loss}
+    import copy
+    model_copy = copy.deepcopy(model)
+    result = {"model": model_copy.cpu().state_dict(), "loss": loss}
     return result
 
 
