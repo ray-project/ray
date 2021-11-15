@@ -20,7 +20,6 @@ def test_api_functions():
         "cancel",
         "get_actor",
         "get_gpu_ids",
-        "get_job_submission_client_cluster_info",
         "shutdown",
         "method",
         "nodes",

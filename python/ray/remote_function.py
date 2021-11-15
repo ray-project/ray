@@ -151,6 +151,7 @@ class RemoteFunction:
 
         The arguments are the same as those that can be passed to
         :obj:`ray.remote`.
+        Overriding `max_calls` is not supported.
 
         Examples:
 
@@ -160,7 +161,7 @@ class RemoteFunction:
             def f():
                return 1, 2
             # Task f will require 2 gpus instead of 1.
-            g = f.options(num_gpus=2, max_calls=None)
+            g = f.options(num_gpus=2)
         """
 
         func_cls = self
