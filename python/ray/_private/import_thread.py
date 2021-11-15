@@ -3,6 +3,7 @@ import threading
 import traceback
 
 import redis
+import grpc
 
 import ray
 from ray import ray_constants
@@ -84,7 +85,7 @@ class ImportThread:
                     num_imported += 1
                     key = self.redis_client.lindex("Exports", i)
                     self._process_key(key)
-        except (OSError, redis.exceptions.ConnectionError) as e:
+        except (OSError, redis.exceptions.ConnectionError, grpc.RpcError) as e:
             logger.error(f"ImportThread: {e}")
         finally:
             # Close the pubsub client to avoid leaking file descriptors.

@@ -20,7 +20,6 @@ from ray import cloudpickle as pickle
 from ray._raylet import PythonFunctionDescriptor
 from ray._private.utils import (
     check_oversized_function,
-    decode,
     ensure_str,
     format_error_message,
 )
@@ -195,9 +194,7 @@ class FunctionActorManager:
 
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
-        function_name = decode(function_name.encode())
         max_calls = int(max_calls)
-        module = decode(module.encode())
 
         # This function is called by ImportThread. This operation needs to be
         # atomic. Otherwise, there is race condition. Another thread may use
