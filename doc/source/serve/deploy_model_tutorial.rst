@@ -310,6 +310,6 @@ servers, be sure to check out :doc:`tutorials/index`.
 
 .. rubric:: Footnotes
 
-.. [#f1] Credit for this model goes to `Abishek Kumar Mishra <https://github.com/abhimishra91>`_ 
+.. [#f1] Credit for this model goes to `Abhishek Kumar Mishra <https://github.com/abhimishra91>`_ 
 for creating the original `Colab Notebook <https://github.com/abhimishra91/transformers-tutorials/blob/master/transformers_summarization_wandb.ipynb>`_
 and `Manuel Romero <https://huggingface.co/mrm8488>`_ for the adapted model on Hugging Face.
