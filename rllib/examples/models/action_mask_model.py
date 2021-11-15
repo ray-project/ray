@@ -25,8 +25,8 @@ class ActionMaskModel(TFModelV2):
 
         orig_space = getattr(obs_space, "original_space", obs_space)
         assert isinstance(orig_space, Dict) and \
-            "action_mask" in orig_space.spaces and \
-            "observations" in orig_space.spaces
+               "action_mask" in orig_space.spaces and \
+               "observations" in orig_space.spaces
 
         super().__init__(obs_space, action_space, num_outputs, model_config,
                          name)
@@ -37,7 +37,7 @@ class ActionMaskModel(TFModelV2):
 
         # disable action masking --> will likely lead to invalid actions
         self.no_masking = False
-        if "custom_model_config" in model_config and "no_masking" in model_config["custom_model_config"]:
+        if "no_masking" in model_config["custom_model_config"]:
             self.no_masking = model_config["custom_model_config"]["no_masking"]
 
     def forward(self, input_dict, state, seq_lens):
@@ -68,18 +68,18 @@ class TorchActionMaskModel(TorchModelV2, nn.Module):
     """PyTorch version of above ActionMaskingModel."""
 
     def __init__(
-            self,
-            obs_space,
-            action_space,
-            num_outputs,
-            model_config,
-            name,
-            **kwargs,
+        self,
+        obs_space,
+        action_space,
+        num_outputs,
+        model_config,
+        name,
+        **kwargs,
     ):
         orig_space = getattr(obs_space, "original_space", obs_space)
         assert isinstance(orig_space, Dict) and \
-            "action_mask" in orig_space.spaces and \
-            "observations" in orig_space.spaces
+               "action_mask" in orig_space.spaces and \
+               "observations" in orig_space.spaces
 
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name, **kwargs)
@@ -91,7 +91,7 @@ class TorchActionMaskModel(TorchModelV2, nn.Module):
 
         # disable action masking --> will likely lead to invalid actions
         self.no_masking = False
-        if "custom_model_config" in model_config and "no_masking" in model_config["custom_model_config"]:
+        if "no_masking" in model_config["custom_model_config"]:
             self.no_masking = model_config["custom_model_config"]["no_masking"]
 
     def forward(self, input_dict, state, seq_lens):
