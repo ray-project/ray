@@ -30,6 +30,8 @@ class DeploymentVersion:
         return self._hash
 
     def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, DeploymentVersion):
+            return False
         return self._hash == other._hash
 
 

@@ -125,7 +125,7 @@ training.
        The current TensorFlow implementation supports
        ``MultiWorkerMirroredStrategy`` (and ``MirroredStrategy``). If there are
        other strategies you wish to see supported by Ray Train, please let us know
-       by submitting a `feature request on GitHub`_.
+       by submitting a `feature request on GitHub <https://github.com/ray-project/ray/issues>`_.
 
     These instructions closely follow TensorFlow's `Multi-worker training
     with Keras <https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras>`_
@@ -172,17 +172,64 @@ The ``Trainer`` is the primary Ray Train class that is used to manage state and
 execute training. You can create a simple ``Trainer`` for the backend of choice
 with one of the following:
 
-.. code-block:: python
+.. tabs::
 
-    torch_trainer = Trainer(backend="torch", num_workers=2)
+  .. group-tab:: PyTorch
 
-    tensorflow_trainer = Trainer(backend="tensorflow", num_workers=2)
+    .. code-block:: python
 
-    horovod_trainer = Trainer(backend="horovod", num_workers=2)
+        from ray.train import Trainer
+        trainer = Trainer(backend="torch", num_workers=2)
 
-For more configurability, please reference the :ref:`train-api-trainer` API.
+
+  .. group-tab:: TensorFlow
+
+    .. code-block:: python
+
+        from ray.train import Trainer
+        trainer = Trainer(backend="tensorflow", num_workers=2)
+
+  .. group-tab:: Horovod
+
+    .. code-block:: python
+
+        from ray.train import Trainer
+        trainer = Trainer(backend="horovod", num_workers=2)
+
 To customize the ``backend`` setup, you can replace the string argument with a
 :ref:`train-api-backend-config` object.
+
+.. tabs::
+
+  .. group-tab:: PyTorch
+
+    .. code-block:: python
+
+        from ray.train import Trainer
+        from ray.train.torch import TorchConfig
+
+        trainer = Trainer(backend=TorchConfig(...), num_workers=2)
+
+
+  .. group-tab:: TensorFlow
+
+    .. code-block:: python
+
+        from ray.train import Trainer
+        from ray.train.tensorflow import TensorflowConfig
+
+        trainer = Trainer(backend=TensorflowConfig(...), num_workers=2)
+
+  .. group-tab:: Horovod
+
+    .. code-block:: python
+
+        from ray.train import Trainer
+        from ray.train.horovod import HorovodConfig
+
+        trainer = Trainer(backend=HorovodConfig(...), num_workers=2)
+
+For more configurability, please reference the :ref:`train-api-trainer` API.
 
 Run training function
 ~~~~~~~~~~~~~~~~~~~~~
@@ -196,16 +243,12 @@ ready to start training!
     trainer.run(train_func)
     trainer.shutdown() # clean up resources
 
-.. To make existing code from the previous SGD API, see :ref:`Backwards Compatibility <train-backwards-compatibility>`.
-
-.. _`feature request on GitHub`: https://github.com/ray-project/ray/issues
-
 Configuring Training
 --------------------
 
 With Ray Train, you can execute a training function (``train_func``) in a
 distributed manner by calling ``trainer.run(train_func)``. To pass arguments
-into the training function, you can expose a single ``config`` parameter:
+into the training function, you can expose a single ``config`` dictionary parameter:
 
 .. code-block:: diff
 
@@ -287,15 +330,14 @@ Reporting intermediate results
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray Train provides a ``train.report(**kwargs)`` API for reporting intermediate
-results from the training function up to the ``Trainer``.
+results from the training function (run on distributed workers) up to the
+``Trainer`` (where your python script is executed).
 
 Using ``Trainer.run``, these results can be processed through :ref:`Callbacks
 <train-callbacks>` with a ``handle_result`` method defined.
 
-For custom handling, the lower-level ``Trainer.run_iterator`` API produces an
-:ref:`train-api-iterator` which will iterate over the reported results.
-
-The primary use-case for reporting is for metrics (accuracy, loss, etc.).
+The primary use-case for reporting is for metrics (accuracy, loss, etc.) at
+the end of each training epoch.
 
 .. code-block:: python
 
@@ -305,6 +347,10 @@ The primary use-case for reporting is for metrics (accuracy, loss, etc.).
             results = model.train(...)
             train.report(results)
         return model
+
+
+For custom handling, the lower-level ``Trainer.run_iterator`` API produces a
+:ref:`train-api-iterator` which will iterate over the reported results.
 
 Autofilled metrics
 ++++++++++++++++++
@@ -479,13 +525,14 @@ Saving checkpoints
 ~~~~~~~~~~~~~~~~~~
 
 Checkpoints can be saved by calling ``train.save_checkpoint(**kwargs)`` in the
-training function.
-
-.. note:: This must be called by all workers, but only data from the rank 0
-          worker will be saved by the ``Trainer``.
+training function. This will cause the checkpoint state from the distributed
+workers to be saved on the ``Trainer`` (where your python script is executed).
 
 The latest saved checkpoint can be accessed through the ``Trainer``'s
 ``latest_checkpoint`` attribute.
+
+As a trivial example, let's create a "model" which is an integer value that is
+equivalent to the sum of the number of epochs.
 
 .. code-block:: python
 
@@ -495,16 +542,25 @@ The latest saved checkpoint can be accessed through the ``Trainer``'s
     def train_func(config):
         model = 0 # This should be replaced with a real model.
         for epoch in range(config["num_epochs"]):
-            model += epoch
+            model += epoch # This should be replaced with training logic.
             train.save_checkpoint(epoch=epoch, model=model)
 
     trainer = Trainer(backend="torch", num_workers=2)
     trainer.start()
-    trainer.run(train_func, config={"num_epochs": 5})
-    trainer.shutdown()
 
+    trainer.run(train_func, config={"num_epochs": 1})
+    print(trainer.latest_checkpoint)
+    # {'epoch': 0, 'model': 0}
+
+    trainer.run(train_func, config={"num_epochs": 5})
     print(trainer.latest_checkpoint)
     # {'epoch': 4, 'model': 10}
+
+    trainer.run(train_func, config={"num_epochs": 3})
+    print(trainer.latest_checkpoint)
+    # {'epoch': 2, 'model': 3}
+
+    trainer.shutdown()
 
 By default, checkpoints will be persisted to local disk in the :ref:`log
 directory <train-log-dir>` of each run.
@@ -668,7 +724,7 @@ Ray Train provides native support for :ref:`Ray Datasets <datasets>` to support 
    Ray Datasets will distribute the dataset across the Ray Cluster and allow you to perform dataset operations (map, filter, etc.)
    on the distributed dataset.
 2. **Automatic locality-aware sharding**: If provided a Ray Dataset, Ray Train will automatically shard the dataset and assign each shard
-   to a training worker while minimizing cross-node data transfer. Unlike with standard Torch or Tensorflow datasets, each training
+   to a training worker while minimizing cross-node data transfer. Unlike with standard Torch or TensorFlow datasets, each training
    worker will only load its assigned shard into memory rather than the entire ``Dataset``.
 3. **Pipelined Execution**: Ray Datasets also supports pipelining, meaning that data processing operations
    can be run concurrently with training. Training is no longer blocked on expensive data processing operations (such as global shuffling)
@@ -678,8 +734,8 @@ To get started, pass in a Ray Dataset (or multiple) into ``Trainer.run``. Undern
 
 .. warning::
 
-    If you are doing distributed training with Tensorflow, you will need to
-    disable Tensorflow's built-in autosharding as the data on each worker is
+    If you are doing distributed training with TensorFlow, you will need to
+    disable TensorFlow's built-in autosharding as the data on each worker is
     already sharded.
 
     .. code-block:: python
@@ -915,8 +971,8 @@ A couple caveats:
 
 .. _train-backwards-compatibility:
 
-..
-    Backwards Compatibility
-    -------------
 
-    TODO
+Backwards Compatibility with Ray SGD
+------------------------------------
+
+If you are currently using :ref:`RaySGD <sgd-index>`, you can migrate to Ray Train by following: :ref:`sgd-migration`.

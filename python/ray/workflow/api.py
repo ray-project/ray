@@ -105,12 +105,14 @@ def step(*args, **kwargs):
     catch_exceptions = kwargs.pop("catch_exceptions", None)
     name = kwargs.pop("name", None)
     metadata = kwargs.pop("metadata", None)
+    allow_inplace = kwargs.pop("allow_inplace", False)
     ray_options = kwargs
 
     options = WorkflowStepRuntimeOptions.make(
         step_type=StepType.FUNCTION,
         catch_exceptions=catch_exceptions,
         max_retries=max_retries,
+        allow_inplace=allow_inplace,
         ray_options=ray_options)
     return make_step_decorator(options, name, metadata)
 
