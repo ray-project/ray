@@ -1,4 +1,3 @@
-import abc
 import logging
 import os
 from collections import defaultdict
@@ -13,13 +12,14 @@ from ray.train.constants import ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV, TRAIN_ENABLE_WORKER_SPREAD_ENV
 from ray.train.session import TrainingResult
 from ray.train.session import init_session, get_session, shutdown_session
-from ray.train.utils import RayDataset
-from ray.train.utils import check_for_failure
+from ray.train.utils import RayDataset, check_for_failure, Singleton
 from ray.train.worker_group import WorkerGroup
 from ray.util.placement_group import get_current_placement_group, \
     remove_placement_group
 
 T = TypeVar("T")
+
+EncodedData = TypeVar("EncodedData")
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,62 @@ class BackendConfig:
     @property
     def backend_cls(self):
         raise NotImplementedError
+
+
+class Backend(metaclass=Singleton):
+    """Singleton for distributed communication backend.
+
+    Attributes:
+        share_cuda_visible_devices (bool): If True, each worker
+            process will have CUDA_VISIBLE_DEVICES set as the visible device
+            IDs of all workers on the same node for this training instance.
+            If False, each worker will have CUDA_VISIBLE_DEVICES set to the
+            device IDs allocated by Ray for that worker.
+    """
+
+    share_cuda_visible_devices: bool = False
+
+    def on_start(self, worker_group: WorkerGroup,
+                 backend_config: BackendConfig):
+        """Logic for starting this backend."""
+        pass
+
+    def on_shutdown(self, worker_group: WorkerGroup,
+                    backend_config: BackendConfig):
+        """Logic for shutting down the backend."""
+        pass
+
+    def handle_failure(self, worker_group: WorkerGroup,
+                       failed_worker_indexes: List[int],
+                       backend_config: BackendConfig):
+        """Logic for handling failures.
+
+        By default, restart all workers.
+        """
+        worker_group.shutdown()
+        worker_group.start()
+        self.on_start(worker_group, backend_config)
+
+    @staticmethod
+    def encode_data(data_dict: Dict) -> EncodedData:
+        """Logic to encode a data dict before sending to the driver.
+
+        This function will be called on the workers for any data that is
+        sent to the driver via ``train.report()`` or
+        ``train.save_checkpoint()``.
+        """
+
+        return data_dict
+
+    @staticmethod
+    def decode_data(encoded_data: EncodedData) -> Dict:
+        """Logic to decode an encoded data dict.
+
+        This function will be called on the driver after receiving the
+        encoded data dict from the worker.
+        """
+
+        return encoded_data
 
 
 class TrainBackendError(Exception):
@@ -70,7 +126,7 @@ class BackendExecutor:
             additional_resources_per_worker: Optional[Dict[str, float]] = None,
             max_retries: int = 3):
         self._backend_config = backend_config
-        self._backend = self._backend_config.backend_cls()
+        self._backend = backend_config.backend_cls()
         self._num_workers = num_workers
         self._num_cpus_per_worker = num_cpus_per_worker
         self._num_gpus_per_worker = num_gpus_per_worker
@@ -307,7 +363,7 @@ class BackendExecutor:
 
         # First initialize the session.
         def initialize_session(train_func, world_rank, local_rank, world_size,
-                               checkpoint, dataset_shard):
+                               checkpoint, dataset_shard, encode_data_fn):
             try:
                 init_session(
                     training_func=train_func,
@@ -316,6 +372,7 @@ class BackendExecutor:
                     world_size=world_size,
                     dataset_shard=dataset_shard,
                     checkpoint=checkpoint,
+                    encode_data_fn=encode_data_fn,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics
                 )
             except ValueError:
@@ -341,7 +398,8 @@ class BackendExecutor:
                     world_size=len(self.worker_group),
                     train_func=train_func,
                     dataset_shard=self.dataset_shards[index],
-                    checkpoint=checkpoint))
+                    checkpoint=checkpoint,
+                    encode_data_fn=self._backend.encode_data))
 
         self.get_with_failure_handling(futures)
 
@@ -521,41 +579,6 @@ class BackendExecutor:
 
     def _get_num_failures(self):
         return self._num_failures
-
-
-class Backend(metaclass=abc.ABCMeta):
-    """Metaclass for distributed communication backend.
-
-    Attributes:
-        share_cuda_visible_devices (bool): If True, each worker
-            process will have CUDA_VISIBLE_DEVICES set as the visible device
-            IDs of all workers on the same node for this training instance.
-            If False, each worker will have CUDA_VISIBLE_DEVICES set to the
-            device IDs allocated by Ray for that worker.
-    """
-
-    share_cuda_visible_devices: bool = False
-
-    def on_start(self, worker_group: WorkerGroup,
-                 backend_config: BackendConfig):
-        """Logic for starting this backend."""
-        pass
-
-    def on_shutdown(self, worker_group: WorkerGroup,
-                    backend_config: BackendConfig):
-        """Logic for shutting down the backend."""
-        pass
-
-    def handle_failure(self, worker_group: WorkerGroup,
-                       failed_worker_indexes: List[int],
-                       backend_config: BackendConfig):
-        """Logic for handling failures.
-
-        By default, restart all workers.
-        """
-        worker_group.shutdown()
-        worker_group.start()
-        self.on_start(worker_group, backend_config)
 
 
 class InactiveWorkerGroupError(Exception):
