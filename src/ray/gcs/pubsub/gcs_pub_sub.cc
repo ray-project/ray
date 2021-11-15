@@ -302,6 +302,17 @@ Status GcsPublisher::PublishTaskLease(const TaskID &id, const rpc::TaskLeaseData
 Status GcsPublisher::PublishError(const std::string &id,
                                   const rpc::ErrorTableData &message,
                                   const StatusCallback &done) {
+  if (publisher_ != nullptr) {
+    rpc::PubMessage msg;
+    msg.set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+    msg.set_key_id(id);
+    *msg.mutable_error_info_message() = message;
+    publisher_->Publish(msg);
+    if (done != nullptr) {
+      done(Status::OK());
+    }
+    return Status::OK();
+  }
   return pubsub_->Publish(ERROR_INFO_CHANNEL, id, message.SerializeAsString(), done);
 }
 

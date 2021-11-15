@@ -135,11 +135,7 @@ def test_workflow_storage(workflow_start_regular):
     wf_storage = workflow_storage.WorkflowStorage(workflow_id,
                                                   storage.get_global_storage())
     step_id = "some_step"
-    step_options = WorkflowStepRuntimeOptions(
-        step_type=StepType.FUNCTION,
-        catch_exceptions=False,
-        max_retries=1,
-        ray_options={})
+    step_options = WorkflowStepRuntimeOptions.make(step_type=StepType.FUNCTION)
     input_metadata = {
         "name": "test_basic_workflows.append1",
         "workflows": ["def"],
@@ -232,11 +228,6 @@ def test_workflow_storage(workflow_start_regular):
             wf_storage._key_step_function_body(step_id), some_func))
     asyncio_run(wf_storage._put(wf_storage._key_step_args(step_id), args))
     inspect_result = wf_storage.inspect_step(step_id)
-    step_options = WorkflowStepRuntimeOptions(
-        step_type=StepType.FUNCTION,
-        catch_exceptions=False,
-        max_retries=1,
-        ray_options={})
     assert inspect_result == workflow_storage.StepInspectResult(
         args_valid=True,
         func_body_valid=True,

@@ -14,7 +14,8 @@ if TYPE_CHECKING:
     import torch
     import tensorflow as tf
     from ray.data.dataset_pipeline import DatasetPipeline
-    from ray.data.grouped_dataset import GroupedDataset, GroupKeyT
+    from ray.data.grouped_dataset import GroupedDataset, GroupKeyT, \
+        AggregateOnTs
 
 import collections
 import itertools
@@ -29,7 +30,7 @@ from ray.data.context import DatasetContext
 from ray.data.datasource import (
     Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
     ParquetDatasource, BlockWritePathProvider, DefaultBlockWritePathProvider)
-from ray.data.aggregate import AggregateOnT, AggregateFn, Sum, Max, Min, \
+from ray.data.aggregate import AggregateFn, Sum, Max, Min, \
     Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
@@ -369,15 +370,32 @@ class Dataset(Generic[T]):
         reduce_bar = ProgressBar("Repartition", position=0, total=len(splits))
         reduce_out = [
             reduce_task.remote(*s.get_internal_block_refs()) for s in splits
+            if s.num_blocks() > 0
         ]
         del splits  # Early-release memory.
         new_blocks, new_metadata = zip(*reduce_out)
-        reduce_bar.block_until_complete(list(new_blocks))
-        new_metadata = ray.get(list(new_metadata))
+        new_blocks, new_metadata = list(new_blocks), list(new_metadata)
+        new_metadata = reduce_bar.fetch_until_complete(new_metadata)
         reduce_bar.close()
 
-        return Dataset(
-            BlockList(list(new_blocks), list(new_metadata)), self._epoch)
+        # Handle empty blocks.
+        if len(new_blocks) < num_blocks:
+            from ray.data.impl.arrow_block import ArrowBlockBuilder
+            from ray.data.impl.simple_block import SimpleBlockBuilder
+
+            num_empties = num_blocks - len(new_blocks)
+            builder = (ArrowBlockBuilder()
+                       if self._is_arrow_dataset() else SimpleBlockBuilder())
+            empty_block = builder.build()
+            empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
+                input_files=None)
+            empty_blocks, empty_metadata = zip(*[(ray.put(empty_block),
+                                                  empty_meta)
+                                                 for _ in range(num_empties)])
+            new_blocks += empty_blocks
+            new_metadata += empty_metadata
+
+        return Dataset(BlockList(new_blocks, new_metadata), self._epoch)
 
     def random_shuffle(
             self,
@@ -844,102 +862,363 @@ class Dataset(Generic[T]):
 
         Returns:
             If the input dataset is a simple dataset then the output is
-            a tuple of (agg1, agg2, ...) where each tuple element is
+            a tuple of ``(agg1, agg2, ...)`` where each tuple element is
             the corresponding aggregation result.
             If the input dataset is an Arrow dataset then the output is
-            an ArrowRow where each column is the corresponding
+            an ``ArrowRow`` where each column is the corresponding
             aggregation result.
-            If the dataset is empty, return None.
+            If the dataset is empty, return ``None``.
         """
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
-    def sum(self, on: AggregateOnT = None) -> U:
+    def _check_and_normalize_agg_on(self,
+                                    on: Optional["AggregateOnTs"],
+                                    skip_cols: Optional[List[str]] = None
+                                    ) -> Optional["AggregateOnTs"]:
+        """Checks whether the provided aggregation `on` arg is valid for this
+        type of dataset, and normalizes the value based on the Dataset type and
+        any provided columns to skip.
+        """
+        if (on is not None
+                and (not isinstance(on, (str, Callable, list)) or
+                     (isinstance(on, list)
+                      and not (all(isinstance(on_, str) for on_ in on)
+                               or all(isinstance(on_, Callable)
+                                      for on_ in on))))):
+            from ray.data.grouped_dataset import AggregateOnTs
+
+            raise TypeError(
+                f"`on` must be of type {AggregateOnTs}, but got {type(on)}")
+
+        if isinstance(on, list) and len(on) == 0:
+            raise ValueError(
+                "When giving a list for `on`, it must be nonempty.")
+
+        try:
+            is_arrow = self._is_arrow_dataset()
+        except ValueError:
+            # Dataset is empty/cleared, let downstream ops handle this.
+            return on
+
+        if is_arrow:
+            # This should be cached from the ._is_arrow_dataset() check, so we
+            # don't fetch and we assert that the schema is not None.
+            schema = self.schema(fetch_if_missing=False)
+            assert schema is not None
+            if len(schema.names) == 0:
+                # Empty dataset, don't validate `on` since we generically
+                # handle empty datasets downstream.
+                return on
+
+            if on is None:
+                # If a null `on` is given for an Arrow Dataset, coerce it to
+                # all columns sans any that we want to skip.
+                if skip_cols is None:
+                    skip_cols = []
+                elif not isinstance(skip_cols, list):
+                    skip_cols = [skip_cols]
+                on = [col for col in schema.names if col not in skip_cols]
+            # Check that column names refer to valid columns.
+            elif isinstance(on, str) and on not in schema.names:
+                raise ValueError(
+                    f"on={on} is not a valid column name: {schema.names}")
+            elif isinstance(on, list) and isinstance(on[0], str):
+                for on_ in on:
+                    if on_ not in schema.names:
+                        raise ValueError(
+                            f"on={on_} is not a valid column name: "
+                            f"{schema.names}")
+        else:
+            if isinstance(on, str) or (isinstance(on, list)
+                                       and isinstance(on[0], str)):
+                raise ValueError(
+                    "Can't aggregate on a column when using a simple Dataset; "
+                    "use a callable `on` argument or use an Arrow Dataset "
+                    "instead of a simple Dataset.")
+        return on
+
+    def _is_arrow_dataset(self) -> bool:
+        """Determine if Dataset is an Arrow dataset.
+
+        This may block; if the schema is unknown, this will synchronously fetch
+        the schema for the first block.
+        """
+        try:
+            import pyarrow as pa
+        except ModuleNotFoundError:
+            return False
+        else:
+            # We need schema to properly validate, so synchronously
+            # fetch it if necessary.
+            schema = self.schema(fetch_if_missing=True)
+            if schema is None:
+                raise ValueError(
+                    "Dataset is empty or cleared, can't determine whether "
+                    "it's an Arrow dataset")
+            return isinstance(schema, pa.Schema)
+
+    def _aggregate_on(self, agg_cls: type, on: Optional["AggregateOnTs"],
+                      *args, **kwargs):
+        """Helper for aggregating on a particular subset of the dataset.
+
+        This validates the `on` argument, and converts a list of column names
+        or lambdas to a multi-aggregation. A null `on` results in a
+        multi-aggregation on all columns for an Arrow Dataset, and a single
+        aggregation on the entire row for a simple Dataset.
+        """
+        aggs = self._build_multicolumn_aggs(
+            agg_cls, on, *args, skip_cols=None, **kwargs)
+        return self.aggregate(*aggs)
+
+    def _build_multicolumn_aggs(self,
+                                agg_cls: type,
+                                on: Optional["AggregateOnTs"],
+                                *args,
+                                skip_cols: Optional[List[str]] = None,
+                                **kwargs):
+        """Build set of aggregations for applying a single aggregation to
+        multiple columns.
+        """
+        on = self._check_and_normalize_agg_on(on, skip_cols=skip_cols)
+        if not isinstance(on, list):
+            on = [on]
+        return [agg_cls(on_, *args, **kwargs) for on_ in on]
+
+    def sum(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute sum over entire dataset.
+
+        This is a blocking operation.
 
         Examples:
             >>> ray.data.range(100).sum()
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).sum(lambda x: x[1])
             >>> ray.data.range_arrow(100).sum("value")
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).sum(["A", "B"])
 
         Args:
-            on: The data to sum on.
-                It can be the column name for Arrow dataset.
+            on: The data subset on which to compute the sum.
+
+                - For a simple dataset: it can be a callable or a list thereof,
+                  and the default is to return a scalar sum of all rows.
+                - For an Arrow dataset: it can be a column name or a list
+                  thereof, and the default is to return an ``ArrowRow``
+                  containing the column-wise sum of all columns.
 
         Returns:
             The sum result.
+
+            For a simple dataset, the output is:
+
+            - ``on=None``: a scalar representing the sum of all rows,
+            - ``on=callable``: a scalar representing the sum of the outputs of
+              the callable called on each row,
+            - ``on=[callable_1, ..., calalble_n]``: a tuple of
+              ``(sum_1, ..., sum_n)`` representing the sum of the outputs of
+              the corresponding callables called on each row.
+
+            For an Arrow dataset, the output is:
+
+            - ``on=None``: an ArrowRow containing the column-wise sum of all
+              columns,
+            - ``on="col"``: a scalar representing the sum of all items in
+              column ``"col"``,
+            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+              containing the column-wise sum of the provided columns.
+
+            If the dataset is empty, then the output is 0.
         """
-        ret = self.aggregate(Sum(on))
+        ret = self._aggregate_on(Sum, on)
         if ret is None:
             return 0
-        else:
+        elif len(ret) == 1:
             return ret[0]
+        else:
+            return ret
 
-    def min(self, on: AggregateOnT = None) -> U:
+    def min(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute minimum over entire dataset.
+
+        This is a blocking operation.
 
         Examples:
             >>> ray.data.range(100).min()
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).min(lambda x: x[1])
             >>> ray.data.range_arrow(100).min("value")
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).min(["A", "B"])
 
         Args:
-            on: The data to min on.
-                It can be the column name for Arrow dataset.
+            on: The data subset on which to compute the min.
+
+                - For a simple dataset: it can be a callable or a list thereof,
+                  and the default is to return a scalar min of all rows.
+                - For an Arrow dataset: it can be a column name or a list
+                  thereof, and the default is to return an ``ArrowRow``
+                  containing the column-wise min of all columns.
 
         Returns:
             The min result.
+
+            For a simple dataset, the output is:
+
+            - ``on=None``: a scalar representing the min of all rows,
+            - ``on=callable``: a scalar representing the min of the outputs
+              of the callable called on each row,
+            - ``on=[callable_1, ..., calalble_n]``: a tuple of
+              ``(min_1, ..., min_n)`` representing the min of the outputs
+              of the corresponding callables called on each row.
+
+            For an Arrow dataset, the output is:
+
+            - ``on=None``: an ``ArrowRow`` containing the column-wise min of
+              all columns,
+            - ``on="col"``: a scalar representing the min of all items in
+              column ``"col"``,
+            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+              containing the column-wise min of the provided columns.
+
+            If the dataset is empty, then a ``ValueError`` is raised.
         """
-        ret = self.aggregate(Min(on))
+        ret = self._aggregate_on(Min, on)
         if ret is None:
             raise ValueError("Cannot compute min on an empty dataset")
-        else:
+        elif len(ret) == 1:
             return ret[0]
+        else:
+            return ret
 
-    def max(self, on: AggregateOnT = None) -> U:
+    def max(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute maximum over entire dataset.
+
+        This is a blocking operation.
 
         Examples:
             >>> ray.data.range(100).max()
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).max(lambda x: x[1])
             >>> ray.data.range_arrow(100).max("value")
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).max(["A", "B"])
 
         Args:
-            on: The data to max on.
-                It can be the column name for Arrow dataset.
+            on: The data subset on which to compute the max.
+
+                - For a simple dataset: it can be a callable or a list thereof,
+                  and the default is to return a scalar max of all rows.
+                - For an Arrow dataset: it can be a column name or a list
+                  thereof, and the default is to return an ``ArrowRow``
+                  containing the column-wise max of all columns.
 
         Returns:
             The max result.
+
+            For a simple dataset, the output is:
+
+            - ``on=None``: a scalar representing the max of all rows,
+            - ``on=callable``: a scalar representing the max of the outputs of
+              the callable called on each row,
+            - ``on=[callable_1, ..., calalble_n]``: a tuple of
+              ``(max_1, ..., max_n)`` representing the max of the outputs of
+              the corresponding callables called on each row.
+
+            For an Arrow dataset, the output is:
+
+            - ``on=None``: an ``ArrowRow`` containing the column-wise max of
+              all columns,
+            - ``on="col"``: a scalar representing the max of all items in
+              column ``"col"``,
+            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+              containing the column-wise max of the provided columns.
+
+            If the dataset is empty, then a ``ValueError`` is raised.
         """
-        ret = self.aggregate(Max(on))
+        ret = self._aggregate_on(Max, on)
         if ret is None:
             raise ValueError("Cannot compute max on an empty dataset")
-        else:
+        elif len(ret) == 1:
             return ret[0]
+        else:
+            return ret
 
-    def mean(self, on: AggregateOnT = None) -> U:
+    def mean(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute mean over entire dataset.
+
+        This is a blocking operation.
 
         Examples:
             >>> ray.data.range(100).mean()
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).mean(lambda x: x[1])
             >>> ray.data.range_arrow(100).mean("value")
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).mean(["A", "B"])
 
         Args:
-            on: The data to mean on.
-                It can be the column name for Arrow dataset.
+            on: The data subset on which to compute the mean.
+
+                - For a simple dataset: it can be a callable or a list thereof,
+                  and the default is to return a scalar mean of all rows.
+                - For an Arrow dataset: it can be a column name or a list
+                  thereof, and the default is to return an ``ArrowRow``
+                  containing the column-wise mean of all columns.
 
         Returns:
             The mean result.
+
+            For a simple dataset, the output is:
+
+            - ``on=None``: a scalar representing the mean of all rows,
+            - ``on=callable``: a scalar representing the mean of the outputs
+              of the callable called on each row,
+            - ``on=[callable_1, ..., calalble_n]``: a tuple of
+              ``(mean_1, ..., mean_n)`` representing the mean of the outputs
+              of the corresponding callables called on each row.
+
+            For an Arrow dataset, the output is:
+
+            - ``on=None``: an ``ArrowRow`` containing the column-wise mean of
+              all columns,
+            - ``on="col"``: a scalar representing the mean of all items in
+              column ``"col"``,
+            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+              containing the column-wise mean of the provided columns.
+
+            If the dataset is empty, then a ``ValueError`` is raised.
         """
-        ret = self.aggregate(Mean(on))
+        ret = self._aggregate_on(Mean, on)
         if ret is None:
             raise ValueError("Cannot compute mean on an empty dataset")
-        else:
+        elif len(ret) == 1:
             return ret[0]
+        else:
+            return ret
 
-    def std(self, on: AggregateOnT = None, ddof: int = 1) -> U:
+    def std(self, on: Optional["AggregateOnTs"] = None, ddof: int = 1) -> U:
         """Compute standard deviation over entire dataset.
+
+        This is a blocking operation.
 
         Examples:
             >>> ray.data.range(100).std()
-            >>> ray.data.range_arrow(100).std("value")
+            >>> ray.data.from_items([
+            ...     (i, i**2)
+            ...     for i in range(100)]).std(lambda x: x[1])
+            >>> ray.data.range_arrow(100).std("value", ddof=0)
+            >>> ray.data.from_items([
+            ...     {"A": i, "B": i**2}
+            ...     for i in range(100)]).std(["A", "B"])
 
         NOTE: This uses Welford's online method for an accumulator-style
         computation of the standard deviation. This method was chosen due to
@@ -950,19 +1229,46 @@ class Dataset(Generic[T]):
         https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
 
         Args:
-            on: The data on which to compute the standard deviation.
-                It can be the column name for Arrow dataset.
+            on: The data subset on which to compute the std.
+
+                - For a simple dataset: it can be a callable or a list thereof,
+                  and the default is to return a scalar std of all rows.
+                - For an Arrow dataset: it can be a column name or a list
+                  thereof, and the default is to return an ``ArrowRow``
+                  containing the column-wise std of all columns.
             ddof: Delta Degrees of Freedom. The divisor used in calculations
-                is N - ddof, where N represents the number of elements.
+                is ``N - ddof``, where ``N`` represents the number of elements.
 
         Returns:
             The standard deviation result.
+
+            For a simple dataset, the output is:
+
+            - ``on=None``: a scalar representing the std of all rows,
+            - ``on=callable``: a scalar representing the std of the outputs of
+              the callable called on each row,
+            - ``on=[callable_1, ..., calalble_n]``: a tuple of
+              ``(std_1, ..., std_n)`` representing the std of the outputs of
+              the corresponding callables called on each row.
+
+            For an Arrow dataset, the output is:
+
+            - ``on=None``: an ``ArrowRow`` containing the column-wise std of
+              all columns,
+            - ``on="col"``: a scalar representing the std of all items in
+              column ``"col"``,
+            - ``on=["col_1", ..., "col_n"]``: an n-column ``ArrowRow``
+              containing the column-wise std of the provided columns.
+
+            If the dataset is empty, then a ``ValueError`` is raised.
         """
-        ret = self.aggregate(Std(on, ddof))
+        ret = self._aggregate_on(Std, on, ddof=ddof)
         if ret is None:
             raise ValueError("Cannot compute std on an empty dataset")
-        else:
+        elif len(ret) == 1:
             return ret[0]
+        else:
+            return ret
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,
@@ -1146,7 +1452,8 @@ class Dataset(Generic[T]):
                 for block in self._blocks.iter_blocks()
             ]))
 
-    def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
+    def schema(self, fetch_if_missing: bool = False
+               ) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset.
 
         For datasets of Arrow records, this will return the Arrow schema.
@@ -1154,17 +1461,25 @@ class Dataset(Generic[T]):
 
         Time complexity: O(1)
 
+        Args:
+            fetch_if_missing: If True, synchronously fetch the schema if it's
+                not known. Default is False, where None is returned if the
+                schema is not known.
+
         Returns:
             The Python type or Arrow schema of the records, or None if the
-            schema is not known.
+            schema is not known and fetch_if_missing is False.
         """
         metadata = self._blocks.get_metadata()
         # Some blocks could be empty, in which case we cannot get their schema.
         # TODO(ekl) validate schema is the same across different blocks.
         for m in metadata:
-            if m.schema:
+            if m.schema is not None:
                 return m.schema
-        return None
+        if not fetch_if_missing:
+            return None
+        # Need to synchronously fetch schema.
+        return self._blocks.ensure_schema_for_first_block()
 
     def num_blocks(self) -> int:
         """Return the number of blocks of this dataset.
@@ -1894,13 +2209,11 @@ class Dataset(Generic[T]):
         Returns:
             A list of remote Arrow tables created from this dataset.
         """
-
-        check_is_arrow = cached_remote_fn(_check_is_arrow)
         blocks: List[ObjectRef[Block]] = list(self._blocks.iter_blocks())
-        is_arrow = ray.get(check_is_arrow.remote(blocks[0]))
 
-        if is_arrow:
-            return blocks  # Zero-copy path.
+        if self._is_arrow_dataset():
+            # Zero-copy path.
+            return blocks
 
         block_to_arrow = cached_remote_fn(_block_to_arrow)
         return [block_to_arrow.remote(block) for block in blocks]
@@ -2169,11 +2482,6 @@ def _block_to_ndarray(block: Block, column: Optional[str]):
 def _block_to_arrow(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_arrow()
-
-
-def _check_is_arrow(block: Block) -> bool:
-    import pyarrow
-    return isinstance(block, pyarrow.Table)
 
 
 def _split_block(

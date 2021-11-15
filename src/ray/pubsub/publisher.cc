@@ -145,6 +145,10 @@ bool SubscriptionIndex::CheckNoLeaks() const {
 
 bool Subscriber::ConnectToSubscriber(rpc::PubsubLongPollingReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
+  if (long_polling_connection_) {
+    // Flush the current subscriber poll with an empty reply.
+    PublishIfPossible(/*force_noop=*/true);
+  }
   if (!long_polling_connection_) {
     RAY_CHECK(reply != nullptr);
     RAY_CHECK(send_reply_callback != nullptr);
@@ -171,30 +175,25 @@ void Subscriber::QueueMessage(const rpc::PubMessage &pub_message, bool try_publi
   }
 }
 
-bool Subscriber::PublishIfPossible(bool force) {
+bool Subscriber::PublishIfPossible(bool force_noop) {
   if (!long_polling_connection_) {
     return false;
   }
+  if (!force_noop && mailbox_.empty()) {
+    return false;
+  }
 
-  if (force || mailbox_.size() > 0) {
-    // If force publish is invoked, mailbox could be empty. We should always add a reply
-    // here because otherwise, there could be memory leak due to our grpc layer
-    // implementation.
-    if (mailbox_.empty()) {
-      mailbox_.push(absl::make_unique<rpc::PubsubLongPollingReply>());
-    }
-
+  if (!force_noop) {
     // Reply to the long polling subscriber. Swap the reply here to avoid extra copy.
     long_polling_connection_->reply->Swap(mailbox_.front().get());
-    long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
-
-    // Clean up & update metadata.
-    long_polling_connection_.reset();
     mailbox_.pop();
-    last_connection_update_time_ms_ = get_time_ms_();
-    return true;
   }
-  return false;
+  long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
+
+  // Clean up & update metadata.
+  long_polling_connection_.reset();
+  last_connection_update_time_ms_ = get_time_ms_();
+  return true;
 }
 
 bool Subscriber::CheckNoLeaks() const {
@@ -311,7 +310,7 @@ int Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) {
   }
   auto &subscriber = it->second;
   // Remove the long polling connection because otherwise, there's memory leak.
-  subscriber->PublishIfPossible(/*force=*/true);
+  subscriber->PublishIfPossible(/*force_noop=*/true);
   subscribers_.erase(it);
   return erased;
 }
@@ -330,8 +329,8 @@ void Publisher::CheckDeadSubscribers() {
     if (disconnected) {
       dead_subscribers.push_back(it.first);
     } else if (active_connection_timed_out) {
-      // Refresh the long polling connection. The subscriber will send it again.
-      subscriber->PublishIfPossible(/*force*/ true);
+      // Refresh the long polling connection. The subscriber will poll again.
+      subscriber->PublishIfPossible(/*force_noop*/ true);
     }
   }
 

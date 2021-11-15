@@ -66,7 +66,7 @@ See the documentation: :ref:`trainable-docs` and :ref:`examples <tune-general-ex
 tune.run and Trials
 -------------------
 
-Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint>`, and :ref:`early stopping <tune-stopping>`.
+Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This function manages your experiment and provides many features such as :ref:`logging <tune-logging>`, :ref:`checkpointing <tune-checkpoint-syncing>`, and :ref:`early stopping <tune-stopping>`.
 
 .. code-block:: python
 
@@ -78,7 +78,7 @@ Use :ref:`tune.run <tune-run-ref>` to execute hyperparameter tuning. This functi
 Each trial has
 
 - a hyperparameter configuration (``trial.config``), id (``trial.trial_id``)
-- a resource specification (``resources_per_trial`` or ``trial.resources``)
+- a resource specification (``resources_per_trial`` or ``trial.placement_group_factory``)
 - And other configuration values.
 
 Each trial is also associated with one instance of a :ref:`Trainable <trainable-docs>`. You can access trial objects through the :ref:`Analysis object <tune-concepts-analysis>` provided after ``tune.run`` finishes.
