@@ -154,8 +154,21 @@ If you want to specify this directory as a local path, your ``runtime_env`` dict
 
     runtime_env = {..., "working_dir": "/some_path/example_dir", ...}
 
-Suppose instead you want to host its contents remotely and provide a remote URI.
+Suppose instead you want to host your files in your ``/some_path/example_dir`` directory remotely and provide a remote URI.
 You would need to first compress the ``example_dir`` directory into a zip file.
+You can use the following command in the Terminal to do so:
+
+.. code-block:: bash
+
+    zip -r example.zip /some_path/example_dir
+
+In general, the command is
+
+.. code-block:: bash
+
+    # General command
+    zip -r zip_file_name.zip directory_to_zip
+
 There should be no other files or directories at the top level of the zip file, other than ``example_dir``.
 In general, the zip file's name and the top-level directory's name can be anything.
 The top-level directory's contents will be used as the ``working_dir`` (or ``py_module``).
@@ -168,9 +181,11 @@ Your ``runtime_env`` dictionary should contain:
 
 .. warning::
 
-  Check for hidden files in zipped dependencies.
-  Sometimes zipping a top-level directory will cause unwanted hidden files to appear in the zip file at the top level.
+  Check for hidden files and metadata directories (e.g. ``__MACOSX/``) in zipped dependencies.
+  You can inspect a zip file's contents by running the ``zipinfo -1 zip_file_name.zip`` command in the Terminal.
+  Some zipping methods can cause hidden files or metadata directories to appear in the zip file at the top level.
   This will cause Ray to throw an error because the structure of the zip file is invalid since there is more than a single directory at the top level.
+  You can avoid this by using the ``zip -r`` command directly on the directory you want to compress.
 
 Currently, three types of remote URIs are supported for hosting ``working_dir`` and ``py_modules`` packages:
 
