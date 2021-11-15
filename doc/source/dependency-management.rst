@@ -166,7 +166,7 @@ Your ``runtime_env`` dictionary should contain:
 
     runtime_env = {..., "working_dir": "s3://example_bucket/example.zip", ...}
 
-.. tip::
+.. warning::
 
   Check for hidden files in zipped dependencies.
   Sometimes zipping a top-level directory will cause unwanted hidden files to appear in the zip file at the top level.
@@ -225,7 +225,8 @@ If ``example_repository`` is public and you want to retrieve the latest commit, 
 
 .. code-block:: python
 
-    runtime_env = {"working_dir": "https://github.com/example_user/example_repository/archive/HEAD.zip"}
+    runtime_env = {"working_dir": ("https://github.com"
+                                   "/example_user/example_repository/archive/HEAD.zip")}
 
 Here is a list of different use cases and corresponding URLs:
 
@@ -233,31 +234,36 @@ Here is a list of different use cases and corresponding URLs:
 
 .. code-block:: python
 
-    runtime_env = {"working_dir": "https://github.com/[username]/[repository]/archive/HEAD.zip"}
+    runtime_env = {"working_dir": ("https://github.com"
+                                   "/[username]/[repository]/archive/HEAD.zip")}
 
 - Example: Retrieve package from a specific commit hash on a GitHub public repository
 
 .. code-block:: python
 
-    runtime_env = {"working_dir": "https://github.com/[username]/[repository]/archive/[commit hash].zip"}
+    runtime_env = {"working_dir": ("https://github.com"
+                                   "/[username]/[repository]/archive/[commit hash].zip")}
 
 - Example: Retrieve package from a GitHub private repository using username and password
 
 .. code-block:: python
 
-    runtime_env = {"working_dir": "https://[username]:[password]@github.com/[username]/[private repository]/archive/[commit hash].zip"}
+    runtime_env = {"working_dir": ("https://[username]:[password]@github.com"
+                                   "/[username]/[private repository]/archive/[commit hash].zip")}
 
 - Example: Retrieve package from a GitHub private repository using a Personal Access Token
 
 .. code-block:: python
 
-    runtime_env = {"working_dir": "https://[username]:[personal access token]@github.com/[username]/[private repository]/archive/[commit hash].zip"}
+    runtime_env = {"working_dir": ("https://[username]:[personal access token]@github.com"
+                                   "/[username]/[private repository]/archive/[commit hash].zip")}
 
 - Example: Retrieve package from a specific commit hash on a Bitbucket public repository
 
 .. code-block:: python
 
-    runtime_env = {"working_dir": "https://bitbucket.org/[owner]/[repository]/get/[commit hash].tar.gz"}
+    runtime_env = {"working_dir": ("https://bitbucket.org"
+                                   "/[owner]/[repository]/get/[commit hash].tar.gz")}
 
 .. tip::
 
