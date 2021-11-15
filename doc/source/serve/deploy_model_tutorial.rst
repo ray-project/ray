@@ -10,7 +10,8 @@ First, install Ray Serve and all of its dependencies by running the following co
 
   pip install "ray[serve]"
 
-For this tutorial, we'll use `a model <https://huggingface.co/mrm8488/t5-base-finetuned-summarize-news>`_ that summarizes news articles. Let's take a look at how it works:
+For this tutorial, we'll use `a model <https://huggingface.co/mrm8488/t5-base-finetuned-summarize-news>`_ that summarizes news articles.
+Let's take a look at how it works:
 
 .. code-block:: python
 
@@ -58,11 +59,16 @@ For this tutorial, we'll use `a model <https://huggingface.co/mrm8488/t5-base-fi
   here. The Eagle has landed."
   '''
 
-The ``tokenizer`` and ``model`` variables store our model's input encodings and weights. The ``summarize`` function takes in article ``text`` and the summary's ``max_length``, and then it summarizes the article text. In the example above, the ``summarize`` function generates a concise version of a lengthy news snippet about the moon landing.
+The ``tokenizer`` and ``model`` variables store our model's input encodings and weights.
+The ``summarize`` function takes in article ``text`` and the summary's ``max_length``, and then it summarizes the article text.
+In the example above, the ``summarize`` function generates a concise version of a lengthy news snippet about the moon landing.
 
-The goal is to deploy this model using Ray Serve, so it can be queried over HTTP. We'll start by converting the above Python function into a Ray Serve deployment that can be run locally on a laptop.
+The goal is to deploy this model using Ray Serve, so it can be queried over HTTP.
+We'll start by converting the above Python function into a Ray Serve deployment that can be run locally on a laptop.
 
-First, we need to import ray, ray serve, and requests. The ray and ray serve libraries give us access to Ray Serve's deployments, so we can access our model over HTTP. The requests library handles HTTP request routing:
+First, we need to import ``ray``, ``ray serve``, and ``requests``.
+The ``ray`` and ``ray serve`` libraries give us access to Ray Serve's deployments, 
+so we can access our model over HTTP. The requests library handles HTTP request routing:
 
 .. code-block:: python
 
@@ -70,7 +76,10 @@ First, we need to import ray, ray serve, and requests. The ray and ray serve lib
   from ray import serve
   import requests
 
-After these imports, we can include our model code from above. We won't call our ``summarize`` function just yet though! We will soon add logic to handle HTTP requests, so the ``summarize`` function can operate on article text sent via HTTP request.
+After these imports, we can include our model code from above. 
+We won't call our ``summarize`` function just yet though! 
+We will soon add logic to handle HTTP requests, so the ``summarize`` function 
+can operate on article text sent via HTTP request.
 
 .. code-block:: python
 
@@ -89,7 +98,9 @@ Ray Serve needs to run on top of a Ray Cluster, so we start a local one:
 
 .. note::
 
-  ``ray.init()`` will start a single-node Ray cluster on your local machine, which will allow you to use all your CPU cores to serve requests in parallel.  To start a multi-node cluster, see :doc:`../cluster/index`.
+  ``ray.init()`` will start a single-node Ray cluster on your local machine, 
+  which will allow you to use all your CPU cores to serve requests in parallel. 
+  To start a multi-node cluster, see :doc:`../cluster/index`.
 
 Next, we start the Ray Serve runtime:
 
@@ -100,9 +111,20 @@ Next, we start the Ray Serve runtime:
 .. warning::
 
   When the Python script exits, Ray Serve will shut down.  
-  If you would rather keep Ray Serve running in the background you can use ``serve.start(detached=True)`` (see :doc:`deployment` for details).
+  If you would rather keep Ray Serve running in the background you can use 
+  ``serve.start(detached=True)`` (see :doc:`deployment` for details).
 
-Now that we have defined our ``summarize`` function, launched a Ray Cluster, and started the Ray Serve runtime, we can define a function to accept HTTP requests and route them to the ``summarize`` function. Since ``summarize`` takes in article ``text`` and a summary ``max_length``, we need to take in these variables' values as parameters in the HTTP request URL. We can define function called ``router`` that takes in a Starlette ``request`` object. ``router`` then looks for the ``txt`` parameter in the Starlette ``request`` object to find the requested article text that must be summarized. It then passes in the article text, as well its length, into the ``summarize`` function and returns the value. We also add the decorator ``@serve.deployment`` to the ``router`` function to turn it into a Serve ``Deployment`` object.
+Now that we have defined our ``summarize`` function, launched a Ray Cluster, 
+and started the Ray Serve runtime, we can define a function to accept HTTP 
+requests and route them to the ``summarize`` function. Since ``summarize`` 
+takes in article ``text``, we need to take that in as a parameter in the HTTP 
+request URL. We can define a function called ``router`` that takes in a Starlette 
+``request`` object. ``router`` then looks for the ``txt`` parameter in the 
+Starlette ``request`` object to find the requested article text that must be summarized. 
+It then passes in the article text, as well its length, into the 
+``summarize`` function and returns the value. We also add the decorator 
+``@serve.deployment`` to the ``router`` function to turn it into a Serve 
+``Deployment`` object.
 
 .. code-block:: python
 
