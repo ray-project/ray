@@ -41,8 +41,9 @@ public class PlacementGroupCreationOptions {
     private PlacementStrategy strategy;
 
     /**
-     * Set the name of a named placement group. This named placement group is only accessible from
-     * this job by this name via {@link Ray#getPlacementGroup(java.lang.String)}.
+     * Set the name of a named placement group. This named placement group is accessible in this
+     * namespace by this name via {@link Ray#getPlacementGroup(java.lang.String)} or in other
+     * namespaces via {@link PlacementGroups.getPlacementGroup(java.lang.String, java.lang.String)}.
      *
      * @param name The name of the named placement group.
      * @return self

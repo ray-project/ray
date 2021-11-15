@@ -590,6 +590,7 @@ exist. See :ref:`actor-lifetimes` for more details.
         # Job 3 connects to the original "colors" namespace
         ray.init(address="auto", namespace="colors")
         # This returns the "orange" actor we created in the first job.
+        ray.get_actor("orange")
 
     .. code-tab:: java
 
