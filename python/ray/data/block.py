@@ -1,5 +1,5 @@
 from typing import TypeVar, List, Generic, Iterator, Tuple, Any, Union, \
-    Optional, TYPE_CHECKING
+    Sequence, Optional, TYPE_CHECKING
 
 import numpy as np
 
@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
     from ray.data.impl.block_builder import BlockBuilder
-    from ray.data.aggregate import Aggregation
+    from ray.data.aggregate import BoundAggregateFn
     from ray.data.grouped_dataset import GroupKeyT
 
 from ray.types import ObjectRef
@@ -166,7 +166,8 @@ class BlockAccessor(Generic[T]):
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key: "GroupKeyT", agg: Tuple["Aggregation"]) -> Block[U]:
+    def combine(self, key: "GroupKeyT",
+                aggs: Sequence["BoundAggregateFn"]) -> Block[U]:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
@@ -178,8 +179,8 @@ class BlockAccessor(Generic[T]):
         raise NotImplementedError
 
     @staticmethod
-    def aggregate_combined_blocks(
-            blocks: List[Block], key: "GroupKeyT",
-            agg: Tuple["Aggregation"]) -> Tuple[Block[U], BlockMetadata]:
+    def aggregate_combined_blocks(blocks: List[Block], key: "GroupKeyT",
+                                  aggs: Sequence["BoundAggregateFn"]
+                                  ) -> Tuple[Block[U], BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError

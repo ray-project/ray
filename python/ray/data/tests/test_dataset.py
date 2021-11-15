@@ -22,8 +22,8 @@ from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.impl.block_list import BlockList
-from ray.data.aggregate import Aggregation, AggregateFn, Count, Sum, Min, \
-    Max, Mean, Std
+from ray.data.aggregate import BoundAggregateFn, AggregateFn, Count, Sum, \
+    Min, Max, Mean, Std
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD)
@@ -2879,15 +2879,15 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
         "A": (x % 3),
         "B": x
     } for x in xs]).repartition(num_parts).groupby("A")
-    agg_ds = grouped_ds.apply_aggregations(
-        Aggregation(
+    agg_ds = grouped_ds.apply_bound_aggregations(
+        BoundAggregateFn(
             AggregateFn(
                 init=lambda k: [0, 0],
                 accumulate=lambda a, r: [a[0] + r["B"], a[1] + 1],
                 merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
                 finalize=lambda a: a[0] / a[1]),
             name="foo"),
-        Aggregation(
+        BoundAggregateFn(
             AggregateFn(
                 init=lambda k: [0, 0],
                 accumulate=lambda a, r: [a[0] + r["B"], a[1] + 1],
@@ -3143,13 +3143,13 @@ def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
     random.shuffle(xs)
     df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
     agg_ds = ray.data.from_pandas(df).repartition(num_parts).groupby(
-        "A").apply_aggregations(
-            Aggregation(Count()),
-            Aggregation(Sum(), on="B"),
-            Aggregation(Min(), on="B"),
-            Aggregation(Max(), on="B"),
-            Aggregation(Mean(), on="B"),
-            Aggregation(Std(), on="B"),
+        "A").apply_bound_aggregations(
+            BoundAggregateFn(Count()),
+            BoundAggregateFn(Sum(), on="B"),
+            BoundAggregateFn(Min(), on="B"),
+            BoundAggregateFn(Max(), on="B"),
+            BoundAggregateFn(Mean(), on="B"),
+            BoundAggregateFn(Std(), on="B"),
         )
     assert agg_ds.count() == 3
     agg_df = agg_ds.to_pandas()
@@ -3165,12 +3165,12 @@ def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
     # Test built-in global std aggregation
     df = pd.DataFrame({"A": xs})
     result_row = ray.data.from_pandas(df).repartition(
-        num_parts).apply_aggregations(
-            Aggregation(Sum(), on="A"),
-            Aggregation(Min(), on="A"),
-            Aggregation(Max(), on="A"),
-            Aggregation(Mean(), on="A"),
-            Aggregation(Std(), on="A"),
+        num_parts).apply_bound_aggregations(
+            BoundAggregateFn(Sum(), on="A"),
+            BoundAggregateFn(Min(), on="A"),
+            BoundAggregateFn(Max(), on="A"),
+            BoundAggregateFn(Mean(), on="A"),
+            BoundAggregateFn(Std(), on="A"),
         )
     for agg in ["sum", "min", "max", "mean", "std"]:
         result = result_row[f"{agg}(A)"]
@@ -3205,19 +3205,39 @@ def test_groupby_arrow_agg(ray_start_regular_shared, num_parts):
           "max(C)": 194, "mean(B)": 49.0, "mean(C)": 98.0},
          {"A": 2, "min(B)": 2, "min(C)": 4, "max(B)": 98,
           "max(C)": 196, "mean(B)": 50.0, "mean(C)": 100.0}]
-    # Mapping from columns to aggregations.
+
+    # Test aggregate alias.
+    grouped_ds = ray.data.from_pandas(df).repartition(num_parts).groupby("A")
+    agg_ds = grouped_ds.agg(["min", "max", Mean()])
+    aggregate_ds = grouped_ds.aggregate(["min", "max", Mean()])
+    agg_rows = [row.as_pydict() for row in agg_ds.sort("A").iter_rows()]
+    aggregate_rows = [
+        row.as_pydict() for row in aggregate_ds.sort("A").iter_rows()
+    ]
+    assert agg_rows == aggregate_rows
+
+    # Mapping from data subsets to aggregations.
+
+    def subsetter(x):
+        return x["C"]
+
     agg_ds = ray.data.from_pandas(df).repartition(num_parts).groupby("A").agg({
         "B": ["min", "max", Mean()],
-        "C": ["min", Max(), "mean"]
+        "C": ["min", Max(), "mean"],
+        subsetter: ["min", Max(), "mean"]
     })
     assert agg_ds.count() == 3
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
         [{"A": 0, "min(B)": 0, "max(B)": 99, "mean(B)": 49.5,
-          "min(C)": 0, "max(C)": 198, "mean(C)": 99.0},
+          "min(C)": 0, "max(C)": 198, "mean(C)": 99.0,
+          "min(subsetter)": 0, "max(subsetter)": 198, "mean(subsetter)": 99.0},
          {"A": 1, "min(B)": 1, "max(B)": 97, "mean(B)": 49.0,
-          "min(C)": 2, "max(C)": 194, "mean(C)": 98.0},
+          "min(C)": 2, "max(C)": 194, "mean(C)": 98.0,
+          "min(subsetter)": 2, "max(subsetter)": 194, "mean(subsetter)": 98.0},
          {"A": 2, "min(B)": 2, "max(B)": 98, "mean(B)": 50.0,
-          "min(C)": 4, "max(C)": 196, "mean(C)": 100.0}]
+          "min(C)": 4, "max(C)": 196, "mean(C)": 100.0,
+          "min(subsetter)": 4, "max(subsetter)": 196,
+          "mean(subsetter)": 100.0}]
 
     # Test built-in global mean aggregation
     df = pd.DataFrame({"A": xs, "B": [2 * x for x in xs]})
@@ -3253,8 +3273,8 @@ def test_groupby_simple(ray_start_regular_shared):
     random.shuffle(xs)
     ds = ray.data.from_items(xs, parallelism=parallelism)
     # Mean aggregation
-    agg_ds = ds.groupby(lambda r: r[0]).apply_aggregations(
-        Aggregation(
+    agg_ds = ds.groupby(lambda r: r[0]).apply_bound_aggregations(
+        BoundAggregateFn(
             AggregateFn(
                 init=lambda k: (0, 0),
                 accumulate=lambda a, r: (a[0] + r[1], a[1] + 1),
@@ -3270,8 +3290,8 @@ def test_groupby_simple(ray_start_regular_shared):
     random.shuffle(xs)
     ds = ray.data.from_items(xs, parallelism=parallelism)
     # Count aggregation
-    agg_ds = ds.groupby(lambda r: str(r)).apply_aggregations(
-        Aggregation(
+    agg_ds = ds.groupby(lambda r: str(r)).apply_bound_aggregations(
+        BoundAggregateFn(
             AggregateFn(
                 init=lambda k: 0,
                 accumulate=lambda a, r: a + 1,
@@ -3282,8 +3302,8 @@ def test_groupby_simple(ray_start_regular_shared):
 
     # Test empty dataset.
     ds = ray.data.from_items([])
-    agg_ds = ds.groupby(lambda r: r[0]).apply_aggregations(
-        Aggregation(
+    agg_ds = ds.groupby(lambda r: r[0]).apply_bound_aggregations(
+        BoundAggregateFn(
             AggregateFn(
                 init=lambda k: 1 / 0,  # should never reach here
                 accumulate=lambda a, r: 1 / 0,
@@ -3461,15 +3481,14 @@ def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
     random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
-    df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
     agg_ds = ray.data.from_items(xs).repartition(num_parts).groupby(
-        lambda x: x % 3).apply_aggregations(
-            Aggregation(Count()),
-            Aggregation(Sum()),
-            Aggregation(Min()),
-            Aggregation(Max()),
-            Aggregation(Mean()),
-            Aggregation(Std()),
+        lambda x: x % 3).apply_bound_aggregations(
+            BoundAggregateFn(Count()),
+            BoundAggregateFn(Sum()),
+            BoundAggregateFn(Min()),
+            BoundAggregateFn(Max()),
+            BoundAggregateFn(Mean()),
+            BoundAggregateFn(Std()),
         )
     assert agg_ds.count() == 3
     result = agg_ds.sort(key=lambda r: r[0]).take(3)
@@ -3496,12 +3515,12 @@ def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
             np.testing.assert_array_equal(result, expected)
     # Test built-in global multi-aggregation
     result_row = ray.data.from_items(xs).repartition(
-        num_parts).apply_aggregations(
-            Aggregation(Sum()),
-            Aggregation(Min()),
-            Aggregation(Max()),
-            Aggregation(Mean()),
-            Aggregation(Std()),
+        num_parts).apply_bound_aggregations(
+            BoundAggregateFn(Sum()),
+            BoundAggregateFn(Min()),
+            BoundAggregateFn(Max()),
+            BoundAggregateFn(Mean()),
+            BoundAggregateFn(Std()),
         )
     series = pd.Series(xs)
     for idx, agg in enumerate(["sum", "min", "max", "mean", "std"]):
@@ -3511,6 +3530,59 @@ def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
             assert math.isclose(result, expected)
         else:
             assert result == expected
+
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_simple_agg(ray_start_regular_shared, num_parts):
+    # Test built-in mean aggregation on multiple columns
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_multicolumn with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+    # List of aggregations.
+    agg_ds = ray.data.from_items(xs).repartition(num_parts) \
+        .groupby(lambda x: x % 3) \
+        .agg(["min", "max", Mean()])
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 0, 99, 49.5),
+                                                       (1, 1, 97, 49.0),
+                                                       (2, 2, 98, 50.0)]
+
+    # Test aggregate alias.
+    grouped_ds = ray.data.from_items(xs).repartition(num_parts) \
+        .groupby(lambda x: x % 3)
+    agg_ds = grouped_ds.agg(["min", "max", Mean()])
+    aggregate_ds = grouped_ds.aggregate(["min", "max", Mean()])
+    assert (agg_ds.sort(key=lambda r: r[0]).take(3) == aggregate_ds.sort(
+        key=lambda r: r[0]).take(3))
+
+    # Mapping from data subsets to aggregations.
+    agg_ds = ray.data.from_items([[x, 2*x] for x in xs]) \
+        .repartition(num_parts) \
+        .groupby(lambda x: x[0] % 3) \
+        .agg({
+            lambda x: x[0]: ["min", "max", Mean()],
+            lambda x: x[1]: ["min", Max(), "mean"],
+        })
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 0, 99, 49.5, 0, 198,
+                                                        99.0), (1, 1, 97, 49.0,
+                                                                2, 194, 98.0),
+                                                       (2, 2, 98, 50.0, 4, 196,
+                                                        100.0)]
+
+    # Test built-in global mean aggregation
+    # List of aggregations.
+    assert ray.data.from_items(xs).repartition(num_parts).agg(
+        ["min", "max", Mean()]) == (0, 99, 49.5)
+    # Mapping from data subsetters to aggregations.
+    assert ray.data.from_items([[x, 2*x] for x in xs]) \
+        .repartition(num_parts) \
+        .agg({
+            lambda x: x[0]: ["min", "max", Mean()],
+            lambda x: x[1]: ["min", Max(), "mean"],
+        }) == (0, 99, 49.5, 0, 198, 99.0)
 
 
 def test_sort_simple(ray_start_regular_shared):

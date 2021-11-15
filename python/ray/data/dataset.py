@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     import tensorflow as tf
     from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_dataset import GroupedDataset, GroupKeyT, \
-        AggregateOnTs
+        AggregateOnTs, Aggregation
 
 import collections
 import itertools
@@ -23,6 +23,7 @@ import numpy as np
 
 import ray
 from ray.types import ObjectRef
+from ray.data.aggregate import AggregateOnT
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, \
     BlockPartition, BlockPartitionMetadata
@@ -30,7 +31,7 @@ from ray.data.context import DatasetContext
 from ray.data.datasource import (
     Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
     ParquetDatasource, BlockWritePathProvider, DefaultBlockWritePathProvider)
-from ray.data.aggregate import Aggregation, AggregateFn, Sum, \
+from ray.data.aggregate import BoundAggregateFn, AggregateFn, Sum, \
     Max, Min, Mean, Std, AGGS_TABLE
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
@@ -845,17 +846,34 @@ class Dataset(Generic[T]):
         from ray.data.grouped_dataset import GroupedDataset
         return GroupedDataset(self, key)
 
-    def agg(self, aggs: Union[str, AggregateFn, List[Union[str, AggregateFn]],
-                              Dict[str, Union[str, AggregateFn]]]):
-        """Aggregate using one or more operations over the specified columns.
+    def agg(self, aggs: Union["Aggregation", List["Aggregation"], Dict[
+            AggregateOnT, List["Aggregation"]]]):
+        """Aggregate using one or more operations over the specified data
+        subsets.
+
+        Common aggregations can be given as strings (``"sum"``, ``"min"``,
+        ``"max"``, ``"mean"``, ``"std"``) while custom/customized aggregations
+        can be given as instances of
+        :class:`~.aggregate.AggregateFn`. If providing a
+        dictionary of data subsets --> aggregations, the data subset keys can
+        be column name strings for table (Arrow) datasets, and can be
+        row --> data subset callables for both table (Arrow) datasets and
+        simple datasets. See examples below.
 
         This is a blocking operation.
 
         Examples:
             >>> ray.data.range(100).agg("sum")
             >>> ray.data.range(100).agg(["sum", Std(ddof=0)])
+            >>> ray.data.range(100).agg({
+            ...     lambda x: x % 3: ["min", "max"],
+            ...     lambda x: x % 2: ["mean", "std"],
+            ... })
             >>> ray.data.from_items([
-            ...         {"A": x, "B": x**2} for x in range(100)]) \
+            ...         {"A": x, "B": x**2} for x in range(100)])
+            ...     .agg(["mean", "std"])
+            >>> ray.data.from_items([
+            ...         {"A": x, "B": x**2} for x in range(100)])
             ...     .agg({
             ...         "A": ["mean", Std(ddof=0)],
             ...         "B": ["min", "max"],
@@ -864,14 +882,15 @@ class Dataset(Generic[T]):
         Args:
             aggs: Aggregations to compute. This can be:
 
-                - ``Union[str, AggregateFn]``: The (name of an) aggregation
-                  that we want to apply to all columns.
-                - ``List[Union[str, AggregateFn]]``: A list of the (names of)
-                  aggregations that we want to apply to all columns.
-                - ``Dict[str, Union[str, AggregateFn]]``: A map from column
-                  names to the (names of the) aggregations that we wish to
-                  apply to those specific columns. This can only be applied to
-                  Arrow Datasets.
+                - ``Union[Aggregation, List[Aggregation]]``: The (name of the)
+                  aggregation(s) that we want to apply to: each column for an
+                  Arrow dataset; the entire row for a simple dataset.
+                - ``Dict[AggregateOnT, List[Aggregation]``: A map from a data
+                  subsetter (column name or callable) to the (names of the)
+                  aggregations that we wish to apply to that data subset.
+
+                Here, ``Aggregation = Union[str, AggregateFn]`` and
+                ``AggregateOnT = Union[str, Callable[[T], Any]]``.
 
         Returns:
             If the input dataset is a simple dataset then the output is
@@ -906,13 +925,15 @@ class Dataset(Generic[T]):
             If the dataset is empty, return ``None``.
         """
         aggs_ = self._build_multi_agg(aggs)
-        return self.apply_aggregations(*aggs_)
+        return self.apply_bound_aggregations(*aggs_)
+
+    aggregate = agg
 
     def _build_multi_agg(
             self,
-            aggs: Union[str, AggregateFn, List[Union[str, AggregateFn]], Dict[
-                str, Union[str, AggregateFn]]],
-            skip_cols: Optional[List[str]] = None) -> List[Aggregation]:
+            aggs: Union["Aggregation", List["Aggregation"], Dict[
+                AggregateOnT, List["Aggregation"]]],
+            skip_cols: Optional[List[str]] = None) -> List[BoundAggregateFn]:
         """Build set of aggregations for applying multiple aggregations to
         one or more columns.
         """
@@ -921,8 +942,8 @@ class Dataset(Generic[T]):
             aggs = [aggs]
         err_msg = (
             "`aggs` must be an aggregation name, AggregateFn, list of "
-            "aggregation names, list of AggregateFn, or a column name --> "
-            f"list of aggregations dict; instead, we got {aggs}.")
+            "aggregation names, list of AggregateFn, or a column name or "
+            f"callable --> list of aggregations dict; instead, we got {aggs}.")
         if isinstance(aggs, list):
             if len(aggs) == 0:
                 raise ValueError("List of aggregations must be nonempty.")
@@ -955,19 +976,26 @@ class Dataset(Generic[T]):
                             f"{e!s} is not a supported aggregation: "
                             f"{list(AGGS_TABLE.keys())}") from None
                 for on_ in on:
-                    agg_ = Aggregation(agg, on_)
+                    agg_ = BoundAggregateFn(agg, on_)
                     aggs_.append(agg_)
         return aggs_
 
-    def apply_aggregations(self, *aggs: Aggregation) -> U:
-        """Aggregate the entire dataset as one group.
+    def apply_bound_aggregations(self, *aggs: BoundAggregateFn) -> U:
+        """Aggregate the entire dataset using the supplied bound aggregations.
+
+        This is an advanced API that should only be used if you are unable to
+        express your set of aggregations with :meth:`.agg`.
 
         This is a blocking operation.
 
         Examples:
-            >>> ray.data.range(100).apply_aggregations(Max())
-            >>> ray.data.range_arrow(100).apply_aggregations(
-                Max("value"), Mean("value"))
+            >>> ray.data.range(100).apply_bound_aggregations(
+            ...     BoundAggregateFn(Max(), on=lambda x: x % 3))
+            >>> ray.data.range_arrow(100).apply_bound_aggregations(
+            ...     BoundAggregateFn(
+            ...         Std(ddof=0), on="value", name="biased_std"),
+            ...     BoundAggregateFn(
+            ...         Std(ddof=1), on="value", name="unbiased_std"))
 
         Time complexity: O(dataset size / parallelism)
 
@@ -985,7 +1013,7 @@ class Dataset(Generic[T]):
 
             If the dataset is empty, return ``None``.
         """
-        ret = self.groupby(None).apply_aggregations(*aggs).take(1)
+        ret = self.groupby(None).apply_bound_aggregations(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
 
     def _check_and_normalize_agg_on(self,
@@ -996,12 +1024,10 @@ class Dataset(Generic[T]):
         type of dataset, and normalizes the value based on the Dataset type and
         any provided columns to skip.
         """
-        if (on is not None
-                and (not isinstance(on, (str, Callable, list, tuple)) or
-                     (isinstance(on, (list, tuple))
-                      and not (all(isinstance(on_, str) for on_ in on)
-                               or all(isinstance(on_, Callable)
-                                      for on_ in on))))):
+        if (on is not None and
+            (not isinstance(on, (str, Callable, list, tuple)) or
+             (isinstance(on, (list, tuple))
+              and not all(isinstance(on_, (str, Callable)) for on_ in on)))):
             from ray.data.grouped_dataset import AggregateOnTs
 
             raise TypeError(
@@ -1039,15 +1065,16 @@ class Dataset(Generic[T]):
             elif isinstance(on, str) and on not in schema.names:
                 raise ValueError(
                     f"on={on} is not a valid column name: {schema.names}")
-            elif isinstance(on, (list, tuple)) and isinstance(on[0], str):
+            elif isinstance(on, (list, tuple)):
                 for on_ in on:
-                    if on_ not in schema.names:
+                    if isinstance(on_, str) and on_ not in schema.names:
                         raise ValueError(
                             f"on={on_} is not a valid column name: "
                             f"{schema.names}")
         else:
-            if isinstance(on, str) or (isinstance(on, (list, tuple))
-                                       and isinstance(on[0], str)):
+            if isinstance(
+                    on, str) or (isinstance(on, (list, tuple))
+                                 and any(isinstance(on_, str) for on_ in on)):
                 raise ValueError(
                     "Can't aggregate on a column when using a simple Dataset; "
                     "use a callable `on` argument or use an Arrow Dataset "
@@ -1083,20 +1110,20 @@ class Dataset(Generic[T]):
         aggregation on the entire row for a simple Dataset.
         """
         aggs = self._build_multicolumn_aggs(agg_fn, on, skip_cols=None)
-        return self.apply_aggregations(*aggs)
+        return self.apply_bound_aggregations(*aggs)
 
     def _build_multicolumn_aggs(
             self,
             agg_fn: AggregateFn,
             on: "AggregateOnTs",
-            skip_cols: Optional[List[str]] = None) -> List[Aggregation]:
+            skip_cols: Optional[List[str]] = None) -> List[BoundAggregateFn]:
         """Build set of aggregations for applying a single aggregation to
         multiple columns.
         """
         on = self._check_and_normalize_agg_on(on, skip_cols=skip_cols)
         if not isinstance(on, list):
             on = [on]
-        return [Aggregation(agg_fn, on_) for on_ in on]
+        return [BoundAggregateFn(agg_fn, on_) for on_ in on]
 
     def sum(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute sum over entire dataset.

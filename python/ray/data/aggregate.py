@@ -8,7 +8,7 @@ AggregateOnT = Union[Callable[[T], Any], str]
 
 
 @PublicAPI(stability="beta")
-class Aggregation:
+class BoundAggregateFn:
     def __init__(self,
                  agg_fn: "AggregateFn",
                  on: Optional[Union[str, Callable]] = None,
@@ -181,6 +181,7 @@ class Std(AggregateFn):
             finalize=finalize)
 
 
+Aggregation = Union[str, AggregateFn]
 AGGS_TABLE = {"sum": Sum, "min": Min, "max": Max, "mean": Mean, "std": Std}
 
 

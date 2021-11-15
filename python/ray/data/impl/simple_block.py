@@ -2,7 +2,7 @@ import random
 import sys
 import heapq
 from typing import Callable, Iterator, List, Tuple, Union, Any, Optional, \
-    TYPE_CHECKING
+    Sequence, TYPE_CHECKING
 
 import numpy as np
 
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 from ray.data.impl.block_builder import BlockBuilder
-from ray.data.aggregate import Aggregation
+from ray.data.aggregate import BoundAggregateFn
 from ray.data.impl.size_estimator import SizeEstimator
 from ray.data.block import Block, BlockAccessor, BlockMetadata, \
     T, U, KeyType, AggType
@@ -148,8 +148,8 @@ class SimpleBlockAccessor(BlockAccessor):
         ret.append(items[prev_i:])
         return ret
 
-    def combine(self, key: GroupKeyT,
-                aggs: Tuple[Aggregation]) -> Block[Tuple[KeyType, AggType]]:
+    def combine(self, key: GroupKeyT, aggs: Sequence[BoundAggregateFn]
+                ) -> Block[Tuple[KeyType, AggType]]:
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -218,7 +218,7 @@ class SimpleBlockAccessor(BlockAccessor):
     @staticmethod
     def aggregate_combined_blocks(
             blocks: List[Block[Tuple[KeyType, AggType]]], key: GroupKeyT,
-            aggs: Tuple[Aggregation]
+            aggs: Sequence[BoundAggregateFn]
     ) -> Tuple[Block[Tuple[KeyType, U]], BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.
 

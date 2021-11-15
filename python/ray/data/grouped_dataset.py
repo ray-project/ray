@@ -6,8 +6,8 @@ import ray
 from ray.util.annotations import PublicAPI
 from ray.data.dataset import Dataset
 from ray.data.impl import sort
-from ray.data.aggregate import Aggregation, AggregateFn, Count, Sum, Max, \
-    Min, Mean, Std, AggregateOnT
+from ray.data.aggregate import BoundAggregateFn, AggregateFn, Count, Sum, \
+    Max, Min, Mean, Std, AggregateOnT
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.progress_bar import ProgressBar
@@ -18,6 +18,7 @@ GroupKeyBaseT = Union[Callable[[T], KeyType], str]
 GroupKeyT = Optional[Union[GroupKeyBaseT, List[GroupKeyBaseT]]]
 
 AggregateOnTs = Union[AggregateOnT, List[AggregateOnT]]
+Aggregation = Union[str, AggregateFn]
 
 
 @PublicAPI(stability="beta")
@@ -45,32 +46,48 @@ class GroupedDataset(Generic[T]):
         else:
             self._key = key
 
-    def agg(self, aggs: Union[str, AggregateFn, List[Union[str, AggregateFn]],
-                              Dict[str, Union[str, AggregateFn]]]):
-        """Aggregate using one or more operations over the specified columns.
+    def agg(self, aggs: Union[Aggregation, List[Aggregation], Dict[
+            AggregateOnT, List[Aggregation]]]):
+        """Aggregate using one or more operations over the specified data
+        subsets.
+
+        Common aggregations can be given as strings (``"sum"``, ``"min"``,
+        ``"max"``, ``"mean"``, ``"std"``) while custom/customized aggregations
+        can be given as instances of
+        :class:`~.aggregate.AggregateFn`. If providing a
+        dictionary of data subsets --> aggregations, the data subset keys can
+        be column name strings for table (Arrow) datasets, and can be
+        row --> data subset callables for both table (Arrow) datasets and
+        simple datasets. See examples below.
 
         This is a blocking operation.
 
         Examples:
-            >>> grouped_ds.agg("sum")
-            >>> grouped_ds.agg(["sum", Std(ddof=0)])
-            >>> grouped_ds.agg({
+            >>> simple_grouped_ds.agg("sum")
+            >>> simple_grouped_ds.agg(["sum", Std(ddof=0)])
+            >>> simple_grouped_ds.agg({
+            ...     lambda x: x % 3: ["min", "max"],
+            ...     lambda x: x % 2: ["mean", "std"],
+            ... })
+            >>> arrow_grouped_ds.agg(["mean", "std"])
+            >>> arrow_grouped_ds.agg({
             ...     "A": ["mean", Std(ddof=0)],
-            ...     "B": ["min", "max"]})
+            ...     "B": ["min", "max"],
+            ... })
 
         Args:
             aggs: Aggregations to compute. This can be:
 
-                - ``Union[str, AggregateFn]:`` The (name of an) aggregation
-                  that we want to apply to all columns (other than the groupby
-                  key column).
-                - ``List[Union[str, AggregateFn]]``: A list of the (names of)
-                  aggregations that we want to apply to all columns (other
-                  than the groupby key column).
-                - ``Dict[str, Union[str, AggregateFn]]``: A map from column
-                  names to the (names of the) aggregations that we wish to
-                  apply to those specific columns. This can only be applied to
-                  Arrow Datasets.
+                - ``Union[Aggregation, List[Aggregation]]``: The (name of the)
+                  aggregation(s) that we want to apply to: each column for an
+                  Arrow dataset (other than the groupby key column);
+                  the entire row for a simple dataset.
+                - ``Dict[AggregateOnT, List[Aggregation]``: A map from a data
+                  subsetter (column name or callable) to the (names of the)
+                  aggregations that we wish to apply to that data subset.
+
+                Here, ``Aggregation = Union[str, AggregateFn]`` and
+                ``AggregateOnT = Union[str, Callable[[T], Any]]``.
 
         Returns:
             If the input dataset is simple dataset then the output is a simple
@@ -103,23 +120,29 @@ class GroupedDataset(Generic[T]):
 
                 col1_agg1, col1_agg2, col2_agg2, col2_agg1
 
-            If the dataset is empty, return ``None`.
+            If the dataset is empty, return ``None``.
         """
         aggs_ = self._dataset._build_multi_agg(aggs, skip_cols=self._key)
-        return self.apply_aggregations(*aggs_)
+        return self.apply_bound_aggregations(*aggs_)
 
-    def apply_aggregations(self, *aggs: Aggregation) -> Dataset[U]:
-        """Implements the accumulator-based aggregation.
+    aggregate = agg
+
+    def apply_bound_aggregations(self, *aggs: BoundAggregateFn) -> Dataset[U]:
+        """Aggregate the entire dataset using the supplied bound aggregations.
+
+        This is an advanced API that should only be used if you are unable to
+        express your set of aggregations with :meth:`.agg`.
 
         This is a blocking operation.
 
         Examples:
-            >>> grouped_ds.apply_aggregations(AggregateFn(
-            ...     init=lambda k: [],
-            ...     accumulate=lambda a, r: a + [r],
-            ...     merge=lambda a1, a2: a1 + a2,
-            ...     finalize=lambda a: a
-            ... ))
+            >>> simple_grouped_ds.apply_bound_aggregations(
+            ...     BoundAggregateFn(Max(), on=lambda x: x % 3))
+            >>> arrow_grouped_ds.apply_bound_aggregations(
+            ...     BoundAggregateFn(
+            ...         Std(ddof=0), on="value", name="biased_std"),
+            ...     BoundAggregateFn(
+            ...         Std(ddof=1), on="value", name="unbiased_std"))
 
         Args:
             aggs: Aggregations to do.
@@ -191,7 +214,7 @@ class GroupedDataset(Generic[T]):
         """
         aggs = self._dataset._build_multicolumn_aggs(
             agg_fn, on, skip_cols=self._key)
-        return self.apply_aggregations(*aggs)
+        return self.apply_bound_aggregations(*aggs)
 
     def count(self) -> Dataset[U]:
         """Compute count aggregation.
@@ -211,7 +234,7 @@ class GroupedDataset(Generic[T]):
 
             If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self.apply_aggregations(Aggregation(Count()))
+        return self.apply_bound_aggregations(BoundAggregateFn(Count()))
 
     def sum(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
         """Compute grouped sum aggregation.
@@ -493,7 +516,7 @@ class GroupedDataset(Generic[T]):
 
 def _partition_and_combine_block(block: Block[T], boundaries: List[KeyType],
                                  key: GroupKeyT,
-                                 aggs: Tuple[Aggregation]) -> List[Block]:
+                                 aggs: Tuple[BoundAggregateFn]) -> List[Block]:
     """Partition the block and combine rows with the same key."""
     if key is None:
         partitions = [block]
@@ -505,7 +528,7 @@ def _partition_and_combine_block(block: Block[T], boundaries: List[KeyType],
 
 
 def _aggregate_combined_blocks(
-        num_reducers: int, key: GroupKeyT, aggs: Tuple[Aggregation],
+        num_reducers: int, key: GroupKeyT, aggs: Tuple[BoundAggregateFn],
         *blocks: Tuple[Block, ...]) -> Tuple[Block[U], BlockMetadata]:
     """Aggregate sorted and partially combined blocks."""
     if num_reducers == 1:
