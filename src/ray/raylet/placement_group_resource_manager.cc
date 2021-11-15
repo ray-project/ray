@@ -116,8 +116,9 @@ void NewPlacementGroupResourceManager::CommitBundle(
     }
   }
   cluster_resource_scheduler_->UpdateLocalAvailableResourcesFromResourceInstances();
-  update_resources_(
-      cluster_resource_scheduler_->GetResourceTotals(/*resource_name_filter*/ resources));
+  // update_resources_(
+  //     cluster_resource_scheduler_->GetResourceTotals(/*resource_name_filter*/
+  //     resources));
 }
 
 void NewPlacementGroupResourceManager::ReturnBundle(
@@ -160,7 +161,7 @@ void NewPlacementGroupResourceManager::ReturnBundle(
     }
   }
   pg_bundles_.erase(it);
-  delete_resources_(deleted);
+  // delete_resources_(deleted);
 }
 
 }  // namespace raylet
