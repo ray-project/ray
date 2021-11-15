@@ -196,6 +196,7 @@ if setup_spec.type == SetupType.RAY:
             "pandas",
             "pyarrow>=4.0.1",
             "fsspec",
+            "numpy>=1.20",
         ],
         "default": [
             "aiohttp >= 3.7",
