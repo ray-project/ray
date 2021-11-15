@@ -18,7 +18,7 @@ from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.result import (DEBUG_METRICS, DEFAULT_METRIC, DONE,
                              TIME_THIS_ITER_S, RESULT_DUPLICATE,
                              SHOULD_CHECKPOINT)
-from ray.tune.syncer import CloudSyncer, get_cloud_syncer
+from ray.tune.syncer import CloudSyncer, get_cloud_syncer, SyncConfig
 from ray.tune.trial import Checkpoint, Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm
@@ -210,10 +210,10 @@ class TrialRunner:
         remote_checkpoint_dir (str): Remote path where
             global checkpoints are stored and restored from. Used
             if `resume` == REMOTE.
+        sync_config (SyncConfig): See `tune.py:run`.
         stopper: Custom class for stopping whole experiments. See
             ``Stopper``.
         resume (str|False): see `tune.py:run`.
-        sync_to_cloud (func|str): See `tune.py:run`.
         server_port (int): Port number for launching TuneServer.
         fail_fast (bool | str): Finishes as soon as a trial fails if True.
             If fail_fast='raise' provided, Tune will automatically
@@ -227,6 +227,11 @@ class TrialRunner:
         callbacks (list): List of callbacks that will be called at different
             times in the training loop. Must be instances of the
             ``ray.tune.trial_runner.Callback`` class.
+        metric (str): Metric used to check received results. If a result is
+            reported without this metric, an error will be raised. The error
+            can be omitted by not providing a metric or by setting the env
+            variable ``TUNE_DISABLE_STRICT_METRIC_CHECKING=0``
+
     """
 
     CKPT_FILE_TMPL = "experiment_state-{}.json"
@@ -235,21 +240,23 @@ class TrialRunner:
     ]
     RAISE = "RAISE"
 
-    def __init__(self,
-                 search_alg=None,
-                 scheduler=None,
-                 local_checkpoint_dir=None,
-                 remote_checkpoint_dir=None,
-                 sync_to_cloud=None,
-                 stopper=None,
-                 resume=False,
-                 server_port=None,
-                 fail_fast=False,
-                 checkpoint_period=None,
-                 trial_executor=None,
-                 callbacks=None,
-                 metric=None,
-                 driver_sync_trial_checkpoints=False):
+    def __init__(
+            self,
+            search_alg=None,
+            scheduler=None,
+            local_checkpoint_dir=None,
+            remote_checkpoint_dir=None,
+            sync_config=None,
+            stopper=None,
+            resume=False,
+            server_port=None,
+            fail_fast=False,
+            checkpoint_period=None,
+            trial_executor=None,
+            callbacks=None,
+            metric=None,
+            # Deprecate on next refactor
+            driver_sync_trial_checkpoints=False):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._scheduler_alg = scheduler or FIFOScheduler()
         self.trial_executor = trial_executor or RayTrialExecutor()
@@ -328,10 +335,10 @@ class TrialRunner:
         if self._local_checkpoint_dir:
             os.makedirs(self._local_checkpoint_dir, exist_ok=True)
 
+        sync_config = sync_config or SyncConfig()
         self._remote_checkpoint_dir = remote_checkpoint_dir
-        self._syncer = get_cloud_syncer(local_checkpoint_dir,
-                                        remote_checkpoint_dir, sync_to_cloud)
-
+        self._syncer = get_cloud_syncer(
+            local_checkpoint_dir, remote_checkpoint_dir, sync_config.syncer)
         self._stopper = stopper or NoopStopper()
         self._resumed = False
 
@@ -687,7 +694,6 @@ class TrialRunner:
 
         # This will contain the next trial to start
         next_trial = self._get_next_trial()  # blocking
-
         # Create pending trials. If the queue was updated before, only
         # continue updating if this was successful (next_trial is not None)
         if not self._updated_queue or (self._updated_queue and next_trial):
@@ -799,14 +805,6 @@ class TrialRunner:
             trial_progress_str(self.get_trials(), metrics, force_table=True),
         ]
         return delim.join(messages)
-
-    def has_resources_for_trial(self, trial: "Trial"):
-        """Returns whether this runner has at least the specified resources."""
-        return self.trial_executor.has_resources_for_trial(trial)
-
-    def has_resources(self, resources):
-        """Returns whether this runner has at least the specified resources."""
-        return self.trial_executor.has_resources(resources)
 
     def _stop_experiment_if_needed(self):
         """Stops all trials."""
@@ -1111,7 +1109,6 @@ class TrialRunner:
         """
         logger.debug("Trial %s: Processing trial save.", trial)
         checkpoint_value = None
-
         try:
             results = self.trial_executor.fetch_result(trial)
             checkpoint_value = results[-1]
@@ -1238,7 +1235,6 @@ class TrialRunner:
             trial.clear_checkpoint()
         self.trial_executor.stop_trial(
             trial, error=error_msg is not None, error_msg=error_msg)
-
         if self.trial_executor.has_resources_for_trial(trial):
             requeue_trial = False
             logger.info(

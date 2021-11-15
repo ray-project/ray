@@ -104,7 +104,7 @@ class Node:
                 ray_params._system_config) > 0 and (not head
                                                     and not connect_only):
             raise ValueError(
-                "Internal config parameters can only be set on the head node.")
+                "System config parameters can only be set on the head node.")
 
         self._raylet_ip_address = raylet_ip_address
 
@@ -300,8 +300,8 @@ class Node:
         old_logs_dir = os.path.join(self._logs_dir, "old")
         try_to_create_directory(old_logs_dir)
         # Create a directory to be used for runtime environment.
-        self._runtime_env_dir = os.path.join(self._session_dir,
-                                             "runtime_resources")
+        self._runtime_env_dir = os.path.join(
+            self._session_dir, self._ray_params.runtime_env_dir_name)
         try_to_create_directory(self._runtime_env_dir)
 
     def get_resource_spec(self):

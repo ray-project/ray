@@ -54,7 +54,7 @@ ray.init(
     namespace="serve_failure_test",
     address=cluster.address,
     dashboard_host="0.0.0.0",
-    log_to_driver=False)
+    log_to_driver=True)
 serve.start(detached=True)
 
 
@@ -76,8 +76,9 @@ class RandomKiller:
 
     def run(self):
         while True:
-            ray.kill(
-                random.choice(self._get_all_serve_actors()), no_restart=False)
+            chosen = random.choice(self._get_all_serve_actors())
+            print(f"Killing {chosen}")
+            ray.kill(chosen, no_restart=False)
             time.sleep(self.kill_period_s)
 
 
@@ -125,7 +126,9 @@ class RandomTest:
         while True:
             for _ in range(100):
                 actions, weights = zip(*self.weighted_actions)
-                random.choices(actions, weights=weights)[0]()
+                action_chosen = random.choices(actions, weights=weights)[0]
+                print(f"Executing {action_chosen}")
+                action_chosen()
 
             new_time = time.time()
             print("Iteration {}:\n"
