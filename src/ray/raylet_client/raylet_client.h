@@ -62,14 +62,16 @@ class WorkerLeaseInterface {
  public:
   /// Requests a worker from the raylet. The callback will be sent via gRPC.
   /// \param resource_spec Resources that should be allocated for the worker.
+  /// \param grant_or_reject: True if we we should either grant or reject the request
+  ///                         but no spillback.
+  /// \param callback: The callback to call when the request finishes.
   /// \param backlog_size The queue length for the given shape on the CoreWorker.
-  /// \return ray::Status
   virtual void RequestWorkerLease(
-      const ray::TaskSpecification &resource_spec,
+      const ray::TaskSpecification &resource_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size = -1) = 0;
   virtual void RequestWorkerLease(
-      const rpc::TaskSpec &task_spec,
+      const rpc::TaskSpec &task_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size = -1) = 0;
 
@@ -373,14 +375,15 @@ class RayletClient : public RayletClientInterface {
 
   /// Implements WorkerLeaseInterface.
   void RequestWorkerLease(
-      const ray::TaskSpecification &resource_spec,
+      const ray::TaskSpecification &resource_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size) override {
-    RequestWorkerLease(resource_spec.GetMessage(), callback, backlog_size);
+    RequestWorkerLease(resource_spec.GetMessage(), grant_or_reject, callback,
+                       backlog_size);
   }
 
   void RequestWorkerLease(
-      const rpc::TaskSpec &resource_spec,
+      const rpc::TaskSpec &resource_spec, bool grant_or_reject,
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size) override;
 

@@ -373,7 +373,10 @@ def train_func(config):
 
         # Checkpoint model.
         if is_distributed:
-            train.save_checkpoint(model_state_dict=net.module.state_dict())
+            import copy
+            model_copy = copy.deepcopy(net.module)
+            train.save_checkpoint(
+                model_state_dict=model_copy.cpu().state_dict())
         else:
             torch.save(net.state_dict(), f"models/model-epoch-{epoch}.torch")
 
@@ -386,7 +389,7 @@ def train_func(config):
 
     if is_distributed:
         if train.world_rank() == 0:
-            return net.module
+            return net.module.cpu()
         else:
             return None
     else:
