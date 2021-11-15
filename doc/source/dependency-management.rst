@@ -180,9 +180,8 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
   To use packages via ``HTTPS`` URIs, you must have the ``smart_open`` library (you can install it using ``pip install smart_open``).
 
   - Example:
-
-.. code-block:: python
-    runtime_env = {"working_dir": "https://github.com/example_username/example_respository/archive/HEAD.zip"}
+    
+    - ``runtime_env = {"working_dir": "https://github.com/example_username/example_respository/archive/HEAD.zip"}``
 
 - ``S3``: ``S3`` refers to URIs starting with ``s3://`` that point to compressed packages stored in `AWS S3 <https://aws.amazon.com/s3/>`_.
   To use packages via ``S3`` URIs, you must have the ``smart_open`` and ``boto3`` libraries (you can install them using ``pip install smart_open`` and ``pip install boto3``).
@@ -192,8 +191,7 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
 
   - Example:
 
-.. code-block:: python
-    runtime_env = {"working_dir": "s3://example_bucket/example_file.zip"}
+    - ``runtime_env = {"working_dir": "s3://example_bucket/example_file.zip"}``
 
 - ``GS``: ``GS`` refers to URIs starting with ``gs://`` that point to compressed packages stored in `Google Cloud Storage <https://cloud.google.com/storage>`_.
   To use packages via ``GS`` URIs, you must have the ``smart_open`` and ``google-cloud-storage`` libraries (you can install them using ``pip install smart_open`` and ``pip install google-cloud-storage``).
@@ -202,9 +200,8 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
   Follow the steps on Google Cloud Storage's `Getting started with authentication <https://cloud.google.com/docs/authentication/getting-started>`_ guide to set up your credentials and to provide Ray with access to your remote package.
 
   - Example:
-
-.. code-block:: python
-    runtime_env = {"working_dir": "gs://example_bucket/example_file.zip"}
+    
+    - ``runtime_env = {"working_dir": "gs://example_bucket/example_file.zip"}``
 
 Hosting a Dependency on a Remote Git Provider: Step-by-Step Guide
 -----------------------------------------------------------------
@@ -232,29 +229,24 @@ If `example_repository` is public and you want to retrieve the latest commit, th
 Here is a list of different use cases and corrseponding URLs:
 
 - Example: Retrieve package from a GitHub public repository's latest commit
-
-.. code-block:: python
-    runtime_env = {"working_dir": "https://github.com/[username]/[repository]/archive/HEAD.zip"}
+  
+  - ``runtime_env = {"working_dir": "https://github.com/[username]/[repository]/archive/HEAD.zip"}``
 
 - Example: Retrieve package from a specific commmit hash on a GitHub public repository
-
-.. code-block:: python
-    runtime_env = {"working_dir": "https://github.com/[username]/[repository]/archive/[commit hash].zip"}
+  
+  - ``runtime_env = {"working_dir": "https://github.com/[username]/[repository]/archive/[commit hash].zip"}``
 
 - Example: Retrieve package from a GitHub private repository using username and password
-
-.. code-block:: python
-    runtime_env = {"working_dir": "https://[username]:[password]@github.com/[username]/[private repository]/archive/[commit hash].zip"}
+  
+  - ``runtime_env = {"working_dir": "https://[username]:[password]@github.com/[username]/[private repository]/archive/[commit hash].zip"}``
 
 - Example: Retrieve package from a GitHub private repository using a Personal Access Token
-
-.. code-block:: python
-    runtime_env = {"working_dir": "https://[username]:[personal access token]@github.com/[username]/[private repository]/archive/[commit hash].zip"}
+  
+  - ``runtime_env = {"working_dir": "https://[username]:[personal access token]@github.com/[username]/[private repository]/archive/[commit hash].zip"}``
 
 - Example: Retrieve package from a specific commit hash on a Bitbucket public repository
-
-.. code-block:: python
-    runtime_env = {"working_dir": "https://bitbucket.org/[owner]/[repository]/get/[commit hash].tar.gz"}
+  
+  - ``runtime_env = {"working_dir": "https://bitbucket.org/[owner]/[repository]/get/[commit hash].tar.gz"}``
 
 .. tip::
 
