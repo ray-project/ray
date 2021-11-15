@@ -196,7 +196,6 @@ if setup_spec.type == SetupType.RAY:
             "pandas",
             "pyarrow>=4.0.1",
             "fsspec",
-            "numpy>=1.20",
         ],
         "default": [
             "aiohttp >= 3.7",
@@ -219,6 +218,10 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-exporter-otlp==1.1.0"
         ],
     }
+
+    if sys.version_info >= (3, 7):
+        # Numpy dropped python 3.6 support in 1.20.
+        setup_spec.extras["data"].append("numpy >= 1.20")
 
     # Ray Serve depends on the Ray dashboard components.
     setup_spec.extras["serve"] = list(
