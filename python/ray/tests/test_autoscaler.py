@@ -440,56 +440,6 @@ SMALL_CLUSTER = {
     "worker_start_ray_commands": ["start_ray_worker"],
 }
 
-SMALL_CLUSTER_2 = {
-    "cluster_name": "default",
-    "max_workers": 2,
-    "idle_timeout_minutes": 5,
-    "provider": {
-        "type": "mock",
-        "region": "us-east-1",
-        "availability_zone": "us-east-1a",
-    },
-    "docker": {
-        "image": "example",
-        "container_name": "mock",
-    },
-    "auth": {
-        "ssh_user": "ubuntu",
-        "ssh_private_key": os.devnull,
-    },
-    "head_node_type": "ray.head.default",
-    "available_node_types": {
-        "ray.head.default": {
-            "max_workers": 0,
-            "min_workers": 0,
-            "resources": {
-                "CPU": 1
-            },
-            "node_config": {
-                "TestProp": 1
-            },
-        },
-        "ray.worker.default": {
-            "min_workers": 2,
-            "max_workers": 2,
-            "resources": {
-                "CPU": 1
-            },
-            "node_config": {
-                "TestProp": 2
-            },
-        }
-    },
-    "file_mounts": {},
-    "cluster_synced_files": [],
-    "initialization_commands": ["init_cmd"],
-    "setup_commands": ["setup_cmd"],
-    "head_setup_commands": ["head_setup_cmd"],
-    "worker_setup_commands": ["worker_setup_cmd"],
-    "head_start_ray_commands": ["start_ray_head"],
-    "worker_start_ray_commands": ["start_ray_worker"],
-}
-
 MOCK_DEFAULT_CONFIG = {
     "cluster_name": "default",
     "max_workers": 2,

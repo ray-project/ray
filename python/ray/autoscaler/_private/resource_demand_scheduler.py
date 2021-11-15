@@ -66,8 +66,7 @@ class ResourceDemandScheduler:
         """Returns the head node's id and the list of all worker node ids,
         given a list `nodes` of all node ids in the cluster.
         """
-        head = ""
-        workers = []
+        head, workers = "", []
         for node in nodes:
             tags = self.provider.node_tags(node)
             if tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD:
