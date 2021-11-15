@@ -3,6 +3,7 @@ import pytest
 import numpy as np
 import os
 import pickle
+from ray import ray_constants
 try:
     import pytest_timeout
 except ImportError:
@@ -273,12 +274,14 @@ def test_actor_class_name(ray_start_regular):
 
     Foo.remote()
     # TODO: redis-removal kv
-    r = ray.worker.global_worker.redis_client
-    actor_keys = r.keys("ActorClass*")
+    g = ray.worker.global_worker.gcs_client
+    actor_keys = g.internal_kv_keys(b"ActorClass",
+                                    ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
     assert len(actor_keys) == 1
-    actor_class_info = r.hgetall(actor_keys[0])
-    assert actor_class_info[b"class_name"] == b"Foo"
-    assert b"test_actor" in actor_class_info[b"module"]
+    actor_class_info = pickle.loads(
+        g.internal_kv_get(actor_keys[0], ray_constants.KV_NAMESPACE_FUNCTION_TABLE))
+    assert actor_class_info["class_name"] == "Foo"
+    assert "test_actor" in actor_class_info["module"]
 
 
 def test_actor_exit_from_task(ray_start_regular_shared):
