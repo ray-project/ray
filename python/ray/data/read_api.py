@@ -200,16 +200,7 @@ def read_datasource(datasource: Datasource[T],
 
     # Get the schema from the first block synchronously.
     if metadata and metadata[0].schema is None:
-        get_schema = cached_remote_fn(_get_schema)
-        schema0 = ray.get(get_schema.remote(next(block_list.iter_blocks())))
-        block_list.set_metadata(
-            0,
-            BlockMetadata(
-                num_rows=metadata[0].num_rows,
-                size_bytes=metadata[0].size_bytes,
-                schema=schema0,
-                input_files=metadata[0].input_files,
-            ))
+        block_list.ensure_schema_for_first_block()
 
     return Dataset(block_list, 0)
 
@@ -678,10 +669,6 @@ def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
     table = pa.Table.from_pydict({"value": TensorArray(ndarray)})
     return (table,
             BlockAccessor.for_block(table).get_metadata(input_files=None))
-
-
-def _get_schema(block: Block) -> Any:
-    return BlockAccessor.for_block(block).schema()
 
 
 def _get_metadata(table: "pyarrow.Table") -> BlockMetadata:

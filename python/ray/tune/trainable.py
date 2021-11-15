@@ -161,11 +161,8 @@ class Trainable:
 
             @classmethod
             def default_resource_request(cls, config):
-                return Resources(
-                    cpu=0,
-                    gpu=0,
-                    extra_cpu=config["workers"],
-                    extra_gpu=int(config["use_gpu"]) * config["workers"])
+                return PlacementGroupFactory([{"CPU": 1}, {"CPU": 1}]])
+
 
         Args:
             config[Dict[str, Any]]: The Trainable's config dict.

@@ -143,7 +143,7 @@ class ActorManagerTest : public ::testing::Test {
 
     auto actor_handle = absl::make_unique<ActorHandle>(
         actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-        function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
+        function.GetLanguage(), function.GetFunctionDescriptor(), "", 0, "", "");
     EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
         .WillRepeatedly(testing::Return(true));
     actor_manager_->AddNewActorHandle(move(actor_handle), call_site, caller_address,
@@ -169,7 +169,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
                        FunctionDescriptorBuilder::BuildPython("", "", "", ""));
   auto actor_handle = absl::make_unique<ActorHandle>(
       actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
+      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0, "", "");
   EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
       .WillRepeatedly(testing::Return(true));
 
@@ -182,7 +182,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
 
   auto actor_handle2 = absl::make_unique<ActorHandle>(
       actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
+      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0, "", "");
   // Make sure the same actor id adding will return false.
   ASSERT_FALSE(actor_manager_->AddNewActorHandle(move(actor_handle2), call_site,
                                                  caller_address, false));
@@ -222,7 +222,7 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
                        FunctionDescriptorBuilder::BuildPython("", "", "", ""));
   auto actor_handle = absl::make_unique<ActorHandle>(
       actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0);
+      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0, "", "");
   EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
       .WillRepeatedly(testing::Return(true));
   ObjectID outer_object_id = ObjectID::Nil();

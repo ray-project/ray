@@ -77,7 +77,7 @@
 
 - name: many_ppo
   cluster:
-    app_config: app_config.yaml
+    app_config: ../rllib_tests/app_config.yaml
     compute_template: many_ppo.yaml
 
   run:
