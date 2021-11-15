@@ -10,7 +10,7 @@ First, install Ray Serve and all of its dependencies by running the following co
 
   pip install "ray[serve]"
 
-For this tutorial, we'll use `a model <https://huggingface.co/mrm8488/t5-base-finetuned-summarize-news>`_ that summarizes news articles.
+For this tutorial, we'll use `a model <https://huggingface.co/mrm8488/t5-base-finetuned-summarize-news>`_ [#f1] that summarizes news articles.
 Let's take a look at how it works:
 
 .. code-block:: python
@@ -231,9 +231,18 @@ article as the original Python script:
 
 .. warning::
 
-  Since Ray Serve shuts down when the Python deployment script finishes, we can either keep Ray Serve running in the background using ``serve.start(detached=True)`` (see :doc:`deployment` for details) or for testing purposes, we can add this client script to the end of the Serve deployment script and run it all together to see the output.
+  Since Ray Serve shuts down when the Python deployment script finishes, we can 
+  either keep Ray Serve running in the background using ``serve.start(detached=True)`` 
+  (see :doc:`deployment` for details) or for testing purposes, we can add this 
+  client script to the end of the Serve deployment script and run it all together 
+  to see the output.
 
-Our Serve deployment is still a bit inefficient though. In particular, the ``summarize`` function sets the input encodings and weights by defining the ``tokenizer`` and ``model`` variables each time that it's called. However, these encodings and weights never change, so it would be better if we could define ``tokenizer`` and ``model`` only once and keep their values in memory instead of reloading them upon each HTTP query.
+Our Serve deployment is still a bit inefficient though. In particular, the 
+``summarize`` function sets the input encodings and weights by defining the 
+``tokenizer`` and ``model`` variables each time that it's called. However, these 
+encodings and weights never change, so it would be better if we could define 
+``tokenizer`` and ``model`` only once and keep their values in memory instead of 
+reloading them upon each HTTP query.
 
 We can achieve this by converting our ``summarize`` function into a class:
 
@@ -257,9 +266,18 @@ We can achieve this by converting our ``summarize`` function into a class:
     
     Summarizer.deploy()
 
-With this configuration, we can query the Summarizer class instead of a router function. When the ``Summarizer`` class is initialized, its ``__init__`` function is called, which loads and stores the input encodings and model weights in ``self.tokenizer`` and ``self.model``. HTTP queries for the ``Summarizer`` class will by default get routed to its ``__call__`` method, which takes in a Starlette ``request`` object. The ``Summarizer`` class can then take the request's ``txt`` article ``text`` data and call the ``summarize`` function on it. The ``summarize`` function no longer needs to load the input encodings and model weights on each query. Instead it can use the saved ``self.tokenizer`` and ``self.model`` values.
+With this configuration, we can query the Summarizer class instead of a router function. 
+When the ``Summarizer`` class is initialized, its ``__init__`` function is called, 
+which loads and stores the input encodings and model weights in ``self.tokenizer`` 
+and ``self.model``. HTTP queries for the ``Summarizer`` class will by default get 
+routed to its ``__call__`` method, which takes in a Starlette ``request`` object. 
+The ``Summarizer`` class can then take the request's ``txt`` article ``text`` data 
+and call the ``summarize`` function on it. The ``summarize`` function no longer 
+needs to load the input encodings and model weights on each query. Instead it can 
+use the saved ``self.tokenizer`` and ``self.model`` values.
 
-HTTP queries for the Ray Serve class deployments follow a similar format to Ray Serve function deployments. Here's an example client script for the ``Summarizer`` example:
+HTTP queries for the Ray Serve class deployments follow a similar format to Ray 
+Serve function deployments. Here's an example client script for the ``Summarizer`` example:
 
 .. code-block:: python
   import requests
@@ -281,6 +299,17 @@ HTTP queries for the Ray Serve class deployments follow a similar format to Ray 
   here. The Eagle has landed."
   '''
 
-Congratulations! You just built and deployed a machine learning model on Ray Serve! You should now have enough context to dive into the :doc:`core-apis` to get a deeper understanding of Ray Serve.
-To learn more about how to start a multi-node cluster for your Ray Serve deployments, see :doc:`../cluster/index`.
-For more interesting example applications, including integrations with popular machine learning frameworks and Python web servers, be sure to check out :doc:`tutorials/index`.
+Congratulations! You just built and deployed a machine learning model on Ray Serve! 
+You should now have enough context to dive into the :doc:`core-apis` to get a deeper 
+understanding of Ray Serve.
+
+To learn more about how to start a multi-node cluster for your Ray Serve deployments, 
+see :doc:`../cluster/index`. For more interesting example applications, 
+including integrations with popular machine learning frameworks and Python web 
+servers, be sure to check out :doc:`tutorials/index`.
+
+.. rubric:: Footnotes
+
+.. [#f1] Credit for this model goes to `Abishek Kumar Mishra <https://github.com/abhimishra91>`_ 
+for creating the original `Colab Notebook <https://github.com/abhimishra91/transformers-tutorials/blob/master/transformers_summarization_wandb.ipynb>`_
+and `Manuel Romero <https://huggingface.co/mrm8488>`_ for the adapted model on Hugging Face.
