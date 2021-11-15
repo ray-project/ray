@@ -22,7 +22,6 @@ from ray.train.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
 # Ray Train should be usable even if Tune is not installed.
 from ray.train.utils import construct_path
 from ray.train.worker_group import WorkerGroup
-from ray.util.ml_utils.node import force_on_current_node
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -146,14 +145,6 @@ class Trainer:
                     "`resources_per_worker.")
 
         remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
-
-        if not ray.is_initialized():
-            ray.init()
-        if not self._is_tune_enabled():
-            # Assign BackendExecutor to head node.
-            # This is needed for Ray Client mode to support fault tolerance.
-            # This is not needed in Tune as the Trial will be on the cluster.
-            remote_executor = force_on_current_node(remote_executor)
 
         self._backend_executor_actor = remote_executor.remote(
             backend_config=backend_config,
