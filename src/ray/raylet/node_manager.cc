@@ -1945,7 +1945,7 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
   }
 
   runtime_env_manager_.AddURIReference(actor_id.Hex(),
-                                      task.GetTaskSpecification().RuntimeEnv());
+                                       task.GetTaskSpecification().RuntimeEnv());
 }
 
 void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {

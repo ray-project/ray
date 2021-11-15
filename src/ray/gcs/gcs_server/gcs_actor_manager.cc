@@ -400,7 +400,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   }
 
   runtime_env_manager_.AddURIReference(actor->GetActorID().Hex(),
-                                         request.task_spec().runtime_env());
+                                       request.task_spec().runtime_env());
 
   // The backend storage is supposed to be reliable, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
