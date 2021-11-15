@@ -8,7 +8,7 @@ from types import ModuleType
 from typing import Any, Dict, Optional
 
 import yaml
-from ray.autoscaler._private.fake_docker.command_runner import \
+from ray.autoscaler._private.fake_multi_node.command_runner import \
     FakeDockerCommandRunner
 from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler.node_provider import NodeProvider

@@ -7,8 +7,9 @@
 cluster_name: fake_docker
 max_workers: 8
 provider:
-    type: fake_docker
+    type: fake_multinode
     project_name: fake_docker
+    docker: True
     image: rayproject/ray:nightly
     shared_volume_dir: /tmp/fake_docker
     head_resources:
