@@ -162,7 +162,7 @@ void AgentManager::CreateRuntimeEnv(
       return;
     }
 
-    RAY_LOG(INFO)
+    RAY_LOG_EVERY_MS(INFO, 3 * 10 * 1000)
         << "Runtime env agent is not registered yet. Will retry CreateRuntimeEnv later: "
         << serialized_runtime_env;
     delay_executor_(

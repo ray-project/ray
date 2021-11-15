@@ -285,6 +285,29 @@ def main(results=None):
     results += timeit("n:n async-actor calls async", async_actor_multi, m * n)
     ray.shutdown()
 
+    NUM_PGS = 100
+    NUM_BUNDLES = 1
+    ray.init(resources={"custom": 100})
+
+    def placement_group_create_removal(num_pgs):
+        pgs = [
+            ray.util.placement_group(bundles=[{
+                "custom": 0.001
+            } for _ in range(NUM_BUNDLES)]) for _ in range(num_pgs)
+        ]
+        [pg.wait(timeout_seconds=30) for pg in pgs]
+        # Include placement group removal here to clean up.
+        # If we don't clean up placement groups, the whole performance
+        # gets slower as it runs more.
+        # Since timeit function runs multiple times without
+        # the cleaning logic, we should have this method here.
+        for pg in pgs:
+            ray.util.remove_placement_group(pg)
+
+    results += timeit("placement group create/removal",
+                      lambda: placement_group_create_removal(NUM_PGS), NUM_PGS)
+    ray.shutdown()
+
     client_microbenchmark_main(results)
 
     return results
