@@ -154,7 +154,6 @@ def deployment_info(version: Optional[str] = None,
                     user_config: Optional[Any] = None,
                     **config_opts) -> Tuple[DeploymentInfo, DeploymentVersion]:
     info = DeploymentInfo(
-        actor_def=None,
         version=version,
         start_time_ms=0,
         deployment_config=DeploymentConfig(

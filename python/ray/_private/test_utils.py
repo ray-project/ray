@@ -503,7 +503,8 @@ def get_non_head_nodes(cluster):
 def init_error_pubsub():
     """Initialize redis error info pub/sub"""
     if gcs_pubsub_enabled():
-        s = GcsSubscriber(channel=ray.worker.global_worker.gcs_channel)
+        s = GcsSubscriber(
+            channel=ray.worker.global_worker.gcs_channel.channel())
         s.subscribe_error()
     else:
         s = ray.worker.global_worker.redis_client.pubsub(
