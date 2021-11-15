@@ -197,7 +197,7 @@ Currently, three types of remote URIs are supported for hosting ``working_dir`` 
   To use packages via ``GS`` URIs, you must have the ``smart_open`` and ``google-cloud-storage`` libraries (you can install them using ``pip install smart_open`` and ``pip install google-cloud-storage``).
   Ray does not explicitly pass in any credentials to the ``google-cloud-storage``'s ``Client`` object.
   ``google-cloud-storage`` will use your local service account key(s) and environment variables by default.
-  Follow the steps on Google Cloud Storage's `Getting started with authentication <https://cloud.google.com/docs/authentication/getting-started>`_ guide to set up your credentials and to provide Ray with access to your remote package.
+  Follow the steps on Google Cloud Storage's `Getting started with authentication <https://cloud.google.com/docs/authentication/getting-started>`_ guide to set up your credentials, which allow Ray to access your remote package.
 
   - Example:
     
