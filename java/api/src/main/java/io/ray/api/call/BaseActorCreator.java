@@ -85,12 +85,15 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   }
 
   /**
-   * Set the maximum number of concurrent calls to allow for this actor.
+   * Set the maximum number of pending calls sending to the actor. When the number of pending calls
+   * reach max_pending_calls, subsequent calls will be backpressued, and the exception
+   * ray.exceptions.BackPressureError will be raised.
    *
    * <p>The maximum concurrency defaults to 1 for threaded execution. Note that the execution order
    * is not guaranteed when {@code max_concurrency > 1}.
    *
-   * @param maxConcurrency The maximum number of concurrent calls to allow for this actor.
+   * @param maxConcurrency The maximum number of concurrent calls to allow for this actor. It must
+   *     be note, that the pending calls is counted separately for each caller actor.
    * @return self
    * @see ActorCreationOptions.Builder#setMaxConcurrency(int)
    */

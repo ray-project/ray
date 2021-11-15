@@ -594,9 +594,11 @@ class ActorClass:
                 :ref:`runtime-environments` for details).  This API is in beta
                 and may change before becoming stable.
             max_pending_calls (int): Set the maximum number of pending calls
-                for this actor. When the number of pending calls reach
+                sending to the actor. When the number of pending calls reach
                 max_pending_calls, subsequent calls will be backpressued, and
                 the exception ray.exceptions.BackPressureError will be raised.
+                It must be note, that the pending calls is counted separately
+                for each caller actor.
 
         Returns:
             A handle to the newly created actor.
