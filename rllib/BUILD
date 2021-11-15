@@ -1355,6 +1355,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_nn_framework_import_errors",
+    tags = ["team:ml", "tests_dir", "tests_dir_D"],
+    size = "small",
+    srcs = ["teststest_nn_framework_import_errors.py"]
+)
+
+py_test(
     name = "tests/test_eager_support_pg",
     main = "tests/test_eager_support.py",
     tags = ["team:ml", "tests_dir", "tests_dir_E"],

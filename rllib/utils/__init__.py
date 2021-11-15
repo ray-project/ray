@@ -3,7 +3,6 @@ from functools import partial
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp, \
     try_import_torch
-from ray.rllib.utils.debug_utils import validate_config
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.filter import Filter
@@ -108,5 +107,4 @@ __all__ = [
     "PolynomialSchedule",
     "PublicAPI",
     "SMALL_NUMBER",
-    "validate_config",
 ]

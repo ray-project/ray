@@ -27,15 +27,14 @@ from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
-from ray.rllib.utils import deep_update, FilterManager, merge_dicts, \
-    validate_config
+from ray.rllib.utils import deep_update, FilterManager, merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI, override, \
     PublicAPI
 from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning, \
     DEPRECATED_VALUE
 from ray.rllib.utils.error import EnvError, ERR_MSG_INVALID_ENV_DESCRIPTOR
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
@@ -662,7 +661,7 @@ class Trainer(Trainable):
         # be a partial config dict with the class' default).
         self.config = self.merge_trainer_configs(self._default_config, config,
                                                  self._allow_unknown_configs)
-        validate_config(self.config)
+        self.validate_framework(self.config)
         # Setup the "env creator" callable.
         env = self._env_id
         if env:
@@ -1588,6 +1587,80 @@ class Trainer(Trainable):
         return deep_update(config1, config2, _allow_unknown_configs,
                            cls._allow_unknown_subkeys,
                            cls._override_all_subkeys_if_type_changes)
+
+    @staticmethod
+    def validate_framework(config: PartialTrainerConfigDict) -> None:
+        """Validates the config dictionary.
+
+        Args:
+            config: The config dictionary to be validated.
+
+        """
+        _tf1, _tf, _tfv = None, None, None
+        _torch = None
+        framework = config["framework"]
+        tf_valid_frameworks = {"tf", "tf2", "tfe"}
+        if framework not in tf_valid_frameworks and framework != "torch":
+            return
+        elif framework in tf_valid_frameworks:
+            _tf1, _tf, _tfv = try_import_tf()
+        else:
+            _torch, _ = try_import_torch()
+
+        def check_if_correct_nn_framework_installed():
+            """Check if tf/torch experiment is running and tf/torch installed.
+            """
+            if framework in tf_valid_frameworks:
+                if not (_tf1 or _tf):
+                    raise ImportError((
+                        "TensorFlow, was the specified as the 'framework' "
+                        "inside of your config dictionary, however, there was "
+                        "no installation found. You can install tensorflow via"
+                        " pip: pip install tensorflow"))
+            elif framework == "torch":
+                if not _torch:
+                    raise ImportError(
+                        ("torch, was the specified as the 'framework' inside "
+                         "of your config dictionary, however, there was no "
+                         "installation found. You can install torch via "
+                         "pip: pip install torch"))
+
+        def resolve_tf_settings():
+            """Check and resolve DL framework settings.
+
+                Tf-eager (tf2|tfe), possibly with tracing set to True.
+                Recommendsetting tracing to True for speedups.
+            """
+
+            # Check and resolve DL framework settings.
+            # Tf-eager (tf2|tfe), possibly with tracing set to True. Recommend
+            # setting tracing to True for speedups.
+            if _tf1 and config["framework"] in ["tf2", "tfe"]:
+                if config["framework"] == "tf2" and _tfv < 2:
+                    raise ValueError(
+                        "You configured `framework`=tf2, but your installed "
+                        "pip tf-version is < 2.0! Make sure your TensorFlow "
+                        "version is >= 2.x.")
+                if not _tf1.executing_eagerly():
+                    _tf1.enable_eager_execution()
+                logger.info(
+                    f"Executing eagerly (framework='{config['framework']}'),"
+                    f" with eager_tracing={config['eager_tracing']}. For "
+                    "production workloads, make sure to set eager_tracing=True"
+                    "  in order to match the speed of tf-static-graph "
+                    "(framework='tf')")
+            # Tf-static-graph (framework=tf): Recommend upgrading to tf2 and
+            # enabling eager tracing for similar speed.
+            elif _tf1 and config["framework"] == "tf":
+                logger.info(
+                    "Your framework setting is 'tf', meaning you are using "
+                    "static-graph mode. Set framework='tf2' to enable eager "
+                    "execution with tf2.x. You may also want to then set "
+                    "eager_tracing=True in order to reach similar execution "
+                    "speed as with static-graph mode.")
+
+        check_if_correct_nn_framework_installed()
+        resolve_tf_settings()
 
     @staticmethod
     def _validate_config(config: PartialTrainerConfigDict,
