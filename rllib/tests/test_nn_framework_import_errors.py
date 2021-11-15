@@ -12,8 +12,8 @@ def test_dont_import_tf_error():
     # Do not import tf for testing purposes.
     os.environ["RLLIB_TEST_NO_TF_IMPORT"] = "1"
     tf_import_error_string = (
-        "TensorFlow, was the specified as the 'framework' "
-        "inside of your config dictionary, however, there was "
+        "TensorFlow was specified as the 'framework' "
+        "inside of your config dictionary. However, there was "
         "no installation found. You can install tensorflow via"
         " pip: pip install tensorflow")
     with pytest.raises(ImportError, match=tf_import_error_string):
@@ -28,8 +28,8 @@ def test_dont_import_torch_error():
     # Do not import tf for testing purposes.
     os.environ["RLLIB_TEST_NO_TORCH_IMPORT"] = "1"
     torch_import_error_string = (
-        "torch, was the specified as the 'framework' inside "
-        "of your config dictionary, however, there was no "
+        "torch was specified as the 'framework' inside "
+        "of your config dictionary. However, there was no "
         "installation found. You can install torch via "
         "pip: pip install torch")
     with pytest.raises(ImportError, match=torch_import_error_string):

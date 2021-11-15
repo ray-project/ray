@@ -1613,28 +1613,21 @@ class Trainer(Trainable):
             if framework in tf_valid_frameworks:
                 if not (_tf1 or _tf):
                     raise ImportError((
-                        "TensorFlow, was the specified as the 'framework' "
-                        "inside of your config dictionary, however, there was "
+                        "TensorFlow was specified as the 'framework' "
+                        "inside of your config dictionary. However, there was "
                         "no installation found. You can install tensorflow via"
                         " pip: pip install tensorflow"))
             elif framework == "torch":
                 if not _torch:
                     raise ImportError(
-                        ("torch, was the specified as the 'framework' inside "
-                         "of your config dictionary, however, there was no "
+                        ("torch was specified as the 'framework' inside "
+                         "of your config dictionary. However, there was no "
                          "installation found. You can install torch via "
                          "pip: pip install torch"))
 
         def resolve_tf_settings():
-            """Check and resolve DL framework settings.
+            """Check and resolve tf settings."""
 
-                Tf-eager (tf2|tfe), possibly with tracing set to True.
-                Recommendsetting tracing to True for speedups.
-            """
-
-            # Check and resolve DL framework settings.
-            # Tf-eager (tf2|tfe), possibly with tracing set to True. Recommend
-            # setting tracing to True for speedups.
             if _tf1 and config["framework"] in ["tf2", "tfe"]:
                 if config["framework"] == "tf2" and _tfv < 2:
                     raise ValueError(
@@ -1643,6 +1636,7 @@ class Trainer(Trainable):
                         "version is >= 2.x.")
                 if not _tf1.executing_eagerly():
                     _tf1.enable_eager_execution()
+                # Recommend setting tracing to True for speedups.
                 logger.info(
                     f"Executing eagerly (framework='{config['framework']}'),"
                     f" with eager_tracing={config['eager_tracing']}. For "
