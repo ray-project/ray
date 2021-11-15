@@ -431,6 +431,15 @@ py_test(
 )
 
 py_test(
+    name = "custom_func_checkpointing",
+    size = "small",
+    srcs = ["examples/custom_func_checkpointing.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "test_torch_trainable",
     size = "medium",
     srcs = ["tests/test_torch_trainable.py"],
