@@ -77,6 +77,16 @@ In general, **Option 2 is recommended for most users** because it allows you to 
 
   my_func.deploy()
 
+.. note::
+
+  Serve recently added an experimental CLI command for deploying a single deployment class. You can try it out via
+
+  .. code-block:: bash
+
+    serve deploy my_module.my_func --options-json '{"num_replicas": 2}'
+  
+  Let us know your feedback via Github Issue or Discussion Forum!
+
 Deploying on Kubernetes
 =======================
 

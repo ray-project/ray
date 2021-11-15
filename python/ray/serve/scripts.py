@@ -1,9 +1,13 @@
 #!/usr/bin/env python
+import json
+import os
 
 import click
-from ray.serve.config import DeploymentMode
 
 import ray
+from ray.serve.api import Deployment
+from ray.serve.config import DeploymentMode
+from ray._private.utils import import_attr
 from ray import serve
 from ray.serve.constants import (DEFAULT_CHECKPOINT_PATH, DEFAULT_HTTP_HOST,
                                  DEFAULT_HTTP_PORT)
@@ -14,7 +18,7 @@ from ray.serve.constants import (DEFAULT_CHECKPOINT_PATH, DEFAULT_HTTP_HOST,
 @click.option(
     "--address",
     "-a",
-    default="auto",
+    default=os.environ.get("RAY_ADDRESS", "auto"),
     required=False,
     type=str,
     help="Address of the running Ray cluster to connect to. "
@@ -73,3 +77,25 @@ def start(http_host, http_port, http_location, checkpoint_path):
 def shutdown():
     serve.api._connect()
     serve.shutdown()
+
+
+@cli.command(help="""
+[Experimental]
+Create a deployment in running Serve instance. The required argument is the
+import path for the deployment: ``my_module.sub_module.file.MyClass``. The
+class should already be decorated with ``@serve.deployment``.
+""")
+@click.argument("deployment")
+@click.option(
+    "--options-json",
+    default=r"{}",
+    required=False,
+    type=str,
+    help="JSON string for the deployments options")
+def deploy(deployment: str, options_json: str):
+    deployment_cls = import_attr(deployment)
+    if not isinstance(deployment_cls, Deployment):
+        raise ValueError(
+            f"{deployment} is not decorated with @serve.deployment.")
+    options = json.loads(options_json)
+    deployment_cls.options(**options).deploy()
