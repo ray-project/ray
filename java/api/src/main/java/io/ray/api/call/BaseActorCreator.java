@@ -28,20 +28,6 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   }
 
   /**
-   * Set the name of this actor. This actor will be accessible from all jobs by this name via {@link
-   * Ray#getGlobalActor(java.lang.String)}. If you want to create a named actor that is only
-   * accessible from this job, use {@link BaseActorCreator#setName(java.lang.String)} instead.
-   *
-   * @param name The name of the named actor.
-   * @return self
-   * @see io.ray.api.options.ActorCreationOptions.Builder#setGlobalName(String)
-   */
-  public T setGlobalName(String name) {
-    builder.setGlobalName(name);
-    return self();
-  }
-
-  /**
    * Set a custom resource requirement to reserve for the lifetime of this actor. This method can be
    * called multiple times. If the same resource is set multiple times, the latest quantity will be
    * used.

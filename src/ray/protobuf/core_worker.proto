@@ -63,7 +63,7 @@ message ActorHandle {
   string ray_namespace = 11;
 
   // The max number of pending actor calls.
-  int32 max_pending_calls = 10;
+  int32 max_pending_calls = 12;
 }
 
 message ReturnObject {

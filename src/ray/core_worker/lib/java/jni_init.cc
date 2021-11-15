@@ -96,7 +96,6 @@ jfieldID java_task_creation_options_bundle_index;
 jfieldID java_call_options_concurrency_group_name;
 
 jclass java_actor_creation_options_class;
-jfieldID java_actor_creation_options_global;
 jfieldID java_actor_creation_options_name;
 jfieldID java_actor_creation_options_max_restarts;
 jfieldID java_actor_creation_options_jvm_options;
@@ -108,7 +107,6 @@ jfieldID java_actor_creation_options_max_pending_calls;
 
 jclass java_placement_group_creation_options_class;
 jclass java_placement_group_creation_options_strategy_class;
-jfieldID java_placement_group_creation_options_global;
 jfieldID java_placement_group_creation_options_name;
 jfieldID java_placement_group_creation_options_bundles;
 jfieldID java_placement_group_creation_options_strategy;
@@ -281,8 +279,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       LoadClass(env, "io/ray/api/options/PlacementGroupCreationOptions");
   java_placement_group_creation_options_strategy_class =
       LoadClass(env, "io/ray/api/placementgroup/PlacementStrategy");
-  java_placement_group_creation_options_global =
-      env->GetFieldID(java_placement_group_creation_options_class, "global", "Z");
   java_placement_group_creation_options_name = env->GetFieldID(
       java_placement_group_creation_options_class, "name", "Ljava/lang/String;");
   java_placement_group_creation_options_bundles = env->GetFieldID(
@@ -295,8 +291,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
 
   java_actor_creation_options_class =
       LoadClass(env, "io/ray/api/options/ActorCreationOptions");
-  java_actor_creation_options_global =
-      env->GetFieldID(java_actor_creation_options_class, "global", "Z");
   java_actor_creation_options_name =
       env->GetFieldID(java_actor_creation_options_class, "name", "Ljava/lang/String;");
   java_actor_creation_options_max_restarts =
