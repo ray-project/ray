@@ -108,9 +108,6 @@ class Trainer:
             logdir: Optional[str] = None,
             max_retries: int = 3,
     ):
-
-        self._backend = backend
-
         if num_workers <= 0:
             raise ValueError("`num_workers` must be a positive integer.")
 
@@ -124,7 +121,7 @@ class Trainer:
         self.logdir = self.create_logdir(logdir)
 
         # Setup executor.
-        backend_config = self._get_backend_config(backend)
+        self._backend_config = self._get_backend_config(backend)
 
         num_cpus = 1
         num_gpus = int(use_gpu)
@@ -153,7 +150,7 @@ class Trainer:
         remote_executor = force_on_current_node(remote_executor)
 
         self._backend_executor_actor = remote_executor.remote(
-            backend_config=backend_config,
+            backend_config=self._backend_config,
             num_workers=num_workers,
             num_cpus_per_worker=num_cpus,
             num_gpus_per_worker=num_gpus,
@@ -273,6 +270,7 @@ class Trainer:
         try:
             iterator = TrainingIterator(
                 backend_executor_actor=self._backend_executor_actor,
+                backend_config=self._backend_config,
                 train_func=train_func,
                 dataset=dataset,
                 checkpoint_manager=self.checkpoint_manager,
@@ -348,6 +346,7 @@ class Trainer:
 
         return TrainingIterator(
             backend_executor_actor=self._backend_executor_actor,
+            backend_config=self._backend_config,
             train_func=train_func,
             run_dir=self.latest_run_dir,
             dataset=dataset,
@@ -466,9 +465,9 @@ class Trainer:
                                "`to_tune_trainable`. Either shutdown the "
                                "Trainer or don't start it in the first place.")
 
-        return _create_tune_trainable(train_func, dataset, self._backend,
-                                      self._num_workers, self._use_gpu,
-                                      self._resources_per_worker)
+        return _create_tune_trainable(
+            train_func, dataset, self._backend_config, self._num_workers,
+            self._use_gpu, self._resources_per_worker)
 
     def to_worker_group(self, train_cls: Type, *args,
                         **kwargs) -> "TrainWorkerGroup":
@@ -566,6 +565,7 @@ class TrainingIterator:
 
     def __init__(
             self, backend_executor_actor: ActorHandle,
+            backend_config: BackendConfig,
             train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
             run_dir: Path,
             dataset: Optional[Union[RayDataset, Dict[str, RayDataset]]],
@@ -573,6 +573,7 @@ class TrainingIterator:
             checkpoint: Optional[Union[Dict, str, Path]],
             checkpoint_strategy: Optional[CheckpointStrategy]):
         self._backend_executor_actor = backend_executor_actor
+        self._backend = backend_config.backend_cls()
         self._train_func = train_func
         self._dataset = dataset
         self._run_dir = run_dir
@@ -673,10 +674,13 @@ class TrainingIterator:
             first_result = results[0]
             result_type = first_result.type
             if result_type is TrainingResultType.REPORT:
-                result_data = [r.data for r in results]
+                result_data = [
+                    self._backend.decode_data(r.data) for r in results
+                ]
                 return result_data
             elif result_type is TrainingResultType.CHECKPOINT:
-                self._checkpoint_manager._process_checkpoint(results)
+                self._checkpoint_manager._process_checkpoint(
+                    results, decode_checkpoint_fn=self._backend.decode_data)
                 # Iterate until next REPORT call or training has finished.
             else:
                 raise TrainBackendError(f"Unexpected result type: "
@@ -693,7 +697,8 @@ class TrainingIterator:
             result_type = results[0].type
             # Process checkpoints and ignore other result types.
             if result_type is TrainingResultType.CHECKPOINT:
-                self._checkpoint_manager._process_checkpoint(results)
+                self._checkpoint_manager._process_checkpoint(
+                    results, decode_checkpoint_fn=self._backend.decode_data)
 
     def _finish_training(self):
         """Finish training and return final results. Propagate any exceptions.
@@ -744,8 +749,8 @@ class TrainingIterator:
         return self._final_results
 
 
-def _create_tune_trainable(train_func, dataset, backend, num_workers, use_gpu,
-                           resources_per_worker):
+def _create_tune_trainable(train_func, dataset, backend_config, num_workers,
+                           use_gpu, resources_per_worker):
     """Creates a Tune Trainable class for Train training.
 
     This function populates class attributes and methods.
@@ -754,7 +759,7 @@ def _create_tune_trainable(train_func, dataset, backend, num_workers, use_gpu,
     # TODO(matt): Move dataset to Ray object store, like tune.with_parameters.
     def tune_function(config, checkpoint_dir=None):
         trainer = Trainer(
-            backend=backend,
+            backend=backend_config,
             num_workers=num_workers,
             use_gpu=use_gpu,
             resources_per_worker=resources_per_worker)

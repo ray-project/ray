@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import io
 import logging
 import os
 
@@ -7,7 +8,7 @@ from typing import Optional, Dict, Any
 
 import ray
 from ray import train
-from ray.train.backend import BackendConfig, Backend
+from ray.train.backend import BackendConfig, Backend, EncodedData
 from ray.train.worker_group import WorkerGroup
 from ray.train.utils import get_address_and_port
 
@@ -139,6 +140,32 @@ class TorchBackend(Backend):
 
         worker_group.execute(
             shutdown_torch, destroy_process_group=len(worker_group) > 1)
+
+    @staticmethod
+    def encode_data(data_dict: Dict) -> EncodedData:
+        """Special handling for moving model from worker to driver."""
+
+        # If model is being checkpointed and is wrapped in DDP, then extract
+        # out the underlying module. If not, then deserialization will fail
+        # since the torch process group is not initialized on the driver.
+
+        for k, v in data_dict.items():
+            if isinstance(v, DistributedDataParallel) and hasattr(v, "module"):
+                data_dict[k] = v.module
+
+        # Convert the checkpoint dict to bytes, so that any GPU tensors that
+        # are in the checkpoint dict can be properly deserialized on the
+        # driver side, even if the driver does not have access to a GPU device.
+        _buffer = io.BytesIO()
+        torch.save(data_dict, _buffer)
+        return _buffer.getvalue()
+
+    @staticmethod
+    def decode_data(encoded_data: EncodedData) -> Dict:
+        # When decoding the bytes on the driver side, always map to CPU.
+        _buffer = io.BytesIO(encoded_data)
+        checkpoint_dict = torch.load(_buffer, map_location="cpu")
+        return checkpoint_dict
 
 
 class _WrappedDataLoader(DataLoader):
