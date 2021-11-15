@@ -186,5 +186,8 @@ def test_multi_cli_threading(call_ray_start):
 
 
 if __name__ == "__main__":
+    # The following should be removed after
+    # https://github.com/ray-project/ray/issues/20355
+    # is fixed.
     os.environ["RAY_ENABLE_AUTO_CONNECT"] = "0"
     sys.exit(pytest.main(["-v", __file__]))
