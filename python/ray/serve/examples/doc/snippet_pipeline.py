@@ -1,3 +1,5 @@
+# flake8: noqa
+
 # __import_start__
 from ray.serve import pipeline
 # __import_end__
