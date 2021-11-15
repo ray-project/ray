@@ -253,6 +253,7 @@ Papers
    cluster/reference.rst
    cluster/cloud.rst
    cluster/ray-client.rst
+   cluster/ray-jobs.rst
    cluster/deploy.rst
 
 .. toctree::
