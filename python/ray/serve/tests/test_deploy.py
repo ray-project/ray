@@ -688,12 +688,6 @@ def test_deploy_handle_validation(serve_instance):
 
 
 def test_init_args(serve_instance):
-    with pytest.raises(TypeError):
-
-        @serve.deployment(init_args=[1, 2, 3])
-        class BadInitArgs:
-            pass
-
     @serve.deployment(init_args=(1, 2, 3))
     class D:
         def __init__(self, *args):
