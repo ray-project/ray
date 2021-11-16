@@ -20,12 +20,17 @@ them. This only works with discrete actions.
 
 ---
 Run this example with defaults (using Tune and action masking):
-$ python action_masking.py
+
+  $ python action_masking.py
+
 Then run again without action masking, which will likely lead to errors due to
 invalid actions being selected (ValueError "Invalid action sent to env!"):
-$ python action_masking.py --no-masking
+
+  $ python action_masking.py --no-masking
+
 Other options for running this example:
-$ python action_masking.py --help
+
+  $ python action_masking.py --help
 """
 
 import argparse
