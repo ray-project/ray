@@ -168,7 +168,7 @@ class StandardAutoscaler:
         # Managed and unmanaged worker nodes
         # (node kinds "worker" and "unmanaged"):
         self.all_workers = []
-        # All nodes (workers, unmanaged workers,  and head)
+        # All nodes (workers, unmanaged workers, and head)
         self.all_nodes = []
         self.head_node_ip = ""
 
