@@ -754,8 +754,8 @@ def run_learning_tests_from_yaml(
                 # Record performance.
                 stats[experiment] = {
                     "episode_reward_mean": float(episode_reward_mean),
-                    "throughput": (
-                        float(throughput) if throughput is not None else 0.0),
+                    "throughput": (float(throughput)
+                                   if throughput is not None else 0.0),
                 }
 
                 print(f" ... Desired reward={desired_reward}; "
