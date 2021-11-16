@@ -737,10 +737,12 @@ class RayTrialExecutor(TrialExecutor):
         # trials (i.e. trials that run remotely) also get fairly reported.
         # See https://github.com/ray-project/ray/issues/4211 for details.
         start = time.time()
-        ready, _ = ray.wait(shuffled_results, timeout=timeout)
+        ready, _ = ray.wait(
+            shuffled_results,
+            timeout=timeout,
+            num_returns=len(shuffled_results))
         if not ready:
             return None
-        result_id = ready[0]
         wait_time = time.time() - start
         if wait_time > NONTRIVIAL_WAIT_TIME_THRESHOLD_S:
             self._last_nontrivial_wait = time.time()
@@ -752,28 +754,37 @@ class RayTrialExecutor(TrialExecutor):
                     BOTTLENECK_WARN_PERIOD_S))
 
             self._last_nontrivial_wait = time.time()
-        return self._running[result_id]
+        return [self._running[result_id] for result_id in ready]
 
-    def fetch_result(self, trial) -> List[Dict]:
+    def fetch_result(self, trials) -> List[Trial]:
         """Fetches result list of the running trials.
 
         Returns:
             Result of the most recent trial training run.
         """
-        trial_future = self._find_item(self._running, trial)
-        if not trial_future:
-            raise ValueError("Trial was not running.")
-        self._running.pop(trial_future[0])
+        if not isinstance(trials, list):
+            return [trials]
+        trial_futures = [
+            self._find_item(self._running, trial) for trial in trials
+        ]
+        for trial_future in trial_futures:
+            if not trial_future:
+                # raise ValueError("Trial was not running.")
+                continue
+            self._running.pop(trial_future[0])
         with warn_if_slow("fetch_result"):
-            result = ray.get(trial_future[0], timeout=DEFAULT_GET_TIMEOUT)
+            results = ray.get(
+                [trial_future[0] for trial_future in trial_futures],
+                timeout=DEFAULT_GET_TIMEOUT)
 
         # For local mode
-        if isinstance(result, _LocalWrapper):
-            result = result.unwrap()
+        for i, result in enumerate(results):
+            if isinstance(result, _LocalWrapper):
+                results[i] = result.unwrap()
 
-        if not isinstance(result, list):
-            return [result]
-        return result
+            if not isinstance(result, list):
+                results[i] = [result]
+        return results
 
     def _update_avail_resources(self, num_retries=5):
         if time.time() - self._last_resource_refresh < self._refresh_period:
