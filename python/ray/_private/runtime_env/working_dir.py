@@ -58,7 +58,9 @@ class WorkingDirManager:
         self._resources_dir = os.path.join(resources_dir, "working_dir_files")
         if not os.path.isdir(self._resources_dir):
             os.makedirs(self._resources_dir)
-        self._uris_to_local_dirs = dict()  # TODO: remove, call get_local_path
+        # TODO(architkulkarni): This dict is not necessary, we should use the
+        # same URI parsing function used elsewhere to convert URIs to paths.
+        self._uris_to_local_dirs = dict()
         assert _internal_kv_initialized()
 
     def delete_uri(self,

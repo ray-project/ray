@@ -56,7 +56,6 @@ class URICache:
             max_total_size_bytes: int = DEFAULT_MAX_URI_CACHE_SIZE_BYTES,
     ):
         # Maps URIs to the size in bytes of their corresponding disk contents.
-        # TODO(archit): logger.error -> logger.debug
         self._used_uris: Dict[str, int] = dict()
         self._unused_uris: Dict[str, int] = dict()
         self._delete_fn = delete_fn
@@ -195,6 +194,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 self._container_manager.setup(
                     runtime_env, context, logger=per_job_logger)
 
+                # TODO(architkulkarni): Unify the below using Plugin class
                 # Set up working_dir
                 working_dir_uri = self._working_dir_manager.get_uri(
                     runtime_env)

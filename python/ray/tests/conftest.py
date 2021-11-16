@@ -253,8 +253,6 @@ def call_ray_stop_only():
 def start_cluster(ray_start_cluster, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
-    print("STARTING CLUSTER IN FIXTURE")
-    print(os.environ)
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=4)
     if use_ray_client:

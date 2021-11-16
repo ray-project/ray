@@ -475,7 +475,6 @@ class TestGC:
             for node in cluster.list_all_nodes():
                 local_dir = os.path.join(node.get_runtime_env_dir_path(),
                                          "working_dir_files")
-                print("SIZEEEE", get_directory_size(local_dir) / (1024**2))
                 assert 3 < get_directory_size(local_dir) / (1024**2) < 5
 
 
