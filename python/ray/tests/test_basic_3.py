@@ -400,4 +400,4 @@ def test_job_id_consistency(ray_start_regular):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vvv", __file__]))
