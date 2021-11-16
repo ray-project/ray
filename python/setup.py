@@ -265,10 +265,12 @@ if setup_spec.type == SetupType.RAY:
         "numpy >= 1.19.3; python_version >= '3.9'",
         "protobuf >= 3.15.3",
         "pyyaml",
-        "redis >= 3.5.0, < 4.0.0",
     ]
 
 if platform.system() == "Darwin" and platform.machine() == "arm64":
+    # TODO (Alex): `hiredis` doesn't have prebuilt M1 mac wheels yet. We can
+    # remove this, either when they add support, we remove redis, or we vendor
+    # redis/hiredis ourselves.
     setup_spec.install_requires.append("redis >= 3.5.0")
 else:
     setup_spec.install_requires.append("redis[hiredis] >= 3.5.0")
