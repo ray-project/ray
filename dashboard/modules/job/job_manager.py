@@ -207,7 +207,7 @@ class JobSupervisor:
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
 
-    def _get_status(self) -> JobStatus:
+    def _get_status(self) -> Optional[JobStatus]:
         return self._status_client.get_status(self._job_id)
 
     def stop(self):
@@ -290,8 +290,7 @@ class JobManager:
         """
         if job_id is None:
             job_id = str(uuid4())
-        elif self._status_client.get_status(
-                job_id) != JobStatus.DOES_NOT_EXIST:
+        elif self._status_client.get_status(job_id) is not None:
             raise RuntimeError(f"Job {job_id} already exists.")
 
         self._status_client.put_status(job_id, JobStatus.PENDING)

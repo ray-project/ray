@@ -34,6 +34,20 @@ The following steps are then performed:
 Then the script exits. If an error occurs at any time, a fail result is
 written to the database.
 
+Exit codes
+----------
+The script exits with code 0 on success, i.e. if the test has been run
+end to end without failures and the subsequent results checks have passed.
+In all other cases, an exit code > 0 is returned.
+
+Exit code 1 is the general failure exit code returned by Python when we
+encounter an error that isn't caught by the rest of the script.
+
+Generally, we try to catch errors as they occur, and return a specific exit
+code that can be used in automation tools to e.g. retry a test when nodes
+didn't come up in time.
+
+These exit codes are defined in the ``ExitCode`` enum below.
 
 Writing a new release test
 --------------------------
@@ -171,6 +185,8 @@ Release test yaml example
 
 """  # noqa: E501
 import argparse
+import enum
+
 import boto3
 import collections
 import copy
@@ -261,6 +277,20 @@ REPORT_S = 30
 RETRY_MULTIPLIER = 2
 
 
+class ExitCode(enum.Enum):
+    UNSPECIFIED = 2
+    UNKNOWN = 3
+    RUNTIME_ERROR = 4
+    COMMAND_ERROR = 5
+    COMMAND_TIMEOUT = 6
+    PREPARE_TIMEOUT = 7
+    FILESYNC_TIMEOUT = 8
+    SESSION_TIMEOUT = 9
+    PREPARE_ERROR = 10
+    APPCONFIG_BUILD_ERROR = 11
+    INFRA_ERROR = 12
+
+
 def exponential_backoff_retry(f, retry_exceptions, initial_retry_delay_s,
                               max_retries):
     retry_cnt = 0
@@ -296,7 +326,15 @@ class PrepareCommandRuntimeError(RuntimeError):
     pass
 
 
-class ReleaseTestTimeoutError(RuntimeError):
+class ReleaseTestRuntimeError(RuntimeError):
+    pass
+
+
+class ReleaseTestInfraError(ReleaseTestRuntimeError):
+    pass
+
+
+class ReleaseTestTimeoutError(ReleaseTestRuntimeError):
     pass
 
 
@@ -607,7 +645,7 @@ def report_result(test_suite: str, test_name: str, status: str, last_logs: str,
         retry_exceptions=rds_data_client.exceptions.StatementTimeoutException,
         initial_retry_delay_s=retry_delay_s,
         max_retries=MAX_RDS_RETRY)
-    logger.info("Result has been persisted to the databse")
+    logger.info("Result has been persisted to the database")
 
 
 def log_results_and_artifacts(result: Dict):
@@ -940,6 +978,7 @@ def create_and_wait_for_session(
         stop_event: multiprocessing.Event,
         session_name: str,
         session_options: Dict[Any, Any],
+        project_id: str,
 ) -> str:
     # Create session
     logger.info(f"Creating session {session_name}")
@@ -975,6 +1014,13 @@ def create_and_wait_for_session(
             logger.info(f"... still waiting for session {session_name} "
                         f"({int(now - start_wait)} seconds) ...")
             next_report = next_report + REPORT_S
+
+    result = sdk.get_session(session_id)
+    if not result.result.state != "Active":
+        raise ReleaseTestInfraError(
+            f"Cluster did not come up - most likely the nodes are currently "
+            f"not available. Please check the cluster startup logs: "
+            f"{anyscale_session_url(project_id, session_id)}")
 
     return session_id
 
@@ -1355,8 +1401,13 @@ def run_test_config(
         _update_results(results)
 
         if scd_id:
-            logs = get_command_logs(session_controller, scd_id,
-                                    test_config.get("log_lines", 50))
+            try:
+                logs = get_command_logs(session_controller, scd_id,
+                                        test_config.get("log_lines", 50))
+            except Exception as e:
+                raise ReleaseTestInfraError(
+                    f"Could not fetch command logs: {e}. This is an "
+                    f"infrastructure error on the Anyscale side.")
         else:
             logs = "No command found to fetch logs for"
 
@@ -1501,6 +1552,7 @@ def run_test_config(
                     stop_event=stop_event,
                     session_name=session_name,
                     session_options=session_options,
+                    project_id=project_id,
                 )
 
             prepare_command = test_config["run"].get("prepare")
@@ -1637,24 +1689,42 @@ def run_test_config(
                 _process_finished_command(
                     session_controller=session_controller, scd_id=scd_id)
             else:
-                timeout_type = ""
                 runtime = None
                 if isinstance(e, CommandTimeoutError):
-                    timeout_type = "timeout"
+                    error_type = "timeout"
                     runtime = 0
-                elif (isinstance(e, PrepareCommandTimeoutError)
-                      or isinstance(e, FileSyncTimeoutError)
-                      or isinstance(e, SessionTimeoutError)
-                      or isinstance(e, PrepareCommandRuntimeError)
-                      or isinstance(e, AppConfigBuildFailure)):
-                    timeout_type = "infra_timeout"
+                    exit_code = ExitCode.COMMAND_TIMEOUT
+                elif isinstance(e, PrepareCommandTimeoutError):
+                    error_type = "infra_timeout"
                     runtime = None
+                    exit_code = ExitCode.PREPARE_TIMEOUT
+                elif isinstance(e, FileSyncTimeoutError):
+                    error_type = "infra_timeout"
+                    runtime = None
+                    exit_code = ExitCode.FILESYNC_TIMEOUT
+                elif isinstance(e, SessionTimeoutError):
+                    error_type = "infra_timeout"
+                    runtime = None
+                    exit_code = ExitCode.SESSION_TIMEOUT
+                elif isinstance(e, PrepareCommandRuntimeError):
+                    error_type = "infra_timeout"
+                    runtime = None
+                    exit_code = ExitCode.PREPARE_ERROR
+                elif isinstance(e, AppConfigBuildFailure):
+                    error_type = "infra_timeout"
+                    runtime = None
+                    exit_code = ExitCode.APPCONFIG_BUILD_ERROR
+                elif isinstance(e, ReleaseTestInfraError):
+                    error_type = "infra_error"
+                    exit_code = ExitCode.INFRA_ERROR
                 elif isinstance(e, RuntimeError):
-                    timeout_type = "runtime_error"
+                    error_type = "runtime_error"
                     runtime = 0
+                    exit_code = ExitCode.RUNTIME_ERROR
                 else:
-                    timeout_type = "unknown timeout"
+                    error_type = "unknown timeout"
                     runtime = None
+                    exit_code = ExitCode.UNKNOWN
 
                 # Add these metadata here to avoid changing SQL schema.
                 results = {}
@@ -1665,9 +1735,10 @@ def run_test_config(
                 result_queue.put(
                     State(
                         "END", time.time(), {
-                            "status": timeout_type,
+                            "status": error_type,
                             "last_logs": logs,
-                            "results": results
+                            "results": results,
+                            "exit_code": exit_code
                         }))
         finally:
             if no_terminate:
@@ -2027,13 +2098,23 @@ def run_test(test_config_file: str,
                             f"({category}) - the test successfully passed!")
 
         if report:
-            report_result(**report_kwargs)
+            try:
+                report_result(**report_kwargs)
+            except Exception as e:
+                # On database error the test should still pass
+                # Todo: flag somewhere else?
+                logger.error(f"Error persisting results to database: {e}")
         else:
             logger.info(f"Usually I would now report the following results:\n"
                         f"{report_kwargs}")
 
         if has_errored(result):
-            raise RuntimeError(last_logs)
+            # If the script terminates due to an uncaught error, it
+            # will return exit code 1, so we use 2 per default to
+            # catch these cases.
+            exit_code = result.get("exit_code", ExitCode.UNSPECIFIED)
+            logger.error(last_logs)
+            sys.exit(exit_code)
 
         return report_kwargs
 

@@ -83,7 +83,7 @@ class TestTrainer(unittest.TestCase):
                 pid = f"p{i}"
                 new_pol = trainer.add_policy(
                     pid,
-                    trainer._policy_class,
+                    trainer.get_default_policy_class(config),
                     # Test changing the mapping fn.
                     policy_mapping_fn=new_mapping_fn,
                     # Change the list of policies to train.

@@ -6,6 +6,10 @@ import threading
 from typing import Tuple
 
 import grpc
+try:
+    from grpc import aio as aiogrpc
+except ImportError:
+    from grpc.experimental import aio as aiogrpc
 
 import ray._private.gcs_utils as gcs_utils
 from ray.core.generated import gcs_service_pb2_grpc
@@ -71,7 +75,7 @@ class _SubscriberBase:
 class GcsPublisher:
     """Publisher to GCS."""
 
-    def __init__(self, address: str = None, channel: grpc.Channel = None):
+    def __init__(self, *, address: str = None, channel: grpc.Channel = None):
         if address:
             assert channel is None, \
                 "address and channel cannot both be specified"
@@ -194,7 +198,7 @@ class GcsSubscriber(_SubscriberBase):
 class GcsAioPublisher:
     """Publisher to GCS. Uses async io."""
 
-    def __init__(self, address: str = None, channel: grpc.aio.Channel = None):
+    def __init__(self, address: str = None, channel: aiogrpc.Channel = None):
         if address:
             assert channel is None, \
                 "address and channel cannot both be specified"
@@ -227,7 +231,7 @@ class GcsAioSubscriber(_SubscriberBase):
         await subscriber.close()
     """
 
-    def __init__(self, address: str = None, channel: grpc.aio.Channel = None):
+    def __init__(self, address: str = None, channel: aiogrpc.Channel = None):
         if address:
             assert channel is None, \
                 "address and channel cannot both be specified"

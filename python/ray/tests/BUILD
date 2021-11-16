@@ -80,7 +80,6 @@ py_test_module_list(
     "test_placement_group_2.py",
     "test_placement_group_3.py",
     "test_ray_init.py",
-    "test_reconstruction.py",
     "test_reference_counting.py",
     "test_resource_demand_scheduler.py",
     "test_runtime_env_env_vars.py",
@@ -96,6 +95,7 @@ py_test_module_list(
     "test_threaded_actor.py",
     "test_tls_auth.py",
     "test_ray_debugger.py",
+    "test_worker_capping.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -106,7 +106,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler_fake_multinode.py",  # Temporarily owned by core.
-    "test_autoscaler_drain_node_api.py",
     "test_args.py",
     "test_asyncio_cluster.py",
     "test_asyncio.py",
@@ -135,6 +134,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler.py",
+    "test_autoscaler_drain_node_api.py",
     "test_autoscaler_gcp.py",
     "test_autoscaler_yaml.py",
     "test_cli_logger.py",
@@ -159,6 +159,7 @@ py_test_module_list(
     "test_failure.py",
     "test_actor_advanced.py",
     "test_stress_failure.py",
+    "test_reconstruction.py",
   ],
   size = "large",
   extra_srcs = SRCS,
@@ -213,6 +214,7 @@ py_test_module_list(
     "test_object_manager.py",
     "test_multi_tenancy.py",
     "test_scheduling.py",
+    "test_scheduling_2.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -390,6 +392,7 @@ py_test_module_list(
     "test_object_spilling_2.py",
     "test_object_spilling_3.py",
     "test_scheduling.py",
+    "test_scheduling_2.py",
     "test_array.py"
   ],
   size = "medium",
@@ -405,6 +408,7 @@ py_test_module_list(
     "test_object_spilling_2.py",
     "test_object_spilling_3.py",
     "test_scheduling.py",
+    "test_scheduling_2.py",
     "test_array.py"
   ],
   size = "large",

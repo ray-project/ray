@@ -40,8 +40,8 @@ def validate_uri(uri: str):
             "be dynamically uploaded is only supported at the job level "
             "(i.e., passed to `ray.init`).")
 
-    if protocol == Protocol.S3 and not path.endswith(".zip"):
-        raise ValueError("Only .zip files supported for S3 URIs.")
+    if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
+        raise ValueError("Only .zip files supported for remote URIs.")
 
 
 def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
