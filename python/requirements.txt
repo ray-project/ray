@@ -24,6 +24,7 @@ py-spy >= 0.2.0
 pydantic >= 1.8
 pyyaml
 redis >= 3.5.0
+hiredis >= 0.1.4
 requests
 
 ## setup.py extras
