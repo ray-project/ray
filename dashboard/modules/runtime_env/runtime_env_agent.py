@@ -31,12 +31,12 @@ default_logger = logging.getLogger(__name__)
 # better pluggability mechanism once available.
 SLEEP_FOR_TESTING_S = os.environ.get("RAY_RUNTIME_ENV_SLEEP_FOR_TESTING_S")
 
-DEFAULT_MAX_URI_CACHE_SIZE_BYTES = (1024**4) * 10  # 10 GB
-WORKING_DIR_CACHE_SIZE_BYTES = int((1024**4) * float(
+DEFAULT_MAX_URI_CACHE_SIZE_BYTES = (1024**3) * 10  # 10 GB
+WORKING_DIR_CACHE_SIZE_BYTES = int((1024**3) * float(
     os.environ.get("RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB", 10)))
-PY_MODULES_CACHE_SIZE_BYTES = int((1024**4) * float(
+PY_MODULES_CACHE_SIZE_BYTES = int((1024**3) * float(
     os.environ.get("RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB", 10)))
-CONDA_CACHE_SIZE_BYTES = int((1024**4) * float(
+CONDA_CACHE_SIZE_BYTES = int((1024**3) * float(
     os.environ.get("RAY_RUNTIME_ENV_CONDA_CACHE_SIZE_GB", 10)))
 
 
@@ -65,11 +65,11 @@ class URICache:
     def mark_unused(self, uri: str, logger: logging.Logger = default_logger):
         """Mark a URI as unused and okay to be deleted."""
         if uri not in self._used_uris:
-            logger.error(f"URI {uri} is already unused.")
+            logger.debug(f"URI {uri} is already unused.")
         else:
             self._unused_uris[uri] = self._used_uris[uri]
             del self._used_uris[uri]
-        logger.error(f"Marked uri {uri} unused.")
+        logger.debug(f"Marked uri {uri} unused.")
         self._evict_if_needed(logger)
         self._check_valid()
 
@@ -83,7 +83,7 @@ class URICache:
         else:
             raise ValueError(f"Got request to mark URI {uri} unused, but this "
                              "URI is not present in the cache.")
-        logger.error(f"Marked URI {uri} used.")
+        logger.debug(f"Marked URI {uri} used.")
         self._check_valid()
 
     def add(self,
@@ -92,14 +92,14 @@ class URICache:
             logger: logging.Logger = default_logger):
         if uri in self._unused_uris:
             if size_bytes != self._unused_uris[uri]:
-                logger.error(f"Added URI {uri} with size {size_bytes}, which "
+                logger.debug(f"Added URI {uri} with size {size_bytes}, which "
                              "doesn't match the existing size "
                              f"{self._unused_uris[uri]}.")
             del self._unused_uris[uri]
         self._used_uris[uri] = size_bytes
         self._evict_if_needed(logger)
         self._check_valid()
-        logger.error(f"Added URI {uri} with size {size_bytes}")
+        logger.debug(f"Added URI {uri} with size {size_bytes}")
 
     def get_total_size_bytes(self) -> int:
         return sum(self._used_uris.values()) + sum(self._unused_uris.values())
@@ -249,7 +249,6 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     self._py_modules_manager.modify_context(
                         py_modules_uris, runtime_env, context)
 
-                per_job_logger.error(f"CONTEXT: {str(context.serialize())}")
                 # Add the mapping of URIs -> the serialized environment to be
                 # used for cache invalidation.
                 for plugin_uri in runtime_env.get_uris():

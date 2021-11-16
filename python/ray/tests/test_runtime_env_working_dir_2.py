@@ -3,6 +3,7 @@ from contextlib import contextmanager
 import os
 from pathlib import Path
 import sys
+import time
 import tempfile
 from unittest import mock
 
@@ -14,6 +15,7 @@ import ray
 import ray.experimental.internal_kv as kv
 from ray.tests.test_runtime_env_working_dir \
     import tmp_working_dir  # noqa: F401
+from ray._private.utils import get_directory_size
 from ray._private.test_utils import wait_for_condition
 from ray._private.runtime_env import RAY_WORKER_DEV_EXCLUDES
 from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
@@ -44,6 +46,17 @@ def disable_URI_cache():
                 "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0"
             }):
         print("URI caching disabled (cache size set to 0).")
+        yield
+
+
+@pytest.fixture(scope="class")
+def URI_cache_10_MB():
+    with mock.patch.dict(
+            os.environ, {
+                "RAY_RUNTIME_ENV_WORKING_DIR_CACHE_SIZE_GB": "0.01",
+                "RAY_RUNTIME_ENV_PY_MODULES_CACHE_SIZE_GB": "0.01"
+            }):
+        print("URI cache size set to 0.01 GB.")
         yield
 
 
@@ -427,6 +440,95 @@ class TestGC:
         ray.kill(a)
         wait_for_condition(check_internal_kv_gced)
         wait_for_condition(lambda: check_local_files_gced(cluster))
+
+    @pytest.mark.skipif(
+        sys.platform == "win32", reason="Fail to create temp dir.")
+    def test_hit_cache_size_limit(self, start_cluster, URI_cache_10_MB):
+        """Test eviction happens when we exceed a nonzero (10MB) cache size."""
+        NUM_NODES = 3
+        cluster, address = start_cluster
+        for i in range(NUM_NODES - 1):  # Head node already added.
+            cluster.add_node(
+                num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
+        with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
+            with open("test_file_1", "wb") as f:
+                f.write(os.urandom(8 * 1024 * 1024))  # 8 MiB
+
+            ray.init(address, runtime_env={"working_dir": tmp_dir})
+
+            @ray.remote
+            def f():
+                pass
+
+            ray.get(f.remote())
+            ray.shutdown()
+
+            with open("test_file_2", "wb") as f:
+                f.write(os.urandom(4 * 1024 * 1024))
+            os.remove("test_file_1")
+
+            ray.init(address, runtime_env={"working_dir": tmp_dir})
+            # Without the cache size limit, we would expect the local dir to be
+            # 12 MB.  Since we do have a size limit, the first package must be
+            # GC'ed, leaving us with 4 MB.  Sleep to give time for deletion.
+            time.sleep(5)
+            for node in cluster.list_all_nodes():
+                local_dir = os.path.join(node.get_runtime_env_dir_path(),
+                                         "working_dir_files")
+                print("SIZEEEE", get_directory_size(local_dir) / (1024**2))
+                assert 3 < get_directory_size(local_dir) / (1024**2) < 5
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("option", ["working_dir", "py_modules"])
+@pytest.mark.parametrize(
+    "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
+def test_default_large_cache(start_cluster, option: str, source: str):
+    """Check small files aren't GC'ed when using the default large cache."""
+    NUM_NODES = 3
+    cluster, address = start_cluster
+    for i in range(NUM_NODES - 1):  # Head node already added.
+        cluster.add_node(
+            num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
+
+    if option == "working_dir":
+        ray.init(address, runtime_env={"working_dir": source})
+    elif option == "py_modules":
+        if source != S3_PACKAGE_URI:
+            source = str(Path(source) / "test_module")
+        ray.init(address, runtime_env={"py_modules": [source]})
+
+    @ray.remote
+    def f():
+        pass
+
+    # Wait for runtime env to be set up. This can be accomplished by getting
+    # the result of a task.
+    ray.get(f.remote())
+    ray.shutdown()
+
+    # If we immediately check that the files weren't GCed, it may spuriously
+    # pass, so sleep first to give time for any deletions to happen.
+    time.sleep(5)
+    assert not check_local_files_gced(cluster)
+
+    ray.init(address)
+
+    @ray.remote(num_cpus=1)
+    class A:
+        def check(self):
+            import test_module
+            test_module.one()
+
+    if option == "working_dir":
+        A = A.options(runtime_env={"working_dir": S3_PACKAGE_URI})
+    else:
+        A = A.options(runtime_env={"py_modules": [S3_PACKAGE_URI]})
+
+    _ = A.remote()
+    ray.shutdown()
+    time.sleep(5)
+    assert not check_local_files_gced(cluster)
 
 
 if __name__ == "__main__":
