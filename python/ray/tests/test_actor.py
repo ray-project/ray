@@ -2,7 +2,7 @@ import random
 import pytest
 import numpy as np
 import os
-import pickle
+from ray import cloudpickle as pickle
 from ray import ray_constants
 try:
     import pytest_timeout
