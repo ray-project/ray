@@ -271,7 +271,7 @@ if setup_spec.type == SetupType.RAY:
 if platform.system() == "Darwin" and platform.machine() == "arm64":
     setup_spec.install_requires.append("redis >= 3.5.0")
 else:
-    setup_spec.install_requires.append("redis[hiredis]")
+    setup_spec.install_requires.append("redis[hiredis] >= 3.5.0")
 
 
 def is_native_windows_or_msys():
