@@ -11,10 +11,12 @@ from ray.train.worker_group import WorkerGroup, Worker
 from horovod.ray.runner import Coordinator
 from horovod.ray.utils import detect_nics, nics_to_env_var
 from horovod.runner.common.util import secret, timeout
+from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="beta")
 @dataclass
 class HorovodConfig(BackendConfig):
     """Configurations for Horovod setup.

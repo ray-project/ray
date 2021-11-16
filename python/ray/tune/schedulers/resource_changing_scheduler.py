@@ -46,8 +46,8 @@ class _DistributeResources:
         min_cpu = base_trial_resource.required_resources.get("CPU", 0)
         min_gpu = base_trial_resource.required_resources.get("GPU", 0)
 
-        min_cpu_bundle = base_trial_resource._bundles[0].get("CPU", 0)
-        min_gpu_bundle = base_trial_resource._bundles[0].get("GPU", 0)
+        min_cpu_bundle = base_trial_resource.bundles[0].get("CPU", 0)
+        min_gpu_bundle = base_trial_resource.bundles[0].get("GPU", 0)
 
         # Get the number of CPUs and GPUs avaialble in total (not just free)
         total_available_cpus = (
