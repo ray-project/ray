@@ -74,5 +74,7 @@ MAX_CACHED_HANDLES = 100
 CONTROLLER_MAX_CONCURRENCY = int(
     _getenv_default(
         "SERVE_CONTROLLER_MAX_CONCURRENCY",
-        "1000000",
+        # The default is set to support 1000 replicas, each holding 100 Serve
+        # handles. It's then doubled to give some room for additional handles.
+        "200000",
     ))
