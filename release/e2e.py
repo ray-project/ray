@@ -224,6 +224,7 @@ formatter = logging.Formatter(fmt="[%(levelname)s %(asctime)s] "
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+
 def _format_link(link: str):
     # Use ANSI escape code to allow link to be clickable
     # https://buildkite.com/docs/pipelines/links-and-images
@@ -903,8 +904,9 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
             continue
 
         if build.status == "succeeded":
-            logger.info(f"Link to app config build: "
-                        f"{_format_link(anyscale_app_config_build_url(build_id))}")
+            logger.info(
+                f"Link to app config build: "
+                f"{_format_link(anyscale_app_config_build_url(build_id))}")
             return build_id
 
     if last_status == "failed":
@@ -1527,8 +1529,10 @@ def run_test_config(
                         create_or_find_compute_template(
                             sdk, project_id, compute_tpl)
 
-                    logger.info(f"Link to compute template: "
-                                f"{_format_link(anyscale_compute_tpl_url(compute_tpl_id))}")
+                    logger.info(
+                        f"Link to compute template: "
+                        f"{_format_link(anyscale_compute_tpl_url(compute_tpl_id))}"
+                    )
 
                     # Find/create app config
                     if app_config_id is None:
