@@ -20,7 +20,6 @@ class JobStatus(str, Enum):
     def __str__(self):
         return f"{self.value}"
 
-    DOES_NOT_EXIST = "DOES_NOT_EXIST"
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     STOPPED = "STOPPED"
@@ -44,12 +43,12 @@ class JobStatusStorageClient:
             pickle.dumps(status),
             namespace=ray_constants.KV_NAMESPACE_JOB)
 
-    def get_status(self, job_id: str) -> JobStatus:
+    def get_status(self, job_id: str) -> Optional[JobStatus]:
         pickled_status = _internal_kv_get(
             self.JOB_STATUS_KEY.format(job_id=job_id),
             namespace=ray_constants.KV_NAMESPACE_JOB)
         if pickled_status is None:
-            return JobStatus.DOES_NOT_EXIST
+            return None
         else:
             return pickle.loads(pickled_status)
 

@@ -43,6 +43,8 @@
         app_config: train/app_config.yaml
         compute_template: train/compute_tpl.yaml
 
+    driver_setup: train/driver_setup.sh
+
     run:
         use_connect: True
         timeout: 36000

@@ -16,9 +16,9 @@ from ray.core.generated.common_pb2 import PlacementStrategy
 
 logger = logging.getLogger(__name__)
 
-LoadMetricsSummary = namedtuple("LoadMetricsSummary", [
-    "usage", "resource_demand", "pg_demand", "request_demand", "node_types"
-])
+LoadMetricsSummary = namedtuple(
+    "LoadMetricsSummary",
+    ["usage", "resource_demand", "pg_demand", "request_demand", "node_types"])
 
 
 def add_resources(dict1: Dict[str, float],

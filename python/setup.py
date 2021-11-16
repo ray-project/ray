@@ -219,6 +219,10 @@ if setup_spec.type == SetupType.RAY:
         ],
     }
 
+    if sys.version_info >= (3, 7):
+        # Numpy dropped python 3.6 support in 1.20.
+        setup_spec.extras["data"].append("numpy >= 1.20")
+
     # Ray Serve depends on the Ray dashboard components.
     setup_spec.extras["serve"] = list(
         set(setup_spec.extras["serve"] + setup_spec.extras["default"]))

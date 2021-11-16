@@ -256,7 +256,9 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
   RAY_LOG(DEBUG) << "Scheduling decision. "
                  << "forcing spillback: " << force_spillback
                  << ". Best node: " << best_node_id << " "
-                 << NodeID::FromBinary(string_to_int_map_.Get(best_node_id))
+                 << (string_to_int_map_.Get(best_node_id) == "-1"
+                         ? NodeID::Nil()
+                         : NodeID::FromBinary(string_to_int_map_.Get(best_node_id)))
                  << ", is infeasible: " << *is_infeasible;
   return best_node_id;
 }
@@ -557,6 +559,13 @@ std::string ClusterResourceScheduler::DebugString(void) const {
     buffer << node.second.GetLocalView().DebugString(string_to_int_map_);
   }
   return buffer.str();
+}
+
+uint64_t ClusterResourceScheduler::GetNumCpus() const {
+  auto it = nodes_.find(local_node_id_);
+  RAY_CHECK(it != nodes_.end());
+  return static_cast<uint64_t>(
+      it->second.GetLocalView().predefined_resources[CPU].total.Double());
 }
 
 void ClusterResourceScheduler::InitResourceInstances(

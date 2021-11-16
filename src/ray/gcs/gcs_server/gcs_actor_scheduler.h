@@ -257,6 +257,12 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   void HandleWorkerLeaseGrantedReply(std::shared_ptr<GcsActor> actor,
                                      const rpc::RequestWorkerLeaseReply &reply);
 
+  /// Handler to process runtime env setup failure.
+  ///
+  /// \param actor Contains the resources needed to lease workers from the specified node.
+  /// \param node_id The node where the runtime env is failed to setup.
+  void OnRuntimeEnvSetupFailure(std::shared_ptr<GcsActor> actor, const NodeID &node_id);
+
   /// Create the specified actor on the specified worker.
   ///
   /// \param actor The actor to be created.

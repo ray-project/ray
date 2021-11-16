@@ -1345,7 +1345,6 @@ class LoadMetricsTest(unittest.TestCase):
 
         summary = lm.summary()
 
-
         assert summary.usage["CPU"] == (190, 194)
         assert summary.usage["GPU"] == (15, 16)
         assert summary.usage["memory"] == (500 * 2**20, 1000 * 2**20)
