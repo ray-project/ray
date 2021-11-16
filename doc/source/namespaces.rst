@@ -17,6 +17,7 @@ first connect to the cluster.
     ray.init("ray://<head_node_host>:10001", namespace="world")
 
   .. code-tab:: java
+
     System.setProperty("ray.job.namespace", "hello"); // set it before Ray.init()
     Ray.init();
     // Or you can specified the namespace in your configure file.
@@ -56,6 +57,7 @@ Named actors are only accessible within their namespaces.
     # We are manually managing the scope of the connection in this example.
 
   .. code-tab:: java
+
     // `ray start --head` has been run to launch a local cluster.
 
     // Job 1 creates two actors, "orange" and "purple" in the "colors" namespace.
@@ -176,6 +178,7 @@ You can access to the current namespace using :ref:`runtime_context APIs <runtim
     print(ray.get_runtime_context().namespace)
 
   .. code-tab:: java
+
     System.setProperty("ray.job.namespace", "colors");
     try {
       Ray.init();
