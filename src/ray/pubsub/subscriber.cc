@@ -125,6 +125,8 @@ void SubscriberChannel::HandlePublishedMessage(const rpc::Address &publisher_add
   RAY_CHECK(channel_type == channel_type_)
       << "Message from " << rpc::ChannelType_Name(channel_type) << ", this channel is "
       << rpc::ChannelType_Name(channel_type_);
+  RAY_LOG(DEBUG) << "key id " << key_id << " information was published from "
+                 << publisher_id;
 
   auto maybe_subscription_callback =
       GetSubscriptionItemCallback(publisher_address, key_id);
