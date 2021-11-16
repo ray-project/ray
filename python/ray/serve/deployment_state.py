@@ -472,14 +472,16 @@ class DeploymentReplica(VersionedReplica):
         """
         return self._actor.check_health()
 
-    def resource_requirements(
-            self) -> Tuple[Dict[str, float], Dict[str, float]]:
+    def resource_requirements(self) -> Tuple[str, str]:
         """Returns required and currently available resources.
 
         Only resources with nonzero requirements will be included in the
         required dict and only resources in the required dict will be
         included in the available dict (filtered for relevance).
         """
+        if not self._actor:
+            return "UNKNOWN", "UNKNOWN"
+
         required = {
             k: v
             for k, v in self._actor.actor_resources.items() if v > 0
@@ -489,7 +491,7 @@ class DeploymentReplica(VersionedReplica):
             for k, v in self._actor.available_resources.items()
             if k in required
         }
-        return required, available
+        return str(required), str(available)
 
 
 class ReplicaStateContainer:
