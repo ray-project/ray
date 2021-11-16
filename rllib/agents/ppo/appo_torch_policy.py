@@ -16,8 +16,7 @@ from ray.rllib.agents.impala.vtrace_torch_policy import make_time_major, \
     choose_optimizer
 from ray.rllib.agents.ppo.appo_tf_policy import make_appo_model, \
     postprocess_trajectory
-from ray.rllib.agents.ppo.ppo_torch_policy import ValueNetworkMixin, \
-    KLCoeffMixin
+from ray.rllib.agents.a3c.a3c_torch_policy import ValueNetworkMixin
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import \
@@ -279,6 +278,30 @@ def add_values(policy, input_dict, state_batches, model, action_dist):
     if not policy.config["vtrace"]:
         out[SampleBatch.VF_PREDS] = model.value_function()
     return out
+
+
+class KLCoeffMixin:
+    """Assigns the `update_kl()` method to the PPOPolicy.
+
+    This is used in PPO's execution plan (see ppo.py) for updating the KL
+    coefficient after each learning step based on `config.kl_target` and
+    the measured KL value (from the train_batch).
+    """
+
+    def __init__(self, config):
+        # The current KL value (as python float).
+        self.kl_coeff = config["kl_coeff"]
+        # Constant target value.
+        self.kl_target = config["kl_target"]
+
+    def update_kl(self, sampled_kl):
+        # Update the current KL value based on the recently measured value.
+        if sampled_kl > 2.0 * self.kl_target:
+            self.kl_coeff *= 1.5
+        elif sampled_kl < 0.5 * self.kl_target:
+            self.kl_coeff *= 0.5
+        # Return the current KL value.
+        return self.kl_coeff
 
 
 def setup_early_mixins(policy: Policy, obs_space: gym.spaces.Space,
