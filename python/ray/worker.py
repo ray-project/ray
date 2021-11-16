@@ -413,7 +413,7 @@ class Worker:
                     "function_id": function_to_run_id,
                     "function": pickled_function,
                 }), True, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
-            self.redis_client.rpush("Exports", key)
+            self.function_actor_manager.export_key(key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
             # successfully completes the hset and rpush, then the program will
             # most likely hang. This could be fixed by making these three

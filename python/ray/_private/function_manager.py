@@ -36,6 +36,8 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
 
 logger = logging.getLogger(__name__)
 
+def make_export_key(pos):
+    return b"Exports:" + int(pos).to_bytes(8, "big")
 
 class FunctionActorManager:
     """A class used to export/load remote functions and actors.
@@ -127,6 +129,14 @@ class FunctionActorManager:
         except Exception:
             return None
 
+    def export_key(self, key):
+        pos = self._worker.import_thread.num_imported
+        while True:
+            pos += 1
+            holder = make_export_key(pos)
+            if self._worker.gcs_client.internal_kv_put(holder, key, False, KV_NAMESPACE_FUNCTION_TABLE) == 0:
+                break
+
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
         Args:
@@ -167,7 +177,7 @@ class FunctionActorManager:
         })
         self._worker.gcs_client.internal_kv_put(key, val, True,
                                                 KV_NAMESPACE_FUNCTION_TABLE)
-        self._worker.redis_client.rpush("Exports", key)
+        self.export_key(key)
 
     def fetch_and_register_remote_function(self, key):
         """Import a remote function."""
@@ -245,10 +255,6 @@ class FunctionActorManager:
                         function=function,
                         function_name=function_name,
                         max_calls=max_calls))
-                # Add the function to the function table.
-                self._worker.redis_client.rpush(
-                    b"FunctionTable:" + function_id.binary(),
-                    self._worker.worker_id)
 
     def get_execution_info(self, job_id, function_descriptor):
         """Get the FunctionExecutionInfo of a remote function.
@@ -367,7 +373,7 @@ class FunctionActorManager:
                                                 pickle.dumps(actor_class_info),
                                                 True,
                                                 KV_NAMESPACE_FUNCTION_TABLE)
-        self._worker.redis_client.rpush("Exports", key)
+        self.export_key(key)
 
     def export_actor_class(self, Class, actor_creation_function_descriptor,
                            actor_method_names):
