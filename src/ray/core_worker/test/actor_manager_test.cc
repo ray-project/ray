@@ -77,9 +77,8 @@ class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterf
                void(const ActorID &actor_id, int32_t max_pending_calls));
   MOCK_METHOD3(ConnectActor, void(const ActorID &actor_id, const rpc::Address &address,
                                   int64_t num_restarts));
-  MOCK_METHOD4(DisconnectActor,
-               void(const ActorID &actor_id, int64_t num_restarts, bool dead,
-                    const std::shared_ptr<rpc::RayException> &creation_task_exception));
+  MOCK_METHOD4(DisconnectActor, void(const ActorID &actor_id, int64_t num_restarts,
+                                     bool dead, const rpc::ActorDeathCause *death_cause));
   MOCK_METHOD3(KillActor,
                void(const ActorID &actor_id, bool force_kill, bool no_restart));
 
@@ -199,7 +198,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
   actor_table_data.set_state(rpc::ActorTableData::ALIVE);
   actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
 
-  // Now actor state is updated to DEAD. Make sure it is diconnected.
+  // Now actor state is updated to DEAD. Make sure it is disconnected.
   EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _, _)).Times(1);
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(rpc::ActorTableData::DEAD);

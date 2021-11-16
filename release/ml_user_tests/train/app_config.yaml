@@ -6,7 +6,8 @@ debian_packages:
     - curl
 
 python:
-    pip_packages: [ ]
+    pip_packages:
+        - tblib
     conda_packages: [ ]
 
 post_build_cmds:
