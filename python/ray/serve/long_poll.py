@@ -4,6 +4,7 @@ import random
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum, auto
+import os
 from typing import (Any, Optional, Tuple, Callable, DefaultDict, Dict, Set,
                     Union)
 
@@ -18,6 +19,8 @@ from ray.serve.utils import logger
 # We randomly select a timeout within this range to avoid a "thundering herd"
 # when there are many clients subscribing at the same time.
 LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = (30, 60)
+LONG_POLL_TIMEOUT_ENABLED = (os.environ.get("SERVE_LONG_POLL_TIMEOUT_ENABLED",
+                                            "0") == "1")
 
 
 class LongPollNamespace(Enum):
@@ -222,7 +225,8 @@ class LongPollHost:
         done, not_done = await asyncio.wait(
             async_task_to_watched_keys.keys(),
             return_when=asyncio.FIRST_COMPLETED,
-            timeout=random.uniform(*LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S))
+            timeout=(random.uniform(*LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S)
+                     if LONG_POLL_TIMEOUT_ENABLED else None))
 
         [task.cancel() for task in not_done]
 
