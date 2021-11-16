@@ -7,10 +7,12 @@ Blog post explaining action masking: https://boring-guy.sh/posts/masking-rl/
 RLlib supports action masking, i.e., disallowing these actions based on the
 observation, by slightly adjusting the environment and the model as shown in
 this example.
+
 Here, the ActionMaskEnv wraps an underlying environment (here, RandomEnv),
 defining only a subset of all actions as valid based on the environment's
 observations. If an invalid action is selected, the environment raises an error
 - this must not happen!
+
 The environment constructs Dict observations, where obs["observations"] holds
 the original observations and obs["action_mask"] holds the valid actions.
 To avoid selection invalid actions, the ActionMaskModel is used. This model
