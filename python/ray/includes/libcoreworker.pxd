@@ -145,6 +145,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CObjectID& return_id,
             shared_ptr[CRayObject] return_object
         )
+        CRayStatus PinExistingReturnObject(
+            const CObjectID& return_id,
+            shared_ptr[CRayObject] *return_object
+        )
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
