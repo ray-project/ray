@@ -8,8 +8,7 @@ import pytest
 import ray
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
-from ray._private.test_utils import RayTestTimeoutException, get_other_nodes, \
-    Semaphore
+from ray._private.test_utils import get_other_nodes, Semaphore
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 
@@ -21,7 +20,9 @@ def ray_start_workers_separate_multinode(request):
     # Start the Ray processes.
     cluster = Cluster()
     for _ in range(num_nodes):
-        cluster.add_node(num_cpus=num_initial_workers, resources={"custom": num_initial_workers})
+        cluster.add_node(
+            num_cpus=num_initial_workers,
+            resources={"custom": num_initial_workers})
     ray.init(address=cluster.address)
 
     yield num_nodes, num_initial_workers
