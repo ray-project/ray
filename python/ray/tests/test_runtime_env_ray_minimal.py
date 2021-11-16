@@ -18,6 +18,8 @@ import ray
 from ray.exceptions import RuntimeEnvSetupError
 from ray._private.test_utils import wait_for_condition
 
+from _pytest.outcomes import Failed
+
 
 def _test_task_and_actor(capsys):
     @ray.remote
@@ -106,9 +108,9 @@ def test_ray_client_init(call_ray_start):
 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="runtime_env unsupported on Windows.")
-# @pytest.mark.skipif(
-#     os.environ.get("RAY_MINIMAL") != "1",
-#     reason="This test is only run in CI with a minimal Ray installation.")
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") != "1",
+    reason="This test is only run in CI with a minimal Ray installation.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_remote_package_uri(start_cluster, option):
     """
@@ -129,15 +131,15 @@ def test_remote_package_uri(start_cluster, option):
         with pytest.raises(Exception) as err:
             ray.init(address, runtime_env=env)
         assert "pip install smart_open" in str(err.value)
-    except:
+    except Failed:
         assert True
 
 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="runtime_env unsupported on Windows.")
-# @pytest.mark.skipif(
-#     os.environ.get("RAY_MINIMAL") != "1",
-#     reason="This test is only run in CI with a minimal Ray installation.")
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") != "1",
+    reason="This test is only run in CI with a minimal Ray installation.")
 def test_empty_working_dir(start_cluster):
     """
     Test is based on test_empty_working_dir from
