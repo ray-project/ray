@@ -32,7 +32,7 @@ from ray.serve.constants import (DEFAULT_CHECKPOINT_PATH, DEFAULT_HTTP_HOST,
     help="Ray namespace to connect to. Defaults to \"serve\".")
 @click.option(
     "--runtime-env-json",
-    default=r'{}',
+    default=r"{}",
     required=False,
     type=str,
     help=("Runtime environment dictionary to pass into ray.init. "
