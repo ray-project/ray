@@ -164,7 +164,7 @@ SpaceInvaders  843                              ~300
 
 **IMPALA-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. literalinclude:: ../../rllib/agents/impala/impala.py
+.. literalinclude:: ../../rllib/agents/impala/default_config.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
