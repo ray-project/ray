@@ -279,7 +279,7 @@ class ActorReplicaWrapper:
         return ReplicaStartupStatus.SUCCEEDED, version
 
     @property
-    def actor_resources(self) -> Dict[str, float]:
+    def actor_resources(self) -> Optional[Dict[str, float]]:
         return self._actor_resources
 
     @property
@@ -479,7 +479,8 @@ class DeploymentReplica(VersionedReplica):
         required dict and only resources in the required dict will be
         included in the available dict (filtered for relevance).
         """
-        if not self._actor:
+        # NOTE(edoakes):
+        if self._actor.actor_resources is None:
             return "UNKNOWN", "UNKNOWN"
 
         required = {
