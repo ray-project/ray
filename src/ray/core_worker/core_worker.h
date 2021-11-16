@@ -862,6 +862,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status SealReturnObject(const ObjectID &return_id,
                           std::shared_ptr<RayObject> return_object);
 
+  Status PinExistingReturnObject(const ObjectID &return_id,
+                                 std::shared_ptr<RayObject> *return_object);
+
   /// Get a handle to an actor.
   ///
   /// NOTE: This function should be called ONLY WHEN we know actor handle exists.

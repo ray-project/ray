@@ -506,6 +506,12 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         return_object->set_object_id(id.Binary());
 
         // The object is nullptr if it already existed in the object store.
+        if (!return_objects[i]) {
+          RAY_LOG(INFO) << "Failed to create task return object " << id
+                        << " in the object store, returning an error to the application.";
+          return_objects[i] = std::make_shared<RayObject>(rpc::ErrorType::OBJECT_LOST);
+        }
+
         const auto &result = return_objects[i];
         return_object->set_size(result->GetSize());
         if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {

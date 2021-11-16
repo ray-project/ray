@@ -2323,13 +2323,10 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
 Status CoreWorker::SealReturnObject(const ObjectID &return_id,
                                     std::shared_ptr<RayObject> return_object) {
   Status status = Status::OK();
-  if (!return_object) {
-    return status;
-  }
+  RAY_CHECK(return_object);
+  RAY_CHECK(!options_.is_local_mode);
   std::unique_ptr<rpc::Address> caller_address =
-      options_.is_local_mode ? nullptr
-                             : std::make_unique<rpc::Address>(
-                                   worker_context_.GetCurrentTask()->CallerAddress());
+      std::make_unique<rpc::Address>(worker_context_.GetCurrentTask()->CallerAddress());
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
     status = SealExisting(return_id, /*pin_object=*/true, std::move(caller_address));
     if (!status.ok()) {
@@ -2337,6 +2334,49 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
                      << " in store: " << status.message();
     }
   }
+  return status;
+}
+
+Status CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
+                                           std::shared_ptr<RayObject> *return_object) {
+  // TODO(swang): It would be better to evict the existing copy instad of
+  // reusing it, to make sure it's consistent with the task re-execution.
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
+  bool got_exception;
+  rpc::Address owner_address(worker_context_.GetCurrentTask()->CallerAddress());
+
+  // Temporarily set the return object's owner's address. This is needed to retrieve the
+  // value from plasma.
+  reference_counter_->AddLocalReference(return_id, "<temporary (pin return object)>");
+  reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
+
+  auto status = plasma_store_provider_->Get({return_id}, 0, worker_context_, &result_map,
+                                            &got_exception);
+  // Remove the temporary ref.
+  RemoveLocalReference(return_id);
+
+  if (result_map.count(return_id)) {
+    *return_object = std::move(result_map[return_id]);
+    RAY_LOG(DEBUG) << "Pinning existing return object " << return_id
+                   << " owned by worker "
+                   << WorkerID::FromBinary(owner_address.worker_id());
+    local_raylet_client_->PinObjectIDs(
+        owner_address, {return_id},
+        [return_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+          if (!status.ok()) {
+            RAY_LOG(INFO) << "Failed to pin existing copy of the task return object "
+                          << return_id
+                          << ". This object may get evicted while there are still "
+                             "references to it.";
+          }
+        });
+  } else {
+    // Failed to get the existing copy of the return object. It must have been
+    // evicted before we could pin it.
+    // TODO(swang): We should allow the owner to retry this task instead of
+    // immediately returning an error to the application.
+  }
+
   return status;
 }
 

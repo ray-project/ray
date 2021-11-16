@@ -1,9 +1,11 @@
 import os
 import signal
 import sys
+import time
 
 import numpy as np
 import pytest
+import psutil
 
 import ray
 from ray._private.test_utils import (
@@ -643,6 +645,159 @@ def test_reconstruction_stress(ray_start_cluster):
             ray.get(outputs.pop(0))
             print(i)
             i += 1
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize("reconstruction_enabled", [False, True])
+def test_nondeterministic_output(ray_start_cluster, reconstruction_enabled):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "max_direct_call_object_size": 100,
+        "task_retry_delay_ms": 100,
+        "object_timeout_milliseconds": 200,
+    }
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0, _system_config=config, enable_object_reconstruction=True)
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(
+        num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+    cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def nondeterministic_object():
+        if np.random.rand() < 0.5:
+            return np.zeros(10**5, dtype=np.uint8)
+        else:
+            return 0
+
+    @ray.remote
+    def dependent_task(x):
+        return
+
+    for _ in range(10):
+        obj = nondeterministic_object.options(resources={"node1": 1}).remote()
+        for _ in range(3):
+            ray.get(dependent_task.remote(obj))
+            x = dependent_task.remote(obj)
+            cluster.remove_node(node_to_kill, allow_graceful=False)
+            node_to_kill = cluster.add_node(
+                num_cpus=1, resources={"node1": 1}, object_store_memory=10**8)
+            ray.get(x)
+
+
+def test_lineage_evicted(ray_start_cluster):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "object_timeout_milliseconds": 200,
+        "max_lineage_bytes": 10_000,
+    }
+
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config=config,
+        object_store_memory=10**8,
+        enable_object_reconstruction=True)
+    ray.init(address=cluster.address)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def large_object():
+        return np.zeros(10**7, dtype=np.uint8)
+
+    @ray.remote
+    def chain(x):
+        return x
+
+    @ray.remote
+    def dependent_task(x):
+        return x
+
+    obj = large_object.remote()
+    for _ in range(5):
+        obj = chain.remote(obj)
+    ray.get(dependent_task.remote(obj))
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    ray.get(dependent_task.remote(obj))
+
+    # Lineage now exceeds the eviction factor.
+    for _ in range(100):
+        obj = chain.remote(obj)
+    ray.get(dependent_task.remote(obj))
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    try:
+        ray.get(dependent_task.remote(obj))
+        assert False
+    except ray.exceptions.RayTaskError as e:
+        assert "ObjectReconstructionFailedLineageEvictedError" in str(e)
+
+
+def test_worker_crashes(ray_start_cluster):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "object_timeout_milliseconds": 200,
+    }
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(num_cpus=0, _system_config=config)
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=0)
+    def kill_workers():
+        pids = []
+        for proc in psutil.process_iter():
+            if "ray::" in proc.name() and proc.pid != os.getpid():
+                pids.append(proc.pid)
+        time.sleep(1)
+        num_killed = 0
+        for pid in pids:
+            print("Killing", proc.pid)
+            try:
+                os.kill(proc.pid, SIGKILL)
+                num_killed += 1
+            except Exception:
+                pass
+        return num_killed
+
+    @ray.remote
+    def large_object():
+        return np.zeros(10**7, dtype=np.uint8)
+
+    @ray.remote
+    def dependent_task(x):
+        return
+
+    def check_workers_killed():
+        killed = kill_workers.remote()
+        for i in range(100):
+            obj = large_object.remote()
+            # Check that we don't hang (can happen if the worker raylet
+            # crashes).
+            try:
+                ray.get(dependent_task.remote(obj))
+            except Exception:
+                pass
+            print(i)
+
+        return ray.get(killed) > 0
+
+    wait_for_condition(ceck_workers_killed)
 
 
 if __name__ == "__main__":
