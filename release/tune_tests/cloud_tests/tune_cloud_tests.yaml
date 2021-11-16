@@ -30,7 +30,7 @@
 
 - name: aws_durable_upload_rllib_str
   cluster:
-    app_config: app_config.yaml
+    app_config: app_config_ml.yaml
     compute_template: tpl_aws_4x2.yaml
 
   run:
@@ -40,7 +40,7 @@
 
 - name: aws_durable_upload_rllib_trainer
   cluster:
-    app_config: app_config.yaml
+    app_config: app_config_ml.yaml
     compute_template: tpl_aws_4x2.yaml
 
   run:
