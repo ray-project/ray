@@ -8,8 +8,11 @@ cluster_name: fake_docker
 max_workers: 8
 provider:
     type: fake_multinode
-    project_name: fake_docker
+    disable_launch_config_check: True
+    disable_node_updaters: True
+    # Docker-compose config
     docker: True
+    project_name: fake_docker
     image: rayproject/ray:nightly
     shared_volume_dir: /tmp/fake_docker
     head_resources:

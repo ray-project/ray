@@ -180,7 +180,7 @@ class FakeMultiNodeProvider(NodeProvider):
             })
 
     def _update_docker_compose_config(self):
-        config = DOCKER_COMPOSE_SKELETON.copy()
+        config = copy.deepcopy(DOCKER_COMPOSE_SKELETON)
         config["services"] = {}
         for node_id, node in self._nodes.items():
             config["services"][node_id] = node["node_spec"]
@@ -188,18 +188,27 @@ class FakeMultiNodeProvider(NodeProvider):
         with open(self._docker_compose_config_path, "wt") as f:
             yaml.safe_dump(config, f)
 
+        self._update_docker_status()
+
+    def _update_docker_status(self):
         if self._has_head_node():
-            update = subprocess.check_call([
-                "docker-compose",
-                "-f",
-                self._docker_compose_config_path,
-                "-p",
-                self._project_name,
-                "up",
-                "-d",
-                "--remove-orphans",
-            ])
-            print(f"Updated docker-compose: {update}")
+            try:
+
+                update = subprocess.check_call([
+                    "docker-compose",
+                    "-f",
+                    self._docker_compose_config_path,
+                    "-p",
+                    self._project_name,
+                    "up",
+                    "-d",
+                    "--remove-orphans",
+                ])
+            except Exception as e:
+                print(f"Ran into error when updating docker-compose: {e}")
+                # Ignore error
+            else:
+                print(f"Updated docker-compose: {update}")
         else:
             print("Waiting to update docker-compose until head node "
                   "is defined.")
@@ -289,7 +298,8 @@ class FakeMultiNodeProvider(NodeProvider):
         return node_id
 
     def set_node_tags(self, node_id, tags):
-        raise AssertionError("Readonly node provider cannot be updated")
+        assert node_id in self._nodes
+        self._nodes[node_id]["tags"] = tags
 
     def create_node_with_resources(self, node_config, tags, count, resources):
         if not self.uses_docker:
@@ -331,7 +341,7 @@ class FakeMultiNodeProvider(NodeProvider):
 
     def _create_node_with_resources_docker(self, node_config, tags, count,
                                            resources):
-        # node_type = tags[TAG_RAY_USER_NODE_TYPE]
+        node_type = tags[TAG_RAY_USER_NODE_TYPE]
         is_head = tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
 
         if is_head:
@@ -339,26 +349,30 @@ class FakeMultiNodeProvider(NodeProvider):
         else:
             next_id = self._next_hex_node_id()
 
-        # overwrite_tags = {
-        #     TAG_RAY_NODE_KIND: (NODE_KIND_WORKER
-        #       if not is_head else NODE_KIND_HEAD),
-        #     TAG_RAY_USER_NODE_TYPE: node_type,
-        #     TAG_RAY_NODE_NAME: next_id,
-        #     TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
-        # }
+        overwrite_tags = {
+            TAG_RAY_NODE_KIND: (NODE_KIND_WORKER
+              if not is_head else NODE_KIND_HEAD),
+            TAG_RAY_USER_NODE_TYPE: node_type,
+            TAG_RAY_NODE_NAME: next_id,
+            TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+        }
 
         self._nodes[next_id] = {
-            "tags": tags,
+            "tags": overwrite_tags,
             "node_spec": self._create_node_spec_with_resources(
                 head=is_head, node_id=next_id, resources=resources)
         }
         self._update_docker_compose_config()
 
     def terminate_node(self, node_id):
-        if self.uses_docker:
-        node = self._nodes.pop(node_id)["node"]
+        try:
+            node = self._nodes.pop(node_id)
+        except Exception as e:
+            print("EXCEPTION", str(e), "NODES", self._nodes)
+            raise e
+
         if not self.uses_docker:
-            self._kill_ray_processes(node)
+            self._kill_ray_processes(node["node"])
         else:
             self._update_docker_compose_config()
 
