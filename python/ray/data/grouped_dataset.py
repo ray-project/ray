@@ -53,8 +53,7 @@ class GroupedDataset(Generic[T]):
 
         Common aggregations can be given as strings (``"sum"``, ``"min"``,
         ``"max"``, ``"mean"``, ``"std"``) while custom/customized aggregations
-        can be given as instances of
-        :class:`~.aggregate.AggregateFn`. If providing a
+        can be given as instances of :class:`~.AggregateFn`. If providing a
         dictionary of data subsets --> aggregations, the data subset keys can
         be column name strings for table (Arrow) datasets, and can be
         row --> data subset callables for both table (Arrow) datasets and
@@ -63,31 +62,20 @@ class GroupedDataset(Generic[T]):
         This is a blocking operation.
 
         Examples:
-            >>> simple_grouped_ds.agg("sum")
-            >>> simple_grouped_ds.agg(["sum", Std(ddof=0)])
             >>> simple_grouped_ds.agg({
             ...     lambda x: x % 3: ["min", "max"],
             ...     lambda x: x % 2: ["mean", "std"],
             ... })
-            >>> arrow_grouped_ds.agg(["mean", "std"])
             >>> arrow_grouped_ds.agg({
             ...     "A": ["mean", Std(ddof=0)],
             ...     "B": ["min", "max"],
             ... })
 
         Args:
-            aggs: Aggregations to compute. This can be:
-
-                - ``Union[Aggregation, List[Aggregation]]``: The (name of the)
-                  aggregation(s) that we want to apply to: each column for an
-                  Arrow dataset (other than the groupby key column);
-                  the entire row for a simple dataset.
-                - ``Dict[AggregateOnT, List[Aggregation]``: A map from a data
-                  subsetter (column name or callable) to the (names of the)
-                  aggregations that we wish to apply to that data subset.
-
-                Here, ``Aggregation = Union[str, AggregateFn]`` and
-                ``AggregateOnT = Union[str, Callable[[T], Any]]``.
+            aggs: Aggregations to compute as a map from a data subsetter
+                (column name for Arrow dataset or callable for any dataset) to
+                the (names of the) aggregations that we wish to apply to that
+                data subset.
 
         Returns:
             If the input dataset is simple dataset then the output is a simple
@@ -99,20 +87,8 @@ class GroupedDataset(Generic[T]):
             and the second through ``n + 1`` columns are the results of the
             aggregations.
 
-            When ``aggs`` is given as a list, the aggregation columns are
-            ordered in accordance with the aggregation list ordering
-            (aggs, cols)::
-
-                [agg1, agg2]
-
-            on a dataset with columns ``col1`` and ``col2`` would yield
-            aggregation columns::
-
-                col1_agg1, col2_agg1, col1_agg2, col2_agg2
-
-            When ``aggs`` is given as a dict, the aggregation columns are
-            ordered in accordance with the depth-first dict ordering
-            (cols, aggs)::
+            The aggregation columns are ordered in accordance with the
+            depth-first dict ordering (cols, aggs)::
 
                 {col1: [agg1, agg2], col2: [agg2, agg1]}
 
