@@ -36,7 +36,8 @@ class ActionMaskModel(TFModelV2):
             model_config, name + "_internal")
 
         # disable action masking --> will likely lead to invalid actions
-        self.no_masking = model_config["custom_model_config"].get("no_masking", False)
+        self.no_masking = model_config["custom_model_config"].get(
+            "no_masking", False)
 
     def forward(self, input_dict, state, seq_lens):
         # Extract the available actions tensor from the observation.
@@ -66,13 +67,13 @@ class TorchActionMaskModel(TorchModelV2, nn.Module):
     """PyTorch version of above ActionMaskingModel."""
 
     def __init__(
-        self,
-        obs_space,
-        action_space,
-        num_outputs,
-        model_config,
-        name,
-        **kwargs,
+            self,
+            obs_space,
+            action_space,
+            num_outputs,
+            model_config,
+            name,
+            **kwargs,
     ):
         orig_space = getattr(obs_space, "original_space", obs_space)
         assert isinstance(orig_space, Dict) and \
