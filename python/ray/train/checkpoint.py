@@ -12,6 +12,7 @@ from ray.train.constants import TUNE_CHECKPOINT_FILE_NAME, \
     TUNE_CHECKPOINT_ID
 from ray.train.session import TrainingResult
 from ray.train.utils import construct_path
+from ray.util import PublicAPI
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -24,6 +25,7 @@ MIN = "min"
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="beta")
 @dataclass
 class CheckpointStrategy:
     """Configurable parameters for defining the Train checkpointing strategy.
