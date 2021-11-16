@@ -34,7 +34,7 @@ def fn_trainable(config, checkpoint_dir=None):
 
 class RLLibCallback(DefaultCallbacks):
     def __init__(self):
-        super(DefaultCallbacks, self).__init__()
+        super(RLLibCallback, self).__init__()
         self.internal_iter = 0
 
     def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:

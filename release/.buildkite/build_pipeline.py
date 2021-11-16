@@ -159,8 +159,8 @@ NIGHTLY_TESTS = {
         "aws_no_sync_down",
         "aws_ssh_sync",
         "aws_durable_upload",
-        "aws_durable_upload_rllib_str",
-        "aws_durable_upload_rllib_trainer",
+        # "aws_durable_upload_rllib_str",
+        # "aws_durable_upload_rllib_trainer",
         "gcp_k8s_durable_upload",
     ],
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
