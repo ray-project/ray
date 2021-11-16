@@ -132,6 +132,7 @@ class FunctionActorManager:
             return None
 
     def export_key(self, key):
+        """Export a key so it can be imported by other workers"""
         pos = self._worker.import_thread.num_imported
         while True:
             pos += 1
