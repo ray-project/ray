@@ -23,7 +23,7 @@ Overview
 
 Ray Tune's Scikit-learn APIs allows you to easily leverage Bayesian Optimization, HyperBand, and other cutting edge tuning techniques by simply toggling a few parameters. It also supports and provides examples for many other frameworks with Scikit-Learn wrappers such as Skorch (Pytorch), KerasClassifiers (Keras), and XGBoostClassifiers (XGBoost).
 
-Run ``pip install ray[tune] tune-sklearn`` to get started.
+Run ``pip install "ray[tune]" tune-sklearn`` to get started.
 
 Walkthrough
 -----------
@@ -36,7 +36,9 @@ Let's compare Tune's Scikit-Learn APIs to the standard scikit-learn GridSearchCV
 To start out, change the import statement to get tune-scikit-learn’s grid search cross validation interface:
 
 """
-# from sklearn.model_selection import GridSearchCV
+# Keep this here for https://github.com/ray-project/ray/issues/11547
+from sklearn.model_selection import GridSearchCV
+# Replace above line with:
 from ray.tune.sklearn import TuneGridSearchCV
 
 #######################################################################

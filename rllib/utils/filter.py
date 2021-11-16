@@ -35,10 +35,11 @@ class Filter:
 class NoFilter(Filter):
     is_concurrent = True
 
-    def __init__(self, *args):
-        pass
-
     def __call__(self, x, update=True):
+        # Process no further if already np.ndarray, dict, or tuple.
+        if isinstance(x, (np.ndarray, dict, tuple)):
+            return x
+
         try:
             return np.asarray(x)
         except Exception:
@@ -277,5 +278,7 @@ def get_filter(filter_config, shape):
         return ConcurrentMeanStdFilter(shape, clip=None)
     elif filter_config == "NoFilter":
         return NoFilter()
+    elif callable(filter_config):
+        return filter_config(shape)
     else:
         raise Exception("Unknown observation_filter: " + str(filter_config))

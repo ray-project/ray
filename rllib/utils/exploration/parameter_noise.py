@@ -147,7 +147,7 @@ class ParameterNoise(Exploration):
     def before_compute_actions(self,
                                *,
                                timestep: Optional[int] = None,
-                               explore: bool = None,
+                               explore: Optional[bool] = None,
                                tf_sess: Optional["tf.Session"] = None):
         explore = explore if explore is not None else \
             self.policy_config["explore"]
@@ -219,12 +219,8 @@ class ParameterNoise(Exploration):
         # Also see [1] for details.
         # TODO(sven): Find out whether this can be scrapped by simply using
         #  the `sample_batch` to get the noisy/noise-free action dist.
-        _, _, fetches = policy.compute_actions(
-            obs_batch=sample_batch[SampleBatch.CUR_OBS],
-            # TODO(sven): What about state-ins and seq-lens?
-            prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
-            prev_reward_batch=sample_batch.get(SampleBatch.PREV_REWARDS),
-            explore=self.weights_are_currently_noisy)
+        _, _, fetches = policy.compute_actions_from_input_dict(
+            input_dict=sample_batch, explore=self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
         if policy.dist_class in (Categorical, TorchCategorical):
@@ -240,10 +236,8 @@ class ParameterNoise(Exploration):
         else:
             noise_free_action_dist = action_dist
 
-        _, _, fetches = policy.compute_actions(
-            obs_batch=sample_batch[SampleBatch.CUR_OBS],
-            prev_action_batch=sample_batch.get(SampleBatch.PREV_ACTIONS),
-            prev_reward_batch=sample_batch.get(SampleBatch.PREV_REWARDS),
+        _, _, fetches = policy.compute_actions_from_input_dict(
+            input_dict=sample_batch,
             explore=not self.weights_are_currently_noisy)
 
         # Categorical case (e.g. DQN).
@@ -269,7 +263,7 @@ class ParameterNoise(Exploration):
                     noise_free_action_dist *
                     np.log(noise_free_action_dist /
                            (noisy_action_dist + SMALL_NUMBER)), 1))
-            current_epsilon = self.sub_exploration.get_info(
+            current_epsilon = self.sub_exploration.get_state(
                 sess=tf_sess)["cur_epsilon"]
             delta = -np.log(1 - current_epsilon +
                             current_epsilon / self.action_space.n)
@@ -277,7 +271,7 @@ class ParameterNoise(Exploration):
             # Calculate MSE between noisy and non-noisy output (see [2]).
             distance = np.sqrt(
                 np.mean(np.square(noise_free_action_dist - noisy_action_dist)))
-            current_scale = self.sub_exploration.get_info(
+            current_scale = self.sub_exploration.get_state(
                 sess=tf_sess)["cur_scale"]
             delta = getattr(self.sub_exploration, "ou_sigma", 0.2) * \
                 current_scale
@@ -288,11 +282,8 @@ class ParameterNoise(Exploration):
         else:
             self.stddev_val /= 1.01
 
-        # Set self.stddev to calculated value.
-        if self.framework == "tf":
-            self.stddev.load(self.stddev_val, session=tf_sess)
-        else:
-            self.stddev = self.stddev_val
+        # Update our state (self.stddev and self.stddev_val).
+        self.set_state(self.get_state(), sess=tf_sess)
 
         return sample_batch
 
@@ -417,5 +408,17 @@ class ParameterNoise(Exploration):
             return tf.no_op()
 
     @override(Exploration)
-    def get_info(self, sess=None):
+    def get_state(self, sess=None):
         return {"cur_stddev": self.stddev_val}
+
+    @override(Exploration)
+    def set_state(self, state: dict,
+                  sess: Optional["tf.Session"] = None) -> None:
+        self.stddev_val = state["cur_stddev"]
+        # Set self.stddev to calculated value.
+        if self.framework == "tf":
+            self.stddev.load(self.stddev_val, session=sess)
+        elif isinstance(self.stddev, float):
+            self.stddev = self.stddev_val
+        else:
+            self.stddev.assign(self.stddev_val)

@@ -1,3 +1,17 @@
+// Copyright 2019-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
 
 #include <cstddef>
@@ -15,10 +29,76 @@
 extern "C" {
 #include "ray/thirdparty/sha256.h"
 }
+namespace ray {
+typedef int SchedulingClass;
+
+struct SchedulingClassDescriptor {
+ public:
+  explicit SchedulingClassDescriptor(ResourceSet rs, FunctionDescriptor fd, int64_t d)
+      : resource_set(std::move(rs)), function_descriptor(std::move(fd)), depth(d) {}
+  ResourceSet resource_set;
+  FunctionDescriptor function_descriptor;
+  int64_t depth;
+
+  bool operator==(const SchedulingClassDescriptor &other) const {
+    return depth == other.depth && resource_set == other.resource_set &&
+           function_descriptor == other.function_descriptor;
+  }
+
+  std::string DebugString() const {
+    std::stringstream buffer;
+    buffer << "{"
+           << "depth=" << depth << " "
+           << "function_descriptor=" << function_descriptor->ToString() << " "
+           << "resource_set="
+           << "{";
+    for (const auto &pair : resource_set.GetResourceMap()) {
+      buffer << pair.first << " : " << pair.second << ", ";
+    }
+    buffer << "}}";
+    return buffer.str();
+  }
+};
+}  // namespace ray
+
+namespace std {
+template <>
+struct hash<ray::SchedulingClassDescriptor> {
+  size_t operator()(const ray::SchedulingClassDescriptor &sched_cls) const {
+    size_t hash = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
+    hash ^= sched_cls.function_descriptor->Hash();
+    hash ^= sched_cls.depth;
+    return hash;
+  }
+};
+}  // namespace std
 
 namespace ray {
-typedef ResourceSet SchedulingClassDescriptor;
-typedef int SchedulingClass;
+
+/// ConcurrencyGroup is a group of actor methods that shares
+/// a executing thread pool.
+struct ConcurrencyGroup {
+  // Name of this group.
+  std::string name;
+  // Max concurrency of this group.
+  uint32_t max_concurrency;
+  // Function descriptors of the actor methods in this group.
+  std::vector<ray::FunctionDescriptor> function_descriptors;
+
+  ConcurrencyGroup() = default;
+
+  ConcurrencyGroup(const std::string &name, uint32_t max_concurrency,
+                   const std::vector<ray::FunctionDescriptor> &fds)
+      : name(name), max_concurrency(max_concurrency), function_descriptors(fds) {}
+
+  std::string GetName() const { return name; }
+
+  uint32_t GetMaxConcurrency() const { return max_concurrency; }
+
+  std::vector<ray::FunctionDescriptor> GetFunctionDescriptors() const {
+    return function_descriptors;
+  }
+};
 
 static inline rpc::ObjectReference GetReferenceForActorDummyObject(
     const ObjectID &object_id) {
@@ -28,7 +108,7 @@ static inline rpc::ObjectReference GetReferenceForActorDummyObject(
 };
 
 /// Wrapper class of protobuf `TaskSpec`, see `common.proto` for details.
-/// TODO(ekl) we should consider passing around std::unique_ptrs<TaskSpecification>
+/// TODO(ekl) we should consider passing around std::unique_ptr<TaskSpecification>
 /// instead `const TaskSpecification`, since this class is actually mutable.
 class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
  public:
@@ -36,10 +116,15 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   TaskSpecification() {}
 
   /// Construct from a protobuf message object.
-  /// The input message will be **copied** into this object.
+  /// The input message will be copied/moved into this object.
   ///
   /// \param message The protobuf message.
-  explicit TaskSpecification(rpc::TaskSpec message) : MessageWrapper(message) {
+  explicit TaskSpecification(rpc::TaskSpec &&message)
+      : MessageWrapper(std::move(message)) {
+    ComputeResources();
+  }
+
+  explicit TaskSpecification(const rpc::TaskSpec &message) : MessageWrapper(message) {
     ComputeResources();
   }
 
@@ -70,6 +155,14 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ray::FunctionDescriptor FunctionDescriptor() const;
 
+  [[nodiscard]] rpc::RuntimeEnv RuntimeEnv() const;
+
+  std::string SerializedRuntimeEnv() const;
+
+  bool HasRuntimeEnv() const;
+
+  int GetRuntimeEnvHash() const;
+
   size_t NumArgs() const;
 
   size_t NumReturns() const;
@@ -78,7 +171,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ObjectID ArgId(size_t arg_index) const;
 
-  rpc::ObjectReference ArgRef(size_t arg_index) const;
+  const rpc::ObjectReference &ArgRef(size_t arg_index) const;
 
   ObjectID ReturnId(size_t return_index) const;
 
@@ -90,8 +183,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   size_t ArgMetadataSize(size_t arg_index) const;
 
-  /// Return the ObjectIDs that were inlined in this task argument.
-  const std::vector<ObjectID> ArgInlinedIds(size_t arg_index) const;
+  /// Return the ObjectRefs that were inlined in this task argument.
+  const std::vector<rpc::ObjectReference> ArgInlinedRefs(size_t arg_index) const;
 
   /// Return the scheduling class of the task. The scheduler makes a best effort
   /// attempt to fairly dispatch tasks of different classes, preventing
@@ -127,9 +220,17 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   /// Return the dependencies of this task. This is recomputed each time, so it can
   /// be used if the task spec is mutated.
-  ///
+  /// \param add_dummy_dependency whether to add a dummy object in the returned objects.
   /// \return The recomputed dependencies for the task.
-  std::vector<rpc::ObjectReference> GetDependencies() const;
+  std::vector<rpc::ObjectReference> GetDependencies(
+      bool add_dummy_dependency = true) const;
+
+  std::string GetDebuggerBreakpoint() const;
+
+  /// Return the depth of this task. The depth of a graph, is the number of
+  /// `f.remote()` calls from the driver.
+  /// \return The depth.
+  int64_t GetDepth() const;
 
   bool IsDriverTask() const;
 
@@ -161,6 +262,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   TaskID CallerId() const;
 
+  const std::string GetSerializedActorHandle() const;
+
   const rpc::Address &CallerAddress() const;
 
   WorkerID CallerWorkerId() const;
@@ -170,8 +273,6 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ObjectID ActorCreationDummyObjectId() const;
 
   ObjectID PreviousActorTaskDummyObjectId() const;
-
-  bool IsDirectCall() const;
 
   int MaxActorConcurrency() const;
 
@@ -190,13 +291,18 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
 
   // Compute a static key that represents the given resource shape.
-  static SchedulingClass GetSchedulingClass(const ResourceSet &sched_cls);
+  static SchedulingClass GetSchedulingClass(const SchedulingClassDescriptor &sched_cls);
 
-  // Placement Group ID that this task or actor creation is associated with.
-  const PlacementGroupID PlacementGroupId() const;
+  // Placement Group bundle that this task or actor creation is associated with.
+  const BundleID PlacementGroupBundleId() const;
 
   // Whether or not we should capture parent's placement group implicitly.
   bool PlacementGroupCaptureChildTasks() const;
+
+  // Concurrency groups of the actor.
+  std::vector<ConcurrencyGroup> ConcurrencyGroups() const;
+
+  std::string ConcurrencyGroupName() const;
 
  private:
   void ComputeResources();
@@ -208,17 +314,59 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Field storing required placement resources. Initialized in constructor.
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
-  SchedulingClass sched_cls_id_;
+  SchedulingClass sched_cls_id_ = 0;
 
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.
   static absl::Mutex mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
-  static std::unordered_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
+  static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
       GUARDED_BY(mutex_);
-  static std::unordered_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
+  static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
       GUARDED_BY(mutex_);
   static int next_sched_id_ GUARDED_BY(mutex_);
+};
+
+/// \class WorkerCacheKey
+///
+/// Class used to cache workers, keyed by runtime_env.
+class WorkerCacheKey {
+ public:
+  /// Create a cache key with the given environment variable overrides and serialized
+  /// runtime_env.
+  ///
+  /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
+  /// worker. \param required_resources The required resouce.
+  WorkerCacheKey(const std::string serialized_runtime_env,
+                 const absl::flat_hash_map<std::string, double> &required_resources);
+
+  bool operator==(const WorkerCacheKey &k) const;
+
+  /// Check if this worker's environment is empty (the default).
+  ///
+  /// \return true if there are no environment variables set and the runtime env is the
+  /// empty string (protobuf default) or a JSON-serialized empty dict.
+  bool EnvIsEmpty() const;
+
+  /// Get the hash for this worker's environment.
+  ///
+  /// \return The hash of the serialized runtime_env.
+  std::size_t Hash() const;
+
+  /// Get the int-valued hash for this worker's environment, useful for portability in
+  /// flatbuffers.
+  ///
+  /// \return The hash truncated to an int.
+  int IntHash() const;
+
+ private:
+  /// The JSON-serialized runtime env for this worker.
+  const std::string serialized_runtime_env;
+  /// The required resources for this worker.
+  const absl::flat_hash_map<std::string, double> required_resources;
+  /// The cached hash of the worker's environment.  This is set to 0
+  /// for unspecified or empty environments.
+  mutable std::size_t hash_ = 0;
 };
 
 }  // namespace ray

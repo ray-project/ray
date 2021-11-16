@@ -18,6 +18,7 @@ Ray Examples
    testing-tips.rst
    progress_bar.rst
    plot_streaming.rst
+   placement-group.rst
 
 .. customgalleryitem::
    :tooltip: Tips for first time users.
@@ -35,6 +36,10 @@ Ray Examples
 .. customgalleryitem::
    :tooltip: Implement a simple streaming application using Ray’s actors.
    :description: :doc:`/auto_examples/plot_streaming`
+
+.. customgalleryitem::
+   :tooltip: Learn placement group use cases with examples.
+   :description: :doc:`/auto_examples/placement-group`
 
 .. raw:: html
 
@@ -56,6 +61,8 @@ Machine Learning Examples
    plot_lbfgs.rst
    plot_example-lm.rst
    plot_newsreader.rst
+   dask_xgboost/dask_xgboost.rst
+   modin_xgboost/modin_xgboost.rst
 
 
 .. customgalleryitem::
@@ -80,6 +87,14 @@ Machine Learning Examples
 .. customgalleryitem::
    :tooltip: Implementing a simple news reader using Ray.
    :description: :doc:`/auto_examples/plot_newsreader`
+
+.. customgalleryitem::
+   :tooltip: Train an XGBoost-Ray model using Dask for data processing.
+   :description: :doc:`/auto_examples/dask_xgboost/dask_xgboost`
+
+.. customgalleryitem::
+   :tooltip: Train an XGBoost-Ray model using Modin for data processing.
+   :description: :doc:`/auto_examples/modin_xgboost/modin_xgboost`
 
 
 .. raw:: html
@@ -115,3 +130,22 @@ These are simple examples that show you how to leverage Ray Core. For Ray's prod
 .. raw:: html
 
     </div>
+
+End-to-end Machine Learning Guides
+----------------------------------
+
+These are full guides on how you can use Ray with various Machine Learning libraries
+
+.. raw:: html
+
+    <div class="sphx-glr-bigcontainer">
+
+.. toctree::
+   :hidden:
+
+   using-ray-with-pytorch-lightning.rst
+
+.. customgalleryitem::
+   :tooltip: Using Ray with PyTorch Lightning.
+   :figure: /images/pytorch_lightning_small.png
+   :description: :doc:`/auto_examples/using-ray-with-pytorch-lightning`

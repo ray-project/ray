@@ -1,5 +1,16 @@
+.. include:: rllib/we_are_hiring.rst
+
 RLlib Table of Contents
 =======================
+
+RLlib Core Concepts
+-------------------
+
+*  `Policies <rllib/core-concepts.html#policies>`__
+
+*  `Sample Batches <rllib/core-concepts.html#sample-batches>`__
+
+*  `Training <rllib/core-concepts.html#training>`__
 
 Training APIs
 -------------
@@ -60,7 +71,6 @@ Training APIs
 Environments
 ------------
 *  `RLlib Environments Overview <rllib-env.html>`__
-*  `Feature Compatibility Matrix <rllib-env.html#feature-compatibility-matrix>`__
 *  `OpenAI Gym <rllib-env.html#openai-gym>`__
 *  `Vectorized <rllib-env.html#vectorized>`__
 *  `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
@@ -110,13 +120,15 @@ Algorithms
 
    -  |pytorch| |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
 
+   -  |pytorch| :ref:`Slate Q-Learning (SlateQ) <slateq>`
+
 *  Derivative-free
 
    -  |pytorch| |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
 
    -  |pytorch| |tensorflow| :ref:`Evolution Strategies <es>`
 
-*  Model-based / Meta-learning
+*  Model-based / Meta-learning / Offline
 
    -  |pytorch| :ref:`Single-Player AlphaZero (contrib/AlphaZero) <alphazero>`
 
@@ -125,6 +137,8 @@ Algorithms
    -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
 
    -  |pytorch| :ref:`Dreamer (DREAMER) <dreamer>`
+
+   -  |pytorch| :ref:`Conservative Q-Learning (CQL) <cql>`
 
 *  Multi-agent
 
@@ -143,6 +157,11 @@ Algorithms
 *  Exploration-based plug-ins (can be combined with any algo)
 
    -  |pytorch| :ref:`Curiosity (ICM: Intrinsic Curiosity Module) <curiosity>`
+
+Sample Collection
+-----------------
+*  `The SampleCollector Class is Used to Store and Retrieve Temporary Data <rllib-sample-collection.html#the-samplecollector-class-is-used-to-store-and-retrieve-temporary-data>`__
+*  `Trajectory View API <rllib-sample-collection.html#trajectory-view-api>`__
 
 
 Offline Datasets
@@ -214,7 +233,14 @@ references in the cluster.
 TensorFlow 2.0
 ~~~~~~~~~~~~~~
 
-RLlib currently runs in ``tf.compat.v1`` mode. This means eager execution is disabled by default, and RLlib imports TF with ``import tensorflow.compat.v1 as tf; tf.disable_v2_behaviour()``. Eager execution can be enabled manually by calling ``tf.enable_eager_execution()`` or setting the ``"eager": True`` trainer config.
+RLlib supports both tf2.x as well as ``tf.compat.v1`` modes.
+Always use the ``ray.rllib.utils.framework.try_import_tf()`` utility function to import tensorflow.
+It returns three values:
+*  ``tf1``: The ``tf.compat.v1`` module or the installed tf1.x package (if the version is < 2.0).
+*  ``tf``: The installed tensorflow module as-is.
+*  ``tfv``: A convenience version int, whose values are either 1 or 2.
+
+`See here <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__ for a detailed example script.
 
 .. |tensorflow| image:: tensorflow.png
     :class: inline-figure

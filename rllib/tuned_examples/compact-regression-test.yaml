@@ -4,7 +4,7 @@
 # rewards reached seem reasonably in line with previous results.
 #
 # You can find the reference results here:
-# https://github.com/ray-project/ray/tree/master/doc/dev/release_logs
+# https://github.com/ray-project/ray/tree/master/release/release_logs
 atari-impala:
     env: BreakoutNoFrameskip-v4
     run: IMPALA
@@ -43,7 +43,8 @@ atari-ppo-tf:
         num_envs_per_worker: 5
         batch_mode: truncate_episodes
         observation_filter: NoFilter
-        vf_share_layers: true
+        model:
+            vf_share_layers: true
         num_gpus: 1
 atari-ppo-torch:
     env: BreakoutNoFrameskip-v4
@@ -67,7 +68,8 @@ atari-ppo-torch:
         num_envs_per_worker: 5
         batch_mode: truncate_episodes
         observation_filter: NoFilter
-        vf_share_layers: true
+        model:
+            vf_share_layers: true
         num_gpus: 1
 apex:
     env: BreakoutNoFrameskip-v4

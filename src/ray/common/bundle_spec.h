@@ -27,10 +27,12 @@
 
 namespace ray {
 
-typedef std::function<void(const ResourceIdSet &)> ScheduleBundleCallback;
 /// Arguments are the raylet ID to spill back to, the raylet's
 /// address and the raylet's port.
 typedef std::function<void()> SpillbackBundleCallback;
+
+const std::string kGroupKeyword = "_group_";
+const size_t kGroupKeywordSize = kGroupKeyword.size();
 
 class BundleSpecification : public MessageWrapper<rpc::Bundle> {
  public:
@@ -49,10 +51,13 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
     ComputeResources();
   }
   // Return the bundle_id
-  std::pair<PlacementGroupID, int64_t> BundleId() const;
+  BundleID BundleId() const;
 
   // Return the Placement Group id which the Bundle belong to.
   PlacementGroupID PlacementGroupId() const;
+
+  // Get a node ID that this bundle is scheduled on.
+  NodeID NodeId() const;
 
   // Return the index of the bundle.
   int64_t Index() const;
@@ -62,38 +67,32 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   /// \return The resources that will be acquired by this bundle.
   const ResourceSet &GetRequiredResources() const;
 
-  /// Override dispatch behaviour.
-  void OnScheduleInstead(const ScheduleBundleCallback &callback) {
-    on_schedule_ = callback;
+  /// Get all placement group bundle resource labels.
+  const absl::flat_hash_map<std::string, double> &GetFormattedResources() const {
+    return bundle_resource_labels_;
   }
-
-  /// Override spillback behaviour.
-  void OnSpillbackInstead(const SpillbackBundleCallback &callback) {
-    on_spillback_ = callback;
-  }
-
-  /// Returns the schedule bundle callback, or nullptr.
-  const ScheduleBundleCallback &OnSchedule() const { return on_schedule_; }
-
-  /// Returns the spillback bundle callback, or nullptr.
-  const SpillbackBundleCallback &OnSpillback() const { return on_spillback_; }
 
   std::string DebugString() const;
 
  private:
   void ComputeResources();
+  void ComputeBundleResourceLabels();
 
   /// Field storing unit resources. Initialized in constructor.
   /// TODO(ekl) consider optimizing the representation of ResourceSet for fast copies
   /// instead of keeping shared pointers here.
   std::shared_ptr<ResourceSet> unit_resource_;
 
-  mutable ScheduleBundleCallback on_schedule_ = nullptr;
-
-  mutable SpillbackBundleCallback on_spillback_ = nullptr;
+  /// When a bundle is assigned on a node, we'll add the following special resources on
+  /// that node:
+  /// 1) `CPU_group_${group_id}`: this is the requested resource when the actor
+  /// or task specifies placement group without bundle id.
+  /// 2) `CPU_group_${bundle_index}_${group_id}`: this is the requested resource
+  /// when the actor or task specifies placement group with bundle id.
+  absl::flat_hash_map<std::string, double> bundle_resource_labels_;
 };
 
-/// Format a placement group resource, e.g., CPU -> CPU_group_YYY_i
+/// Format a placement group resource, e.g., CPU -> CPU_group_i
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const PlacementGroupID &group_id,
                                          int64_t bundle_index = -1);

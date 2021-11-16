@@ -17,6 +17,7 @@ Note that unlike the paper, we currently do not implement straggler mitigation.
 """
 
 import logging
+import sys
 import time
 
 import ray
@@ -25,9 +26,10 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, LEARNER_INFO, LEARN_ON_BATCH_TIMER, \
-    _get_shared_metrics, _get_global_vars
+    STEPS_TRAINED_COUNTER, STEPS_TRAINED_THIS_ITER_COUNTER,\
+    LEARN_ON_BATCH_TIMER, _get_shared_metrics, _get_global_vars
 from ray.rllib.evaluation.rollout_worker import get_global_worker
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
@@ -62,6 +64,8 @@ DEFAULT_CONFIG = ppo.PPOTrainer.merge_trainer_configs(
         #     shouldn't need to adjust them. ***
         # DDPPO requires PyTorch distributed.
         "framework": "torch",
+        # The communication backend for PyTorch distributed.
+        "torch_distributed_backend": "gloo",
         # Learning is no longer done on the driver process, so
         # giving GPUs to the driver does not make sense!
         "num_gpus": 0,
@@ -72,8 +76,11 @@ DEFAULT_CONFIG = ppo.PPOTrainer.merge_trainer_configs(
         "truncate_episodes": True,
         # This is auto set based on sample batch size.
         "train_batch_size": -1,
-        # Trajectory View API not supported yet for DD-PPO.
-        "_use_trajectory_view_api": False,
+        # Kl divergence penalty should be fixed to 0 in DDPPO because in order
+        # for it to be used as a penalty, we would have to un-decentralize
+        # DDPPO
+        "kl_coeff": 0.0,
+        "kl_target": 0.0
     },
     _allow_unknown_configs=True,
 )
@@ -91,6 +98,15 @@ def validate_config(config):
     Raises:
         ValueError: In case something is wrong with the config.
     """
+    # Call (base) PPO's config validation function first.
+    # Note that this will not touch or check on the train_batch_size=-1
+    # setting.
+    ppo.validate_config(config)
+
+    # Error if run on Win.
+    if sys.platform in ["win32", "cygwin"]:
+        raise ValueError("DD-PPO not supported on Win yet! "
+                         "Due to usage of torch.distributed.")
 
     # Auto-train_batch_size: Calculate from rollout len and envs-per-worker.
     if config["train_batch_size"] == -1:
@@ -106,6 +122,9 @@ def validate_config(config):
     if config["framework"] != "torch":
         raise ValueError(
             "Distributed data parallel is only supported for PyTorch")
+    if config["torch_distributed_backend"] not in ("gloo", "mpi", "nccl"):
+        raise ValueError("Only gloo, mpi, or nccl is supported for "
+                         "the backend of PyTorch distributed.")
     # `num_gpus` must be 0/None, since all optimization happens on Workers.
     if config["num_gpus"]:
         raise ValueError(
@@ -118,12 +137,17 @@ def validate_config(config):
         raise ValueError(
             "Distributed data parallel requires truncate_episodes "
             "batch mode.")
-    # Call (base) PPO's config validation function.
-    ppo.validate_config(config)
+    # DDPPO doesn't support KL penalties like PPO-1.
+    # In order to support KL penalties, DDPPO would need to become
+    # undecentralized, which defeats the purpose of the algorithm.
+    # Users can still tune the entropy coefficient to control the
+    # policy entropy (similar to controlling the KL penalty).
+    if config["kl_coeff"] != 0.0 or config["kl_target"] != 0.0:
+        raise ValueError("DDPPO doesn't support KL penalties like PPO-1")
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
     """Execution plan of the DD-PPO algorithm. Defines the distributed dataflow.
 
     Args:
@@ -135,6 +159,9 @@ def execution_plan(workers: WorkerSet,
         LocalIterator[dict]: The Policy class to use with PGTrainer.
             If None, use `default_policy` provided in build_trainer().
     """
+    assert len(kwargs) == 0, (
+        "DDPPO execution_plan does NOT take any additional parameters")
+
     rollouts = ParallelRollouts(workers, mode="raw")
 
     # Setup the distributed processes.
@@ -148,7 +175,10 @@ def execution_plan(workers: WorkerSet,
     # Get setup tasks in order to throw errors on failure.
     ray.get([
         worker.setup_torch_data_parallel.remote(
-            address, i, len(workers.remote_workers()), backend="gloo")
+            url=address,
+            world_rank=i,
+            world_size=len(workers.remote_workers()),
+            backend=config["torch_distributed_backend"])
         for i, worker in enumerate(workers.remote_workers())
     ])
     logger.info("Torch process group init completed")
@@ -185,6 +215,7 @@ def execution_plan(workers: WorkerSet,
             for item in items:
                 info, count = item
                 metrics = _get_shared_metrics()
+                metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = count
                 metrics.counters[STEPS_SAMPLED_COUNTER] += count
                 metrics.counters[STEPS_TRAINED_COUNTER] += count
                 metrics.info[LEARNER_INFO] = info

@@ -14,12 +14,20 @@
 
 #pragma once
 
+#include <google/protobuf/arena.h>
 #include <grpcpp/grpcpp.h>
 
 #include <boost/asio.hpp>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/status.h"
+#include "ray/stats/metric.h"
+
+DECLARE_stats(grpc_server_req_process_time_ms);
+DECLARE_stats(grpc_server_req_new);
+DECLARE_stats(grpc_server_req_handling);
+DECLARE_stats(grpc_server_req_finished);
 
 namespace ray {
 namespace rpc {
@@ -83,6 +91,8 @@ class ServerCall {
   // Invoked when sending reply fails.
   virtual void OnReplyFailed() = 0;
 
+  virtual const ServerCallFactory &GetServerCallFactory() = 0;
+
   /// Virtual destruct function to make sure subclass would destruct properly.
   virtual ~ServerCall() = default;
 };
@@ -93,6 +103,9 @@ class ServerCallFactory {
   /// Create a new `ServerCall` and request gRPC runtime to start accepting the
   /// corresponding type of requests.
   virtual void CreateCall() const = 0;
+
+  /// Get the maximum request number to handle at the same time. -1 means no limit.
+  virtual int64_t GetMaxActiveRPCs() const = 0;
 
   virtual ~ServerCallFactory() = default;
 };
@@ -125,21 +138,32 @@ class ServerCallImpl : public ServerCall {
   ServerCallImpl(
       const ServerCallFactory &factory, ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
-      boost::asio::io_service &io_service)
+      instrumented_io_context &io_service, std::string call_name)
       : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function),
         response_writer_(&context_),
-        io_service_(io_service) {}
+        io_service_(io_service),
+        call_name_(std::move(call_name)),
+        start_time_(0) {
+    reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
+    // TODO call_name_ sometimes get corrunpted due to memory issues.
+    RAY_CHECK(!call_name_.empty()) << "Call name is empty";
+    STATS_grpc_server_req_new.Record(1.0, call_name_);
+  }
+
+  ~ServerCallImpl() override = default;
 
   ServerCallState GetState() const override { return state_; }
 
   void SetState(const ServerCallState &new_state) override { state_ = new_state; }
 
   void HandleRequest() override {
+    start_time_ = absl::GetCurrentTimeNanos();
+    STATS_grpc_server_req_handling.Record(1.0, call_name_);
     if (!io_service_.stopped()) {
-      io_service_.post([this] { HandleRequestImpl(); });
+      io_service_.post([this] { HandleRequestImpl(); }, call_name_);
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
@@ -153,12 +177,15 @@ class ServerCallImpl : public ServerCall {
     // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
     // a different thread, and will cause `this` to be deleted.
     const auto &factory = factory_;
-    // Create a new `ServerCall` to accept the next incoming request.
-    // We create this before handling the request so that the it can be populated by
-    // the completion queue in the background if a new request comes in.
-    factory.CreateCall();
+    if (factory.GetMaxActiveRPCs() == -1) {
+      // Create a new `ServerCall` to accept the next incoming request.
+      // We create this before handling the request only when no back pressure limit is
+      // set. So that the it can be populated by the completion queue in the background if
+      // a new request comes in.
+      factory.CreateCall();
+    }
     (service_handler_.*handle_request_function_)(
-        request_, &reply_,
+        request_, reply_,
         [this](Status status, std::function<void()> success,
                std::function<void()> failure) {
           // These two callbacks must be set before `SendReply`, because `SendReply`
@@ -174,25 +201,41 @@ class ServerCallImpl : public ServerCall {
   }
 
   void OnReplySent() override {
+    STATS_grpc_server_req_finished.Record(1.0, call_name_);
     if (send_reply_success_callback_ && !io_service_.stopped()) {
       auto callback = std::move(send_reply_success_callback_);
-      io_service_.post([callback]() { callback(); });
+      io_service_.post([callback]() { callback(); }, call_name_ + ".success_callback");
     }
+    LogProcessTime();
   }
 
   void OnReplyFailed() override {
+    STATS_grpc_server_req_finished.Record(1.0, call_name_);
     if (send_reply_failure_callback_ && !io_service_.stopped()) {
       auto callback = std::move(send_reply_failure_callback_);
-      io_service_.post([callback]() { callback(); });
+      io_service_.post([callback]() { callback(); }, call_name_ + ".failure_callback");
     }
+    LogProcessTime();
   }
 
+  const ServerCallFactory &GetServerCallFactory() override { return factory_; }
+
  private:
+  /// Log the duration this query used
+  void LogProcessTime() {
+    auto end_time = absl::GetCurrentTimeNanos();
+    STATS_grpc_server_req_process_time_ms.Record((end_time - start_time_) / 1000000.0,
+                                                 call_name_);
+  }
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
     state_ = ServerCallState::SENDING_REPLY;
-    response_writer_.Finish(reply_, RayStatusToGrpcStatus(status), this);
+    response_writer_.Finish(*reply_, RayStatusToGrpcStatus(status), this);
   }
+
+  /// The memory pool for this request. It's used for reply.
+  /// With arena, we'll be able to setup the reply without copying some field.
+  google::protobuf::Arena arena_;
 
   /// State of this call.
   ServerCallState state_;
@@ -211,22 +254,29 @@ class ServerCallImpl : public ServerCall {
   grpc::ServerContext context_;
 
   /// The response writer.
-  grpc_impl::ServerAsyncResponseWriter<Reply> response_writer_;
+  grpc::ServerAsyncResponseWriter<Reply> response_writer_;
 
   /// The event loop.
-  boost::asio::io_service &io_service_;
+  instrumented_io_context &io_service_;
 
   /// The request message.
   Request request_;
 
-  /// The reply message.
-  Reply reply_;
+  /// The reply message. This one is owned by arena. It's not valid beyond
+  /// the life-cycle of this call.
+  Reply *reply_;
+
+  /// Human-readable name for this RPC call.
+  std::string call_name_;
 
   /// The callback when sending reply successes.
   std::function<void()> send_reply_success_callback_ = nullptr;
 
   /// The callback when sending reply fails.
   std::function<void()> send_reply_failure_callback_ = nullptr;
+
+  /// The ts when the request created
+  int64_t start_time_;
 
   template <class T1, class T2, class T3, class T4>
   friend class ServerCallFactoryImpl;
@@ -239,7 +289,7 @@ class ServerCallImpl : public ServerCall {
 /// \tparam Reply Type of the reply message.
 template <class GrpcService, class Request, class Reply>
 using RequestCallFunction = void (GrpcService::AsyncService::*)(
-    grpc::ServerContext *, Request *, grpc_impl::ServerAsyncResponseWriter<Reply> *,
+    grpc::ServerContext *, Request *, grpc::ServerAsyncResponseWriter<Reply> *,
     grpc::CompletionQueue *, grpc::ServerCompletionQueue *, void *);
 
 /// Implementation of `ServerCallFactory`
@@ -262,31 +312,37 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   /// \param[in] handle_request_function Pointer to the service handler function.
   /// \param[in] cq The `CompletionQueue`.
   /// \param[in] io_service The event loop.
+  /// \param[in] max_active_rpcs Maximum request number to handle at the same time. -1
+  /// means no limit.
   ServerCallFactoryImpl(
       AsyncService &service,
       RequestCallFunction<GrpcService, Request, Reply> request_call_function,
       ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      boost::asio::io_service &io_service)
+      instrumented_io_context &io_service, std::string call_name, int64_t max_active_rpcs)
       : service_(service),
         request_call_function_(request_call_function),
         service_handler_(service_handler),
         handle_request_function_(handle_request_function),
         cq_(cq),
-        io_service_(io_service) {}
+        io_service_(io_service),
+        call_name_(std::move(call_name)),
+        max_active_rpcs_(max_active_rpcs) {}
 
   void CreateCall() const override {
     // Create a new `ServerCall`. This object will eventually be deleted by
     // `GrpcServer::PollEventsFromCompletionQueue`.
     auto call = new ServerCallImpl<ServiceHandler, Request, Reply>(
-        *this, service_handler_, handle_request_function_, io_service_);
+        *this, service_handler_, handle_request_function_, io_service_, call_name_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
     (service_.*request_call_function_)(&call->context_, &call->request_,
                                        &call->response_writer_, cq_.get(), cq_.get(),
                                        call);
   }
+
+  int64_t GetMaxActiveRPCs() const override { return max_active_rpcs_; }
 
  private:
   /// The gRPC-generated `AsyncService`.
@@ -305,7 +361,14 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   const std::unique_ptr<grpc::ServerCompletionQueue> &cq_;
 
   /// The event loop.
-  boost::asio::io_service &io_service_;
+  instrumented_io_context &io_service_;
+
+  /// Human-readable name for this RPC call.
+  std::string call_name_;
+
+  /// Maximum request number to handle at the same time.
+  /// -1 means no limit.
+  uint64_t max_active_rpcs_;
 };
 
 }  // namespace rpc

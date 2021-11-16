@@ -4,12 +4,18 @@ from __future__ import print_function
 
 import inspect
 import logging
-import pickle
-from typing import Dict, List, Optional
+import numpy as np
+# use cloudpickle instead of pickle to make lambda funcs
+# in dragonfly pickleable
+from ray import cloudpickle
+from typing import Dict, List, Optional, Union
 
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Domain, Float, Quantized
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils.util import flatten_dict
+from ray.tune.utils.util import flatten_dict, is_nan_or_inf, unflatten_dict
 
 try:  # Python 3 only -- needed for lint test.
     import dragonfly
@@ -45,6 +51,9 @@ class DragonflySearch(Searcher):
     This interface requires using FunctionCallers and optimizers provided by
     Dragonfly.
 
+    This searcher will automatically filter out any NaN, inf or -inf
+    results.
+
     Parameters:
         optimizer (dragonfly.opt.BlackboxOptimiser|str): Optimizer provided
             from dragonfly. Choose an optimiser that extends BlackboxOptimiser.
@@ -53,24 +62,30 @@ class DragonflySearch(Searcher):
         domain (str): Optional domain. Should only be set if you don't pass
             an optimizer as the `optimizer` argument.
             Has to be one of [cartesian, euclidean].
-        space (list): Search space. Should only be set if you don't pass
+        space (list|dict): Search space. Should only be set if you don't pass
             an optimizer as the `optimizer` argument. Defines the search space
             and requires a `domain` to be set. Can be automatically converted
             from the `config` dict passed to `tune.run()`.
-        metric (str): The training result objective value attribute.
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-        points_to_evaluate (list of lists): A list of points you'd like to run
-            first before sampling from the optimiser, e.g. these could be
-            parameter configurations you already know work well to help
-            the optimiser select good values. Each point is a list of the
-            parameters using the order definition given by parameter_names.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dicts containing the
+            configurations.
         evaluated_rewards (list): If you have previously evaluated the
             parameters passed in as points_to_evaluate you can avoid
             re-running those trials by passing in the reward attributes
             as a list so the optimiser can be told the results without
             needing to re-compute the trial. Must be the same length as
             points_to_evaluate.
+        random_state_seed (int, None): Seed for reproducible
+            results. Defaults to None. Please note that setting this to a value
+            will change global random state for `numpy`
+            on initalization and loading from checkpoint.
 
     Tune automatically converts search spaces to Dragonfly's format:
 
@@ -129,30 +144,47 @@ class DragonflySearch(Searcher):
     """
 
     def __init__(self,
-                 optimizer: Optional[BlackboxOptimiser] = None,
+                 optimizer: Optional[Union[str, BlackboxOptimiser]] = None,
                  domain: Optional[str] = None,
-                 space: Optional[List[Dict]] = None,
+                 space: Optional[Union[Dict, List[Dict]]] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
-                 points_to_evaluate: Optional[List[List]] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
                  evaluated_rewards: Optional[List] = None,
+                 random_state_seed: Optional[int] = None,
                  **kwargs):
         assert dragonfly is not None, """dragonfly must be installed!
             You can install Dragonfly with the command:
             `pip install dragonfly-opt`."""
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
+        if random_state_seed is not None:
+            assert isinstance(
+                random_state_seed, int
+            ), "random_state_seed must be None or int, got '{}'.".format(
+                type(random_state_seed))
 
         super(DragonflySearch, self).__init__(
             metric=metric, mode=mode, **kwargs)
 
         self._opt_arg = optimizer
         self._domain = domain
+
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="space", cls=type(self)))
+                space = self.convert_search_space(space)
+
         self._space = space
         self._points_to_evaluate = points_to_evaluate
         self._evaluated_rewards = evaluated_rewards
         self._initial_points = []
         self._live_trial_mapping = {}
+        self._point_parameter_names = []
+        self._random_state_seed = random_state_seed
 
         self._opt = None
         if isinstance(optimizer, BlackboxOptimiser):
@@ -163,9 +195,9 @@ class DragonflySearch(Searcher):
             self._opt = optimizer
             self.init_dragonfly()
         elif self._space:
-            self.setup_dragonfly()
+            self._setup_dragonfly()
 
-    def setup_dragonfly(self):
+    def _setup_dragonfly(self):
         """Setup dragonfly when no optimizer has been passed."""
         assert not self._opt, "Optimizer already set."
 
@@ -188,6 +220,11 @@ class DragonflySearch(Searcher):
             raise ValueError(
                 "You have to set a `domain` when initializing dragonfly. "
                 "Choose one of [Cartesian, Euclidean].")
+
+        self._point_parameter_names = [param["name"] for param in self._space]
+
+        if self._random_state_seed is not None:
+            np.random.seed(self._random_state_seed)
 
         if self._domain.lower().startswith("cartesian"):
             function_caller_cls = CPFunctionCaller
@@ -233,20 +270,30 @@ class DragonflySearch(Searcher):
         self.init_dragonfly()
 
     def init_dragonfly(self):
+        if self._points_to_evaluate:
+            points_to_evaluate = [[
+                config[par] for par in self._point_parameter_names
+            ] for config in self._points_to_evaluate]
+        else:
+            points_to_evaluate = None
+
         self._opt.initialise()
-        if self._points_to_evaluate and self._evaluated_rewards:
-            self._opt.tell([(self._points_to_evaluate,
-                             self._evaluated_rewards)])
-        elif self._points_to_evaluate:
-            self._initial_points = self._points_to_evaluate
+        if points_to_evaluate and self._evaluated_rewards:
+            self._opt.tell([(points_to_evaluate, self._evaluated_rewards)])
+        elif points_to_evaluate:
+            self._initial_points = points_to_evaluate
         # Dragonfly internally maximizes, so "min" => -1
         if self._mode == "min":
             self._metric_op = -1.
         elif self._mode == "max":
             self._metric_op = 1.
 
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         if self._opt:
             return False
         space = self.convert_search_space(config)
@@ -256,16 +303,21 @@ class DragonflySearch(Searcher):
         if mode:
             self._mode = mode
 
-        self.setup_dragonfly()
+        self._setup_dragonfly()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._opt:
             raise RuntimeError(
-                "Trying to sample a configuration from {}, but no search "
-                "space has been defined. Either pass the `{}` argument when "
-                "instantiating the search algorithm, or pass a `config` to "
-                "`tune.run()`.".format(self.__class__.__name__, "space"))
+                UNDEFINED_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="space"))
+
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
 
         if self._initial_points:
             suggested_config = self._initial_points[0]
@@ -280,7 +332,11 @@ class DragonflySearch(Searcher):
                     "parallelism in the experiment: %s", str(exc))
                 return None
         self._live_trial_mapping[trial_id] = suggested_config
-        return {"point": suggested_config}
+
+        config = dict(zip(self._point_parameter_names, suggested_config))
+        # Keep backwards compatibility
+        config.update(point=suggested_config)
+        return unflatten_dict(config)
 
     def on_trial_complete(self,
                           trial_id: str,
@@ -288,30 +344,22 @@ class DragonflySearch(Searcher):
                           error: bool = False):
         """Passes result to Dragonfly unless early terminated or errored."""
         trial_info = self._live_trial_mapping.pop(trial_id)
-        if result:
+        if result and not is_nan_or_inf(result[self._metric]):
             self._opt.tell([(trial_info,
                              self._metric_op * result[self._metric])])
 
-    def save(self, checkpoint_path: str):
-        trials_object = (self._initial_points, self._opt)
-        with open(checkpoint_path, "wb") as outputFile:
-            pickle.dump(trials_object, outputFile)
-
-    def restore(self, checkpoint_dir: str):
-        with open(checkpoint_dir, "rb") as inputFile:
-            trials_object = pickle.load(inputFile)
-        self._initial_points = trials_object[0]
-        self._opt = trials_object[1]
-
     @staticmethod
     def convert_search_space(spec: Dict) -> List[Dict]:
-        spec = flatten_dict(spec, prevent_delimiter=True)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
                 "to a Dragonfly search space.")
+
+        # Flatten and resolve again after checking for grid search.
+        spec = flatten_dict(spec, prevent_delimiter=True)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         def resolve_value(par: str, domain: Domain) -> Dict:
             sampler = domain.get_sampler()
@@ -341,5 +389,22 @@ class DragonflySearch(Searcher):
             resolve_value("/".join(path), domain)
             for path, domain in domain_vars
         ]
-
         return space
+
+    def save(self, checkpoint_path: str):
+        if self._random_state_seed is not None:
+            numpy_random_state = np.random.get_state()
+        else:
+            numpy_random_state = None
+        save_object = self.__dict__
+        save_object["_random_state_seed_to_set"] = numpy_random_state
+        with open(checkpoint_path, "wb") as outputFile:
+            cloudpickle.dump(save_object, outputFile)
+
+    def restore(self, checkpoint_path: str):
+        with open(checkpoint_path, "rb") as inputFile:
+            save_object = cloudpickle.load(inputFile)
+        numpy_random_state = save_object.pop("_random_state_seed_to_set", None)
+        self.__dict__.update(save_object)
+        if numpy_random_state is not None:
+            np.random.set_state(numpy_random_state)

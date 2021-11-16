@@ -14,7 +14,10 @@
 
 #pragma once
 
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/rpc/server_call.h"
 
 namespace ray {
@@ -30,53 +33,42 @@ class GlobalStateAccessor {
   ///
   /// \param redis_address The address of GCS Redis.
   /// \param redis_password The password of GCS Redis.
-  /// \param is_test Whether this accessor is used for tests.
   explicit GlobalStateAccessor(const std::string &redis_address,
-                               const std::string &redis_password, bool is_test = false);
+                               const std::string &redis_password);
 
-  ~GlobalStateAccessor();
+  ~GlobalStateAccessor() LOCKS_EXCLUDED(mutex_);
 
   /// Connect gcs server.
   ///
   /// \return Whether the connection is successful.
-  bool Connect();
+  bool Connect() LOCKS_EXCLUDED(mutex_);
 
   /// Disconnect from gcs server.
-  void Disconnect();
+  void Disconnect() LOCKS_EXCLUDED(mutex_);
 
   /// Get information of all jobs from GCS Service.
   ///
   /// \return All job info. To support multi-language, we serialize each JobTableData and
   /// return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
-  std::vector<std::string> GetAllJobInfo();
+  std::vector<std::string> GetAllJobInfo() LOCKS_EXCLUDED(mutex_);
+
+  /// Get next job id from GCS Service.
+  ///
+  /// \return Next job id.
+  JobID GetNextJobID() LOCKS_EXCLUDED(mutex_);
 
   /// Get all node information from GCS.
   ///
   /// \return A list of `GcsNodeInfo` objects serialized in protobuf format.
-  std::vector<std::string> GetAllNodeInfo();
+  std::vector<std::string> GetAllNodeInfo() LOCKS_EXCLUDED(mutex_);
 
   /// Get information of all profiles from GCS Service.
   ///
   /// \return All profile info. To support multi-language, we serialized each
   /// ProfileTableData and returned the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::vector<std::string> GetAllProfileInfo();
-
-  /// Get information of all objects from GCS Service.
-  ///
-  /// \return All object info. To support multi-language, we serialize each
-  /// ObjectTableData and return the serialized string. Where used, it needs to be
-  /// deserialized with protobuf function.
-  std::vector<std::string> GetAllObjectInfo();
-
-  /// Get information of an object from GCS Service.
-  ///
-  /// \param object_id The ID of object to look up in the GCS Service.
-  /// \return Object info. To support multi-language, we serialize each ObjectTableData
-  /// and return the serialized string. Where used, it needs to be deserialized with
-  /// protobuf function.
-  std::unique_ptr<std::string> GetObjectInfo(const ObjectID &object_id);
+  std::vector<std::string> GetAllProfileInfo() LOCKS_EXCLUDED(mutex_);
 
   /// Get information of a node resource from GCS Service.
   ///
@@ -84,27 +76,29 @@ class GlobalStateAccessor {
   /// \return node resource map info. To support multi-language, we serialize each
   /// ResourceTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::string GetNodeResourceInfo(const NodeID &node_id);
+  std::string GetNodeResourceInfo(const NodeID &node_id) LOCKS_EXCLUDED(mutex_);
 
   /// Get available resources of all nodes.
   ///
   /// \return available resources of all nodes. To support multi-language, we serialize
   /// each AvailableResources and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::vector<std::string> GetAllAvailableResources();
+  std::vector<std::string> GetAllAvailableResources() LOCKS_EXCLUDED(mutex_);
 
-  /// Get internal config from GCS Service.
+  /// Get newest resource usage of all nodes from GCS Service. Only used when light
+  /// rerouce usage report enabled.
   ///
-  /// \return map of internal config keys and values. It is stored as a StoredConfig proto
-  /// and serialized as a string to allow multi-language support.
-  std::string GetInternalConfig();
+  /// \return resource usage info. To support multi-language, we serialize each
+  /// data and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::unique_ptr<std::string> GetAllResourceUsage() LOCKS_EXCLUDED(mutex_);
 
   /// Get information of all actors from GCS Service.
   ///
   /// \return All actor info. To support multi-language, we serialize each ActorTableData
   /// and return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
-  std::vector<std::string> GetAllActorInfo();
+  std::vector<std::string> GetAllActorInfo() LOCKS_EXCLUDED(mutex_);
 
   /// Get information of an actor from GCS Service.
   ///
@@ -112,15 +106,8 @@ class GlobalStateAccessor {
   /// \return Actor info. To support multi-language, we serialize each ActorTableData and
   /// return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
-  std::unique_ptr<std::string> GetActorInfo(const ActorID &actor_id);
-
-  /// Get checkpoint id of an actor from GCS Service.
-  ///
-  /// \param actor_id The ID of actor to look up in the GCS Service.
-  /// \return Actor checkpoint id. To support multi-language, we serialize each
-  /// ActorCheckpointIdData and return the serialized string. Where used, it needs to be
-  /// deserialized with protobuf function.
-  std::unique_ptr<std::string> GetActorCheckpointId(const ActorID &actor_id);
+  std::unique_ptr<std::string> GetActorInfo(const ActorID &actor_id)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Get information of a worker from GCS Service.
   ///
@@ -128,30 +115,71 @@ class GlobalStateAccessor {
   /// \return Worker info. To support multi-language, we serialize each WorkerTableData
   /// and return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
-  std::unique_ptr<std::string> GetWorkerInfo(const WorkerID &worker_id);
+  std::unique_ptr<std::string> GetWorkerInfo(const WorkerID &worker_id)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Get information of all workers from GCS Service.
   ///
   /// \return All worker info. To support multi-language, we serialize each
   /// WorkerTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
-  std::vector<std::string> GetAllWorkerInfo();
+  std::vector<std::string> GetAllWorkerInfo() LOCKS_EXCLUDED(mutex_);
 
   /// Add information of a worker to GCS Service.
   ///
   /// \param serialized_string The serialized data of worker to be added in the GCS
   /// Service, use string is convenient for python to use.
   /// \return Is operation success.
-  bool AddWorkerInfo(const std::string &serialized_string);
+  bool AddWorkerInfo(const std::string &serialized_string) LOCKS_EXCLUDED(mutex_);
 
-  /// Get information of a placement group from GCS Service.
+  /// Get information of all placement group from GCS Service.
   ///
-  /// \param placement_group The ID of placement group to look up in the GCS Service.
+  /// \return All placement group info. To support multi-language, we serialize each
+  /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::vector<std::string> GetAllPlacementGroupInfo() LOCKS_EXCLUDED(mutex_);
+
+  /// Get information of a placement group from GCS Service by ID.
+  ///
+  /// \param placement_group_id The ID of placement group to look up in the GCS Service.
   /// \return Placement group info. To support multi-language, we serialize each
   /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::unique_ptr<std::string> GetPlacementGroupInfo(
-      const PlacementGroupID &placement_group_id);
+      const PlacementGroupID &placement_group_id) LOCKS_EXCLUDED(mutex_);
+
+  /// Get information of a placement group from GCS Service by name.
+  ///
+  /// \param placement_group_name The name of placement group to look up in the GCS
+  /// Service.
+  /// \return Placement group info. To support multi-language, we serialize each
+  /// PlacementGroupTableData and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::unique_ptr<std::string> GetPlacementGroupByName(
+      const std::string &placement_group_name, const std::string &ray_namespace)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// Get value of the key from GCS Service.
+  ///
+  /// \param key key to get.
+  /// \return Value of the key.
+  std::unique_ptr<std::string> GetInternalKV(const std::string &key)
+      LOCKS_EXCLUDED(mutex_);
+
+  /// Get the serialized system config from GCS.
+  ///
+  /// \return The serialized system config.
+  std::string GetSystemConfig() LOCKS_EXCLUDED(mutex_);
+
+  /// Get the node to connect for a Ray driver.
+  ///
+  /// \param[in] node_ip_address The IP address of the desired node to connect.
+  /// \param[out] node_to_connect The info of the node to connect. To support
+  /// multi-language, we serialize each GcsNodeInfo and return the serialized string.
+  /// Where used, it needs to be deserialized with protobuf function.
+  ray::Status GetNodeToConnectForDriver(const std::string &node_ip_address,
+                                        std::string *node_to_connect)
+      LOCKS_EXCLUDED(mutex_);
 
  private:
   /// MultiItem transformation helper in template style.
@@ -183,13 +211,30 @@ class GlobalStateAccessor {
     };
   }
 
-  /// Whether this client is connected to gcs server.
-  bool is_connected_{false};
+  /// Item transformation helper in template style.
+  ///
+  /// \return ItemCallback within in rpc type DATA.
+  template <class DATA>
+  ItemCallback<DATA> TransformForItemCallback(std::unique_ptr<std::string> &data,
+                                              std::promise<bool> &promise) {
+    return [&data, &promise](const DATA &result) {
+      data.reset(new std::string(result.SerializeAsString()));
+      promise.set_value(true);
+    };
+  }
 
-  std::unique_ptr<ServiceBasedGcsClient> gcs_client_;
+  std::string redis_address_;
+  std::string redis_ip_address_;
+
+  // protects is_connected_ and gcs_client_
+  mutable absl::Mutex mutex_;
+
+  /// Whether this client is connected to gcs server.
+  bool is_connected_ GUARDED_BY(mutex_) = false;
+  std::unique_ptr<GcsClient> gcs_client_ GUARDED_BY(mutex_);
 
   std::unique_ptr<std::thread> thread_io_service_;
-  std::unique_ptr<boost::asio::io_service> io_service_;
+  std::unique_ptr<instrumented_io_context> io_service_;
 };
 
 }  // namespace gcs

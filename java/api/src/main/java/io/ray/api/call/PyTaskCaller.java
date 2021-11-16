@@ -28,5 +28,4 @@ public class PyTaskCaller<R> extends BaseTaskCaller<PyTaskCaller<R>> {
   public ObjectRef<R> remote() {
     return Ray.internal().call(func, args, buildOptions());
   }
-
 }

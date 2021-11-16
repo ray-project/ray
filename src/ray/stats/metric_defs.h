@@ -24,42 +24,32 @@
 ///
 /// You can follow these examples to define your metrics.
 
+/// NOTE: When adding a new metric, add the metric name to the _METRICS list in
+/// python/ray/tests/test_metrics_agent.py to ensure that its existence is tested.
+
 ///
 /// Common
 ///
-static Histogram RedisLatency("redis_latency", "The latency of a Redis operation.", "us",
-                              {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
-                              {CustomKey});
+static Histogram GcsLatency("gcs_latency",
+                            "The latency of a GCS (by default Redis) operation.", "us",
+                            {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
+                            {CustomKey});
 
 ///
 /// Raylet Metrics
 ///
-static Gauge CurrentWorker("current_worker",
-                           "This metric is used for reporting states of workers."
-                           "Through this, we can see the worker's state on dashboard.",
-                           "1 pcs", {LanguageKey, WorkerPidKey});
-
-static Gauge CurrentDriver("current_driver",
-                           "This metric is used for reporting states of drivers.",
-                           "1 pcs", {LanguageKey, DriverPidKey});
-
-static Count TaskCountReceived("task_count_received",
-                               "Number of tasks received by raylet.", "pcs", {});
-
 static Gauge LocalAvailableResource("local_available_resource",
-                                    "The available resources on this node.", "pcs",
+                                    "The available resources on this node.", "",
                                     {ResourceNameKey});
 
 static Gauge LocalTotalResource("local_total_resource",
-                                "The total resources on this node.", "pcs",
+                                "The total resources on this node.", "",
                                 {ResourceNameKey});
 
 static Gauge LiveActors("live_actors", "Number of live actors.", "actors");
 
 static Gauge RestartingActors("restarting_actors", "Number of restarting actors.",
                               "actors");
-
-static Gauge DeadActors("dead_actors", "Number of dead actors.", "actors");
 
 static Gauge ObjectStoreAvailableMemory(
     "object_store_available_memory",
@@ -69,58 +59,111 @@ static Gauge ObjectStoreUsedMemory(
     "object_store_used_memory",
     "Amount of memory currently occupied in the object store.", "bytes");
 
+static Gauge ObjectStoreFallbackMemory(
+    "object_store_fallback_memory",
+    "Amount of memory in fallback allocations in the filesystem.", "bytes");
+
 static Gauge ObjectStoreLocalObjects("object_store_num_local_objects",
                                      "Number of objects currently in the object store.",
                                      "objects");
-
-static Gauge ObjectManagerWaitRequests("object_manager_num_wait_requests",
-                                       "Number of pending wait requests for objects.",
-                                       "requests");
 
 static Gauge ObjectManagerPullRequests("object_manager_num_pull_requests",
                                        "Number of active pull requests for objects.",
                                        "requests");
 
-static Gauge ObjectManagerUnfulfilledPushRequests(
-    "object_manager_unfulfilled_push_requests",
-    "Number of unfulfilled push requests for objects.", "requests");
+static Gauge ObjectDirectoryLocationSubscriptions(
+    "object_directory_subscriptions",
+    "Number of object location subscriptions. If this is high, the raylet is attempting "
+    "to pull a lot of objects.",
+    "subscriptions");
 
-static Gauge ObjectManagerProfileEvents("object_manager_num_buffered_profile_events",
-                                        "Number of locally-buffered profile events.",
-                                        "events");
+static Gauge ObjectDirectoryLocationUpdates(
+    "object_directory_updates",
+    "Number of object location updates per second., If this is high, the raylet is "
+    "attempting to pull a lot of objects and/or the locations for objects are frequently "
+    "changing (e.g. due to many object copies or evictions).",
+    "updates");
 
-static Gauge NumSubscribedTasks(
-    "num_subscribed_tasks",
-    "The number of tasks that are subscribed to object dependencies.", "tasks");
+static Gauge ObjectDirectoryLocationLookups(
+    "object_directory_lookups",
+    "Number of object location lookups per second. If this is high, the raylet is "
+    "waiting on a lot of objects.",
+    "lookups");
 
-static Gauge NumRequiredTasks("num_required_tasks",
-                              "The number of tasks whose output object(s) are "
-                              "required by another subscribed task.",
-                              "tasks");
+static Gauge ObjectDirectoryAddedLocations(
+    "object_directory_added_locations",
+    "Number of object locations added per second., If this is high, a lot of objects "
+    "have been added on this node.",
+    "additions");
 
-static Gauge NumRequiredObjects(
-    "num_required_objects",
-    "The number of objects that are required by a subscribed task.", "objects");
+static Gauge ObjectDirectoryRemovedLocations(
+    "object_directory_removed_locations",
+    "Number of object locations removed per second. If this is high, a lot of objects "
+    "have been removed from this node.",
+    "removals");
 
-static Gauge NumPendingTasks("num_pending_tasks",
-                             "The number of tasks that are pending execution.", "tasks");
+static Histogram HeartbeatReportMs(
+    "heartbeat_report_ms",
+    "Heartbeat report time in raylet. If this value is high, that means there's a high "
+    "system load. It is possible that this node will be killed because of missing "
+    "heartbeats.",
+    "ms", {100, 200, 400, 800, 1600, 3200, 6400, 15000, 30000});
 
-static Gauge NumPlaceableTasks(
-    "num_placeable_tasks",
-    "The number of tasks in the scheduler that are in the 'placeable' state.", "tasks");
+static Histogram ProcessStartupTimeMs("process_startup_time_ms",
+                                      "Time to start up a worker process.", "ms",
+                                      {1, 10, 100, 1000, 10000});
 
-static Gauge NumWaitingTasks(
-    "num_waiting_tasks",
-    "The number of tasks in the scheduler that are in the 'waiting' state.", "tasks");
+static Sum NumWorkersStarted(
+    "internal_num_processes_started",
+    "The total number of worker processes the worker pool has created.", "processes");
 
-static Gauge NumReadyTasks(
-    "num_ready_tasks",
-    "The number of tasks in the scheduler that are in the 'ready' state.", "tasks");
+static Sum NumReceivedTasks(
+    "internal_num_received_tasks",
+    "The cumulative number of lease requeusts that this raylet has received.", "tasks");
 
-static Gauge NumRunningTasks(
-    "num_running_tasks",
-    "The number of tasks in the scheduler that are in the 'running' state.", "tasks");
+static Sum NumDispatchedTasks(
+    "internal_num_dispatched_tasks",
+    "The cumulative number of lease requeusts that this raylet has granted.", "tasks");
+
+static Sum NumSpilledTasks("internal_num_spilled_tasks",
+                           "The cumulative number of lease requeusts that this raylet "
+                           "has spilled to other raylets.",
+                           "tasks");
 
 static Gauge NumInfeasibleTasks(
-    "num_infeasible_tasks",
+    "internal_num_infeasible_tasks",
     "The number of tasks in the scheduler that are in the 'infeasible' state.", "tasks");
+
+static Gauge NumInfeasibleSchedulingClasses(
+    "internal_num_infeasible_scheduling_classes",
+    "The number of unique scheduling classes that are infeasible.", "tasks");
+
+static Gauge SpillingBandwidthMB("object_spilling_bandwidth_mb",
+                                 "Bandwidth of object spilling.", "MB");
+
+static Gauge RestoringBandwidthMB("object_restoration_bandwidth_mb",
+                                  "Bandwidth of object restoration.", "MB");
+
+///
+/// GCS Server Metrics
+///
+static Count UnintentionalWorkerFailures(
+    "unintentional_worker_failures_total",
+    "Number of worker failures that are not intentional. For example, worker failures "
+    "due to system related errors.",
+    "");
+
+static Count NodeFailureTotal(
+    "node_failure_total", "Number of node failures that have happened in the cluster.",
+    "");
+
+static Gauge PendingActors("pending_actors", "Number of pending actors in GCS server.",
+                           "actors");
+
+static Histogram OutboundHeartbeatSizeKB("outbound_heartbeat_size_kb",
+                                         "Outbound heartbeat payload size", "kb",
+                                         {10, 50, 100, 1000, 10000, 100000});
+
+static Histogram GcsUpdateResourceUsageTime(
+    "gcs_update_resource_usage_time", "The average RTT of a UpdateResourceUsage RPC.",
+    "ms", {1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000}, {CustomKey});

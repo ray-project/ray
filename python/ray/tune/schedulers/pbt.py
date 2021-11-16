@@ -10,8 +10,9 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 from ray.tune import trial_runner
 from ray.tune import trial_executor
 from ray.tune.error import TuneError
-from ray.tune.result import TRAINING_ITERATION
-from ray.tune.logger import _SafeFallbackEncoder
+from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
+from ray.tune.suggest import SearchGenerator
+from ray.tune.utils.util import SafeFallbackEncoder
 from ray.tune.sample import Domain, Function
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.suggest.variant_generator import format_vars
@@ -141,13 +142,18 @@ class PopulationBasedTraining(FIFOScheduler):
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
         metric (str): The training result objective value attribute. Stopping
-            procedures will use this attribute.
+            procedures will use this attribute. If None but a mode was passed,
+            the `ray.tune.result.DEFAULT_METRIC` will be used per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         perturbation_interval (float): Models will be considered for
             perturbation at this interval of `time_attr`. Note that
             perturbation incurs checkpoint overhead, so you shouldn't set this
             to be too frequent.
+        burn_in_period (float): Models will not be considered for
+            perturbation before this interval of `time_attr` has passed. This
+            guarantees that models are trained for at least a certain amount
+            of time or timesteps before being perturbed.
         hyperparam_mutations (dict): Hyperparams to mutate. The format is
             as follows: for each key, either a list, function,
             or a tune search space object (tune.loguniform, tune.uniform,
@@ -219,10 +225,10 @@ class PopulationBasedTraining(FIFOScheduler):
 
     def __init__(self,
                  time_attr: str = "time_total_s",
-                 reward_attr: Optional[str] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  perturbation_interval: float = 60.0,
+                 burn_in_period: float = 0.,
                  hyperparam_mutations: Dict = None,
                  quantile_fraction: float = 0.25,
                  resample_probability: float = 0.25,
@@ -243,10 +249,10 @@ class PopulationBasedTraining(FIFOScheduler):
                                  "You must use other built in primitives like"
                                  "tune.uniform, tune.loguniform, etc.")
 
-        if not hyperparam_mutations and not custom_explore_fn:
-            raise TuneError(
-                "You must specify at least one of `hyperparam_mutations` or "
-                "`custom_explore_fn` to use PBT.")
+            if not hyperparam_mutations and not custom_explore_fn:
+                raise TuneError(
+                    "You must specify at least one of `hyperparam_mutations` "
+                    "or `custom_explore_fn` to use PBT.")
 
         if quantile_fraction > 0.5 or quantile_fraction < 0:
             raise ValueError(
@@ -261,14 +267,6 @@ class PopulationBasedTraining(FIFOScheduler):
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
 
-        if reward_attr is not None:
-            mode = "max"
-            metric = reward_attr
-            logger.warning(
-                "`reward_attr` is deprecated and will be removed in a future "
-                "version of Tune. "
-                "Setting `metric={}` and `mode=max`.".format(reward_attr))
-
         FIFOScheduler.__init__(self)
         self._metric = metric
         self._mode = mode
@@ -279,6 +277,7 @@ class PopulationBasedTraining(FIFOScheduler):
             self._metric_op = -1.
         self._time_attr = time_attr
         self._perturbation_interval = perturbation_interval
+        self._burn_in_period = burn_in_period
         self._hyperparam_mutations = hyperparam_mutations
         self._quantile_fraction = quantile_fraction
         self._resample_probability = resample_probability
@@ -310,10 +309,21 @@ class PopulationBasedTraining(FIFOScheduler):
         elif self._mode == "min":
             self._metric_op = -1.
 
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
         return True
 
     def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
                      trial: Trial):
+        if trial_runner.search_alg is not None and isinstance(
+                trial_runner.search_alg, SearchGenerator):
+            raise ValueError("Search algorithms cannot be used with {} "
+                             "schedulers. Please remove {}.".format(
+                                 self.__class__.__name__,
+                                 trial_runner.search_alg))
+
         if not self._metric or not self._metric_op:
             raise ValueError(
                 "{} has been instantiated without a valid `metric` ({}) or "
@@ -374,15 +384,15 @@ class PopulationBasedTraining(FIFOScheduler):
         time = result[self._time_attr]
         state = self._trial_state[trial]
 
-        # Continue training if perturbation interval has not been reached yet.
+        # Continue training if burn-in period has not been reached, yet.
+        if time < self._burn_in_period:
+            return TrialScheduler.CONTINUE
+
+        # Continue training if perturbation interval has not been reached, yet.
         if time - state.last_perturbation_time < self._perturbation_interval:
             return TrialScheduler.CONTINUE  # avoid checkpoint overhead
 
-        # This trial has reached its perturbation interval
-        score = self._metric_op * result[self._metric]
-        state.last_score = score
-        state.last_train_time = time
-        state.last_result = result
+        self._save_trial_state(state, time, result, trial)
 
         if not self._synch:
             state.last_perturbation_time = time
@@ -433,6 +443,25 @@ class PopulationBasedTraining(FIFOScheduler):
             # the paused trials.
             return TrialScheduler.PAUSE
 
+    def _save_trial_state(self, state: PBTTrialState, time: int, result: Dict,
+                          trial: Trial):
+        """Saves necessary trial information when result is received.
+        Args:
+            state (PBTTrialState): The state object for the trial.
+            time (int): The current timestep of the trial.
+            result (dict): The trial's result dictionary.
+            trial (dict): The trial object.
+        """
+
+        # This trial has reached its perturbation interval.
+        # Record new state in the state object.
+        score = self._metric_op * result[self._metric]
+        state.last_score = score
+        state.last_train_time = time
+        state.last_result = result
+
+        return score
+
     def _perturb_trial(
             self, trial: Trial, trial_runner: "trial_runner.TrialRunner",
             upper_quantile: List[Trial], lower_quantile: List[Trial]):
@@ -457,6 +486,10 @@ class PopulationBasedTraining(FIFOScheduler):
             logger.debug("Trial {} is in lower quantile".format(trial))
             trial_to_clone = random.choice(upper_quantile)
             assert trial is not trial_to_clone
+            if not self._trial_state[trial_to_clone].last_checkpoint:
+                logger.info("[pbt]: no checkpoint for trial."
+                            " Skip exploit for Trial {}".format(trial))
+                return
             self._exploit(trial_runner.trial_executor, trial, trial_to_clone)
 
     def _log_config_on_step(self, trial_state: PBTTrialState,
@@ -484,13 +517,18 @@ class PopulationBasedTraining(FIFOScheduler):
         ]
         # Log to global file.
         with open(os.path.join(trial.local_dir, "pbt_global.txt"), "a+") as f:
-            print(json.dumps(policy, cls=_SafeFallbackEncoder), file=f)
+            print(json.dumps(policy, cls=SafeFallbackEncoder), file=f)
         # Overwrite state in target trial from trial_to_clone.
         if os.path.exists(trial_to_clone_path):
             shutil.copyfile(trial_to_clone_path, trial_path)
         # Log new exploit in target trial log.
         with open(trial_path, "a+") as f:
-            f.write(json.dumps(policy, cls=_SafeFallbackEncoder) + "\n")
+            f.write(json.dumps(policy, cls=SafeFallbackEncoder) + "\n")
+
+    def _get_new_config(self, trial, trial_to_clone):
+        """Gets new config for trial by exploring trial_to_clone's config."""
+        return explore(trial_to_clone.config, self._hyperparam_mutations,
+                       self._resample_probability, self._custom_explore_fn)
 
     def _exploit(self, trial_executor: "trial_executor.TrialExecutor",
                  trial: Trial, trial_to_clone: Trial):
@@ -500,17 +538,13 @@ class PopulationBasedTraining(FIFOScheduler):
         """
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
-        if not new_state.last_checkpoint:
-            logger.info("[pbt]: no checkpoint for trial."
-                        " Skip exploit for Trial {}".format(trial))
-            return
-        new_config = explore(trial_to_clone.config, self._hyperparam_mutations,
-                             self._resample_probability,
-                             self._custom_explore_fn)
         logger.info("[exploit] transferring weights from trial "
                     "{} (score {}) -> {} (score {})".format(
                         trial_to_clone, new_state.last_score, trial,
                         trial_state.last_score))
+
+        new_config = self._get_new_config(trial, trial_to_clone)
+
         # Only log mutated hyperparameters and not entire config.
         old_hparams = {
             k: v
@@ -537,8 +571,8 @@ class PopulationBasedTraining(FIFOScheduler):
                 raise TuneError("Trials should be paused here only if in "
                                 "synchronous mode. If you encounter this error"
                                 " please raise an issue on Ray Github.")
-            trial.config = new_config
-            trial.experiment_tag = new_tag
+            trial.set_experiment_tag(new_tag)
+            trial.set_config(new_config)
             trial.on_checkpoint(new_state.last_checkpoint)
         else:
             # If trial is running, we first try to reset it.
@@ -554,11 +588,19 @@ class PopulationBasedTraining(FIFOScheduler):
                 trial_executor.restore(
                     trial, new_state.last_checkpoint, block=True)
             else:
-                trial_executor.stop_trial(trial, stop_logger=False)
-                trial.config = new_config
-                trial.experiment_tag = new_tag
-                trial_executor.start_trial(
-                    trial, new_state.last_checkpoint, train=False)
+                # Stop trial, but do not free resources (so we can use them
+                # again right away)
+                trial_executor.stop_trial(
+                    trial, destroy_pg_if_cannot_replace=False)
+                trial.set_experiment_tag(new_tag)
+                trial.set_config(new_config)
+
+                if not trial_executor.start_trial(
+                        trial, new_state.last_checkpoint, train=False):
+                    logger.warning(
+                        f"Trial couldn't be reset: {trial}. Terminating "
+                        f"instead.")
+                    trial_executor.stop_trial(trial, error=True)
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
@@ -599,7 +641,7 @@ class PopulationBasedTraining(FIFOScheduler):
         candidates = []
         for trial in trial_runner.get_trials():
             if trial.status in [Trial.PENDING, Trial.PAUSED] and \
-                    trial_runner.has_resources(trial.resources):
+                    trial_runner.trial_executor.has_resources_for_trial(trial):
                 if not self._synch:
                     candidates.append(trial)
                 elif self._trial_state[trial].last_train_time < \
@@ -741,7 +783,7 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
                 "No replay policy found and trial initialized without a "
                 "valid config. Either pass a `config` argument to `tune.run()`"
                 "or consider not using PBT replay for this run.")
-        self._trial.config = self.config
+        self._trial.set_config(self.config)
 
     def on_trial_result(self, trial_runner: "trial_runner.TrialRunner",
                         trial: Trial, result: Dict) -> str:
@@ -779,9 +821,10 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
         if reset_successful:
             trial_executor.restore(trial, checkpoint, block=True)
         else:
-            trial_executor.stop_trial(trial, stop_logger=False)
-            trial.config = new_config
-            trial.experiment_tag = new_tag
+            trial_executor.stop_trial(
+                trial, destroy_pg_if_cannot_replace=False)
+            trial.set_experiment_tag(new_tag)
+            trial.set_config(new_config)
             trial_executor.start_trial(trial, checkpoint, train=False)
 
         self.current_config = new_config

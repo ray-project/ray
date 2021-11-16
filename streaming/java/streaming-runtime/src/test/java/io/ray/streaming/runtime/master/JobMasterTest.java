@@ -31,5 +31,4 @@ public class JobMasterTest extends BaseUnitTest {
     Assert.assertNull(jobMaster.getJobMasterActor());
     Assert.assertFalse(jobMaster.init(false));
   }
-
 }

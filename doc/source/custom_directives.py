@@ -95,3 +95,42 @@ class CustomGalleryItemDirective(Directive):
         thumb = nodes.paragraph()
         self.state.nested_parse(thumbnail, self.content_offset, thumb)
         return [thumb]
+
+
+def fix_xgb_lgbm_docs(app, what, name, obj, options, lines):
+    """Fix XGBoost-Ray and LightGBM-Ray docstrings.
+
+    For ``app.connect('autodoc-process-docstring')``.
+    See https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html
+
+    Removes references to XGBoost ``callback_api`` and sets explicit module
+    references to classes and functions that are named the same way in both
+    XGBoost-Ray and LightGBM-Ray.
+    """
+
+    def _remove_xgboost_refs(replacements: list):
+        """Remove ``callback_api`` ref to XGBoost docs.
+
+        Fixes ``undefined label: callback_api (if the link has no caption
+        the label must precede a section header)``
+        """
+        if name.startswith("xgboost_ray"):
+            replacements.append((":ref:`callback_api`", "Callback API"))
+
+    def _replace_ray_params(replacements: list):
+        """Replaces references to ``RayParams`` with module-specific ones.
+
+        Fixes ``more than one target found for cross-reference 'RayParams'``.
+        """
+        if name.startswith("xgboost_ray"):
+            replacements.append(("RayParams", "xgboost_ray.RayParams"))
+        elif name.startswith("lightgbm_ray"):
+            replacements.append(("RayParams", "lightgbm_ray.RayParams"))
+
+    replacements = []
+    _remove_xgboost_refs(replacements)
+    _replace_ray_params(replacements)
+    if replacements:
+        for i, _ in enumerate(lines):
+            for replacement in replacements:
+                lines[i] = lines[i].replace(*replacement)

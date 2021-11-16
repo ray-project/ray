@@ -18,7 +18,7 @@ import org.testng.Assert;
 public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializable {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RayBenchmarkTest.class);
-  //not thread safe ,but we only have one thread here
+  // not thread safe ,but we only have one thread here
   public static final DecimalFormat df = new DecimalFormat("00.00");
   private static final long serialVersionUID = 416045641835782523L;
 
@@ -29,7 +29,7 @@ public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializab
       PressureTestType pressureTestType = pressureTestParameter.getPressureTestType();
       RayBenchmarkTest rayBenchmarkTest = pressureTestParameter.getRayBenchmarkTest();
       int clientNum = pressureTestParameter.getClientNum();
-      //SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+      // SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
       int len;
       String logPrefix;
       RateLimiter rateLimiter = null;
@@ -70,7 +70,6 @@ public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializab
     } catch (Exception e) {
       LOGGER.error("singleClient", e);
       return null;
-
     }
   }
 
@@ -151,5 +150,4 @@ public abstract class RayBenchmarkTest<T> extends BaseTest implements Serializab
     pressureTestParameter.setPressureTestType(PressureTestType.MAX);
     notSinglePressTest(pressureTestParameter);
   }
-
 }

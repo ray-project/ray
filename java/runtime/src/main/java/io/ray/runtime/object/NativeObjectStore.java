@@ -1,6 +1,7 @@
 package io.ray.runtime.object;
 
 import com.google.protobuf.InvalidProtocolBufferException;
+import io.ray.api.id.ActorId;
 import io.ray.api.id.BaseId;
 import io.ray.api.id.ObjectId;
 import io.ray.api.id.UniqueId;
@@ -31,7 +32,12 @@ public class NativeObjectStore extends ObjectStore {
 
   @Override
   public ObjectId putRaw(NativeRayObject obj) {
-    return new ObjectId(nativePut(obj));
+    return new ObjectId(nativePut(obj, null));
+  }
+
+  @Override
+  public ObjectId putRaw(NativeRayObject obj, ActorId ownerActorId) {
+    return new ObjectId(nativePut(obj, ownerActorId.getBytes()));
   }
 
   @Override
@@ -45,13 +51,14 @@ public class NativeObjectStore extends ObjectStore {
   }
 
   @Override
-  public List<Boolean> wait(List<ObjectId> objectIds, int numObjects, long timeoutMs) {
-    return nativeWait(toBinaryList(objectIds), numObjects, timeoutMs);
+  public List<Boolean> wait(
+      List<ObjectId> objectIds, int numObjects, long timeoutMs, boolean fetchLocal) {
+    return nativeWait(toBinaryList(objectIds), numObjects, timeoutMs, fetchLocal);
   }
 
   @Override
-  public void delete(List<ObjectId> objectIds, boolean localOnly, boolean deleteCreatingTasks) {
-    nativeDelete(toBinaryList(objectIds), localOnly, deleteCreatingTasks);
+  public void delete(List<ObjectId> objectIds, boolean localOnly) {
+    nativeDelete(toBinaryList(objectIds), localOnly);
   }
 
   @Override
@@ -71,13 +78,13 @@ public class NativeObjectStore extends ObjectStore {
   }
 
   @Override
-  public byte[] promoteAndGetOwnershipInfo(ObjectId objectId) {
-    return nativePromoteAndGetOwnershipInfo(objectId.getBytes());
+  public byte[] getOwnershipInfo(ObjectId objectId) {
+    return nativeGetOwnershipInfo(objectId.getBytes());
   }
 
   @Override
-  public void registerOwnershipInfoAndResolveFuture(ObjectId objectId, ObjectId outerObjectId,
-      byte[] ownerAddress) {
+  public void registerOwnershipInfoAndResolveFuture(
+      ObjectId objectId, ObjectId outerObjectId, byte[] ownerAddress) {
     byte[] outer = null;
     if (outerObjectId != null) {
       outer = outerObjectId.getBytes();
@@ -87,8 +94,7 @@ public class NativeObjectStore extends ObjectStore {
 
   public Map<ObjectId, long[]> getAllReferenceCounts() {
     Map<ObjectId, long[]> referenceCounts = new HashMap<>();
-    for (Map.Entry<byte[], long[]> entry :
-        nativeGetAllReferenceCounts().entrySet()) {
+    for (Map.Entry<byte[], long[]> entry : nativeGetAllReferenceCounts().entrySet()) {
       referenceCounts.put(new ObjectId(entry.getKey()), entry.getValue());
     }
     return referenceCounts;
@@ -107,17 +113,16 @@ public class NativeObjectStore extends ObjectStore {
     return ids.stream().map(BaseId::getBytes).collect(Collectors.toList());
   }
 
-  private static native byte[] nativePut(NativeRayObject obj);
+  private static native byte[] nativePut(NativeRayObject obj, byte[] ownerActorIdBytes);
 
   private static native void nativePut(byte[] objectId, NativeRayObject obj);
 
   private static native List<NativeRayObject> nativeGet(List<byte[]> ids, long timeoutMs);
 
-  private static native List<Boolean> nativeWait(List<byte[]> objectIds, int numObjects,
-      long timeoutMs);
+  private static native List<Boolean> nativeWait(
+      List<byte[]> objectIds, int numObjects, long timeoutMs, boolean fetchLocal);
 
-  private static native void nativeDelete(List<byte[]> objectIds, boolean localOnly,
-      boolean deleteCreatingTasks);
+  private static native void nativeDelete(List<byte[]> objectIds, boolean localOnly);
 
   private static native void nativeAddLocalReference(byte[] workerId, byte[] objectId);
 
@@ -127,8 +132,8 @@ public class NativeObjectStore extends ObjectStore {
 
   private static native byte[] nativeGetOwnerAddress(byte[] objectId);
 
-  private static native byte[] nativePromoteAndGetOwnershipInfo(byte[] objectId);
+  private static native byte[] nativeGetOwnershipInfo(byte[] objectId);
 
-  private static native void nativeRegisterOwnershipInfoAndResolveFuture(byte[] objectId,
-      byte[] outerObjectId, byte[] ownerAddress);
+  private static native void nativeRegisterOwnershipInfoAndResolveFuture(
+      byte[] objectId, byte[] outerObjectId, byte[] ownerAddress);
 }

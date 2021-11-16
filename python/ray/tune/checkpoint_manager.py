@@ -1,8 +1,10 @@
 # coding: utf-8
 import heapq
+import gc
 import logging
 
 from ray.tune.result import TRAINING_ITERATION
+from ray.tune.utils.util import flatten_dict
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +106,13 @@ class CheckpointManager:
     def newest_memory_checkpoint(self):
         return self._newest_memory_checkpoint
 
+    def replace_newest_memory_checkpoint(self, new_checkpoint):
+        # Forcibly remove the memory checkpoint
+        del self._newest_memory_checkpoint
+        # Apparently avoids memory leaks on k8s/k3s/pods
+        gc.collect()
+        self._newest_memory_checkpoint = new_checkpoint
+
     def on_checkpoint(self, checkpoint):
         """Starts tracking checkpoint metadata on checkpoint.
 
@@ -115,9 +124,7 @@ class CheckpointManager:
             checkpoint (Checkpoint): Trial state checkpoint.
         """
         if checkpoint.storage == Checkpoint.MEMORY:
-            # Forcibly remove the memory checkpoint
-            del self._newest_memory_checkpoint
-            self._newest_memory_checkpoint = checkpoint
+            self.replace_newest_memory_checkpoint(checkpoint)
             return
 
         old_checkpoint = self.newest_persistent_checkpoint
@@ -158,7 +165,8 @@ class CheckpointManager:
         return [queue_item.value for queue_item in checkpoints]
 
     def _priority(self, checkpoint):
-        priority = checkpoint.result[self._checkpoint_score_attr]
+        result = flatten_dict(checkpoint.result)
+        priority = result[self._checkpoint_score_attr]
         return -priority if self._checkpoint_score_desc else priority
 
     def __getstate__(self):

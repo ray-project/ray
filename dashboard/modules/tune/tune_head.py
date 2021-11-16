@@ -4,18 +4,24 @@ import copy
 import os
 import aiohttp.web
 
-import ray.new_dashboard.modules.tune.tune_consts \
+import ray.dashboard.modules.tune.tune_consts \
     as tune_consts
-import ray.new_dashboard.utils as dashboard_utils
-from ray.new_dashboard.utils import async_loop_forever, rest_response
+import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.utils import async_loop_forever, rest_response
+
+logger = logging.getLogger(__name__)
 
 try:
     from ray.tune import Analysis
     from tensorboard import program
-except ImportError:
+# The `pip install ray` will not install pandas,
+# so `from ray.tune import Analysis` may raises
+# `AttributeError: module 'pandas' has no attribute 'core'`
+# if the pandas version is incorrect.
+except (ImportError, AttributeError) as ex:
+    logger.warning("tune module is not available: %s", ex)
     Analysis = None
 
-logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
 
 
@@ -37,7 +43,7 @@ class TuneController(dashboard_utils.DashboardHeadModule):
     @routes.get("/tune/info")
     async def tune_info(self, req) -> aiohttp.web.Response:
         stats = self.get_stats()
-        return await rest_response(
+        return rest_response(
             success=True, message="Fetched tune info", result=stats)
 
     @routes.get("/tune/availability")
@@ -46,7 +52,7 @@ class TuneController(dashboard_utils.DashboardHeadModule):
             "available": Analysis is not None,
             "trials_available": self._trials_available
         }
-        return await rest_response(
+        return rest_response(
             success=True,
             message="Fetched tune availability",
             result=availability)
@@ -56,17 +62,17 @@ class TuneController(dashboard_utils.DashboardHeadModule):
         experiment = req.query["experiment"]
         err, experiment = self.set_experiment(experiment)
         if err:
-            return await rest_response(success=False, error=err)
-        return await rest_response(
+            return rest_response(success=False, error=err)
+        return rest_response(
             success=True, message="Successfully set experiment", **experiment)
 
     @routes.get("/tune/enable_tensorboard")
     async def enable_tensorboard(self, req) -> aiohttp.web.Response:
         self._enable_tensorboard()
         if not self._tensor_board_dir:
-            return await rest_response(
+            return rest_response(
                 success=False, message="Error enabling tensorboard")
-        return await rest_response(success=True, message="Enabled tensorboard")
+        return rest_response(success=True, message="Enabled tensorboard")
 
     def get_stats(self):
         tensor_board_info = {
@@ -130,7 +136,7 @@ class TuneController(dashboard_utils.DashboardHeadModule):
 
         # search through all the sub_directories in log directory
         analysis = Analysis(str(self._logdir))
-        df = analysis.dataframe(metric="episode_reward_mean", mode="max")
+        df = analysis.dataframe(metric=None, mode=None)
 
         if len(df) == 0 or "trial_id" not in df.columns:
             return

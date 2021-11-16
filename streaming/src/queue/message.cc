@@ -39,7 +39,7 @@ std::unique_ptr<LocalMemoryBuffer> Message::ToBytes() {
 
   // COPY
   std::unique_ptr<LocalMemoryBuffer> buffer =
-      std::unique_ptr<LocalMemoryBuffer>(new LocalMemoryBuffer(bytes, total_len, true));
+      std::make_unique<LocalMemoryBuffer>(bytes, total_len, true);
   delete bytes;
   return buffer;
 }

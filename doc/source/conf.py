@@ -17,15 +17,16 @@ import shutil
 import sys
 import os
 import urllib
+
 sys.path.insert(0, os.path.abspath('.'))
-from custom_directives import CustomGalleryItemDirective
+from custom_directives import CustomGalleryItemDirective, fix_xgb_lgbm_docs
 from datetime import datetime
 
 # These lines added to enable Sphinx to work without installing Ray.
 import mock
 
 
-class ChildClassMock(mock.MagicMock):
+class ChildClassMock(mock.Mock):
     @classmethod
     def __getattr__(cls, name):
         return mock.Mock
@@ -36,19 +37,35 @@ MOCK_MODULES = [
     "ax.service.ax_client",
     "blist",
     "ConfigSpace",
+    "dask.distributed",
     "gym",
     "gym.spaces",
     "horovod",
+    "horovod.runner",
+    "horovod.runner.common",
+    "horovod.runner.common.util",
     "horovod.ray",
+    "horovod.ray.runner",
+    "horovod.ray.utils",
+    "hyperopt",
+    "hyperopt.hp"
     "kubernetes",
+    "mlflow",
+    "modin",
     "mxnet",
     "mxnet.model",
+    "optuna",
+    "optuna.distributions",
+    "optuna.samplers",
+    "optuna.trial",
     "psutil",
     "ray._raylet",
     "ray.core.generated",
     "ray.core.generated.common_pb2",
     "ray.core.generated.gcs_pb2",
     "ray.core.generated.ray.protocol.Task",
+    "ray.serve.generated",
+    "ray.serve.generated.serve_pb2",
     "scipy.signal",
     "scipy.stats",
     "setproctitle",
@@ -74,19 +91,30 @@ MOCK_MODULES = [
     "torch.utils.data",
     "torch.utils.data.distributed",
     "wandb",
-    "xgboost",
     "zoopt",
 ]
+
+CHILD_MOCK_MODULES = [
+    "pytorch_lightning", "pytorch_lightning.accelerators",
+    "pytorch_lightning.plugins", "pytorch_lightning.plugins.environments",
+    "pytorch_lightning.utilities", "tensorflow.keras.callbacks"
+]
+
 import scipy.stats
 import scipy.linalg
 
 for mod_name in MOCK_MODULES:
     sys.modules[mod_name] = mock.Mock()
+
 # ray.rllib.models.action_dist.py and
 # ray.rllib.models.lstm.py will use tf.VERSION
 sys.modules["tensorflow"].VERSION = "9.9.9"
-sys.modules["tensorflow.keras.callbacks"] = ChildClassMock()
-sys.modules["pytorch_lightning"] = ChildClassMock()
+
+for mod_name in CHILD_MOCK_MODULES:
+    sys.modules[mod_name] = ChildClassMock()
+
+assert "ray" not in sys.modules, (
+    "If ray is already imported, we will not render documentation correctly!")
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -113,34 +141,41 @@ extensions = [
     'sphinx_gallery.gen_gallery',
     'sphinxemoji.sphinxemoji',
     'sphinx_copybutton',
+    'sphinxcontrib.yt',
     'versionwarning.extension',
+    'sphinx_sitemap',
 ]
 
-versionwarning_admonition_type = "tip"
+versionwarning_admonition_type = "note"
+versionwarning_banner_title = "Join the Ray Discuss Forums!"
+
+FORUM_LINK = ("https://discuss.ray.io")
 
 versionwarning_messages = {
+    # Re-enable this after Ray Summit.
+    # "latest": (
+    #     "This document is for the latest pip release. "
+    #     'Visit the <a href="/en/master/">master branch documentation here</a>.'
+    # ),
     "master": (
-        "This document is for the master branch. "
-        'Visit the <a href="/en/latest/">latest pip release documentation here</a>.'
-    ),
-    "latest": (
-        "This document is for the latest pip release. "
-        'Visit the <a href="/en/master/">master branch documentation here</a>.'
-    ),
+        "<b>Got questions?</b> Join "
+        f'<a href="{FORUM_LINK}">the Ray Community forum</a> '
+        "for Q&A on all things Ray, as well as to share and learn use cases "
+        "and best practices with the Ray community."),
 }
 
 versionwarning_body_selector = "#main-content"
 sphinx_gallery_conf = {
-    "examples_dirs": ["../examples",
-                      "tune/_tutorials"],  # path to example scripts
+    "examples_dirs": ["../examples", "tune/_tutorials",
+                      "data/_examples"],  # path to example scripts
     # path where to save generated examples
-    "gallery_dirs": ["auto_examples", "tune/tutorials"],
+    "gallery_dirs": ["auto_examples", "tune/tutorials", "data/examples"],
     "ignore_pattern": "../examples/doc_code/",
     "plot_gallery": "False",
+    "min_reported_time": sys.maxsize,
     # "filename_pattern": "tutorial.py",
     # "backreferences_dir": "False",
     # "show_memory': False,
-    # 'min_reported_time': False
 }
 
 for i in range(len(sphinx_gallery_conf["examples_dirs"])):
@@ -153,6 +188,10 @@ for i in range(len(sphinx_gallery_conf["examples_dirs"])):
 
     # Copy rst files from source dir to gallery dir.
     for f in glob.glob(os.path.join(source_dir, '*.rst')):
+        shutil.copy(f, gallery_dir)
+
+    # Copy inc files from source dir to gallery dir.
+    for f in glob.glob(os.path.join(source_dir, '*.inc')):
         shutil.copy(f, gallery_dir)
 
 # Add any paths that contain templates here, relative to this directory.
@@ -233,6 +272,10 @@ pygments_style = 'pastie'
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = False
 
+# Do not check anchors for links because it produces many false positives
+# and is slow (it needs to download the linked website).
+linkcheck_anchors = False
+
 # -- Options for HTML output ----------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
@@ -249,6 +292,7 @@ html_theme_options = {
     "use_edit_page_button": True,
     "path_to_docs": "doc/source",
     "home_page_in_toc": True,
+    "show_navbar_depth": 0,
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -446,6 +490,8 @@ def update_context(app, pagename, templatename, context, doctree):
 
 def setup(app):
     app.connect('html-page-context', update_context)
-    app.add_stylesheet('css/custom.css')
+    app.add_css_file('css/custom.css')
     # Custom directives
     app.add_directive('customgalleryitem', CustomGalleryItemDirective)
+    # Custom connects
+    app.connect('autodoc-process-docstring', fix_xgb_lgbm_docs)

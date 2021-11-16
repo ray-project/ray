@@ -1,5 +1,5 @@
-# A test that stresses the serve handles. We spin up a backend with a bunch
-# (0-2) of replicas that just forward requests to another backend.
+# A test that stresses the serve handles. We spin up a deployment with a bunch
+# (0-2) of replicas that just forward requests to another deployment.
 #
 # By comparing using the forward replicas with just calling the worker
 # replicas, we measure the (latency) overhead in the handle. This answers
@@ -23,64 +23,74 @@
 # 2 forwarders and 5 worker replicas: 620 requests/s
 # 2 forwarders and 10 worker replicas: 609 requests/s
 
-import ray
-from ray import serve
-from ray.serve import BackendConfig
-from ray.serve.utils import logger
+import asyncio
 import time
 
-num_queries = 2000
+import ray
+from ray import serve
+
+num_queries = 10000
+max_concurrent_queries = 100000
 
 ray.init(address="auto")
 
-client = serve.start()
 
-
-def hello_world(_):
+@serve.deployment(max_concurrent_queries=max_concurrent_queries)
+def worker(*args):
     return b"Hello World"
 
 
-class ForwardActor:
-    def __init__(self):
-        client = serve.connect()
-        self.handle = client.get_handle("hello_world")
+@serve.deployment(max_concurrent_queries=max_concurrent_queries)
+class Forwarder:
+    def __init__(self, sync: bool):
+        self.sync = sync
+        self.handle = worker.get_handle(sync=sync)
 
-    async def __call__(self, _):
-        await self.handle.remote()
-
-
-client.create_backend("hello_world", hello_world)
-client.create_endpoint("hello_world", backend="hello_world")
-
-client.create_backend("ForwardActor", ForwardActor)
-client.create_endpoint("ForwardActor", backend="ForwardActor")
+    async def __call__(self, *args):
+        if self.sync:
+            await self.handle.remote()
+        else:
+            await (await self.handle.remote_async())
 
 
-def run_test(num_replicas, num_forwarders):
-    replicas_config = BackendConfig(num_replicas=num_replicas)
-    client.update_backend_config("hello_world", replicas_config)
+async def run_test(num_replicas, num_forwarders, sync):
+    serve.start()
 
-    if (num_forwarders == 0):
-        handle = client.get_handle("hello_world")
+    worker.options(num_replicas=num_replicas).deploy()
+
+    if num_forwarders == 0:
+        handle = worker.get_handle(sync=sync)
     else:
-        forwarders_config = BackendConfig(num_replicas=num_forwarders)
-        client.update_backend_config("ForwardActor", forwarders_config)
-        handle = client.get_handle("ForwardActor")
+        Forwarder.options(num_replicas=num_forwarders).deploy(sync)
+        handle = Forwarder.get_handle(sync=sync)
 
     # warmup - helpful to wait for gc.collect() and actors to start
     start = time.time()
     while time.time() - start < 1:
-        ray.get(handle.remote())
+        if sync:
+            ray.get(handle.remote())
+        else:
+            ray.get(await handle.remote_async())
 
     # real test
     start = time.time()
-    ray.get([handle.remote() for _ in range(num_queries)])
+    if sync:
+        ray.get([handle.remote() for _ in range(num_queries)])
+    else:
+        ray.get([(await handle.remote_async()) for _ in range(num_queries)])
     qps = num_queries / (time.time() - start)
 
-    logger.info("{} forwarders and {} worker replicas: {} requests/s".format(
-        num_forwarders, num_replicas, int(qps)))
+    print(
+        f"Sync: {sync}, {num_forwarders} forwarders and {num_replicas} worker "
+        f"replicas: {int(qps)} requests/s")
+    serve.shutdown()
 
 
-for num_forwarders in [0, 1, 2]:
-    for num_replicas in [1, 5, 10]:
-        run_test(num_replicas, num_forwarders)
+async def main():
+    for sync in [True, False]:
+        for num_forwarders in [0, 1, 2]:
+            for num_replicas in [1, 5, 10]:
+                await run_test(num_replicas, num_forwarders, sync)
+
+
+asyncio.get_event_loop().run_until_complete(main())

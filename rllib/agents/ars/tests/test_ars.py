@@ -7,13 +7,24 @@ from ray.rllib.utils.test_utils import framework_iterator, \
 
 
 class TestARS(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=3)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def test_ars_compilation(self):
         """Test whether an ARSTrainer can be built on all frameworks."""
-        ray.init(num_cpus=2, local_mode=True)
         config = ars.DEFAULT_CONFIG.copy()
         # Keep it simple.
         config["model"]["fcnet_hiddens"] = [10]
         config["model"]["fcnet_activation"] = None
+        config["noise_size"] = 2500000
+        # Test eval workers ("normal" Trainer eval WorkerSet, unusual for ARS).
+        config["evaluation_interval"] = 1
+        config["evaluation_num_workers"] = 1
 
         num_iterations = 2
 
@@ -26,7 +37,6 @@ class TestARS(unittest.TestCase):
 
             check_compute_single_action(trainer)
             trainer.stop()
-        ray.shutdown()
 
 
 if __name__ == "__main__":

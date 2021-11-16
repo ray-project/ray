@@ -6,25 +6,18 @@ import io.ray.runtime.generated.Common.Address;
 import io.ray.runtime.object.NativeRayObject;
 
 /**
- * Represents a function argument in task spec.
- * Either `id` or `data` should be null, when id is not null, this argument will be
- * passed by reference, otherwise it will be passed by value.
+ * Represents a function argument in task spec. Either `id` or `data` should be null, when id is not
+ * null, this argument will be passed by reference, otherwise it will be passed by value.
  */
 public class FunctionArg {
 
-  /**
-   * The id of this argument (passed by reference).
-   */
+  /** The id of this argument (passed by reference). */
   public final ObjectId id;
 
-  /**
-   * The owner address of this argument (passed by reference).
-   */
+  /** The owner address of this argument (passed by reference). */
   public final Address ownerAddress;
 
-  /**
-   * Serialized data of this argument (passed by value).
-   */
+  /** Serialized data of this argument (passed by value). */
   public final NativeRayObject value;
 
   private FunctionArg(ObjectId id, Address ownerAddress) {
@@ -42,16 +35,12 @@ public class FunctionArg {
     this.value = nativeRayObject;
   }
 
-  /**
-   * Create a FunctionArg that will be passed by reference.
-   */
+  /** Create a FunctionArg that will be passed by reference. */
   public static FunctionArg passByReference(ObjectId id, Address ownerAddress) {
     return new FunctionArg(id, ownerAddress);
   }
 
-  /**
-   * Create a FunctionArg that will be passed by value.
-   */
+  /** Create a FunctionArg that will be passed by value. */
   public static FunctionArg passByValue(NativeRayObject value) {
     return new FunctionArg(value);
   }

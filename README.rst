@@ -1,10 +1,16 @@
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
 
-.. image:: https://readthedocs.org/projects/ray/badge/?version=latest
-    :target: http://docs.ray.io/en/latest/?badge=latest
+.. image:: https://readthedocs.org/projects/ray/badge/?version=master
+    :target: http://docs.ray.io/en/master/?badge=master
 
 .. image:: https://img.shields.io/badge/Ray-Join%20Slack-blue
     :target: https://forms.gle/9TSdDYUgxYs8SA9e8
+
+.. image:: https://img.shields.io/badge/Discuss-Ask%20Questions-blue
+    :target: https://discuss.ray.io/
+
+.. image:: https://img.shields.io/twitter/follow/raydistributed.svg?style=social&logo=twitter
+    :target: https://twitter.com/raydistributed
 
 |
 
@@ -15,8 +21,13 @@ Ray is packaged with the following libraries for accelerating machine learning w
 
 - `Tune`_: Scalable Hyperparameter Tuning
 - `RLlib`_: Scalable Reinforcement Learning
-- `RaySGD <https://docs.ray.io/en/latest/raysgd/raysgd.html>`__: Distributed Training Wrappers
-- `Ray Serve`_: Scalable and Programmable Serving
+- `Train`_: Distributed Deep Learning (beta)
+- `Datasets`_: Distributed Data Loading and Compute (beta)
+
+As well as libraries for taking ML and distributed apps to production:
+
+- `Serve`_: Scalable and Programmable Serving
+- `Workflows`_: Fast, Durable Application Flows (alpha)
 
 There are also many `community integrations <https://docs.ray.io/en/master/ray-libraries.html>`_ with Ray, including `Dask`_, `MARS`_, `Modin`_, `Horovod`_, `Hugging Face`_, `Scikit-learn`_, and others. Check out the `full list of Ray distributed libraries here <https://docs.ray.io/en/master/ray-libraries.html>`_.
 
@@ -25,11 +36,14 @@ Install Ray with: ``pip install ray``. For nightly wheels, see the
 
 .. _`Modin`: https://github.com/modin-project/modin
 .. _`Hugging Face`: https://huggingface.co/transformers/main_classes/trainer.html#transformers.Trainer.hyperparameter_search
-.. _`MARS`: https://docs.ray.io/en/master/mars-on-ray.html
-.. _`Dask`: https://docs.ray.io/en/master/dask-on-ray.html
+.. _`MARS`: https://docs.ray.io/en/latest/data/mars-on-ray.html
+.. _`Dask`: https://docs.ray.io/en/latest/data/dask-on-ray.html
 .. _`Horovod`: https://horovod.readthedocs.io/en/stable/ray_include.html
-.. _`Scikit-learn`: joblib.html
-
+.. _`Scikit-learn`: https://docs.ray.io/en/master/joblib.html
+.. _`Serve`: https://docs.ray.io/en/master/serve/index.html
+.. _`Datasets`: https://docs.ray.io/en/master/data/dataset.html
+.. _`Workflows`: https://docs.ray.io/en/master/workflows/concepts.html
+.. _`Train`: https://docs.ray.io/en/master/train/train.html
 
 
 Quick Start
@@ -78,7 +92,7 @@ Ray programs can run on a single machine, and can also seamlessly scale to large
 
 ``ray submit [CLUSTER.YAML] example.py --start``
 
-Read more about `launching clusters <https://docs.ray.io/en/latest/cluster/index.html>`_.
+Read more about `launching clusters <https://docs.ray.io/en/master/cluster/index.html>`_.
 
 Tune Quick Start
 ----------------
@@ -89,7 +103,7 @@ Tune Quick Start
 
 - Launch a multi-node distributed hyperparameter sweep in less than 10 lines of code.
 - Supports any deep learning framework, including PyTorch, `PyTorch Lightning <https://github.com/williamFalcon/pytorch-lightning>`_, TensorFlow, and Keras.
-- Visualize results with `TensorBoard <https://www.tensorflow.org/get_started/summaries_and_tensorboard>`__.
+- Visualize results with `TensorBoard <https://www.tensorflow.org/tensorboard>`__.
 - Choose among scalable SOTA algorithms such as `Population Based Training (PBT)`_, `Vizier's Median Stopping Rule`_, `HyperBand/ASHA`_.
 - Tune integrates with many optimization libraries such as `Facebook Ax <http://ax.dev>`_, `HyperOpt <https://github.com/hyperopt/hyperopt>`_, and `Bayesian Optimization <https://github.com/fmfn/BayesianOptimization>`_ and enables you to scale them transparently.
 
@@ -97,7 +111,7 @@ To run this example, you will need to install the following:
 
 .. code-block:: bash
 
-    $ pip install ray[tune]
+    $ pip install "ray[tune]"
 
 
 This example runs a parallel grid search to optimize an example objective function.
@@ -129,7 +143,7 @@ This example runs a parallel grid search to optimize an example objective functi
             "beta": tune.choice([1, 2, 3])
         })
 
-    print("Best config: ", analysis.get_best_config(metric="mean_loss"))
+    print("Best config: ", analysis.get_best_config(metric="mean_loss", mode="min"))
 
     # Get a dataframe for analyzing trial results.
     df = analysis.results_df
@@ -140,10 +154,10 @@ If TensorBoard is installed, automatically visualize all trial results:
 
     tensorboard --logdir ~/ray_results
 
-.. _`Tune`: https://docs.ray.io/en/latest/tune.html
-.. _`Population Based Training (PBT)`: https://docs.ray.io/en/latest/tune-schedulers.html#population-based-training-pbt
-.. _`Vizier's Median Stopping Rule`: https://docs.ray.io/en/latest/tune-schedulers.html#median-stopping-rule
-.. _`HyperBand/ASHA`: https://docs.ray.io/en/latest/tune-schedulers.html#asynchronous-hyperband
+.. _`Tune`: https://docs.ray.io/en/master/tune.html
+.. _`Population Based Training (PBT)`: https://docs.ray.io/en/master/tune/api_docs/schedulers.html#population-based-training-tune-schedulers-populationbasedtraining
+.. _`Vizier's Median Stopping Rule`: https://docs.ray.io/en/master/tune/api_docs/schedulers.html#median-stopping-rule-tune-schedulers-medianstoppingrule
+.. _`HyperBand/ASHA`: https://docs.ray.io/en/master/tune/api_docs/schedulers.html#asha-tune-schedulers-ashascheduler
 
 RLlib Quick Start
 -----------------
@@ -155,7 +169,7 @@ RLlib Quick Start
 .. code-block:: bash
 
   pip install tensorflow  # or tensorflow-gpu
-  pip install ray[rllib]  # also recommended: ray[debug]
+  pip install "ray[rllib]"
 
 .. code-block:: python
 
@@ -189,7 +203,7 @@ RLlib Quick Start
             "num_workers": 4,
             "env_config": {"corridor_length": 5}})
 
-.. _`RLlib`: https://docs.ray.io/en/latest/rllib.html
+.. _`RLlib`: https://docs.ray.io/en/master/rllib/index.html
 
 
 Ray Serve Quick Start
@@ -203,8 +217,8 @@ Ray Serve Quick Start
 - Framework Agnostic: Use the same toolkit to serve everything from deep
   learning models built with frameworks like PyTorch or Tensorflow & Keras
   to Scikit-Learn models or arbitrary business logic.
-- Python First: Configure your model serving with pure Python code - no more
-  YAMLs or JSON configs.
+- Python First: Configure your model serving declaratively in pure Python,
+  without needing YAMLs or JSON configs.
 - Performance Oriented: Turn on batching, pipelining, and GPU acceleration to
   increase the throughput of your model.
 - Composition Native: Allow you to create "model pipelines" by composing multiple
@@ -223,36 +237,38 @@ This example runs serves a scikit-learn gradient boosting classifier.
 
 .. code-block:: python
 
-    from ray import serve
     import pickle
     import requests
+
     from sklearn.datasets import load_iris
     from sklearn.ensemble import GradientBoostingClassifier
 
-    # Train model
+    from ray import serve
+
+    serve.start()
+
+    # Train model.
     iris_dataset = load_iris()
     model = GradientBoostingClassifier()
     model.fit(iris_dataset["data"], iris_dataset["target"])
 
-    # Define Ray Serve model,
+    @serve.deployment(route_prefix="/iris")
     class BoostingModel:
-        def __init__(self):
+        def __init__(self, model):
             self.model = model
             self.label_list = iris_dataset["target_names"].tolist()
 
-        def __call__(self, flask_request):
-            payload = flask_request.json["vector"]
-            print("Worker: received flask request with data", payload)
+        async def __call__(self, request):
+            payload = await request.json()["vector"]
+            print(f"Received flask request with data {payload}")
 
             prediction = self.model.predict([payload])[0]
             human_name = self.label_list[prediction]
             return {"result": human_name}
 
 
-    # Deploy model
-    serve.init()
-    serve.create_backend("iris:v1", BoostingModel)
-    serve.create_endpoint("iris_classifier", backend="iris:v1", route="/iris")
+    # Deploy model.
+    BoostingModel.deploy(model)
 
     # Query it!
     sample_request_input = {"vector": [1.2, 1.0, 1.1, 0.9]}
@@ -264,7 +280,7 @@ This example runs serves a scikit-learn gradient boosting classifier.
     # }
 
 
-.. _`Ray Serve`: https://docs.ray.io/en/latest/serve/index.html
+.. _`Ray Serve`: https://docs.ray.io/en/master/serve/index.html
 
 More Information
 ----------------
@@ -273,38 +289,41 @@ More Information
 - `Tutorial`_
 - `Blog`_
 - `Ray 1.0 Architecture whitepaper`_ **(new)**
+- `Ray Design Patterns`_ **(new)**
 - `RLlib paper`_
+- `RLlib flow paper`_
 - `Tune paper`_
 
 *Older documents:*
 
 - `Ray paper`_
 - `Ray HotOS paper`_
-- `Blog (old)`_
 
-.. _`Documentation`: http://docs.ray.io/en/latest/index.html
+.. _`Documentation`: http://docs.ray.io/en/master/index.html
 .. _`Tutorial`: https://github.com/ray-project/tutorial
-.. _`Blog (old)`: https://ray-project.github.io/
 .. _`Blog`: https://medium.com/distributed-computing-with-ray
 .. _`Ray 1.0 Architecture whitepaper`: https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview
+.. _`Ray Design Patterns`: https://docs.google.com/document/d/167rnnDFIVRhHhK4mznEIemOtj63IOhtIPvSYaPgI4Fg/edit
 .. _`Ray paper`: https://arxiv.org/abs/1712.05889
 .. _`Ray HotOS paper`: https://arxiv.org/abs/1703.03924
 .. _`RLlib paper`: https://arxiv.org/abs/1712.09381
+.. _`RLlib flow paper`: https://arxiv.org/abs/2011.12719
 .. _`Tune paper`: https://arxiv.org/abs/1807.05118
 
 Getting Involved
 ----------------
 
-- `Community Slack`_: Join our Slack workspace.
-- `GitHub Discussions`_: For discussions about development, questions about usage, and feature requests.
+- `Forum`_: For discussions about development, questions about usage, and feature requests.
 - `GitHub Issues`_: For reporting bugs.
 - `Twitter`_: Follow updates on Twitter.
+- `Slack`_: Join our Slack channel.
 - `Meetup Group`_: Join our meetup group.
 - `StackOverflow`_: For questions about how to use Ray.
 
-.. _`GitHub Discussions`: https://github.com/ray-project/ray/discussions
+.. _`Forum`: https://discuss.ray.io/
 .. _`GitHub Issues`: https://github.com/ray-project/ray/issues
 .. _`StackOverflow`: https://stackoverflow.com/questions/tagged/ray
 .. _`Meetup Group`: https://www.meetup.com/Bay-Area-Ray-Meetup/
-.. _`Community Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
 .. _`Twitter`: https://twitter.com/raydistributed
+.. _`Slack`: https://forms.gle/9TSdDYUgxYs8SA9e8
+

@@ -6,7 +6,7 @@ This file defines the distributed Trainer class for the soft actor critic
 algorithm.
 See `sac_[tf|torch]_policy.py` for the definition of the policy loss.
 
-Detailed documentation: https://docs.ray.io/en/latest/rllib-algorithms.html#sac
+Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#sac
 """
 
 import logging
@@ -16,7 +16,12 @@ from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.dqn.dqn import GenericOffPolicyTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.typing import TrainerConfigDict
+
+tf1, tf, tfv = try_import_tf()
+tfp = try_import_tfp()
 
 logger = logging.getLogger(__name__)
 
@@ -39,25 +44,42 @@ DEFAULT_CONFIG = with_common_config({
     # Use a e.g. conv2D state preprocessing network before concatenating the
     # resulting (feature) vector with the action input for the input to
     # the Q-networks.
-    "use_state_preprocessor": False,
-    # Model options for the Q network(s).
+    "use_state_preprocessor": DEPRECATED_VALUE,
+    # Model options for the Q network(s). These will override MODEL_DEFAULTS.
+    # The `Q_model` dict is treated just as the top-level `model` dict in
+    # setting up the Q-network(s) (2 if twin_q=True).
+    # That means, you can do for different observation spaces:
+    # obs=Box(1D) -> Tuple(Box(1D) + Action) -> concat -> post_fcnet
+    # obs=Box(3D) -> Tuple(Box(3D) + Action) -> vision-net -> concat w/ action
+    #   -> post_fcnet
+    # obs=Tuple(Box(1D), Box(3D)) -> Tuple(Box(1D), Box(3D), Action)
+    #   -> vision-net -> concat w/ Box(1D) and action -> post_fcnet
+    # You can also have SAC use your custom_model as Q-model(s), by simply
+    # specifying the `custom_model` sub-key in below dict (just like you would
+    # do in the top-level `model` dict.
     "Q_model": {
-        "fcnet_activation": "relu",
         "fcnet_hiddens": [256, 256],
+        "fcnet_activation": "relu",
+        "post_fcnet_hiddens": [],
+        "post_fcnet_activation": None,
+        "custom_model": None,  # Use this to define custom Q-model(s).
+        "custom_model_config": {},
     },
-    # Model options for the policy function.
+    # Model options for the policy function (see `Q_model` above for details).
+    # The difference to `Q_model` above is that no action concat'ing is
+    # performed before the post_fcnet stack.
     "policy_model": {
-        "fcnet_activation": "relu",
         "fcnet_hiddens": [256, 256],
+        "fcnet_activation": "relu",
+        "post_fcnet_hiddens": [],
+        "post_fcnet_activation": None,
+        "custom_model": None,  # Use this to define a custom policy model.
+        "custom_model_config": {},
     },
-    # Unsquash actions to the upper and lower bounds of env's action space.
-    # Ignored for discrete action spaces.
-    "normalize_actions": True,
+    # Actions are already normalized, no need to clip them further.
+    "clip_actions": False,
 
     # === Learning ===
-    # Disable setting done=True at end of episode. This should be set to True
-    # for infinite-horizon MDPs (e.g., many continuous control problems).
-    "no_done_at_end": False,
     # Update the target by \tau * policy + (1-\tau) * target_policy.
     "tau": 5e-3,
     # Initial value to use for the entropy weight alpha.
@@ -65,7 +87,7 @@ DEFAULT_CONFIG = with_common_config({
     # Target entropy lower bound. If "auto", will be set to -|A| (e.g. -2.0 for
     # Discrete(2), -3.0 for Box(shape=(3,))).
     # This is the inverse of reward scale, and will be optimized automatically.
-    "target_entropy": None,
+    "target_entropy": "auto",
     # N-step target updates. If >1, sars' tuples in trajectories will be
     # postprocessed to become sa[discounted sum of R][s t+n] tuples.
     "n_step": 1,
@@ -73,9 +95,20 @@ DEFAULT_CONFIG = with_common_config({
     "timesteps_per_iteration": 100,
 
     # === Replay buffer ===
-    # Size of the replay buffer. Note that if async_updates is set, then
-    # each worker will have a replay buffer of this size.
-    "buffer_size": int(1e6),
+    # Size of the replay buffer (in time steps).
+    "buffer_size": DEPRECATED_VALUE,
+    "replay_buffer_config": {
+        "type": "LocalReplayBuffer",
+        "capacity": int(1e6),
+    },
+    # Set this to True, if you want the contents of your buffer(s) to be
+    # stored in any saved checkpoints as well.
+    # Warnings will be created if:
+    # - This is True AND restoring from a checkpoint that contains no buffer
+    #   data.
+    # - This is False AND restoring from a checkpoint that does contain
+    #   buffer data.
+    "store_buffer_in_checkpoints": False,
     # If True prioritized replay buffer will be used.
     "prioritized_replay": False,
     "prioritized_replay_alpha": 0.6,
@@ -85,10 +118,21 @@ DEFAULT_CONFIG = with_common_config({
     "final_prioritized_replay_beta": 0.4,
     # Whether to LZ4 compress observations
     "compress_observations": False,
-    # If set, this will fix the ratio of replayed from a buffer and learned on
-    # timesteps to sampled from an environment and stored in the replay buffer
-    # timesteps. Otherwise, the replay will proceed at the native ratio
-    # determined by (train_batch_size / rollout_fragment_length).
+
+    # The intensity with which to update the model (vs collecting samples from
+    # the env). If None, uses the "natural" value of:
+    # `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
+    # `num_envs_per_worker`).
+    # If provided, will make sure that the ratio between ts inserted into and
+    # sampled from the buffer matches the given value.
+    # Example:
+    #   training_intensity=1000.0
+    #   train_batch_size=250 rollout_fragment_length=1
+    #   num_workers=1 (or 0) num_envs_per_worker=1
+    #   -> natural value = 250 / 1 = 250.0
+    #   -> will make sure that replay+train op will be executed 4x as
+    #      often as rollout+insert op (4 * 250 = 1000).
+    # See: rllib/agents/dqn/dqn.py::calculate_rr_weights for further details.
     "training_intensity": None,
 
     # === Optimization ===
@@ -104,9 +148,7 @@ DEFAULT_CONFIG = with_common_config({
     # Update the replay buffer with this many samples at once. Note that this
     # setting applies per-worker if num_workers > 1.
     "rollout_fragment_length": 1,
-    # Size of a batched sampled from replay buffer for training. Note that
-    # if async_updates is set, then each worker returns gradients for a
-    # batch of this size.
+    # Size of a batched sampled from replay buffer for training.
     "train_batch_size": 256,
     # Update the target network every `target_network_update_freq` steps.
     "target_network_update_freq": 0,
@@ -148,14 +190,21 @@ def validate_config(config: TrainerConfigDict) -> None:
     Raises:
         ValueError: In case something is wrong with the config.
     """
-    if config["model"].get("custom_model"):
-        logger.warning(
-            "Setting use_state_preprocessor=True since a custom model "
-            "was specified.")
-        config["use_state_preprocessor"] = True
+    if config["use_state_preprocessor"] != DEPRECATED_VALUE:
+        deprecation_warning(
+            old="config['use_state_preprocessor']", error=False)
+        config["use_state_preprocessor"] = DEPRECATED_VALUE
 
     if config["grad_clip"] is not None and config["grad_clip"] <= 0.0:
         raise ValueError("`grad_clip` value must be > 0.0!")
+
+    if config["framework"] in ["tf", "tf2", "tfe"] and tfp is None:
+        logger.warning(
+            "You need `tensorflow_probability` in order to run SAC! "
+            "Install it via `pip install tensorflow_probability`. Your "
+            f"tf.__version__={tf.__version__ if tf else None}."
+            "Trying to import tfp results in the following error:")
+        try_import_tfp(error=True)
 
 
 def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
@@ -182,4 +231,5 @@ SACTrainer = GenericOffPolicyTrainer.with_updates(
     validate_config=validate_config,
     default_policy=SACTFPolicy,
     get_policy_class=get_policy_class,
+    allow_unknown_subkeys=["Q_model", "policy_model"],
 )

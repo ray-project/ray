@@ -14,7 +14,7 @@ def ray_start_sharded(request):
         object_store_memory=int(0.5 * 10**9),
         num_cpus=10,
         # _num_redis_shards=num_redis_shards,
-        _redis_max_memory=10**7)
+        _redis_max_memory=10**8)
 
     yield None
 

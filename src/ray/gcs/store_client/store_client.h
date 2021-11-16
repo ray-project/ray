@@ -17,10 +17,10 @@
 #include <memory>
 #include <string>
 
+#include "ray/common/asio/io_service_pool.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/callback.h"
-#include "ray/util/io_service_pool.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -139,6 +139,11 @@ class StoreClient {
   virtual Status AsyncDeleteByIndex(const std::string &table_name,
                                     const std::string &index_key,
                                     const StatusCallback &callback) = 0;
+
+  /// Get next job id by `INCR` "JobCounter" key synchronously.
+  ///
+  /// \return Next job id in integer representation.
+  virtual int GetNextJobID() = 0;
 
  protected:
   StoreClient() = default;

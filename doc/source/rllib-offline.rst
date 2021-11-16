@@ -1,3 +1,5 @@
+.. include:: rllib/we_are_hiring.rst
+
 RLlib Offline Datasets
 ======================
 
@@ -100,7 +102,7 @@ This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/exa
 On-policy algorithms and experience postprocessing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-RLlib assumes that input batches are of `postprocessed experiences <https://github.com/ray-project/ray/blob/b8a9e3f1064c6f8d754884fd9c75e0b2f88df4d6/rllib/policy/policy.py#L103>`__. This isn't typically critical for off-policy algorithms (e.g., DQN's `post-processing <https://github.com/ray-project/ray/blob/b8a9e3f1064c6f8d754884fd9c75e0b2f88df4d6/rllib/agents/dqn/dqn_policy.py#L514>`__ is only needed if ``n_step > 1`` or ``worker_side_prioritization: True``). For off-policy algorithms, you can also safely set the ``postprocess_inputs: True`` config to auto-postprocess data.
+RLlib assumes that input batches are of `postprocessed experiences <https://github.com/ray-project/ray/blob/cf21c634a390745ba6f8916b1f34f7b0453bc7dd/rllib/policy/policy.py#L376>`__. This isn't typically critical for off-policy algorithms (e.g., DQN's `post-processing <https://github.com/ray-project/ray/blob/cf21c634a390745ba6f8916b1f34f7b0453bc7dd/rllib/agents/dqn/dqn_tf_policy.py#L387>`__ is only needed if ``n_step > 1`` or ``worker_side_prioritization: True``). For off-policy algorithms, you can also safely set the ``postprocess_inputs: True`` config to auto-postprocess data.
 
 However, for on-policy algorithms like PPO, you'll need to pass in the extra values added during policy evaluation and postprocessing to ``batch_builder.add_values()``, e.g., ``logits``, ``vf_preds``, ``value_target``, and ``advantages`` for PPO. This is needed since the calculation of these values depends on the parameters of the *behaviour* policy, which RLlib does not have access to in the offline setting (in online training, these values are automatically added during policy evaluation).
 
@@ -147,7 +149,7 @@ You can also define supervised model losses over offline data. This requires def
         supervised_loss = some_function_of(input_ops)
         return policy_loss + supervised_loss
 
-See `custom_loss.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_loss.py>`__ for a runnable example of using these TF input ops in a custom loss.
+See `custom_model_loss_and_metrics.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__ for a runnable example of using these TF input ops in a custom loss.
 
 
 Input API
@@ -164,6 +166,40 @@ The interface for a custom input reader is as follows:
 
 .. autoclass:: ray.rllib.offline.InputReader
     :members:
+
+Example Custom Input API
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+You can create a custom input reader like the following:
+
+.. code-block:: python
+
+    from ray.rllib.offline import InputReader, IOContext, ShuffledInput
+    from ray.tune.registry import register_input
+
+    class CustomInputReader(InputReader):
+        def __init__(self, ioctx: IOContext): ...
+        def next(self): ...
+
+    def input_creator(ioctx: IOContext) -> InputReader:
+        return ShuffledInput(CustomInputReader(ioctx))
+
+    register_input("custom_input", input_creator)
+
+    config = {
+        "input": "custom_input",
+        "input_config": {},
+        ...
+    }
+
+You can pass arguments from the config to the custom input api through the
+``input_config`` option which can be accessed with the ``IOContext``.
+The interface for the ``IOContext`` is the following:
+
+.. autoclass:: ray.rllib.offline.IOContext
+    :members:
+
+See `custom_input_api.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_input_api.py>`__ for a runnable example.
 
 Output API
 ----------

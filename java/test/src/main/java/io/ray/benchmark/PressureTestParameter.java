@@ -7,17 +7,17 @@ public class PressureTestParameter implements Serializable {
 
   private static final long serialVersionUID = -52054601722982473L;
 
-  private Integer clientNum = 1; //number of test client
+  private Integer clientNum = 1; // number of test client
 
-  private PressureTestType pressureTestType = PressureTestType.RATE_LIMITER; //pressure test type
+  private PressureTestType pressureTestType = PressureTestType.RATE_LIMITER; // pressure test type
 
-  private Integer totalNum = 1; //total number of task under the mode of MAX
+  private Integer totalNum = 1; // total number of task under the mode of MAX
 
-  private Integer totalQps = 1; //total qps of task under the mode of RATE_LIMITER
+  private Integer totalQps = 1; // total qps of task under the mode of RATE_LIMITER
 
-  private Integer duration = 1; //duration of the pressure test under the mode of RATE_LIMITER
+  private Integer duration = 1; // duration of the pressure test under the mode of RATE_LIMITER
 
-  private RayBenchmarkTest rayBenchmarkTest; //reference of current test case instance
+  private RayBenchmarkTest rayBenchmarkTest; // reference of current test case instance
 
   // reference of the Actor, if only test remote funtion it could be null
   private ActorHandle rayActor;

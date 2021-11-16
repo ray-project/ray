@@ -1,0 +1,50 @@
+INFO:__main__:Submitted 0
+INFO:__main__:Submitted 0
+INFO:__main__:Submitted 800
+INFO:__main__:Submitted 1600
+INFO:__main__:Submitted 2400
+INFO:__main__:Submitted 3200
+INFO:__main__:Submitted 4000
+INFO:__main__:Submitted 4800
+INFO:__main__:Submitted 5600
+INFO:__main__:Submitted 6400
+INFO:__main__:Submitted 7200
+INFO:__main__:Submitted 8000
+INFO:__main__:Submitted 8800
+INFO:__main__:Submitted 9600
+INFO:__main__:Submitted 10400
+INFO:__main__:Submitted 11200
+INFO:__main__:Submitted 12000
+INFO:__main__:Submitted 12800
+INFO:__main__:Submitted 13600
+INFO:__main__:Submitted 14400
+INFO:__main__:Submitted 15200
+INFO:__main__:Submitted 16000
+INFO:__main__:Submitted 16800
+INFO:__main__:Submitted 17600
+INFO:__main__:Submitted 18400
+INFO:__main__:Submitted 19200
+INFO:__main__:Submitted 20000
+INFO:__main__:Submitted 20800
+INFO:__main__:Submitted 21600
+INFO:__main__:Submitted 22400
+INFO:__main__:Submitted 23200
+INFO:__main__:Submitted 24000
+INFO:__main__:Submitted 24800
+INFO:__main__:Submitted 25600
+INFO:__main__:Submitted 26400
+INFO:__main__:Submitted 27200
+INFO:__main__:Submitted 28000
+INFO:__main__:Submitted 28800
+INFO:__main__:Submitted 29600
+INFO:__main__:Submitted 30400
+INFO:__main__:Submitted 31200
+INFO:__main__:Finished stage 3 in 5.727146863937378 seconds.
+INFO:__main__:Scheduling many tasks for spillback.
+INFO:__main__:Spread: 1.1657548800000086	Last: 642.309683662	First: 641.143928782
+INFO:__main__:Spread: 1.114729925000006	Last: 642.193462636	First: 641.078732711
+INFO:__main__:Spread: 1.1137836179999567	Last: 641.053006067	First: 639.939222449
+INFO:__main__:Spread: 1.1135457709999628	Last: 642.067508841	First: 640.95396307
+INFO:__main__:Spread: 1.1130653850000272	Last: 641.806138764	First: 640.693073379
+INFO:__main__:Avg spread: 1.1241759157999922
+PASSED.

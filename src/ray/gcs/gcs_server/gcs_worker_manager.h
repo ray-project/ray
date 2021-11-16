@@ -16,7 +16,6 @@
 
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
 namespace ray {
@@ -26,8 +25,8 @@ namespace gcs {
 class GcsWorkerManager : public rpc::WorkerInfoHandler {
  public:
   explicit GcsWorkerManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                            std::shared_ptr<gcs::GcsPubSub> &gcs_pub_sub)
-      : gcs_table_storage_(gcs_table_storage), gcs_pub_sub_(gcs_pub_sub) {}
+                            std::shared_ptr<GcsPublisher> &gcs_publisher)
+      : gcs_table_storage_(gcs_table_storage), gcs_publisher_(gcs_publisher) {}
 
   void HandleReportWorkerFailure(const rpc::ReportWorkerFailureRequest &request,
                                  rpc::ReportWorkerFailureReply *reply,
@@ -45,9 +44,14 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
                            rpc::AddWorkerInfoReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
+  void AddWorkerDeadListener(
+      std::function<void(std::shared_ptr<WorkerTableData>)> listener);
+
  private:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<GcsPublisher> gcs_publisher_;
+  std::vector<std::function<void(std::shared_ptr<WorkerTableData>)>>
+      worker_dead_listeners_;
 };
 
 }  // namespace gcs

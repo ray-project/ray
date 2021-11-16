@@ -9,9 +9,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Implementation of actor handle for local mode.
- */
+/** Implementation of actor handle for local mode. */
 public class LocalModeActorHandle implements ActorHandle, Externalizable {
 
   private ActorId actorId;
@@ -23,11 +21,8 @@ public class LocalModeActorHandle implements ActorHandle, Externalizable {
     this.previousActorTaskDummyObjectId.set(previousActorTaskDummyObjectId);
   }
 
-  /**
-   * Required by FST
-   */
-  public LocalModeActorHandle() {
-  }
+  /** Required by FST. */
+  public LocalModeActorHandle() {}
 
   @Override
   public ActorId getId() {

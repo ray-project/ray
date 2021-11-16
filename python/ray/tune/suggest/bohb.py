@@ -3,17 +3,27 @@
 import copy
 import logging
 import math
-from typing import Dict, Optional
+# use cloudpickle instead of pickle to make BOHB obj
+# pickleable
+from ray import cloudpickle
+from typing import Dict, List, Optional, Union
 
-import ConfigSpace
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
     Normal, \
     Quantized, \
     Uniform
 from ray.tune.suggest import Searcher
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
-from ray.tune.utils import flatten_dict
-from ray.tune.utils.util import unflatten_dict
+from ray.tune.utils.util import flatten_dict, unflatten_list_dict
+
+try:
+    import ConfigSpace
+    from hpbandster.optimizers.config_generators.bohb import BOHB
+except ImportError:
+    BOHB = ConfigSpace = None
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +51,21 @@ class TuneBOHB(Searcher):
             Parameters will be sampled from this space which will be used
             to run trials.
         bohb_config (dict): configuration for HpBandSter BOHB algorithm
-        max_concurrent (int): Number of maximum concurrent trials. Defaults
-            to 10.
-        metric (str): The training result objective value attribute.
+        max_concurrent (int): Deprecated. Use
+            ``tune.suggest.ConcurrencyLimiter()``.
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dicts containing the
+            configurations.
+        seed (int): Optional random seed to initialize the random number
+            generator. Setting this should lead to identical initial
+            configurations at each run.
 
     Tune automatically converts search spaces to TuneBOHB's format:
 
@@ -57,7 +77,7 @@ class TuneBOHB(Searcher):
             "activation": tune.choice(["relu", "tanh"])
         }
 
-        algo = TuneBOHB(max_concurrent=4, metric="mean_loss", mode="min")
+        algo = TuneBOHB(metric="mean_loss", mode="min")
         bohb = HyperBandForBOHB(
             time_attr="training_iteration",
             metric="mean_loss",
@@ -82,7 +102,7 @@ class TuneBOHB(Searcher):
                 name="activation", choices=["relu", "tanh"]))
 
         algo = TuneBOHB(
-            config_space, max_concurrent=4, metric="mean_loss", mode="min")
+            config_space, metric="mean_loss", mode="min")
         bohb = HyperBandForBOHB(
             time_attr="training_iteration",
             metric="mean_loss",
@@ -93,13 +113,17 @@ class TuneBOHB(Searcher):
     """
 
     def __init__(self,
-                 space: Optional[ConfigSpace.ConfigurationSpace] = None,
+                 space: Optional[Union[
+                     Dict, "ConfigSpace.ConfigurationSpace"]] = None,
                  bohb_config: Optional[Dict] = None,
-                 max_concurrent: int = 10,
+                 max_concurrent: Optional[int] = None,
                  metric: Optional[str] = None,
-                 mode: Optional[str] = None):
-        from hpbandster.optimizers.config_generators.bohb import BOHB
-        assert BOHB is not None, "HpBandSter must be installed!"
+                 mode: Optional[str] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
+                 seed: Optional[int] = None):
+        assert BOHB is not None, """HpBandSter must be installed!
+            You can install HpBandSter with the command:
+            `pip install hpbandster ConfigSpace`."""
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         self._max_concurrent = max_concurrent
@@ -109,26 +133,46 @@ class TuneBOHB(Searcher):
         self._metric = metric
 
         self._bohb_config = bohb_config
-        self._space = space
 
-        super(TuneBOHB, self).__init__(metric=self._metric, mode=mode)
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="space", cls=type(self)))
+                space = self.convert_search_space(space)
+
+        self._space = space
+        self._seed = seed
+
+        self._points_to_evaluate = points_to_evaluate
+
+        super(TuneBOHB, self).__init__(
+            metric=self._metric, mode=mode, max_concurrent=max_concurrent)
 
         if self._space:
-            self.setup_bohb()
+            self._setup_bohb()
 
-    def setup_bohb(self):
+    def _setup_bohb(self):
         from hpbandster.optimizers.config_generators.bohb import BOHB
+
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
 
         if self._mode == "max":
             self._metric_op = -1.
         elif self._mode == "min":
             self._metric_op = 1.
 
+        if self._seed is not None:
+            self._space.seed(self._seed)
+
         bohb_config = self._bohb_config or {}
         self.bohber = BOHB(self._space, **bohb_config)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         if self._space:
             return False
         space = self.convert_search_space(config)
@@ -139,24 +183,30 @@ class TuneBOHB(Searcher):
         if mode:
             self._mode = mode
 
-        self.setup_bohb()
+        self._setup_bohb()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._space:
             raise RuntimeError(
-                "Trying to sample a configuration from {}, but no search "
-                "space has been defined. Either pass the `{}` argument when "
-                "instantiating the search algorithm, or pass a `config` to "
-                "`tune.run()`.".format(self.__class__.__name__, "space"))
+                UNDEFINED_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="space"))
 
-        if len(self.running) < self._max_concurrent:
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
+
+        if self._points_to_evaluate:
+            config = self._points_to_evaluate.pop(0)
+        else:
             # This parameter is not used in hpbandster implementation.
-            config, info = self.bohber.get_config(None)
-            self.trial_to_params[trial_id] = copy.deepcopy(config)
-            self.running.add(trial_id)
-            return unflatten_dict(config)
-        return None
+            config, _ = self.bohber.get_config(None)
+        self.trial_to_params[trial_id] = copy.deepcopy(config)
+        self.running.add(trial_id)
+        return unflatten_list_dict(config)
 
     def on_trial_result(self, trial_id: str, result: Dict):
         if trial_id not in self.paused:
@@ -185,21 +235,24 @@ class TuneBOHB(Searcher):
 
     def on_pause(self, trial_id: str):
         self.paused.add(trial_id)
-        self.running.remove(trial_id)
+        self.running.discard(trial_id)
 
     def on_unpause(self, trial_id: str):
-        self.paused.remove(trial_id)
+        self.paused.discard(trial_id)
         self.running.add(trial_id)
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> ConfigSpace.ConfigurationSpace:
-        spec = flatten_dict(spec, prevent_delimiter=True)
+    def convert_search_space(spec: Dict) -> "ConfigSpace.ConfigurationSpace":
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if grid_vars:
             raise ValueError(
                 "Grid search parameters cannot be automatically converted "
                 "to a TuneBOHB search space.")
+
+        # Flatten and resolve again after checking for grid search.
+        spec = flatten_dict(spec, prevent_delimiter=True)
+        resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         def resolve_value(par: str, domain: Domain
                           ) -> ConfigSpace.hyperparameters.Hyperparameter:
@@ -228,7 +281,8 @@ class TuneBOHB(Searcher):
                     return ConfigSpace.UniformFloatHyperparameter(
                         par, lower=lower, upper=upper, q=quantize, log=False)
                 elif isinstance(sampler, Normal):
-                    return ConfigSpace.NormalFloatHyperparameter(
+                    return ConfigSpace.hyperparameters.\
+                       NormalFloatHyperparameter(
                         par,
                         mu=sampler.mean,
                         sigma=sampler.sd,
@@ -236,12 +290,26 @@ class TuneBOHB(Searcher):
                         log=False)
 
             elif isinstance(domain, Integer):
-                if isinstance(sampler, Uniform):
+                if isinstance(sampler, LogUniform):
                     lower = domain.lower
                     upper = domain.upper
                     if quantize:
                         lower = math.ceil(domain.lower / quantize) * quantize
                         upper = math.floor(domain.upper / quantize) * quantize
+                    else:
+                        # Tune search space integers are exclusive
+                        upper -= 1
+                    return ConfigSpace.UniformIntegerHyperparameter(
+                        par, lower=lower, upper=upper, q=quantize, log=True)
+                elif isinstance(sampler, Uniform):
+                    lower = domain.lower
+                    upper = domain.upper
+                    if quantize:
+                        lower = math.ceil(domain.lower / quantize) * quantize
+                        upper = math.floor(domain.upper / quantize) * quantize
+                    else:
+                        # Tune search space integers are exclusive
+                        upper -= 1
                     return ConfigSpace.UniformIntegerHyperparameter(
                         par, lower=lower, upper=upper, q=quantize, log=False)
 
@@ -257,8 +325,18 @@ class TuneBOHB(Searcher):
 
         cs = ConfigSpace.ConfigurationSpace()
         for path, domain in domain_vars:
-            par = "/".join(path)
+            par = "/".join(str(p) for p in path)
             value = resolve_value(par, domain)
             cs.add_hyperparameter(value)
 
         return cs
+
+    def save(self, checkpoint_path: str):
+        save_object = self.__dict__
+        with open(checkpoint_path, "wb") as outputFile:
+            cloudpickle.dump(save_object, outputFile)
+
+    def restore(self, checkpoint_path: str):
+        with open(checkpoint_path, "rb") as inputFile:
+            save_object = cloudpickle.load(inputFile)
+        self.__dict__.update(save_object)

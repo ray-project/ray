@@ -8,7 +8,7 @@ A Gentle Introduction to Ray
 
 This tutorial will provide a tour of the core features of Ray.
 
-Ray provides Python and Java API.
+Ray provides a Python and Java API.
 To use Ray in Python, first install Ray with: ``pip install ray``.
 To use Ray in Java, first add the `ray-api <https://mvnrepository.com/artifact/io.ray/ray-api>`__ and `ray-runtime <https://mvnrepository.com/artifact/io.ray/ray-runtime>`__ dependencies in your project.
 Then we can use Ray to parallelize your program.
@@ -155,7 +155,7 @@ Ray has a rich ecosystem of libraries and frameworks built on top of it. The mai
 
 - :doc:`../tune/index`
 - :ref:`rllib-index`
-- :ref:`sgd-index`
+- :ref:`train-docs`
 - :ref:`rayserve`
 
 
@@ -170,7 +170,7 @@ Tune Quick Start
 
     .. code-block:: bash
 
-        $ pip install 'ray[tune]'
+        $ pip install "ray[tune]"
 
 
 This example runs a small grid search with an iterative training function.
@@ -196,7 +196,7 @@ RLlib Quick Start
 .. code-block:: bash
 
   pip install tensorflow  # or tensorflow-gpu
-  pip install ray[rllib]  # also recommended: ray[debug]
+  pip install "ray[rllib]"
 
 .. code-block:: python
 
@@ -236,7 +236,7 @@ Where to go next?
 =================
 
 
-Visit the `Walkthrough <walkthrough.html>`_ page a more comprehensive overview of Ray features.
+Visit the :ref:`Walkthrough <core-walkthrough>` page a more comprehensive overview of Ray features.
 
 Ray programs can run on a single machine, and can also seamlessly scale to large clusters. To execute the above Ray script in the cloud, just download `this configuration file <https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-full.yaml>`__, and run:
 

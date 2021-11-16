@@ -1,117 +1,168 @@
 import inspect
+import pickle
+from enum import Enum
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from pydantic import BaseModel, PositiveInt, validator
-from ray.serve.constants import ASYNC_CONCURRENCY
-from typing import Optional, Dict, Any
-from dataclasses import dataclass
+import pydantic
+from google.protobuf.json_format import MessageToDict
+from pydantic import BaseModel, NonNegativeFloat, PositiveInt, validator
+from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
+from ray.serve.generated.serve_pb2 import (
+    DeploymentConfig as DeploymentConfigProto, AutoscalingConfig as
+    AutoscalingConfigProto)
+from ray.serve.generated.serve_pb2 import DeploymentLanguage
 
-
-def _callable_accepts_batch(func_or_class):
-    if inspect.isfunction(func_or_class):
-        return hasattr(func_or_class, "_serve_accept_batch")
-    elif inspect.isclass(func_or_class):
-        return hasattr(func_or_class.__call__, "_serve_accept_batch")
-
-
-def _callable_is_blocking(func_or_class):
-    if inspect.isfunction(func_or_class):
-        return not inspect.iscoroutinefunction(func_or_class)
-    elif inspect.isclass(func_or_class):
-        return not inspect.iscoroutinefunction(func_or_class.__call__)
+from ray import cloudpickle as cloudpickle
 
 
-@dataclass
-class BackendMetadata:
-    accepts_batches: bool = False
-    is_blocking: bool = True
-    autoscaling_config: Optional[Dict[str, Any]] = None
+class AutoscalingConfig(BaseModel):
+    # Please keep these options in sync with those in
+    # `src/ray/protobuf/serve.proto`.
+
+    # Publicly exposed options
+    min_replicas: int = 1
+    max_replicas: int = 1
+    target_num_ongoing_requests_per_replica: int = 1
+
+    # Private options below.
+
+    # Metrics scraping options
+
+    # How often to scrape for metrics
+    metrics_interval_s: float = 10.0
+    # Time window to average over for metrics.
+    look_back_period_s: float = 30.0
+
+    # Internal autoscaling configuration options
+
+    # Multiplicative "gain" factor to limit scaling decisions
+    smoothing_factor: float = 1.0
+
+    # How frequently to make autoscaling decisions
+    # loop_period_s: float = CONTROL_LOOP_PERIOD_S
+    # How long to wait before scaling down replicas
+    downscale_delay_s: float = 600.0
+    # How long to wait before scaling up replicas
+    upscale_delay_s: float = 30.0
+
+    # TODO(architkulkarni): implement below
+    # The number of replicas to start with when creating the deployment
+    # initial_replicas: int = 1
+    # The num_ongoing_requests_per_replica error ratio (desired / current)
+    # threshold for overriding `upscale_delay_s`
+    # panic_mode_threshold: float = 2.0
+
+    # TODO(architkulkarni): Add reasonable defaults
+    # TODO(architkulkarni): Add pydantic validation.  E.g. max_replicas>=min
 
 
-class BackendConfig(BaseModel):
-    """Configuration options for a backend, to be set by the user.
+class DeploymentConfig(BaseModel):
+    """Configuration options for a deployment, to be set by the user.
 
-    :param num_replicas: The number of worker processes to start up that will
-        handle requests to this backend. Defaults to 0.
-    :type num_replicas: int, optional
-    :param max_batch_size: The maximum number of requests that will be
-        processed in one batch by this backend. Defaults to None (no
-        maximium).
-    :type max_batch_size: int, optional
-    :param batch_wait_timeout: The time in seconds that backend replicas will
-        wait for a full batch of requests before processing a partial batch.
-        Defaults to 0.
-    :type batch_wait_timeout: float, optional
-    :param max_concurrent_queries: The maximum number of queries that will be
-        sent to a replica of this backend without receiving a response.
-        Defaults to None (no maximum).
-    :type max_concurrent_queries: int, optional
+    Args:
+        num_replicas (Optional[int]): The number of processes to start up that
+            will handle requests to this deployment. Defaults to 1.
+        max_concurrent_queries (Optional[int]): The maximum number of queries
+            that will be sent to a replica of this deployment without receiving
+            a response. Defaults to 100.
+        user_config (Optional[Any]): Arguments to pass to the reconfigure
+            method of the deployment. The reconfigure method is called if
+            user_config is not None.
+        graceful_shutdown_wait_loop_s (Optional[float]): Duration
+            that deployment replicas will wait until there is no more work to
+            be done before shutting down. Defaults to 2s.
+        graceful_shutdown_timeout_s (Optional[float]):
+            Controller waits for this duration to forcefully kill the replica
+            for shutdown. Defaults to 20s.
     """
 
-    internal_metadata: BackendMetadata = BackendMetadata()
     num_replicas: PositiveInt = 1
-    max_batch_size: Optional[PositiveInt] = None
-    batch_wait_timeout: float = 0
     max_concurrent_queries: Optional[int] = None
+    user_config: Any = None
+
+    graceful_shutdown_wait_loop_s: NonNegativeFloat = 2.0
+    graceful_shutdown_timeout_s: NonNegativeFloat = 20.0
+
+    autoscaling_config: Optional[AutoscalingConfig] = None
 
     class Config:
         validate_assignment = True
         extra = "forbid"
         arbitrary_types_allowed = True
 
-    def _validate_batch_size(self):
-        if (self.max_batch_size is not None
-                and not self.internal_metadata.accepts_batches
-                and self.max_batch_size > 1):
-            raise ValueError(
-                "max_batch_size is set in config but the function or "
-                "method does not accept batching. Please use "
-                "@serve.accept_batch to explicitly mark that the function or "
-                "method accepts a list of requests as an argument.")
-
-    # This is not a pydantic validator, so that we may skip this method when
-    # creating partially filled BackendConfig objects to pass as updates--for
-    # example, BackendConfig(max_batch_size=5).
-    def _validate_complete(self):
-        self._validate_batch_size()
-
     # Dynamic default for max_concurrent_queries
     @validator("max_concurrent_queries", always=True)
-    def set_max_queries_by_mode(cls, v, values):
+    def set_max_queries_by_mode(cls, v, values):  # noqa 805
         if v is None:
-            # Model serving mode: if the servable is blocking and the wait
-            # timeout is default zero seconds, then we keep the existing
-            # behavior to allow at most max batch size queries.
-            if (values["internal_metadata"].is_blocking
-                    and values["batch_wait_timeout"] == 0):
-                if ("max_batch_size" in values
-                        and values["max_batch_size"] is not None):
-                    v = 2 * values["max_batch_size"]
-                else:
-                    v = 8
-
-            # Pipeline/async mode: if the servable is not blocking,
-            # router should just keep pushing queries to the worker
-            # replicas until a high limit.
-            if not values["internal_metadata"].is_blocking:
-                v = ASYNC_CONCURRENCY
-
-            # Batch inference mode: user specifies non zero timeout to wait for
-            # full batch. We will use 2*max_batch_size to perform double
-            # buffering to keep the replica busy.
-            if ("max_batch_size" in values
-                    and values["max_batch_size"] is not None
-                    and values["batch_wait_timeout"] > 0):
-                v = 2 * values["max_batch_size"]
+            v = 100
+        else:
+            if v <= 0:
+                raise ValueError("max_concurrent_queries must be >= 0")
         return v
+
+    def to_proto_bytes(self):
+        data = self.dict()
+        if data.get("user_config"):
+            data["user_config"] = pickle.dumps(data["user_config"])
+        if data.get("autoscaling_config"):
+            data["autoscaling_config"] = AutoscalingConfigProto(
+                **data["autoscaling_config"])
+        return DeploymentConfigProto(
+            is_cross_language=False,
+            deployment_language=DeploymentLanguage.PYTHON,
+            **data,
+        ).SerializeToString()
+
+    @classmethod
+    def from_proto_bytes(cls, proto_bytes: bytes):
+        proto = DeploymentConfigProto.FromString(proto_bytes)
+        data = MessageToDict(
+            proto,
+            including_default_value_fields=True,
+            preserving_proto_field_name=True)
+        if "user_config" in data:
+            if data["user_config"] != "":
+                data["user_config"] = pickle.loads(proto.user_config)
+            else:
+                data["user_config"] = None
+        if "autoscaling_config" in data:
+            data["autoscaling_config"] = AutoscalingConfig(
+                **data["autoscaling_config"])
+
+        # Delete fields which are only used in protobuf, not in Python.
+        del data["is_cross_language"]
+        del data["deployment_language"]
+
+        return cls(**data)
 
 
 class ReplicaConfig:
-    def __init__(self, func_or_class, *actor_init_args,
+    def __init__(self,
+                 deployment_def: Callable,
+                 init_args: Optional[Tuple[Any]] = None,
+                 init_kwargs: Optional[Dict[Any, Any]] = None,
                  ray_actor_options=None):
-        self.func_or_class = func_or_class
-        self.accepts_batches = _callable_accepts_batch(func_or_class)
-        self.is_blocking = _callable_is_blocking(func_or_class)
-        self.actor_init_args = list(actor_init_args)
+        # Validate that deployment_def is an import path, function, or class.
+        if isinstance(deployment_def, str):
+            self.func_or_class_name = deployment_def
+        elif inspect.isfunction(deployment_def):
+            self.func_or_class_name = deployment_def.__name__
+            if init_args:
+                raise ValueError(
+                    "init_args not supported for function deployments.")
+            if init_kwargs:
+                raise ValueError(
+                    "init_kwargs not supported for function deployments.")
+        elif inspect.isclass(deployment_def):
+            self.func_or_class_name = deployment_def.__name__
+        else:
+            raise TypeError(
+                "Deployment must be a function or class, it is {}.".format(
+                    type(deployment_def)))
+
+        self.serialized_deployment_def = cloudpickle.dumps(deployment_def)
+        self.init_args = init_args if init_args is not None else ()
+        self.init_kwargs = init_kwargs if init_kwargs is not None else {}
         if ray_actor_options is None:
             self.ray_actor_options = {}
         else:
@@ -121,27 +172,22 @@ class ReplicaConfig:
         self._validate()
 
     def _validate(self):
-        # Validate that func_or_class is a function or class.
-        if inspect.isfunction(self.func_or_class):
-            if len(self.actor_init_args) != 0:
-                raise ValueError(
-                    "actor_init_args not supported for function backend.")
-        elif not inspect.isclass(self.func_or_class):
-            raise TypeError(
-                "Backend must be a function or class, it is {}.".format(
-                    type(self.func_or_class)))
+
+        if "placement_group" in self.ray_actor_options:
+            raise ValueError("Providing placement_group for deployment actors "
+                             "is not currently supported.")
 
         if not isinstance(self.ray_actor_options, dict):
             raise TypeError("ray_actor_options must be a dictionary.")
         elif "lifetime" in self.ray_actor_options:
             raise ValueError(
-                "Specifying lifetime in actor_init_args is not allowed.")
+                "Specifying lifetime in ray_actor_options is not allowed.")
         elif "name" in self.ray_actor_options:
             raise ValueError(
-                "Specifying name in actor_init_args is not allowed.")
+                "Specifying name in ray_actor_options is not allowed.")
         elif "max_restarts" in self.ray_actor_options:
             raise ValueError("Specifying max_restarts in "
-                             "actor_init_args is not allowed.")
+                             "ray_actor_options is not allowed.")
         else:
             # Ray defaults to zero CPUs for placement, we default to one here.
             if "num_cpus" not in self.ray_actor_options:
@@ -186,3 +232,40 @@ class ReplicaConfig:
                 raise TypeError(
                     "resources in ray_actor_options must be a dictionary.")
             self.resource_dict.update(custom_resources)
+
+
+class DeploymentMode(str, Enum):
+    NoServer = "NoServer"
+    HeadOnly = "HeadOnly"
+    EveryNode = "EveryNode"
+    FixedNumber = "FixedNumber"
+
+
+class HTTPOptions(pydantic.BaseModel):
+    # Documentation inside serve.start for user's convenience.
+    host: Optional[str] = DEFAULT_HTTP_HOST
+    port: int = DEFAULT_HTTP_PORT
+    middlewares: List[Any] = []
+    location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
+    num_cpus: int = 0
+    root_url: str = ""
+    fixed_number_replicas: Optional[int] = None
+    fixed_number_selection_seed: int = 0
+
+    @validator("location", always=True)
+    def location_backfill_no_server(cls, v, values):
+        if values["host"] is None or v is None:
+            return DeploymentMode.NoServer
+        return v
+
+    @validator("fixed_number_replicas", always=True)
+    def fixed_number_replicas_should_exist(cls, v, values):
+        if values["location"] == DeploymentMode.FixedNumber and v is None:
+            raise ValueError("When location='FixedNumber', you must specify "
+                             "the `fixed_number_replicas` parameter.")
+        return v
+
+    class Config:
+        validate_assignment = True
+        extra = "forbid"
+        arbitrary_types_allowed = True

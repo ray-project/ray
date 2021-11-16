@@ -31,7 +31,7 @@ Thereby, you can either use the ``tune.grid_search`` primitive to specify an axi
 
 
 
-.. caution:: If you use a Search Algorithm, you may not be able to specify lambdas or grid search with this
+.. caution:: If you use a SearchAlgorithm, you may not be able to specify lambdas or grid search with this
     interface, as some search algorithms may not be compatible.
 
 
@@ -154,12 +154,23 @@ Here's an example showing a grid search over two nested parameters combined with
         }
     )
 
+.. note::
+
+    This format is not supported by every SearchAlgorithm, and only some SearchAlgorithms, like :ref:`HyperOpt <tune-hyperopt>` and :ref:`Optuna <tune-optuna>`, handle conditional search spaces at all. 
+
+    In order to use conditional search spaces with :ref:`HyperOpt <tune-hyperopt>`, a `Hyperopt search space <http://hyperopt.github.io/hyperopt/getting-started/search_spaces/>`_ is necessary. :ref:`Optuna <tune-optuna>` supports conditional search spaces through its define-by-run interface (:doc:`/tune/examples/optuna_define_by_run_example`).
+
 .. _tune-sample-docs:
 
 Random Distributions API
 ------------------------
 
 This section covers the functions you can use to define your search spaces.
+
+.. caution::
+
+    Not all SearchAlgorithms support all distributions. In particular, ``tune.sample_from`` and ``tune.grid_search`` are often unsupported.
+    The default :ref:`tune-basicvariant` supports all distributions.
 
 For a high-level overview, see this example:
 
@@ -178,8 +189,8 @@ For a high-level overview, see this example:
         "loguniform": tune.loguniform(1e-4, 1e-2),
 
         # Sample a float uniformly between 0.0001 and 0.1, while
-        # sampling in log space and rounding to increments of 0.0005
-        "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-4),
+        # sampling in log space and rounding to increments of 0.00005
+        "qloguniform": tune.qloguniform(1e-4, 1e-1, 5e-5),
 
         # Sample a random float from a normal distribution with
         # mean=10 and sd=2
@@ -195,6 +206,14 @@ For a high-level overview, see this example:
         # Sample a random uniformly between -21 (inclusive) and 12 (inclusive (!))
         # rounding to increments of 3 (includes 12)
         "qrandint": tune.qrandint(-21, 12, 3),
+
+        # Sample a integer uniformly between 1 (inclusive) and 10 (exclusive),
+        # while sampling in log space
+        "lograndint": tune.lograndint(1, 10),
+
+        # Sample a integer uniformly between 1 (inclusive) and 10 (inclusive (!)),
+        # while sampling in log space and rounding to increments of 2
+        "qlograndint": tune.qlograndint(1, 10, 2),
 
         # Sample an option uniformly from the specified choices
         "choice": tune.choice(["a", "b", "c"]),
@@ -248,6 +267,16 @@ tune.qrandint
 
 .. autofunction:: ray.tune.qrandint
 
+tune.lograndint
+~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.tune.lograndint
+
+tune.qlograndint
+~~~~~~~~~~~~~~~~
+
+.. autofunction:: ray.tune.qlograndint
+
 tune.choice
 ~~~~~~~~~~~
 
@@ -263,10 +292,7 @@ Grid Search API
 
 .. autofunction:: ray.tune.grid_search
 
-Internals
----------
+References
+----------
 
-BasicVariantGenerator
-~~~~~~~~~~~~~~~~~~~~~
-
-.. autoclass:: ray.tune.suggest.BasicVariantGenerator
+See also :ref:`tune-basicvariant`.

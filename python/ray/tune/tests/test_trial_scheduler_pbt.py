@@ -5,12 +5,21 @@ import random
 import unittest
 import sys
 import time
+from unittest.mock import MagicMock
 
 import ray
 from ray import tune
 from ray.tune import Trainable
+from ray.tune.trial import Trial, Checkpoint
+from ray.tune.trial_runner import TrialRunner
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.schedulers import PopulationBasedTraining
+from ray._private.test_utils import object_memory_usage
+
+# Import psutil after ray so the packaged version is used.
+import psutil
+
+MB = 1024**2
 
 
 class MockParam(object):
@@ -26,7 +35,7 @@ class MockParam(object):
 
 class PopulationBasedTrainingMemoryTest(unittest.TestCase):
     def setUp(self):
-        ray.init(num_cpus=1)
+        ray.init(num_cpus=1, object_store_memory=100 * MB)
 
     def tearDown(self):
         ray.shutdown()
@@ -36,7 +45,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
             def setup(self, config):
                 # Make sure this is large enough so ray uses object store
                 # instead of in-process store.
-                self.large_object = random.getrandbits(int(10e7))
+                self.large_object = random.getrandbits(int(10e6))
                 self.iter = 0
                 self.a = config["a"]
 
@@ -58,7 +67,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
         class CustomExecutor(RayTrialExecutor):
             def save(self, *args, **kwargs):
                 checkpoint = super(CustomExecutor, self).save(*args, **kwargs)
-                assert len(ray.objects()) <= 10
+                assert object_memory_usage() <= (12 * 80e6)
                 return checkpoint
 
         param_a = MockParam([1, -1])
@@ -80,13 +89,92 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
             checkpoint_freq=1,
             fail_fast=True,
             config={"a": tune.sample_from(lambda _: param_a())},
-            trial_executor=CustomExecutor(
-                queue_trials=False, reuse_actors=False),
+            trial_executor=CustomExecutor(reuse_actors=False),
+        )
+
+
+class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
+    def setUp(self):
+        ray.init(num_cpus=2)
+        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
+
+    def tearDown(self):
+        ray.shutdown()
+
+    def testFileFree(self):
+        class MyTrainable(Trainable):
+            def setup(self, config):
+                self.iter = 0
+                self.a = config["a"]
+
+            def step(self):
+                self.iter += 1
+                return {"metric": self.iter + self.a}
+
+            def save_checkpoint(self, checkpoint_dir):
+                file_path = os.path.join(checkpoint_dir, "model.mock")
+
+                with open(file_path, "wb") as fp:
+                    pickle.dump((self.iter, self.a), fp)
+                return file_path
+
+            def load_checkpoint(self, path):
+                with open(path, "rb") as fp:
+                    self.iter, self.a = pickle.load(fp)
+
+        from ray.tune.callback import Callback
+
+        class FileCheck(Callback):
+            def __init__(self, verbose=False):
+                self.iter_ = 0
+                self.process = psutil.Process()
+                self.verbose = verbose
+
+            def on_trial_result(self, *args, **kwargs):
+                self.iter_ += 1
+                all_files = self.process.open_files()
+                if self.verbose:
+                    print("Iteration", self.iter_)
+                    print("=" * 10)
+                    print("Object memory use: ", object_memory_usage())
+                    print("Virtual Mem:", self.get_virt_mem() >> 30, "gb")
+                    print("File Descriptors:", len(all_files))
+                assert len(all_files) < 20
+
+            @classmethod
+            def get_virt_mem(cls):
+                return psutil.virtual_memory().used
+
+        param_a = MockParam([1, -1])
+
+        pbt = PopulationBasedTraining(
+            time_attr="training_iteration",
+            metric="metric",
+            mode="max",
+            perturbation_interval=1,
+            quantile_fraction=0.5,
+            hyperparam_mutations={"b": [-1]},
+        )
+
+        tune.run(
+            MyTrainable,
+            name="ray_demo",
+            scheduler=pbt,
+            stop={"training_iteration": 10},
+            num_samples=4,
+            checkpoint_freq=2,
+            keep_checkpoints_num=1,
+            verbose=False,
+            fail_fast=True,
+            config={"a": tune.sample_from(lambda _: param_a())},
+            callbacks=[FileCheck()],
         )
 
 
 class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def setUp(self):
+        os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
         ray.init(num_cpus=2)
 
         def MockTrainingFuncSync(config, checkpoint_dir=None):
@@ -106,8 +194,13 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
                                                    "checkpoint")
                     with open(checkpoint_path, "wb") as fp:
                         pickle.dump((a, iter), fp)
+                # Different sleep times so that asynch test runs do not
+                # randomly succeed. If well performing trials finish later,
+                # then bad performing trials will already have continued
+                # to train, which is exactly what we want to test when
+                # comparing sync vs. async.
+                time.sleep(a / 20)
                 # Score gets better every iteration.
-                time.sleep(1)
                 tune.report(mean_accuracy=iter + a, a=a)
 
         self.MockTrainingFuncSync = MockTrainingFuncSync
@@ -115,7 +208,10 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
     def tearDown(self):
         ray.shutdown()
 
-    def synchSetup(self, synch, param=[10, 20, 30]):
+    def synchSetup(self, synch, param=None):
+        if param is None:
+            param = [10, 20, 30]
+
         scheduler = PopulationBasedTraining(
             time_attr="training_iteration",
             metric="mean_accuracy",
@@ -321,6 +417,80 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             scheduler=scheduler,
             name="testPermutationContinuationFunc",
             stop={"training_iteration": 3})
+
+    def testBurnInPeriod(self):
+        runner = TrialRunner(trial_executor=MagicMock())
+
+        scheduler = PopulationBasedTraining(
+            time_attr="training_iteration",
+            metric="error",
+            mode="min",
+            perturbation_interval=5,
+            burn_in_period=50,
+            log_config=True,
+            synch=True)
+
+        class MockTrial(Trial):
+            @property
+            def checkpoint(self):
+                return Checkpoint(Checkpoint.MEMORY, "None", {})
+
+            @property
+            def status(self):
+                return Trial.PAUSED
+
+            @status.setter
+            def status(self, status):
+                pass
+
+        trial1 = MockTrial("PPO", config=dict(num=1))
+        trial2 = MockTrial("PPO", config=dict(num=2))
+        trial3 = MockTrial("PPO", config=dict(num=3))
+        trial4 = MockTrial("PPO", config=dict(num=4))
+
+        runner.add_trial(trial1)
+        runner.add_trial(trial2)
+        runner.add_trial(trial3)
+        runner.add_trial(trial4)
+
+        scheduler.on_trial_add(runner, trial1)
+        scheduler.on_trial_add(runner, trial2)
+        scheduler.on_trial_add(runner, trial3)
+        scheduler.on_trial_add(runner, trial4)
+
+        # Add initial results.
+        scheduler.on_trial_result(
+            runner, trial1, result=dict(training_iteration=1, error=50))
+        scheduler.on_trial_result(
+            runner, trial2, result=dict(training_iteration=1, error=50))
+        scheduler.on_trial_result(
+            runner, trial3, result=dict(training_iteration=1, error=10))
+        scheduler.on_trial_result(
+            runner, trial4, result=dict(training_iteration=1, error=100))
+
+        # Add more results. Without burn-in, this would now exploit
+        scheduler.on_trial_result(
+            runner, trial1, result=dict(training_iteration=30, error=50))
+        scheduler.on_trial_result(
+            runner, trial2, result=dict(training_iteration=30, error=50))
+        scheduler.on_trial_result(
+            runner, trial3, result=dict(training_iteration=30, error=10))
+        scheduler.on_trial_result(
+            runner, trial4, result=dict(training_iteration=30, error=100))
+
+        self.assertEqual(trial4.config["num"], 4)
+
+        # Add more results. Since this is after burn-in, it should now exploit
+        scheduler.on_trial_result(
+            runner, trial1, result=dict(training_iteration=50, error=50))
+        scheduler.on_trial_result(
+            runner, trial2, result=dict(training_iteration=50, error=50))
+        scheduler.on_trial_result(
+            runner, trial3, result=dict(training_iteration=50, error=10))
+        scheduler.on_trial_result(
+            runner, trial4, result=dict(training_iteration=50, error=100))
+
+        self.assertEqual(trial4.config["num"], 3)
 
 
 if __name__ == "__main__":

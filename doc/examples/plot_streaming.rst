@@ -87,7 +87,7 @@ the top 10 words in these articles together with their word count:
 Note that this examples uses `distributed actor handles`_, which are still
 considered experimental.
 
-.. _`distributed actor handles`: http://docs.ray.io/en/latest/actors.html
+.. _`distributed actor handles`: http://docs.ray.io/en/master/actors.html
 
 There is a ``Mapper`` actor, which has a method ``get_range`` used to retrieve
 word counts for words in a certain range:

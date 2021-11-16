@@ -1,7 +1,10 @@
+from collections import Counter
 import os
 import json
 import random
 import unittest
+import time
+
 import numpy as np
 import sys
 import tempfile
@@ -12,11 +15,14 @@ import ray
 from ray import tune
 from ray.tune import Trainable
 from ray.tune.result import TRAINING_ITERATION
-from ray.tune.schedulers import (HyperBandScheduler, AsyncHyperBandScheduler,
+from ray.tune.schedulers import (FIFOScheduler, HyperBandScheduler,
+                                 AsyncHyperBandScheduler,
                                  PopulationBasedTraining, MedianStoppingRule,
                                  TrialScheduler, HyperBandForBOHB)
 
 from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
+from ray.tune.suggest._mock import _MockSearcher
+from ray.tune.suggest.suggestion import ConcurrencyLimiter
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.resources import Resources
@@ -211,16 +217,20 @@ class EarlyStoppingSuite(unittest.TestCase):
         self._test_metrics(result2, "mean_loss", "min")
 
 
+# Only barebone impl for start/stop_trial. No internal state maintained.
 class _MockTrialExecutor(TrialExecutor):
     def start_trial(self, trial, checkpoint_obj=None, train=True):
         trial.logger_running = True
         trial.restored_checkpoint = checkpoint_obj.value
         trial.status = Trial.RUNNING
+        return True
 
-    def stop_trial(self, trial, error=False, error_msg=None, stop_logger=True):
+    def stop_trial(self,
+                   trial,
+                   error=False,
+                   error_msg=None,
+                   destroy_pg_if_cannot_replace=True):
         trial.status = Trial.ERROR if error else Trial.TERMINATED
-        if stop_logger:
-            trial.logger_running = False
 
     def restore(self, trial, checkpoint=None, block=False):
         pass
@@ -231,10 +241,32 @@ class _MockTrialExecutor(TrialExecutor):
     def reset_trial(self, trial, new_config, new_experiment_tag):
         return False
 
+    def debug_string(self):
+        return "This is a mock TrialExecutor."
+
+    def export_trial_if_needed(self):
+        return {}
+
+    def fetch_result(self):
+        return []
+
+    def get_next_available_trial(self):
+        return None
+
+    def get_next_failed_trial(self):
+        return None
+
+    def get_running_trials(self):
+        return []
+
+    def has_resources_for_trial(self, trial: Trial):
+        return True
+
 
 class _MockTrialRunner():
     def __init__(self, scheduler):
         self._scheduler_alg = scheduler
+        self.search_alg = None
         self.trials = []
         self.trial_executor = _MockTrialExecutor()
 
@@ -260,9 +292,6 @@ class _MockTrialRunner():
 
     def get_trials(self):
         return self.trials
-
-    def has_resources(self, resources):
-        return True
 
     def _pause_trial(self, trial):
         self.trial_executor.save(trial, Checkpoint.MEMORY, None)
@@ -758,6 +787,44 @@ class BOHBSuite(unittest.TestCase):
         self.assertSequenceEqual([t.status for t in trials],
                                  [Trial.PAUSED, Trial.PENDING, Trial.PAUSED])
 
+    def testNonstopBOHB(self):
+        from ray.tune.suggest.bohb import TuneBOHB
+
+        def train(cfg, checkpoint_dir=None):
+            start = 0
+            if checkpoint_dir:
+                with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
+                    start = int(f.read())
+
+            for i in range(start, 200):
+
+                time.sleep(0.1)
+                tune.report(episode_reward_mean=i)
+                with tune.checkpoint_dir(i) as checkpoint_dir:
+                    with open(os.path.join(checkpoint_dir, "checkpoint"),
+                              "w") as f:
+                        f.write(str(i))
+
+        config = {"test_variable": tune.uniform(0, 20)}
+        sched = HyperBandForBOHB(
+            max_t=10, reduction_factor=3, stop_last_trials=False)
+        alg = ConcurrencyLimiter(TuneBOHB(), 4)
+        analysis = tune.run(
+            train,
+            scheduler=sched,
+            search_alg=alg,
+            stop={"training_iteration": 32},
+            num_samples=20,
+            config=config,
+            metric="episode_reward_mean",
+            mode="min",
+            verbose=1,
+            fail_fast="raise")
+        counter = Counter(
+            t.last_result.get("training_iteration") for t in analysis.trials)
+        assert 32 in counter
+        assert counter[32] > 1
+
 
 class _MockTrial(Trial):
     def __init__(self, i, config):
@@ -771,6 +838,7 @@ class _MockTrial(Trial):
         self.resources = Resources(1, 0)
         self.custom_trial_name = None
         self.custom_dirname = None
+        self._default_result_or_future = None
 
     def on_checkpoint(self, checkpoint):
         self.restored_checkpoint = checkpoint.value
@@ -841,6 +909,19 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                         TrialScheduler.CONTINUE)
         pbt.reset_stats()
         return pbt, runner
+
+    def testSearchError(self):
+        pbt, runner = self.basicSetup(num_trials=0)
+
+        def mock_train(config):
+            return 1
+
+        with self.assertRaises(ValueError):
+            tune.run(
+                mock_train,
+                config={"x": 1},
+                scheduler=pbt,
+                search_alg=_MockSearcher())
 
     def testMetricError(self):
         pbt, runner = self.basicSetup()
@@ -1698,6 +1779,59 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         pbt._exploit(runner.trial_executor, trials[1], trials[2])
         shutil.rmtree(tmpdir)
 
+    def testContextExit(self):
+        vals = [5, 1]
+
+        class MockContext:
+            def __init__(self, config):
+                self.config = config
+                self.active = False
+
+            def __enter__(self):
+                print("Set up resource.", self.config)
+                with open("status.txt", "wt") as fp:
+                    fp.write("Activate\n")
+                self.active = True
+                return self
+
+            def __exit__(self, type, value, traceback):
+                print("Clean up resource.", self.config)
+                with open("status.txt", "at") as fp:
+                    fp.write("Cleanup\n")
+                self.active = False
+
+        def train(config):
+            with MockContext(config):
+                for i in range(10):
+                    tune.report(metric=i + config["x"])
+
+        class MockScheduler(FIFOScheduler):
+            def on_trial_result(self, trial_runner, trial, result):
+                return TrialScheduler.STOP
+
+        scheduler = MockScheduler()
+
+        out = tune.run(
+            train, config={"x": tune.grid_search(vals)}, scheduler=scheduler)
+
+        ever_active = set()
+        active = set()
+        for trial in out.trials:
+            with open(os.path.join(trial.logdir, "status.txt"), "rt") as fp:
+                status = fp.read()
+            print(f"Status for trial {trial}: {status}")
+            if "Activate" in status:
+                ever_active.add(trial)
+                active.add(trial)
+            if "Cleanup" in status:
+                active.remove(trial)
+
+        print(f"Ever active: {ever_active}")
+        print(f"Still active: {active}")
+
+        self.assertEqual(len(ever_active), len(vals))
+        self.assertEqual(len(active), 0)
+
 
 class E2EPopulationBasedTestingSuite(unittest.TestCase):
     def setUp(self):
@@ -1838,6 +1972,21 @@ class AsyncHyperBandSuite(unittest.TestCase):
                 TrialScheduler.CONTINUE)
         return t1, t2
 
+    def nanInfSetup(self, scheduler, runner=None):
+        t1 = Trial("PPO")
+        t2 = Trial("PPO")
+        t3 = Trial("PPO")
+        scheduler.on_trial_add(runner, t1)
+        scheduler.on_trial_add(runner, t2)
+        scheduler.on_trial_add(runner, t3)
+        for i in range(10):
+            scheduler.on_trial_result(runner, t1, result(i, np.nan))
+        for i in range(10):
+            scheduler.on_trial_result(runner, t2, result(i, float("inf")))
+        for i in range(10):
+            scheduler.on_trial_result(runner, t3, result(i, float("-inf")))
+        return t1, t2, t3
+
     def testAsyncHBOnComplete(self):
         scheduler = AsyncHyperBandScheduler(
             metric="episode_reward_mean", mode="max", max_t=10, brackets=1)
@@ -1923,6 +2072,86 @@ class AsyncHyperBandSuite(unittest.TestCase):
             scheduler.on_trial_result(None, t3, result(2, 260)),
             TrialScheduler.STOP)
 
+    def testAsyncHBSaveRestore(self):
+        tmpfile = tempfile.mktemp()
+
+        scheduler = AsyncHyperBandScheduler(
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=1,
+            max_t=10,
+            reduction_factor=2,
+            brackets=1)
+
+        # Add some trials
+        trials = [Trial("PPO") for i in range(10)]
+        for t in trials:
+            scheduler.on_trial_add(None, t)
+
+        # Report some results
+        for t in trials[0:5]:
+            self.assertNotEqual(
+                scheduler.on_trial_result(None, t, result(1, 10)),
+                TrialScheduler.STOP)
+
+        # Report worse result: Trial should stop
+        self.assertEqual(
+            scheduler.on_trial_result(None, trials[5], result(1, 5)),
+            TrialScheduler.STOP)
+
+        scheduler.save(tmpfile)
+
+        scheduler2 = AsyncHyperBandScheduler()
+        scheduler2.restore(tmpfile)
+
+        # Report a new bad result: Trial should stop
+        self.assertEqual(
+            scheduler2.on_trial_result(None, trials[6], result(1, 4)),
+            TrialScheduler.STOP)
+
+        # Create a new trial and report bad result: Trial should stop
+        # Report a new bad result: Trial should stop
+        new_trial = Trial("PPO")
+        scheduler2.on_trial_add(None, new_trial)
+        self.assertEqual(
+            scheduler2.on_trial_result(None, new_trial, result(1, 2)),
+            TrialScheduler.STOP)
+
+    def testMedianStoppingNanInf(self):
+        scheduler = MedianStoppingRule(
+            metric="episode_reward_mean", mode="max")
+
+        t1, t2, t3 = self.nanInfSetup(scheduler)
+        scheduler.on_trial_complete(None, t1, result(10, np.nan))
+        scheduler.on_trial_complete(None, t2, result(10, float("inf")))
+        scheduler.on_trial_complete(None, t3, result(10, float("-inf")))
+
+    def testHyperbandNanInf(self):
+        scheduler = HyperBandScheduler(
+            metric="episode_reward_mean", mode="max")
+        t1, t2, t3 = self.nanInfSetup(scheduler)
+        scheduler.on_trial_complete(None, t1, result(10, np.nan))
+        scheduler.on_trial_complete(None, t2, result(10, float("inf")))
+        scheduler.on_trial_complete(None, t3, result(10, float("-inf")))
+
+    def testBOHBNanInf(self):
+        scheduler = HyperBandForBOHB(metric="episode_reward_mean", mode="max")
+
+        runner = _MockTrialRunner(scheduler)
+        runner._search_alg = MagicMock()
+        runner._search_alg.searcher = MagicMock()
+
+        t1, t2, t3 = self.nanInfSetup(scheduler, runner)
+        # skip trial complete in this mock setting
+
+    def testPBTNanInf(self):
+        scheduler = PopulationBasedTraining(
+            metric="episode_reward_mean", mode="max")
+        t1, t2, t3 = self.nanInfSetup(scheduler, runner=MagicMock())
+        scheduler.on_trial_complete(None, t1, result(10, np.nan))
+        scheduler.on_trial_complete(None, t2, result(10, float("inf")))
+        scheduler.on_trial_complete(None, t3, result(10, float("-inf")))
+
     def _test_metrics(self, result_func, metric, mode):
         scheduler = AsyncHyperBandScheduler(
             grace_period=1,
@@ -1961,6 +2190,36 @@ class AsyncHyperBandSuite(unittest.TestCase):
             return dict(training_iteration=t, mean_loss=-rew)
 
         self._test_metrics(result2, "mean_loss", "min")
+
+    def _testAnonymousMetricEndToEnd(self, scheduler_cls, searcher=None):
+        def train(config):
+            return config["value"]
+
+        out = tune.run(
+            train,
+            mode="max",
+            num_samples=1,
+            config={"value": tune.uniform(-2., 2.)},
+            scheduler=scheduler_cls(),
+            search_alg=searcher)
+
+        self.assertTrue(bool(out.best_trial))
+
+    def testAnonymousMetricEndToEndFIFO(self):
+        self._testAnonymousMetricEndToEnd(FIFOScheduler)
+
+    def testAnonymousMetricEndToEndASHA(self):
+        self._testAnonymousMetricEndToEnd(AsyncHyperBandScheduler)
+
+    def testAnonymousMetricEndToEndBOHB(self):
+        from ray.tune.suggest.bohb import TuneBOHB
+        self._testAnonymousMetricEndToEnd(HyperBandForBOHB, TuneBOHB())
+
+    def testAnonymousMetricEndToEndMedian(self):
+        self._testAnonymousMetricEndToEnd(MedianStoppingRule)
+
+    def testAnonymousMetricEndToEndPBT(self):
+        self._testAnonymousMetricEndToEnd(PopulationBasedTraining)
 
 
 if __name__ == "__main__":

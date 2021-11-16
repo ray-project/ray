@@ -9,11 +9,14 @@ from ray.rllib.models.preprocessors import get_preprocessor, \
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils import NullContextManager
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
-from ray.rllib.utils.typing import ModelConfigDict, TensorStructType
+from ray.rllib.utils.typing import ModelConfigDict, ModelInputDict, \
+    TensorStructType
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -59,8 +62,9 @@ class ModelV2:
         self.framework: str = framework
         self._last_output = None
         self.time_major = self.model_config.get("_time_major")
-        self.inference_view_requirements = {
-            SampleBatch.OBS: ViewRequirement(shift=0),
+        # Basic view requirement for all models: Use the observation as input.
+        self.view_requirements = {
+            SampleBatch.OBS: ViewRequirement(shift=0, space=self.obs_space),
         }
 
     # TODO: (sven): Get rid of `get_initial_state` once Trajectory
@@ -160,20 +164,16 @@ class ModelV2:
         """Override to return custom metrics from your model.
 
         The stats will be reported as part of the learner stats, i.e.,
-            info:
-                learner:
-                    model:
-                        key1: metric1
-                        key2: metric2
+        info.learner.[policy_id, e.g. "default_policy"].model.key1=metric1
 
         Returns:
-            Dict of string keys to scalar tensors.
+            Dict[str, TensorType]: The custom metrics for this model.
         """
         return {}
 
     def __call__(
             self,
-            input_dict: Dict[str, TensorType],
+            input_dict: Union[SampleBatch, ModelInputDict],
             state: List[Any] = None,
             seq_lens: TensorType = None) -> (TensorType, List[TensorType]):
         """Call the model with the given input tensors and state.
@@ -184,11 +184,11 @@ class ModelV2:
         Custom models should override forward() instead of __call__.
 
         Args:
-            input_dict (dict): dictionary of input tensors, including "obs",
-                "prev_action", "prev_reward", "is_training"
+            input_dict (Union[SampleBatch, ModelInputDict]): Dictionary of
+                input tensors.
             state (list): list of state tensors with sizes matching those
                 returned by get_initial_state + the batch dimension
-            seq_lens (Tensor): 1d tensor holding input sequence lengths
+            seq_lens (Tensor): 1D tensor holding input sequence lengths.
 
         Returns:
             (outputs, state): The model output tensor of size
@@ -197,38 +197,72 @@ class ModelV2:
                 [BATCH, state_size_i].
         """
 
-        restored = input_dict.copy()
-        restored["obs"] = restore_original_dimensions(
-            input_dict["obs"], self.obs_space, self.framework)
-        if len(input_dict["obs"].shape) > 2:
-            restored["obs_flat"] = flatten(input_dict["obs"], self.framework)
+        # Original observations will be stored in "obs".
+        # Flattened (preprocessed) obs will be stored in "obs_flat".
+
+        # SampleBatch case: Models can now be called directly with a
+        # SampleBatch (which also includes tracking-dict case (deprecated now),
+        # where tensors get automatically converted).
+        if isinstance(input_dict, SampleBatch):
+            restored = input_dict.copy(shallow=True)
         else:
+            restored = input_dict.copy()
+
+        # Backward compatibility.
+        if not state:
+            state = []
+            i = 0
+            while "state_in_{}".format(i) in input_dict:
+                state.append(input_dict["state_in_{}".format(i)])
+                i += 1
+        if seq_lens is None:
+            seq_lens = input_dict.get(SampleBatch.SEQ_LENS)
+
+        # No Preprocessor used: `config._disable_preprocessor_api`=True.
+        # TODO: This is unnecessary for when no preprocessor is used.
+        #  Obs are not flat then anymore. However, we'll keep this
+        #  here for backward-compatibility until Preprocessors have
+        #  been fully deprecated.
+        if self.model_config.get("_disable_preprocessor_api"):
             restored["obs_flat"] = input_dict["obs"]
+        # Input to this Model went through a Preprocessor.
+        # Generate extra keys: "obs_flat" (vs "obs", which will hold the
+        # original obs).
+        else:
+            restored["obs"] = restore_original_dimensions(
+                input_dict["obs"], self.obs_space, self.framework)
+            try:
+                if len(input_dict["obs"].shape) > 2:
+                    restored["obs_flat"] = flatten(input_dict["obs"],
+                                                   self.framework)
+                else:
+                    restored["obs_flat"] = input_dict["obs"]
+            except AttributeError:
+                restored["obs_flat"] = input_dict["obs"]
+
         with self.context():
             res = self.forward(restored, state or [], seq_lens)
+
+        if isinstance(input_dict, SampleBatch):
+            input_dict.accessed_keys = restored.accessed_keys - {"obs_flat"}
+            input_dict.deleted_keys = restored.deleted_keys
+            input_dict.added_keys = restored.added_keys - {"obs_flat"}
+
         if ((not isinstance(res, list) and not isinstance(res, tuple))
                 or len(res) != 2):
             raise ValueError(
                 "forward() must return a tuple of (output, state) tensors, "
                 "got {}".format(res))
-        outputs, state = res
+        outputs, state_out = res
 
-        try:
-            shape = outputs.shape
-        except AttributeError:
-            raise ValueError("Output is not a tensor: {}".format(outputs))
-        else:
-            if len(shape) != 2 or int(shape[1]) != self.num_outputs:
-                raise ValueError(
-                    "Expected output shape of [None, {}], got {}".format(
-                        self.num_outputs, shape))
-        if not isinstance(state, list):
-            raise ValueError("State output is not a list: {}".format(state))
+        if not isinstance(state_out, list):
+            raise ValueError(
+                "State output is not a list: {}".format(state_out))
 
         self._last_output = outputs
-        return outputs, state
+        return outputs, state_out if len(state_out) > 0 else (state or [])
 
-    @PublicAPI
+    @Deprecated(new="ModelV2.__call__()", error=False)
     def from_batch(self, train_batch: SampleBatch,
                    is_training: bool = True) -> (TensorType, List[TensorType]):
         """Convenience function that calls this model with a tensor batch.
@@ -237,20 +271,16 @@ class ModelV2:
         right input dict, state, and seq len arguments.
         """
 
-        input_dict = {
-            "obs": train_batch[SampleBatch.CUR_OBS],
-            "is_training": is_training,
-        }
-        if SampleBatch.PREV_ACTIONS in train_batch:
-            input_dict["prev_actions"] = train_batch[SampleBatch.PREV_ACTIONS]
-        if SampleBatch.PREV_REWARDS in train_batch:
-            input_dict["prev_rewards"] = train_batch[SampleBatch.PREV_REWARDS]
+        input_dict = train_batch.copy()
+        input_dict["is_training"] = is_training
         states = []
         i = 0
-        while "state_in_{}".format(i) in train_batch:
-            states.append(train_batch["state_in_{}".format(i)])
+        while "state_in_{}".format(i) in input_dict:
+            states.append(input_dict["state_in_{}".format(i)])
             i += 1
-        return self.__call__(input_dict, states, train_batch.get("seq_lens"))
+        ret = self.__call__(input_dict, states,
+                            input_dict.get(SampleBatch.SEQ_LENS))
+        return ret
 
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.
@@ -283,7 +313,7 @@ class ModelV2:
 
         Args:
             as_dict(bool): Whether variables should be returned as dict-values
-                (using descriptive keys).
+                (using descriptive str keys).
 
         Returns:
             Union[List[any],Dict[str,any]]: The list (or dict if `as_dict` is
@@ -317,19 +347,6 @@ class ModelV2:
                 format.
         """
         return self.time_major is True
-
-
-class NullContextManager:
-    """No-op context manager"""
-
-    def __init__(self):
-        pass
-
-    def __enter__(self):
-        pass
-
-    def __exit__(self, *args):
-        pass
 
 
 @DeveloperAPI
@@ -366,15 +383,14 @@ def restore_original_dimensions(obs: TensorType,
         observation space.
     """
 
-    if hasattr(obs_space, "original_space"):
-        if tensorlib == "tf":
-            tensorlib = tf
-        elif tensorlib == "torch":
-            assert torch is not None
-            tensorlib = torch
-        return _unpack_obs(obs, obs_space.original_space, tensorlib=tensorlib)
-    else:
-        return obs
+    if tensorlib in ["tf", "tfe", "tf2"]:
+        assert tf is not None
+        tensorlib = tf
+    elif tensorlib == "torch":
+        assert torch is not None
+        tensorlib = torch
+    original_space = getattr(obs_space, "original_space", obs_space)
+    return _unpack_obs(obs, original_space, tensorlib=tensorlib)
 
 
 # Cache of preprocessors, for if the user is calling unpack obs often.
@@ -394,9 +410,7 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
         tensorlib: The library used to unflatten (reshape) the array/tensor
     """
 
-    if (isinstance(space, gym.spaces.Dict)
-            or isinstance(space, gym.spaces.Tuple)
-            or isinstance(space, Repeated)):
+    if isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple, Repeated)):
         if id(space) in _cache:
             prep = _cache[id(space)]
         else:
@@ -404,13 +418,20 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
             # Make an attempt to cache the result, if enough space left.
             if len(_cache) < 999:
                 _cache[id(space)] = prep
-        if len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]:
+        # Already unpacked?
+        if (isinstance(space, gym.spaces.Tuple) and
+                isinstance(obs, (list, tuple))) or \
+                (isinstance(space, gym.spaces.Dict) and isinstance(obs, dict)):
+            return obs
+        elif len(obs.shape) < 2 or obs.shape[-1] != prep.shape[0]:
             raise ValueError(
                 "Expected flattened obs shape of [..., {}], got {}".format(
                     prep.shape[0], obs.shape))
         offset = 0
         if tensorlib == tf:
-            batch_dims = [v.value for v in obs.shape[:-1]]
+            batch_dims = [
+                v if isinstance(v, int) else v.value for v in obs.shape[:-1]
+            ]
             batch_dims = [-1 if v is None else v for v in batch_dims]
         else:
             batch_dims = list(obs.shape[:-1])
@@ -438,7 +459,8 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
                     tensorlib.reshape(obs_slice, batch_dims + list(p.shape)),
                     v,
                     tensorlib=tensorlib)
-        elif isinstance(space, Repeated):
+        # Repeated space.
+        else:
             assert isinstance(prep, RepeatedValuesPreprocessor), prep
             child_size = prep.child_preprocessor.size
             # The list lengths are stored in the first slot of the flat obs.
@@ -451,8 +473,6 @@ def _unpack_obs(obs: TensorType, space: gym.Space,
                 with_repeat_dim, space.child_space, tensorlib=tensorlib)
             return RepeatedValues(
                 u, lengths=lengths, max_len=prep._obs_space.max_len)
-        else:
-            assert False, space
         return u
     else:
         return obs

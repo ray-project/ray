@@ -1,4 +1,8 @@
+import inspect
 import logging
+from typing import Optional, Union
+
+from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -8,18 +12,30 @@ logger = logging.getLogger(__name__)
 DEPRECATED_VALUE = -1
 
 
-def deprecation_warning(old, new=None, error=None):
-    """
-    Logs (via the `logger` object) or throws a deprecation warning/error.
+def deprecation_warning(
+        old: str,
+        new: Optional[str] = None,
+        *,
+        help: Optional[str] = None,
+        error: Optional[Union[bool, Exception]] = None) -> None:
+    """Warns (via the `logger` object) or throws a deprecation warning/error.
 
     Args:
         old (str): A description of the "thing" that is to be deprecated.
         new (Optional[str]): A description of the new "thing" that replaces it.
-        error (Optional[bool,Exception]): Whether or which exception to throw.
-            If True, throw ValueError.
+        help (Optional[str]): An optional help text to tell the user, what to
+            do instead of using `old`.
+        error (Optional[Union[bool, Exception]]): Whether or which exception to
+            raise. If True, raise ValueError. If False, just warn.
+            If error is-a subclass of Exception, raise that Exception.
+
+    Raises:
+        ValueError: If `error=True`.
+        Exception: Of type `error`, iff error is-a Exception subclass.
     """
     msg = "`{}` has been deprecated.{}".format(
-        old, (" Use `{}` instead.".format(new) if new else ""))
+        old, (" Use `{}` instead.".format(new) if new else f" {help}"
+              if help else ""))
 
     if error is True:
         raise ValueError(msg)
@@ -30,51 +46,55 @@ def deprecation_warning(old, new=None, error=None):
                        " This will raise an error in the future!")
 
 
-def renamed_class(cls, old_name):
-    """Helper class for renaming classes with a warning."""
+def Deprecated(old=None, *, new=None, help=None, error):
+    """Annotation for documenting a (soon-to-be) deprecated method.
 
-    class DeprecationWrapper(cls):
-        # note: **kw not supported for ray.remote classes
-        def __init__(self, *args, **kw):
-            new_name = cls.__module__ + "." + cls.__name__
-            deprecation_warning(old_name, new_name)
-            cls.__init__(self, *args, **kw)
+    Methods tagged with this decorator should produce a
+    `ray.rllib.utils.deprecation.deprecation_warning(old=..., error=False)`
+    to not break existing code at this point.
+    In a next major release, this warning can then be made an error
+    (error=True), which means at this point that the method is already
+    no longer supported but will still inform the user about the
+    deprecation event.
+    In a further major release, the method should be erased.
+    """
 
-    DeprecationWrapper.__name__ = cls.__name__
+    def _inner(obj):
+        # A deprecated class.
+        if inspect.isclass(obj):
+            # Patch the class' init method to raise the warning/error.
+            obj_init = obj.__init__
 
-    return DeprecationWrapper
+            def patched_init(*args, **kwargs):
+                if log_once(old or obj.__name__):
+                    deprecation_warning(
+                        old=old or obj.__name__,
+                        new=new,
+                        help=help,
+                        error=error,
+                    )
+                return obj_init(*args, **kwargs)
 
+            obj.__init__ = patched_init
+            # Return the patched class (with the warning/error when
+            # instantiated).
+            return obj
 
-def renamed_agent(cls):
-    """Helper class for renaming Agent => Trainer with a warning."""
+        # A deprecated class method or function.
+        # Patch with the warning/error at the beginning.
+        def _ctor(*args, **kwargs):
+            if log_once(old or obj.__name__):
+                deprecation_warning(
+                    old=old or obj.__name__,
+                    new=new,
+                    help=help,
+                    error=error,
+                )
+            # Call the deprecated method/function.
+            return obj(*args, **kwargs)
 
-    class DeprecationWrapper(cls):
-        def __init__(self, config=None, env=None, logger_creator=None):
-            old_name = cls.__name__.replace("Trainer", "Agent")
-            new_name = cls.__module__ + "." + cls.__name__
-            deprecation_warning(old_name, new_name)
-            cls.__init__(self, config, env, logger_creator)
+        # Return the patched class method/function.
+        return _ctor
 
-    DeprecationWrapper.__name__ = cls.__name__
-
-    return DeprecationWrapper
-
-
-def renamed_function(func, old_name):
-    """Helper function for renaming a function."""
-
-    def deprecation_wrapper(*args, **kwargs):
-        new_name = func.__module__ + "." + func.__name__
-        deprecation_warning(old_name, new_name)
-        return func(*args, **kwargs)
-
-    deprecation_wrapper.__name__ = func.__name__
-
-    return deprecation_wrapper
-
-
-def moved_function(func):
-    new_location = func.__module__
-    deprecation_warning("import {}".format(func.__name__),
-                        "import {}".format(new_location))
-    return func
+    # Return the prepared decorator.
+    return _inner

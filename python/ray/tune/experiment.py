@@ -1,51 +1,23 @@
+from typing import Dict, Sequence, Any
 import copy
+import inspect
 import logging
-from pickle import PicklingError
 import os
-from typing import Sequence
+
+from pickle import PicklingError
 
 from ray.tune.error import TuneError
-from ray.tune.registry import register_trainable, get_trainable_cls
+from ray.tune.registry import register_trainable
 from ray.tune.result import DEFAULT_RESULTS_DIR
 from ray.tune.sample import Domain
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, \
     TimeoutStopper
+from ray.tune.syncer import SyncConfig
 from ray.tune.utils import date_str, detect_checkpoint_function
 
+from ray.util.annotations import DeveloperAPI
+
 logger = logging.getLogger(__name__)
-
-
-def _raise_deprecation_note(deprecated, replacement, soft=False):
-    """User notification for deprecated parameter.
-
-    Arguments:
-        deprecated (str): Deprecated parameter.
-        replacement (str): Replacement parameter to use instead.
-        soft (bool): Fatal if True.
-    """
-    error_msg = ("`{deprecated}` is deprecated. Please use `{replacement}`. "
-                 "`{deprecated}` will be removed in future versions of "
-                 "Ray.".format(deprecated=deprecated, replacement=replacement))
-    if soft:
-        logger.warning(error_msg)
-    else:
-        raise DeprecationWarning(error_msg)
-
-
-def _raise_on_durable(trainable_name, sync_to_driver, upload_dir):
-    trainable_cls = get_trainable_cls(trainable_name)
-    from ray.tune.durable_trainable import DurableTrainable
-    if issubclass(trainable_cls, DurableTrainable):
-        if sync_to_driver is not False:
-            raise ValueError(
-                "EXPERIMENTAL: DurableTrainable will automatically sync "
-                "results to the provided upload_dir. "
-                "Set `sync_to_driver=False` to avoid data inconsistencies.")
-        if not upload_dir:
-            raise ValueError(
-                "EXPERIMENTAL: DurableTrainable will automatically sync "
-                "results to the provided upload_dir. "
-                "`upload_dir` must be provided.")
 
 
 def _validate_log_to_file(log_to_file):
@@ -73,6 +45,7 @@ def _validate_log_to_file(log_to_file):
     return stdout_file, stderr_file
 
 
+@DeveloperAPI
 class Experiment:
     """Tracks experiment specifications.
 
@@ -99,6 +72,9 @@ class Experiment:
             max_failures=2)
     """
 
+    # Keys that will be present in `public_spec` dict.
+    PUBLIC_KEYS = {"stop", "num_samples"}
+
     def __init__(self,
                  name,
                  run,
@@ -108,15 +84,12 @@ class Experiment:
                  resources_per_trial=None,
                  num_samples=1,
                  local_dir=None,
-                 upload_dir=None,
+                 sync_config=None,
                  trial_name_creator=None,
                  trial_dirname_creator=None,
-                 loggers=None,
                  log_to_file=False,
-                 sync_to_driver=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
-                 sync_on_checkpoint=True,
                  keep_checkpoints_num=None,
                  checkpoint_score_attr=None,
                  export_formats=None,
@@ -124,7 +97,9 @@ class Experiment:
                  restore=None):
 
         config = config or {}
-        if callable(run) and detect_checkpoint_function(run):
+        sync_config = sync_config or SyncConfig()
+        if callable(run) and not inspect.isclass(run) and \
+                detect_checkpoint_function(run):
             if checkpoint_at_end:
                 raise ValueError("'checkpoint_at_end' cannot be used with a "
                                  "checkpointable function. You can specify "
@@ -146,8 +121,8 @@ class Experiment:
         else:
             self.dir_name = "{}_{}".format(self.name, date_str())
 
-        if upload_dir:
-            self.remote_checkpoint_dir = os.path.join(upload_dir,
+        if sync_config.upload_dir:
+            self.remote_checkpoint_dir = os.path.join(sync_config.upload_dir,
                                                       self.dir_name)
         else:
             self.remote_checkpoint_dir = None
@@ -156,20 +131,29 @@ class Experiment:
         stopping_criteria = {}
         if not stop:
             pass
+        elif isinstance(stop, list):
+            bad_stoppers = [s for s in stop if not isinstance(s, Stopper)]
+            if bad_stoppers:
+                stopper_types = [type(s) for s in stop]
+                raise ValueError(
+                    "If you pass a list as the `stop` argument to "
+                    "`tune.run()`, each element must be an instance of "
+                    f"`tune.stopper.Stopper`. Got {stopper_types}.")
+            self._stopper = CombinedStopper(*stop)
         elif isinstance(stop, dict):
             stopping_criteria = stop
         elif callable(stop):
             if FunctionStopper.is_valid_function(stop):
                 self._stopper = FunctionStopper(stop)
-            elif issubclass(type(stop), Stopper):
+            elif isinstance(stop, Stopper):
                 self._stopper = stop
             else:
                 raise ValueError("Provided stop object must be either a dict, "
                                  "a function, or a subclass of "
-                                 "`ray.tune.Stopper`.")
+                                 f"`ray.tune.Stopper`. Got {type(stop)}.")
         else:
-            raise ValueError("Invalid stop criteria: {}. Must be a "
-                             "callable or dict".format(stop))
+            raise ValueError(f"Invalid stop criteria: {stop}. Must be a "
+                             f"callable or dict. Got {type(stop)}.")
 
         if time_budget_s:
             if self._stopper:
@@ -177,8 +161,6 @@ class Experiment:
                                                 TimeoutStopper(time_budget_s))
             else:
                 self._stopper = TimeoutStopper(time_budget_s)
-
-        _raise_on_durable(self._run_identifier, sync_to_driver, upload_dir)
 
         stdout_file, stderr_file = _validate_log_to_file(log_to_file)
 
@@ -190,16 +172,13 @@ class Experiment:
             "num_samples": num_samples,
             "local_dir": os.path.abspath(
                 os.path.expanduser(local_dir or DEFAULT_RESULTS_DIR)),
-            "upload_dir": upload_dir,
+            "sync_config": sync_config,
             "remote_checkpoint_dir": self.remote_checkpoint_dir,
             "trial_name_creator": trial_name_creator,
             "trial_dirname_creator": trial_dirname_creator,
-            "loggers": loggers,
             "log_to_file": (stdout_file, stderr_file),
-            "sync_to_driver": sync_to_driver,
             "checkpoint_freq": checkpoint_freq,
             "checkpoint_at_end": checkpoint_at_end,
-            "sync_on_checkpoint": sync_on_checkpoint,
             "keep_checkpoints_num": keep_checkpoints_num,
             "checkpoint_score_attr": checkpoint_score_attr,
             "export_formats": export_formats or [],
@@ -226,6 +205,9 @@ class Experiment:
             spec["config"] = spec.get("config", {})
             spec["config"]["env"] = spec["env"]
             del spec["env"]
+
+        if "sync_config" in spec and isinstance(spec["sync_config"], dict):
+            spec["sync_config"] = SyncConfig(**spec["sync_config"])
 
         spec = copy.deepcopy(spec)
 
@@ -275,21 +257,12 @@ class Experiment:
             try:
                 register_trainable(name, run_object)
             except (TypeError, PicklingError) as e:
-                msg = (
-                    f"{str(e)}. The trainable ({str(run_object)}) could not "
-                    "be serialized, which is needed for parallel execution. "
-                    "To diagnose the issue, try the following:\n\n"
-                    "\t- Run `tune.utils.diagnose_serialization(trainable)` "
-                    "to check if non-serializable variables are captured "
-                    "in scope.\n"
-                    "\t- Try reproducing the issue by calling "
-                    "`pickle.dumps(trainable)`.\n"
-                    "\t- If the error is typing-related, try removing "
-                    "the type annotations and try again.\n\n"
-                    "If you have any suggestions on how to improve "
-                    "this error message, please reach out to the "
-                    "Ray developers on github.com/ray-project/ray/issues/")
-                raise type(e)(msg) from None
+                extra_msg = ("Other options: "
+                             "\n-Try reproducing the issue by calling "
+                             "`pickle.dumps(trainable)`. "
+                             "\n-If the error is typing-related, try removing "
+                             "the type annotations and try again.")
+                raise type(e)(str(e) + " " + extra_msg) from None
             return name
         else:
             raise TuneError("Improper 'run' - not string nor trainable.")
@@ -311,6 +284,15 @@ class Experiment:
     def run_identifier(self):
         """Returns a string representing the trainable identifier."""
         return self._run_identifier
+
+    @property
+    def public_spec(self) -> Dict[str, Any]:
+        """Returns the spec dict with only the public-facing keys.
+
+        Intended to be used for passing information to callbacks,
+        Searchers and Schedulers.
+        """
+        return {k: v for k, v in self.spec.items() if k in self.PUBLIC_KEYS}
 
 
 def convert_to_experiment_list(experiments):

@@ -1,10 +1,20 @@
-from ray.serve.api import (accept_batch, Client, connect, start)  # noqa: F401
-from ray.serve.config import BackendConfig
+try:
+    from ray.serve.api import (start, get_replica_context, shutdown, ingress,
+                               deployment, get_deployment, list_deployments)
+    from ray.serve.batching import batch
+    from ray.serve.config import HTTPOptions
+except ModuleNotFoundError as e:
+    e.msg += (
+        ". You can run `pip install \"ray[serve]\"` to install all Ray Serve"
+        " dependencies.")
+    raise e
+
+# Mute the warning because Serve sometimes intentionally calls
+# ray.get inside async actors.
+import ray.worker
+ray.worker.blocking_get_inside_async_warned = True
 
 __all__ = [
-    "accept_batch",
-    "BackendConfig",
-    "connect"
-    "Client",
-    "start",
+    "batch", "start", "HTTPOptions", "get_replica_context", "shutdown",
+    "ingress", "deployment", "get_deployment", "list_deployments"
 ]

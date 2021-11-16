@@ -20,11 +20,12 @@ import os
 
 import ray
 from ray import tune
+from ray.rllib.agents.maml.maml_torch_policy import KLCoeffMixin as \
+    TorchKLCoeffMixin
 from ray.rllib.agents.ppo.ppo import PPOTrainer
 from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy, KLCoeffMixin, \
     ppo_surrogate_loss as tf_loss
-from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy, \
-    KLCoeffMixin as TorchKLCoeffMixin, ppo_surrogate_loss as torch_loss
+from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages, \
     Postprocessing
 from ray.rllib.examples.env.two_step_game import TwoStepGame
@@ -36,10 +37,11 @@ from ray.rllib.policy.tf_policy import LearningRateSchedule, \
     EntropyCoeffSchedule
 from ray.rllib.policy.torch_policy import LearningRateSchedule as TorchLR, \
     EntropyCoeffSchedule as TorchEntropyCoeffSchedule
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.rllib.utils.tf_ops import explained_variance, make_tf_callable
-from ray.rllib.utils.torch_ops import convert_to_torch_tensor
+from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
@@ -48,11 +50,31 @@ OPPONENT_OBS = "opponent_obs"
 OPPONENT_ACTION = "opponent_action"
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--torch", action="store_true")
-parser.add_argument("--as-test", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=100)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
-parser.add_argument("--stop-reward", type=float, default=7.99)
+parser.add_argument(
+    "--framework",
+    choices=["tf", "tf2", "tfe", "torch"],
+    default="tf",
+    help="The DL framework specifier.")
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=100,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=100000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=7.99,
+    help="Reward at which we stop training.")
 
 
 class CentralizedValueMixin:
@@ -83,7 +105,7 @@ def centralized_critic_postprocessing(policy,
         sample_batch[OPPONENT_ACTION] = opponent_batch[SampleBatch.ACTIONS]
 
         # overwrite default VF prediction with the central VF
-        if args.torch:
+        if args.framework == "torch":
             sample_batch[SampleBatch.VF_PREDS] = policy.compute_central_vf(
                 convert_to_torch_tensor(
                     sample_batch[SampleBatch.CUR_OBS], policy.device),
@@ -123,7 +145,8 @@ def centralized_critic_postprocessing(policy,
 # Copied from PPO but optimizing the central value function.
 def loss_with_central_critic(policy, model, dist_class, train_batch):
     CentralizedValueMixin.__init__(policy)
-    func = tf_loss if not policy.config["framework"] == "torch" else torch_loss
+    func = tf_loss if not policy.config["framework"] == "torch" \
+        else PPOTorchPolicy.loss
 
     vf_saved = model.value_function
     model.value_function = lambda: policy.model.central_value_function(
@@ -159,7 +182,7 @@ def central_vf_stats(policy, train_batch, grads):
     return {
         "vf_explained_var": explained_variance(
             train_batch[Postprocessing.VALUE_TARGETS],
-            policy._central_value_out),
+            policy._central_value_out)
     }
 
 
@@ -174,15 +197,23 @@ CCPPOTFPolicy = PPOTFPolicy.with_updates(
         CentralizedValueMixin
     ])
 
-CCPPOTorchPolicy = PPOTorchPolicy.with_updates(
-    name="CCPPOTorchPolicy",
-    postprocess_fn=centralized_critic_postprocessing,
-    loss_fn=loss_with_central_critic,
-    before_init=setup_torch_mixins,
-    mixins=[
-        TorchLR, TorchEntropyCoeffSchedule, TorchKLCoeffMixin,
-        CentralizedValueMixin
-    ])
+
+class CCPPOTorchPolicy(PPOTorchPolicy):
+    def __init__(self, observation_space, action_space, config):
+        super().__init__(observation_space, action_space, config)
+        self.compute_central_vf = self.model.central_value_function
+
+    @override(PPOTorchPolicy)
+    def loss(self, model, dist_class, train_batch):
+        return loss_with_central_critic(self, model, dist_class, train_batch)
+
+    @override(PPOTorchPolicy)
+    def postprocess_trajectory(self,
+                               sample_batch,
+                               other_agent_batches=None,
+                               episode=None):
+        return centralized_critic_postprocessing(self, sample_batch,
+                                                 other_agent_batches, episode)
 
 
 def get_policy_class(config):
@@ -202,7 +233,7 @@ if __name__ == "__main__":
 
     ModelCatalog.register_custom_model(
         "cc_model", TorchCentralizedCriticModel
-        if args.torch else CentralizedCriticModel)
+        if args.framework == "torch" else CentralizedCriticModel)
 
     config = {
         "env": TwoStepGame,
@@ -213,18 +244,19 @@ if __name__ == "__main__":
         "multiagent": {
             "policies": {
                 "pol1": (None, Discrete(6), TwoStepGame.action_space, {
-                    "framework": "torch" if args.torch else "tf",
+                    "framework": args.framework,
                 }),
                 "pol2": (None, Discrete(6), TwoStepGame.action_space, {
-                    "framework": "torch" if args.torch else "tf",
+                    "framework": args.framework,
                 }),
             },
-            "policy_mapping_fn": lambda x: "pol1" if x == 0 else "pol2",
+            "policy_mapping_fn": (
+                lambda aid, **kwargs: "pol1" if aid == 0 else "pol2"),
         },
         "model": {
             "custom_model": "cc_model",
         },
-        "framework": "torch" if args.torch else "tf",
+        "framework": args.framework,
     }
 
     stop = {

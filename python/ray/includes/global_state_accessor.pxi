@@ -17,15 +17,13 @@ cdef class GlobalStateAccessor:
     cdef:
         unique_ptr[CGlobalStateAccessor] inner
 
-    def __init__(self, redis_address, redis_password,
-                 c_bool is_test_client=False):
+    def __init__(self, redis_address, redis_password):
         if not redis_password:
             redis_password = ""
         self.inner.reset(
             new CGlobalStateAccessor(
                 redis_address.encode("ascii"),
                 redis_password.encode("ascii"),
-                is_test_client,
             ),
         )
 
@@ -45,6 +43,12 @@ cdef class GlobalStateAccessor:
             result = self.inner.get().GetAllJobInfo()
         return result
 
+    def get_next_job_id(self):
+        cdef CJobID cjob_id
+        with nogil:
+            cjob_id = self.inner.get().GetNextJobID()
+        return cjob_id.ToInt()
+
     def get_node_table(self):
         cdef c_vector[c_string] result
         with nogil:
@@ -63,19 +67,13 @@ cdef class GlobalStateAccessor:
             result = self.inner.get().GetAllProfileInfo()
         return result
 
-    def get_object_table(self):
-        cdef c_vector[c_string] result
+    def get_all_resource_usage(self):
+        """Get newest resource usage of all nodes from GCS service."""
+        cdef unique_ptr[c_string] result
         with nogil:
-            result = self.inner.get().GetAllObjectInfo()
-        return result
-
-    def get_object_info(self, object_id):
-        cdef unique_ptr[c_string] object_info
-        cdef CObjectID cobject_id = CObjectID.FromBinary(object_id.binary())
-        with nogil:
-            object_info = self.inner.get().GetObjectInfo(cobject_id)
-        if object_info:
-            return c_string(object_info.get().data(), object_info.get().size())
+            result = self.inner.get().GetAllResourceUsage()
+        if result:
+            return c_string(result.get().data(), result.get().size())
         return None
 
     def get_actor_table(self):
@@ -103,7 +101,7 @@ cdef class GlobalStateAccessor:
     def get_worker_table(self):
         cdef c_vector[c_string] result
         with nogil:
-            self.inner.get().GetAllWorkerInfo()
+            result = self.inner.get().GetAllWorkerInfo()
         return result
 
     def get_worker_info(self, worker_id):
@@ -122,6 +120,12 @@ cdef class GlobalStateAccessor:
             result = self.inner.get().AddWorkerInfo(cserialized_string)
         return result
 
+    def get_placement_group_table(self):
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllPlacementGroupInfo()
+        return result
+
     def get_placement_group_info(self, placement_group_id):
         cdef unique_ptr[c_string] result
         cdef CPlacementGroupID cplacement_group_id = (
@@ -132,3 +136,28 @@ cdef class GlobalStateAccessor:
         if result:
             return c_string(result.get().data(), result.get().size())
         return None
+
+    def get_placement_group_by_name(self, placement_group_name, ray_namespace):
+        cdef unique_ptr[c_string] result
+        cdef c_string cplacement_group_name = placement_group_name
+        cdef c_string cray_namespace = ray_namespace
+        with nogil:
+            result = self.inner.get().GetPlacementGroupByName(
+                cplacement_group_name, cray_namespace)
+        if result:
+            return c_string(result.get().data(), result.get().size())
+        return None
+
+    def get_system_config(self):
+        return self.inner.get().GetSystemConfig()
+
+    def get_node_to_connect_for_driver(self, node_ip_address):
+        cdef CRayStatus status
+        cdef c_string cnode_ip_address = node_ip_address
+        cdef c_string cnode_to_connect
+        with nogil:
+            status = self.inner.get().GetNodeToConnectForDriver(
+                cnode_ip_address, &cnode_to_connect)
+        if not status.ok():
+            raise RuntimeError(status.message())
+        return cnode_to_connect

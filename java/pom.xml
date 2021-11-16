@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.ray</groupId>
   <artifactId>ray-superpom</artifactId>
-  <version>1.1.0-SNAPSHOT</version>
+  <version>2.0.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>Ray Project Parent POM</name>
   <description>An open source framework that provides a simple, universal API for building distributed applications.
@@ -56,14 +56,32 @@
   <modules>
     <module>api</module>
     <module>runtime</module>
+    <module>serve</module>
     <module>test</module>
   </modules>
 
   <properties>
     <java.version>1.8</java.version>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <projetct.version>1.1.0-SNAPSHOT</projetct.version>
+    <projetct.version>2.0.0-SNAPSHOT</projetct.version>
+    <projetct.version>2.0.0-SNAPSHOT</projetct.version>
   </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.testng</groupId>
+        <artifactId>testng</artifactId>
+        <version>7.3.0</version>
+        <exclusions>
+          <exclusion>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+          </exclusion>
+        </exclusions>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
 
   <profiles>
     <profile>
@@ -134,7 +152,7 @@
             </execution>
           </executions>
           <configuration>
-            <additionalparam>-Xdoclint:none</additionalparam>
+            <doclint>none</doclint>
           </configuration>
         </plugin>
 
@@ -176,7 +194,14 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-checkstyle-plugin</artifactId>
-          <version>3.0.0</version>
+          <version>3.1.0</version>
+          <dependencies>
+            <dependency>
+              <groupId>com.puppycrawl.tools</groupId>
+              <artifactId>checkstyle</artifactId>
+              <version>8.19</version>
+            </dependency>
+          </dependencies>
           <executions>
             <execution>
               <id>validate</id>
@@ -218,6 +243,27 @@
             </execution>
           </executions>
         </plugin>
+
+        <plugin>
+          <groupId>com.diffplug.spotless</groupId>
+          <artifactId>spotless-maven-plugin</artifactId>
+          <version>2.5.0</version>
+          <configuration>
+            <java>
+              <excludes>
+                <exclude>**/RayCall.java</exclude>
+                <exclude>**/ActorCall.java</exclude>
+                <exclude>**/PyActorCall.java</exclude>
+                <exclude>**/runtime/generated/**/*.*</exclude>
+                <exclude>**/serve/generated/**/*.*</exclude>
+              </excludes>
+              <googleJavaFormat>
+                <version>1.7</version>
+                <style>GOOGLE</style>
+              </googleJavaFormat>
+            </java>
+          </configuration>
+        </plugin>
       </plugins>
     </pluginManagement>
     <plugins>
@@ -228,6 +274,10 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-source-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
       </plugin>
     </plugins>
   </build>

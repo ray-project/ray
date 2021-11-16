@@ -16,6 +16,8 @@
 
 #include <boost/asio.hpp>
 
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/asio/periodical_runner.h"
 #include "ray/gcs/redis_context.h"
 
 namespace ray {
@@ -36,7 +38,7 @@ class GcsRedisFailureDetector {
   /// \param io_service The event loop to run the monitor on.
   /// \param redis_context The redis context is used to ping redis.
   /// \param callback Callback that will be called when redis is detected as not alive.
-  explicit GcsRedisFailureDetector(boost::asio::io_service &io_service,
+  explicit GcsRedisFailureDetector(instrumented_io_context &io_service,
                                    std::shared_ptr<RedisContext> redis_context,
                                    std::function<void()> callback);
 
@@ -44,12 +46,6 @@ class GcsRedisFailureDetector {
   void Start();
 
  protected:
-  /// A periodic timer that fires on every gcs detect period.
-  void Tick();
-
-  /// Schedule another tick after a short time.
-  void ScheduleTick();
-
   /// Check that if redis is inactive.
   void DetectRedis();
 
@@ -58,8 +54,8 @@ class GcsRedisFailureDetector {
   /// TODO(ffbin): We will use redis client later.
   std::shared_ptr<RedisContext> redis_context_;
 
-  /// A timer that ticks every gcs_detect_timeout_milliseconds.
-  boost::asio::deadline_timer detect_timer_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
 
   /// A function is called when redis is detected to be unavailable.
   std::function<void()> callback_;

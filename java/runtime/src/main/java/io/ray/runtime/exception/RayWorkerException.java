@@ -1,8 +1,6 @@
 package io.ray.runtime.exception;
 
-/**
- * Indicates that the worker died unexpectedly while executing a task.
- */
+/** Indicates that the worker died unexpectedly while executing a task. */
 public class RayWorkerException extends RayException {
 
   public RayWorkerException() {
@@ -16,5 +14,4 @@ public class RayWorkerException extends RayException {
   public RayWorkerException(String message, Throwable cause) {
     super(message, cause);
   }
-
 }

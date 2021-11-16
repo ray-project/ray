@@ -1,18 +1,23 @@
 import copy
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
+import ray
 import ray.cloudpickle as pickle
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
     Uniform
+from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
+    UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
 from ray.tune.utils.util import unflatten_dict
-from zoopt import ValueType
 
 try:
     import zoopt
+    from zoopt import Solution, ValueType
 except ImportError:
     zoopt = None
+    Solution = ValueType = None
 
 from ray.tune.suggest import Searcher
 
@@ -27,7 +32,7 @@ class ZOOptSearch(Searcher):
     Asynchronous Sequential RAndomized COordinate Shrinking (ASRacos)
     is implemented in Tune.
 
-    To use ZOOptSearch, install zoopt (>=0.4.0): ``pip install -U zoopt``.
+    To use ZOOptSearch, install zoopt (>=0.4.1): ``pip install -U zoopt``.
 
     Tune automatically converts search spaces to ZOOpt"s format:
 
@@ -42,12 +47,18 @@ class ZOOptSearch(Searcher):
             "height": tune.uniform(-10, 10)
         }
 
+        zoopt_search_config = {
+            "parallel_num": 8,  # how many workers to parallel
+        }
+
         zoopt_search = ZOOptSearch(
             algo="Asracos",  # only support Asracos currently
             budget=20,  # must match `num_samples` in `tune.run()`.
             dim_dict=dim_dict,
             metric="mean_loss",
-            mode="min")
+            mode="min",
+            **zoopt_search_config
+        )
 
         tune.run(my_objective,
             config=config,
@@ -67,11 +78,16 @@ class ZOOptSearch(Searcher):
 
         dim_dict = {
             "height": (ValueType.CONTINUOUS, [-10, 10], 1e-2),
-            "width": (ValueType.DISCRETE, [-10, 10], False)
+            "width": (ValueType.DISCRETE, [-10, 10], False),
+            "layers": (ValueType.GRID, [4, 8, 16])
         }
 
         "config": {
             "iterations": 10,  # evaluation times
+        }
+
+        zoopt_search_config = {
+            "parallel_num": 8,  # how many workers to parallel
         }
 
         zoopt_search = ZOOptSearch(
@@ -79,7 +95,9 @@ class ZOOptSearch(Searcher):
             budget=20,  # must match `num_samples` in `tune.run()`.
             dim_dict=dim_dict,
             metric="mean_loss",
-            mode="min")
+            mode="min",
+            **zoopt_search_config
+        )
 
         tune.run(my_objective,
             config=config,
@@ -94,14 +112,22 @@ class ZOOptSearch(Searcher):
         budget (int): Number of samples.
         dim_dict (dict): Dimension dictionary.
             For continuous dimensions: (continuous, search_range, precision);
-            For discrete dimensions: (discrete, search_range, has_order).
+            For discrete dimensions: (discrete, search_range, has_order);
+            For grid dimensions: (grid, grid_list).
             More details can be found in zoopt package.
-        metric (str): The training result objective value attribute.
-            Defaults to "episode_reward_mean".
+        metric (str): The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
-            Defaults to "min".
-
+        points_to_evaluate (list): Initial parameter suggestions to be run
+            first. This is for when you already have some good parameters
+            you want to run first to help the algorithm make better suggestions
+            for future parameters. Needs to be a list of dicts containing the
+            configurations.
+        parallel_num (int): How many workers to parallel. Note that initial
+            phase may start less workers than this number. More details can
+            be found in zoopt package.
     """
 
     optimizer = None
@@ -112,8 +138,11 @@ class ZOOptSearch(Searcher):
                  dim_dict: Optional[Dict] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
+                 points_to_evaluate: Optional[List[Dict]] = None,
+                 parallel_num: int = 1,
                  **kwargs):
-        assert zoopt is not None, "Zoopt not found - please install zoopt."
+        assert zoopt is not None, "ZOOpt not found - please install zoopt " \
+                                  "by `pip install -U zoopt`."
         assert budget is not None, "`budget` should not be None!"
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
@@ -122,6 +151,15 @@ class ZOOptSearch(Searcher):
                          ], "`algo` must be in ['asracos', 'sracos'] currently"
 
         self._algo = _algo
+
+        if isinstance(dim_dict, dict) and dim_dict:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(dim_dict)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(
+                        par="dim_dict", cls=type(self)))
+                dim_dict = self.convert_search_space(dim_dict, join=True)
+
         self._dim_dict = dim_dict
         self._budget = budget
 
@@ -130,6 +168,9 @@ class ZOOptSearch(Searcher):
             self._metric_op = -1.
         elif mode == "min":
             self._metric_op = 1.
+
+        self._points_to_evaluate = copy.deepcopy(points_to_evaluate)
+
         self._live_trial_mapping = {}
 
         self._dim_keys = []
@@ -137,26 +178,45 @@ class ZOOptSearch(Searcher):
         self.best_solution_list = []
         self.optimizer = None
 
-        super(ZOOptSearch, self).__init__(
-            metric=self._metric, mode=mode, **kwargs)
+        self.kwargs = kwargs
+
+        self.parallel_num = parallel_num
+
+        super(ZOOptSearch, self).__init__(metric=self._metric, mode=mode)
 
         if self._dim_dict:
-            self.setup_zoopt()
+            self._setup_zoopt()
 
-    def setup_zoopt(self):
+    def _setup_zoopt(self):
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
         _dim_list = []
         for k in self._dim_dict:
             self._dim_keys.append(k)
             _dim_list.append(self._dim_dict[k])
 
+        init_samples = None
+        if self._points_to_evaluate:
+            logger.warning("`points_to_evaluate` is ignored by ZOOpt in "
+                           "versions <= 0.4.1.")
+            init_samples = [
+                Solution(x=tuple(point[dim] for dim in self._dim_keys))
+                for point in self._points_to_evaluate
+            ]
         dim = zoopt.Dimension2(_dim_list)
-        par = zoopt.Parameter(budget=self._budget)
+        par = zoopt.Parameter(budget=self._budget, init_samples=init_samples)
         if self._algo == "sracos" or self._algo == "asracos":
             from zoopt.algos.opt_algorithms.racos.sracos import SRacosTune
-            self.optimizer = SRacosTune(dimension=dim, parameter=par)
+            self.optimizer = SRacosTune(
+                dimension=dim,
+                parameter=par,
+                parallel_num=self.parallel_num,
+                **self.kwargs)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         if self._dim_dict:
             return False
         space = self.convert_search_space(config)
@@ -172,18 +232,29 @@ class ZOOptSearch(Searcher):
         elif self._mode == "min":
             self._metric_op = 1.
 
-        self.setup_zoopt()
+        self._setup_zoopt()
         return True
 
     def suggest(self, trial_id: str) -> Optional[Dict]:
         if not self._dim_dict or not self.optimizer:
             raise RuntimeError(
-                "Trying to sample a configuration from {}, but no search "
-                "space has been defined. Either pass the `{}` argument when "
-                "instantiating the search algorithm, or pass a `config` to "
-                "`tune.run()`.".format(self.__class__.__name__, "space"))
+                UNDEFINED_SEARCH_SPACE.format(
+                    cls=self.__class__.__name__, space="dim_dict"))
+        if not self._metric or not self._mode:
+            raise RuntimeError(
+                UNDEFINED_METRIC_MODE.format(
+                    cls=self.__class__.__name__,
+                    metric=self._metric,
+                    mode=self._mode))
 
         _solution = self.optimizer.suggest()
+
+        if _solution == "FINISHED":
+            if ray.__version__ >= "0.8.7":
+                return Searcher.FINISHED
+            else:
+                return None
+
         if _solution:
             self.solution_dict[str(trial_id)] = _solution
             _x = _solution.get_x()
@@ -206,22 +277,27 @@ class ZOOptSearch(Searcher):
         del self._live_trial_mapping[trial_id]
 
     def save(self, checkpoint_path: str):
-        trials_object = self.optimizer
-        with open(checkpoint_path, "wb") as output:
-            pickle.dump(trials_object, output)
+        save_object = self.__dict__
+        with open(checkpoint_path, "wb") as outputFile:
+            pickle.dump(save_object, outputFile)
 
     def restore(self, checkpoint_path: str):
-        with open(checkpoint_path, "rb") as input:
-            trials_object = pickle.load(input)
-        self.optimizer = trials_object
+        with open(checkpoint_path, "rb") as inputFile:
+            save_object = pickle.load(inputFile)
+        if not isinstance(save_object, dict):
+            # backwards compatibility
+            # Deprecate: 1.8
+            self.optimizer = save_object
+        self.__dict__.update(save_object)
 
     @staticmethod
-    def convert_search_space(spec: Dict) -> Dict[str, Tuple]:
+    def convert_search_space(spec: Dict,
+                             join: bool = False) -> Dict[str, Tuple]:
         spec = copy.deepcopy(spec)
         resolved_vars, domain_vars, grid_vars = parse_spec_vars(spec)
 
         if not domain_vars and not grid_vars:
-            return []
+            return {}
 
         if grid_vars:
             raise ValueError(
@@ -244,27 +320,29 @@ class ZOOptSearch(Searcher):
 
             elif isinstance(domain, Integer):
                 if isinstance(sampler, Uniform):
-                    return (ValueType.DISCRETE, [domain.lower, domain.upper],
-                            True)
+                    return (ValueType.DISCRETE,
+                            [domain.lower, domain.upper - 1], True)
 
             elif isinstance(domain, Categorical):
-                # Categorical variables would use ValjeType.DISCRETE with
+                # Categorical variables would use ValueType.DISCRETE with
                 # has_partial_order=False, however, currently we do not
                 # keep track of category values and cannot automatically
                 # translate back and forth between them.
-                raise ValueError(
-                    "ZOOpt does not support automatic conversion for "
-                    "categorical variables. Please instantiate ZOOpt with "
-                    "a manually defined search space.")
+                if isinstance(sampler, Uniform):
+                    return (ValueType.GRID, domain.categories)
 
             raise ValueError("ZOOpt does not support parameters of type "
                              "`{}` with samplers of type `{}`".format(
                                  type(domain).__name__,
                                  type(domain.sampler).__name__))
 
-        spec = {
+        conv_spec = {
             "/".join(path): resolve_value(domain)
             for path, domain in domain_vars
         }
 
-        return spec
+        if join:
+            spec.update(conv_spec)
+            conv_spec = spec
+
+        return conv_spec

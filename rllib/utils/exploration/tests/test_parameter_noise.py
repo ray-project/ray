@@ -1,20 +1,29 @@
 import numpy as np
 import unittest
 
+import ray
 import ray.rllib.agents.ddpg as ddpg
 import ray.rllib.agents.dqn as dqn
 from ray.rllib.utils.test_utils import check, framework_iterator
 
 
 class TestParameterNoise(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init(num_cpus=4)
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_ddpg_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
-            ddpg.DDPGTrainer, ddpg.DEFAULT_CONFIG, "Pendulum-v0", {},
+            ddpg.DDPGTrainer, ddpg.DEFAULT_CONFIG, "Pendulum-v1", {},
             np.array([1.0, 0.0, -1.0]))
 
     def test_dqn_parameter_noise(self):
         self.do_test_parameter_noise_exploration(
-            dqn.DQNTrainer, dqn.DEFAULT_CONFIG, "FrozenLake-v0", {
+            dqn.DQNTrainer, dqn.DEFAULT_CONFIG, "FrozenLake-v1", {
                 "is_slippery": False,
                 "map_name": "4x4"
             }, np.array(0))
@@ -36,7 +45,11 @@ class TestParameterNoise(unittest.TestCase):
 
             trainer = trainer_cls(config=config, env=env)
             policy = trainer.get_policy()
-            pol_sess = getattr(policy, "_sess", None)
+            pol_sess = policy.get_session()
+            # Remove noise that has been added during policy initialization
+            # (exploration.postprocess_trajectory does add noise to measure
+            # the delta).
+            policy.exploration._remove_noise(tf_sess=pol_sess)
 
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             noise_before = self._get_current_noise(policy, fw)
@@ -54,7 +67,7 @@ class TestParameterNoise(unittest.TestCase):
             check(initial_weights, weights_after_ep_start)
 
             # Setting explore=False should always return the same action.
-            a_ = trainer.compute_action(obs, explore=False)
+            a_ = trainer.compute_single_action(obs, explore=False)
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             noise = self._get_current_noise(policy, fw)
             # We sampled the first noise (not zero anymore).
@@ -62,7 +75,7 @@ class TestParameterNoise(unittest.TestCase):
             # But still not applied b/c explore=False.
             check(self._get_current_weight(policy, fw), initial_weights)
             for _ in range(10):
-                a = trainer.compute_action(obs, explore=False)
+                a = trainer.compute_single_action(obs, explore=False)
                 check(a, a_)
                 # Noise never gets applied.
                 check(self._get_current_weight(policy, fw), initial_weights)
@@ -75,7 +88,7 @@ class TestParameterNoise(unittest.TestCase):
             actions = []
             current_weight = None
             for _ in range(10):
-                actions.append(trainer.compute_action(obs))
+                actions.append(trainer.compute_single_action(obs))
                 self.assertTrue(policy.exploration.weights_are_currently_noisy)
                 # Now, noise actually got applied (explore=True).
                 current_weight = self._get_current_weight(policy, fw)
@@ -88,6 +101,7 @@ class TestParameterNoise(unittest.TestCase):
             policy.exploration.on_episode_end(policy, tf_sess=pol_sess)
             weights_after_ep_end = self._get_current_weight(policy, fw)
             check(current_weight - noise, weights_after_ep_end, decimals=5)
+            trainer.stop()
 
             # DQN with ParameterNoise exploration (config["explore"]=False).
             # ----
@@ -96,6 +110,12 @@ class TestParameterNoise(unittest.TestCase):
             config["explore"] = False
             trainer = trainer_cls(config=config, env=env)
             policy = trainer.get_policy()
+            pol_sess = policy.get_session()
+            # Remove noise that has been added during policy initialization
+            # (exploration.postprocess_trajectory does add noise to measure
+            # the delta).
+            policy.exploration._remove_noise(tf_sess=pol_sess)
+
             self.assertFalse(policy.exploration.weights_are_currently_noisy)
             initial_weights = self._get_current_weight(policy, fw)
 
@@ -117,14 +137,14 @@ class TestParameterNoise(unittest.TestCase):
 
             # Setting explore=False or None should always return the same
             # action.
-            a_ = trainer.compute_action(obs, explore=False)
+            a_ = trainer.compute_single_action(obs, explore=False)
             # Now we have re-sampled.
             noise = self._get_current_noise(policy, fw)
             check(noise, 0.0, false=True)
             for _ in range(5):
-                a = trainer.compute_action(obs, explore=None)
+                a = trainer.compute_single_action(obs, explore=None)
                 check(a, a_)
-                a = trainer.compute_action(obs, explore=False)
+                a = trainer.compute_single_action(obs, explore=False)
                 check(a, a_)
 
             # Pseudo-end the episode and compare weights again.
@@ -137,6 +157,7 @@ class TestParameterNoise(unittest.TestCase):
             # beginning of episode).
             noise_after = self._get_current_noise(policy, fw)
             check(noise, noise_after)
+            trainer.stop()
 
             # Switch off underlying exploration entirely.
             # ----
@@ -165,10 +186,11 @@ class TestParameterNoise(unittest.TestCase):
             # deterministic).
             policy = trainer.get_policy()
             policy.exploration.on_episode_start(policy, tf_sess=pol_sess)
-            a_ = trainer.compute_action(obs)
+            a_ = trainer.compute_single_action(obs)
             for _ in range(10):
-                a = trainer.compute_action(obs, explore=True)
+                a = trainer.compute_single_action(obs, explore=True)
                 check(a, a_)
+            trainer.stop()
 
     def _get_current_noise(self, policy, fw):
         # If noise not even created yet, return 0.0.

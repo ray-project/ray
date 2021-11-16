@@ -12,25 +12,26 @@ import ray
 import ray.experimental.tf_utils
 from ray.rllib.agents.ddpg.ddpg_tf_policy import ComputeTDErrorMixin, \
     TargetNetworkMixin
-from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio
+from ray.rllib.agents.dqn.dqn_tf_policy import postprocess_nstep_and_prio, \
+    PRIO_WEIGHTS
 from ray.rllib.agents.sac.sac_tf_model import SACTFModel
 from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
-from ray.rllib.evaluation.episode import MultiAgentEpisode
-from ray.rllib.models import ModelCatalog
+from ray.rllib.evaluation.episode import Episode
+from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
-    DiagGaussian, SquashedGaussian, TFActionDistribution
+    DiagGaussian, Dirichlet, SquashedGaussian, TFActionDistribution
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.framework import get_variable, try_import_tf, \
-    try_import_tfp
+from ray.rllib.utils.framework import get_variable, try_import_tf
+from ray.rllib.utils.spaces.simplex import Simplex
+from ray.rllib.utils.tf_utils import huber_loss
 from ray.rllib.utils.typing import AgentID, LocalOptimizer, ModelGradients, \
     TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
-tfp = try_import_tfp()
 
 logger = logging.getLogger(__name__)
 
@@ -51,40 +52,32 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
             target model will be created in this function and assigned to
             `policy.target_model`.
     """
-    # With separate state-preprocessor (before obs+action concat).
-    if config["use_state_preprocessor"]:
-        num_outputs = 256  # Flatten last Conv2D to this many nodes.
-    # No separate state-preprocessor: concat obs+actions right away.
-    else:
-        num_outputs = 0
-        # No state preprocessor: fcnet_hiddens should be empty.
-        if config["model"]["fcnet_hiddens"]:
-            logger.warning(
-                "When not using a state-preprocessor with SAC, `fcnet_hiddens`"
-                " will be set to an empty list! Any hidden layer sizes are "
-                "defined via `policy_model.fcnet_hiddens` and "
-                "`Q_model.fcnet_hiddens`.")
-            config["model"]["fcnet_hiddens"] = []
-
     # Force-ignore any additionally provided hidden layer sizes.
     # Everything should be configured using SAC's "Q_model" and "policy_model"
     # settings.
+    policy_model_config = MODEL_DEFAULTS.copy()
+    policy_model_config.update(config["policy_model"])
+    q_model_config = MODEL_DEFAULTS.copy()
+    q_model_config.update(config["Q_model"])
+
+    default_model_cls = SACTorchModel if config["framework"] == "torch" \
+        else SACTFModel
+
     model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
-        num_outputs=num_outputs,
+        num_outputs=None,
         model_config=config["model"],
         framework=config["framework"],
-        model_interface=SACTorchModel
-        if config["framework"] == "torch" else SACTFModel,
+        default_model=default_model_cls,
         name="sac_model",
-        actor_hidden_activation=config["policy_model"]["fcnet_activation"],
-        actor_hiddens=config["policy_model"]["fcnet_hiddens"],
-        critic_hidden_activation=config["Q_model"]["fcnet_activation"],
-        critic_hiddens=config["Q_model"]["fcnet_hiddens"],
+        policy_model_config=policy_model_config,
+        q_model_config=q_model_config,
         twin_q=config["twin_q"],
         initial_alpha=config["initial_alpha"],
         target_entropy=config["target_entropy"])
+
+    assert isinstance(model, default_model_cls)
 
     # Create an exact copy of the model and store it in `policy.target_model`.
     # This will be used for tau-synched Q-target models that run behind the
@@ -93,19 +86,18 @@ def build_sac_model(policy: Policy, obs_space: gym.spaces.Space,
     policy.target_model = ModelCatalog.get_model_v2(
         obs_space=obs_space,
         action_space=action_space,
-        num_outputs=num_outputs,
+        num_outputs=None,
         model_config=config["model"],
         framework=config["framework"],
-        model_interface=SACTorchModel
-        if config["framework"] == "torch" else SACTFModel,
+        default_model=default_model_cls,
         name="target_sac_model",
-        actor_hidden_activation=config["policy_model"]["fcnet_activation"],
-        actor_hiddens=config["policy_model"]["fcnet_hiddens"],
-        critic_hidden_activation=config["Q_model"]["fcnet_activation"],
-        critic_hiddens=config["Q_model"]["fcnet_hiddens"],
+        policy_model_config=policy_model_config,
+        q_model_config=q_model_config,
         twin_q=config["twin_q"],
         initial_alpha=config["initial_alpha"],
         target_entropy=config["target_entropy"])
+
+    assert isinstance(policy.target_model, default_model_cls)
 
     return model
 
@@ -114,7 +106,7 @@ def postprocess_trajectory(
         policy: Policy,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[AgentID, SampleBatch]] = None,
-        episode: Optional[MultiAgentEpisode] = None) -> SampleBatch:
+        episode: Optional[Episode] = None) -> SampleBatch:
     """Postprocesses a trajectory and returns the processed trajectory.
 
     The trajectory contains only data from one episode and from one agent.
@@ -132,7 +124,7 @@ def postprocess_trajectory(
         other_agent_batches (Optional[Dict[AgentID, SampleBatch]]): Optional
             dict of AgentIDs mapping to other agents' trajectory data (from the
             same episode). NOTE: The other agents use the same policy.
-        episode (Optional[MultiAgentEpisode]): Optional multi-agent episode
+        episode (Optional[Episode]): Optional multi-agent episode
             object in which the agents operated.
 
     Returns:
@@ -141,20 +133,33 @@ def postprocess_trajectory(
     return postprocess_nstep_and_prio(policy, sample_batch)
 
 
-def _get_dist_class(config: TrainerConfigDict, action_space: gym.spaces.Space
-                    ) -> Type[TFActionDistribution]:
+def _get_dist_class(policy: Policy,
+                    config: TrainerConfigDict,
+                    action_space: gym.spaces.Space) -> \
+        Type[TFActionDistribution]:
     """Helper function to return a dist class based on config and action space.
 
     Args:
+        policy (Policy): The policy for which to return the action
+            dist class.
         config (TrainerConfigDict): The Trainer's config dict.
         action_space (gym.spaces.Space): The action space used.
 
     Returns:
         Type[TFActionDistribution]: A TF distribution class.
     """
-    if isinstance(action_space, Discrete):
+    if hasattr(policy, "dist_class") and policy.dist_class is not None:
+        return policy.dist_class
+    elif config["model"].get("custom_action_dist"):
+        action_dist_class, _ = ModelCatalog.get_action_dist(
+            action_space, config["model"], framework="tf")
+        return action_dist_class
+    elif isinstance(action_space, Discrete):
         return Categorical
+    elif isinstance(action_space, Simplex):
+        return Dirichlet
     else:
+        assert isinstance(action_space, Box)
         if config["normalize_actions"]:
             return SquashedGaussian if \
                 not config["_use_beta_distribution"] else Beta
@@ -193,16 +198,17 @@ def get_distribution_inputs_and_class(
             dist inputs, dist class, and a list of internal state outputs
             (in the RNN case).
     """
-    # Get base-model output (w/o the SAC specific parts of the network).
-    model_out, state_out = model({
+    # Get base-model (forward) output (this should be a noop call).
+    forward_out, state_out = model({
         "obs": obs_batch,
         "is_training": policy._get_is_training_placeholder(),
     }, [], None)
     # Use the base output to get the policy outputs from the SAC model's
     # policy components.
-    distribution_inputs = model.get_policy_output(model_out)
+    distribution_inputs = model.get_policy_output(forward_out)
     # Get a distribution class to be used with the just calculated dist-inputs.
-    action_dist_class = _get_dist_class(policy.config, policy.action_space)
+    action_dist_class = _get_dist_class(policy, policy.config,
+                                        policy.action_space)
 
     return distribution_inputs, action_dist_class, state_out
 
@@ -277,7 +283,8 @@ def sac_actor_critic_loss(
     # Continuous actions case.
     else:
         # Sample simgle actions from distribution.
-        action_dist_class = _get_dist_class(policy.config, policy.action_space)
+        action_dist_class = _get_dist_class(policy, policy.config,
+                                            policy.action_space)
         action_dist_t = action_dist_class(
             model.get_policy_output(model_out_t), policy.model)
         policy_t = action_dist_t.sample() if not deterministic else \
@@ -290,10 +297,12 @@ def sac_actor_critic_loss(
         log_pis_tp1 = tf.expand_dims(action_dist_tp1.logp(policy_tp1), -1)
 
         # Q-values for the actually selected actions.
-        q_t = model.get_q_values(model_out_t, train_batch[SampleBatch.ACTIONS])
+        q_t = model.get_q_values(
+            model_out_t, tf.cast(train_batch[SampleBatch.ACTIONS], tf.float32))
         if policy.config["twin_q"]:
             twin_q_t = model.get_twin_q_values(
-                model_out_t, train_batch[SampleBatch.ACTIONS])
+                model_out_t,
+                tf.cast(train_batch[SampleBatch.ACTIONS], tf.float32))
 
         # Q-values for current policy in given current state.
         q_t_det_policy = model.get_q_values(model_out_t, policy_t)
@@ -323,7 +332,7 @@ def sac_actor_critic_loss(
 
     # Compute RHS of bellman equation for the Q-loss (critic(s)).
     q_t_selected_target = tf.stop_gradient(
-        train_batch[SampleBatch.REWARDS] +
+        tf.cast(train_batch[SampleBatch.REWARDS], tf.float32) +
         policy.config["gamma"]**policy.config["n_step"] * q_tp1_best_masked)
 
     # Compute the TD-error (potentially clipped).
@@ -335,13 +344,11 @@ def sac_actor_critic_loss(
         td_error = base_td_error
 
     # Calculate one or two critic losses (2 in the twin_q case).
-    critic_loss = [
-        0.5 * tf.keras.losses.MSE(
-            y_true=q_t_selected_target, y_pred=q_t_selected)
-    ]
+    prio_weights = tf.cast(train_batch[PRIO_WEIGHTS], tf.float32)
+    critic_loss = [tf.reduce_mean(prio_weights * huber_loss(base_td_error))]
     if policy.config["twin_q"]:
-        critic_loss.append(0.5 * tf.keras.losses.MSE(
-            y_true=q_t_selected_target, y_pred=twin_q_t_selected))
+        critic_loss.append(
+            tf.reduce_mean(prio_weights * huber_loss(twin_td_error)))
 
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
@@ -654,13 +661,15 @@ def validate_spaces(policy: Policy, observation_space: gym.spaces.Space,
     Raises:
         UnsupportedSpaceException: If one of the spaces is not supported.
     """
-    # Only support single Box or single Discreete spaces.
-    if not isinstance(action_space, (Box, Discrete)):
+    # Only support single Box or single Discrete spaces.
+    if not isinstance(action_space, (Box, Discrete, Simplex)):
         raise UnsupportedSpaceException(
             "Action space ({}) of {} is not supported for "
-            "SAC.".format(action_space, policy))
+            "SAC. Must be [Box|Discrete|Simplex].".format(
+                action_space, policy))
     # If Box, make sure it's a 1D vector space.
-    elif isinstance(action_space, Box) and len(action_space.shape) > 1:
+    elif isinstance(action_space,
+                    (Box, Simplex)) and len(action_space.shape) > 1:
         raise UnsupportedSpaceException(
             "Action space ({}) of {} has multiple dimensions "
             "{}. ".format(action_space, policy, action_space.shape) +
@@ -678,7 +687,7 @@ SACTFPolicy = build_tf_policy(
     action_distribution_fn=get_distribution_inputs_and_class,
     loss_fn=sac_actor_critic_loss,
     stats_fn=stats,
-    gradients_fn=compute_and_clip_gradients,
+    compute_gradients_fn=compute_and_clip_gradients,
     apply_gradients_fn=apply_gradients,
     extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
     mixins=[
@@ -688,4 +697,4 @@ SACTFPolicy = build_tf_policy(
     before_init=setup_early_mixins,
     before_loss_init=setup_mid_mixins,
     after_init=setup_late_mixins,
-    obs_include_prev_action_reward=False)
+)

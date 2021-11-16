@@ -4,7 +4,7 @@
 Tutorials & FAQ
 ===============
 
-.. tip:: We'd love to hear your feedback on using Tune - fill out a `short survey <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
+.. tip:: We'd love to hear your feedback on using Tune - `get in touch <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
 
 In this section, you can find material on how to use Tune and its various features. If any of the materials is out of date or broken, or if you'd like to add an example to this page, feel free to raise an issue on our Github repository.
 
@@ -70,6 +70,11 @@ Take a look at any of the below tutorials to get started with Tune.
    :figure: /images/wandb_logo.png
    :description: :doc:`Track your experiment process with the Weights & Biases tools <tune-wandb>`
 
+.. customgalleryitem::
+    :tooltip: Use MLflow with Ray Tune.
+    :figure: /images/mlflow.png
+    :description: :doc:`Log and track your hyperparameter sweep with MLflow Tracking & AutoLogging <tune-mlflow>`
+
 
 .. raw:: html
 
@@ -81,12 +86,13 @@ Take a look at any of the below tutorials to get started with Tune.
 
    tune-tutorial.rst
    tune-advanced-tutorial.rst
-   tune-lifecycle.rst
    tune-distributed.rst
-   tune-sklearn.rst
+   tune-lifecycle.rst
+   tune-mlflow.rst
    tune-pytorch-cifar.rst
    tune-pytorch-lightning.rst
    tune-serve-integration-mnist.rst
+   tune-sklearn.rst
    tune-xgboost.rst
    tune-wandb.rst
 
@@ -156,4 +162,4 @@ Check out:
 
 .. _tune-faq:
 
-.. include:: _faq.rst
+.. include:: _faq.inc

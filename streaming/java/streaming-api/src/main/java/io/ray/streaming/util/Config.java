@@ -18,7 +18,6 @@ public class Config {
   public static final String READ_TIMEOUT_MS = "read_timeout_ms";
   public static final String DEFAULT_READ_TIMEOUT_MS = "10";
 
-
   public static final String STREAMING_RING_BUFFER_CAPACITY = "streaming.ring_buffer_capacity";
   // write an empty message if there is no data to be written in this
   // interval.
@@ -31,6 +30,4 @@ public class Config {
   public static final String FLOW_CONTROL_TYPE = "streaming.flow_control_type";
   public static final String WRITER_CONSUMED_STEP = "streaming.writer.consumed_step";
   public static final String READER_CONSUMED_STEP = "streaming.reader.consumed_step";
-
-
 }

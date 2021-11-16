@@ -17,7 +17,7 @@ For the sake of example, let's maximize this objective function:
 Function API
 ------------
 
-Here is a simple example of using the function API. You can report intermediate metrics by simply calling ``tune.report`` within the provided function.
+With the Function API, you can report intermediate metrics by simply calling ``tune.report`` within the provided function.
 
 .. code-block:: python
 
@@ -39,6 +39,8 @@ Here is a simple example of using the function API. You can report intermediate 
 .. tip:: Do not use ``tune.report`` within a ``Trainable`` class.
 
 Tune will run this function on a separate thread in a Ray actor process.
+
+You'll notice that Ray Tune will output extra values in addition to the user reported metrics, such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
 
 .. tip:: If you want to leverage multi-node data parallel training with PyTorch while using parallel hyperparameter tuning, check out our :ref:`PyTorch <tune-pytorch-cifar>` user guide and Tune's :ref:`distributed pytorch integrations <tune-integration-torch>`.
 
@@ -113,7 +115,7 @@ Many Tune features rely on checkpointing, including the usage of certain Trial S
             for iter in range(start, 100):
                 time.sleep(1)
 
-                with tune.checkpoint_dir(step=step):
+                with tune.checkpoint_dir(step=step) as checkpoint_dir:
                     path = os.path.join(checkpoint_dir, "checkpoint")
                     with open(path, "w") as f:
                         f.write(json.dumps({"step": start}))
@@ -182,6 +184,7 @@ As a subclass of ``tune.Trainable``, Tune will create a ``Trainable`` object on 
 
 .. tip:: As a rule of thumb, the execution time of ``step`` should be large enough to avoid overheads (i.e. more than a few seconds), but short enough to report progress periodically (i.e. at most a few minutes).
 
+You'll notice that Ray Tune will output extra values in addition to the user reported metrics, such as ``iterations_since_restore``. See :ref:`tune-autofilled-metrics` for an explanation/glossary of these values.
 
 .. _tune-trainable-save-restore:
 
@@ -252,6 +255,8 @@ Use ``validate_save_restore`` to catch ``save_checkpoint``/``load_checkpoint`` e
     validate_save_restore(MyTrainableClass)
     validate_save_restore(MyTrainableClass, use_object_store=True)
 
+
+
 Advanced: Reusing Actors
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -289,23 +294,26 @@ This requires you to implement ``Trainable.reset_config``, which provides a new 
 Advanced Resource Allocation
 ----------------------------
 
-Trainables can themselves be distributed. If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will want to set ``extra_cpu`` or ``extra_gpu`` inside ``tune.run`` to reserve extra resource slots. For example, if a trainable class requires 1 GPU itself, but also launches 4 actors, each using another GPU, then you should set ``"gpu": 1, "extra_gpu": 4``.
+Trainables can themselves be distributed. If your trainable function / class creates further Ray actors or tasks that also consume CPU / GPU resources, you will want to add more bundles to the :class:`PlacementGroupFactory` to reserve extra resource slots. For example, if a trainable class requires 1 GPU itself, but also launches 4 actors, each using another GPU, then you should use this:
 
 .. code-block:: python
-   :emphasize-lines: 4-8
+   :emphasize-lines: 4-10
 
     tune.run(
         my_trainable,
         name="my_trainable",
-        resources_per_trial={
-            "cpu": 1,
-            "gpu": 1,
-            "extra_gpu": 4
-        }
+        resources_per_trial=tune.PlacementGroupFactory([
+            {"CPU": 1, "GPU": 1},
+            {"GPU": 1},
+            {"GPU": 1},
+            {"GPU": 1},
+            {"GPU": 1}
+        ])
     )
 
 The ``Trainable`` also provides the ``default_resource_requests`` interface to automatically declare the ``resources_per_trial`` based on the given configuration.
 
+It is also possible to specify memory (``"memory"``, in bytes) and custom resource requirements.
 
 
 .. _tune-function-docstring:
@@ -332,13 +340,24 @@ tune.Trainable (Class API)
     :private-members:
     :members:
 
+.. _tune-util-ref:
+
+Utilities
+---------
+
+.. autofunction:: ray.tune.utils.wait_for_gpu
+
+.. autofunction:: ray.tune.utils.diagnose_serialization
+
+.. autofunction:: ray.tune.utils.validate_save_restore
+
 
 .. _tune-ddp-doc:
 
 Distributed Torch
 -----------------
 
-Ray also offers lightweight integrations to distribute your model training on Ray Tune.
+Ray offers lightweight integrations to distribute your PyTorch training on Ray Tune.
 
 
 .. autofunction:: ray.tune.integration.torch.DistributedTrainableCreator
@@ -350,10 +369,24 @@ Ray also offers lightweight integrations to distribute your model training on Ra
 .. autofunction:: ray.tune.integration.torch.is_distributed_trainable
    :noindex:
 
-tune.DurableTrainable
----------------------
+.. _tune-dist-tf-doc:
 
-.. autoclass:: ray.tune.DurableTrainable
+Distributed TensorFlow
+----------------------
+
+Ray also offers lightweight integrations to distribute your TensorFlow training on Ray Tune.
+
+
+.. autofunction:: ray.tune.integration.tensorflow.DistributedTrainableCreator
+   :noindex:
+
+
+.. _tune-with-parameters:
+
+tune.with_parameters
+--------------------
+
+.. autofunction:: ray.tune.with_parameters
 
 
 StatusReporter

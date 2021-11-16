@@ -17,6 +17,7 @@
 #include <memory>
 
 #include "gtest/gtest.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
 
 namespace ray {
@@ -36,7 +37,7 @@ class GcsPubSubTest : public ::testing::Test {
     }));
 
     gcs::RedisClientOptions redis_client_options(
-        "127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", true);
+        "127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", /*enable_sharding_conn=*/false);
     client_ = std::make_shared<gcs::RedisClient>(redis_client_options);
     RAY_CHECK_OK(client_->Connect(io_service_));
     pub_sub_ = std::make_shared<gcs::GcsPubSub>(client_);
@@ -75,12 +76,12 @@ class GcsPubSubTest : public ::testing::Test {
       absl::MutexLock lock(&vector_mutex_);
       result.push_back(std::make_pair(id, data));
     };
-    RAY_CHECK_OK((pub_sub_->SubscribeAll(channel, subscribe, done)));
+    RAY_CHECK_OK(pub_sub_->SubscribeAll(channel, subscribe, done));
     WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool Unsubscribe(const std::string &channel, const std::string &id) {
-    return pub_sub_->Unsubscribe(channel, id).ok();
+  void Unsubscribe(const std::string &channel, const std::string &id) {
+    RAY_CHECK_OK(pub_sub_->Unsubscribe(channel, id));
   }
 
   bool Publish(const std::string &channel, const std::string &id,
@@ -89,11 +90,6 @@ class GcsPubSubTest : public ::testing::Test {
     auto done = [&promise](const Status &status) { promise.set_value(status.ok()); };
     RAY_CHECK_OK((pub_sub_->Publish(channel, id, data, done)));
     return WaitReady(promise.get_future(), timeout_ms_);
-  }
-
-  bool WaitReady(std::future<bool> future, const std::chrono::milliseconds &timeout_ms) {
-    auto status = future.wait_for(timeout_ms);
-    return status == std::future_status::ready && future.get();
   }
 
   template <typename Data>
@@ -113,7 +109,7 @@ class GcsPubSubTest : public ::testing::Test {
   absl::Mutex vector_mutex_;
 
  private:
-  boost::asio::io_service io_service_;
+  instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
 };
 
@@ -246,9 +242,8 @@ TEST_F(GcsPubSubTest, TestPubSubWithTableData) {
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 4);
+  RAY_CHECK(argc == 3);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
   ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
-  ray::TEST_REDIS_MODULE_LIBRARY_PATH = argv[3];
   return RUN_ALL_TESTS();
 }

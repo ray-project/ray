@@ -1,7 +1,4 @@
-const base =
-  process.env.NODE_ENV === "development"
-    ? "http://localhost:8265"
-    : window.location.origin;
+import { formatUrl } from "./service/requestHandlers";
 
 type APIResponse<T> = {
   result: boolean;
@@ -10,12 +7,12 @@ type APIResponse<T> = {
 };
 // TODO(mitchellstern): Add JSON schema validation for the responses.
 const get = async <T>(path: string, params: { [key: string]: any }) => {
-  const url = new URL(path, base);
-  for (const [key, value] of Object.entries(params)) {
-    url.searchParams.set(key, value);
-  }
+  const formattedParams = Object.entries(params)
+    .map((pair) => pair.join("="))
+    .join("&");
+  const url = [formatUrl(path), formattedParams].filter((x) => x!!).join("?");
 
-  const response = await fetch(url.toString());
+  const response = await fetch(url);
   const json: APIResponse<T> = await response.json();
 
   const { result, msg, data } = json;
@@ -39,10 +36,8 @@ export type RayConfigResponse = {
 
 export const getRayConfig = () => get<RayConfigResponse>("/api/ray_config", {});
 
-export type Worker = {
+type ProcessStats = {
   pid: number;
-  workerId: string;
-  createTime: number;
   memoryInfo: {
     rss: number;
     vms: number;
@@ -52,6 +47,7 @@ export type Worker = {
     data: number;
     dirty: Number;
   };
+  createTime: number;
   cmdline: string[];
   cpuTimes: {
     user: number;
@@ -61,12 +57,17 @@ export type Worker = {
     iowait: number;
   };
   cpuPercent: number;
-  logCount: number;
-  errorCount: number;
+};
+
+export type Worker = {
+  pid: number;
+  workerId: string;
+  logCount?: number;
+  errorCount?: number;
   language: string;
   jobId: string;
   coreWorkerStats: CoreWorkerStats[];
-};
+} & ProcessStats;
 
 export type CoreWorkerStats = {
   ipAddress: string;
@@ -92,7 +93,7 @@ export type GPUStats = {
   name: string;
   temperatureGpu: number;
   fanSpeed: number;
-  utilizationGpu: number;
+  utilizationGpu?: number;
   powerDraw: number;
   enforcedPowerLimit: number;
   memoryUsed: number;
@@ -108,7 +109,7 @@ export type NodeDetails = {
 } & BaseNodeInfo;
 
 export type RayletData = {
-  // Merger of GCSNodeStats and GetNodeStatsReply
+  // Merger of GCSNodeInfo and GetNodeStatsReply
   // GetNodeStatsReply fields.
   // Note workers are in an array in NodeDetails
   objectStoreUsedMemory: number;
@@ -152,7 +153,7 @@ type BaseNodeInfo = {
   cpu: number; // System-wide CPU utilization expressed as a percentage
   cpus: [number, number]; // Number of logical CPUs and physical CPUs
   gpus: Array<GPUStats>; // GPU stats fetched from node, 1 entry per GPU
-  mem: [number, number, number]; // Total, available, and used percentage of memory
+  mem: [number, number, number, number]; // Total (bytes), available (bytes), used (percentage), and used (bytes) of memory
   disk: {
     [dir: string]: {
       total: number;
@@ -162,9 +163,9 @@ type BaseNodeInfo = {
     };
   };
   loadAvg: [[number, number, number], [number, number, number]];
-  net: [number, number]; // Sent and received network traffic in bytes / second
-  logCount: number;
-  errorCount: number;
+  networkSpeed: [number, number]; // Sent and received network traffic in bytes / second
+  logCount?: number;
+  errorCount?: number;
 };
 
 export type NodeInfoResponse = {
@@ -220,12 +221,14 @@ export type FullActorInfo = {
     | ActorState.DependenciesUnready
     | ActorState.PendingCreation;
   taskQueueLength?: number;
+  gpus: GPUStats[]; // Contains info about any GPUs the actor is using
   timestamp: number;
   usedObjectStoreMemory?: number;
   usedResources: { [key: string]: ResourceAllocations };
   currentTaskDesc?: string;
   numPendingTasks?: number;
   webuiDisplay?: Record<string, string>;
+  processStats?: ProcessStats;
 };
 
 export type ActorTaskInfo = {
@@ -320,10 +323,12 @@ export const checkProfilingStatus = (profilingId: string) =>
     profiling_id: profilingId,
   });
 
-export const getProfilingResultURL = (profilingId: string) =>
-  `${base}/speedscope/index.html#profileURL=${encodeURIComponent(
-    `${base}/api/get_profiling_info?profiling_id=${profilingId}`,
-  )}`;
+export const getProfilingResultURL = (profilingId: string) => {
+  const uriComponent = encodeURIComponent(
+    formatUrl(`/api/get_profiling_info?profiling_id=${profilingId}`),
+  );
+  return formatUrl(`/speedscope/index.html#profileURL=${uriComponent}`);
+};
 
 export const launchKillActor = (
   actorId: string,

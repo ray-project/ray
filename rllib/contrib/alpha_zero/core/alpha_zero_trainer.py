@@ -33,7 +33,7 @@ class AlphaZeroDefaultCallbacks(DefaultCallbacks):
 
     def on_episode_start(self, worker, base_env, policies, episode, **kwargs):
         # save env state when an episode starts
-        env = base_env.get_unwrapped()[0]
+        env = base_env.get_sub_environments()[0]
         state = env.get_state()
         episode.user_data["initial_state"] = state
 
@@ -160,15 +160,19 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
                          _env_creator)
 
 
-def execution_plan(workers, config):
+def execution_plan(workers, config, **kwargs):
+    assert len(kwargs) == 0, (
+        "Alpha zero execution_plan does NOT take any additional parameters")
+
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
     if config["simple_optimizer"]:
-        train_op = rollouts \
-            .combine(ConcatBatches(
-                min_batch_size=config["train_batch_size"])) \
-            .for_each(TrainOneStep(
-                workers, num_sgd_iter=config["num_sgd_iter"]))
+        train_op = rollouts.combine(
+            ConcatBatches(
+                min_batch_size=config["train_batch_size"],
+                count_steps_by=config["multiagent"]["count_steps_by"],
+            )).for_each(
+                TrainOneStep(workers, num_sgd_iter=config["num_sgd_iter"]))
     else:
         replay_buffer = SimpleReplayBuffer(config["buffer_size"])
 
@@ -178,7 +182,10 @@ def execution_plan(workers, config):
         replay_op = Replay(local_buffer=replay_buffer) \
             .filter(WaitUntilTimestepsElapsed(config["learning_starts"])) \
             .combine(
-                ConcatBatches(min_batch_size=config["train_batch_size"])) \
+            ConcatBatches(
+                min_batch_size=config["train_batch_size"],
+                count_steps_by=config["multiagent"]["count_steps_by"],
+            )) \
             .for_each(TrainOneStep(
                 workers, num_sgd_iter=config["num_sgd_iter"]))
 

@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/object_manager.grpc.pb.h"
@@ -22,10 +23,10 @@
 namespace ray {
 namespace rpc {
 
-#define RAY_OBJECT_MANAGER_RPC_HANDLERS           \
-  RPC_SERVICE_HANDLER(ObjectManagerService, Push) \
-  RPC_SERVICE_HANDLER(ObjectManagerService, Pull) \
-  RPC_SERVICE_HANDLER(ObjectManagerService, FreeObjects)
+#define RAY_OBJECT_MANAGER_RPC_HANDLERS               \
+  RPC_SERVICE_HANDLER(ObjectManagerService, Push, -1) \
+  RPC_SERVICE_HANDLER(ObjectManagerService, Pull, -1) \
+  RPC_SERVICE_HANDLER(ObjectManagerService, FreeObjects, -1)
 
 /// Implementations of the `ObjectManagerGrpcService`, check interface in
 /// `src/ray/protobuf/object_manager.proto`.
@@ -56,7 +57,7 @@ class ObjectManagerGrpcService : public GrpcService {
   ///
   /// \param[in] port See `GrpcService`.
   /// \param[in] handler The service handler that actually handle the requests.
-  ObjectManagerGrpcService(boost::asio::io_service &io_service,
+  ObjectManagerGrpcService(instrumented_io_context &io_service,
                            ObjectManagerServiceHandler &service_handler)
       : GrpcService(io_service), service_handler_(service_handler){};
 

@@ -42,9 +42,7 @@ public abstract class StreamOperator<F extends Function> implements Operator {
   }
 
   @Override
-  public void finish() {
-
-  }
+  public void finish() {}
 
   @Override
   public void close() {

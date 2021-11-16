@@ -13,6 +13,10 @@ NODE_KIND_UNMANAGED = "unmanaged"
 # Tag for user defined node types (e.g., m4xl_spot). This is used for multi
 # node type clusters.
 TAG_RAY_USER_NODE_TYPE = "ray-user-node-type"
+# Tag for autofilled node types for legacy cluster yamls without multi
+# node type defined in the cluster configs.
+NODE_TYPE_LEGACY_HEAD = "ray-legacy-head-node-type"
+NODE_TYPE_LEGACY_WORKER = "ray-legacy-worker-node-type"
 
 # Tag that reports the current state of the node (e.g. Updating, Up-to-date)
 TAG_RAY_NODE_STATUS = "ray-node-status"

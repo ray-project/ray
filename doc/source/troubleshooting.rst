@@ -14,6 +14,9 @@ The most important tool is the timeline visualization tool. To visualize tasks
 in the Ray timeline, you can dump the timeline as a JSON file by running ``ray
 timeline`` from the command line or by using the following command.
 
+To use the timeline, Ray profiling must be enabled by setting the
+``RAY_PROFILING=1`` environment variable prior to starting Ray on every machine.
+
 .. code-block:: python
 
   ray.timeline(filename="/tmp/timeline.json")
@@ -80,7 +83,7 @@ interest are the ones with non-zero execution times:
   ...
       1    0.000    0.000    2.509    2.509 your_script_here.py:31(ex1)
       5    0.000    0.000    0.001    0.000 remote_function.py:103(remote)
-      5    0.000    0.000    0.001    0.000 remote_function.py:107(_submit)
+      5    0.000    0.000    0.001    0.000 remote_function.py:107(_remote)
   ...
      10    0.000    0.000    0.000    0.000 worker.py:2459(__init__)
       5    0.000    0.000    2.508    0.502 worker.py:2535(get)
@@ -105,7 +108,7 @@ on what Ray functionalities we use, let us see what cProfile's output might look
 like if our example involved Actors (for an introduction to Ray actors, see our
 `Actor documentation here`_).
 
-.. _`Actor documentation here`: http://docs.ray.io/en/latest/actors.html
+.. _`Actor documentation here`: http://docs.ray.io/en/master/actors.html
 
 Now, instead of looping over five calls to a remote function like in ``ex1``,
 let's create a new example and loop over five calls to a remote function
@@ -160,7 +163,7 @@ Running our new Actor example, cProfile's abbreviated output is as follows:
   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
   ...
   1    0.000    0.000    0.015    0.015 actor.py:546(remote)
-  1    0.000    0.000    0.015    0.015 actor.py:560(_submit)
+  1    0.000    0.000    0.015    0.015 actor.py:560(_remote)
   1    0.000    0.000    0.000    0.000 actor.py:697(__init__)
   ...
   1    0.000    0.000    2.525    2.525 your_script_here.py:63(ex4)
@@ -213,7 +216,7 @@ Our example in total now takes only 1.5 seconds to run:
   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
   ...
   5    0.000    0.000    0.002    0.000 actor.py:546(remote)
-  5    0.000    0.000    0.002    0.000 actor.py:560(_submit)
+  5    0.000    0.000    0.002    0.000 actor.py:560(_remote)
   5    0.000    0.000    0.000    0.000 actor.py:697(__init__)
   ...
   1    0.000    0.000    1.566    1.566 your_script_here.py:71(ex4)
@@ -231,6 +234,35 @@ as well as some known problems. If you encounter other problems, please
 `let us know`_.
 
 .. _`let us know`: https://github.com/ray-project/ray/issues
+
+Understanding `ObjectLostErrors`
+--------------------------------
+Ray throws an ``ObjectLostError`` to the application when an object cannot be
+retrieved due to application or system error. This can occur during a
+``ray.get()`` call or when fetching a task's arguments, and can happen for a
+number of reasons. Here is a guide to understanding the root cause for
+different error types:
+
+- ``ObjectLostError``: The object was successfully created, but then all copies
+  were lost due to node failure.
+- ``OwnerDiedError``: The owner of an object, i.e., the Python worker that
+  first created the ``ObjectRef`` via ``.remote()`` or ``ray.put()``, has died.
+  The owner stores critical object metadata and an object cannot be retrieved
+  if this process is lost.
+- ``ObjectReconstructionFailedError``: Should only be thrown when `lineage
+  reconstruction`_ is enabled. This error is thrown if an object, or another
+  object that this object depends on, cannot be reconstructed because the
+  maximum number of task retries has been exceeded. By default, a non-actor
+  task can be retried up to 3 times and an actor task cannot be retried.
+  This can be overridden with the ``max_retries`` parameter for remote
+  functions and the ``max_task_retries`` parameter for actors.
+- ``ReferenceCountingAssertionError``: The object has already been deleted,
+  so it cannot be retrieved. Ray implements automatic memory management through
+  distributed reference counting, so this error should not happen in general.
+  However, there is a `known edge case`_ that can produce this error.
+
+.. _`lineage reconstruction`: https://docs.ray.io/en/master/fault-tolerance.html
+.. _`known edge case`: https://github.com/ray-project/ray/issues/18456
 
 Crashes
 -------

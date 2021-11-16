@@ -1,3 +1,5 @@
+.. include:: rllib/we_are_hiring.rst
+
 RLlib Concepts and Custom Algorithms
 ====================================
 
@@ -287,7 +289,7 @@ Now let's look at each PPO policy definition:
         get_default_config=lambda: ray.rllib.agents.ppo.ppo.DEFAULT_CONFIG,
         loss_fn=ppo_surrogate_loss,
         stats_fn=kl_and_loss_stats,
-        extra_action_fetches_fn=vf_preds_and_logits_fetches,
+        extra_action_out_fn=vf_preds_and_logits_fetches,
         postprocess_fn=postprocess_ppo_gae,
         gradients_fn=clip_gradients,
         before_loss_init=setup_mixins,
@@ -352,7 +354,7 @@ In PPO we run ``setup_mixins`` before the loss function is called (i.e., ``befor
 
 **Example 2: Deep Q Networks**
 
-Let's look at how to implement a different family of policies, by looking at the `SimpleQ policy definition <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/simple_q_policy.py>`__:
+Let's look at how to implement a different family of policies, by looking at the `SimpleQ policy definition <https://github.com/ray-project/ray/blob/master/rllib/agents/dqn/simple_q_tf_policy.py>`__:
 
 .. code-block:: python
 
@@ -363,7 +365,7 @@ Let's look at how to implement a different family of policies, by looking at the
         action_sampler_fn=build_action_sampler,
         loss_fn=build_q_losses,
         extra_action_feed_fn=exploration_setting_inputs,
-        extra_action_fetches_fn=lambda policy: {"q_values": policy.q_values},
+        extra_action_out_fn=lambda policy: {"q_values": policy.q_values},
         extra_learn_fetches_fn=lambda policy: {"td_error": policy.td_error},
         before_init=setup_early_mixins,
         after_init=setup_late_mixins,
@@ -423,8 +425,8 @@ Building Policies in TensorFlow Eager
 
 Policies built with ``build_tf_policy`` (most of the reference algorithms are)
 can be run in eager mode by setting
-the ``"eager": True`` / ``"eager_tracing": True`` config options or
-using ``rllib train --eager [--trace]``.
+the ``"framework": "tf2"`` / ``"eager_tracing": true`` config options or
+using ``rllib train '{"framework": "tf2", "eager_tracing": true}'``.
 This will tell RLlib to execute the model forward pass, action distribution,
 loss, and stats functions in eager mode.
 
@@ -564,7 +566,7 @@ Here is an example of creating a set of rollout workers and using them gather ex
     env = gym.make("CartPole-v0")
     policy = CustomPolicy(env.observation_space, env.action_space, {})
     workers = WorkerSet(
-        policy=CustomPolicy,
+        policy_class=CustomPolicy,
         env_creator=lambda c: gym.make("CartPole-v0"),
         num_workers=10)
 
@@ -614,7 +616,7 @@ In code, this dataflow can be expressed as the following execution plan, which i
         return StandardMetricsReporting(train_op, workers, config)
 
 
-As you can see, each step returns an *iterator* over objects (if you're unfamiliar with distributed iterators, see Ray's `parallel iterators documentation <iter.html>`__). The reason it is a ``LocalIterator`` is that, though it is based on a parallel computation, the iterator has been turned into one that can be consumed locally in sequence by the program. A couple other points to note:
+As you can see, each step returns an *iterator* over objects (if you're unfamiliar with distributed iterators, see Ray's `parallel iterators implementation <https://github.com/ray-project/ray/blob/master/python/ray/util/iter.py>`__). The reason it is a ``LocalIterator`` is that, though it is based on a parallel computation, the iterator has been turned into one that can be consumed locally in sequence by the program. A couple other points to note:
 
  - The reason the plan returns an iterator over training results, is that ``trainer.train()`` is pulling results from this iterator to return as the result of the train call.
  - The rollout workers have been already created ahead of time in the ``WorkerSet``, so the execution plan function is only defining a sequence of operations over the results of the rollouts.
@@ -624,7 +626,7 @@ These iterators represent the infinite stream of data items that can be produced
 Understanding and Debugging Execution Plans
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Execution plans are based on Ray `parallel iterators <iter.html>`__ and can be inspected similarly. For example, suppose you wanted to print out the intermediate data items during training. This can be done by inserting a print function into the dataflow, e.g., for A2C:
+Execution plans are based on Ray `parallel iterators <https://github.com/ray-project/ray/blob/master/python/ray/util/iter.py>`__ and can be inspected similarly. For example, suppose you wanted to print out the intermediate data items during training. This can be done by inserting a print function into the dataflow, e.g., for A2C:
 
 .. code-block:: python
 

@@ -1,0 +1,164 @@
+# An unique identifier for the head node and workers of this cluster.
+cluster_name: default
+
+# The maximum number of workers nodes to launch in addition to the head
+# node.
+max_workers: 2
+
+# The autoscaler will scale up the cluster faster with higher upscaling speed.
+# E.g., if the task requires adding more nodes then autoscaler will gradually
+# scale up the cluster in chunks of upscaling_speed*currently_running_nodes.
+# This number should be > 0.
+upscaling_speed: 1.0
+
+# This executes all commands on all nodes in the docker container,
+# and opens all the necessary ports to support the Ray cluster.
+# Empty string means disabled.
+docker: {}
+
+# If a node is idle for this many minutes, it will be removed.
+idle_timeout_minutes: 5
+
+# Cloud-provider specific configuration.
+provider:
+    type: aliyun
+    region: cn-hangzhou
+    zone_id: cn-hangzhou-b
+    cidr_block: 172.16.0.0/24
+    # Whether to allow node reuse. If set to False, nodes will be terminated
+    # instead of stopped.
+    cache_stopped_nodes: True # If not present, the default is True.
+    access_key:
+    access_key_secret:
+    key_name: ray
+    security_group_rule:
+        - port_range: "22/22"
+          source_cidr_ip: "0.0.0.0/0"
+          ip_protocol: "tcp"
+        - port_range: "8265/8265"
+          source_cidr_ip: "0.0.0.0/0"
+          ip_protocol: "tcp"
+
+
+# How Ray will authenticate with newly launched nodes.
+auth:
+    ssh_user: root
+# By default Ray creates a new private keypair, but you can also use your own.
+# If you do so, make sure to also set "KeyName" in the head and worker node
+# configurations below.
+#    ssh_private_key: ~/.ssh/id_rsa
+#    ssh_public_key: ~/.ssh/id_rsa.pub
+
+# Tell the autoscaler the allowed node types and the resources they provide.
+# The key is the name of the node type, which is just for debugging purposes.
+# The node config specifies the launch config and physical instance type.
+available_node_types:
+    ray.head.default:
+        # The node type's CPU and GPU resources are auto-detected based on aliyun instance type.
+        # If desired, you can override the autodetected CPU and GPU resources advertised to the autoscaler.
+        # You can also set custom resources.
+        # For example, to mark a node type as having 1 CPU, 1 GPU, and 5 units of a resource called "custom", set
+        # resources: {"CPU": 1, "GPU": 1, "custom": 5}
+        resources: {"CPU": 2}
+        # Provider-specific config for this node type, e.g. instance type. By default
+        node_config:
+            InstanceType: ecs.n4.large
+            ImageId: ubuntu_20_04_x64_20G_alibase_20210420.vhd
+            # You can provision additional disk space with a conf as follows
+            BlockDeviceMappings:
+                - DeviceName: /dev/sda1
+                  Ebs:
+                      VolumeSize: 100
+            # Additional options in the boto docs.
+    ray.worker.default:
+        # The minimum number of nodes of this type to launch.
+        # This number should be >= 0.
+        min_workers: 0
+        # The node type's CPU and GPU resources are auto-detected based on aliyun instance type.
+        # If desired, you can override the autodetected CPU and GPU resources advertised to the autoscaler.
+        # You can also set custom resources.
+        # For example, to mark a node type as having 1 CPU, 1 GPU, and 5 units of a resource called "custom", set
+        # resources: {"CPU": 1, "GPU": 1, "custom": 5}
+        resources: {"CPU": 8}
+        # Provider-specific config for this node type, e.g. instance type. By default
+        # Ray will auto-configure unspecified fields such as SubnetId and KeyName.
+        # For more documentation on available fields, see:
+        # http://boto3.readthedocs.io/en/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
+        node_config:
+            InstanceType: ecs.n4.2xlarge
+            ImageId: ubuntu_20_04_x64_20G_alibase_20210420.vhd
+#            KeyPairName: id_rsa.pub
+            # Run workers on spot by default. Comment this out to use on-demand.
+            InstanceMarketOptions:
+                MarketType: spot
+                # Additional options can be found in the boto docs, e.g.
+                #   SpotOptions:
+                #       MaxPrice: MAX_HOURLY_PRICE
+
+
+
+# Specify the node type of the head node (as configured above).
+head_node_type: ray.head.default
+
+# Files or directories to copy to the head and worker nodes. The format is a
+# dictionary from REMOTE_PATH: LOCAL_PATH, e.g.
+file_mounts: {
+#    "~/dist":"~/alipay/ray/python/dist",
+#    "/path2/on/remote/machine": "/path2/on/local/machine",
+}
+
+# Files or directories to copy from the head node to the worker nodes. The format is a
+# list of paths. The same path on the head node will be copied to the worker node.
+# This behavior is a subset of the file_mounts behavior. In the vast majority of cases
+# you should just use file_mounts. Only use this if you know what you're doing!
+cluster_synced_files: []
+
+# Whether changes to directories in file_mounts or cluster_synced_files in the head node
+# should sync to the worker node continuously
+file_mounts_sync_continuously: True
+
+# Patterns for files to exclude when running rsync up or rsync down
+rsync_exclude: []
+
+# Pattern files to use for filtering out files when running rsync up or rsync down. The file is searched for
+# in the source directory and recursively through all subdirectories. For example, if .gitignore is provided
+# as a value, the behavior will match git's behavior for finding and using .gitignore files.
+rsync_filter: []
+
+# List of commands that will be run before `setup_commands`. If docker is
+# enabled, these commands will run outside the container and before docker
+# is setup.
+initialization_commands: []
+
+# List of shell commands to run to set up nodes.
+setup_commands:
+    - sudo apt-get update
+    # Install Anaconda.
+    - wget https://repo.continuum.io/archive/Anaconda3-2020.11-Linux-x86_64.sh || true
+    - bash Anaconda3-2020.11-Linux-x86_64.sh -b -p $HOME/anaconda3 || true
+    - echo 'export PATH="$HOME/anaconda3/bin:$PATH"' >> ~/.bashrc
+    # Install Ray
+    - pip install pytest-runner
+    - pip install -U ray
+
+# Custom commands that will be run on the head node after common setup.
+head_setup_commands:
+    # Install Aliyun skd
+    - pip install aliyun-python-sdk-core
+    - pip install aliyun-python-sdk-ecs
+
+# Custom commands that will be run on worker nodes after common setup.
+worker_setup_commands: []
+
+# Command to start ray on the head node. You don't need to change this.
+head_start_ray_commands:
+    - ray stop
+    - ulimit -n 65536; ray start --head --port=6379 --object-manager-port=8076 --dashboard-host=0.0.0.0  --autoscaling-config=~/ray_bootstrap_config.yaml
+
+# Command to start ray on worker nodes. You don't need to change this.
+worker_start_ray_commands:
+    - ray stop
+    - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379 --object-manager-port=8076
+
+head_node: {}
+worker_nodes: {}

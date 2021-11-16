@@ -44,6 +44,23 @@ def train_mnist(config, checkpoint_dir=False):
         tune.report(mean_accuracy=acc)
 
 
+def run_ddp_tune(num_workers, num_gpus_per_worker, workers_per_node=None):
+    trainable_cls = DistributedTrainableCreator(
+        train_mnist,
+        num_workers=num_workers,
+        num_gpus_per_worker=num_gpus_per_worker,
+        num_workers_per_host=workers_per_node)
+
+    analysis = tune.run(
+        trainable_cls,
+        num_samples=4,
+        stop={"training_iteration": 10},
+        metric="mean_accuracy",
+        mode="max")
+
+    print("Best hyperparameters found were: ", analysis.best_config)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -53,23 +70,39 @@ if __name__ == "__main__":
         default=2,
         help="Sets number of workers for training.")
     parser.add_argument(
-        "--use-gpu",
-        action="store_true",
-        default=False,
-        help="enables CUDA training")
+        "--num-gpus-per-worker",
+        type=int,
+        default=0,
+        help="Sets number of gpus each worker uses.")
     parser.add_argument(
         "--cluster",
         action="store_true",
         default=False,
         help="enables multi-node tuning")
+    parser.add_argument(
+        "--workers-per-node",
+        type=int,
+        help="Forces workers to be colocated on machines if set.")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
 
     args = parser.parse_args()
 
-    if args.cluster:
-        options = dict(address="auto")
+    if args.server_address is not None:
+        ray.util.connect(args.server_address)
     else:
-        options = dict(num_cpus=2)
-    ray.init(**options)
-    trainable_cls = DistributedTrainableCreator(
-        train_mnist, num_workers=args.num_workers, use_gpu=args.use_gpu)
-    tune.run(trainable_cls, num_samples=4, stop={"training_iteration": 10})
+        if args.cluster:
+            options = dict(address="auto")
+        else:
+            options = dict(num_cpus=2)
+        ray.init(**options)
+
+    run_ddp_tune(
+        num_workers=args.num_workers,
+        num_gpus_per_worker=args.num_gpus_per_worker,
+        workers_per_node=args.workers_per_node)

@@ -88,7 +88,10 @@ def train_example(num_workers=1, use_gpu=False):
         print(stats)
 
     print(trainer1.validate())
-    m = trainer1.get_model()
+
+    # If using Ray Client, make sure to force model onto CPU.
+    import ray
+    m = trainer1.get_model(to_cpu=ray.util.client.ray.is_connected())
     print("trained weight: % .2f, bias: % .2f" % (
         m.weight.item(), m.bias.item()))
     trainer1.shutdown()
@@ -102,6 +105,13 @@ if __name__ == "__main__":
         required=False,
         type=str,
         help="the address to use for Ray")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+             "Ray Client.")
     parser.add_argument(
         "--num-workers",
         "-n",
@@ -126,6 +136,8 @@ if __name__ == "__main__":
     import ray
     if args.smoke_test:
         ray.init(num_cpus=2)
+    elif args.server_address:
+        ray.init(f"ray://{args.server_address}")
     else:
         ray.init(address=args.address)
     train_example(num_workers=args.num_workers, use_gpu=args.use_gpu)

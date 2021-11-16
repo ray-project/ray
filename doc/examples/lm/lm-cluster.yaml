@@ -9,23 +9,6 @@ min_workers: 1
 # node. This takes precedence over min_workers.
 max_workers: 2
 
-# The initial number of worker nodes to launch in addition to the head
-# node. When the cluster is first brought up (or when it is refreshed with a
-# subsequent `ray up`) this number of nodes will be started.
-initial_workers: 1
-
-# Whether or not to autoscale aggressively. If this is enabled, if at any point
-#   we would start more workers, we start at least enough to bring us to
-#   initial_workers.
-autoscaling_mode: default
-
-
-# The autoscaler will scale up the cluster to this target fraction of resource
-# usage. For example, if a cluster of 10 nodes is 100% busy and
-# target_utilization is 0.8, it would resize the cluster to 13. This fraction
-# can be decreased to increase the aggressiveness of upscaling.
-# This value must be less than 1.0 for scaling to happen.
-target_utilization_fraction: 0.48
 
 # If a node is idle for this many minutes, it will be removed.
 idle_timeout_minutes: 5

@@ -1,4 +1,20 @@
+// Copyright 2019-2021 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 #pragma once
+
+#include <gtest/gtest_prod.h>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -10,6 +26,7 @@
 #include "ray/core_worker/reference_count.h"
 
 namespace ray {
+namespace core {
 
 struct MemoryStoreStats {
   int32_t num_in_plasma = 0;
@@ -27,15 +44,14 @@ class CoreWorkerMemoryStore {
  public:
   /// Create a memory store.
   ///
-  /// \param[in] store_in_plasma If not null, this is used to spill to plasma.
   /// \param[in] counter If not null, this enables ref counting for local objects,
   ///            and the `remove_after_get` flag for Get() will be ignored.
   /// \param[in] raylet_client If not null, used to notify tasks blocked / unblocked.
   CoreWorkerMemoryStore(
-      std::function<void(const RayObject &, const ObjectID &)> store_in_plasma = nullptr,
       std::shared_ptr<ReferenceCounter> counter = nullptr,
       std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
-      std::function<Status()> check_signals = nullptr);
+      std::function<Status()> check_signals = nullptr,
+      std::function<void(const RayObject &)> unhandled_exception_handler = nullptr);
   ~CoreWorkerMemoryStore(){};
 
   /// Put an object with specified ID into object store.
@@ -71,6 +87,12 @@ class CoreWorkerMemoryStore {
               int64_t timeout_ms, const WorkerContext &ctx,
               absl::flat_hash_set<ObjectID> *ready);
 
+  /// Get an object if it exists.
+  ///
+  /// \param[in] object_id The object id to get.
+  /// \return Pointer to the object if it exists, otherwise nullptr.
+  std::shared_ptr<RayObject> GetIfExists(const ObjectID &object_id);
+
   /// Asynchronously get an object from the object store. The object will not be removed
   /// from storage after GetAsync (TODO(ekl): integrate this with object GC).
   ///
@@ -79,14 +101,6 @@ class CoreWorkerMemoryStore {
   ///            object value once available.
   void GetAsync(const ObjectID &object_id,
                 std::function<void(std::shared_ptr<RayObject>)> callback);
-
-  /// Get a single object if available. If the object is not local yet, or if the object
-  /// is local but is ErrorType::OBJECT_IN_PLASMA, then nullptr will be returned, and
-  /// the store will ensure the object is promoted to plasma once available.
-  ///
-  /// \param[in] object_id The object id to get.
-  /// \return pointer to the local object, or nullptr if promoted to plasma.
-  std::shared_ptr<RayObject> GetOrPromoteToPlasma(const ObjectID &object_id);
 
   /// Delete a list of objects from the object store.
   /// NOTE(swang): Objects that contain IsInPlasmaError will not be
@@ -134,17 +148,34 @@ class CoreWorkerMemoryStore {
   /// \return Total size of objects in the store.
   uint64_t UsedMemory();
 
+  /// Raise any unhandled errors that have not been accessed within a timeout.
+  /// This is used to surface unhandled task errors in interactive consoles.
+  /// In those settings, errors may never be garbage collected and hence we
+  /// never trigger the deletion hook for task errors that prints them.
+  void NotifyUnhandledErrors();
+
  private:
+  FRIEND_TEST(TestMemoryStore, TestMemoryStoreStats);
+
   /// See the public version of `Get` for meaning of the other arguments.
   /// \param[in] abort_if_any_object_is_exception Whether we should abort if any object
-  /// is an exception.
+  /// resources. is an exception.
   Status GetImpl(const std::vector<ObjectID> &object_ids, int num_objects,
                  int64_t timeout_ms, const WorkerContext &ctx, bool remove_after_get,
                  std::vector<std::shared_ptr<RayObject>> *results,
                  bool abort_if_any_object_is_exception);
 
-  /// Optional callback for putting objects into the plasma store.
-  std::function<void(const RayObject &, const ObjectID &)> store_in_plasma_;
+  /// Called when an object is deleted from the store.
+  void OnDelete(std::shared_ptr<RayObject> obj);
+
+  /// Emplace the given object entry to the in-memory-store and update stats properly.
+  void EmplaceObjectAndUpdateStats(const ObjectID &object_id,
+                                   std::shared_ptr<RayObject> &object_entry)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  /// Erase the object of the object id from the in memory store and update stats
+  /// properly.
+  void EraseObjectAndUpdateStats(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this
   /// mandatory once Java is supported.
@@ -156,10 +187,9 @@ class CoreWorkerMemoryStore {
   /// Protects the data structures below.
   mutable absl::Mutex mu_;
 
-  /// Set of objects that should be promoted to plasma once available.
-  absl::flat_hash_set<ObjectID> promoted_to_plasma_ GUARDED_BY(mu_);
-
   /// Map from object ID to `RayObject`.
+  /// NOTE: This map should be modified by EmplaceObjectAndUpdateStats and
+  /// EraseObjectAndUpdateStats.
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> objects_ GUARDED_BY(mu_);
 
   /// Map from object ID to its get requests.
@@ -173,6 +203,21 @@ class CoreWorkerMemoryStore {
 
   /// Function passed in to be called to check for signals (e.g., Ctrl-C).
   std::function<Status()> check_signals_;
+
+  /// Function called to report unhandled exceptions.
+  std::function<void(const RayObject &)> unhandled_exception_handler_;
+
+  ///
+  /// Below information is stats.
+  ///
+  /// Number of objects in the plasma store for this memory store.
+  int32_t num_in_plasma_ GUARDED_BY(mu_) = 0;
+  /// Number of objects that don't exist in the plasma store.
+  int32_t num_local_objects_ GUARDED_BY(mu_) = 0;
+  /// Number of object store memory used by this memory store. (It doesn't include plasma
+  /// store memory usage).
+  int64_t used_object_store_memory_ GUARDED_BY(mu_) = 0;
 };
 
+}  // namespace core
 }  // namespace ray

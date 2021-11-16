@@ -25,5 +25,6 @@ atari-ppo:
         num_envs_per_worker: 5
         batch_mode: truncate_episodes
         observation_filter: NoFilter
-        vf_share_layers: true
+        model:
+            vf_share_layers: true
         num_gpus: 1

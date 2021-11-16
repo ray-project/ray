@@ -1,5 +1,9 @@
+.. _tune-main:
+
 Tune: Scalable Hyperparameter Tuning
 ====================================
+
+.. tip:: We'd love to hear your feedback on using Tune - `get in touch <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
 
 .. image:: /images/tune.png
     :scale: 30%
@@ -9,23 +13,18 @@ Tune is a Python library for experiment execution and hyperparameter tuning at a
 
 * Launch a multi-node :ref:`distributed hyperparameter sweep <tune-distributed>` in less than 10 lines of code.
 * Supports any machine learning framework, :ref:`including PyTorch, XGBoost, MXNet, and Keras <tune-guides>`.
-* Automatically manages :ref:`checkpoints <tune-checkpoint>` and logging to :ref:`TensorBoard <tune-logging>`.
+* Automatically manages :ref:`checkpoints <tune-checkpoint-syncing>` and logging to :ref:`TensorBoard <tune-logging>`.
 * Choose among state of the art algorithms such as :ref:`Population Based Training (PBT) <tune-scheduler-pbt>`, :ref:`BayesOptSearch <bayesopt>`, :ref:`HyperBand/ASHA <tune-scheduler-hyperband>`.
 * Move your models from training to serving on the same infrastructure with `Ray Serve`_.
 
-.. _`Ray Serve`: serve/index.html
+.. _`Ray Serve`: ../serve/index.html
 
 **Want to get started?** Head over to the :doc:`Key Concepts page </tune/key-concepts>`.
-
-.. tip:: We'd love to hear your feedback on using Tune - fill out a `short survey <https://forms.gle/PTRvGLbKRdUfuzQo9>`_!
-
-.. tip:: Join the `Ray community slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`_ to discuss Ray Tune (and other Ray libraries)!
-
 
 Quick Start
 -----------
 
-To run this example, install the following: ``pip install 'ray[tune]'``.
+To run this example, install the following: ``pip install "ray[tune]"``.
 
 This example runs a parallel grid search to optimize an example objective function.
 
@@ -71,7 +70,7 @@ A key problem with machine learning frameworks is the need to restructure all of
 
 With Tune, you can optimize your model just by :ref:`adding a few code snippets <tune-tutorial>`.
 
-Further, Tune actually removes boilerplate from your code training workflow, automatically :ref:`managing checkpoints <tune-checkpoint>` and :ref:`logging results to tools <tune-logging>` such as MLFlow and TensorBoard.
+Further, Tune actually removes boilerplate from your code training workflow, automatically :ref:`managing checkpoints <tune-checkpoint-syncing>` and :ref:`logging results to tools <tune-logging>` such as MLflow and TensorBoard.
 
 
 Multi-GPU & distributed training out of the box

@@ -1,39 +1,17 @@
 """Utils for minibatch SGD across multiple RLlib policies."""
 
-import numpy as np
 import logging
-from collections import defaultdict
+import numpy as np
 import random
 
-from ray.util import log_once
-from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
-from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, \
     MultiAgentBatch
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 
 logger = logging.getLogger(__name__)
 
 
-def averaged(kv, axis=None):
-    """Average the value lists of a dictionary.
-
-    For non-scalar values, we simply pick the first value.
-
-    Args:
-        kv (dict): dictionary with values that are lists of floats.
-
-    Returns:
-        dictionary with single averaged float as values.
-    """
-    out = {}
-    for k, v in kv.items():
-        if v[0] is not None and not isinstance(v[0], dict):
-            out[k] = np.mean(v, axis=axis)
-        else:
-            out[k] = v[0]
-    return out
-
-
-def standardized(array):
+def standardized(array: np.ndarray):
     """Normalize the values in an array.
 
     Args:
@@ -45,15 +23,21 @@ def standardized(array):
     return (array - array.mean()) / max(1e-4, array.std())
 
 
-def minibatches(samples, sgd_minibatch_size):
+def minibatches(samples: SampleBatch,
+                sgd_minibatch_size: int,
+                shuffle: bool = True):
     """Return a generator yielding minibatches from a sample batch.
 
     Args:
-        samples (SampleBatch): batch of samples to split up.
-        sgd_minibatch_size (int): size of minibatches to return.
+        samples: SampleBatch to split up.
+        sgd_minibatch_size: Size of minibatches to return.
+        shuffle: Whether to shuffle the order of the generated minibatches.
+            Note that in case of a non-recurrent policy, the incoming batch
+            is globally shuffled first regardless of this setting, before
+            the minibatches are generated from it!
 
-    Returns:
-        generator that returns mini-SampleBatches of size sgd_minibatch_size.
+    Yields:
+        SampleBatch: Each of size `sgd_minibatch_size`.
     """
     if not sgd_minibatch_size:
         yield samples
@@ -63,35 +47,24 @@ def minibatches(samples, sgd_minibatch_size):
         raise NotImplementedError(
             "Minibatching not implemented for multi-agent in simple mode")
 
-    # Replace with `if samples.seq_lens` check.
-    if "state_in_0" in samples.data or "state_out_0" in samples.data:
-        if log_once("not_shuffling_rnn_data_in_simple_mode"):
-            logger.warning("Not shuffling RNN data for SGD in simple mode")
-    else:
+    if "state_in_0" not in samples and "state_out_0" not in samples:
         samples.shuffle()
 
-    i = 0
-    slices = []
-    if samples.seq_lens:
-        seq_no = 0
-        while i < samples.count:
-            seq_no_end = seq_no
-            actual_count = 0
-            while actual_count < sgd_minibatch_size and len(
-                    samples.seq_lens) > seq_no_end:
-                actual_count += samples.seq_lens[seq_no_end]
-                seq_no_end += 1
-            slices.append((seq_no, seq_no_end))
-            i += actual_count
-            seq_no = seq_no_end
-    else:
-        while i < samples.count:
-            slices.append((i, i + sgd_minibatch_size))
-            i += sgd_minibatch_size
-    random.shuffle(slices)
+    all_slices = samples._get_slice_indices(sgd_minibatch_size)
+    data_slices, state_slices = all_slices
 
-    for i, j in slices:
-        yield samples.slice(i, j)
+    if len(state_slices) == 0:
+        if shuffle:
+            random.shuffle(data_slices)
+        for i, j in data_slices:
+            yield samples.slice(i, j)
+    else:
+        all_slices = list(zip(data_slices, state_slices))
+        if shuffle:
+            # Make sure to shuffle data and states while linked together.
+            random.shuffle(all_slices)
+        for (i, j), (si, sj) in all_slices:
+            yield samples.slice(i, j, si, sj)
 
 
 def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
@@ -99,12 +72,12 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
     """Execute minibatch SGD.
 
     Args:
-        samples (SampleBatch): batch of samples to optimize.
-        policies (dict): dictionary of policies to optimize.
-        local_worker (RolloutWorker): master rollout worker instance.
-        num_sgd_iter (int): number of epochs of optimization to take.
-        sgd_minibatch_size (int): size of minibatches to use for optimization.
-        standardize_fields (list): list of sample field names that should be
+        samples (SampleBatch): Batch of samples to optimize.
+        policies (dict): Dictionary of policies to optimize.
+        local_worker (RolloutWorker): Master rollout worker instance.
+        num_sgd_iter (int): Number of epochs of optimization to take.
+        sgd_minibatch_size (int): Size of minibatches to use for optimization.
+        standardize_fields (list): List of sample field names that should be
             normalized prior to optimization.
 
     Returns:
@@ -113,7 +86,12 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
     if isinstance(samples, SampleBatch):
         samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples}, samples.count)
 
-    fetches = {}
+    # Use LearnerInfoBuilder as a unified way to build the final
+    # results dict from `learn_on_loaded_batch` call(s).
+    # This makes sure results dicts always have the same structure
+    # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
+    # tf vs torch).
+    learner_info_builder = LearnerInfoBuilder(num_devices=1)
     for policy_id in policies.keys():
         if policy_id not in samples.policy_batches:
             continue
@@ -123,14 +101,13 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
             batch[field] = standardized(batch[field])
 
         for i in range(num_sgd_iter):
-            iter_extra_fetches = defaultdict(list)
             for minibatch in minibatches(batch, sgd_minibatch_size):
-                batch_fetches = (local_worker.learn_on_batch(
+                results = (local_worker.learn_on_batch(
                     MultiAgentBatch({
                         policy_id: minibatch
                     }, minibatch.count)))[policy_id]
-                for k, v in batch_fetches.get(LEARNER_STATS_KEY, {}).items():
-                    iter_extra_fetches[k].append(v)
-            logger.debug("{} {}".format(i, averaged(iter_extra_fetches)))
-        fetches[policy_id] = averaged(iter_extra_fetches)
-    return fetches
+                learner_info_builder.add_learn_on_batch_results(
+                    results, policy_id)
+
+    learner_info = learner_info_builder.finalize()
+    return learner_info

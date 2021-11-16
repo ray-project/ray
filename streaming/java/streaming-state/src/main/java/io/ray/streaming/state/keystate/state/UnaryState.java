@@ -18,9 +18,7 @@
 
 package io.ray.streaming.state.keystate.state;
 
-/**
- * one value per state.
- */
+/** one value per state. */
 public interface UnaryState<O> extends State {
 
   /**

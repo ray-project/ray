@@ -5,16 +5,23 @@ import itertools
 import ray
 import torch
 
-from ray.util.sgd.torch.constants import USE_FP16, NUM_STEPS
 from ray.util.sgd import utils
+from ray.util.sgd.torch.utils import choose_amp_backend
 
 logger = logging.getLogger(__name__)
 amp = None
+apex_amp = None
 
 try:
-    from apex import amp
+    from apex import amp as apex_amp
 except ImportError:
     logger.debug("apex is not installed.")
+    pass
+
+try:
+    from torch.cuda import amp
+except ImportError:
+    logger.debug("torch.cuda.amp is not available.")
     pass
 
 
@@ -28,7 +35,6 @@ class TorchRunner:
                  serialize_data_creation=True,
                  use_fp16=False,
                  use_tqdm=False,
-                 apex_args=None,
                  scheduler_step_freq=None):
         self.training_operator_cls = training_operator_cls
         self.config = {} if config is None else config
@@ -38,13 +44,8 @@ class TorchRunner:
         self.training_operator = None
         self.serialize_data_creation = serialize_data_creation
         self.use_gpu = use_gpu
-        self.use_fp16 = use_fp16
+        self.use_fp16 = choose_amp_backend(use_fp16, amp, apex_amp)
         self.use_tqdm = use_tqdm
-        self.apex_args = apex_args or {}
-        if use_fp16 and not amp:
-            raise ImportError(
-                "Please install apex from "
-                "https://www.github.com/nvidia/apex to use fp16 training.")
         self.scheduler_step_freq = scheduler_step_freq
 
         # Training and Validation iterators
@@ -61,10 +62,10 @@ class TorchRunner:
             world_rank=0,
             local_rank=0,
             is_distributed=False,
+            device=None,
             use_gpu=self.use_gpu,
             use_fp16=self.use_fp16,
             use_tqdm=self.use_tqdm,
-            apex_args=self.apex_args,
             scheduler_step_freq=self.scheduler_step_freq)
 
     def get_iterator(self, training=True):
@@ -120,11 +121,6 @@ class TorchRunner:
         info = info or {}
         self._toggle_profiling(profile=profile)
 
-        info.update({
-            NUM_STEPS: num_steps,
-            USE_FP16: self.use_fp16,
-            "epoch_idx": self.epochs,
-        })
         with self.timers.record("train_epoch"):
             if iterator is not None:
                 # Dataset will provide us with a list of tuples but we
@@ -140,7 +136,11 @@ class TorchRunner:
             else:
                 iterator = self.make_iterator(
                     training=True, num_steps=num_steps)
-            train_stats = self.training_operator.train_epoch(iterator, info)
+            train_stats = self.training_operator.train_epoch(
+                iterator,
+                info=info,
+                num_steps=num_steps,
+                epoch_idx=self.epochs)
 
         # This is so that `epochs` is first in ordering.
         stats = dict(epoch=self.epochs, **train_stats)
@@ -150,7 +150,6 @@ class TorchRunner:
 
     def validate(self, num_steps=None, profile=False, info=None):
         """Evaluates the model on the validation data set."""
-        info = info or {}
         self._toggle_profiling(profile=profile)
 
         with self.timers.record("validation"):
@@ -190,8 +189,14 @@ class TorchRunner:
                 ]
             })
         # Check if fp16 is True and if NVIDIA Apex is imported.
-        if self.use_fp16 and self.training_operator._amp:
-            state.update({"amp": self.training_operator._amp.state_dict()})
+        if self.training_operator.use_fp16_apex:
+            state.update({
+                "amp_apex": self.training_operator._amp.state_dict()
+            })
+        elif self.training_operator.use_fp16_native:
+            state.update({
+                "amp_native": self.training_operator._amp_scaler.state_dict()
+            })
 
         return state
 
@@ -208,8 +213,17 @@ class TorchRunner:
             for scheduler, state_dict in zip(schedulers, state["schedulers"]):
                 scheduler.load_state_dict(state_dict)
 
-        if self.use_fp16 and "amp" in state and self.training_operator._amp:
-            self.training_operator._amp.load_state_dict(state["amp"])
+        if self.training_operator.use_fp16_apex:
+            if "amp_apex" in state:
+                self.training_operator._amp.load_state_dict(state["amp_apex"])
+            elif "amp" in state:
+                # backwards compatibility
+                self.training_operator._amp.load_state_dict(state["amp"])
+        elif self.training_operator.use_fp16_native and "amp_native" in state:
+            if not hasattr(self.training_operator, "_amp_scaler"):
+                self.training_operator._amp_scaler = amp.GradScaler()
+            self.training_operator._amp_scaler.load_state_dict(
+                state["amp_native"])
         self.epochs = state["epoch"]
         self.training_operator.load_state_dict(state["operator"])
 
@@ -247,16 +261,19 @@ class TorchRunner:
         """Attempts to shut down the worker."""
         del self.train_iterator
         del self.val_iterator
-        del self.training_operator
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    def get_models(self):
+    def get_models(self, to_cpu=False):
         """Getter method. Needed for remote actor calls."""
-        return self.models
+        if not to_cpu:
+            return self.models
+        else:
+            cpu_models = [m.cpu() for m in self.models]
+            return cpu_models
 
     def get_node_ip(self):
-        return ray.services.get_node_ip_address()
+        return ray.util.get_node_ip_address()
 
     @property
     def models(self):

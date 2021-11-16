@@ -3,7 +3,7 @@ Running benchmarks
 
 RaySGD provides comparable or better performance than other existing solutions for parallel or distributed training.
 
-You can run ``ray/python/ray/util/sgd/torch/examples/benchmarks/benchmark.py`` for benchmarking the RaySGD TorchTrainer implementation. To benchmark training on a multi-node multi-gpu cluster, you can use the `Ray Autoscaler <https://docs.ray.io/en/latest/autoscaling.html#aws>`_.
+You can run ``ray/python/ray/util/sgd/torch/examples/benchmarks/benchmark.py`` for benchmarking the RaySGD TorchTrainer implementation. To benchmark training on a multi-node multi-gpu cluster, you can use the `Ray Autoscaler <https://docs.ray.io/en/master/autoscaling.html#aws>`_.
 
 DISCLAIMER: RaySGD does not provide any custom communication primitives. If you see any performance issues, you may need to file them on the PyTorch github repository.
 
@@ -104,7 +104,6 @@ You can specify the number of nodes you want to use with the following configura
     # The maximum number of workers nodes to launch in addition to the head
     # node. This takes precedence over min_workers. min_workers default to 0.
     min_workers: <NUMBER_OF_NODES>  # Change this to a custom quantity
-    initial_workers:  <NUMBER_OF_NODES>  # same as above
     max_workers:  <NUMBER_OF_NODES>  # same as above
 
 You may want to install FP16 support for PyTorch with the following configuration in the YAML file:

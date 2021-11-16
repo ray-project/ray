@@ -14,10 +14,10 @@
 
 #pragma once
 
-#include "ray/gcs/gcs_server/gcs_object_manager.h"
+#include "ray/common/runtime_env_manager.h"
+#include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
-#include "ray/gcs/redis_gcs_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
 namespace ray {
@@ -26,10 +26,14 @@ namespace gcs {
 /// This implementation class of `JobInfoHandler`.
 class GcsJobManager : public rpc::JobInfoHandler {
  public:
-  explicit GcsJobManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                         std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub)
+  explicit GcsJobManager(std::shared_ptr<GcsTableStorage> gcs_table_storage,
+                         std::shared_ptr<GcsPublisher> gcs_publisher,
+                         RuntimeEnvManager &runtime_env_manager)
       : gcs_table_storage_(std::move(gcs_table_storage)),
-        gcs_pub_sub_(std::move(gcs_pub_sub)) {}
+        gcs_publisher_(std::move(gcs_publisher)),
+        runtime_env_manager_(runtime_env_manager) {}
+
+  void Initialize(const GcsInitData &gcs_init_data);
 
   void HandleAddJob(const rpc::AddJobRequest &request, rpc::AddJobReply *reply,
                     rpc::SendReplyCallback send_reply_callback) override;
@@ -42,17 +46,34 @@ class GcsJobManager : public rpc::JobInfoHandler {
                            rpc::GetAllJobInfoReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleReportJobError(const rpc::ReportJobErrorRequest &request,
+                            rpc::ReportJobErrorReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleGetNextJobID(const rpc::GetNextJobIDRequest &request,
+                          rpc::GetNextJobIDReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
+
   void AddJobFinishedListener(
       std::function<void(std::shared_ptr<JobID>)> listener) override;
 
+  std::string GetRayNamespace(const JobID &job_id) const;
+
  private:
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
+  std::shared_ptr<GcsTableStorage> gcs_table_storage_;
+  std::shared_ptr<GcsPublisher> gcs_publisher_;
 
   /// Listeners which monitors the finish of jobs.
   std::vector<std::function<void(std::shared_ptr<JobID>)>> job_finished_listeners_;
 
+  /// A cached mapping from job id to namespace.
+  std::unordered_map<JobID, std::string> ray_namespaces_;
+
+  ray::RuntimeEnvManager &runtime_env_manager_;
   void ClearJobInfos(const JobID &job_id);
+
+  void MarkJobAsFinished(rpc::JobTableData job_table_data,
+                         std::function<void(Status)> done_callback);
 };
 
 }  // namespace gcs

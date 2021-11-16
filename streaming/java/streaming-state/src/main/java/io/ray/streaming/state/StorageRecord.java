@@ -20,16 +20,13 @@ package io.ray.streaming.state;
 
 import java.io.Serializable;
 
-/**
- * This Class contains a record with some checkpointId.
- */
+/** This Class contains a record with some checkpointId. */
 public class StorageRecord<T> implements Serializable {
 
   private long checkpointId;
   private T value;
 
-  public StorageRecord() {
-  }
+  public StorageRecord() {}
 
   public StorageRecord(long checkpointId, T value) {
     this.checkpointId = checkpointId;

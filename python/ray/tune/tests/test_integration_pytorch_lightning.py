@@ -34,7 +34,7 @@ class _MockModule(pl.LightningModule):
     def forward(self, *args, **kwargs):
         return self.loss
 
-    def backward(self, trainer, loss, optimizer, optimizer_idx):
+    def backward(self, loss, optimizer, optimizer_idx):
         return None
 
     def training_step(self, train_batch, batch_idx):
@@ -46,8 +46,8 @@ class _MockModule(pl.LightningModule):
     def validation_epoch_end(self, outputs):
         avg_val_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
         avg_val_acc = torch.stack([x["val_acc"] for x in outputs]).mean()
-
-        return {"avg_val_loss": avg_val_loss, "avg_val_acc": avg_val_acc}
+        self.log("avg_val_loss", avg_val_loss)
+        self.log("avg_val_acc", avg_val_acc)
 
     def configure_optimizers(self):
         return None
@@ -66,9 +66,22 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
     def tearDown(self):
         pass
 
-    def testReportCallback(self):
+    def testReportCallbackUnnamed(self):
         def train(config):
-            module = _MockModule(10, 20)
+            module = _MockModule(10., 20.)
+            trainer = pl.Trainer(
+                max_epochs=1,
+                callbacks=[TuneReportCallback(on="validation_end")])
+            trainer.fit(module)
+
+        analysis = tune.run(train, stop={TRAINING_ITERATION: 1})
+
+        self.assertEqual(analysis.trials[0].last_result["avg_val_loss"],
+                         10. * 1.1)
+
+    def testReportCallbackNamed(self):
+        def train(config):
+            module = _MockModule(10., 20.)
             trainer = pl.Trainer(
                 max_epochs=1,
                 callbacks=[
@@ -81,14 +94,15 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
 
         analysis = tune.run(train, stop={TRAINING_ITERATION: 1})
 
-        self.assertEqual(analysis.trials[0].last_result["tune_loss"], 10 * 1.1)
+        self.assertEqual(analysis.trials[0].last_result["tune_loss"],
+                         10. * 1.1)
 
     def testCheckpointCallback(self):
         tmpdir = tempfile.mkdtemp()
         self.addCleanup(lambda: shutil.rmtree(tmpdir))
 
         def train(config):
-            module = _MockModule(10, 20)
+            module = _MockModule(10., 20.)
             trainer = pl.Trainer(
                 max_epochs=1,
                 callbacks=[
@@ -115,7 +129,7 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
         self.addCleanup(lambda: shutil.rmtree(tmpdir))
 
         def train(config):
-            module = _MockModule(10, 20)
+            module = _MockModule(10., 20.)
             trainer = pl.Trainer(
                 max_epochs=1,
                 callbacks=[
@@ -141,4 +155,4 @@ class PyTorchLightningIntegrationTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
     import sys
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(sys.argv[1:] + ["-v", __file__]))

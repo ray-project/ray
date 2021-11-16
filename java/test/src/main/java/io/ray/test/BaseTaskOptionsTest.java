@@ -16,8 +16,8 @@ public class BaseTaskOptionsTest {
 
   @Test
   public void testLegalResources() {
-    Map<String, Double> resources = ImmutableMap.of(
-        "CPU", 0.5, "GPU", 3.0, "memory", 1024.0, "A", 4294967296.0);
+    Map<String, Double> resources =
+        ImmutableMap.of("CPU", 0.5, "GPU", 3.0, "memory", 1024.0, "A", 4294967296.0);
     new MockActorCreationOptions(resources);
   }
 
@@ -45,5 +45,4 @@ public class BaseTaskOptionsTest {
     Map<String, Double> resources = ImmutableMap.of("CPU", 3.5);
     new MockActorCreationOptions(resources);
   }
-
 }

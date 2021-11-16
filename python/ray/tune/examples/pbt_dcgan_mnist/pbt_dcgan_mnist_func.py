@@ -9,7 +9,6 @@ from ray.tune.schedulers import PopulationBasedTraining
 import argparse
 import os
 from filelock import FileLock
-import random
 import torch
 import torch.nn as nn
 import torch.nn.parallel
@@ -78,6 +77,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default="~/data/",
+        help="Set the path of the dataset.")
     args, _ = parser.parse_known_args()
     ray.init()
 
@@ -91,7 +95,7 @@ if __name__ == "__main__":
             "https://github.com/ray-project/ray/raw/master/python/ray/tune/"
             "examples/pbt_dcgan_mnist/mnist_cnn.pt", MODEL_PATH)
 
-    dataloader = get_data_loader()
+    dataloader = get_data_loader(args.data_dir)
     if not args.smoke_test:
         plot_images(dataloader)
 
@@ -105,9 +109,6 @@ if __name__ == "__main__":
     mnist_model_ref = ray.put(mnist_cnn)
 
     scheduler = PopulationBasedTraining(
-        time_attr="training_iteration",
-        metric="is_score",
-        mode="max",
         perturbation_interval=5,
         hyperparam_mutations={
             # distribution for resampling
@@ -124,12 +125,12 @@ if __name__ == "__main__":
         stop={
             "training_iteration": tune_iter,
         },
+        metric="is_score",
+        mode="max",
         num_samples=8,
         config={
-            "netG_lr": tune.sample_from(
-                lambda spec: random.choice([0.0001, 0.0002, 0.0005])),
-            "netD_lr": tune.sample_from(
-                lambda spec: random.choice([0.0001, 0.0002, 0.0005])),
+            "netG_lr": tune.choice([0.0001, 0.0002, 0.0005]),
+            "netD_lr": tune.choice([0.0001, 0.0002, 0.0005]),
             "mnist_model_ref": mnist_model_ref
         })
     # __tune_end__

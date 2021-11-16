@@ -1,3 +1,4 @@
+from abc import ABCMeta, abstractmethod
 import logging
 import numpy as np
 import threading
@@ -14,15 +15,17 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-class InputReader:
-    """Input object for loading experiences in policy evaluation."""
+class InputReader(metaclass=ABCMeta):
+    """API for collecting and returning experiences during policy evaluation.
+    """
 
+    @abstractmethod
     @PublicAPI
-    def next(self):
-        """Return the next batch of experiences read.
+    def next(self) -> SampleBatchType:
+        """Returns the next batch of read experiences.
 
         Returns:
-            SampleBatch or MultiAgentBatch read.
+            The experience read (SampleBatch or MultiAgentBatch).
         """
         raise NotImplementedError
 
@@ -38,7 +41,7 @@ class InputReader:
         reader repeatedly to feed the TensorFlow queue.
 
         Args:
-            queue_size (int): Max elements to allow in the TF queue.
+            queue_size: Max elements to allow in the TF queue.
 
         Example:
             >>> class MyModel(rllib.model.Model):
@@ -54,7 +57,7 @@ class InputReader:
         You can find a runnable version of this in examples/custom_loss.py.
 
         Returns:
-            dict of Tensors, one for each column of the read SampleBatch.
+            Dict of Tensors, one for each column of the read SampleBatch.
         """
 
         if hasattr(self, "_queue_runner"):

@@ -2,8 +2,10 @@ import logging
 from typing import Dict, Optional, Union
 
 import numpy as np
+import pickle
 
 from ray.tune import trial_runner
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.trial import Trial
 
@@ -26,7 +28,8 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
         metric (str): The training result objective value attribute. Stopping
-            procedures will use this attribute.
+            procedures will use this attribute. If None but a mode was passed,
+            the `ray.tune.result.DEFAULT_METRIC` will be used per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         max_t (float): max time units per trial. Trials will be stopped after
@@ -41,7 +44,6 @@ class AsyncHyperBandScheduler(FIFOScheduler):
 
     def __init__(self,
                  time_attr: str = "training_iteration",
-                 reward_attr: Optional[str] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  max_t: int = 100,
@@ -55,14 +57,6 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         assert brackets > 0, "brackets must be positive!"
         if mode:
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'!"
-
-        if reward_attr is not None:
-            mode = "max"
-            metric = reward_attr
-            logger.warning(
-                "`reward_attr` is deprecated and will be removed in a future "
-                "version of Tune. "
-                "Setting `metric={}` and `mode=max`.".format(reward_attr))
 
         FIFOScheduler.__init__(self)
         self._reduction_factor = reduction_factor
@@ -102,6 +96,10 @@ class AsyncHyperBandScheduler(FIFOScheduler):
             self._metric_op = 1.
         elif self._mode == "min":
             self._metric_op = -1.
+
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
 
         return True
 
@@ -153,6 +151,16 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         out = "Using AsyncHyperBand: num_stopped={}".format(self._num_stopped)
         out += "\n" + "\n".join([b.debug_str() for b in self._brackets])
         return out
+
+    def save(self, checkpoint_path: str):
+        save_object = self.__dict__
+        with open(checkpoint_path, "wb") as outputFile:
+            pickle.dump(save_object, outputFile)
+
+    def restore(self, checkpoint_path: str):
+        with open(checkpoint_path, "rb") as inputFile:
+            save_object = pickle.load(inputFile)
+        self.__dict__.update(save_object)
 
 
 class _Bracket():

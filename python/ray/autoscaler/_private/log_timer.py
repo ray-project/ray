@@ -15,14 +15,14 @@ class LogTimer:
         self._start_time = datetime.datetime.utcnow()
 
     def __exit__(self, *error_vals):
-        if not cli_logger.old_style:
+        if cli_logger.log_style != "record":
             return
 
         td = datetime.datetime.utcnow() - self._start_time
         status = ""
         if self._show_status:
             status = "failed" if any(error_vals) else "succeeded"
-        logger.info(" ".join([
+        cli_logger.print(" ".join([
             self._message, status,
             "[LogTimer={:.0f}ms]".format(td.total_seconds() * 1000)
         ]))

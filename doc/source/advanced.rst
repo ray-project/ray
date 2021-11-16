@@ -42,17 +42,23 @@ This often occurs for data loading and preprocessing.
     # hi there!
     # hi there!
 
-Multi-node synchronization using ``SignalActor``
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Multi-node synchronization using an Actor
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-When you have multiple tasks that need to wait on some condition, you can use a ``SignalActor`` to coordinate.
+When you have multiple tasks that need to wait on some condition or otherwise
+need to synchronize across tasks & actors on a cluster, you can use a central
+actor to coordinate among them. Below is an example of using a ``SignalActor``
+that wraps an ``asyncio.Event`` for basic synchronization.
 
 .. code-block:: python
 
-    # Also available via `from ray.test_utils import SignalActor`
-    import ray
     import asyncio
 
+    import ray
+
+    ray.init()
+
+    # We set num_cpus to zero because this actor will mostly just block on I/O.
     @ray.remote(num_cpus=0)
     class SignalActor:
         def __init__(self):
@@ -73,11 +79,10 @@ When you have multiple tasks that need to wait on some condition, you can use a 
 
         print("go!")
 
-    ray.init()
     signal = SignalActor.remote()
     tasks = [wait_and_go.remote(signal) for _ in range(4)]
     print("ready...")
-    # Tasks will all be waiting for the singals.
+    # Tasks will all be waiting for the signals.
     print("set..")
     ray.get(signal.send.remote())
 
@@ -190,36 +195,6 @@ appear as the task name in the logs.
 .. image:: images/task_name_dashboard.png
 
 
-Dynamic Custom Resources
-------------------------
-
-Ray enables explicit developer control with respect to the task and actor placement by using custom resources. Further, users are able to dynamically adjust custom resources programmatically with ``ray.experimental.set_resource``. This allows the Ray application to implement virtually any scheduling policy, including task affinity, data locality, anti-affinity,
-load balancing, gang scheduling, and priority-based scheduling.
-
-
-.. code-block:: python
-
-    ray.init()
-    resource_name = "test_resource"
-    resource_capacity = 1.0
-
-    @ray.remote
-    def set_resource(resource_name, resource_capacity):
-        ray.experimental.set_resource(resource_name, resource_capacity)
-
-    ray.get(set_resource.remote(resource_name, resource_capacity))
-
-    available_resources = ray.available_resources()
-    cluster_resources = ray.cluster_resources()
-
-    assert available_resources[resource_name] == resource_capacity
-    assert cluster_resources[resource_name] == resource_capacity
-
-
-.. autofunction:: ray.experimental.set_resource
-    :noindex:
-
-
 Accelerator Types
 ------------------
 
@@ -234,6 +209,66 @@ Ray supports resource specific accelerator types. The `accelerator_type` field c
         return "This function was run on a node with a Tesla V100 GPU"
 
 See `ray.util.accelerators` to see available accelerator types. Current automatically detected accelerator types include Nvidia GPUs.
+
+
+Overloaded Functions
+--------------------
+Ray Java API supports calling overloaded java functions remotely. However, due to the limitation of Java compiler type inference, one must explicitly cast the method reference to the correct function type. For example, consider the following.
+
+Overloaded normal task call:
+
+.. code:: java
+
+    public static class MyRayApp {
+
+      public static int overloadFunction() {
+        return 1;
+      }
+
+      public static int overloadFunction(int x) {
+        return x;
+      }
+    }
+
+    // Invoke overloaded functions.
+    Assert.assertEquals((int) Ray.task((RayFunc0<Integer>) MyRayApp::overloadFunction).remote().get(), 1);
+    Assert.assertEquals((int) Ray.task((RayFunc1<Integer, Integer>) MyRayApp::overloadFunction, 2).remote().get(), 2);
+
+Overloaded actor task call:
+
+.. code:: java
+
+    public static class Counter {
+      protected int value = 0;
+
+      public int increment() {
+        this.value += 1;
+        return this.value;
+      }
+    }
+
+    public static class CounterOverloaded extends Counter {
+      public int increment(int diff) {
+        super.value += diff;
+        return super.value;
+      }
+
+      public int increment(int diff1, int diff2) {
+        super.value += diff1 + diff2;
+        return super.value;
+      }
+    }
+
+.. code:: java
+
+    ActorHandle<CounterOverloaded> a = Ray.actor(CounterOverloaded::new).remote();
+    // Call an overloaded actor method by super class method reference.
+    Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 1);
+    // Call an overloaded actor method, cast method reference first.
+    a.task((RayFunc1<CounterOverloaded, Integer>) CounterOverloaded::increment).remote();
+    a.task((RayFunc2<CounterOverloaded, Integer, Integer>) CounterOverloaded::increment, 10).remote();
+    a.task((RayFunc3<CounterOverloaded, Integer, Integer, Integer>) CounterOverloaded::increment, 10, 10).remote();
+    Assert.assertEquals((int) a.task(Counter::increment).remote().get(), 33);
 
 
 Nested Remote Functions
@@ -392,3 +427,10 @@ To get information about the current available resource capacity of your cluster
 
 .. autofunction:: ray.available_resources
     :noindex:
+
+.. _runtime-environments-old:
+
+Runtime Environments
+--------------------
+
+:ref:`This section has moved.<runtime-environments>`

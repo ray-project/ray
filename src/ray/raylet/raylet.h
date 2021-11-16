@@ -22,6 +22,7 @@
 #include "ray/raylet/node_manager.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/common/task/scheduling_resources.h"
+#include "ray/common/asio/instrumented_io_context.h"
 // clang-format on
 
 namespace ray {
@@ -49,7 +50,7 @@ class Raylet {
   /// manager.
   /// \param gcs_client A client connection to the GCS.
   /// \param metrics_export_port A port at which metrics are exposed to.
-  Raylet(boost::asio::io_service &main_service, const std::string &socket_name,
+  Raylet(instrumented_io_context &main_service, const std::string &socket_name,
          const std::string &node_ip_address, const std::string &redis_address,
          int redis_port, const std::string &redis_password,
          const NodeManagerConfig &node_manager_config,
@@ -65,6 +66,8 @@ class Raylet {
   /// Destroy the NodeServer.
   ~Raylet();
 
+  NodeID GetNodeId() const { return self_node_id_; }
+
  private:
   /// Register GCS client.
   ray::Status RegisterGcs();
@@ -76,6 +79,9 @@ class Raylet {
 
   friend class TestObjectManagerIntegration;
 
+  // Main event loop.
+  instrumented_io_context &main_service_;
+
   /// ID of this node.
   NodeID self_node_id_;
   /// Information of this node.
@@ -83,11 +89,6 @@ class Raylet {
 
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
-  /// The object table. This is shared between the object manager and node
-  /// manager.
-  std::shared_ptr<ObjectDirectoryInterface> object_directory_;
-  /// Manages client requests for object transfers and availability.
-  ObjectManager object_manager_;
   /// Manages client requests for task submission and execution.
   NodeManager node_manager_;
   /// The name of the socket this raylet listens on.

@@ -162,13 +162,11 @@ class DistributionalQTFModel(TFModelV2):
 
         q_out = build_action_value(name + "/action_value/", self.model_out)
         self.q_value_head = tf.keras.Model(self.model_out, q_out)
-        self.register_variables(self.q_value_head.variables)
 
         if dueling:
             state_out = build_state_score(name + "/state_value/",
                                           self.model_out)
             self.state_value_head = tf.keras.Model(self.model_out, state_out)
-            self.register_variables(self.state_value_head.variables)
 
     def get_q_value_distributions(self,
                                   model_out: TensorType) -> List[TensorType]:

@@ -3,8 +3,7 @@ from functools import partial
 from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp, \
     try_import_torch
-from ray.rllib.utils.deprecation import deprecation_warning, renamed_agent, \
-    renamed_class, renamed_function
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import sigmoid, softmax, relu, one_hot, fc, lstm, \
@@ -12,19 +11,25 @@ from ray.rllib.utils.numpy import sigmoid, softmax, relu, one_hot, fc, lstm, \
 from ray.rllib.utils.schedules import LinearSchedule, PiecewiseSchedule, \
     PolynomialSchedule, ExponentialSchedule, ConstantSchedule
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 from ray.tune.utils import merge_dicts, deep_update
 
 
-def add_mixins(base, mixins):
+def add_mixins(base, mixins, reversed=False):
     """Returns a new class with mixins applied in priority order."""
 
     mixins = list(mixins or [])
 
     while mixins:
+        if reversed:
 
-        class new_base(mixins.pop(), base):
-            pass
+            class new_base(base, mixins.pop()):
+                pass
+
+        else:
+
+            class new_base(mixins.pop(), base):
+                pass
 
         base = new_base
 
@@ -53,12 +58,26 @@ def force_list(elements=None, to_tuple=False):
         if type(elements) in [list, tuple] else ctor([elements])
 
 
+class NullContextManager:
+    """No-op context manager"""
+
+    def __init__(self):
+        pass
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, *args):
+        pass
+
+
 force_tuple = partial(force_list, to_tuple=True)
 
 __all__ = [
     "add_mixins",
     "check",
     "check_compute_single_action",
+    "check_train_results",
     "deep_update",
     "deprecation_warning",
     "fc",
@@ -70,9 +89,6 @@ __all__ = [
     "one_hot",
     "override",
     "relu",
-    "renamed_function",
-    "renamed_agent",
-    "renamed_class",
     "sigmoid",
     "softmax",
     "try_import_tf",

@@ -1,8 +1,6 @@
 package io.ray.runtime.exception;
 
-/**
- * The exception represents that there is an intentional system exit.
- */
+/** The exception represents that there is an intentional system exit. */
 public class RayIntentionalSystemExitException extends RuntimeException {
 
   public RayIntentionalSystemExitException(String message) {

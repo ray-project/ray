@@ -15,13 +15,15 @@
 #include <iostream>
 
 #include "gflags/gflags.h"
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/task/task_common.h"
-#include "ray/gcs/gcs_client/service_based_gcs_client.h"
+#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
+#include "ray/util/event.h"
 
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
@@ -36,25 +38,34 @@ DEFINE_int32(min_worker_port, 0,
              "The lowest port that workers' gRPC servers will bind on.");
 DEFINE_int32(max_worker_port, 0,
              "The highest port that workers' gRPC servers will bind on.");
-DEFINE_int32(num_initial_workers, 0, "Number of initial workers.");
+DEFINE_string(worker_port_list, "",
+              "An explicit list of ports that workers' gRPC servers will bind on.");
 DEFINE_int32(num_initial_python_workers_for_first_job, 0,
              "Number of initial Python workers for the first job.");
 DEFINE_int32(maximum_startup_concurrency, 1, "Maximum startup concurrency");
 DEFINE_string(static_resource_list, "", "The static resource list of this node.");
-DEFINE_string(config_list, "", "The raylet config list of this node.");
 DEFINE_string(python_worker_command, "", "Python worker command.");
 DEFINE_string(java_worker_command, "", "Java worker command.");
 DEFINE_string(agent_command, "", "Dashboard agent command.");
 DEFINE_string(cpp_worker_command, "", "CPP worker command.");
+DEFINE_string(native_library_path, "",
+              "The native library path which includes the core libraries.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
-DEFINE_bool(head_node, false, "Whether this is the head node of the cluster.");
+DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
+DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
+DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
-DEFINE_string(plasma_directory, "", "The shared memory directory of the object store.");
+#ifdef __linux__
+DEFINE_string(plasma_directory, "/dev/shm",
+              "The shared memory directory of the object store.");
+#else
+DEFINE_string(plasma_directory, "/tmp",
+              "The shared memory directory of the object store.");
+#endif
 DEFINE_bool(huge_pages, false, "Whether enable huge pages");
-
 #ifndef RAYLET_TEST
 
 int main(int argc, char *argv[]) {
@@ -62,7 +73,7 @@ int main(int argc, char *argv[]) {
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"");
-  ray::RayLog::InstallFailureSignalHandler();
+  ray::RayLog::InstallFailureSignalHandler(argv[0]);
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   const std::string raylet_socket_name = FLAGS_raylet_socket_name;
@@ -75,21 +86,23 @@ int main(int argc, char *argv[]) {
   const int redis_port = static_cast<int>(FLAGS_redis_port);
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
-  const int num_initial_workers = static_cast<int>(FLAGS_num_initial_workers);
+  const std::string worker_port_list = FLAGS_worker_port_list;
   const int num_initial_python_workers_for_first_job =
       static_cast<int>(FLAGS_num_initial_python_workers_for_first_job);
   const int maximum_startup_concurrency =
       static_cast<int>(FLAGS_maximum_startup_concurrency);
   const std::string static_resource_list = FLAGS_static_resource_list;
-  const std::string config_list = FLAGS_config_list;
   const std::string python_worker_command = FLAGS_python_worker_command;
   const std::string java_worker_command = FLAGS_java_worker_command;
   const std::string agent_command = FLAGS_agent_command;
   const std::string cpp_worker_command = FLAGS_cpp_worker_command;
+  const std::string native_library_path = FLAGS_native_library_path;
   const std::string redis_password = FLAGS_redis_password;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
-  const bool head_node = FLAGS_head_node;
+  const std::string log_dir = FLAGS_log_dir;
+  const std::string resource_dir = FLAGS_resource_dir;
+  const int ray_debugger_external = FLAGS_ray_debugger_external;
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
@@ -98,57 +111,43 @@ int main(int argc, char *argv[]) {
 
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
-  std::unordered_map<std::string, double> static_resource_conf;
-  std::unordered_map<std::string, std::string> raylet_config;
+  absl::flat_hash_map<std::string, double> static_resource_conf;
 
   // IO Service for node manager.
-  boost::asio::io_service main_service;
+  instrumented_io_context main_service;
 
   // Ensure that the IO service keeps running. Without this, the service will exit as soon
   // as there is no more work to be processed.
   boost::asio::io_service::work main_work(main_service);
 
   // Initialize gcs client
-  ray::gcs::GcsClientOptions client_options(redis_address, redis_port, redis_password);
+  // Asynchrounous context is not used by `redis_client_` in `gcs_client`, so we set
+  // `enable_async_conn` as false.
+  ray::gcs::GcsClientOptions client_options(
+      redis_address, redis_port, redis_password, /*enable_sync_conn=*/true,
+      /*enable_async_conn=*/false, /*enable_subscribe_conn=*/true);
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
 
-  gcs_client = std::make_shared<ray::gcs::ServiceBasedGcsClient>(client_options);
+  gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
 
   RAY_CHECK_OK(gcs_client->Connect(main_service));
-
-  // The system_config is only set on the head node--other nodes get it from GCS.
-  if (head_node) {
-    // Parse the configuration list.
-    std::istringstream config_string(config_list);
-    std::string config_name;
-    std::string config_value;
-
-    while (std::getline(config_string, config_name, ',')) {
-      RAY_CHECK(std::getline(config_string, config_value, ','));
-      // TODO(rkn): The line below could throw an exception. What should we do about this?
-      raylet_config[config_name] = config_value;
-    }
-    RAY_CHECK_OK(gcs_client->Nodes().AsyncSetInternalConfig(raylet_config));
-  }
-
-  std::unique_ptr<ray::raylet::Raylet> server(nullptr);
+  std::unique_ptr<ray::raylet::Raylet> raylet(nullptr);
 
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
       [&](::ray::Status status,
-          const boost::optional<std::unordered_map<std::string, std::string>>
-              stored_raylet_config) {
-        // NOTE: We update the raylet_config map from above. This avoids a race
-        // condition between AsyncSetInternalConfig and AsyncGetInternalConfig on the
-        // head node. There is an unlikely race condition where a second node calls
-        // AsyncGetInternalConfig before the head finishes AsyncSetInternalConfig.
+          const boost::optional<std::string> &stored_raylet_config) {
         RAY_CHECK_OK(status);
-        if (stored_raylet_config.has_value()) {
-          for (auto pair : stored_raylet_config.get()) {
-            raylet_config[pair.first] = pair.second;
-          }
-        }
+        RAY_CHECK(stored_raylet_config.has_value());
+        RayConfig::instance().initialize(stored_raylet_config.get());
 
-        RayConfig::instance().initialize(raylet_config);
+        // Parse the worker port list.
+        std::istringstream worker_port_list_string(worker_port_list);
+        std::string worker_port;
+        std::vector<int> worker_ports;
+
+        while (std::getline(worker_port_list_string, worker_port, ',')) {
+          worker_ports.push_back(std::stoi(worker_port));
+        }
 
         // Parse the resource list.
         std::istringstream resource_string(static_resource_list);
@@ -157,8 +156,6 @@ int main(int argc, char *argv[]) {
 
         while (std::getline(resource_string, resource_name, ',')) {
           RAY_CHECK(std::getline(resource_string, resource_quantity, ','));
-          // TODO(rkn): The line below could throw an exception. What should we do
-          // about this?
           static_resource_conf[resource_name] = std::stod(resource_quantity);
         }
         auto num_cpus_it = static_resource_conf.find("CPU");
@@ -166,20 +163,20 @@ int main(int argc, char *argv[]) {
                            ? static_cast<int>(num_cpus_it->second)
                            : 0;
 
-        node_manager_config.raylet_config = raylet_config;
+        node_manager_config.raylet_config = stored_raylet_config.get();
         node_manager_config.resource_config =
             ray::ResourceSet(std::move(static_resource_conf));
         RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                        << node_manager_config.resource_config.ToString();
         node_manager_config.node_manager_address = node_ip_address;
         node_manager_config.node_manager_port = node_manager_port;
-        node_manager_config.num_initial_workers = num_initial_workers;
         node_manager_config.num_workers_soft_limit = num_cpus;
         node_manager_config.num_initial_python_workers_for_first_job =
             num_initial_python_workers_for_first_job;
         node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
         node_manager_config.min_worker_port = min_worker_port;
         node_manager_config.max_worker_port = max_worker_port;
+        node_manager_config.worker_ports = worker_ports;
 
         if (!python_worker_command.empty()) {
           node_manager_config.worker_commands.emplace(
@@ -193,6 +190,7 @@ int main(int argc, char *argv[]) {
           node_manager_config.worker_commands.emplace(
               make_pair(ray::Language::CPP, ParseCommandLine(cpp_worker_command)));
         }
+        node_manager_config.native_library_path = native_library_path;
         if (python_worker_command.empty() && java_worker_command.empty() &&
             cpp_worker_command.empty()) {
           RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "
@@ -201,33 +199,41 @@ int main(int argc, char *argv[]) {
         if (!agent_command.empty()) {
           node_manager_config.agent_command = agent_command;
         } else {
-          RAY_LOG(DEBUG) << "Agent command is empty.";
+          RAY_LOG(DEBUG) << "Agent command is empty. Not starting agent.";
         }
 
-        node_manager_config.heartbeat_period_ms =
-            RayConfig::instance().raylet_heartbeat_timeout_milliseconds();
-        node_manager_config.debug_dump_period_ms =
-            RayConfig::instance().debug_dump_period_milliseconds();
-        node_manager_config.free_objects_period_ms =
-            RayConfig::instance().free_objects_period_milliseconds();
-        node_manager_config.fair_queueing_enabled =
-            RayConfig::instance().fair_queueing_enabled();
-        node_manager_config.object_pinning_enabled =
-            RayConfig::instance().object_pinning_enabled();
+        node_manager_config.report_resources_period_ms =
+            RayConfig::instance().raylet_report_resources_period_milliseconds();
+        node_manager_config.record_metrics_period_ms =
+            RayConfig::instance().metrics_report_interval_ms() / 2;
         node_manager_config.store_socket_name = store_socket_name;
         node_manager_config.temp_dir = temp_dir;
         node_manager_config.session_dir = session_dir;
+        node_manager_config.resource_dir = resource_dir;
+        node_manager_config.ray_debugger_external = ray_debugger_external;
+        node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
+        node_manager_config.min_spilling_size = RayConfig::instance().min_spilling_size();
 
         // Configuration for the object manager.
         ray::ObjectManagerConfig object_manager_config;
+        object_manager_config.object_manager_address = node_ip_address;
         object_manager_config.object_manager_port = object_manager_port;
         object_manager_config.store_socket_name = store_socket_name;
+
+        object_manager_config.timer_freq_ms =
+            RayConfig::instance().object_manager_timer_freq_ms();
         object_manager_config.pull_timeout_ms =
             RayConfig::instance().object_manager_pull_timeout_ms();
         object_manager_config.push_timeout_ms =
             RayConfig::instance().object_manager_push_timeout_ms();
+        if (object_store_memory <= 0) {
+          RAY_LOG(FATAL) << "Object store memory should be set.";
+        }
         object_manager_config.object_store_memory = object_store_memory;
+        object_manager_config.max_bytes_in_flight =
+            RayConfig::instance().object_manager_max_bytes_in_flight();
         object_manager_config.plasma_directory = plasma_directory;
+        object_manager_config.fallback_directory = temp_dir;
         object_manager_config.huge_pages = huge_pages;
 
         object_manager_config.rpc_service_threads_number =
@@ -243,27 +249,34 @@ int main(int argc, char *argv[]) {
         // Initialize stats.
         const ray::stats::TagsType global_tags = {
             {ray::stats::ComponentKey, "raylet"},
-            {ray::stats::VersionKey, "1.1.0.dev0"},
+            {ray::stats::VersionKey, kRayVersion},
             {ray::stats::NodeAddressKey, node_ip_address}};
         ray::stats::Init(global_tags, metrics_agent_port);
 
         // Initialize the node manager.
-        server.reset(new ray::raylet::Raylet(
+        raylet.reset(new ray::raylet::Raylet(
             main_service, raylet_socket_name, node_ip_address, redis_address, redis_port,
             redis_password, node_manager_config, object_manager_config, gcs_client,
             metrics_export_port));
 
-        server->Start();
+        // Initialize event framework.
+        if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
+          ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_RAYLET,
+                            {{"node_id", raylet->GetNodeId().Hex()}}, log_dir,
+                            RayConfig::instance().event_level());
+        };
+
+        raylet->Start();
       }));
 
   // Destroy the Raylet on a SIGTERM. The pointer to main_service is
   // guaranteed to be valid since this function will run the event loop
   // instead of returning immediately.
   // We should stop the service and remove the local socket file.
-  auto handler = [&main_service, &raylet_socket_name, &server, &gcs_client](
+  auto handler = [&main_service, &raylet_socket_name, &raylet, &gcs_client](
                      const boost::system::error_code &error, int signal_number) {
     RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
-    server->Stop();
+    raylet->Stop();
     gcs_client->Disconnect();
     ray::stats::Shutdown();
     main_service.stop();

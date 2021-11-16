@@ -21,16 +21,19 @@ from ray.rllib.agents.mbmpo.utils import calculate_gae_advantages, \
     MBMPOExploration
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.model_vector_env import model_vector_env
+from ray.rllib.env.wrappers.model_vector_env import model_vector_env
 from ray.rllib.evaluation.metrics import collect_episodes, collect_metrics, \
     get_learner_stats
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, LEARNER_INFO, _get_shared_metrics
+    STEPS_TRAINED_COUNTER, STEPS_TRAINED_THIS_ITER_COUNTER, \
+    _get_shared_metrics
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
-from ray.rllib.utils.torch_ops import convert_to_torch_tensor
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import EnvType, TrainerConfigDict
 from ray.util.iter import from_actors, LocalIterator
 
@@ -51,10 +54,10 @@ DEFAULT_CONFIG = with_common_config({
     "kl_coeff": 0.0005,
     # Size of batches collected from each worker.
     "rollout_fragment_length": 200,
+    # Do create an actual env on the local worker (worker-idx=0).
+    "create_env_on_driver": True,
     # Step size of SGD.
     "lr": 1e-3,
-    # Share layers for value function.
-    "vf_share_layers": False,
     # Coefficient of the value function loss.
     "vf_loss_coeff": 0.5,
     # Coefficient of the entropy regularizer.
@@ -108,6 +111,12 @@ DEFAULT_CONFIG = with_common_config({
     "custom_vector_env": model_vector_env,
     # How many iterations through MAML per MBMPO iteration.
     "num_maml_steps": 10,
+
+    # Deprecated keys:
+    # Share layers for value function. If you set this to True, it's important
+    # to tune vf_loss_coeff.
+    # Use config.model.vf_share_layers instead.
+    "vf_share_layers": DEPRECATED_VALUE,
 })
 # __sphinx_doc_end__
 # yapf: enable
@@ -153,17 +162,19 @@ class MetaUpdate:
             adapt_metrics_dict, prefix="MAMLIter{}".format(self.step_counter))
 
         # MAML Meta-update.
+        fetches = None
         for i in range(self.maml_optimizer_steps):
             fetches = self.workers.local_worker().learn_on_batch(samples)
-        fetches = get_learner_stats(fetches)
+        learner_stats = get_learner_stats(fetches)
 
         # Update KLs.
         def update(pi, pi_id):
-            assert "inner_kl" not in fetches, (
-                "inner_kl should be nested under policy id key", fetches)
-            if pi_id in fetches:
-                assert "inner_kl" in fetches[pi_id], (fetches, pi_id)
-                pi.update_kls(fetches[pi_id]["inner_kl"])
+            assert "inner_kl" not in learner_stats, (
+                "inner_kl should be nested under policy id key", learner_stats)
+            if pi_id in learner_stats:
+                assert "inner_kl" in learner_stats[pi_id], (learner_stats,
+                                                            pi_id)
+                pi.update_kls(learner_stats[pi_id]["inner_kl"])
             else:
                 logger.warning("No data for {}, not updating kl".format(pi_id))
 
@@ -172,6 +183,7 @@ class MetaUpdate:
         # Modify Reporting Metrics.
         metrics = _get_shared_metrics()
         metrics.info[LEARNER_INFO] = fetches
+        metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = samples.count
         metrics.counters[STEPS_TRAINED_COUNTER] += samples.count
 
         if self.step_counter == self.num_steps - 1:
@@ -324,8 +336,8 @@ def post_process_samples(samples, config: TrainerConfigDict):
     return samples, split_lst
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
     """Execution plan of the PPO algorithm. Defines the distributed dataflow.
 
     Args:
@@ -337,6 +349,9 @@ def execution_plan(workers: WorkerSet,
         LocalIterator[dict]: The Policy class to use with PPOTrainer.
             If None, use `default_policy` provided in build_trainer().
     """
+    assert len(kwargs) == 0, (
+        "MBMPO execution_plan does NOT take any additional parameters")
+
     # Train TD Models on the driver.
     workers.local_worker().foreach_policy(fit_dynamics)
 
@@ -409,20 +424,25 @@ def validate_config(config):
     Raises:
         ValueError: In case something is wrong with the config.
     """
+    if config["num_gpus"] > 1:
+        raise ValueError("`num_gpus` > 1 not yet supported for MB-MPO!")
     if config["framework"] != "torch":
         logger.warning("MB-MPO only supported in PyTorch so far! Switching to "
                        "`framework=torch`.")
         config["framework"] = "torch"
     if config["inner_adaptation_steps"] <= 0:
-        raise ValueError("Inner Adaptation Steps must be >=1.")
+        raise ValueError("Inner adaptation steps must be >=1!")
     if config["maml_optimizer_steps"] <= 0:
-        raise ValueError("PPO steps for meta-update needs to be >=0")
+        raise ValueError("PPO steps for meta-update needs to be >=0!")
     if config["entropy_coeff"] < 0:
-        raise ValueError("`entropy_coeff` must be >=0.")
+        raise ValueError("`entropy_coeff` must be >=0.0!")
     if config["batch_mode"] != "complete_episodes":
-        raise ValueError("`batch_mode=truncate_episodes` not supported.")
+        raise ValueError("`batch_mode=truncate_episodes` not supported!")
     if config["num_workers"] <= 0:
         raise ValueError("Must have at least 1 worker/task.")
+    if config["create_env_on_driver"] is False:
+        raise ValueError("Must have an actual Env created on the driver "
+                         "(local) worker! Set `create_env_on_driver` to True.")
 
 
 def validate_env(env: EnvType, env_context: EnvContext):

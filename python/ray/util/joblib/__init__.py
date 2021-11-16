@@ -9,7 +9,7 @@ def register_ray():
     except ImportError:
         msg = ("To use the ray backend you must install ray."
                "Try running 'pip install ray'."
-               "See https://docs.ray.io/en/latest/installation.html"
+               "See https://docs.ray.io/en/master/installation.html"
                "for more information.")
         raise ImportError(msg)
 

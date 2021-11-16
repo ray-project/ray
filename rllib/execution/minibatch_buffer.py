@@ -1,10 +1,19 @@
+from typing import Any, Tuple
+import queue
+
+
 class MinibatchBuffer:
     """Ring buffer of recent data batches for minibatch SGD.
 
     This is for use with AsyncSamplesOptimizer.
     """
 
-    def __init__(self, inqueue, size, timeout, num_passes, init_num_passes=1):
+    def __init__(self,
+                 inqueue: queue.Queue,
+                 size: int,
+                 timeout: float,
+                 num_passes: int,
+                 init_num_passes: int = 1):
         """Initialize a minibatch buffer.
 
         Args:
@@ -23,7 +32,7 @@ class MinibatchBuffer:
         self.ttl = [0] * size
         self.idx = 0
 
-    def get(self):
+    def get(self) -> Tuple[Any, bool]:
         """Get a new batch from the internal ring buffer.
 
         Returns:

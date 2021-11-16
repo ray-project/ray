@@ -4,15 +4,17 @@ RecSim is a configurable recommender systems simulation platform.
 Source: https://github.com/google-research/recsim
 """
 
-import math
-from typing import List, OrderedDict
-
+from collections import OrderedDict
 import gym
 from gym import spaces
+import numpy as np
 from recsim.environments import interest_evolution
+from typing import List
 
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.tune.registry import register_env
+
+from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
 
 
 class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
@@ -41,6 +43,7 @@ class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
                 ("doc", doc_space),
                 ("response", obs_space["response"]),
             ]))
+        self._sampled_obs = self.observation_space.sample()
 
     def observation(self, obs):
         new_obs = OrderedDict()
@@ -50,21 +53,33 @@ class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
             for k, (_, v) in enumerate(obs["doc"].items())
         }
         new_obs["response"] = obs["response"]
+        new_obs = convert_element_to_space_type(new_obs, self._sampled_obs)
         return new_obs
 
 
 class RecSimResetWrapper(gym.Wrapper):
-    """Fix RecSim environment's reset() function
+    """Fix RecSim environment's reset() and close() function
 
     RecSim's reset() function returns an observation without the "response"
     field, breaking RLlib's check. This wrapper fixes that by assigning a
     random "response".
+
+    RecSim's close() function raises NotImplementedError. We change the
+    behavior to doing nothing.
     """
+
+    def __init__(self, env: gym.Env):
+        super().__init__(env)
+        self._sampled_obs = self.env.observation_space.sample()
 
     def reset(self):
         obs = super().reset()
         obs["response"] = self.env.observation_space["response"].sample()
+        obs = convert_element_to_space_type(obs, self._sampled_obs)
         return obs
+
+    def close(self):
+        pass
 
 
 class MultiDiscreteToDiscreteActionWrapper(gym.ActionWrapper):
@@ -83,7 +98,7 @@ class MultiDiscreteToDiscreteActionWrapper(gym.ActionWrapper):
                 f"is not supported by {self.__class__.__name__}")
         self.action_space_dimensions = env.action_space.nvec
         self.action_space = spaces.Discrete(
-            math.prod(self.action_space_dimensions))
+            np.prod(self.action_space_dimensions))
 
     def action(self, action: int) -> List[int]:
         """Convert a Discrete action to a MultiDiscrete action"""
@@ -107,7 +122,7 @@ def make_recsim_env(config):
     env = interest_evolution.create_environment(env_config)
     env = RecSimResetWrapper(env)
     env = RecSimObservationSpaceWrapper(env)
-    if config and config["convert_to_discrete_action_space"]:
+    if env_config and env_config["convert_to_discrete_action_space"]:
         env = MultiDiscreteToDiscreteActionWrapper(env)
     return env
 

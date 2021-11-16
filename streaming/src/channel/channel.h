@@ -10,6 +10,8 @@
 namespace ray {
 namespace streaming {
 
+using namespace ray::core;
+
 enum class TransferCreationStatus : uint32_t {
   FreshStarted = 0,
   PullOk = 1,
@@ -27,8 +29,8 @@ struct StreamingQueueInfo {
 
 struct ChannelCreationParameter {
   ActorID actor_id;
-  std::shared_ptr<ray::RayFunction> async_function;
-  std::shared_ptr<ray::RayFunction> sync_function;
+  std::shared_ptr<RayFunction> async_function;
+  std::shared_ptr<RayFunction> sync_function;
 };
 
 /// PrducerChannelinfo and ConsumerChannelInfo contains channel information and

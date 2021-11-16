@@ -1,7 +1,6 @@
 import os
 import logging
 import time
-import requests
 from staroid import Staroid
 from kubernetes import client, config
 import socket
@@ -16,6 +15,19 @@ from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import TAG_RAY_CLUSTER_NAME
 
 logger = logging.getLogger(__name__)
+
+
+def _try_import_requests():
+    """Tries to import 'requests'. Raises exception if fails."""
+    try:
+        import requests  # `requests` is not part of stdlib.
+    except ImportError as exc:
+        raise type(exc)(
+            "'requests' was not found, which is needed for "
+            "this cluster configuration. "
+            "Download this dependency by running `pip install requests` "
+            "or `pip install \"ray[default]\"`.") from None
+    return requests
 
 
 def find_free_port():
@@ -47,6 +59,8 @@ class StaroidNodeProvider(NodeProvider):
                                              "STAROID_SKE")
         self.__ske_region = self._get_config_or_env(
             provider_config, "ske_region", "STAROID_SKE_REGION")
+
+        self._requests_lib = _try_import_requests()
 
     def _get_config_or_env(self, config, config_key, env_name):
         value = None
@@ -136,12 +150,12 @@ class StaroidNodeProvider(NodeProvider):
         established = False
         while time.time() - start_time < timeout:
             try:
-                r = requests.get(
+                r = self._requests_lib.get(
                     "{}/version".format(local_kube_api_addr), timeout=(3, 5))
                 if r.status_code == 200:
                     established = True
                     break
-            except requests.exceptions.ConnectionError:
+            except self._requests_lib.exceptions.ConnectionError:
                 pass
             time.sleep(3)
 
@@ -190,21 +204,21 @@ class StaroidNodeProvider(NodeProvider):
         kube_client = self.__cached[self.cluster_name]["kube_client"]
         core_api = client.CoreV1Api(kube_client)
 
-        pod = core_api.read_namespaced_pod_status(node_id, self.namespace)
+        pod = core_api.read_namespaced_pod(node_id, self.namespace)
         return pod.status.phase == "Running"
 
     def is_terminated(self, node_id):
         kube_client = self.__cached[self.cluster_name]["kube_client"]
         core_api = client.CoreV1Api(kube_client)
 
-        pod = core_api.read_namespaced_pod_status(node_id, self.namespace)
+        pod = core_api.read_namespaced_pod(node_id, self.namespace)
         return pod.status.phase not in ["Running", "Pending"]
 
     def node_tags(self, node_id):
         kube_client = self.__cached[self.cluster_name]["kube_client"]
         core_api = client.CoreV1Api(kube_client)
 
-        pod = core_api.read_namespaced_pod_status(node_id, self.namespace)
+        pod = core_api.read_namespaced_pod(node_id, self.namespace)
         return pod.metadata.labels
 
     def external_ip(self, node_id):
@@ -214,7 +228,7 @@ class StaroidNodeProvider(NodeProvider):
         kube_client = self.__cached[self.cluster_name]["kube_client"]
         core_api = client.CoreV1Api(kube_client)
 
-        pod = core_api.read_namespaced_pod_status(node_id, self.namespace)
+        pod = core_api.read_namespaced_pod(node_id, self.namespace)
         return pod.status.pod_ip
 
     def get_node_id(self, ip_address, use_internal_ip=True) -> str:
@@ -226,41 +240,53 @@ class StaroidNodeProvider(NodeProvider):
         kube_client = self.__cached[self.cluster_name]["kube_client"]
         core_api = client.CoreV1Api(kube_client)
 
-        pod = core_api.read_namespaced_pod_status(node_id, self.namespace)
-        pod.metadata.labels.update(tags)
-        core_api.patch_namespaced_pod(node_id, self.namespace, pod)
+        max_retry = 10
+        for i in range(max_retry):
+            try:
+                pod = core_api.read_namespaced_pod(node_id, self.namespace)
+                pod.metadata.labels.update(tags)
+                core_api.patch_namespaced_pod(node_id, self.namespace, pod)
+            except ApiException as e:
+                if e.status == 409 and max_retry - 1 > i:
+                    # conflict. pod modified before apply patch. retry
+                    time.sleep(0.2)
+                    continue
+
+                raise e
 
     def create_node(self, node_config, tags, count):
         instance_name = self.cluster_name
 
-        # get or create ske
-        cluster_api = self.__star.cluster()
-        ske = cluster_api.create(self.__ske, self.__ske_region)
-        if ske is None:
-            raise Exception("Failed to create an SKE '{}' in '{}' region"
-                            .format(self.__ske, self.__ske_region))
+        incluster = self._connect_kubeapi(instance_name)
+        if incluster is None:
+            # get or create ske
+            cluster_api = self.__star.cluster()
+            ske = cluster_api.create(self.__ske, self.__ske_region)
+            if ske is None:
+                raise Exception("Failed to create an SKE '{}' in '{}' region"
+                                .format(self.__ske, self.__ske_region))
 
-        # create a namespace
-        ns_api = self.__star.namespace(ske)
-        ns = ns_api.create(
-            instance_name,
-            self.provider_config["project"],
+            # create a namespace
+            ns_api = self.__star.namespace(ske)
+            ns = ns_api.create(
+                instance_name,
+                self.provider_config["project"],
 
-            # Configure 'start-head' param to 'false'.
-            # head node will be created using Kubernetes api.
-            params=[{
-                "group": "Misc",
-                "name": "start-head",
-                "value": "false"
-            }])
-        if ns is None:
-            raise Exception("Failed to create a cluster '{}' in SKE '{}'"
-                            .format(instance_name, self.__ske))
+                # Configure 'start-head' param to 'false'.
+                # head node will be created using Kubernetes api.
+                params=[{
+                    "group": "Misc",
+                    "name": "start-head",
+                    "value": "false"
+                }])
+            if ns is None:
+                raise Exception("Failed to create a cluster '{}' in SKE '{}'"
+                                .format(instance_name, self.__ske))
 
-        # 'ray down' will change staroid namespace status to "PAUSE"
-        # in this case we need to start namespace again.
-        if ns.status() == "PAUSE":
-            ns = ns_api.start(instance_name)
+            # 'ray down' will change staroid namespace status to "PAUSE"
+            # in this case we need to start namespace again.
+            if ns.status() == "PAUSE":
+                ns = ns_api.start(instance_name)
 
         # kube client
         kube_client = self._connect_kubeapi(instance_name)
@@ -292,6 +318,14 @@ class StaroidNodeProvider(NodeProvider):
             pod_spec["metadata"]["labels"].update(tags)
         else:
             pod_spec["metadata"]["labels"] = tags
+
+        if "generateName" not in pod_spec["metadata"]:
+            pod_spec["metadata"]["generateName"] = \
+                "ray-" + pod_spec["metadata"]["labels"]["ray-node-type"] + "-"
+
+        if "component" not in pod_spec["metadata"]["labels"]:
+            pod_spec["metadata"]["labels"]["component"] = \
+                "ray-" + pod_spec["metadata"]["labels"]["ray-node-type"]
 
         if image is not None:
             containers = pod_spec["spec"]["containers"]

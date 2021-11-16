@@ -9,9 +9,7 @@ import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * MetricRegistry is a registry for metrics to be registered and updates metrics.
- */
+/** MetricRegistry is a registry for metrics to be registered and updates metrics. */
 public class MetricRegistry {
 
   public static final MetricRegistry DEFAULT_REGISTRY = new MetricRegistry();
@@ -32,10 +30,15 @@ public class MetricRegistry {
     synchronized (this) {
       if (!isRunning) {
         this.metricConfig = metricConfig;
-        scheduledExecutorService = new ScheduledThreadPoolExecutor(metricConfig.threadPoolSize(),
-            new ThreadFactoryBuilder().setNameFormat("metric-registry-%d").build());
-        scheduledExecutorService.scheduleAtFixedRate(this::update, metricConfig.timeIntervalMs(),
-            metricConfig.timeIntervalMs(), TimeUnit.MILLISECONDS);
+        scheduledExecutorService =
+            new ScheduledThreadPoolExecutor(
+                metricConfig.threadPoolSize(),
+                new ThreadFactoryBuilder().setNameFormat("metric-registry-%d").build());
+        scheduledExecutorService.scheduleAtFixedRate(
+            this::update,
+            metricConfig.timeIntervalMs(),
+            metricConfig.timeIntervalMs(),
+            TimeUnit.MILLISECONDS);
         isRunning = true;
         LOG.info("Finished startup metric registry, metricConfig is {}.", metricConfig);
       }
@@ -47,15 +50,18 @@ public class MetricRegistry {
       if (isRunning && scheduledExecutorService != null) {
         try {
           scheduledExecutorService.shutdownNow();
-          if (!scheduledExecutorService.awaitTermination(metricConfig.shutdownWaitTimeMs(),
-              TimeUnit.MILLISECONDS)) {
-            LOG.warn("Metric registry did not shut down in {}ms time, so try to shut down again.",
+          if (!scheduledExecutorService.awaitTermination(
+              metricConfig.shutdownWaitTimeMs(), TimeUnit.MILLISECONDS)) {
+            LOG.warn(
+                "Metric registry did not shut down in {}ms time, so try to shut down again.",
                 metricConfig.shutdownWaitTimeMs());
             scheduledExecutorService.shutdownNow();
           }
         } catch (InterruptedException e) {
-          LOG.warn("Interrupted when shutting down metric registry, so try to shut down again.",
-              e.getMessage(), e);
+          LOG.warn(
+              "Interrupted when shutting down metric registry, so try to shut down again.",
+              e.getMessage(),
+              e);
           scheduledExecutorService.shutdownNow();
         }
         if (scheduledExecutorService.isShutdown()) {
@@ -106,9 +112,10 @@ public class MetricRegistry {
   }
 
   private void update() {
-    registeredMetrics.forEach((id, metric) -> {
-      metric.record();
-    });
+    registeredMetrics.forEach(
+        (id, metric) -> {
+          metric.record();
+        });
   }
 
   private MetricType getMetricType(Metric metric) {
@@ -131,5 +138,4 @@ public class MetricRegistry {
   private MetricId genMetricIdByMetric(Metric metric) {
     return new MetricId(getMetricType(metric), metric.name, metric.tags);
   }
-
 }

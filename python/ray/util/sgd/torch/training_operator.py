@@ -2,24 +2,25 @@ import inspect
 import logging
 import os
 import tempfile
+import warnings
 
 import torch
 import torch.nn as nn
 from filelock import FileLock
 
+from ray.util.annotations import Deprecated
 from ray.util.sgd.utils import (TimerCollection, AverageMeterCollection,
                                 NUM_SAMPLES)
-from ray.util.sgd.torch.constants import (
-    SCHEDULER_STEP_EPOCH,
-    NUM_STEPS,
-    SCHEDULER_STEP_BATCH,
-)
+from ray.util.sgd.torch.constants import (SCHEDULER_STEP_EPOCH, NUM_STEPS,
+                                          SCHEDULER_STEP_BATCH, USE_FP16)
+from ray.util.sgd.torch.utils import choose_amp_backend
 
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DistributedSampler, DataLoader, IterableDataset
 
 logger = logging.getLogger(__name__)
 amp = None
+apex_amp = None
 
 try:
     from collections.abc import Iterable
@@ -27,12 +28,18 @@ except ImportError:
     from collections import Iterable
 
 try:
-    from apex import amp
+    from apex import amp as apex_amp
 except ImportError:
     # Apex library is not installed, so we cannot enable mixed precision.
     # We don't log here because logging happens in the torch_runner,
     # where amp is initialized.
     logger.debug("apex is not installed.")
+    pass
+
+try:
+    from torch.cuda import amp
+except ImportError:
+    logger.debug("torch.cuda.amp is not available.")
     pass
 
 tqdm = None
@@ -47,6 +54,7 @@ def _is_multiple(component):
     return isinstance(component, Iterable) and len(component) > 1
 
 
+@Deprecated
 class TrainingOperator:
     """Abstract class to define training and validation state and logic.
 
@@ -120,29 +128,27 @@ class TrainingOperator:
                  config,
                  world_rank,
                  local_rank,
-                 is_distributed=False,
-                 device_ids=None,
-                 use_gpu=False,
+                 is_distributed,
+                 use_gpu,
+                 device,
                  use_fp16=False,
                  use_tqdm=False,
-                 apex_args=None,
                  wrap_ddp=False,
                  add_dist_sampler=False,
                  scheduler_step_freq=None):
+
         # You are not expected to override this method.
         self._world_rank = world_rank
         self._local_rank = local_rank
         self._config = config
         self._is_distributed = is_distributed
-        self._use_fp16 = use_fp16
-        self._device_ids = device_ids
+        self._use_fp16 = choose_amp_backend(use_fp16, amp, apex_amp)
+        self._device = device
         self._use_gpu = use_gpu and torch.cuda.is_available()
-        self._device = torch.device("cuda" if self._use_gpu else "cpu")
         if tqdm is None and use_tqdm:
             raise ValueError("tqdm must be installed to use tqdm in training.")
         self._use_tqdm = use_tqdm
         self.global_step = 0
-        self._apex_args = apex_args if apex_args else {}
         self._wrap_ddp = wrap_ddp
         self._add_dist_sampler = add_dist_sampler
         self._scheduler_step_freq = scheduler_step_freq
@@ -154,14 +160,13 @@ class TrainingOperator:
         """Passes in the timers from the Runner."""
         self.timers = timers
 
-    def _configure_amp(self, amp, models, optimizers):
-        models, optimizers = amp.initialize(models, optimizers,
-                                            **self._apex_args)
+    def _configure_apex_amp(self, amp, models, optimizers, apex_args):
+        models, optimizers = amp.initialize(models, optimizers, **apex_args)
         return models, optimizers
 
-    def _configure_ddp(self, models, device_ids):
+    def _configure_ddp(self, models, device_ids, ddp_args):
         return [
-            DistributedDataParallel(model, device_ids=device_ids)
+            DistributedDataParallel(model, device_ids=device_ids, **ddp_args)
             for model in models
         ]
 
@@ -169,7 +174,7 @@ class TrainingOperator:
         """Helper method to return items in same format as original_items."""
         if isinstance(original_items, tuple):
             return tuple(items)
-        elif isinstance(original_items, Iterable):
+        elif isinstance(original_items, list):
             # Items is already a list.
             return items
         else:
@@ -188,7 +193,14 @@ class TrainingOperator:
         """
         raise NotImplementedError
 
-    def register(self, *, models, optimizers, criterion=None, schedulers=None):
+    def register(self,
+                 *,
+                 models,
+                 optimizers,
+                 criterion=None,
+                 schedulers=None,
+                 ddp_args=None,
+                 apex_args=None):
         """Registers parameters with Ray SGD and sets up training components.
 
         By calling this method to register your models, optimizers,
@@ -199,6 +211,14 @@ class TrainingOperator:
 
         If more than one model, optimizer, or scheduler is passed in,
         you should implement your own custom training loop.
+
+        Calling register will perform the following steps in this order:
+            1. If using GPU, Move model(s) and criterion to the corresponding
+                Cuda device.
+            2. If using fp16, initializes amp (if using apex - with model(s),
+                optimizer(s), and apex_args).
+            3. If using distributed training and wrap_ddp is True,
+                wraps model(s) with DistributedDataParallel.
 
         .. code-block:: python
 
@@ -238,15 +258,34 @@ class TrainingOperator:
             schedulers (torch.optim.lr_scheduler or Iterable[
                 torch.optim.lr_scheduler], optional): A learning rate
                 scheduler or multiple learning rate schedulers.
+            ddp_args (dict|None): Dict containing keyword args for
+                DistributedDataParallel if distributed training is being
+                used. `module` and `device_ids` are automatically passed in,
+                but this dict is useful for passing in other args such as
+                `find_unused_parameters=True`.
+            apex_args (dict|None): Dict containing keyword args for
+                amp.initialize if fp16 is being used. See
+                https://nvidia.github.io/apex/amp.html#module-apex.amp.
+                By default, the models and optimizers are passed in.
+                Consider using "num_losses" if operating over multiple
+                models and optimizers.
+                Ignored if apex is not used for fp16.
 
         Returns:
             Tuple of model, optimizer, criterion if not None, and scheduler
             if not None.
         """
+        if ddp_args and not isinstance(ddp_args, dict):
+            raise ValueError("ddp_args needs to be a dict object.")
+        ddp_args = ddp_args if ddp_args else {}
+
+        if apex_args and not isinstance(apex_args, dict):
+            raise ValueError("apex_args needs to be a dict object.")
+        apex_args = apex_args if apex_args else {}
         return_vals = []
         logger.debug("Registering models.")
         self._original_models = models
-        if not isinstance(self._original_models, Iterable):
+        if isinstance(self._original_models, torch.nn.Module):
             self._original_models = [self._original_models]
         assert all(
             isinstance(model, nn.Module) for model in self._original_models), (
@@ -258,7 +297,7 @@ class TrainingOperator:
 
         logger.debug("Registering optimizers.")
         self._optimizers = optimizers
-        if not isinstance(self._optimizers, Iterable):
+        if isinstance(self._optimizers, torch.optim.Optimizer):
             self._optimizers = [self._optimizers]
 
         if schedulers:
@@ -281,16 +320,32 @@ class TrainingOperator:
         else:
             self._criterion = None
 
-        if self.use_fp16 and amp:
-            logger.debug("Setting up Apex.")
-            self._amp = amp
-            self._original_models, self._optimizers = self._configure_amp(
-                self._amp, self._original_models, self._optimizers)
+        # using attributes instead of properties because those check
+        # for self._amp which has not been set yet
+        if self._use_fp16:
+            if self._use_fp16 == "apex":
+                if not apex_amp:
+                    raise ValueError("apex library must be installed to "
+                                     "use apex backend for fp16")
+                logger.debug("Setting up Apex.")
+                self._amp = apex_amp
+                self._original_models, self._optimizers = (
+                    self._configure_apex_amp(
+                        self._amp,
+                        self._original_models,
+                        self._optimizers,
+                        apex_args=apex_args))
+            else:
+                logger.debug("Setting up native amp.")
+                self._amp = amp
+                self._amp_scaler = amp.GradScaler()
 
         if self._wrap_ddp:
             logging.debug("Setting up DDP for models.")
             self._models = self._configure_ddp(
-                models=self._original_models, device_ids=self.device_ids)
+                models=self._original_models,
+                device_ids=self.device_ids,
+                ddp_args=ddp_args)
         else:
             self._models = self._original_models
 
@@ -399,7 +454,7 @@ class TrainingOperator:
                     self._validation_loader = with_sampler(
                         self._validation_loader)
 
-    def train_epoch(self, iterator, info):
+    def train_epoch(self, iterator, info=None, num_steps=None, epoch_idx=0):
         """Runs one standard training pass over the training dataloader.
 
         By default, this method will iterate over the given iterator and
@@ -432,8 +487,10 @@ class TrainingOperator:
         Args:
             iterator (iter): Iterator over the training data for the entire
                 epoch. This iterator is expected to be entirely consumed.
-            info (dict): Dictionary for information to be used for custom
-                training operations.
+            info (Optional[dict]): Dictionary for information to be used for
+                custom training operations.
+            num_steps (Optional[int]): Number of steps in the iterator.
+            epoch_idx (int): Index of current epoch.
 
         Returns:
             A dict of metrics from training.
@@ -442,6 +499,14 @@ class TrainingOperator:
             raise RuntimeError("Either set self.model in setup function or "
                                "override this method to implement a custom "
                                "training loop.")
+
+        info = info or {}
+
+        info.update({
+            NUM_STEPS: num_steps,
+            USE_FP16: self.use_fp16,
+            "epoch_idx": epoch_idx
+        })
         model = self.model
         scheduler = None
         if hasattr(self, "scheduler"):
@@ -550,25 +615,36 @@ class TrainingOperator:
 
         # Compute output.
         with self.timers.record("fwd"):
-            output = model(*features)
-            loss = criterion(output, target)
+            if self.use_fp16_native:
+                with self._amp.autocast():
+                    output = model(*features)
+                    loss = criterion(output, target)
+            else:
+                output = model(*features)
+                loss = criterion(output, target)
 
         # Compute gradients in a backward pass.
         with self.timers.record("grad"):
             optimizer.zero_grad()
-            if self.use_fp16:
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
+            if self.use_fp16_apex:
+                with self._amp.scale_loss(loss, optimizer) as scaled_loss:
                     scaled_loss.backward()
+            elif self.use_fp16_native:
+                self._amp_scaler.scale(loss).backward()
             else:
                 loss.backward()
 
         # Call step of optimizer to update model params.
         with self.timers.record("apply"):
-            optimizer.step()
+            if self.use_fp16_native:
+                self._amp_scaler.step(optimizer)
+                self._amp_scaler.update()
+            else:
+                optimizer.step()
 
-        return {"train_loss": loss.item(), NUM_SAMPLES: features[0].size(0)}
+        return {"train_loss": loss.item(), NUM_SAMPLES: target.size(0)}
 
-    def validate(self, val_iterator, info):
+    def validate(self, val_iterator, info=None):
         """Runs one standard validation pass over the val_iterator.
 
         This will call ``model.eval()`` and ``torch.no_grad`` when iterating
@@ -580,8 +656,8 @@ class TrainingOperator:
         Args:
             val_iterator (iter): Iterable constructed from the
                 validation dataloader.
-            info: (dict): Dictionary for information to be used for custom
-                validation operations.
+            info: (Optional[dict]): Dictionary for information to be used for
+                custom validation operations.
 
         Returns:
             A dict of metrics from the evaluation.
@@ -594,6 +670,8 @@ class TrainingOperator:
             raise RuntimeError("Either set self.model in setup function or "
                                "override this method to implement a custom "
                                "validation loop.")
+
+        info = info or {}
         model = self.model
         metric_meters = AverageMeterCollection()
 
@@ -651,8 +729,13 @@ class TrainingOperator:
         # compute output
 
         with self.timers.record("eval_fwd"):
-            output = model(*features)
-            loss = criterion(output, target)
+            if self.use_fp16_native:
+                with self._amp.autocast():
+                    output = model(*features)
+                    loss = criterion(output, target)
+            else:
+                output = model(*features)
+                loss = criterion(output, target)
             _, predicted = torch.max(output.data, 1)
 
         num_correct = (predicted == target).sum().item()
@@ -742,7 +825,14 @@ class TrainingOperator:
                  lightning_module_cls,
                  train_dataloader=None,
                  val_dataloader=None):
-        """Creates a TrainingOperator from a Pytorch Lightning Module.
+        """Create a custom TrainingOperator class from a LightningModule.
+
+        .. code-block:: python
+
+            MyLightningOperator = TrainingOperator.from_ptl(
+                MyLightningModule)
+            trainer = TorchTrainer(training_operator_cls=MyLightningOperator,
+                ...)
 
         Args:
             lightning_module_cls: Your LightningModule class. An object of
@@ -758,7 +848,14 @@ class TrainingOperator:
             A TrainingOperator class properly configured given the
             LightningModule.
         """
-        from ray.util.sgd.torch.ptl_operator import LightningOperator
+        warnings.warn(
+            "Ray SGD `LightningOperator` is no longer maintained. "
+            "Check out the Ray Lightning library "
+            "(https://github.com/ray-project/ray_lightning)"
+            "instead for distributed PyTorch Lightning Training on"
+            "Ray!",
+            category=FutureWarning)
+        from ray.util.sgd.torch.lightning_operator import LightningOperator
 
         class CustomLightningOperator(LightningOperator):
             _lightning_module_cls = lightning_module_cls
@@ -775,11 +872,19 @@ class TrainingOperator:
                       loss_creator=None,
                       scheduler_creator=None,
                       serialize_data_creation=True):
-        """A utility method to create a custom TrainingOperator class from
-        creator functions. This is useful for backwards compatibility with
+        """Create a custom TrainingOperator class from creator functions.
+
+        This method is useful for backwards compatibility with
         previous versions of Ray. To provide custom training and validation,
         you should subclass the class that is returned by this method instead
         of ``TrainingOperator``.
+
+        .. code-block:: python
+
+            MyCreatorOperator = TrainingOperator.from_creators(
+                model_creator, optimizer_creator)
+            trainer = TorchTrainer(training_operator_cls=MyCreatorOperator,
+                ...)
 
         Args:
             model_creator (dict -> Model(s)): Constructor function that takes
@@ -818,8 +923,8 @@ class TrainingOperator:
                 system). Defaults to True.
 
         Returns:
-            A TrainingOperator class with a ``setup`` method that utilizes
-            the passed in creator functions.
+            A CreatorOperator class- a subclass of TrainingOperator with a
+            ``setup`` method that utilizes the passed in creator functions.
         """
 
         if not (callable(model_creator) and callable(optimizer_creator)):
@@ -838,7 +943,8 @@ class TrainingOperator:
 
     @property
     def device(self):
-        """torch.device: The appropriate torch device, at your convenience."""
+        """torch.device: The appropriate torch device, at your
+        convenience."""
         return self._device
 
     @property
@@ -863,8 +969,21 @@ class TrainingOperator:
 
     @property
     def use_fp16(self):
-        """bool: Whether the model and optimizer have been FP16 enabled."""
-        return self._use_fp16
+        """bool: Whether FP16 has been enabled and is available."""
+        return self._use_fp16 and getattr(self, "_amp", None)
+
+    @property
+    def use_fp16_apex(self):
+        """bool: Whether FP16 is enabled and using Apex as a backend."""
+        # second condition is for backwards compatibility
+        return self.use_fp16 and (self._use_fp16 == "apex" or
+                                  (self._use_fp16
+                                   and hasattr(self._amp, "scale_loss")))
+
+    @property
+    def use_fp16_native(self):
+        """bool: Whether FP16 is enabled and using native PyTorch backend."""
+        return self.use_fp16 and self._use_fp16 != "apex"
 
     @property
     def use_tqdm(self):
@@ -873,11 +992,14 @@ class TrainingOperator:
 
     @property
     def device_ids(self):
-        """List[int]: Device IDs for the model.
+        """Optional[List[int]]: Device IDs for the model.
 
         This is useful for using batch norm with DistributedDataParallel.
+        Not applicable if not using GPU.
         """
-        return self._device_ids
+        if not self.use_gpu:
+            return None
+        return [self.device.index]
 
     @property
     def scheduler_step_freq(self):
@@ -890,8 +1012,21 @@ class TrainingOperator:
 
 
 class CreatorOperator(TrainingOperator):
-    """A subclass of TrainingOperator specifically for defining training
-    state using creator functions.
+    """A subclass of TrainingOperator with training defined by creator funcs.
+
+    This class allows for backwards compatibility with pre Ray 1.0 versions.
+
+    This class is returned by `TrainingOperator.from_creators(...)`. If you
+    need to add custom functionality, you should subclass this class,
+    implement the appropriate methods and pass the subclass into
+    `TorchTrainer`.
+
+    .. code-block:: python
+
+        MyCreatorOperator = TrainingOperator.from_creators(
+            model_creator, optimizer_creator)
+        trainer = TorchTrainer(training_operator_cls=MyCreatorOperator,
+            ...)
     """
 
     def _validate_loaders(self, loaders):
@@ -1026,13 +1161,13 @@ class CreatorOperator(TrainingOperator):
 
 def get_test_operator(operator_cls):
     class _TestingOperator(operator_cls):
-        def train_epoch(self, iterator, info):
+        def train_epoch(self, iterator, info, **kwargs):
             func = self.config.get("custom_func")
             if callable(func):
                 return func(self, iterator, info)
             return {"done": 1}
 
-        def validate(self, iterator, info):
+        def validate(self, iterator, info, **kwargs):
             return self.train_epoch(iterator, info)
 
     return _TestingOperator

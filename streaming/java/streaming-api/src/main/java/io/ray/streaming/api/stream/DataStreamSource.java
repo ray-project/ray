@@ -34,5 +34,4 @@ public class DataStreamSource<T> extends DataStream<T> implements StreamSource<T
       StreamingContext context, Collection<T> values) {
     return new DataStreamSource<>(context, new CollectionSourceFunction<>(values));
   }
-
 }

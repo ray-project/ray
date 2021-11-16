@@ -4,17 +4,19 @@ import yaml
 import os
 import aiohttp.web
 from aioredis.pubsub import Receiver
-from grpc.experimental import aio as aiogrpc
 
 import ray
-import ray.gcs_utils
-import ray.new_dashboard.modules.reporter.reporter_consts as reporter_consts
-import ray.new_dashboard.utils as dashboard_utils
+import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
+import ray.dashboard.utils as dashboard_utils
 import ray._private.services
-import ray.utils
+import ray._private.utils
+from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
+                                          DEBUG_AUTOSCALING_STATUS_LEGACY,
+                                          DEBUG_AUTOSCALING_ERROR)
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
-from ray.new_dashboard.datacenter import DataSource
+import ray.experimental.internal_kv as internal_kv
+from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
 routes = dashboard_utils.ClassMethodRouteTable
@@ -24,6 +26,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._stubs = {}
+        self._ray_config = None
         DataSource.agents.signal.append(self._update_stubs)
 
     async def _update_stubs(self, change):
@@ -34,7 +37,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if change.new:
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
-            channel = aiogrpc.insecure_channel(f"{ip}:{ports[1]}")
+            options = (("grpc.enable_http_proxy", 0), )
+            channel = ray._private.utils.init_grpc_channel(
+                f"{ip}:{ports[1]}", options=options, asynchronous=True)
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
 
@@ -48,7 +53,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             reporter_pb2.GetProfilingStatsRequest(pid=pid, duration=duration))
         profiling_info = (json.loads(reply.profiling_stats)
                           if reply.profiling_stats else reply.std_out)
-        return await dashboard_utils.rest_response(
+        return dashboard_utils.rest_response(
             success=True,
             message="Profiling success.",
             profiling_info=profiling_info)
@@ -61,21 +66,18 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 with open(config_path) as f:
                     cfg = yaml.safe_load(f)
             except yaml.YAMLError:
-                return await dashboard_utils.rest_response(
+                return dashboard_utils.rest_response(
                     success=False,
                     message=f"No config found at {config_path}.",
                 )
             except FileNotFoundError:
-                return await dashboard_utils.rest_response(
+                return dashboard_utils.rest_response(
                     success=False,
-                    message=f"Invalid config, could not load YAML.")
+                    message="Invalid config, could not load YAML.")
 
             payload = {
-                "min_workers": cfg["min_workers"],
-                "max_workers": cfg["max_workers"],
-                "initial_workers": cfg["initial_workers"],
-                "autoscaling_mode": cfg["autoscaling_mode"],
-                "idle_timeout_minutes": cfg["idle_timeout_minutes"],
+                "min_workers": cfg.get("min_workers", "unspecified"),
+                "max_workers": cfg.get("max_workers", "unspecified")
             }
 
             try:
@@ -90,13 +92,44 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
             self._ray_config = payload
 
-        return await dashboard_utils.rest_response(
+        return dashboard_utils.rest_response(
             success=True,
             message="Fetched ray config.",
             **self._ray_config,
         )
 
+    @routes.get("/api/cluster_status")
+    async def get_cluster_status(self, req):
+        """Returns status information about the cluster.
+
+        Currently contains two fields:
+            autoscaling_status (str): a status message from the autoscaler.
+            autoscaling_error (str): an error message from the autoscaler if
+                anything has gone wrong during autoscaling.
+
+        These fields are both read from the GCS, it's expected that the
+        autoscaler writes them there.
+        """
+
+        assert ray.experimental.internal_kv._internal_kv_initialized()
+        legacy_status = internal_kv._internal_kv_get(
+            DEBUG_AUTOSCALING_STATUS_LEGACY)
+        formatted_status_string = internal_kv._internal_kv_get(
+            DEBUG_AUTOSCALING_STATUS)
+        formatted_status = json.loads(formatted_status_string.decode()
+                                      ) if formatted_status_string else {}
+        error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+        return dashboard_utils.rest_response(
+            success=True,
+            message="Got cluster status.",
+            autoscaling_status=legacy_status.decode()
+            if legacy_status else None,
+            autoscaling_error=error.decode() if error else None,
+            cluster_status=formatted_status if formatted_status else None,
+        )
+
     async def run(self, server):
+        # TODO: redis-removal pubsub
         aioredis_client = self._dashboard_head.aioredis_client
         receiver = Receiver()
 
@@ -109,7 +142,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 # The key is b'RAY_REPORTER:{node id hex}',
                 # e.g. b'RAY_REPORTER:2b4fbd406898cc86fb88fb0acfd5456b0afd87cf'
                 key, data = msg
-                data = json.loads(ray.utils.decode(data))
+                data = json.loads(ray._private.utils.decode(data))
                 key = key.decode("utf-8")
                 node_id = key.split(":")[-1]
                 DataSource.node_physical_stats[node_id] = data

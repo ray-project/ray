@@ -5,6 +5,7 @@ from typing import Dict, List, Optional
 import numpy as np
 
 from ray.tune import trial_runner
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.trial import Trial
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 
@@ -22,7 +23,8 @@ class MedianStoppingRule(FIFOScheduler):
             `training_iteration` as a measure of progress, the only requirement
             is that the attribute should increase monotonically.
         metric (str): The training result objective value attribute. Stopping
-            procedures will use this attribute.
+            procedures will use this attribute. If None but a mode was passed,
+            the `ray.tune.result.DEFAULT_METRIC` will be used per default.
         mode (str): One of {min, max}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         grace_period (float): Only stop trials at least this old in time.
@@ -42,20 +44,12 @@ class MedianStoppingRule(FIFOScheduler):
 
     def __init__(self,
                  time_attr: str = "time_total_s",
-                 reward_attr: Optional[str] = None,
                  metric: Optional[str] = None,
                  mode: Optional[str] = None,
                  grace_period: float = 60.0,
                  min_samples_required: int = 3,
                  min_time_slice: int = 0,
                  hard_stop: bool = True):
-        if reward_attr is not None:
-            mode = "max"
-            metric = reward_attr
-            logger.warning(
-                "`reward_attr` is deprecated and will be removed in a future "
-                "version of Tune. "
-                "Setting `metric={}` and `mode=max`.".format(reward_attr))
         FIFOScheduler.__init__(self)
         self._stopped_trials = set()
         self._grace_period = grace_period
@@ -92,6 +86,10 @@ class MedianStoppingRule(FIFOScheduler):
 
         self._worst = float("-inf") if self._mode == "max" else float("inf")
         self._compare_op = max if self._mode == "max" else min
+
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
 
         return True
 
@@ -173,7 +171,7 @@ class MedianStoppingRule(FIFOScheduler):
                                  trial: Trial, time: float) -> str:
         pause = time - self._last_pause[trial] > self._min_time_slice
         pause = pause and [
-            t for t in trial_runner.get_trials()
+            t for t in trial_runner.get_live_trials()
             if t.status in (Trial.PENDING, Trial.PAUSED)
         ]
         return TrialScheduler.PAUSE if pause else TrialScheduler.CONTINUE

@@ -6,21 +6,17 @@ import java.io.Serializable;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * This data structure contains state information of a task.
- */
+/** This data structure contains state information of a task. */
 public class OperatorCheckpointInfo implements Serializable {
 
-  /**
-   * key: channel ID, value: offset
-   */
+  /** key: channel ID, value: offset */
   public Map<String, OffsetInfo> inputPoints;
+
   public Map<String, OffsetInfo> outputPoints;
 
-  /**
-   * a serializable checkpoint returned by processor
-   */
+  /** a serializable checkpoint returned by processor */
   public Serializable processorCheckpoint;
+
   public long checkpointId;
 
   public OperatorCheckpointInfo() {

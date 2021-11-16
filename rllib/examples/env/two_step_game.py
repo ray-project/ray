@@ -32,6 +32,10 @@ class TwoStepGame(MultiAgentEnv):
             else:
                 self.observation_space = MultiDiscrete([2, 2, 2, 3])
 
+    def seed(self, seed=None):
+        if seed:
+            np.random.seed(seed)
+
     def reset(self):
         self.state = np.array([1, 0, 0])
         return self._obs()

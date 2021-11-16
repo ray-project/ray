@@ -1,13 +1,23 @@
 import os
-from typing import Any, Optional, Tuple
-
-import kubernetes
+from typing import Any, Optional, Tuple, List
 import subprocess
 
-from ray import services, logger
+from ray import logger
 from ray.autoscaler._private.command_runner import KubernetesCommandRunner
 from ray.tune.syncer import NodeSyncer
 from ray.tune.sync_client import SyncClient
+from ray.util import get_node_ip_address
+
+
+def try_import_kubernetes():
+    try:
+        import kubernetes
+    except ImportError:
+        kubernetes = None
+    return kubernetes
+
+
+kubernetes = try_import_kubernetes()
 
 
 def NamespacedKubernetesSyncer(namespace):
@@ -16,7 +26,8 @@ def NamespacedKubernetesSyncer(namespace):
     Args:
         namespace (str): Kubernetes namespace.
 
-    Returns: A ``KubernetesSyncer`` class to be passed to ``tune.run()``.
+    Returns:
+        A ``KubernetesSyncer`` class to be passed to ``tune.run()``.
 
     Example:
 
@@ -25,7 +36,7 @@ def NamespacedKubernetesSyncer(namespace):
         from ray.tune.integration.kubernetes import NamespacedKubernetesSyncer
         tune.run(train,
                  sync_config=tune.SyncConfig(
-                     sync_to_driver=NamespacedKubernetesSyncer("ray")))
+                     syncer=NamespacedKubernetesSyncer("ray")))
 
     """
 
@@ -53,7 +64,11 @@ class KubernetesSyncer(NodeSyncer):
                  local_dir: str,
                  remote_dir: str,
                  sync_client: Optional[SyncClient] = None):
-        self.local_ip = services.get_node_ip_address()
+        if not kubernetes:
+            raise ImportError(
+                "kubernetes is not installed on this machine/container. "
+                "Try: pip install kubernetes")
+        self.local_ip = get_node_ip_address()
         self.local_node = self._get_kubernetes_node_by_ip(self.local_ip)
         self.worker_ip = None
         self.worker_node = None
@@ -127,7 +142,10 @@ class KubernetesSyncClient(SyncClient):
             self._command_runners[node_id] = command_runner
         return self._command_runners[node_id]
 
-    def sync_up(self, source: str, target: Tuple[str, str]) -> bool:
+    def sync_up(self,
+                source: str,
+                target: Tuple[str, str],
+                exclude: Optional[List] = None) -> bool:
         """Here target is a tuple (target_node, target_dir)"""
         target_node, target_dir = target
 
@@ -139,7 +157,10 @@ class KubernetesSyncClient(SyncClient):
         command_runner.run_rsync_up(source, target_dir)
         return True
 
-    def sync_down(self, source: Tuple[str, str], target: str) -> bool:
+    def sync_down(self,
+                  source: Tuple[str, str],
+                  target: str,
+                  exclude: Optional[List] = None) -> bool:
         """Here source is a tuple (source_node, source_dir)"""
         source_node, source_dir = source
 

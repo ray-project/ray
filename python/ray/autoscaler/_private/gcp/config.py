@@ -1,3 +1,4 @@
+import copy
 from functools import partial
 import json
 import os
@@ -11,9 +12,14 @@ from googleapiclient import discovery, errors
 from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials as OAuthCredentials
 
+from ray.autoscaler._private.util import check_legacy_fields
+from ray.autoscaler._private.gcp.node import (GCPNodeType, MAX_POLLS,
+                                              POLL_INTERVAL)
+
 logger = logging.getLogger(__name__)
 
 VERSION = "v1"
+TPU_VERSION = "v2alpha"  # change once v2 is stable
 
 RAY = "ray-autoscaler"
 DEFAULT_SERVICE_ACCOUNT_ID = RAY + "-sa-" + VERSION
@@ -22,11 +28,51 @@ SERVICE_ACCOUNT_EMAIL_TEMPLATE = (
 DEFAULT_SERVICE_ACCOUNT_CONFIG = {
     "displayName": "Ray Autoscaler Service Account ({})".format(VERSION),
 }
-DEFAULT_SERVICE_ACCOUNT_ROLES = ("roles/storage.objectAdmin",
-                                 "roles/compute.admin")
 
-MAX_POLLS = 12
-POLL_INTERVAL = 5
+# Those roles will be always added.
+DEFAULT_SERVICE_ACCOUNT_ROLES = [
+    "roles/storage.objectAdmin", "roles/compute.admin",
+    "roles/iam.serviceAccountUser"
+]
+# Those roles will only be added if there are TPU nodes defined in config.
+TPU_SERVICE_ACCOUNT_ROLES = ["roles/tpu.admin"]
+
+# If there are TPU nodes in config, this field will be set
+# to True in config["provider"].
+HAS_TPU_PROVIDER_FIELD = "_has_tpus"
+
+# NOTE: iam.serviceAccountUser allows the Head Node to create worker nodes
+# with ServiceAccounts.
+
+
+def get_node_type(node: dict) -> GCPNodeType:
+    """Returns node type based on the keys in ``node``.
+
+    This is a very simple check. If we have a ``machineType`` key,
+    this is a Compute instance. If we don't have a ``machineType`` key,
+    but we have ``acceleratorType``, this is a TPU. Otherwise, it's
+    invalid and an exception is raised.
+
+    This works for both node configs and API returned nodes.
+    """
+
+    if "machineType" not in node and "acceleratorType" not in node:
+        raise ValueError(
+            "Invalid node. For a Compute instance, 'machineType' is "
+            "required. "
+            "For a TPU instance, 'acceleratorType' and no 'machineType' "
+            "is required. "
+            f"Got {list(node)}")
+
+    if "machineType" not in node and "acceleratorType" in node:
+        # remove after TPU pod support is added!
+        if node["acceleratorType"] not in ("v2-8", "v3-8"):
+            raise ValueError(
+                "For now, only v2-8' and 'v3-8' accelerator types are "
+                "supported. Support for TPU pods will be added in the future.")
+
+        return GCPNodeType.TPU
+    return GCPNodeType.COMPUTE
 
 
 def wait_for_crm_operation(operation, crm):
@@ -104,6 +150,25 @@ def generate_rsa_key_pair():
     return public_key, pem
 
 
+def _has_tpus_in_node_configs(config: dict) -> bool:
+    """Check if any nodes in config are TPUs."""
+    node_configs = [
+        node_type["node_config"]
+        for node_type in config["available_node_types"].values()
+    ]
+    return any(get_node_type(node) == GCPNodeType.TPU for node in node_configs)
+
+
+def _is_head_node_a_tpu(config: dict) -> bool:
+    """Check if the head node is a TPU."""
+    node_configs = {
+        node_id: node_type["node_config"]
+        for node_id, node_type in config["available_node_types"].items()
+    }
+    return get_node_type(
+        node_configs[config["head_node_type"]]) == GCPNodeType.TPU
+
+
 def _create_crm(gcp_credentials=None):
     return discovery.build(
         "cloudresourcemanager",
@@ -122,21 +187,36 @@ def _create_compute(gcp_credentials=None):
         "compute", "v1", credentials=gcp_credentials, cache_discovery=False)
 
 
+def _create_tpu(gcp_credentials=None):
+    return discovery.build(
+        "tpu",
+        TPU_VERSION,
+        credentials=gcp_credentials,
+        cache_discovery=False,
+        discoveryServiceUrl="https://tpu.googleapis.com/$discovery/rest")
+
+
 def construct_clients_from_provider_config(provider_config):
     """
     Attempt to fetch and parse the JSON GCP credentials from the provider
     config yaml file.
+
+    tpu resource (the last element of the tuple) will be None if
+    `_has_tpus` in provider config is not set or False.
     """
     gcp_credentials = provider_config.get("gcp_credentials")
     if gcp_credentials is None:
         logger.debug("gcp_credentials not found in cluster yaml file. "
                      "Falling back to GOOGLE_APPLICATION_CREDENTIALS "
                      "environment variable.")
+        tpu_resource = _create_tpu() if provider_config.get(
+            HAS_TPU_PROVIDER_FIELD, False) else None
         # If gcp_credentials is None, then discovery.build will search for
         # credentials in the local environment.
         return _create_crm(), \
             _create_iam(), \
-            _create_compute()
+            _create_compute(), \
+            tpu_resource
 
     assert ("type" in gcp_credentials), \
         "gcp_credentials cluster yaml field missing 'type' field."
@@ -161,13 +241,31 @@ def construct_clients_from_provider_config(provider_config):
         # Otherwise the credentials type must be credentials_token.
         credentials = OAuthCredentials(credentials_field)
 
+    tpu_resource = _create_tpu(credentials) if provider_config.get(
+        HAS_TPU_PROVIDER_FIELD, False) else None
+
     return _create_crm(credentials), \
         _create_iam(credentials), \
-        _create_compute(credentials)
+        _create_compute(credentials), \
+        tpu_resource
 
 
 def bootstrap_gcp(config):
-    crm, iam, compute = \
+    config = copy.deepcopy(config)
+    check_legacy_fields(config)
+    # Used internally to store head IAM role.
+    config["head_node"] = {}
+
+    # Check if we have any TPUs defined, and if so,
+    # insert that information into the provider config
+    if _has_tpus_in_node_configs(config):
+        config["provider"][HAS_TPU_PROVIDER_FIELD] = True
+
+        # We can't run autoscaling through a serviceAccount on TPUs (atm)
+        if _is_head_node_a_tpu(config):
+            raise RuntimeError("TPUs are not supported as head nodes.")
+
+    crm, iam, compute, tpu = \
         construct_clients_from_provider_config(config["provider"])
 
     config = _configure_project(config, crm)
@@ -185,6 +283,8 @@ def _configure_project(config, crm):
     buckets, users, and instances under projects. This is different from
     aws ec2 where everything is global.
     """
+    config = copy.deepcopy(config)
+
     project_id = config["provider"].get("project_id")
     assert config["provider"]["project_id"] is not None, (
         "'project_id' must be set in the 'provider' section of the autoscaler"
@@ -216,6 +316,8 @@ def _configure_iam_role(config, crm, iam):
 
     TODO: Allow the name/id of the service account to be configured
     """
+    config = copy.deepcopy(config)
+
     email = SERVICE_ACCOUNT_EMAIL_TEMPLATE.format(
         account_id=DEFAULT_SERVICE_ACCOUNT_ID,
         project_id=config["provider"]["project_id"])
@@ -232,8 +334,12 @@ def _configure_iam_role(config, crm, iam):
 
     assert service_account is not None, "Failed to create service account"
 
-    _add_iam_policy_binding(service_account, DEFAULT_SERVICE_ACCOUNT_ROLES,
-                            crm)
+    if config["provider"].get(HAS_TPU_PROVIDER_FIELD, False):
+        roles = DEFAULT_SERVICE_ACCOUNT_ROLES + TPU_SERVICE_ACCOUNT_ROLES
+    else:
+        roles = DEFAULT_SERVICE_ACCOUNT_ROLES
+
+    _add_iam_policy_binding(service_account, roles, crm)
 
     config["head_node"]["serviceAccounts"] = [{
         "email": service_account["email"],
@@ -262,6 +368,7 @@ def _configure_key_pair(config, compute):
       [USERNAME] is the user for the SSH key, specified in the config.
       [KEY_VALUE] is the public SSH key value.
     """
+    config = copy.deepcopy(config)
 
     if "ssh_private_key" in config["auth"]:
         return config
@@ -350,11 +457,18 @@ def _configure_key_pair(config, compute):
 
 def _configure_subnet(config, compute):
     """Pick a reasonable subnet if not specified by the config."""
+    config = copy.deepcopy(config)
 
+    node_configs = [
+        node_type["node_config"]
+        for node_type in config["available_node_types"].values()
+    ]
     # Rationale: avoid subnet lookup if the network is already
     # completely manually configured
-    if ("networkInterfaces" in config["head_node"]
-            and "networkInterfaces" in config["worker_nodes"]):
+
+    # networkInterfaces is compute, networkConfig is TPU
+    if all("networkInterfaces" in node_config or "networkConfig" in node_config
+           for node_config in node_configs):
         return config
 
     subnets = _list_subnets(config, compute)
@@ -367,23 +481,25 @@ def _configure_subnet(config, compute):
     # work out-of-the-box
     default_subnet = subnets[0]
 
-    if "networkInterfaces" not in config["head_node"]:
-        config["head_node"]["networkInterfaces"] = [{
-            "subnetwork": default_subnet["selfLink"],
-            "accessConfigs": [{
-                "name": "External NAT",
-                "type": "ONE_TO_ONE_NAT",
-            }],
-        }]
+    default_interfaces = [{
+        "subnetwork": default_subnet["selfLink"],
+        "accessConfigs": [{
+            "name": "External NAT",
+            "type": "ONE_TO_ONE_NAT",
+        }],
+    }]
 
-    if "networkInterfaces" not in config["worker_nodes"]:
-        config["worker_nodes"]["networkInterfaces"] = [{
-            "subnetwork": default_subnet["selfLink"],
-            "accessConfigs": [{
-                "name": "External NAT",
-                "type": "ONE_TO_ONE_NAT",
-            }],
-        }]
+    for node_config in node_configs:
+        # The not applicable key will be removed during node creation
+
+        # compute
+        if "networkInterfaces" not in node_config:
+            node_config["networkInterfaces"] = copy.deepcopy(
+                default_interfaces)
+        # TPU
+        if "networkConfig" not in node_config:
+            node_config["networkConfig"] = copy.deepcopy(default_interfaces)[0]
+            node_config["networkConfig"].pop("accessConfigs")
 
     return config
 
@@ -466,7 +582,6 @@ def _add_iam_policy_binding(service_account, roles, crm):
         resource=project_id, body={}).execute()
 
     already_configured = True
-
     for role in roles:
         role_exists = False
         for binding in policy["bindings"]:

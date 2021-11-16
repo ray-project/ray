@@ -1,11 +1,10 @@
-"""This test checks that AxSearch is functional.
+"""This example demonstrates the usage of AxSearch with Ray Tune.
 
 It also checks that it is usable with a separate scheduler.
 """
 import numpy as np
 import time
 
-import ray
 from ray import tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.suggest.ax import AxSearch
@@ -50,13 +49,35 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
     args, _ = parser.parse_known_args()
 
-    ray.init()
+    if args.server_address:
+        import ray
+        ray.init(f"ray://{args.server_address}")
 
-    tune_kwargs = {
-        "num_samples": 10 if args.smoke_test else 50,
-        "config": {
+    algo = AxSearch(
+        parameter_constraints=["x1 + x2 <= 2.0"],  # Optional.
+        outcome_constraints=["l2norm <= 1.25"],  # Optional.
+    )
+    # Limit to 4 concurrent trials
+    algo = tune.suggest.ConcurrencyLimiter(algo, max_concurrent=4)
+    scheduler = AsyncHyperBandScheduler()
+    analysis = tune.run(
+        easy_objective,
+        name="ax",
+        metric="hartmann6",  # provided in the 'easy_objective' function
+        mode="min",
+        search_alg=algo,
+        scheduler=scheduler,
+        num_samples=10 if args.smoke_test else 50,
+        config={
             "iterations": 100,
             "x1": tune.uniform(0.0, 1.0),
             "x2": tune.uniform(0.0, 1.0),
@@ -65,21 +86,6 @@ if __name__ == "__main__":
             "x5": tune.uniform(0.0, 1.0),
             "x6": tune.uniform(0.0, 1.0),
         },
-        "stop": {
-            "timesteps_total": 100
-        }
-    }
-    algo = AxSearch(
-        max_concurrent=4,
-        metric="hartmann6",
-        mode="min",
-        parameter_constraints=["x1 + x2 <= 2.0"],  # Optional.
-        outcome_constraints=["l2norm <= 1.25"],  # Optional.
-    )
-    scheduler = AsyncHyperBandScheduler(metric="hartmann6", mode="min")
-    tune.run(
-        easy_objective,
-        name="ax",
-        search_alg=algo,
-        scheduler=scheduler,
-        **tune_kwargs)
+        stop={"timesteps_total": 100})
+
+    print("Best hyperparameters found were: ", analysis.best_config)

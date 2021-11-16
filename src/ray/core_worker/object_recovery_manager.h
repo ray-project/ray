@@ -23,6 +23,7 @@
 #include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
+namespace core {
 
 typedef std::function<std::shared_ptr<PinObjectsInterface>(const std::string &ip_address,
                                                            int port)>
@@ -31,6 +32,11 @@ typedef std::function<std::shared_ptr<PinObjectsInterface>(const std::string &ip
 typedef std::function<void(const ObjectID &object_id,
                            const std::vector<rpc::Address> &raylet_locations)>
     ObjectLookupCallback;
+
+// A callback for if we fail to recover an object.
+typedef std::function<void(const ObjectID &object_id, rpc::ErrorType reason,
+                           bool pin_object)>
+    ObjectRecoveryFailureCallback;
 
 class ObjectRecoveryManager {
  public:
@@ -43,9 +49,7 @@ class ObjectRecoveryManager {
                         std::shared_ptr<TaskResubmissionInterface> task_resubmitter,
                         std::shared_ptr<ReferenceCounter> reference_counter,
                         std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
-                        std::function<void(const ObjectID &object_id, bool pin_object)>
-                            reconstruction_failure_callback,
-                        bool lineage_reconstruction_enabled)
+                        const ObjectRecoveryFailureCallback &recovery_failure_callback)
       : task_resubmitter_(task_resubmitter),
         reference_counter_(reference_counter),
         rpc_address_(rpc_address),
@@ -53,8 +57,7 @@ class ObjectRecoveryManager {
         local_object_pinning_client_(local_object_pinning_client),
         object_lookup_(object_lookup),
         in_memory_store_(in_memory_store),
-        reconstruction_failure_callback_(reconstruction_failure_callback),
-        lineage_reconstruction_enabled_(lineage_reconstruction_enabled) {}
+        recovery_failure_callback_(recovery_failure_callback) {}
 
   /// Recover an object that was stored in plasma. This will only succeed for
   /// objects that are lost from memory and that this process owns (returns
@@ -79,11 +82,12 @@ class ObjectRecoveryManager {
   /// plasma arguments to the task. The recovery operation will succeed once
   /// the task completes and stores a new value for its return object.
   ///
-  /// \return OK if recovery for the object has successfully started, Invalid
-  /// if the object is not recoverable because we do not own it. Note that the
-  /// Status::OK value only indicates that the recovery operation has started,
-  /// but does not guarantee that the recovery operation is successful.
-  Status RecoverObject(const ObjectID &object_id);
+  /// \return True if recovery for the object has successfully started, false
+  /// if the object is not recoverable because we do not have any metadata
+  /// about the object. If this returns true, then eventually recovery will
+  /// either succeed (a value will be put into the memory store) or fail (the
+  /// reconstruction failure callback will be called for this object).
+  bool RecoverObject(const ObjectID &object_id);
 
  private:
   /// Pin a new copy for a lost object from the given locations or, if that
@@ -125,13 +129,7 @@ class ObjectRecoveryManager {
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
 
   /// Callback to call if recovery fails.
-  const std::function<void(const ObjectID &object_id, bool pin_object)>
-      reconstruction_failure_callback_;
-
-  /// Whether lineage reconstruction is enabled. If disabled, then we will try
-  /// to pin new copies for a lost object, but we will never reconstruct it
-  /// through task submission.
-  const bool lineage_reconstruction_enabled_;
+  const ObjectRecoveryFailureCallback recovery_failure_callback_;
 
   /// Protects below fields.
   mutable absl::Mutex mu_;
@@ -145,4 +143,5 @@ class ObjectRecoveryManager {
   absl::flat_hash_set<ObjectID> objects_pending_recovery_ GUARDED_BY(mu_);
 };
 
+}  // namespace core
 }  // namespace ray

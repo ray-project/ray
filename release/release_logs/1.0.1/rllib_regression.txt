@@ -1,0 +1,47 @@
+== Status ==                                                                                            
+Memory usage on this node: 52.0/480.3 GiB                                                               
+Using FIFO scheduling algorithm.                                                                        
+Resources requested: 0/64 CPUs, 0.0/8 GPUs, 0.0/326.03 GiB heap, 0.0/99.17 GiB objects (0/1.0 accelerato
+r_type:V100)                                                                                            
+Result logdir: /home/ubuntu/ray_results/apex                                                            
+Result logdir: /home/ubuntu/ray_results/atari-a2c                                                       
+Result logdir: /home/ubuntu/ray_results/atari-basic-dqn                                                 
+Result logdir: /home/ubuntu/ray_results/atari-impala                                                    
+Result logdir: /home/ubuntu/ray_results/atari-ppo-tf                                                    
+Result logdir: /home/ubuntu/ray_results/atari-ppo-torch                                                 
+Number of trials: 24/24 (24 TERMINATED)                                                                 
++-------------------------------------------+------------+-------+--------+------------------+---------+
+----------+----------------------+----------------------+--------------------+                          
+| Trial name                                | status     | loc   |   iter |   total time (s) |      ts |
+   reward |   episode_reward_max |   episode_reward_min |   episode_len_mean |                          
+|-------------------------------------------+------------+-------+--------+------------------+---------+
+----------+----------------------+----------------------+--------------------|                          
+| IMPALA_BreakoutNoFrameskip-v4_4060e_00000 | TERMINATED |       |    355 |          3606.4  | 9039500 |
+   413.62 |                  802 |                  244 |           11042.7  |                          
+| IMPALA_BreakoutNoFrameskip-v4_4060e_00001 | TERMINATED |       |    355 |          3605.53 | 9002500 |   393.79 |                  497 |                  159 |           10146.2  |
+| IMPALA_BreakoutNoFrameskip-v4_4060e_00002 | TERMINATED |       |    355 |          3606.64 | 9023250 |   393.07 |                  438 |                   89 |            9990.92 |
+| IMPALA_BreakoutNoFrameskip-v4_4060e_00003 | TERMINATED |       |    355 |          3606.81 | 9005250 |   374.35 |                  758 |                   60 |            9785.87 |
+| PPO_BreakoutNoFrameskip-v4_4060e_00004    | TERMINATED |       |    728 |          3601.7  | 3640000 |    63.98 |                  399 |                    8 |            2675.23 |
+| PPO_BreakoutNoFrameskip-v4_4060e_00005    | TERMINATED |       |    927 |          3604.18 | 4635000 |    34.93 |                   70 |                    7 |            3759.3  |
+| PPO_BreakoutNoFrameskip-v4_4060e_00006    | TERMINATED |       |    977 |          3602.5  | 4885000 |    43.26 |                  243 |                   14 |            3232.05 |
+| PPO_BreakoutNoFrameskip-v4_4060e_00007    | TERMINATED |       |    991 |          3602.53 | 4955000 |    51.55 |                  288 |                    7 |            3140.33 |
+| PPO_BreakoutNoFrameskip-v4_4060e_00008    | TERMINATED |       |    637 |          3603.22 | 3526735 |    32.71 |                   57 |                    9 |            3528.47 |
+| PPO_BreakoutNoFrameskip-v4_4060e_00009    | TERMINATED |       |    629 |          3603.5  | 3479261 |    66.78 |                  323 |                   10 |            3643.22 |
+| PPO_BreakoutNoFrameskip-v4_4060e_00010    | TERMINATED |       |    401 |          3600.46 | 2232016 |    33.61 |                  272 |                   14 |            2830.18 |
+| PPO_BreakoutNoFrameskip-v4_4060e_00011    | TERMINATED |       |    456 |          3602.14 | 2538206 |    11.61 |                   36 |                    4 |            1873.75 |
+| APEX_BreakoutNoFrameskip-v4_4060e_00012   | TERMINATED |       |    104 |          3622.05 | 5264160 |    26.93 |                   62 |                   11 |            2761.03 |
+| APEX_BreakoutNoFrameskip-v4_4060e_00013   | TERMINATED |       |    104 |          3610.29 | 5267200 |    37.55 |                  374 |                    8 |            2738.51 |
+| APEX_BreakoutNoFrameskip-v4_4060e_00014   | TERMINATED |       |    103 |          3629.06 | 5222880 |    18.86 |                  150 |                    8 |            2278.69 |
+| APEX_BreakoutNoFrameskip-v4_4060e_00015   | TERMINATED |       |    103 |          3601.19 | 5208640 |    24.86 |                  377 |                    6 |            2243.86 |
+| A2C_BreakoutNoFrameskip-v4_4060e_00016    | TERMINATED |       |    350 |          3608.5  | 2541000 |    95.47 |                  336 |                   11 |            4337.52 |
+| A2C_BreakoutNoFrameskip-v4_4060e_00017    | TERMINATED |       |    355 |          3603.43 | 4044000 |
+   144.96 |                  325 |                   40 |            5691.41 |                          | A2C_BreakoutNoFrameskip-v4_4060e_00018    | TERMINATED |       |    355 |          3606.74 | 4326500 $
+   270.58 |                  424 |                   36 |            7014.73 |                          | A2C_BreakoutNoFrameskip-v4_4060e_00019    | TERMINATED |       |    356 |          3607.42 | 4307500 |
+   264.4  |                  412 |                   38 |            7066.64 |                          | DQN_BreakoutNoFrameskip-v4_4060e_00020    | TERMINATED |       |     33 |          3679.07 |  340000 |
+    15.15 |                   37 |                    7 |            1970.04 |                          | DQN_BreakoutNoFrameskip-v4_4060e_00021    | TERMINATED |       |     33 |          3675.73 |  340000 |
+    16.44 |                   40 |                    6 |            2055.3  |                          | DQN_BreakoutNoFrameskip-v4_4060e_00022    | TERMINATED |       |     33 |          3657.1  |  340000 |
+    18.85 |                   40 |                    6 |            2476.26 |                          | DQN_BreakoutNoFrameskip-v4_4060e_00023    | TERMINATED |       |     33 |          3654.52 |  340000 |
+    21.07 |                   47 |                    8 |            2586.87 |                          +-------------------------------------------+------------+-------+--------+------------------+---------+
+----------+----------------------+----------------------+--------------------+                                                                                                                                  
+                                                                                                        2020-11-05 02:48:15,548 INFO tune.py:439 -- Total run time: 14646.45 seconds (14645.94 seconds for the t
+uning loop).                                                                                            

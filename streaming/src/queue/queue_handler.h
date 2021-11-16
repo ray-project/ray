@@ -1,7 +1,7 @@
 #pragma once
 
 #include <boost/asio.hpp>
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 #include <boost/thread.hpp>
 #include <thread>
 
@@ -10,6 +10,8 @@
 
 namespace ray {
 namespace streaming {
+
+using namespace ray::core;
 
 enum class StreamingQueueStatus : uint32_t {
   OK = 0,

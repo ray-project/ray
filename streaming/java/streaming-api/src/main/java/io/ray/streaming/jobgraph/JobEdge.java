@@ -3,9 +3,7 @@ package io.ray.streaming.jobgraph;
 import io.ray.streaming.api.partition.Partition;
 import java.io.Serializable;
 
-/**
- * Job edge is connection and partition rules of upstream and downstream execution nodes.
- */
+/** Job edge is connection and partition rules of upstream and downstream execution nodes. */
 public class JobEdge implements Serializable {
 
   private int srcVertexId;
@@ -44,7 +42,13 @@ public class JobEdge implements Serializable {
 
   @Override
   public String toString() {
-    return "Edge(" + "from:" + srcVertexId + "-" + targetVertexId + "-" + this.partition.getClass()
+    return "Edge("
+        + "from:"
+        + srcVertexId
+        + "-"
+        + targetVertexId
+        + "-"
+        + this.partition.getClass()
         + ")";
   }
 }

@@ -2,11 +2,31 @@ import copy
 import glob
 import logging
 import os
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
+from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
+
+UNRESOLVED_SEARCH_SPACE = str(
+    "You passed a `{par}` parameter to {cls} that contained unresolved search "
+    "space definitions. {cls} should however be instantiated with fully "
+    "configured search spaces only. To use Ray Tune's automatic search space "
+    "conversion, pass the space definition as part of the `config` argument "
+    "to `tune.run()` instead.")
+
+UNDEFINED_SEARCH_SPACE = str(
+    "Trying to sample a configuration from {cls}, but no search "
+    "space has been defined. Either pass the `{space}` argument when "
+    "instantiating the search algorithm, or pass a `config` to "
+    "`tune.run()`.")
+
+UNDEFINED_METRIC_MODE = str(
+    "Trying to sample a configuration from {cls}, but the `metric` "
+    "({metric}) or `mode` ({mode}) parameters have not been set. "
+    "Either pass these arguments when instantiating the search algorithm, "
+    "or pass them to `tune.run()`.")
 
 
 class Searcher:
@@ -66,8 +86,8 @@ class Searcher:
                 "Early stopped trials are now always used. If this is a "
                 "problem, file an issue: https://github.com/ray-project/ray.")
         if max_concurrent is not None:
-            logger.warning(
-                "DeprecationWarning: `max_concurrent` is deprecated for this "
+            raise DeprecationWarning(
+                "`max_concurrent` is deprecated for this "
                 "search algorithm. Use tune.suggest.ConcurrencyLimiter() "
                 "instead. This will raise an error in future versions of Ray.")
 
@@ -92,7 +112,7 @@ class Searcher:
             raise ValueError("Mode most either be a list or string")
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         """Pass search properties to searcher.
 
         This method acts as an alternative to instantiating search algorithms
@@ -105,10 +125,12 @@ class Searcher:
             metric (str): Metric to optimize
             mode (str): One of ["min", "max"]. Direction to optimize.
             config (dict): Tune config dict.
+            **spec: Any kwargs for forward compatiblity.
+                Info like Experiment.PUBLIC_KEYS is provided through here.
         """
         return False
 
-    def on_trial_result(self, trial_id: str, result: Dict):
+    def on_trial_result(self, trial_id: str, result: Dict) -> None:
         """Optional notification for result during training.
 
         Note that by default, the result dict may include NaNs or
@@ -129,7 +151,7 @@ class Searcher:
     def on_trial_complete(self,
                           trial_id: str,
                           result: Optional[Dict] = None,
-                          error: bool = False):
+                          error: bool = False) -> None:
         """Notification for the completion of trial.
 
         Typically, this method is used for notifying the underlying
@@ -160,6 +182,32 @@ class Searcher:
                 no more suggestions/configurations will be provided.
                 If None is returned, Tune will skip the querying of the
                 searcher for this step.
+
+        """
+        raise NotImplementedError
+
+    def add_evaluated_point(self,
+                            parameters: Dict,
+                            value: float,
+                            error: bool = False,
+                            pruned: bool = False,
+                            intermediate_values: Optional[List[float]] = None):
+        """Pass results from a point that has been evaluated separately.
+
+        This method allows for information from outside the
+        suggest - on_trial_complete loop to be passed to the search
+        algorithm.
+        This functionality depends on the underlying search algorithm
+        and may not be always available.
+
+        Args:
+            parameters (dict): Parameters used for the trial.
+            value (float): Metric value obtained in the trial.
+            error (bool): True if the training process raised an error.
+            pruned (bool): True if trial was pruned.
+            intermediate_values (list): List of metric values for
+                intermediate iterations of the result. None if not
+                applicable.
 
         """
         raise NotImplementedError
@@ -246,7 +294,7 @@ class Searcher:
             success = False
 
         if success and os.path.exists(tmp_search_ckpt_path):
-            os.rename(
+            os.replace(
                 tmp_search_ckpt_path,
                 os.path.join(checkpoint_dir,
                              self.CKPT_FILE_TMPL.format(session_str)))
@@ -322,7 +370,15 @@ class ConcurrencyLimiter(Searcher):
         self.max_concurrent = max_concurrent
         self.batch = batch
         self.live_trials = set()
+        self.num_unfinished_live_trials = 0
         self.cached_results = {}
+
+        if not isinstance(searcher, Searcher):
+            raise RuntimeError(
+                f"The `ConcurrencyLimiter` only works with `Searcher` "
+                f"objects (got {type(searcher)}). Please try to pass "
+                f"`max_concurrent` to the search generator directly.")
+
         super(ConcurrencyLimiter, self).__init__(
             metric=self.searcher.metric, mode=self.searcher.mode)
 
@@ -339,6 +395,7 @@ class ConcurrencyLimiter(Searcher):
         suggestion = self.searcher.suggest(trial_id)
         if suggestion not in (None, Searcher.FINISHED):
             self.live_trials.add(trial_id)
+            self.num_unfinished_live_trials += 1
         return suggestion
 
     def on_trial_complete(self,
@@ -349,7 +406,8 @@ class ConcurrencyLimiter(Searcher):
             return
         elif self.batch:
             self.cached_results[trial_id] = (result, error)
-            if len(self.cached_results) == self.max_concurrent:
+            self.num_unfinished_live_trials -= 1
+            if self.num_unfinished_live_trials <= 0:
                 # Update the underlying searcher once the
                 # full batch is completed.
                 for trial_id, (result, error) in self.cached_results.items():
@@ -357,12 +415,26 @@ class ConcurrencyLimiter(Searcher):
                         trial_id, result=result, error=error)
                     self.live_trials.remove(trial_id)
                 self.cached_results = {}
+                self.num_unfinished_live_trials = 0
             else:
                 return
         else:
             self.searcher.on_trial_complete(
                 trial_id, result=result, error=error)
             self.live_trials.remove(trial_id)
+            self.num_unfinished_live_trials -= 1
+
+    def on_trial_result(self, trial_id: str, result: Dict) -> None:
+        self.searcher.on_trial_result(trial_id, result)
+
+    def add_evaluated_point(self,
+                            parameters: Dict,
+                            value: float,
+                            error: bool = False,
+                            pruned: bool = False,
+                            intermediate_values: Optional[List[float]] = None):
+        return self.searcher.add_evaluated_point(parameters, value, error,
+                                                 pruned, intermediate_values)
 
     def get_state(self) -> Dict:
         state = self.__dict__.copy()
@@ -372,6 +444,12 @@ class ConcurrencyLimiter(Searcher):
     def set_state(self, state: Dict):
         self.__dict__.update(state)
 
+    def save(self, checkpoint_path: str):
+        self.searcher.save(checkpoint_path)
+
+    def restore(self, checkpoint_path: str):
+        self.searcher.restore(checkpoint_path)
+
     def on_pause(self, trial_id: str):
         self.searcher.on_pause(trial_id)
 
@@ -379,5 +457,6 @@ class ConcurrencyLimiter(Searcher):
         self.searcher.on_unpause(trial_id)
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
-        return self.searcher.set_search_properties(metric, mode, config)
+                              config: Dict, **spec) -> bool:
+        return set_search_properties_backwards_compatible(
+            self.searcher.set_search_properties, metric, mode, config, **spec)

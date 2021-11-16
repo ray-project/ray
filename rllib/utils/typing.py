@@ -1,10 +1,18 @@
-from typing import Any, Dict, List, Tuple, Union
-import gym
+from typing import Any, Dict, List, Tuple, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ray.rllib.utils import try_import_tf, try_import_torch
+    _, tf, _ = try_import_tf()
+    torch, _ = try_import_torch()
+    from ray.rllib.policy.policy import PolicySpec
+    from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
+    from ray.rllib.policy.view_requirement import ViewRequirement
 
 # Represents a fully filled out config of a Trainer class.
 # Note: Policy config dicts are usually the same as TrainerConfigDict, but
 # parts of it may sometimes be altered in e.g. a multi-agent setup,
 # where we have >1 Policies in the same Trainer.
+
 TrainerConfigDict = dict
 
 # A trainer config dict that only has overrides. It needs to be combined with
@@ -34,11 +42,12 @@ AgentID = Any
 PolicyID = str
 
 # Type of the config["multiagent"]["policies"] dict for multi-agent training.
-MultiAgentPolicyConfigDict = Dict[PolicyID, Tuple[type, gym.Space, gym.Space,
-                                                  PartialTrainerConfigDict]]
+MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]
 
-# Represents an environment id.
-EnvID = int
+# Represents an environment id. These could be:
+# - An int index for a sub-env within a vectorized env.
+# - An external env ID (str), which changes(!) each episode.
+EnvID = Union[int, str]
 
 # Represents an episode id.
 EpisodeID = int
@@ -64,6 +73,10 @@ EnvInfoDict = dict
 
 # Represents a File object
 FileType = Any
+
+# Represents a ViewRequirements dict mapping column names (str) to
+# ViewRequirement objects.
+ViewRequirementsDict = Dict[str, "ViewRequirement"]
 
 # Represents the result dict returned by Trainer.train().
 ResultDict = dict
@@ -93,6 +106,9 @@ ModelGradients = Union[List[Tuple[TensorType, TensorType]], List[TensorType]]
 
 # Type of dict returned by get_weights() representing model weights.
 ModelWeights = dict
+
+# An input dict used for direct ModelV2 calls.
+ModelInputDict = Dict[str, TensorType]
 
 # Some kind of sample batch.
 SampleBatchType = Union["SampleBatch", "MultiAgentBatch"]

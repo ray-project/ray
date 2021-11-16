@@ -18,7 +18,7 @@
 #include <stdint.h>
 
 /// Length of Ray full-length IDs in bytes.
-constexpr size_t kUniqueIDSize = 20;
+constexpr size_t kUniqueIDSize = 28;
 
 /// An ObjectID's bytes are split into the task ID itself and the index of the
 /// object's creation. This is the maximum width of the object index in bits.
@@ -37,8 +37,20 @@ constexpr char kTaskTablePrefix[] = "TaskTable";
 constexpr char kWorkerDynamicOptionPlaceholder[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER";
 
-constexpr char kWorkerRayletConfigPlaceholder[] = "RAY_WORKER_RAYLET_CONFIG_PLACEHOLDER";
+constexpr char kNodeManagerPortPlaceholder[] = "RAY_NODE_MANAGER_PORT_PLACEHOLDER";
 
 /// Public DNS address which is is used to connect and get local IP.
 constexpr char kPublicDNSServerIp[] = "8.8.8.8";
 constexpr int kPublicDNSServerPort = 53;
+
+constexpr char kEnvVarKeyJobId[] = "RAY_JOB_ID";
+
+/// for cross-langueage serialization
+constexpr int kMessagePackOffset = 9;
+
+/// Filename of "shim process" that sets up Python worker environment.
+/// Should be kept in sync with SETUP_WORKER_FILENAME in ray.ray_constants.
+constexpr char kSetupWorkerFilename[] = "setup_worker.py";
+
+/// The version of Ray
+constexpr char kRayVersion[] = "2.0.0.dev0";

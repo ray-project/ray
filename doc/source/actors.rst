@@ -88,6 +88,44 @@ Creating an actor
       // Create an actor with a factory method.
       Ray.actor(CounterFactory::createCounter).remote();
 
+  .. group-tab:: C++
+
+    You can convert a standard C++ class into a Ray actor class as follows:
+
+    .. code-block:: c++
+
+      // A regular C++ class.
+      class Counter {
+
+      private:
+        int value = 0;
+
+      public:
+        int Increment() {
+          value += 1;
+          return value;
+        }
+
+        int GetCounter() {
+          return value;
+        }
+
+        void Reset(int new_value) {
+          value = new_value;
+        }
+      };
+
+      // Factory function of Counter class.
+      Counter* CreateCounter() {
+          return new Counter();
+        }
+
+      RAY_REMOTE(&Counter::Increment, &Counter::GetCounter,
+                 &Counter::Reset, CreateCounter);
+
+      // Create an actor with a factory method.
+      ray::Actor(CreateCounter).Remote();
+
 When the above actor is instantiated, the following events happen.
 
 1. A node in the cluster is chosen and a worker process is created on that node
@@ -105,7 +143,7 @@ Methods of the actor can be called remotely.
 
     counter_actor = Counter.remote()
 
-    assert counter_actor.increment.remote() == 1
+    assert ray.get(counter_actor.increment.remote()) == 1
 
     @ray.remote
     class Foo(object):
@@ -130,10 +168,19 @@ Methods of the actor can be called remotely.
     counterActor.task(Counter::reset, 10).remote();
     Assert.assertEquals((int) counterActor.task(Counter::increment).remote().get(), 11);
 
+  .. code-tab:: c++
+
+    ray::ActorHandle<Counter> counter_actor = ray::Actor(CreateCounter).Remote();
+    // Call an actor method with a return value
+    assert(*counter_actor.Task(&Counter::Increment).Remote().Get(), 1);
+    // Call an actor method without return value. In this case, the return type of `Remote()` is void.
+    counter_actor.Task(&Counter::Reset).Remote(10);
+    assert(*counter_actor.Task(&Counter::Increment).Remote().Get(), 11);
+
 .. _actor-resource-guide:
 
-Resources with Actors
----------------------
+Specifying Resources
+--------------------
 
 You can specify that an actor requires CPUs or GPUs in the decorator. While Ray has built-in support for CPUs and GPUs, Ray can also handle custom resources.
 
@@ -161,6 +208,20 @@ You can specify that an actor requires CPUs or GPUs in the decorator. While Ray 
 
       Ray.actor(GpuActor::new).setResource("CPU", 2.0).setResource("GPU", 0.5).remote();
 
+  .. group-tab:: C++
+
+    .. In C++, we always specify resources when creating actors. There's no annotation available to act like the Python decorator ``@ray.remote(...)``.
+
+    .. code-block:: c++
+
+      class GpuActor {
+        static GpuActor* CreateGpuActor() {
+          return new GpuActor();
+        }
+      }
+
+      ray::Actor(&GpuActor::CreateGpuActor).SetResource("CPU", 2.0).SetResource("GPU", 0.5).Remote();
+
 When an ``GPUActor`` instance is created, it will be placed on a node that has
 at least 1 GPU, and the GPU will be reserved for the actor for the duration of
 the actor's lifetime (even if the actor is not executing tasks). The GPU
@@ -174,14 +235,12 @@ have these resources (see `configuration instructions
 
   * If you specify resource requirements in an actor class's remote decorator,
     then the actor will acquire those resources for its entire lifetime (if you
-    do not specify CPU resources, the default is 1), even if it is not executing
+    do not specify CPU resources, the default is 0), even if it is not executing
     any methods. The actor will not acquire any additional resources when
     executing methods.
   * If you do not specify any resource requirements in the actor class's remote
     decorator, then by default, the actor will not acquire any resources for its
-    lifetime, but every time it executes a method, it will need to acquire 1 CPU
-    resource.
-
+    lifetime.
 
 .. tabs::
   .. code-tab:: python
@@ -196,6 +255,16 @@ have these resources (see `configuration instructions
     }
 
     Ray.actor(GpuActor::new).setResource("Resource2", 1.0).remote();
+
+  .. code-tab:: c++
+
+    class GpuActor {
+      static GpuActor* CreateGpuActor() {
+        return new GpuActor();
+      }
+    }
+
+    ray::Actor(&GpuActor::CreateGpuActor).SetResource("Resource2", 1.0).Remote();
 
 
 If you need to instantiate many copies of the same actor with varying resource
@@ -225,9 +294,26 @@ requirements, you can do so as follows.
     ActorHandle<Counter> a3 = Ray.actor(Counter::new).setResource("CPU", 3.0)
       .setResource("Custom3", 1.0).remote();
 
+  .. code-tab:: c++
+
+    class Counter {
+      ...
+    }
+
+    auto a1 = ray::Actor(&GpuActor::CreateGpuActor).SetResource("CPU", 1.0)
+      .SetResource("Custom1", 1.0).Remote();
+    auto a2 = ray::Actor(&GpuActor::CreateGpuActor).SetResource("CPU", 2.0)
+      .SetResource("Custom2", 1.0).Remote();
+    auto a3 = ray::Actor(&GpuActor::CreateGpuActor).SetResource("CPU", 3.0)
+      .SetResource("Custom3", 1.0).Remote();
 
 Note that to create these actors successfully, Ray will need to be started with
 sufficient CPU resources and the relevant custom resources.
+
+.. tip::
+
+  Besides compute resources, you can also specify an environment for an actor to run in,
+  which can include Python packages, local files, environment variables, and more--see :ref:`Runtime Environments <runtime-environments>` for details.
 
 
 Terminating Actors
@@ -249,6 +335,10 @@ Automatic termination
   .. group-tab:: Java
 
     Terminating an actor automatically when the initial actor handle goes out of scope hasn't been implemented in Java yet.
+
+  .. group-tab:: C++
+
+    Terminating an actor automatically when the initial actor handle goes out of scope hasn't been implemented in C++ yet.
 
 Manual termination within the actor
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -276,6 +366,16 @@ This will kill the actor process and release resources associated/assigned to th
     can be waited on to wait for the actor to exit (calling ``ObjectRef::get`` on it will
     throw a ``RayActorException``).
 
+  .. group-tab:: C++
+    .. code-block:: c++
+
+      ray::ExitActor();
+
+    Garbage collection for actors haven't been implemented yet, so this is currently the
+    only way to terminate an actor gracefully. The ``ObjectRef`` resulting from the task
+    can be waited on to wait for the actor to exit (calling ``ObjectRef::Get`` on it will
+    throw a ``RayActorException``).
+
 Note that this method of termination will wait until any previously submitted
 tasks finish executing and then exit the process gracefully with sys.exit.
 
@@ -293,6 +393,10 @@ You can terminate an actor forcefully.
 
     actorHandle.kill();
 
+  .. code-tab:: c++
+
+    actor_handle.Kill();
+
 This will call the exit syscall from within the actor, causing it to exit
 immediately and any pending tasks to fail.
 
@@ -309,6 +413,12 @@ immediately and any pending tasks to fail.
     This will not go through the normal Java System.exit teardown logic, so any
     shutdown hooks installed in the actor using ``Runtime.addShutdownHook(...)`` will
     not be called.
+
+  .. group-tab:: C++
+
+    This will not go through the normal
+    C++ std::exit teardown logic, so any exit handlers installed in the actor using
+    ``std::atexit`` will not be called.
 
 Passing Around Actor Handles
 ----------------------------
@@ -337,6 +447,15 @@ Actor handles can be passed into other tasks. We can define remote functions (or
         }
       }
     }
+
+  .. code-tab:: c++
+
+      void Foo(ray::ActorHandle<Counter> counter) {
+        for (int i = 0; i < 1000; i++) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          counter.Task(&Counter::Increment).Remote();
+        }
+      }
 
 If we instantiate an actor, we can pass the handle around to various tasks.
 
@@ -368,17 +487,31 @@ If we instantiate an actor, we can pass the handle around to various tasks.
       System.out.println(counter.task(Counter::getCounter).remote().get());
     }
 
+  .. code-tab:: c++
+
+    auto counter = ray::Actor(CreateCounter).Remote();
+
+    // Start some tasks that use the actor.
+    for (int i = 0; i < 3; i++) {
+      ray::Task(Foo).Remote(counter);
+    }
+
+    // Print the counter value.
+    for (int i = 0; i < 10; i++) {
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      std::cout << *counter.Task(&Counter::GetCounter).Remote().Get() << std::endl;
+    }
+
 Named Actors
 ------------
 
-An actor can be given a globally unique name.
+An actor can be given a unique name within their :ref:`namespace <namespaces-guide>`.
 This allows you to retrieve the actor from any job in the Ray cluster.
 This can be useful if you cannot directly
 pass the actor handle to the task that needs it, or if you are trying to
 access an actor launched by another driver.
 Note that the actor will still be garbage-collected if no handles to it
 exist. See :ref:`actor-lifetimes` for more details.
-
 
 .. tabs::
 
@@ -396,27 +529,97 @@ exist. See :ref:`actor-lifetimes` for more details.
 
     .. code-block:: java
 
-      // Create an actor with a globally unique name
-      ActorHandle<Counter> counter = Ray.actor(Counter::new).setGlobalName("some_name").remote();
+      // Create an actor with a name.
+      ActorHandle<Counter> counter = Ray.actor(Counter::new).setName("some_name").remote();
 
       ...
 
       // Retrieve the actor later somewhere
-      Optional<ActorHandle<Counter>> counter = Ray.getGlobalActor("some_name");
+      Optional<ActorHandle<Counter>> counter = Ray.getActor("some_name");
       Assert.assertTrue(counter.isPresent());
 
-    We also support non-global named actors in Java, which means that the actor name is only valid within the job and the actor cannot be accessed from another job.
+  .. group-tab:: C++
 
-    .. code-block:: java
+    .. code-block:: c++
+
+      // Create an actor with a globally unique name
+      ActorHandle<Counter> counter = ray::Actor(CreateCounter).SetGlobalName("some_name").Remote();
+
+      ...
+
+      // Retrieve the actor later somewhere
+      boost::optional<ray::ActorHandle<Counter>> counter = ray::GetGlobalActor("some_name");
+
+    We also support non-global named actors in C++, which means that the actor name is only valid within the job and the actor cannot be accessed from another job
+
+    .. code-block:: c++
 
       // Create an actor with a job-scope-unique name
-      ActorHandle<Counter> counter = Ray.actor(Counter::new).setName("some_name_in_job").remote();
+      ActorHandle<Counter> counter = ray::Actor(CreateCounter).SetName("some_name").Remote();
 
       ...
 
       // Retrieve the actor later somewhere in the same job
-      Optional<ActorHandle<Counter>> counter = Ray.getActor("some_name_in_job");
-      Assert.assertTrue(counter.isPresent());
+      boost::optional<ray::ActorHandle<Counter>> counter = ray::GetActor("some_name");
+
+.. note::
+
+     Named actors are only accessible in the same namespace.
+
+  .. tabs::
+    .. code-tab:: python
+
+        import ray
+
+        @ray.remote
+        class Actor:
+          pass
+
+        # driver_1.py
+        # Job 1 creates an actor, "orange" in the "colors" namespace.
+        ray.init(address="auto", namespace="colors")
+        Actor.options(name="orange", lifetime="detached")
+
+        # driver_2.py
+        # Job 2 is now connecting to a different namespace.
+        ray.init(address="auto", namespace="fruit")
+        # This fails because "orange" was defined in the "colors" namespace.
+        ray.get_actor("orange")
+
+        # driver_3.py
+        # Job 3 connects to the original "colors" namespace
+        ray.init(address="auto", namespace="colors")
+        # This returns the "orange" actor we created in the first job.
+        ray.get_actor("orange")
+
+    .. code-tab:: java
+
+        import ray
+
+        class Actor {
+        }
+
+        // Driver1.java
+        // Job 1 creates an actor, "orange" in the "colors" namespace.
+        System.setProperty("ray.job.namespace", "colors");
+        Ray.init();
+        Ray.actor(Actor::new).setName("orange").remote();
+
+        // Driver2.java
+        // Job 2 is now connecting to a different namespace.
+        System.setProperty("ray.job.namespace", "fruits");
+        Ray.init();
+        // This fails because "orange" was defined in the "colors" namespace.
+        Optional<ActorHandle<Actor>> actor = Ray.getActor("orange");
+        Assert.assertFalse(actor.isPresent());  // actor.isPresent() is false.
+
+        // Driver3.java
+        System.setProperty("ray.job.namespace", "colors");
+        Ray.init();
+        // This returns the "orange" actor we created in the first job.
+        Optional<ActorHandle<Actor>> actor = Ray.getActor("orange");
+        Assert.assertTrue(actor.isPresent());  // actor.isPresent() is true.
+
 
 .. _actor-lifetimes:
 
@@ -450,6 +653,10 @@ Actor Lifetimes
 
     Customizing lifetime of an actor hasn't been implemented in Java yet.
 
+  .. group-tab:: C++
+
+    Customizing lifetime of an actor hasn't been implemented in C++ yet.
+
 Actor Pool
 ----------
 
@@ -463,9 +670,17 @@ Actor Pool
 
       from ray.util import ActorPool
 
+      @ray.remote
+      class Actor
+        def double(self, n):
+            return n * 2
+
       a1, a2 = Actor.remote(), Actor.remote()
       pool = ActorPool([a1, a2])
-      print(pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+
+      # pool.map(..) returns a Python generator object ActorPool.map
+      gen = pool.map(lambda a, v: a.double.remote(v), [1, 2, 3, 4]))
+      print([v for v in gen])
       # [2, 4, 6, 8]
 
     See the `package reference <package-ref.html#ray.util.ActorPool>`_ for more information.
@@ -473,6 +688,10 @@ Actor Pool
   .. group-tab:: Java
 
     Actor pool hasn't been implemented in Java yet.
+
+  .. group-tab:: C++
+
+    Actor pool hasn't been implemented in C++ yet.
 
 
 FAQ: Actors, Workers and Resources
@@ -514,3 +733,7 @@ Concurrency within an actor
   .. group-tab:: Java
 
     Actor-level concurrency hasn't been implemented in Java yet.
+
+  .. group-tab:: C++
+
+    Actor-level concurrency hasn't been implemented in C++ yet.

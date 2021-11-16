@@ -20,11 +20,15 @@ class RNNModel(TorchModelV2, nn.Module):
         self.fc1 = nn.Linear(self.obs_size, self.rnn_hidden_dim)
         self.rnn = nn.GRUCell(self.rnn_hidden_dim, self.rnn_hidden_dim)
         self.fc2 = nn.Linear(self.rnn_hidden_dim, num_outputs)
+        self.n_agents = model_config["n_agents"]
 
     @override(ModelV2)
     def get_initial_state(self):
         # Place hidden states on same device as model.
-        return [self.fc1.weight.new(1, self.rnn_hidden_dim).zero_().squeeze(0)]
+        return [
+            self.fc1.weight.new(self.n_agents,
+                                self.rnn_hidden_dim).zero_().squeeze(0)
+        ]
 
     @override(ModelV2)
     def forward(self, input_dict, hidden_state, seq_lens):

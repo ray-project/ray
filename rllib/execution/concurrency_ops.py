@@ -1,15 +1,17 @@
-from typing import List
+from typing import List, Optional, Any
 import queue
 
 from ray.util.iter import LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
+from ray.rllib.utils.typing import SampleBatchType
 
 
 def Concurrently(ops: List[LocalIterator],
                  *,
-                 mode="round_robin",
-                 output_indexes=None,
-                 round_robin_weights=None):
+                 mode: str = "round_robin",
+                 output_indexes: Optional[List[int]] = None,
+                 round_robin_weights: Optional[List[int]] = None
+                 ) -> LocalIterator[SampleBatchType]:
     """Operator that runs the given parent iterators concurrently.
 
     Args:
@@ -62,8 +64,8 @@ def Concurrently(ops: List[LocalIterator],
         round_robin_weights=round_robin_weights)
 
     if output_indexes:
-        output = (output.filter(lambda tup: tup[0] in output_indexes)
-                  .for_each(lambda tup: tup[1]))
+        output = (output.filter(lambda tup: tup[0] in output_indexes).for_each(
+            lambda tup: tup[1]))
 
     return output
 
@@ -91,18 +93,19 @@ class Enqueue:
                 type(output_queue)))
         self.queue = output_queue
 
-    def __call__(self, x):
+    def __call__(self, x: Any) -> Any:
         try:
-            self.queue.put_nowait(x)
+            self.queue.put(x, timeout=0.001)
         except queue.Full:
             return _NextValueNotReady()
         return x
 
 
-def Dequeue(input_queue: queue.Queue, check=lambda: True):
+def Dequeue(input_queue: queue.Queue,
+            check=lambda: True) -> LocalIterator[SampleBatchType]:
     """Dequeue data items from a queue.Queue instance.
 
-    The dequeue is non-blocking, so Dequeue operations can executed with
+    The dequeue is non-blocking, so Dequeue operations can execute with
     Enqueue via the Concurrently() operator.
 
     Args:
@@ -125,10 +128,11 @@ def Dequeue(input_queue: queue.Queue, check=lambda: True):
     def base_iterator(timeout=None):
         while check():
             try:
-                item = input_queue.get_nowait()
+                item = input_queue.get(timeout=0.001)
                 yield item
             except queue.Empty:
                 yield _NextValueNotReady()
-        raise RuntimeError("Error raised reading from queue")
+        raise RuntimeError("Dequeue `check()` returned False! "
+                           "Exiting with Exception from Dequeue iterator.")
 
     return LocalIterator(base_iterator, SharedMetrics())

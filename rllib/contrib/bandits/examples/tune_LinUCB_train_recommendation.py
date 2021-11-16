@@ -12,15 +12,14 @@ from ray.rllib.contrib.bandits.agents.lin_ucb import UCB_CONFIG
 from ray.rllib.contrib.bandits.envs import ParametricItemRecoEnv
 
 if __name__ == "__main__":
-
     # Temp fix to avoid OMP conflict
     os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 
     UCB_CONFIG["env"] = ParametricItemRecoEnv
 
-    # Actual training_iterations will be 20 * timesteps_per_iteration
+    # Actual training_iterations will be 10 * timesteps_per_iteration
     # (100 by default) = 2,000
-    training_iterations = 20
+    training_iterations = 10
 
     print("Running training for %s time steps" % training_iterations)
 
@@ -29,7 +28,7 @@ if __name__ == "__main__":
         "contrib/LinUCB",
         config=UCB_CONFIG,
         stop={"training_iteration": training_iterations},
-        num_samples=5,
+        num_samples=2,
         checkpoint_at_end=False)
 
     print("The trials took", time.time() - start_time, "seconds\n")
@@ -38,8 +37,8 @@ if __name__ == "__main__":
     frame = pd.DataFrame()
     for key, df in analysis.trial_dataframes.items():
         frame = frame.append(df, ignore_index=True)
-    x = frame.groupby("num_steps_trained")[
-        "learner/cumulative_regret"].aggregate(["mean", "max", "min", "std"])
+    x = frame.groupby("agent_timesteps_total")[
+        "episode_reward_mean"].aggregate(["mean", "max", "min", "std"])
 
     plt.plot(x["mean"])
     plt.fill_between(
@@ -48,6 +47,6 @@ if __name__ == "__main__":
         x["mean"] + x["std"],
         color="b",
         alpha=0.2)
-    plt.title("Cumulative Regret")
+    plt.title("Episode reward mean")
     plt.xlabel("Training steps")
     plt.show()

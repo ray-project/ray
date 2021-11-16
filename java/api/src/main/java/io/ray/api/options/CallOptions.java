@@ -1,5 +1,6 @@
 package io.ray.api.options;
 
+import io.ray.api.placementgroup.PlacementGroup;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -7,10 +8,21 @@ import java.util.Map;
 public class CallOptions extends BaseTaskOptions {
 
   public final String name;
+  public final PlacementGroup group;
+  public final int bundleIndex;
+  public final String concurrencyGroupName;
 
-  private CallOptions(String name, Map<String, Double> resources) {
+  private CallOptions(
+      String name,
+      Map<String, Double> resources,
+      PlacementGroup group,
+      int bundleIndex,
+      String concurrencyGroupName) {
     super(resources);
     this.name = name;
+    this.group = group;
+    this.bundleIndex = bundleIndex;
+    this.concurrencyGroupName = concurrencyGroupName;
   }
 
   /** This inner class for building CallOptions. */
@@ -18,6 +30,9 @@ public class CallOptions extends BaseTaskOptions {
 
     private String name;
     private Map<String, Double> resources = new HashMap<>();
+    private PlacementGroup group;
+    private int bundleIndex;
+    private String concurrencyGroupName = "";
 
     /**
      * Set a name for this task.
@@ -55,8 +70,26 @@ public class CallOptions extends BaseTaskOptions {
       return this;
     }
 
+    /**
+     * Set the placement group to place this actor in.
+     *
+     * @param group The placement group of the actor.
+     * @param bundleIndex The index of the bundle to place this task in.
+     * @return self
+     */
+    public Builder setPlacementGroup(PlacementGroup group, int bundleIndex) {
+      this.group = group;
+      this.bundleIndex = bundleIndex;
+      return this;
+    }
+
+    public Builder setConcurrencyGroupName(String concurrencyGroupName) {
+      this.concurrencyGroupName = concurrencyGroupName;
+      return this;
+    }
+
     public CallOptions build() {
-      return new CallOptions(name, resources);
+      return new CallOptions(name, resources, group, bundleIndex, concurrencyGroupName);
     }
   }
 }

@@ -164,7 +164,7 @@ def _read_subprocess_stream(f, output_file, is_stdout=False):
 
             cli_logger.error(line)
 
-        if output_file is not None:
+        if output_file is not None and output_file != subprocess.DEVNULL:
             output_file.write(line + "\n")
 
     return detected_special_case
@@ -238,10 +238,6 @@ def _run_and_process_output(cmd,
     # See implementation note #1
 
     if use_login_shells or process_runner != subprocess:
-        if stdout_file is None:
-            stdout_file = sys.stdout
-        if stderr_file is None:
-            stderr_file = sys.stderr
         return process_runner.check_call(
             cmd,
             # See implementation note #2
@@ -333,7 +329,8 @@ def run_cmd_redirected(cmd,
         return _run_and_process_output(
             cmd,
             process_runner=process_runner,
-            stdout_file=None,
+            stdout_file=process_runner.DEVNULL,
+            stderr_file=process_runner.DEVNULL,
             use_login_shells=use_login_shells)
 
     if not is_output_redirected():
@@ -341,6 +338,7 @@ def run_cmd_redirected(cmd,
             cmd,
             process_runner=process_runner,
             stdout_file=sys.stdout,
+            stderr_file=sys.stderr,
             use_login_shells=use_login_shells)
     else:
         tmpfile_path = os.path.join(

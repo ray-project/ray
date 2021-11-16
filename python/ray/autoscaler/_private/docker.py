@@ -1,17 +1,32 @@
-import logging
+from pathlib import Path
+from typing import Any, Dict
 try:  # py3
     from shlex import quote
 except ImportError:  # py2
     from pipes import quote
 
-from ray.autoscaler._private.constants import DOCKER_MOUNT_PREFIX
-
-logger = logging.getLogger(__name__)
+from ray.autoscaler._private.cli_logger import cli_logger
 
 
-def validate_docker_config(config):
+def _check_docker_file_mounts(file_mounts: Dict[str, str]) -> None:
+    """Checks if files are passed as file_mounts. This is a problem for Docker
+    based clusters because when a file is bind-mounted in Docker, updates to
+    the file on the host do not always propagate to the container. Using
+    directories is recommended.
+    """
+    for remote, local in file_mounts.items():
+        if Path(local).is_file():
+            cli_logger.warning(
+                f"File Mount: ({remote}:{local}) refers to a file.\n To ensure"
+                " this mount updates properly, please use a directory.")
+
+
+def validate_docker_config(config: Dict[str, Any]) -> None:
+    """Checks whether the Docker configuration is valid."""
     if "docker" not in config:
-        return config
+        return
+
+    _check_docker_file_mounts(config.get("file_mounts", {}))
 
     docker_image = config["docker"].get("image")
     cname = config["docker"].get("container_name")
@@ -26,13 +41,15 @@ def validate_docker_config(config):
     else:
         assert cname and image_present, "Must provide a container & image name"
 
-    return config
+    return None
 
 
 def with_docker_exec(cmds,
                      container_name,
+                     docker_cmd,
                      env_vars=None,
                      with_interactive=False):
+    assert docker_cmd, "Must provide docker command"
     env_str = ""
     if env_vars:
         env_str = " ".join(
@@ -47,31 +64,35 @@ def with_docker_exec(cmds,
     ]
 
 
-def _check_helper(cname, template):
+def _check_helper(cname, template, docker_cmd):
     return " ".join([
-        "docker", "inspect", "-f", "'{{" + template + "}}'", cname, "||",
+        docker_cmd, "inspect", "-f", "'{{" + template + "}}'", cname, "||",
         "true"
     ])
 
 
-def check_docker_running_cmd(cname):
-    return _check_helper(cname, ".State.Running")
+def check_docker_running_cmd(cname, docker_cmd):
+    return _check_helper(cname, ".State.Running", docker_cmd)
 
 
-def check_bind_mounts_cmd(cname):
-    return _check_helper(cname, "json .Mounts")
+def check_bind_mounts_cmd(cname, docker_cmd):
+    return _check_helper(cname, "json .Mounts", docker_cmd)
 
 
-def check_docker_image(cname):
-    return _check_helper(cname, ".Config.Image")
+def check_docker_image(cname, docker_cmd):
+    return _check_helper(cname, ".Config.Image", docker_cmd)
 
 
-def docker_start_cmds(user, image, mount_dict, cname, user_options):
-    mount = {f"{DOCKER_MOUNT_PREFIX}/{dst}": dst for dst in mount_dict}
+def docker_start_cmds(user, image, mount_dict, container_name, user_options,
+                      cluster_name, home_directory, docker_cmd):
+    # Imported here due to circular dependency.
+    from ray.autoscaler.sdk import get_docker_host_mount_location
+    docker_mount_prefix = get_docker_host_mount_location(cluster_name)
+    mount = {f"{docker_mount_prefix}/{dst}": dst for dst in mount_dict}
 
-    # TODO(ilr) Move away from defaulting to /root/
     mount_flags = " ".join([
-        "-v {src}:{dest}".format(src=k, dest=v.replace("~/", "/root/"))
+        "-v {src}:{dest}".format(
+            src=k, dest=v.replace("~/", home_directory + "/"))
         for k, v in mount.items()
     ])
 
@@ -82,7 +103,8 @@ def docker_start_cmds(user, image, mount_dict, cname, user_options):
 
     user_options_str = " ".join(user_options)
     docker_run = [
-        "docker", "run", "--rm", "--name {}".format(cname), "-d", "-it",
-        mount_flags, env_flags, user_options_str, "--net=host", image, "bash"
+        docker_cmd, "run", "--rm", "--name {}".format(container_name), "-d",
+        "-it", mount_flags, env_flags, user_options_str, "--net=host", image,
+        "bash"
     ]
     return " ".join(docker_run)

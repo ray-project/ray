@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-
+set -x
 set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)
@@ -34,7 +34,7 @@ esac
   missing_symlinks=()
   while read -r mode _ _ path; do
     if [ "${mode}" = 120000 ]; then
-      test -L "${path}" || missing_symlinks+=("${paths}")
+      test -L "${path}" || missing_symlinks+=("${path}")
     fi
   done
   if [ ! 0 -eq "${#missing_symlinks[@]}" ]; then
@@ -44,6 +44,7 @@ esac
   fi
 )
 
+export PATH=/opt/python/cp36-cp36m/bin:$PATH
 python="$(command -v python3 || command -v python || echo python)"
 version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${ROOT_DIR}/../../python/setup.py")"
 if [ "${OSTYPE}" = "msys" ]; then
@@ -54,12 +55,20 @@ else
   target="./install.sh"
   curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazel/releases/download/${version}/bazel-${version}-installer-${platform}-${achitecture}.sh"
   chmod +x "${target}"
-  if [ "${CI-}" = true ] || [ "${arg1-}" = "--system" ]; then
+  if [[ -n "${BUILDKITE-}" ]] && [ "${platform}" = "darwin" ]; then
+    "${target}" --user
+    # Add bazel to the path.
+    # shellcheck disable=SC2016
+    printf '\nexport PATH="$HOME/bin:$PATH"\n' >> ~/.zshrc
+    # shellcheck disable=SC1090
+    source ~/.zshrc
+  elif [ "${CI-}" = true ] || [ "${arg1-}" = "--system" ]; then
     "$(command -v sudo || echo command)" "${target}" > /dev/null  # system-wide install for CI
-    which bazel > /dev/null
   else
     "${target}" --user > /dev/null
+    export PATH=$PATH:"$HOME/bin"
   fi
+  which bazel
   rm -f "${target}"
 fi
 
@@ -80,9 +89,17 @@ if [ "${TRAVIS-}" = true ]; then
 fi
 if [ "${GITHUB_ACTIONS-}" = true ]; then
   echo "build --config=ci-github" >> ~/.bazelrc
+  echo "build --jobs="$(($(nproc)+2)) >> ~/.bazelrc
 fi
 if [ "${CI-}" = true ]; then
   echo "build --config=ci" >> ~/.bazelrc
+
+  # In Windows CI we want to use this to avoid long path issue
+  # https://docs.bazel.build/versions/main/windows.html#avoid-long-path-issues
+  if [ "${OSTYPE}" = msys ]; then
+    echo "startup --output_user_root=c:/tmp" >> ~/.bazelrc
+  fi
+
   # If we are in master build, we can write to the cache as well.
   upload=0
   if [ "${TRAVIS_PULL_REQUEST-false}" = false ]; then
@@ -114,6 +131,21 @@ if [ "${CI-}" = true ]; then
     cat <<EOF >> ~/.bazelrc
 build --google_credentials="${translated_path}"
 EOF
+  elif [ -n "${BUILDKITE-}" ]; then
+
+    if [ "${platform}" = "darwin" ]; then
+      echo "Using local disk cache on mac"
+    cat <<EOF >> ~/.bazelrc
+build --disk_cache=/tmp/bazel-cache
+build --repository_cache=/tmp/bazel-repo-cache
+EOF
+    else
+      echo "Using buildkite secret store to communicate with cache address"
+      cat <<EOF >> ~/.bazelrc
+build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}
+EOF
+    fi
+
   else
     echo "Using remote build cache in read-only mode." 1>&2
     cat <<EOF >> ~/.bazelrc

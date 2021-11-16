@@ -6,11 +6,9 @@ import os
 import numpy as np
 import torch
 import torch.optim as optim
-from torchvision import datasets
 from ray.tune.examples.mnist_pytorch import train, test, ConvNet,\
     get_data_loaders
 
-import ray
 from ray import tune
 from ray.tune.schedulers import PopulationBasedTraining
 from ray.tune.trial import ExportFormat
@@ -60,20 +58,40 @@ def train_convnet(config, checkpoint_dir=None):
 
 # __train_end__
 
+
+def test_best_model(analysis):
+    """Test the best model given output of tune.run"""
+    best_checkpoint_path = analysis.best_checkpoint
+    best_model = ConvNet()
+    best_checkpoint = torch.load(
+        os.path.join(best_checkpoint_path, "checkpoint"))
+    best_model.load_state_dict(best_checkpoint["model_state_dict"])
+    # Note that test only runs on a small random set of the test data, thus the
+    # accuracy may be different from metrics shown in tuning process.
+    test_acc = test(best_model, get_data_loaders()[1])
+    print("best model accuracy: ", test_acc)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
     args, _ = parser.parse_known_args()
 
-    ray.init()
-    datasets.MNIST("~/data", train=True, download=True)
+    if args.server_address:
+        import ray
+        ray.init(f"ray://{args.server_address}")
 
     # __pbt_begin__
     scheduler = PopulationBasedTraining(
         time_attr="training_iteration",
-        metric="mean_accuracy",
-        mode="max",
         perturbation_interval=5,
         hyperparam_mutations={
             # distribution for resampling
@@ -104,6 +122,8 @@ if __name__ == "__main__":
         train_convnet,
         name="pbt_test",
         scheduler=scheduler,
+        metric="mean_accuracy",
+        mode="max",
         verbose=1,
         stop=stopper,
         export_formats=[ExportFormat.MODEL],
@@ -116,14 +136,14 @@ if __name__ == "__main__":
         })
     # __tune_end__
 
-    best_trial = analysis.get_best_trial("mean_accuracy", mode="max")
-    best_checkpoint_path = analysis.get_best_checkpoint(
-        best_trial, metric="mean_accuracy", mode="max")
-    best_model = ConvNet()
-    best_checkpoint = torch.load(
-        os.path.join(best_checkpoint_path, "checkpoint"))
-    best_model.load_state_dict(best_checkpoint["model_state_dict"])
-    # Note that test only runs on a small random set of the test data, thus the
-    # accuracy may be different from metrics shown in tuning process.
-    test_acc = test(best_model, get_data_loaders()[1])
-    print("best model accuracy: ", test_acc)
+    if args.server_address:
+        # If using Ray Client, we want to make sure checkpoint access
+        # happens on the server. So we wrap `test_best_model` in a Ray task.
+        # We have to make sure it gets executed on the same node that
+        # ``tune.run`` is called on.
+        from ray.util.ml_utils.node import force_on_current_node
+
+        remote_fn = force_on_current_node(ray.remote(test_best_model))
+        ray.get(remote_fn.remote(analysis))
+    else:
+        test_best_model(analysis)

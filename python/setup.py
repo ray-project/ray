@@ -14,6 +14,7 @@ import zipfile
 
 from itertools import chain
 from itertools import takewhile
+from enum import Enum
 
 import urllib.error
 import urllib.parse
@@ -21,22 +22,23 @@ import urllib.request
 
 logger = logging.getLogger(__name__)
 
-# Ideally, we could include these files by putting them in a
-# MANIFEST.in or using the package_data argument to setup, but the
-# MANIFEST.in gets applied at the very beginning when setup.py runs
-# before these files have been created, so we have to move the files
-# manually.
-
-SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8)]
-SUPPORTED_BAZEL = (3, 2, 0)
+SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9)]
+SUPPORTED_BAZEL = (4, 2, 1)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
+SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
 
 PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 
 CLEANABLE_SUBDIRS = [PICKLE5_SUBDIR, THIRDPARTY_SUBDIR]
+
+# In automated builds, we do a few adjustments before building. For instance,
+# the bazel environment is set up slightly differently, and symlinks are
+# replaced with junctions in Windows. This variable is set e.g. in our conda
+# feedstock.
+is_automated_build = bool(int(os.environ.get("IS_AUTOMATED_BUILD", "0")))
 
 exe_suffix = ".exe" if sys.platform == "win32" else ""
 
@@ -45,116 +47,225 @@ exe_suffix = ".exe" if sys.platform == "win32" else ""
 pyd_suffix = ".pyd" if sys.platform == "win32" else ".so"
 
 pickle5_url = ("https://github.com/pitrou/pickle5-backport/archive/"
-               "c0c1a158f59366696161e0dffdd10cfe17601372.tar.gz")
+               "e6117502435aba2901585cc6c692fb9582545f08.tar.gz")
+
+
+def find_version(*filepath):
+    # Extract version information from filepath
+    with open(os.path.join(ROOT_DIR, *filepath)) as fp:
+        version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
+                                  fp.read(), re.M)
+        if version_match:
+            return version_match.group(1)
+        raise RuntimeError("Unable to find version string.")
+
+
+class SetupType(Enum):
+    RAY = 1
+    RAY_CPP = 2
+
+
+class BuildType(Enum):
+    DEFAULT = 1
+    DEBUG = 2
+    ASAN = 3
+    TSAN = 4
+
+
+class SetupSpec:
+    def __init__(self, type: SetupType, name: str, description: str,
+                 build_type: BuildType):
+        self.type: SetupType = type
+        self.name: str = name
+        version = find_version("ray", "__init__.py")
+        # add .dbg suffix if debug mode is on.
+        if build_type == BuildType.DEBUG:
+            self.version: str = f"{version}+dbg"
+        elif build_type == BuildType.ASAN:
+            self.version: str = f"{version}+asan"
+        elif build_type == BuildType.TSAN:
+            self.version: str = f"{version}+tsan"
+        else:
+            self.version = version
+        self.description: str = description
+        self.build_type: BuildType = build_type
+        self.files_to_include: list = []
+        self.install_requires: list = []
+        self.extras: dict = {}
+
+    def get_packages(self):
+        if self.type == SetupType.RAY:
+            return setuptools.find_packages()
+        else:
+            return []
+
+
+build_type = os.getenv("RAY_DEBUG_BUILD")
+if build_type == "debug":
+    BUILD_TYPE = BuildType.DEBUG
+elif build_type == "asan":
+    BUILD_TYPE = BuildType.ASAN
+elif build_type == "tsan":
+    BUILD_TYPE = BuildType.TSAN
+else:
+    BUILD_TYPE = BuildType.DEFAULT
+
+if os.getenv("RAY_INSTALL_CPP") == "1":
+    # "ray-cpp" wheel package.
+    setup_spec = SetupSpec(
+        SetupType.RAY_CPP, "ray-cpp",
+        "A subpackage of Ray which provides the Ray C++ API.", BUILD_TYPE)
+else:
+    # "ray" primary wheel package.
+    setup_spec = SetupSpec(
+        SetupType.RAY, "ray", "Ray provides a simple, "
+        "universal API for building distributed applications.", BUILD_TYPE)
+    RAY_EXTRA_CPP = True
+    # Disable extra cpp for the development versions.
+    if "dev" in setup_spec.version or os.getenv(
+            "RAY_DISABLE_EXTRA_CPP") == "1":
+        RAY_EXTRA_CPP = False
+
+# Ideally, we could include these files by putting them in a
+# MANIFEST.in or using the package_data argument to setup, but the
+# MANIFEST.in gets applied at the very beginning when setup.py runs
+# before these files have been created, so we have to move the files
+# manually.
 
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
     "ray/core/src/ray/thirdparty/redis/src/redis-server" + exe_suffix,
-    "ray/core/src/ray/gcs/redis_module/libray_redis_module.so",
-    "ray/core/src/plasma/plasma_store_server" + exe_suffix,
     "ray/_raylet" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
     "ray/streaming/_streaming.so",
 ]
 
-if BUILD_JAVA:
+if BUILD_JAVA or os.path.exists(
+        os.path.join(ROOT_DIR, "ray/jars/ray_dist.jar")):
     ray_files.append("ray/jars/ray_dist.jar")
+
+if setup_spec.type == SetupType.RAY_CPP:
+    setup_spec.files_to_include += ["ray/cpp/default_worker" + exe_suffix]
+    # C++ API library and project template files.
+    setup_spec.files_to_include += [
+        os.path.join(dirpath, filename)
+        for dirpath, dirnames, filenames in os.walk("ray/cpp")
+        for filename in filenames
+    ]
 
 # These are the directories where automatically generated Python protobuf
 # bindings are created.
 generated_python_directories = [
     "ray/core/generated",
     "ray/streaming/generated",
+    "ray/serve/generated",
 ]
 
-optional_ray_files = ["ray/nightly-wheels.yaml"]
+ray_files.append("ray/nightly-wheels.yaml")
 
-ray_autoscaler_files = [
-    "ray/autoscaler/aws/example-full.yaml",
-    "ray/autoscaler/azure/example-full.yaml",
-    "ray/autoscaler/azure/azure-vm-template.json",
-    "ray/autoscaler/azure/azure-config-template.json",
-    "ray/autoscaler/gcp/example-full.yaml",
-    "ray/autoscaler/local/example-full.yaml",
-    "ray/autoscaler/kubernetes/example-full.yaml",
-    "ray/autoscaler/kubernetes/kubectl-rsync.sh",
-    "ray/autoscaler/ray-schema.json"
+# Autoscaler files.
+ray_files += [
+    "ray/autoscaler/aws/defaults.yaml",
+    "ray/autoscaler/aws/cloudwatch/prometheus.yml",
+    "ray/autoscaler/aws/cloudwatch/ray_prometheus_waiter.sh",
+    "ray/autoscaler/azure/defaults.yaml",
+    "ray/autoscaler/_private/_azure/azure-vm-template.json",
+    "ray/autoscaler/_private/_azure/azure-config-template.json",
+    "ray/autoscaler/gcp/defaults.yaml",
+    "ray/autoscaler/local/defaults.yaml",
+    "ray/autoscaler/kubernetes/defaults.yaml",
+    "ray/autoscaler/_private/_kubernetes/kubectl-rsync.sh",
+    "ray/autoscaler/staroid/defaults.yaml",
+    "ray/autoscaler/ray-schema.json",
 ]
 
-ray_project_files = [
-    "ray/projects/schema.json", "ray/projects/templates/cluster_template.yaml",
-    "ray/projects/templates/project_template.yaml",
-    "ray/projects/templates/requirements.txt"
-]
-
-ray_dashboard_files = [
+# Dashboard files.
+ray_files += [
     os.path.join(dirpath, filename)
     for dirpath, dirnames, filenames in os.walk("ray/dashboard/client/build")
     for filename in filenames
 ]
 
-optional_ray_files += ray_autoscaler_files
-optional_ray_files += ray_project_files
-optional_ray_files += ray_dashboard_files
-
 # If you're adding dependencies for ray extras, please
-# also update the matching section of requirements.txt
+# also update the matching section of requirements/requirements.txt
 # in this directory
-extras = {
-    "debug": [],
-    "serve": [
-        "uvicorn", "flask", "requests", "pydantic",
-        "dataclasses; python_version < '3.7'"
-    ],
-    "tune": [
-        "tabulate", "tensorboardX", "pandas",
-        "dataclasses; python_version < '3.7'"
+if setup_spec.type == SetupType.RAY:
+    setup_spec.extras = {
+        "data": [
+            "pandas",
+            "pyarrow>=4.0.1",
+            "fsspec",
+        ],
+        "default": [
+            "aiohttp >= 3.7",
+            "aiosignal",
+            "aiohttp_cors",
+            "aioredis < 2",
+            "colorful",
+            "frozenlist",
+            "py-spy >= 0.2.0",
+            "requests",
+            "gpustat >= 1.0.0b1",  # for windows
+            "opencensus",
+            "prometheus_client >= 0.7.1",
+        ],
+        "serve": ["uvicorn", "requests", "starlette", "fastapi"],
+        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
+        "k8s": ["kubernetes", "urllib3"],
+        "observability": [
+            "opentelemetry-api==1.1.0", "opentelemetry-sdk==1.1.0",
+            "opentelemetry-exporter-otlp==1.1.0"
+        ],
+    }
+
+    if sys.version_info >= (3, 7):
+        # Numpy dropped python 3.6 support in 1.20.
+        setup_spec.extras["data"].append("numpy >= 1.20")
+
+    # Ray Serve depends on the Ray dashboard components.
+    setup_spec.extras["serve"] = list(
+        set(setup_spec.extras["serve"] + setup_spec.extras["default"]))
+
+    if RAY_EXTRA_CPP:
+        setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
+
+    if sys.version_info >= (3, 7, 0):
+        setup_spec.extras["k8s"].append("kopf")
+
+    setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
+        "dm_tree",
+        "gym",
+        "lz4",
+        # matplotlib (dependency of scikit-image) 3.4.3 breaks docker build
+        # Todo: Remove this when safe?
+        "matplotlib!=3.4.3",
+        "scikit-image",
+        "pyyaml",
+        "scipy",
     ]
-}
 
-extras["rllib"] = extras["tune"] + [
-    "atari_py",
-    "dm_tree",
-    "gym[atari]",
-    "lz4",
-    "opencv-python-headless<=4.3.0.36",
-    "pyyaml",
-    "scipy",
-]
-
-extras["streaming"] = []
-
-extras["all"] = list(set(chain.from_iterable(extras.values())))
+    setup_spec.extras["all"] = list(
+        set(chain.from_iterable(setup_spec.extras.values())))
 
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
-# the change in the matching section of requirements.txt
-install_requires = [
-    # TODO(alex) Pin the version once this PR is
-    # included in the stable release.
-    # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
-    "aiohttp",
-    "aiohttp_cors",
-    "aioredis",
-    "click >= 7.0",
-    "colorama",
-    "colorful",
-    "filelock",
-    "google",
-    "gpustat",
-    "grpcio >= 1.28.1",
-    "jsonschema",
-    "msgpack >= 1.0.0, < 2.0.0",
-    "numpy >= 1.16",
-    "protobuf >= 3.8.0",
-    "py-spy >= 0.2.0",
-    "pyyaml",
-    "requests",
-    "redis >= 3.3.2, < 3.5.0",
-    "opencensus",
-    "prometheus_client >= 0.7.1",
-]
+# the change in the matching section of requirements/requirements.txt
+if setup_spec.type == SetupType.RAY:
+    setup_spec.install_requires = [
+        "attrs",
+        "click >= 7.0",
+        "dataclasses; python_version < '3.7'",
+        "filelock",
+        "grpcio >= 1.28.1",
+        "jsonschema",
+        "msgpack >= 1.0.0, < 2.0.0",
+        "numpy >= 1.16; python_version < '3.9'",
+        "numpy >= 1.19.3; python_version >= '3.9'",
+        "protobuf >= 3.15.3",
+        "pyyaml",
+        "redis >= 3.5.0, < 4.0.0",
+    ]
 
 
 def is_native_windows_or_msys():
@@ -175,7 +286,8 @@ def is_invalid_windows_platform():
 # (~/.bazel/bin/bazel) if it isn't found.
 def bazel_invoke(invoker, cmdline, *args, **kwargs):
     home = os.path.expanduser("~")
-    candidates = ["bazel"]
+    first_candidate = os.getenv("BAZEL_PATH", "bazel")
+    candidates = [first_candidate]
     if sys.platform == "win32":
         mingw_dir = os.getenv("MINGW_DIR")
         if mingw_dir:
@@ -228,7 +340,91 @@ def download_pickle5(pickle5_dir):
                 wzf.close()
 
 
-def build(build_python, build_java):
+def patch_isdir():
+    """
+    Python on Windows is having hard times at telling if a symlink is
+    a directory - it can "guess" wrong at times, which bites when
+    finding packages. Replace with a fixed version which unwraps links first.
+    """
+    orig_isdir = os.path.isdir
+
+    def fixed_isdir(path):
+        while os.path.islink(path):
+            try:
+                link = os.readlink(path)
+            except OSError:
+                break
+            path = os.path.abspath(os.path.join(os.path.dirname(path), link))
+        return orig_isdir(path)
+
+    os.path.isdir = fixed_isdir
+
+
+def replace_symlinks_with_junctions():
+    """
+    Per default Windows requires admin access to create symlinks, while
+    junctions (which behave similarly) can be created by users.
+
+    This function replaces symlinks (which might be broken when checked
+    out without admin rights) with junctions so Ray can be built both
+    with and without admin access.
+    """
+    assert is_native_windows_or_msys()
+
+    # Update this list if new symlinks are introduced to the source tree
+    _LINKS = {
+        r"ray\new_dashboard": "../../dashboard",
+        r"ray\rllib": "../../rllib",
+        r"ray\streaming": "../../streaming/python/",
+    }
+    root_dir = os.path.dirname(__file__)
+    for link, default in _LINKS.items():
+        path = os.path.join(root_dir, link)
+        try:
+            out = subprocess.check_output(
+                "DIR /A:LD /B", shell=True, cwd=os.path.dirname(path))
+        except subprocess.CalledProcessError:
+            out = b""
+        if os.path.basename(path) in out.decode("utf8").splitlines():
+            logger.info(f"'{link}' is already converted to junction point")
+        else:
+            logger.info(f"Converting '{link}' to junction point...")
+            if os.path.isfile(path):
+                with open(path) as inp:
+                    target = inp.read()
+                os.unlink(path)
+            elif os.path.isdir(path):
+                target = default
+                try:
+                    # unlink() works on links as well as on regular files,
+                    # and links to directories are considered directories now
+                    os.unlink(path)
+                except OSError as err:
+                    # On Windows attempt to unlink a regular directory results
+                    # in a PermissionError with errno set to errno.EACCES.
+                    if err.errno != errno.EACCES:
+                        raise
+                    # For regular directories deletion is done with rmdir call.
+                    os.rmdir(path)
+            else:
+                raise ValueError(f"Unexpected type of entry: '{path}'")
+            target = os.path.abspath(
+                os.path.join(os.path.dirname(path), target))
+            logger.info("Setting {} -> {}".format(link, target))
+            subprocess.check_call(
+                f"MKLINK /J '{os.path.basename(link)}' '{target}'",
+                shell=True,
+                cwd=os.path.dirname(path))
+
+
+if is_automated_build and is_native_windows_or_msys():
+    # Automated replacements should only happen in automatic build
+    # contexts for now
+    patch_isdir()
+    replace_symlinks_with_junctions()
+
+
+def build(build_python, build_java, build_cpp):
     if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
         msg = ("Detected Python version {}, which is not supported. "
                "Only Python {} are supported.").format(
@@ -248,7 +444,7 @@ def build(build_python, build_java):
         SHELL = bazel_env.get("SHELL")
         if SHELL:
             bazel_env.setdefault("BAZEL_SH", os.path.normpath(SHELL))
-        BAZEL_SH = bazel_env["BAZEL_SH"]
+        BAZEL_SH = bazel_env.get("BAZEL_SH", "")
         SYSTEMROOT = os.getenv("SystemRoot")
         wsl_bash = os.path.join(SYSTEMROOT, "System32", "bash.exe")
         if (not BAZEL_SH) and SYSTEMROOT and os.path.isfile(wsl_bash):
@@ -277,7 +473,7 @@ def build(build_python, build_java):
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
     if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
-        pip_packages = ["psutil", "setproctitle"]
+        pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
         subprocess.check_call(
             [
                 sys.executable, "-m", "pip", "install", "-q",
@@ -296,12 +492,42 @@ def build(build_python, build_java):
         logger.warning("Expected Bazel version {} but found {}".format(
             ".".join(map(str, SUPPORTED_BAZEL)), bazel_version_str))
 
+    bazel_flags = ["--verbose_failures"]
+
+    if not is_automated_build:
+        bazel_precmd_flags = []
+    if is_automated_build:
+        root_dir = os.path.join(
+            os.path.abspath(os.environ["SRC_DIR"]), "..", "bazel-root")
+        out_dir = os.path.join(
+            os.path.abspath(os.environ["SRC_DIR"]), "..", "b-o")
+
+        for d in (root_dir, out_dir):
+            if not os.path.exists(d):
+                os.makedirs(d)
+
+        bazel_precmd_flags = [
+            "--output_user_root=" + root_dir, "--output_base=" + out_dir
+        ]
+
+        if is_native_windows_or_msys():
+            bazel_flags.append("--enable_runfiles=false")
+
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
+    bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
     bazel_targets += ["//java:ray_java_pkg"] if build_java else []
+
+    if setup_spec.build_type == BuildType.DEBUG:
+        bazel_flags.extend(["--config", "debug"])
+    if setup_spec.build_type == BuildType.ASAN:
+        bazel_flags.extend(["--config=asan-build"])
+    if setup_spec.build_type == BuildType.TSAN:
+        bazel_flags.extend(["--config=tsan"])
+
     return bazel_invoke(
         subprocess.check_call,
-        ["build", "--verbose_failures", "--"] + bazel_targets,
+        bazel_precmd_flags + ["build"] + bazel_flags + ["--"] + bazel_targets,
         env=bazel_env)
 
 
@@ -313,63 +539,75 @@ def walk_directory(directory):
     return file_list
 
 
-def move_file(target_dir, filename):
+def copy_file(target_dir, filename, rootdir):
     # TODO(rkn): This feels very brittle. It may not handle all cases. See
     # https://github.com/apache/arrow/blob/master/python/setup.py for an
     # example.
-    source = filename
-    destination = os.path.join(target_dir, filename)
+    # File names can be absolute paths, e.g. from walk_directory().
+    source = os.path.relpath(filename, rootdir)
+    destination = os.path.join(target_dir, source)
     # Create the target directory if it doesn't already exist.
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     if not os.path.exists(destination):
-        print("Copying {} to {}.".format(source, destination))
         if sys.platform == "win32":
             # Does not preserve file mode (needed to avoid read-only bit)
             shutil.copyfile(source, destination, follow_symlinks=True)
         else:
             # Preserves file mode (needed to copy executable bit)
             shutil.copy(source, destination, follow_symlinks=True)
+        return 1
+    return 0
 
 
-def find_version(*filepath):
-    # Extract version information from filepath
-    with open(os.path.join(ROOT_DIR, *filepath)) as fp:
-        version_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]",
-                                  fp.read(), re.M)
-        if version_match:
-            return version_match.group(1)
-        raise RuntimeError("Unable to find version string.")
+def add_system_dlls(dlls, target_dir):
+    """
+    Copy any required dlls required by the c-extension module and not already
+    provided by python. They will end up in the wheel next to the c-extension
+    module which will guarentee they are available at runtime.
+    """
+    for dll in dlls:
+        # Installing Visual Studio will copy the runtime dlls to system32
+        src = os.path.join(r"c:\Windows\system32", dll)
+        assert os.path.exists(src)
+        shutil.copy(src, target_dir)
 
 
 def pip_run(build_ext):
-    build(True, BUILD_JAVA)
+    if SKIP_BAZEL_BUILD:
+        build(False, False, False)
+    else:
+        build(True, BUILD_JAVA, True)
 
-    files_to_include = list(ray_files)
+    if setup_spec.type == SetupType.RAY:
+        setup_spec.files_to_include += ray_files
+        # We also need to install pickle5 along with Ray, so make sure that the
+        # relevant non-Python pickle5 files get copied.
+        pickle5_dir = os.path.join(ROOT_DIR, PICKLE5_SUBDIR)
+        setup_spec.files_to_include += walk_directory(
+            os.path.join(pickle5_dir, "pickle5"))
 
-    # We also need to install pickle5 along with Ray, so make sure that the
-    # relevant non-Python pickle5 files get copied.
-    pickle5_dir = os.path.join(ROOT_DIR, PICKLE5_SUBDIR)
-    files_to_include += walk_directory(os.path.join(pickle5_dir, "pickle5"))
+        thirdparty_dir = os.path.join(ROOT_DIR, THIRDPARTY_SUBDIR)
+        setup_spec.files_to_include += walk_directory(thirdparty_dir)
 
-    thirdparty_dir = os.path.join(ROOT_DIR, THIRDPARTY_SUBDIR)
-    files_to_include += walk_directory(thirdparty_dir)
+        # Copy over the autogenerated protobuf Python bindings.
+        for directory in generated_python_directories:
+            for filename in os.listdir(directory):
+                if filename[-3:] == ".py":
+                    setup_spec.files_to_include.append(
+                        os.path.join(directory, filename))
 
-    # Copy over the autogenerated protobuf Python bindings.
-    for directory in generated_python_directories:
-        for filename in os.listdir(directory):
-            if filename[-3:] == ".py":
-                files_to_include.append(os.path.join(directory, filename))
-
-    for filename in files_to_include:
-        move_file(build_ext.build_lib, filename)
-
-    # Try to copy over the optional files.
-    for filename in optional_ray_files:
-        try:
-            move_file(build_ext.build_lib, filename)
-        except Exception:
-            print("Failed to copy optional file {}. This is ok."
-                  .format(filename))
+    copied_files = 0
+    for filename in setup_spec.files_to_include:
+        copied_files += copy_file(build_ext.build_lib, filename, ROOT_DIR)
+    if sys.platform == "win32":
+        # _raylet.pyd links to some MSVC runtime DLLS, this one may not be
+        # present on a user's machine. While vcruntime140.dll and
+        # vcruntime140_1.dll are also required, they are provided by CPython.
+        runtime_dlls = ["msvcp140.dll"]
+        add_system_dlls(runtime_dlls, os.path.join(build_ext.build_lib, "ray"))
+        copied_files += len(runtime_dlls)
+    print("# of files copied to {}: {}".format(build_ext.build_lib,
+                                               copied_files))
 
 
 def api_main(program, *args):
@@ -379,7 +617,7 @@ def api_main(program, *args):
     parser.add_argument(
         "-l",
         "--language",
-        default="python",
+        default="python,cpp",
         type=str,
         help="A list of languages to build native libraries. "
         "Supported languages include \"python\" and \"java\". "
@@ -389,12 +627,14 @@ def api_main(program, *args):
     result = None
 
     if parsed_args.command == "build":
-        kwargs = dict(build_python=False, build_java=False)
+        kwargs = dict(build_python=False, build_java=False, build_cpp=False)
         for lang in parsed_args.language.split(","):
             if "python" in lang:
                 kwargs.update(build_python=True)
             elif "java" in lang:
                 kwargs.update(build_java=True)
+            elif "cpp" in lang:
+                kwargs.update(build_cpp=True)
             else:
                 raise ValueError("invalid language: {!r}".format(lang))
         result = build(**kwargs)
@@ -440,31 +680,44 @@ if __name__ == "__main__":
             return True
 
 
+# Ensure no remaining lib files.
+build_dir = os.path.join(ROOT_DIR, "build")
+if os.path.isdir(build_dir):
+    shutil.rmtree(build_dir)
+
 setuptools.setup(
-    name="ray",
-    version=find_version("ray", "__init__.py"),
+    name=setup_spec.name,
+    version=setup_spec.version,
     author="Ray Team",
     author_email="ray-dev@googlegroups.com",
-    description=("A system for parallel and distributed Python that "
-                 "unifies the ML ecosystem."),
+    description=(setup_spec.description),
     long_description=io.open(
         os.path.join(ROOT_DIR, os.path.pardir, "README.rst"),
         "r",
         encoding="utf-8").read(),
     url="https://github.com/ray-project/ray",
-    keywords=("ray distributed parallel machine-learning "
-              "reinforcement-learning deep-learning python"),
-    packages=setuptools.find_packages(),
+    keywords=("ray distributed parallel machine-learning hyperparameter-tuning"
+              "reinforcement-learning deep-learning serving python"),
+    classifiers=[
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+    ],
+    packages=setup_spec.get_packages(),
     cmdclass={"build_ext": build_ext},
     # The BinaryDistribution argument triggers build_ext.
     distclass=BinaryDistribution,
-    install_requires=install_requires,
-    setup_requires=["cython >= 0.29.14", "wheel"],
-    extras_require=extras,
+    install_requires=setup_spec.install_requires,
+    setup_requires=["cython >= 0.29.15", "wheel"],
+    extras_require=setup_spec.extras,
     entry_points={
         "console_scripts": [
             "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]", "tune=ray.tune.scripts:cli"
+            "rllib=ray.rllib.scripts:cli [rllib]",
+            "tune=ray.tune.scripts:cli",
+            "ray-operator=ray.ray_operator.operator:main",
+            "serve=ray.serve.scripts:cli",
         ]
     },
     include_package_data=True,

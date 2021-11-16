@@ -6,7 +6,6 @@ via a custom training workflow.
 """
 
 import argparse
-import gym
 import os
 
 import ray
@@ -32,19 +31,35 @@ from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import register_env
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--as-test", action="store_true")
 parser.add_argument("--torch", action="store_true")
 parser.add_argument("--mixed-torch-tf", action="store_true")
-parser.add_argument("--stop-iters", type=int, default=20)
-parser.add_argument("--stop-reward", type=float, default=150.0)
-parser.add_argument("--stop-timesteps", type=int, default=100000)
+parser.add_argument(
+    "--as-test",
+    action="store_true",
+    help="Whether this script should be run as a test: --stop-reward must "
+    "be achieved within --stop-timesteps AND --stop-iters.")
+parser.add_argument(
+    "--stop-iters",
+    type=int,
+    default=20,
+    help="Number of iterations to train.")
+parser.add_argument(
+    "--stop-timesteps",
+    type=int,
+    default=100000,
+    help="Number of timesteps to train.")
+parser.add_argument(
+    "--stop-reward",
+    type=float,
+    default=150.0,
+    help="Reward at which we stop training.")
 
 
 def custom_training_workflow(workers: WorkerSet, config: dict):
     local_replay_buffer = LocalReplayBuffer(
         num_shards=1,
         learning_starts=1000,
-        buffer_size=50000,
+        capacity=50000,
         replay_batch_size=64)
 
     def add_ppo_metrics(batch):
@@ -81,7 +96,8 @@ def custom_training_workflow(workers: WorkerSet, config: dict):
 
     # PPO sub-flow.
     ppo_train_op = r2.for_each(SelectExperiences(["ppo_policy"])) \
-        .combine(ConcatBatches(min_batch_size=200)) \
+        .combine(ConcatBatches(
+            min_batch_size=200, count_steps_by="env_steps")) \
         .for_each(add_ppo_metrics) \
         .for_each(StandardizeFields(["advantages"])) \
         .for_each(TrainOneStep(
@@ -107,20 +123,17 @@ if __name__ == "__main__":
     # Simple environment with 4 independent cartpole entities
     register_env("multi_agent_cartpole",
                  lambda _: MultiAgentCartPole({"num_agents": 4}))
-    single_env = gym.make("CartPole-v0")
-    obs_space = single_env.observation_space
-    act_space = single_env.action_space
 
     # Note that since the trainer below does not include a default policy or
     # policy configs, we have to explicitly set it in the multiagent config:
     policies = {
         "ppo_policy": (PPOTorchPolicy if args.torch or args.mixed_torch_tf else
-                       PPOTFPolicy, obs_space, act_space, PPO_CONFIG),
-        "dqn_policy": (DQNTorchPolicy if args.torch else DQNTFPolicy,
-                       obs_space, act_space, DQN_CONFIG),
+                       PPOTFPolicy, None, None, PPO_CONFIG),
+        "dqn_policy": (DQNTorchPolicy
+                       if args.torch else DQNTFPolicy, None, None, DQN_CONFIG),
     }
 
-    def policy_mapping_fn(agent_id):
+    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
         if agent_id % 2 == 0:
             return "ppo_policy"
         else:

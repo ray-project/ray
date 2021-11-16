@@ -5,30 +5,28 @@ import io.ray.api.BaseActorHandle;
 import io.ray.api.ObjectRef;
 import io.ray.api.PyActorHandle;
 import io.ray.api.WaitResult;
+import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.function.PyActorClass;
 import io.ray.api.function.PyActorMethod;
 import io.ray.api.function.PyFunction;
 import io.ray.api.function.RayFunc;
 import io.ray.api.id.ActorId;
-import io.ray.api.id.UniqueId;
+import io.ray.api.id.PlacementGroupId;
 import io.ray.api.options.ActorCreationOptions;
 import io.ray.api.options.CallOptions;
+import io.ray.api.options.PlacementGroupCreationOptions;
 import io.ray.api.placementgroup.PlacementGroup;
-import io.ray.api.placementgroup.PlacementStrategy;
+import io.ray.api.runtimecontext.ResourceValue;
 import io.ray.api.runtimecontext.RuntimeContext;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 
-/**
- * Base interface of a Ray runtime.
- */
+/** Base interface of a Ray runtime. */
 public interface RayRuntime {
 
-  /**
-   * Shutdown the runtime.
-   */
+  /** Shutdown the runtime. */
   void shutdown();
 
   /**
@@ -38,6 +36,19 @@ public interface RayRuntime {
    * @return A ObjectRef instance that represents the in-store object.
    */
   <T> ObjectRef<T> put(T obj);
+
+  /**
+   * Store an object in the object store, and assign its ownership to owner. This function is
+   * experimental.
+   *
+   * @param obj The Java object to be stored.
+   * @param owner The actor that should own this object. This allows creating objects with lifetimes
+   *     decoupled from that of the creating process. Note that the owner actor must be passed a
+   *     reference to the object prior to the object creator exiting, otherwise the reference will
+   *     still be lost.
+   * @return A ObjectRef instance that represents the in-store object.
+   */
+  <T> ObjectRef<T> put(T obj, BaseActorHandle owner);
 
   /**
    * Get an object from the object store.
@@ -56,47 +67,42 @@ public interface RayRuntime {
   <T> List<T> get(List<ObjectRef<T>> objectRefs);
 
   /**
-   * Wait for a list of RayObjects to be locally available, until specified number of objects are
-   * ready, or specified timeout has passed.
+   * Wait for a list of RayObjects to be available, until specified number of objects are ready, or
+   * specified timeout has passed.
    *
    * @param waitList A list of ObjectRef to wait for.
    * @param numReturns The number of objects that should be returned.
    * @param timeoutMs The maximum time in milliseconds to wait before returning.
+   * @param fetchLocal If true, wait for the object to be downloaded onto the local node before
+   *     returning it as ready. If false, ray.wait() will not trigger fetching of objects to the
+   *     local node and will return immediately once the object is available anywhere in the
+   *     cluster.
    * @return Two lists, one containing locally available objects, one containing the rest.
    */
-  <T> WaitResult<T> wait(List<ObjectRef<T>> waitList, int numReturns, int timeoutMs);
+  <T> WaitResult<T> wait(
+      List<ObjectRef<T>> waitList, int numReturns, int timeoutMs, boolean fetchLocal);
 
   /**
    * Free a list of objects from Plasma Store.
    *
    * @param objectRefs The object references to free.
    * @param localOnly Whether only free objects for local object store or not.
-   * @param deleteCreatingTasks Whether also delete objects' creating tasks from GCS.
    */
-  void free(List<ObjectRef<?>> objectRefs, boolean localOnly, boolean deleteCreatingTasks);
-
-  /**
-   * Set the resource for the specific node.
-   *
-   * @param resourceName The name of resource.
-   * @param capacity The capacity of the resource.
-   * @param nodeId The node that we want to set its resource.
-   */
-  void setResource(String resourceName, double capacity, UniqueId nodeId);
+  void free(List<ObjectRef<?>> objectRefs, boolean localOnly);
 
   <T extends BaseActorHandle> T getActorHandle(ActorId actorId);
 
   /**
    * Get a handle to a named actor.
-   * <p>
-   * Gets a handle to a named actor with the given name. The actor must
-   * have been created with name specified.
+   *
+   * <p>Gets a handle to a named actor with the given name. The actor must have been created with
+   * name specified.
    *
    * @param name The name of the named actor.
-   * @param global Whether the named actor is global.
+   * @param namespace The namespace of the actor.
    * @return ActorHandle to the actor.
    */
-  <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global);
+  <T extends BaseActorHandle> Optional<T> getActor(String name, String namespace);
 
   /**
    * Kill the actor immediately.
@@ -134,7 +140,7 @@ public interface RayRuntime {
    * @param args The arguments of the remote function.
    * @return The result object.
    */
-  ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args);
+  ObjectRef callActor(ActorHandle<?> actor, RayFunc func, Object[] args, CallOptions options);
 
   /**
    * Invoke a remote Python function on an actor.
@@ -155,8 +161,8 @@ public interface RayRuntime {
    * @param options The options for creating actor.
    * @return A handle to the actor.
    */
-  <T> ActorHandle<T> createActor(RayFunc actorFactoryFunc, Object[] args,
-                                 ActorCreationOptions options);
+  <T> ActorHandle<T> createActor(
+      RayFunc actorFactoryFunc, Object[] args, ActorCreationOptions options);
 
   /**
    * Create a Python actor on a remote node.
@@ -166,11 +172,15 @@ public interface RayRuntime {
    * @param options The options for creating actor.
    * @return A handle to the actor.
    */
-  PyActorHandle createActor(PyActorClass pyActorClass, Object[] args,
-                            ActorCreationOptions options);
+  PyActorHandle createActor(PyActorClass pyActorClass, Object[] args, ActorCreationOptions options);
 
-  PlacementGroup createPlacementGroup(List<Map<String, Double>> bundles,
-      PlacementStrategy strategy);
+  /**
+   * Create a placement group on remote nodes.
+   *
+   * @param creationOptions Creation options of the placement group.
+   * @return A handle to the created placement group.
+   */
+  PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions);
 
   RuntimeContext getRuntimeContext();
 
@@ -194,8 +204,59 @@ public interface RayRuntime {
    */
   <T> Callable<T> wrapCallable(Callable<T> callable);
 
-  /**
-   * Intentionally exit the current actor.
-   */
+  /** Intentionally exit the current actor. */
   void exitActor();
+
+  /**
+   * Get the resources available on this worker. Note that this API doesn't work on driver.
+   *
+   * @return The resource info of one node.
+   */
+  Map<String, List<ResourceValue>> getAvailableResourceIds();
+
+  /** Get the namespace of this job. */
+  String getNamespace();
+
+  /**
+   * Get a placement group by id.
+   *
+   * @param id placement group id.
+   * @return The placement group.
+   */
+  PlacementGroup getPlacementGroup(PlacementGroupId id);
+
+  /**
+   * Get a placement group by name.
+   *
+   * @param name The name of the placement group.
+   * @param namespace The namespace of the placement group.
+   * @return The placement group.
+   */
+  PlacementGroup getPlacementGroup(String name, String namespace);
+
+  /**
+   * Get all placement groups in this cluster.
+   *
+   * @return All placement groups.
+   */
+  List<PlacementGroup> getAllPlacementGroups();
+
+  /**
+   * Remove a placement group by id.
+   *
+   * @param id Id of the placement group.
+   */
+  void removePlacementGroup(PlacementGroupId id);
+
+  /**
+   * Wait for the placement group to be ready within the specified time.
+   *
+   * @param id Id of placement group.
+   * @param timeoutSeconds Timeout in seconds.
+   * @return True if the placement group is created. False otherwise.
+   */
+  boolean waitPlacementGroupReady(PlacementGroupId id, int timeoutSeconds);
+
+  /** Create concurrency group instance at runtime. */
+  ConcurrencyGroup createConcurrencyGroup(String name, int maxConcurrency, List<RayFunc> funcs);
 }

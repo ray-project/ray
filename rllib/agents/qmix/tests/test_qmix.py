@@ -54,6 +54,14 @@ class AvailActionsTestEnv(MultiAgentEnv):
 
 
 class TestQMix(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_avail_actions_qmix(self):
         grouping = {
             "group_1": ["agent_1"],  # trivial grouping for testing
@@ -65,7 +73,6 @@ class TestQMix(unittest.TestCase):
             lambda config: AvailActionsTestEnv(config).with_agent_groups(
                 grouping, obs_space=obs_space, act_space=act_space))
 
-        ray.init()
         agent = QMixTrainer(
             env="action_mask_test",
             config={
@@ -75,7 +82,7 @@ class TestQMix(unittest.TestCase):
                 },
                 "framework": "torch",
             })
-        for _ in range(5):
+        for _ in range(4):
             agent.train()  # OK if it doesn't trip the action assertion error
         assert agent.train()["episode_reward_mean"] == 21.0
         agent.stop()

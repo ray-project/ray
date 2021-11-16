@@ -1,9 +1,9 @@
 # An unique identifier for the head node and workers of this cluster.
-cluster_name: minimal
+cluster_name: example-cluster
 
 # The maximum number of workers nodes to launch in addition to the head
-# node. This takes precedence over min_workers. min_workers default to 0.
-max_workers: 1
+# node.
+max_workers: 2
 
 # Kubernetes resources that need to be configured for the autoscaler to be
 # able to manage the Ray cluster. If any of the provided resources don't
@@ -56,3 +56,26 @@ provider:
             kind: Role
             name: autoscaler
             apiGroup: rbac.authorization.k8s.io
+
+    services:
+      # Service that maps to the head node of the Ray cluster.
+      - apiVersion: v1
+        kind: Service
+        metadata:
+            # NOTE: If you're running multiple Ray clusters with services
+            # on one Kubernetes cluster, they must have unique service
+            # names.
+            name: example-cluster-ray-head
+        spec:
+            # This selector must match the head node pod's selector below.
+            selector:
+                component: example-cluster-ray-head
+            ports:
+                - name: client
+                  protocol: TCP
+                  port: 10001
+                  targetPort: 10001
+                - name: dashboard
+                  protocol: TCP
+                  port: 8265
+                  targetPort: 8265

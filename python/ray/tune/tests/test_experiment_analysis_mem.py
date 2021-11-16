@@ -9,12 +9,22 @@ import pytest
 import numpy as np
 
 import ray
-from ray.tune import (run, Trainable, sample_from, Analysis,
-                      ExperimentAnalysis, grid_search)
-from ray.tune.examples.async_hyperband_example import MyTrainableClass
+from ray.tune import (run, Trainable, sample_from, ExperimentAnalysis,
+                      grid_search)
+from ray.tune.result import DEBUG_METRICS
+from ray.tune.utils.mock import MyTrainableClass
+from ray.tune.utils.serialization import TuneFunctionEncoder
 
 
 class ExperimentAnalysisInMemorySuite(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(local_mode=False, num_cpus=1)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def setUp(self):
         class MockTrainable(Trainable):
             scores_dict = {
@@ -42,13 +52,12 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
 
         self.MockTrainable = MockTrainable
         self.test_dir = tempfile.mkdtemp()
-        ray.init(local_mode=False, num_cpus=1)
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
-        ray.shutdown()
 
-    def testInit(self):
+    def testInitLegacy(self):
+        """Should still work if checkpoints are not json strings"""
         experiment_checkpoint_path = os.path.join(self.test_dir,
                                                   "experiment_state.json")
         checkpoint_data = {
@@ -63,7 +72,28 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
 
         experiment_analysis = ExperimentAnalysis(experiment_checkpoint_path)
         self.assertEqual(len(experiment_analysis._checkpoints), 1)
-        self.assertTrue(experiment_analysis.trials is None)
+        self.assertFalse(experiment_analysis.trials)
+
+    def testInit(self):
+        experiment_checkpoint_path = os.path.join(self.test_dir,
+                                                  "experiment_state.json")
+        checkpoint_data = {
+            "checkpoints": [
+                json.dumps(
+                    {
+                        "trainable_name": "MockTrainable",
+                        "logdir": "/mock/test/MockTrainable_0_id=3_2020-07-12"
+                    },
+                    cls=TuneFunctionEncoder)
+            ]
+        }
+
+        with open(experiment_checkpoint_path, "w") as f:
+            f.write(json.dumps(checkpoint_data))
+
+        experiment_analysis = ExperimentAnalysis(experiment_checkpoint_path)
+        self.assertEqual(len(experiment_analysis._checkpoints), 1)
+        self.assertFalse(experiment_analysis.trials)
 
     def testInitException(self):
         experiment_checkpoint_path = os.path.join(self.test_dir, "mock.json")
@@ -121,10 +151,40 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
         self.assertAlmostEqual(min_avg_10, min(
             np.mean(scores[:, -10:], axis=1)))
 
+    def testRemoveMagicResults(self):
+        [trial] = run(
+            self.MockTrainable,
+            name="analysis_remove_exp",
+            local_dir=self.test_dir,
+            stop={
+                "training_iteration": 9
+            },
+            num_samples=1,
+            config={
+                "id": 1
+            }).trials
+
+        for metric in DEBUG_METRICS:
+            self.assertNotIn(metric, trial.metric_analysis)
+            self.assertNotIn(metric, trial.metric_n_steps)
+
+        self.assertTrue(not any(
+            metric.startswith("config") for metric in trial.metric_analysis))
+        self.assertTrue(not any(
+            metric.startswith("config") for metric in trial.metric_n_steps))
+
 
 class AnalysisSuite(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(local_mode=True, include_dashboard=False)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
     def setUp(self):
-        ray.init(local_mode=True)
+        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "1"
         self.test_dir = tempfile.mkdtemp()
         self.num_samples = 10
         self.metric = "episode_reward_mean"
@@ -145,16 +205,15 @@ class AnalysisSuite(unittest.TestCase):
 
     def tearDown(self):
         shutil.rmtree(self.test_dir, ignore_errors=True)
-        ray.shutdown()
 
     def testDataframe(self):
-        analysis = Analysis(self.test_dir)
+        analysis = ExperimentAnalysis(self.test_dir)
         df = analysis.dataframe(self.metric, mode="max")
         self.assertTrue(isinstance(df, pd.DataFrame))
         self.assertEqual(df.shape[0], self.num_samples * 2)
 
     def testBestLogdir(self):
-        analysis = Analysis(self.test_dir)
+        analysis = ExperimentAnalysis(self.test_dir)
         logdir = analysis.get_best_logdir(self.metric, mode="max")
         self.assertTrue(logdir.startswith(self.test_dir))
         logdir2 = analysis.get_best_logdir(self.metric, mode="min")
@@ -162,7 +221,7 @@ class AnalysisSuite(unittest.TestCase):
         self.assertNotEqual(logdir, logdir2)
 
     def testBestConfigIsLogdir(self):
-        analysis = Analysis(self.test_dir)
+        analysis = ExperimentAnalysis(self.test_dir)
         for metric, mode in [(self.metric, "min"), (self.metric, "max")]:
             logdir = analysis.get_best_logdir(metric, mode=mode)
             best_config = analysis.get_best_config(metric, mode=mode)

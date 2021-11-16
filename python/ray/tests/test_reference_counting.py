@@ -2,6 +2,7 @@
 import copy
 import logging
 import os
+import sys
 import time
 
 import numpy as np
@@ -10,16 +11,20 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.test_utils import SignalActor, put_object, wait_for_condition
+import ray._private.gcs_utils as gcs_utils
+from ray._private.test_utils import (
+    SignalActor, kill_actor_and_wait_for_failure, put_object,
+    wait_for_condition, new_scheduler_enabled)
 
 logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
 def one_worker_100MiB(request):
+    # It has lots of tests that don't require object spilling.
     config = {
-        "object_store_full_max_retries": 2,
         "task_retry_delay_ms": 0,
+        "automatic_object_spilling_enabled": False
     }
     yield ray.init(
         num_cpus=1,
@@ -28,7 +33,7 @@ def one_worker_100MiB(request):
     ray.shutdown()
 
 
-def _fill_object_store_and_get(obj, succeed=True, object_MiB=40,
+def _fill_object_store_and_get(obj, succeed=True, object_MiB=20,
                                num_objects=5):
     for _ in range(num_objects):
         ray.put(np.zeros(object_MiB * 1024 * 1024, dtype=np.uint8))
@@ -166,6 +171,7 @@ def test_dependency_refcounts(ray_start_regular):
     check_refcounts({})
 
 
+@pytest.mark.skipif(new_scheduler_enabled(), reason="dynamic res todo")
 def test_actor_creation_task(ray_start_regular):
     @ray.remote
     def large_object():
@@ -230,21 +236,19 @@ def test_pending_task_dependency_pinning(one_worker_100MiB):
     # pending task dependencies aren't considered, it will be evicted before
     # the ray.get below due to the subsequent ray.puts that fill up the object
     # store.
-    np_array = np.zeros(40 * 1024 * 1024, dtype=np.uint8)
+    np_array = np.zeros(20 * 1024 * 1024, dtype=np.uint8)
     signal = SignalActor.remote()
     obj_ref = pending.remote(np_array, signal.wait.remote())
 
     for _ in range(2):
-        ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+        ray.put(np.zeros(20 * 1024 * 1024, dtype=np.uint8))
 
     ray.get(signal.send.remote())
     ray.get(obj_ref)
 
 
 def test_feature_flag(shutdown_only):
-    ray.init(
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={"object_pinning_enabled": 0})
+    ray.init(object_store_memory=100 * 1024 * 1024)
 
     @ray.remote
     def f(array):
@@ -267,7 +271,16 @@ def test_feature_flag(shutdown_only):
 
     # The ray.get below fails with only LRU eviction, as the object
     # that was ray.put by the actor should have been evicted.
-    _fill_object_store_and_get(actor.get_large_object.remote(), succeed=False)
+    ref = actor.get_large_object.remote()
+    ray.get(ref)
+
+    # Keep refs in scope so that they don't get GCed immediately.
+    for _ in range(5):
+        put_ref = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+    del put_ref
+
+    wait_for_condition(
+        lambda: not ray.worker.global_worker.core_worker.object_exists(ref))
 
 
 def test_out_of_band_serialized_object_ref(one_worker_100MiB):
@@ -338,7 +351,7 @@ def test_basic_serialized_reference(one_worker_100MiB, use_ray_put, failure):
             os._exit(0)
 
     array_oid = put_object(
-        np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+        np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
     signal = SignalActor.remote()
     obj_ref = pending.remote([array_oid], signal.wait.remote())
 
@@ -383,7 +396,7 @@ def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put,
 
     max_depth = 5
     array_oid = put_object(
-        np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+        np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
     head_oid = recursive.remote([array_oid], signal, max_depth)
 
     # Remove the local reference.
@@ -402,8 +415,11 @@ def test_recursive_serialized_reference(one_worker_100MiB, use_ray_put,
     try:
         assert ray.get(tail_oid) is None
         assert not failure
-    # TODO(edoakes): this should raise WorkerError.
-    except ray.exceptions.ObjectLostError:
+    except ray.exceptions.OwnerDiedError:
+        # There is only 1 core, so the same worker will execute all `recursive`
+        # tasks. Therefore, if we kill the worker during the last task, its
+        # owner (the worker that executed the second-to-last task) will also
+        # have died.
         assert failure
 
     # Reference should be gone, check that array gets evicted.
@@ -436,7 +452,7 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
 
     # Test that the reference held by the actor isn't evicted.
     array_oid = put_object(
-        np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+        np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
     actor = GreedyActor.remote()
     actor.set_ref1.remote([array_oid])
 
@@ -456,8 +472,8 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
 
     if failure:
         # Test that the actor exiting stops the reference from being pinned.
-        ray.kill(actor)
-        # Wait for the actor to exit.
+        # Kill the actor and wait for the actor to exit.
+        kill_actor_and_wait_for_failure(actor)
         with pytest.raises(ray.exceptions.RayActorError):
             ray.get(actor.delete_ref1.remote())
     else:
@@ -469,6 +485,7 @@ def test_actor_holding_serialized_reference(one_worker_100MiB, use_ray_put,
 # Test that a passed reference held by an actor after a task finishes
 # is kept until the reference is removed from the worker. Also tests giving
 # the worker a duplicate reference to the same object ref.
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize("use_ray_put,failure", [(False, False), (False, True),
                                                  (True, False), (True, True)])
 def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
@@ -480,15 +497,21 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
         return
 
     @ray.remote
-    def launch_pending_task(ref, signal):
-        return child.remote(ref[0], signal.wait.remote())
+    class Submitter:
+        def __init__(self):
+            pass
+
+        def launch_pending_task(self, ref, signal):
+            return child.remote(ref[0], signal.wait.remote())
 
     signal = SignalActor.remote()
 
     # Test that the reference held by the actor isn't evicted.
     array_oid = put_object(
-        np.zeros(40 * 1024 * 1024, dtype=np.uint8), use_ray_put)
-    child_return_id = ray.get(launch_pending_task.remote([array_oid], signal))
+        np.zeros(20 * 1024 * 1024, dtype=np.uint8), use_ray_put)
+    s = Submitter.remote()
+    child_return_id = ray.get(
+        s.launch_pending_task.remote([array_oid], signal))
 
     # Remove the local reference.
     array_oid_bytes = array_oid.binary()
@@ -501,7 +524,7 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
     try:
         ray.get(child_return_id)
         assert not failure
-    except (ray.exceptions.WorkerCrashedError, ray.exceptions.ObjectLostError):
+    except ray.exceptions.WorkerCrashedError:
         assert failure
     del child_return_id
 
@@ -510,7 +533,7 @@ def test_worker_holding_serialized_reference(one_worker_100MiB, use_ray_put,
 
 # Test that an object containing object refs within it pins the inner IDs.
 def test_basic_nested_ids(one_worker_100MiB):
-    inner_oid = ray.put(np.zeros(40 * 1024 * 1024, dtype=np.uint8))
+    inner_oid = ray.put(np.zeros(20 * 1024 * 1024, dtype=np.uint8))
     outer_oid = ray.put([inner_oid])
 
     # Remove the local reference to the inner object.
@@ -526,10 +549,11 @@ def test_basic_nested_ids(one_worker_100MiB):
 
 
 def _all_actors_dead():
-    return all(actor["State"] == ray.gcs_utils.ActorTableData.DEAD
-               for actor in list(ray.actors().values()))
+    return all(actor["State"] == gcs_utils.ActorTableData.DEAD
+               for actor in list(ray.state.actors().values()))
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_kill_actor_immediately_after_creation(ray_start_regular):
     @ray.remote
     class A:

@@ -2,24 +2,27 @@ import random
 import pytest
 import numpy as np
 import os
-import pickle
+from ray import cloudpickle as pickle
+from ray import ray_constants
 try:
     import pytest_timeout
 except ImportError:
     pytest_timeout = None
 import sys
+import tempfile
 import datetime
 
+from ray._private.test_utils import (client_test_enabled, wait_for_condition,
+                                     wait_for_pid_to_exit)
+from ray.tests.client_test_utils import create_remote_signal_actor
 import ray
-import ray.test_utils
-import ray.cluster_utils
-
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
-import setproctitle
+import setproctitle  # noqa
 
 
-def test_caching_actors(shutdown_only):
+@pytest.mark.parametrize("set_enable_auto_connect", ["1", "0"], indirect=True)
+def test_caching_actors(shutdown_only, set_enable_auto_connect):
     # Test defining actors before ray.init() has been called.
 
     @ray.remote
@@ -30,12 +33,17 @@ def test_caching_actors(shutdown_only):
         def get_val(self):
             return 3
 
-    # Check that we can't actually create actors before ray.init() has been
-    # called.
-    with pytest.raises(Exception):
-        f = Foo.remote()
+    if set_enable_auto_connect == "0":
+        # Check that we can't actually create actors before ray.init() has
+        # been called.
+        with pytest.raises(Exception):
+            f = Foo.remote()
 
-    ray.init(num_cpus=1)
+        ray.init(num_cpus=1)
+    else:
+        # Actor creation should succeed here because ray.init() auto connection
+        # is (by default) enabled.
+        f = Foo.remote()
 
     f = Foo.remote()
 
@@ -237,6 +245,7 @@ def test_actor_import_counter(ray_start_10_cpus):
     assert ray.get(g.remote()) == num_remote_functions - 1
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_actor_method_metadata_cache(ray_start_regular):
     class Actor(object):
         pass
@@ -256,6 +265,7 @@ def test_actor_method_metadata_cache(ray_start_regular):
     assert [id(x) for x in list(cache.items())[0]] == cached_data_id
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_actor_class_name(ray_start_regular):
     @ray.remote
     class Foo:
@@ -263,13 +273,16 @@ def test_actor_class_name(ray_start_regular):
             pass
 
     Foo.remote()
-
-    r = ray.worker.global_worker.redis_client
-    actor_keys = r.keys("ActorClass*")
+    # TODO: redis-removal kv
+    g = ray.worker.global_worker.gcs_client
+    actor_keys = g.internal_kv_keys(b"ActorClass",
+                                    ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
     assert len(actor_keys) == 1
-    actor_class_info = r.hgetall(actor_keys[0])
-    assert actor_class_info[b"class_name"] == b"Foo"
-    assert b"test_actor" in actor_class_info[b"module"]
+    actor_class_info = pickle.loads(
+        g.internal_kv_get(actor_keys[0],
+                          ray_constants.KV_NAMESPACE_FUNCTION_TABLE))
+    assert actor_class_info["class_name"] == "Foo"
+    assert "test_actor" in actor_class_info["module"]
 
 
 def test_actor_exit_from_task(ray_start_regular_shared):
@@ -343,13 +356,13 @@ def test_keyword_args(ray_start_regular_shared):
 
     # Make sure we get an exception if the constructor is called
     # incorrectly.
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         actor = Actor.remote()
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         actor = Actor.remote(0, 1, 2, arg3=3)
 
-    with pytest.raises(Exception):
+    with pytest.raises(TypeError):
         actor = Actor.remote(0, arg0=1)
 
     # Make sure we get an exception if the method is called incorrectly.
@@ -617,6 +630,8 @@ def test_random_id_generation(ray_start_regular_shared):
     assert f1._actor_id != f2._actor_id
 
 
+@pytest.mark.skipif(
+    client_test_enabled(), reason="differing inheritence structure")
 def test_actor_inheritance(ray_start_regular_shared):
     class NonActorBase:
         def __init__(self):
@@ -629,8 +644,7 @@ def test_actor_inheritance(ray_start_regular_shared):
             pass
 
     # Test that you can't instantiate an actor class directly.
-    with pytest.raises(
-            Exception, match="Actors cannot be instantiated directly."):
+    with pytest.raises(Exception, match="cannot be instantiated directly"):
         ActorBase()
 
     # Test that you can't inherit from an actor class.
@@ -721,6 +735,7 @@ def test_define_actor(ray_start_regular_shared):
         t.f(1)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_actor_deletion(ray_start_regular_shared):
     # Make sure that when an actor handles goes out of scope, the actor
     # destructor is called.
@@ -733,13 +748,13 @@ def test_actor_deletion(ray_start_regular_shared):
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())
     a = None
-    ray.test_utils.wait_for_pid_to_exit(pid)
+    wait_for_pid_to_exit(pid)
 
     actors = [Actor.remote() for _ in range(10)]
     pids = ray.get([a.getpid.remote() for a in actors])
     a = None
     actors = None
-    [ray.test_utils.wait_for_pid_to_exit(pid) for pid in pids]
+    [wait_for_pid_to_exit(pid) for pid in pids]
 
 
 def test_actor_method_deletion(ray_start_regular_shared):
@@ -768,7 +783,8 @@ def test_distributed_actor_handle_deletion(ray_start_regular_shared):
         ray.get(signal.wait.remote())
         return ray.get(actor.method.remote())
 
-    signal = ray.test_utils.SignalActor.remote()
+    SignalActor = create_remote_signal_actor(ray)
+    signal = SignalActor.remote()
     a = Actor.remote()
     pid = ray.get(a.getpid.remote())
     # Pass the handle to another task that cannot run yet.
@@ -779,7 +795,7 @@ def test_distributed_actor_handle_deletion(ray_start_regular_shared):
     # Once the task finishes, the actor process should get killed.
     ray.get(signal.send.remote())
     assert ray.get(x_id) == 1
-    ray.test_utils.wait_for_pid_to_exit(pid)
+    wait_for_pid_to_exit(pid)
 
 
 def test_multiple_actors(ray_start_regular_shared):
@@ -848,6 +864,130 @@ def test_inherit_actor_from_class(ray_start_regular_shared):
     assert ray.get(actor.g.remote(5)) == 6
 
 
+def test_get_non_existing_named_actor(ray_start_regular_shared):
+    with pytest.raises(ValueError):
+        _ = ray.get_actor("non_existing_actor")
+
+
+# https://github.com/ray-project/ray/issues/17843
+def test_actor_namespace(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def f(self):
+            return "ok"
+
+    a = Actor.options(name="foo", namespace="f1").remote()
+
+    with pytest.raises(ValueError):
+        ray.get_actor(name="foo", namespace="f2")
+
+    a1 = ray.get_actor(name="foo", namespace="f1")
+    assert ray.get(a1.f.remote()) == "ok"
+    del a
+
+
+def test_named_actor_cache(ray_start_regular_shared):
+    """Verify that named actor cache works well."""
+
+    @ray.remote(max_restarts=-1)
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def inc_and_get(self):
+            self.count += 1
+            return self.count
+
+    a = Counter.options(name="hi").remote()
+    first_get = ray.get_actor("hi")
+    assert ray.get(first_get.inc_and_get.remote()) == 1
+    second_get = ray.get_actor("hi")
+    assert ray.get(second_get.inc_and_get.remote()) == 2
+    ray.kill(a, no_restart=True)
+
+    def actor_removed():
+        try:
+            ray.get_actor("hi")
+            return False
+        except ValueError:
+            return True
+
+    wait_for_condition(actor_removed)
+
+    get_after_restart = Counter.options(name="hi").remote()
+    assert ray.get(get_after_restart.inc_and_get.remote()) == 1
+    get_by_name = ray.get_actor("hi")
+    assert ray.get(get_by_name.inc_and_get.remote()) == 2
+
+
+def test_named_actor_cache_via_another_actor(ray_start_regular_shared):
+    """Verify that named actor cache works well with another actor."""
+
+    @ray.remote(max_restarts=0)
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def inc_and_get(self):
+            self.count += 1
+            return self.count
+
+    # The third actor to get named actor. To indicates this cache doesn't
+    # break getting from the third party.
+    @ray.remote(max_restarts=0)
+    class ActorGetter:
+        def get_actor_count(self, name):
+            actor = ray.get_actor(name)
+            return ray.get(actor.inc_and_get.remote())
+
+    # Start a actor and get it by name in driver.
+    a = Counter.options(name="foo").remote()
+    first_get = ray.get_actor("foo")
+    assert ray.get(first_get.inc_and_get.remote()) == 1
+
+    # Start another actor as the third actor to get named actor.
+    actor_getter = ActorGetter.remote()
+    assert ray.get(actor_getter.get_actor_count.remote("foo")) == 2
+    ray.kill(a, no_restart=True)
+
+    def actor_removed():
+        try:
+            ray.get_actor("foo")
+            return False
+        except ValueError:
+            return True
+
+    wait_for_condition(actor_removed)
+
+    # Restart the named actor.
+    get_after_restart = Counter.options(name="foo").remote()
+    assert ray.get(get_after_restart.inc_and_get.remote()) == 1
+    # Get the named actor from the third actor again.
+    assert ray.get(actor_getter.get_actor_count.remote("foo")) == 2
+    # Get the named actor by name in driver again.
+    get_by_name = ray.get_actor("foo")
+    assert ray.get(get_by_name.inc_and_get.remote()) == 3
+
+
+def test_wrapped_actor_handle(ray_start_regular_shared):
+    @ray.remote
+    class B:
+        def doit(self):
+            return 2
+
+    @ray.remote
+    class A:
+        def __init__(self):
+            self.b = B.remote()
+
+        def get_actor_ref(self):
+            return [self.b]
+
+    a = A.remote()
+    b_list = ray.get(a.get_actor_ref.remote())
+    assert ray.get(b_list[0].doit.remote()) == 2
+
+
 @pytest.mark.skip(
     "This test is just used to print the latency of creating 100 actors.")
 def test_actor_creation_latency(ray_start_regular_shared):
@@ -865,6 +1005,110 @@ def test_actor_creation_latency(ray_start_regular_shared):
     end = datetime.datetime.now()
     print("actor_create_time_consume = {}, total_time_consume = {}".format(
         actor_create_time - start, end - start))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize(
+    "exit_condition",
+    [
+        # "out_of_scope", TODO(edoakes): enable this once fixed.
+        "__ray_terminate__",
+        "ray.actor.exit_actor",
+        "ray.kill"
+    ])
+def test_atexit_handler(ray_start_regular_shared, exit_condition):
+    @ray.remote
+    class A():
+        def __init__(self, tmpfile, data):
+            import atexit
+
+            def f(*args, **kwargs):
+                with open(tmpfile, "w") as f:
+                    f.write(data)
+                    f.flush()
+
+            atexit.register(f)
+
+        def ready(self):
+            pass
+
+        def exit(self):
+            ray.actor.exit_actor()
+
+    data = "hello"
+    tmpfile = tempfile.NamedTemporaryFile()
+    a = A.remote(tmpfile.name, data)
+    ray.get(a.ready.remote())
+
+    if exit_condition == "out_of_scope":
+        del a
+    elif exit_condition == "__ray_terminate__":
+        ray.wait([a.__ray_terminate__.remote()])
+    elif exit_condition == "ray.actor.exit_actor":
+        ray.wait([a.exit.remote()])
+    elif exit_condition == "ray.kill":
+        ray.kill(a)
+    else:
+        assert False, "Unrecognized condition"
+
+    def check_file_written():
+        with open(tmpfile.name) as f:
+            if f.read() == data:
+                return True
+            return False
+
+    # ray.kill() should not trigger atexit handlers, all other methods should.
+    if exit_condition == "ray.kill":
+        assert not check_file_written()
+    else:
+        wait_for_condition(check_file_written)
+
+
+def test_return_actor_handle_from_actor(ray_start_regular_shared):
+    @ray.remote
+    class Inner:
+        def ping(self):
+            return "pong"
+
+    @ray.remote
+    class Outer:
+        def __init__(self):
+            self.inner = Inner.remote()
+
+        def get_ref(self):
+            return self.inner
+
+    outer = Outer.remote()
+    inner = ray.get(outer.get_ref.remote())
+    assert ray.get(inner.ping.remote()) == "pong"
+
+
+def test_actor_autocomplete(ray_start_regular_shared):
+    """
+    Test that autocomplete works with actors by checking that the builtin dir()
+    function works as expected.
+    """
+
+    @ray.remote
+    class Foo:
+        def method_one(self) -> None:
+            pass
+
+    class_calls = [fn for fn in dir(Foo) if not fn.startswith("_")]
+
+    assert set(class_calls) == {"method_one", "options", "remote"}
+
+    f = Foo.remote()
+
+    methods = [fn for fn in dir(f) if not fn.startswith("_")]
+    assert methods == ["method_one"]
+
+    all_methods = set(dir(f))
+    assert all_methods == {"__init__", "method_one", "__ray_terminate__"}
+
+    method_options = [fn for fn in dir(f.method_one) if not fn.startswith("_")]
+
+    assert set(method_options) == {"options", "remote"}
 
 
 if __name__ == "__main__":

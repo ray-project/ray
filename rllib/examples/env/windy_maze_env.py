@@ -99,7 +99,7 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
             return self._low_level_step(list(action_dict.values())[0])
 
     def _high_level_step(self, action):
-        logger.debug("High level agent sets goal".format(action))
+        logger.debug("High level agent sets goal")
         self.current_goal = action
         self.steps_remaining_at_level = 25
         self.num_high_level_steps += 1

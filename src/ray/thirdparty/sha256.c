@@ -17,6 +17,19 @@
 #include <memory.h>
 #include <stdlib.h>
 
+// Suppress Undefined Behavior Sanitizer (recoverable only). Usage:
+// - __suppress_ubsan__("undefined")
+// - __suppress_ubsan__("signed-integer-overflow")
+// adaped from
+// https://github.com/google/flatbuffers/blob/master/include/flatbuffers/base.h
+#if defined(__clang__)
+#define __suppress_ubsan__(type) __attribute__((no_sanitize(type)))
+#elif defined(__GNUC__) && (__GNUC__ * 100 + __GNUC_MINOR__ >= 409)
+#define __suppress_ubsan__(type) __attribute__((no_sanitize_undefined))
+#else
+#define __suppress_ubsan__(type)
+#endif
+
 /****************************** MACROS ******************************/
 #define ROTLEFT(a,b) (((a) << (b)) | ((a) >> (32-(b))))
 #define ROTRIGHT(a,b) (((a) >> (b)) | ((a) << (32-(b))))
@@ -41,6 +54,7 @@ static const unsigned int k[64] = {
 };
 
 /*********************** FUNCTION DEFINITIONS ***********************/
+__suppress_ubsan__("undefined")
 void sha256_transform(SHA256_CTX *ctx, const BYTE data[])
 {
 	unsigned int a, b, c, d, e, f, g, h, i, j, t1, t2, m[64];

@@ -7,7 +7,7 @@ Supports color, bold text, italics, underlines, etc.
 (depending on TTY features)
 as well as indentation and other structured output.
 """
-
+from contextlib import contextmanager
 import sys
 import logging
 import inspect
@@ -17,7 +17,40 @@ from typing import Any, Dict, Tuple, Optional, List
 
 import click
 
+# Import ray first to use the bundled colorama
+import ray  # noqa: F401
 import colorama
+
+
+class _ColorfulMock:
+    def __init__(self):
+        # do not do any color work
+        self.identity = lambda x: x
+
+        self.colorful = self
+        self.colormode = None
+
+        self.NO_COLORS = None
+        self.ANSI_8_COLORS = None
+
+    def disable(self):
+        pass
+
+    @contextmanager
+    def with_style(self, x):
+        class IdentityClass:
+            def __getattr__(self, name):
+                return lambda y: y
+
+        yield IdentityClass()
+
+    def __getattr__(self, name):
+        if name == "with_style":
+            return self.with_style
+
+        return self.identity
+
+
 try:
     import colorful as _cf
     from colorful.core import ColorfulString
@@ -29,23 +62,6 @@ except ModuleNotFoundError:
     class ColorfulString:
         pass
 
-    class _ColorfulMock:
-        def __init__(self):
-            # do not do any color work
-            self.identity = lambda x: x
-
-            self.colorful = self
-            self.colormode = None
-
-            self.NO_COLORS = None
-            self.ANSI_8_COLORS = None
-
-        def disable(self):
-            pass
-
-        def __getattr__(self, name):
-            return self.identity
-
     _cf = _ColorfulMock()
 
 
@@ -55,7 +71,7 @@ except ModuleNotFoundError:
 # This is especially important since most will look bad on either light
 # or dark themes.
 class _ColorfulProxy:
-    _proxy_whitelist = [
+    _proxy_allowlist = [
         "disable",
         "reset",
         "bold",
@@ -75,7 +91,7 @@ class _ColorfulProxy:
 
     def __getattr__(self, name):
         res = getattr(_cf, name)
-        if callable(res) and name not in _ColorfulProxy._proxy_whitelist:
+        if callable(res) and name not in _ColorfulProxy._proxy_allowlist:
             raise ValueError("Usage of the colorful method '" + name +
                              "' is forbidden "
                              "by the proxy to keep a consistent color scheme. "
@@ -256,11 +272,6 @@ class _CliLogger():
     to 'record' style logging.
 
     Attributes:
-        old_style (bool):
-            If `old_style` is `True`, the old logging calls are used instead
-            of the new CLI UX. This is disabled by default and remains for
-            backwards compatibility. Currently can only be set via env var
-            RAY_LOG_NEWSTYLE="0".
         color_mode (str):
             Can be "true", "false", or "auto".
 
@@ -276,7 +287,6 @@ class _CliLogger():
 
             Low verbosity will disable `verbose` and `very_verbose` messages.
     """
-    old_style: bool
     color_mode: str
     # color_mode: Union[Literal["auto"], Literal["false"], Literal["true"]]
     indent_level: int
@@ -286,10 +296,10 @@ class _CliLogger():
     _autodetected_cf_colormode: int
 
     def __init__(self):
-        self.old_style = os.environ.get("RAY_LOG_NEWSTYLE", "1") == "0"
         self.indent_level = 0
 
         self._verbosity = 0
+        self._verbosity_overriden = False
         self._color_mode = "auto"
         self._log_style = "record"
         self.pretty = False
@@ -347,12 +357,15 @@ class _CliLogger():
 
     @property
     def verbosity(self):
-        if not self.pretty:
+        if self._verbosity_overriden:
+            return self._verbosity
+        elif not self.pretty:
             return 999
         return self._verbosity
 
     def _set_verbosity(self, x):
         self._verbosity = x
+        self._verbosity_overriden = True
 
     def detect_colors(self):
         """Update color output settings.
@@ -417,12 +430,19 @@ class _CliLogger():
             record.levelname = _level_str
             rendered_message = self._formatter.format(record)
 
+        # We aren't using standard python logging convention, so we hardcode
+        # the log levels for now.
+        if _level_str in ["WARNING", "ERROR", "PANIC"]:
+            stream = sys.stderr
+        else:
+            stream = sys.stdout
+
         if not _linefeed:
-            sys.stdout.write(rendered_message)
-            sys.stdout.flush()
+            stream.write(rendered_message)
+            stream.flush()
             return
 
-        print(rendered_message)
+        print(rendered_message, file=stream)
 
     def indented(self):
         """Context manager that starts an indented block of output.
@@ -476,9 +496,6 @@ class _CliLogger():
 
         For other arguments, see `_format_msg`.
         """
-        if self.old_style:
-            return
-
         self._print(
             cf.skyBlue(key) + ": " +
             _format_msg(cf.bold(msg), *args, **kwargs))
@@ -567,9 +584,6 @@ class _CliLogger():
 
         For arguments, see `_format_msg`.
         """
-        if self.old_style:
-            return
-
         self._print(_format_msg(msg, *args, **kwargs), _level_str=_level_str)
 
     def abort(self,
@@ -582,9 +596,6 @@ class _CliLogger():
         Print an error and throw an exception to terminate the program
         (the exception will not print a message).
         """
-        if self.old_style:
-            return
-
         if msg is not None:
             self._error(msg, *args, _level_str="PANIC", **kwargs)
 
@@ -594,7 +605,10 @@ class _CliLogger():
         exc_cls = click.ClickException
         if self.pretty:
             exc_cls = SilentClickException
-        raise exc_cls("Exiting due to cli_logger.abort()")
+
+        if msg is None:
+            msg = "Exiting due to cli_logger.abort()"
+        raise exc_cls(msg)
 
     def doassert(self, val: bool, msg: str, *args: Any, **kwargs: Any):
         """Handle assertion without throwing a scary exception.
@@ -604,9 +618,6 @@ class _CliLogger():
 
         For other arguments, see `_format_msg`.
         """
-        if self.old_style:
-            return
-
         if not val:
             exc = None
             if not self.pretty:
@@ -617,101 +628,6 @@ class _CliLogger():
             #                  to do this, install a global try-catch
             #                  for AssertionError and raise them normally
             self.abort(msg, *args, exc=exc, **kwargs)
-
-    def old_debug(self, logger: logging.Logger, msg: str, *args: Any,
-                  **kwargs: Any):
-        """Old debug logging proxy.
-
-        Pass along an old debug log iff new logging is disabled.
-        Supports the new formatting features.
-
-        Args:
-            logger (logging.Logger):
-                Logger to use if old logging behavior is selected.
-
-        For other arguments, see `_format_msg`.
-        """
-        if self.old_style:
-            logger.debug(
-                _format_msg(msg, *args, **kwargs),
-                extra=_external_caller_info())
-            return
-
-    def old_info(self, logger: logging.Logger, msg: str, *args: Any,
-                 **kwargs: Any):
-        """Old info logging proxy.
-
-        Pass along an old info log iff new logging is disabled.
-        Supports the new formatting features.
-
-        Args:
-            logger (logging.Logger):
-                Logger to use if old logging behavior is selected.
-
-        For other arguments, see `_format_msg`.
-        """
-        if self.old_style:
-            logger.info(
-                _format_msg(msg, *args, **kwargs),
-                extra=_external_caller_info())
-            return
-
-    def old_warning(self, logger: logging.Logger, msg: str, *args: Any,
-                    **kwargs: Any):
-        """Old warning logging proxy.
-
-        Pass along an old warning log iff new logging is disabled.
-        Supports the new formatting features.
-
-        Args:
-            logger (logging.Logger):
-                Logger to use if old logging behavior is selected.
-
-        For other arguments, see `_format_msg`.
-        """
-        if self.old_style:
-            logger.warning(
-                _format_msg(msg, *args, **kwargs),
-                extra=_external_caller_info())
-            return
-
-    def old_error(self, logger: logging.Logger, msg: str, *args: Any,
-                  **kwargs: Any):
-        """Old error logging proxy.
-
-        Pass along an old error log iff new logging is disabled.
-        Supports the new formatting features.
-
-        Args:
-            logger (logging.Logger):
-                Logger to use if old logging behavior is selected.
-
-        For other arguments, see `_format_msg`.
-        """
-        if self.old_style:
-            logger.error(
-                _format_msg(msg, *args, **kwargs),
-                extra=_external_caller_info())
-            return
-
-    def old_exception(self, logger: logging.Logger, msg: str, *args: Any,
-                      **kwargs: Any):
-        """Old exception logging proxy.
-
-        Pass along an old exception log iff new logging is disabled.
-        Supports the new formatting features.
-
-        Args:
-            logger (logging.Logger):
-                Logger to use if old logging behavior is selected.
-
-        For other arguments, see `_format_msg`.
-        """
-        if self.old_style:
-            logger.exception(
-                _format_msg(msg, *args, **kwargs),
-                extra=_external_caller_info())
-            return
 
     def render_list(self, xs: List[str], separator: str = cf.reset(", ")):
         """Render a list of bolded values using a non-bolded separator.
@@ -739,9 +655,6 @@ class _CliLogger():
                 The default action to take if the user just presses enter
                 with no input.
         """
-        if self.old_style:
-            return
-
         should_abort = _abort
         default = _default
 
@@ -821,9 +734,6 @@ class _CliLogger():
         Returns:
             The string entered by the user.
         """
-        if self.old_style:
-            return
-
         complete_str = cf.underlined(msg)
         rendered_message = _format_msg(complete_str, *args, **kwargs)
         # the rendered message ends with ascii coding
@@ -841,15 +751,9 @@ class _CliLogger():
 
         return res
 
-    def old_confirm(self, msg: str, yes: bool):
-        """Old confirm dialog proxy.
-
-        Let `click` display a confirm dialog iff new logging is disabled.
-        """
-        if not self.old_style:
-            return
-
-        return None if yes else click.confirm(msg, abort=True)
+    def flush(self):
+        sys.stdout.flush()
+        sys.stderr.flush()
 
 
 class SilentClickException(click.ClickException):

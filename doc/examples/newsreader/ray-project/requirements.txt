@@ -1,3 +1,3 @@
-ray[debug]
+ray
 atoma
 flask

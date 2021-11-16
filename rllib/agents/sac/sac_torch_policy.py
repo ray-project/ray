@@ -3,31 +3,71 @@ PyTorch policy class used for SAC.
 """
 
 import gym
-from gym.spaces import Discrete
+from gym.spaces import Box, Discrete
 import logging
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional, Tuple, Type, Union
 
 import ray
 import ray.experimental.tf_utils
-from ray.rllib.agents.a3c.a3c_torch_policy import apply_grad_clipping
 from ray.rllib.agents.sac.sac_tf_policy import build_sac_model, \
     postprocess_trajectory, validate_spaces
 from ray.rllib.agents.dqn.dqn_tf_policy import PRIO_WEIGHTS
+from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
+from ray.rllib.models.torch.torch_action_dist import \
+    TorchCategorical, TorchDistributionWrapper, TorchDirichlet, \
+    TorchSquashedGaussian, TorchDiagGaussian, TorchBeta
 from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_policy_template import build_torch_policy
-from ray.rllib.models.torch.torch_action_dist import (
-    TorchCategorical, TorchSquashedGaussian, TorchDiagGaussian, TorchBeta)
+from ray.rllib.policy.torch_policy import TorchPolicy
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import LocalOptimizer, TensorType, \
-    TrainerConfigDict
+from ray.rllib.utils.spaces.simplex import Simplex
+from ray.rllib.utils.torch_utils import apply_grad_clipping, \
+    concat_multi_gpu_td_errors, huber_loss
+from ray.rllib.utils.typing import LocalOptimizer, ModelInputDict, \
+    TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
 F = nn.functional
 
 logger = logging.getLogger(__name__)
+
+
+def _get_dist_class(policy: Policy,
+                    config: TrainerConfigDict,
+                    action_space: gym.spaces.Space) -> \
+                    Type[TorchDistributionWrapper]:
+    """Helper function to return a dist class based on config and action space.
+
+    Args:
+        policy (Policy): The policy for which to return the action
+            dist class.
+        config (TrainerConfigDict): The Trainer's config dict.
+        action_space (gym.spaces.Space): The action space used.
+
+    Returns:
+        Type[TFActionDistribution]: A TF distribution class.
+    """
+    if hasattr(policy, "dist_class") and policy.dist_class is not None:
+        return policy.dist_class
+    elif config["model"].get("custom_action_dist"):
+        action_dist_class, _ = ModelCatalog.get_action_dist(
+            action_space, config["model"], framework="torch")
+        return action_dist_class
+    elif isinstance(action_space, Discrete):
+        return TorchCategorical
+    elif isinstance(action_space, Simplex):
+        return TorchDirichlet
+    else:
+        assert isinstance(action_space, Box)
+        if config["normalize_actions"]:
+            return TorchSquashedGaussian if \
+                not config["_use_beta_distribution"] else TorchBeta
+        else:
+            return TorchDiagGaussian
 
 
 def build_sac_model_and_action_dist(
@@ -50,35 +90,14 @@ def build_sac_model_and_action_dist(
             `policy.target_model`.
     """
     model = build_sac_model(policy, obs_space, action_space, config)
-    action_dist_class = _get_dist_class(config, action_space)
+    action_dist_class = _get_dist_class(policy, config, action_space)
     return model, action_dist_class
-
-
-def _get_dist_class(config: TrainerConfigDict, action_space: gym.spaces.Space
-                    ) -> Type[TorchDistributionWrapper]:
-    """Helper function to return a dist class based on config and action space.
-
-    Args:
-        config (TrainerConfigDict): The Trainer's config dict.
-        action_space (gym.spaces.Space): The action space used.
-
-    Returns:
-        Type[TFActionDistribution]: A TF distribution class.
-    """
-    if isinstance(action_space, Discrete):
-        return TorchCategorical
-    else:
-        if config["normalize_actions"]:
-            return TorchSquashedGaussian if \
-                not config["_use_beta_distribution"] else TorchBeta
-        else:
-            return TorchDiagGaussian
 
 
 def action_distribution_fn(
         policy: Policy,
         model: ModelV2,
-        obs_batch: TensorType,
+        input_dict: ModelInputDict,
         *,
         state_batches: Optional[List[TensorType]] = None,
         seq_lens: Optional[TensorType] = None,
@@ -102,8 +121,8 @@ def action_distribution_fn(
         model (TorchModelV2): The SAC specific Model to use to generate the
             distribution inputs (see sac_tf|torch_model.py). Must support the
             `get_policy_output` method.
-        obs_batch (TensorType): The observations to be used as inputs to the
-            model.
+        input_dict (ModelInputDict): The input-dict to be used for the model
+            call.
         state_batches (Optional[List[TensorType]]): The list of internal state
             tensor batches.
         seq_lens (Optional[TensorType]): The tensor of sequence lengths used
@@ -123,15 +142,13 @@ def action_distribution_fn(
             (in the RNN case).
     """
     # Get base-model output (w/o the SAC specific parts of the network).
-    model_out, _ = model({
-        "obs": obs_batch,
-        "is_training": is_training,
-    }, [], None)
+    model_out, _ = model(input_dict, [], None)
     # Use the base output to get the policy outputs from the SAC model's
     # policy components.
     distribution_inputs = model.get_policy_output(model_out)
     # Get a distribution class to be used with the just calculated dist-inputs.
-    action_dist_class = _get_dist_class(policy.config, policy.action_space)
+    action_dist_class = _get_dist_class(policy, policy.config,
+                                        policy.action_space)
 
     return distribution_inputs, action_dist_class, []
 
@@ -152,6 +169,9 @@ def actor_critic_loss(
         Union[TensorType, List[TensorType]]: A single loss tensor or a list
             of loss tensors.
     """
+    # Look up the target model (tower) using the model tower.
+    target_model = policy.target_models[model]
+
     # Should be True only for debugging purposes (e.g. test cases)!
     deterministic = policy.config["_deterministic_loss"]
 
@@ -165,7 +185,7 @@ def actor_critic_loss(
         "is_training": True,
     }, [], None)
 
-    target_model_out_tp1, _ = policy.target_model({
+    target_model_out_tp1, _ = target_model({
         "obs": train_batch[SampleBatch.NEXT_OBS],
         "is_training": True,
     }, [], None)
@@ -182,17 +202,17 @@ def actor_critic_loss(
         # Q-values.
         q_t = model.get_q_values(model_out_t)
         # Target Q-values.
-        q_tp1 = policy.target_model.get_q_values(target_model_out_tp1)
+        q_tp1 = target_model.get_q_values(target_model_out_tp1)
         if policy.config["twin_q"]:
             twin_q_t = model.get_twin_q_values(model_out_t)
-            twin_q_tp1 = policy.target_model.get_twin_q_values(
-                target_model_out_tp1)
+            twin_q_tp1 = target_model.get_twin_q_values(target_model_out_tp1)
             q_tp1 = torch.min(q_tp1, twin_q_tp1)
         q_tp1 -= alpha * log_pis_tp1
 
         # Actually selected Q-values (from the actions batch).
         one_hot = F.one_hot(
-            train_batch[SampleBatch.ACTIONS], num_classes=q_t.size()[-1])
+            train_batch[SampleBatch.ACTIONS].long(),
+            num_classes=q_t.size()[-1])
         q_t_selected = torch.sum(q_t * one_hot, dim=-1)
         if policy.config["twin_q"]:
             twin_q_t_selected = torch.sum(twin_q_t * one_hot, dim=-1)
@@ -204,14 +224,15 @@ def actor_critic_loss(
     # Continuous actions case.
     else:
         # Sample single actions from distribution.
-        action_dist_class = _get_dist_class(policy.config, policy.action_space)
+        action_dist_class = _get_dist_class(policy, policy.config,
+                                            policy.action_space)
         action_dist_t = action_dist_class(
-            model.get_policy_output(model_out_t), policy.model)
+            model.get_policy_output(model_out_t), model)
         policy_t = action_dist_t.sample() if not deterministic else \
             action_dist_t.deterministic_sample()
         log_pis_t = torch.unsqueeze(action_dist_t.logp(policy_t), -1)
         action_dist_tp1 = action_dist_class(
-            model.get_policy_output(model_out_tp1), policy.model)
+            model.get_policy_output(model_out_tp1), model)
         policy_tp1 = action_dist_tp1.sample() if not deterministic else \
             action_dist_tp1.deterministic_sample()
         log_pis_tp1 = torch.unsqueeze(action_dist_tp1.logp(policy_tp1), -1)
@@ -230,10 +251,9 @@ def actor_critic_loss(
             q_t_det_policy = torch.min(q_t_det_policy, twin_q_t_det_policy)
 
         # Target q network evaluation.
-        q_tp1 = policy.target_model.get_q_values(target_model_out_tp1,
-                                                 policy_tp1)
+        q_tp1 = target_model.get_q_values(target_model_out_tp1, policy_tp1)
         if policy.config["twin_q"]:
-            twin_q_tp1 = policy.target_model.get_twin_q_values(
+            twin_q_tp1 = target_model.get_twin_q_values(
                 target_model_out_tp1, policy_tp1)
             # Take min over both twin-NNs.
             q_tp1 = torch.min(q_tp1, twin_q_tp1)
@@ -262,11 +282,11 @@ def actor_critic_loss(
         td_error = base_td_error
 
     critic_loss = [
-        0.5 * torch.mean(torch.pow(q_t_selected_target - q_t_selected, 2.0))
+        torch.mean(train_batch[PRIO_WEIGHTS] * huber_loss(base_td_error))
     ]
     if policy.config["twin_q"]:
-        critic_loss.append(0.5 * torch.mean(
-            torch.pow(q_t_selected_target - twin_q_t_selected, 2.0)))
+        critic_loss.append(
+            torch.mean(train_batch[PRIO_WEIGHTS] * huber_loss(twin_td_error)))
 
     # Alpha- and actor losses.
     # Note: In the papers, alpha is used directly, here we take the log.
@@ -295,21 +315,21 @@ def actor_critic_loss(
         # the Q-net(s)' variables.
         actor_loss = torch.mean(alpha.detach() * log_pis_t - q_t_det_policy)
 
-    # Save for stats function.
-    policy.q_t = q_t
-    policy.policy_t = policy_t
-    policy.log_pis_t = log_pis_t
-    policy.td_error = td_error
-    policy.actor_loss = actor_loss
-    policy.critic_loss = critic_loss
-    policy.alpha_loss = alpha_loss
-    policy.log_alpha_value = model.log_alpha
-    policy.alpha_value = alpha
-    policy.target_entropy = model.target_entropy
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["q_t"] = q_t
+    model.tower_stats["policy_t"] = policy_t
+    model.tower_stats["log_pis_t"] = log_pis_t
+    model.tower_stats["actor_loss"] = actor_loss
+    model.tower_stats["critic_loss"] = critic_loss
+    model.tower_stats["alpha_loss"] = alpha_loss
+
+    # TD-error tensor in final stats
+    # will be concatenated and retrieved for each individual batch item.
+    model.tower_stats["td_error"] = td_error
 
     # Return all loss terms corresponding to our optimizers.
-    return tuple([policy.actor_loss] + policy.critic_loss +
-                 [policy.alpha_loss])
+    return tuple([actor_loss] + critic_loss + [alpha_loss])
 
 
 def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
@@ -322,19 +342,23 @@ def stats(policy: Policy, train_batch: SampleBatch) -> Dict[str, TensorType]:
     Returns:
         Dict[str, TensorType]: The stats dict.
     """
+    q_t = torch.stack(policy.get_tower_stats("q_t"))
+
     return {
-        "td_error": policy.td_error,
-        "mean_td_error": torch.mean(policy.td_error),
-        "actor_loss": torch.mean(policy.actor_loss),
-        "critic_loss": torch.mean(torch.stack(policy.critic_loss)),
-        "alpha_loss": torch.mean(policy.alpha_loss),
-        "alpha_value": torch.mean(policy.alpha_value),
-        "log_alpha_value": torch.mean(policy.log_alpha_value),
-        "target_entropy": policy.target_entropy,
-        "policy_t": torch.mean(policy.policy_t),
-        "mean_q": torch.mean(policy.q_t),
-        "max_q": torch.max(policy.q_t),
-        "min_q": torch.min(policy.q_t),
+        "actor_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("actor_loss"))),
+        "critic_loss": torch.mean(
+            torch.stack(tree.flatten(policy.get_tower_stats("critic_loss")))),
+        "alpha_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("alpha_loss"))),
+        "alpha_value": torch.exp(policy.model.log_alpha),
+        "log_alpha_value": policy.model.log_alpha,
+        "target_entropy": policy.model.target_entropy,
+        "policy_t": torch.mean(
+            torch.stack(policy.get_tower_stats("policy_t"))),
+        "mean_q": torch.mean(q_t),
+        "max_q": torch.max(q_t),
+        "min_q": torch.min(q_t),
     }
 
 
@@ -408,9 +432,9 @@ class ComputeTDErrorMixin:
             # (one TD-error value per item in batch to update PR weights).
             actor_critic_loss(self, self.model, None, input_dict)
 
-            # `self.td_error` is set within actor_critic_loss call. Return
-            # its updated value here.
-            return self.td_error
+            # `self.model.td_error` is set within actor_critic_loss call.
+            # Return its updated value here.
+            return self.model.tower_stats["td_error"]
 
         # Assign the method to policy (self) for later usage.
         self.compute_td_error = compute_td_error
@@ -435,13 +459,23 @@ class TargetNetworkMixin:
         model_state_dict = self.model.state_dict()
         # Support partial (soft) synching.
         # If tau == 1.0: Full sync from Q-model to target Q-model.
-        if tau != 1.0:
-            target_state_dict = self.target_model.state_dict()
-            model_state_dict = {
-                k: tau * model_state_dict[k] + (1 - tau) * v
-                for k, v in target_state_dict.items()
-            }
-        self.target_model.load_state_dict(model_state_dict)
+        target_state_dict = next(iter(
+            self.target_models.values())).state_dict()
+        model_state_dict = {
+            k: tau * model_state_dict[k] + (1 - tau) * v
+            for k, v in target_state_dict.items()
+        }
+
+        for target in self.target_models.values():
+            target.load_state_dict(model_state_dict)
+
+    @override(TorchPolicy)
+    def set_weights(self, weights):
+        # Makes sure that whenever we restore weights for this policy's
+        # model, we sync the target network (from the main model)
+        # at the same time.
+        TorchPolicy.set_weights(self, weights)
+        self.update_target()
 
 
 def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
@@ -465,17 +499,15 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
         action_space (gym.spaces.Space): The Policy's action space.
         config (TrainerConfigDict): The Policy's config.
     """
-    policy.target_model = policy.target_model.to(policy.device)
-    policy.model.log_alpha = policy.model.log_alpha.to(policy.device)
-    policy.model.target_entropy = policy.model.target_entropy.to(policy.device)
     ComputeTDErrorMixin.__init__(policy)
     TargetNetworkMixin.__init__(policy)
 
 
 # Build a child class of `TorchPolicy`, given the custom functions defined
 # above.
-SACTorchPolicy = build_torch_policy(
+SACTorchPolicy = build_policy_class(
     name="SACTorchPolicy",
+    framework="torch",
     loss_fn=actor_critic_loss,
     get_default_config=lambda: ray.rllib.agents.sac.sac.DEFAULT_CONFIG,
     stats_fn=stats,
@@ -483,8 +515,9 @@ SACTorchPolicy = build_torch_policy(
     extra_grad_process_fn=apply_grad_clipping,
     optimizer_fn=optimizer_fn,
     validate_spaces=validate_spaces,
-    after_init=setup_late_mixins,
+    before_loss_init=setup_late_mixins,
     make_model_and_action_dist=build_sac_model_and_action_dist,
+    extra_learn_fetches_fn=concat_multi_gpu_td_errors,
     mixins=[TargetNetworkMixin, ComputeTDErrorMixin],
     action_distribution_fn=action_distribution_fn,
 )

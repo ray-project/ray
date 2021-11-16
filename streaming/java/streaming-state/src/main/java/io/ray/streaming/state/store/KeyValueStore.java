@@ -21,38 +21,24 @@ package io.ray.streaming.state.store;
 import java.io.IOException;
 import java.io.Serializable;
 
-/**
- * Key Value Store interface.
- */
+/** Key Value Store interface. */
 public interface KeyValueStore<K, V> extends Serializable {
 
-  /**
-   * put key value into store.
-   */
+  /** put key value into store. */
   void put(K key, V value) throws IOException;
 
-  /**
-   * get value from store.
-   */
+  /** get value from store. */
   V get(K key) throws IOException;
 
-  /**
-   * remove key in the store.
-   */
+  /** remove key in the store. */
   void remove(K key) throws IOException;
 
-  /**
-   * flush to disk.
-   */
+  /** flush to disk. */
   void flush() throws IOException;
 
-  /**
-   * clear all cache.
-   */
+  /** clear all cache. */
   void clearCache();
 
-  /**
-   * close the store.
-   */
+  /** close the store. */
   void close() throws IOException;
 }

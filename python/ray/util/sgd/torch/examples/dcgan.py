@@ -22,8 +22,6 @@ from ray.util.sgd import TorchTrainer
 from ray.util.sgd.utils import override
 from ray.util.sgd.torch import TrainingOperator
 
-MODEL_PATH = os.path.expanduser("~/.ray/models/mnist_cnn.pt")
-
 
 class Generator(nn.Module):
     def __init__(self, latent_vector_size, features=32, num_channels=1):
@@ -117,7 +115,7 @@ class GANOperator(TrainingOperator):
 
         with FileLock(".ray.lock"):
             dataset = datasets.MNIST(
-                root="~/mnist/",
+                root=config.get("data_dir", "~/data/"),
                 download=True,
                 transform=transforms.Compose([
                     transforms.Resize(32),
@@ -182,8 +180,8 @@ class GANOperator(TrainingOperator):
     @override(TrainingOperator)
     def train_batch(self, batch, batch_info):
         """Trains on one batch of data from the data creator."""
-        real_label = 1
-        fake_label = 0
+        real_label = 1.0
+        fake_label = 0.
         discriminator, generator = self.models
         optimD, optimG = self.optimizers
 
@@ -232,11 +230,35 @@ class GANOperator(TrainingOperator):
         }
 
 
-def train_example(num_workers=1, use_gpu=False, test_mode=False):
+def download_model():
+    model_path = os.path.expanduser("~/.ray/models/mnist_cnn.pt")
+    import urllib.request
+    # Download a pre-trained MNIST model for inception score calculation.
+    # This is a tiny model (<100kb).
+    if not os.path.exists(model_path):
+        print("downloading model")
+        os.makedirs(os.path.dirname(model_path), exist_ok=True)
+        urllib.request.urlretrieve(
+            "https://github.com/ray-project/ray/raw/master/python/ray/tune/"
+            "examples/pbt_dcgan_mnist/mnist_cnn.pt", model_path)
+    return model_path
+
+
+def train_example(num_workers=1,
+                  use_gpu=False,
+                  test_mode=False,
+                  data_dir="~/data/"):
+    if ray.util.client.ray.is_connected():
+        # If using Ray Client, make sure model is downloaded on the Server.
+        model_path = ray.get(ray.remote(download_model).remote())
+    else:
+        model_path = download_model()
+
     config = {
         "test_mode": test_mode,
         "batch_size": 16 if test_mode else 512 // num_workers,
-        "classification_model_path": MODEL_PATH
+        "classification_model_path": model_path,
+        "data_dir": data_dir
     }
     trainer = TorchTrainer(
         training_operator_cls=GANOperator,
@@ -259,16 +281,6 @@ def train_example(num_workers=1, use_gpu=False, test_mode=False):
 
 
 if __name__ == "__main__":
-    import urllib.request
-    # Download a pre-trained MNIST model for inception score calculation.
-    # This is a tiny model (<100kb).
-    if not os.path.exists(MODEL_PATH):
-        print("downloading model")
-        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
-        urllib.request.urlretrieve(
-            "https://github.com/ray-project/ray/raw/master/python/ray/tune/"
-            "examples/pbt_dcgan_mnist/mnist_cnn.pt", MODEL_PATH)
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
@@ -277,6 +289,13 @@ if __name__ == "__main__":
         required=False,
         type=str,
         help="the address to use to connect to a cluster.")
+    parser.add_argument(
+        "--server-address",
+        type=str,
+        default=None,
+        required=False,
+        help="The address of server to connect to if using "
+        "Ray Client.")
     parser.add_argument(
         "--num-workers",
         "-n",
@@ -288,14 +307,22 @@ if __name__ == "__main__":
         action="store_true",
         default=False,
         help="Enables GPU training")
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default="~/data/",
+        help="Set the path of the dataset.")
     args = parser.parse_args()
     if args.smoke_test:
         ray.init(num_cpus=2)
+    elif args.server_address:
+        ray.init(f"ray://{args.server_address}")
     else:
         ray.init(address=args.address)
 
     trainer = train_example(
         num_workers=args.num_workers,
         use_gpu=args.use_gpu,
-        test_mode=args.smoke_test)
+        test_mode=args.smoke_test,
+        data_dir=args.data_dir)
     models = trainer.get_model()

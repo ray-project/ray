@@ -4,9 +4,7 @@ import io.ray.streaming.runtime.core.processor.Processor;
 import io.ray.streaming.runtime.core.processor.TwoInputProcessor;
 import io.ray.streaming.runtime.worker.JobWorker;
 
-/**
- * Input stream task with 2 inputs. Such as: join operator.
- */
+/** Input stream task with 2 inputs. Such as: join operator. */
 public class TwoInputStreamTask extends InputStreamTask {
 
   public TwoInputStreamTask(
@@ -19,5 +17,4 @@ public class TwoInputStreamTask extends InputStreamTask {
     ((TwoInputProcessor) (super.processor)).setLeftStream(leftStream);
     ((TwoInputProcessor) (super.processor)).setRightStream(rightStream);
   }
-
 }

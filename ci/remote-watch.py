@@ -253,6 +253,7 @@ def main(program, *args):
         result = monitor()
     else:
         logger.info("Skipping monitoring %s %s build", repo_slug, event_name)
+        result = 0
     return result
 
 

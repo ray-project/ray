@@ -1,6 +1,5 @@
-import unittest
-
 import gym
+import unittest
 
 from ray.rllib.env.wrappers.recsim_wrapper import (
     MultiDiscreteToDiscreteActionWrapper, make_recsim_env)

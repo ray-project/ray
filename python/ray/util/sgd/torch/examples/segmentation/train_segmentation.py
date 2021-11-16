@@ -152,15 +152,27 @@ class SegOperator(TrainingOperator):
     def train_batch(self, batch, batch_info):
         image, target = batch
         image, target = image.to(self.device), target.to(self.device)
-        output = self.model(image)
-        loss = criterion(output, target)
+        if self.use_fp16_native:
+            with self._amp.autocast():
+                output = self.model(image)
+                loss = criterion(output, target)
+        else:
+            output = self.model(image)
+            loss = criterion(output, target)
         self.optimizer.zero_grad()
-        if self.use_fp16 and amp:
-            with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+        if self.use_fp16_apex:
+            with self._amp.scale_loss(loss, self.optimizer) as scaled_loss:
                 scaled_loss.backward()
+        elif self.use_fp16_native:
+            self._amp_scaler.scale(loss).backward()
         else:
             loss.backward()
-        self.optimizer.step()
+
+        if self.use_fp16_native:
+            self._amp_scaler.step(self.optimizer)
+            self._amp_scaler.update()
+        else:
+            self.optimizer.step()
         lr = self.optimizer.param_groups[0]["lr"]
         return {"loss": loss.item(), "lr": lr, "num_samples": len(batch)}
 
@@ -170,6 +182,10 @@ class SegOperator(TrainingOperator):
         with torch.no_grad():
             for image, target in data_loader:
                 image, target = image.to(self.device), target.to(self.device)
+            if self.use_fp16_native:
+                with self._amp.autocast():
+                    output = self.model(image)
+            else:
                 output = self.model(image)
                 output = output["out"]
 

@@ -17,7 +17,7 @@ halfcheetah-appo:
         num_gpus: 1
         broadcast_interval: 1
         max_sample_requests_in_flight_per_worker: 1
-        num_data_loader_buffers: 1
+        num_multi_gpu_tower_stacks: 1
         num_envs_per_worker: 32
         minibatch_buffer_size: 16
         num_sgd_iter: 32

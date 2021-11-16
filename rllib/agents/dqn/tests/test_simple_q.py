@@ -1,6 +1,7 @@
 import numpy as np
 import unittest
 
+import ray
 import ray.rllib.agents.dqn as dqn
 from ray.rllib.agents.dqn.simple_q_tf_policy import build_q_losses as loss_tf
 from ray.rllib.agents.dqn.simple_q_torch_policy import build_q_losses as \
@@ -9,22 +10,38 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc, one_hot, huber_loss
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 
 tf1, tf, tfv = try_import_tf()
 
 
 class TestSimpleQ(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_simple_q_compilation(self):
         """Test whether a SimpleQTrainer can be built on all frameworks."""
         config = dqn.SIMPLE_Q_DEFAULT_CONFIG.copy()
-        config["num_workers"] = 0  # Run locally.
+        # Run locally.
+        config["num_workers"] = 0
+        # Test with compression.
+        config["compress_observations"] = True
 
-        for _ in framework_iterator(config):
+        num_iterations = 2
+
+        for _ in framework_iterator(config, with_eager_tracing=True):
             trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
-            num_iterations = 2
+            rw = trainer.workers.local_worker()
             for i in range(num_iterations):
+                sb = rw.sample()
+                assert sb.count == config["rollout_fragment_length"]
                 results = trainer.train()
+                check_train_results(results)
                 print(results)
 
             check_compute_single_action(trainer)
@@ -43,19 +60,27 @@ class TestSimpleQ(unittest.TestCase):
             trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
             policy = trainer.get_policy()
             # Batch of size=2.
-            input_ = {
+            input_ = SampleBatch({
                 SampleBatch.CUR_OBS: np.random.random(size=(2, 4)),
                 SampleBatch.ACTIONS: np.array([0, 1]),
                 SampleBatch.REWARDS: np.array([0.4, -1.23]),
                 SampleBatch.DONES: np.array([False, False]),
-                SampleBatch.NEXT_OBS: np.random.random(size=(2, 4))
-            }
+                SampleBatch.NEXT_OBS: np.random.random(size=(2, 4)),
+                SampleBatch.EPS_ID: np.array([1234, 1234]),
+                SampleBatch.AGENT_INDEX: np.array([0, 0]),
+                SampleBatch.ACTION_LOGP: np.array([-0.1, -0.1]),
+                SampleBatch.ACTION_DIST_INPUTS: np.array([[0.1, 0.2],
+                                                          [-0.1, -0.2]]),
+                SampleBatch.ACTION_PROB: np.array([0.1, 0.2]),
+                "q_values": np.array([[0.1, 0.2], [0.2, 0.1]]),
+            })
             # Get model vars for computing expected model outs (q-vals).
             # 0=layer-kernel; 1=layer-bias; 2=q-val-kernel; 3=q-val-bias
             vars = policy.get_weights()
             if isinstance(vars, dict):
                 vars = list(vars.values())
-            vars_t = policy.target_q_func_vars
+
+            vars_t = policy.target_model.variables()
             if fw == "tf":
                 vars_t = policy.get_session().run(vars_t)
 

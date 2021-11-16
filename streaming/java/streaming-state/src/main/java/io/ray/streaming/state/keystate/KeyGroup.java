@@ -43,9 +43,7 @@ public class KeyGroup implements Serializable {
     Preconditions.checkArgument(size() >= 0, "overflow detected.");
   }
 
-  /**
-   * @return The number of key-group in the range
-   */
+  /** Returns The number of key-group in the range */
   public int size() {
     return 1 + endIndex - startIndex;
   }

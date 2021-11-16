@@ -60,20 +60,4 @@ int64_t StringIdMap::Insert(const std::string &string_id, uint8_t max_id) {
   }
 };
 
-void StringIdMap::Remove(const std::string &string_id) {
-  auto sit = string_to_int_.find(string_id);
-  if (sit != string_to_int_.end()) {
-    int_to_string_.erase(string_to_int_[string_id]);
-    string_to_int_.erase(sit);
-  }
-};
-
-void StringIdMap::Remove(int64_t id) {
-  auto it = int_to_string_.find(id);
-  if (it != int_to_string_.end()) {
-    string_to_int_.erase(int_to_string_[id]);
-    int_to_string_.erase(it);
-  }
-};
-
 int64_t StringIdMap::Count() { return string_to_int_.size(); }

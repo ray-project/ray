@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 import time
 import inspect
 import shutil
@@ -9,16 +10,18 @@ import uuid
 from functools import partial
 from numbers import Number
 
-from ray.tune.registry import parameter_registry
+from typing import Any, Callable, Optional
+
 from six.moves import queue
 
 from ray.util.debug import log_once
 from ray.tune import TuneError, session
 from ray.tune.trainable import Trainable, TrainableUtil
-from ray.tune.result import (TIME_THIS_ITER_S, RESULT_DUPLICATE,
-                             SHOULD_CHECKPOINT)
+from ray.tune.result import (DEFAULT_METRIC, TIME_THIS_ITER_S,
+                             RESULT_DUPLICATE, SHOULD_CHECKPOINT)
 from ray.tune.utils import (detect_checkpoint_function, detect_config_single,
                             detect_reporter)
+from ray.tune.utils.trainable import with_parameters  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -120,17 +123,33 @@ class StatusReporter:
     def __init__(self,
                  result_queue,
                  continue_semaphore,
+                 end_event,
                  trial_name=None,
                  trial_id=None,
-                 logdir=None):
+                 logdir=None,
+                 trial_resources=None):
         self._queue = result_queue
         self._last_report_time = None
         self._continue_semaphore = continue_semaphore
+        self._end_event = end_event
         self._trial_name = trial_name
         self._trial_id = trial_id
         self._logdir = logdir
         self._last_checkpoint = None
         self._fresh_checkpoint = False
+        self._trial_resources = trial_resources
+
+    def reset(self,
+              trial_name=None,
+              trial_id=None,
+              logdir=None,
+              trial_resources=None):
+        self._trial_name = trial_name
+        self._trial_id = trial_id
+        self._logdir = logdir
+        self._last_checkpoint = None
+        self._fresh_checkpoint = False
+        self._trial_resources = trial_resources
 
     def __call__(self, _metric=None, **kwargs):
         """Report updated training status.
@@ -154,7 +173,7 @@ class StatusReporter:
             "report __call__ is made to ensure correct runtime metrics.")
 
         if _metric:
-            kwargs["_metric"] = _metric
+            kwargs[DEFAULT_METRIC] = _metric
 
         # time per iteration is recorded directly in the reporter to ensure
         # any delays in logging results aren't counted
@@ -170,6 +189,11 @@ class StatusReporter:
         # result has been returned to Tune and that the function is safe to
         # resume training.
         self._continue_semaphore.acquire()
+
+        # If the trial should be terminated, exit gracefully.
+        if self._end_event.is_set():
+            self._end_event.clear()
+            sys.exit(0)
 
     def make_checkpoint_dir(self, step):
         checkpoint_dir = TrainableUtil.make_checkpoint_dir(
@@ -218,6 +242,11 @@ class StatusReporter:
         """Trial id for the corresponding trial of this Trainable."""
         return self._trial_id
 
+    @property
+    def trial_resources(self):
+        """Resources assigned to the trial of this Trainable."""
+        return self._trial_resources
+
 
 class _RunnerThread(threading.Thread):
     """Supervisor thread that runs your script."""
@@ -264,6 +293,10 @@ class FunctionRunner(Trainable):
         # and to generate the next result.
         self._continue_semaphore = threading.Semaphore(0)
 
+        # Event for notifying the reporter to exit gracefully, terminating
+        # the thread.
+        self._end_event = threading.Event()
+
         # Queue for passing results between threads
         self._results_queue = queue.Queue(1)
 
@@ -275,9 +308,11 @@ class FunctionRunner(Trainable):
         self._status_reporter = StatusReporter(
             self._results_queue,
             self._continue_semaphore,
+            self._end_event,
             trial_name=self.trial_name,
             trial_id=self.trial_id,
-            logdir=self.logdir)
+            logdir=self.logdir,
+            trial_resources=self.trial_resources)
         self._last_result = {}
 
         session.init(self._status_reporter)
@@ -340,7 +375,7 @@ class FunctionRunner(Trainable):
             except queue.Empty:
                 pass
 
-        # check if error occured inside the thread runner
+        # check if error occurred inside the thread runner
         if result is None:
             # only raise an error from the runner if all results are consumed
             self._report_thread_runner_error(block=True)
@@ -363,7 +398,7 @@ class FunctionRunner(Trainable):
         # This keyword appears if the train_func using the Function API
         # finishes without "done=True". This duplicates the last result, but
         # the TrialRunner will not log this result again.
-        if "__duplicate__" in result:
+        if RESULT_DUPLICATE in result:
             new_result = self._last_result.copy()
             new_result.update(result)
             result = new_result
@@ -413,6 +448,9 @@ class FunctionRunner(Trainable):
 
         checkpoint_path = TrainableUtil.process_checkpoint(
             checkpoint, parent_dir, state)
+
+        self._maybe_save_to_cloud()
+
         return checkpoint_path
 
     def save_to_object(self):
@@ -441,6 +479,11 @@ class FunctionRunner(Trainable):
         self.restore(checkpoint_path)
 
     def cleanup(self):
+        # Trigger thread termination
+        self._end_event.set()
+        self._continue_semaphore.release()
+        # Do not wait for thread termination here.
+
         # If everything stayed in synch properly, this should never happen.
         if not self._results_queue.empty():
             logger.warning(
@@ -457,21 +500,48 @@ class FunctionRunner(Trainable):
             logger.debug("Clearing temporary checkpoint: %s",
                          self.temp_checkpoint_dir)
 
+    def reset_config(self, new_config):
+        if self._runner and self._runner.is_alive():
+            self._end_event.set()
+            self._continue_semaphore.release()
+            # Wait for thread termination so it is save to re-use the same
+            # actor.
+            thread_timeout = int(
+                os.environ.get("TUNE_FUNCTION_THREAD_TIMEOUT_S", 2))
+            self._runner.join(timeout=thread_timeout)
+            if self._runner.is_alive():
+                # Did not finish within timeout, reset unsuccessful.
+                return False
+
+        self._runner = None
+        self._last_result = {}
+
+        self._status_reporter.reset(
+            trial_name=self.trial_name,
+            trial_id=self.trial_id,
+            logdir=self.logdir,
+            trial_resources=self.trial_resources)
+
+        return True
+
     def _report_thread_runner_error(self, block=False):
         try:
             err_tb_str = self._error_queue.get(
                 block=block, timeout=ERROR_FETCH_TIMEOUT)
-            raise TuneError(("Trial raised an exception. Traceback:\n{}"
-                             .format(err_tb_str)))
+            raise TuneError(
+                ("Trial raised an exception. Traceback:\n{}".format(err_tb_str)
+                 ))
         except queue.Empty:
             pass
 
 
-def wrap_function(train_func, warn=True):
+def wrap_function(train_func: Callable[[Any], Any],
+                  warn: bool = True,
+                  name: Optional[str] = None):
+    inherit_from = (FunctionRunner, )
+
     if hasattr(train_func, "__mixins__"):
-        inherit_from = train_func.__mixins__ + (FunctionRunner, )
-    else:
-        inherit_from = (FunctionRunner, )
+        inherit_from = train_func.__mixins__ + inherit_from
 
     func_args = inspect.getfullargspec(train_func).args
     use_checkpoint = detect_checkpoint_function(train_func)
@@ -495,8 +565,8 @@ def wrap_function(train_func, warn=True):
                 "arguments to be `func(config, checkpoint_dir=None)`.")
 
     class ImplicitFunc(*inherit_from):
-        _name = train_func.__name__ if hasattr(train_func, "__name__") \
-            else "func"
+        _name = name or (train_func.__name__
+                         if hasattr(train_func, "__name__") else "func")
 
         def _trainable_func(self, config, reporter, checkpoint_dir):
             if not use_checkpoint and not use_reporter:
@@ -534,66 +604,3 @@ def wrap_function(train_func, warn=True):
             return output
 
     return ImplicitFunc
-
-
-def with_parameters(fn, **kwargs):
-    """Wrapper for function trainables to pass arbitrary large data objects.
-
-    This wrapper function will store all passed parameters in the Ray
-    object store and retrieve them when calling the function. It can thus
-    be used to pass arbitrary data, even datasets, to Tune trainable functions.
-
-    This can also be used as an alternative to `functools.partial` to pass
-    default arguments to trainables.
-
-    Args:
-        fn: function to wrap
-        **kwargs: parameters to store in object store.
-
-
-    .. code-block:: python
-
-        from ray import tune
-
-        def train(config, data=None):
-            for sample in data:
-                # ...
-                tune.report(loss=loss)
-
-        data = HugeDataset(download=True)
-
-        tune.run(
-            tune.with_parameters(train, data=data),
-            #...
-        )
-
-    """
-    prefix = f"{str(fn)}_"
-    for k, v in kwargs.items():
-        parameter_registry.put(prefix + k, v)
-
-    use_checkpoint = detect_checkpoint_function(fn)
-
-    def inner(config, checkpoint_dir=None):
-        fn_kwargs = {}
-        if use_checkpoint:
-            default = checkpoint_dir
-            sig = inspect.signature(fn)
-            if "checkpoint_dir" in sig.parameters:
-                default = sig.parameters["checkpoint_dir"].default \
-                          or default
-            fn_kwargs["checkpoint_dir"] = default
-
-        for k in kwargs:
-            fn_kwargs[k] = parameter_registry.get(prefix + k)
-        fn(config, **fn_kwargs)
-
-    # Use correct function signature if no `checkpoint_dir` parameter is set
-    if not use_checkpoint:
-
-        def _inner(config):
-            inner(config, checkpoint_dir=None)
-
-        return _inner
-
-    return inner

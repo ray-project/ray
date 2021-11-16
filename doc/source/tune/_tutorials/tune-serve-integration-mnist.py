@@ -24,7 +24,7 @@ from additional resources and can adapt to your environment. If you
 need to train on more data or have more hyperparameters to tune,
 Ray Tune can leverage your whole cluster for training. If you have
 many users doing inference on your served models, Ray Serve can
-automatically distribute the inference backends to multiple nodes.
+automatically distribute the inference to multiple nodes.
 
 This tutorial will show you an end-to-end example how to train a MNIST
 image classifier on incrementally arriving data and automatically
@@ -35,7 +35,7 @@ By the end of this tutorial you will be able to
 1. Do hyperparameter optimization on a simple MNIST classifier
 2. Continue to train this classifier from an existing model with
    newly arriving data
-3. Automatically create and serve data backends with Ray Serve
+3. Automatically create and serve data deployments with Ray Serve
 
 Roadmap and desired functionality
 ---------------------------------
@@ -287,7 +287,7 @@ def train_mnist(config,
 # that affect the model complexity (such as the layer size), since it
 # does not have to be compatible to an existing model.
 def tune_from_scratch(num_samples=10, num_epochs=10, gpus_per_trial=0., day=0):
-    data_interface = MNISTDataInterface("/tmp/mnist_data", max_days=10)
+    data_interface = MNISTDataInterface("~/data", max_days=10)
     num_examples = data_interface._get_day_slice(day)
 
     config = {
@@ -402,18 +402,17 @@ def tune_from_existing(start_model,
 #######################################################################
 # Serving tuned models with Ray Serve
 # -----------------------------------
-# Let's now turn to the model serving part with Ray Serve. Serve
-# distinguishes between _backends_ and _endpoints_. Broadly speaking, a
-# backend handles incoming requests and replies with a result. For
-# instance, our MNIST backend takes an image as input and outputs the
-# digit it recognized from it. An endpoint on the other hand forwards
-# incoming HTTP requests to one or more different backends, according
-# to a routing policy.
+# Let's now turn to the model serving part with Ray Serve. Serve allows
+# you to deploy your models as multiple _deployments_. Broadly speaking,
+# a deployment handles incoming requests and replies with a result. For
+# instance, our MNIST deployment takes an image as input and outputs the
+# digit it recognized from it. This deployment can be exposed over HTTP.
 #
-# First, we will define our backend. This backend loads our PyTorch
+# First, we will define our deployment. This loads our PyTorch
 # MNIST model from a checkpoint, takes an image as an input and
 # outputs our digit prediction according to our trained model:
-class MNISTBackend:
+@serve.deployment(name="mnist", route_prefix="/mnist")
+class MNISTDeployment:
     def __init__(self, checkpoint_dir, config, metrics, use_gpu=False):
         self.checkpoint_dir = checkpoint_dir
         self.config = config
@@ -440,47 +439,18 @@ class MNISTBackend:
 
 #######################################################################
 # We would like to have a fixed location where we store the currently
-# active model. We call this directory ``model_dir``. Everytime we
+# active model. We call this directory ``model_dir``. Every time we
 # would like to update our model, we copy the checkpoint of the new
-# model to this directory. We then create a new backend pointing to
-# that directory, route all the traffic on our model endpoint to this
-# backend, and then delete the old backends to free up some memory.
-def serve_new_model(model_dir, checkpoint, config, metrics, day, gpu=False):
+# model to this directory. We then update the deployment to the new version.
+def serve_new_model(model_dir, checkpoint, config, metrics, day,
+                    use_gpu=False):
     print("Serving checkpoint: {}".format(checkpoint))
 
     checkpoint_path = _move_checkpoint_to_model_dir(model_dir, checkpoint,
                                                     config, metrics)
 
-    try:
-        # Try to connect to an existing cluster.
-        client = serve.connect()
-    except RayServeException:
-        # If this is the first run, need to start the cluster.
-        client = serve.start(detached=True)
-
-    backend_name = "mnist:day_{}".format(day)
-
-    client.create_backend(backend_name, MNISTBackend, checkpoint_path, config,
-                          metrics, gpu)
-
-    if "mnist" not in client.list_endpoints():
-        # First time we serve a model - create endpoint
-        client.create_endpoint(
-            "mnist", backend=backend_name, route="/mnist", methods=["POST"])
-    else:
-        # The endpoint already exists, route all traffic to the new model
-        # Here you could also implement an incremental rollout, where only
-        # a part of the traffic is sent to the new backend and the
-        # rest is sent to the existing backends.
-        client.set_traffic("mnist", {backend_name: 1.0})
-
-    # Delete previous existing backends
-    for existing_backend in client.list_backends():
-        if existing_backend.startswith("mnist:day") and \
-           existing_backend != backend_name:
-            client.delete_backend(existing_backend)
-
-    return True
+    serve.start(detached=True)
+    MNISTDeployment.deploy(checkpoint_path, config, metrics, use_gpu)
 
 
 def _move_checkpoint_to_model_dir(model_dir, checkpoint, config, metrics):
@@ -615,7 +585,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.smoke_test:
-        ray.init(num_cpus=2)
+        ray.init(num_cpus=3, namespace="tune-serve-integration")
+    else:
+        ray.init(namespace="tune-serve-integration")
 
     model_dir = os.path.expanduser(args.model_dir)
 
@@ -653,8 +625,13 @@ if __name__ == "__main__":
         print("Trained day {} from scratch on {} samples. "
               "Best accuracy: {:.4f}. Best config: {}".format(
                   args.day, num_examples, acc, config))
-        serve_new_model(model_dir, best_checkpoint, config, acc, args.day,
-                        serve_gpu)
+        serve_new_model(
+            model_dir,
+            best_checkpoint,
+            config,
+            acc,
+            args.day,
+            use_gpu=serve_gpu)
 
     if args.from_existing:
         old_checkpoint, old_config, old_acc = get_current_model(model_dir)
@@ -672,8 +649,13 @@ if __name__ == "__main__":
         print("Trained day {} from existing on {} samples. "
               "Best accuracy: {:.4f}. Best config: {}".format(
                   args.day, num_examples, acc, config))
-        serve_new_model(model_dir, best_checkpoint, config, acc, args.day,
-                        serve_gpu)
+        serve_new_model(
+            model_dir,
+            best_checkpoint,
+            config,
+            acc,
+            args.day,
+            use_gpu=serve_gpu)
 
 #######################################################################
 # That's it! We now have an end-to-end workflow to train and update a
@@ -685,7 +667,7 @@ if __name__ == "__main__":
 # now we only serve the latest trained model. We could  also choose to
 # route only a certain percentage of users to the new model, maybe to
 # see if the new model really does it's job right. These kind of
-# deployments are called :ref:`canary deployments <serve-split-traffic>`.
+# deployments are called canary deployments.
 # These kind of deployments would also require us to keep more than one
 # model in our ``model_dir`` - which should be quite easy: We could just
 # create subdirectories for each training day.

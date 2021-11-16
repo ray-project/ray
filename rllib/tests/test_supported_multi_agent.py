@@ -1,10 +1,12 @@
 import unittest
 
 import ray
-from ray.rllib.agents.registry import get_agent_class
+from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, \
     MultiAgentMountainCar
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.policy.policy import PolicySpec
+from ray.rllib.utils.test_utils import check_train_results, \
+    framework_iterator
 from ray.tune import register_env
 
 
@@ -13,18 +15,37 @@ def check_support_multiagent(alg, config):
                  lambda _: MultiAgentMountainCar({"num_agents": 2}))
     register_env("multi_agent_cartpole",
                  lambda _: MultiAgentCartPole({"num_agents": 2}))
-    config["log_level"] = "ERROR"
+
+    # Simulate a simple multi-agent setup.
+    policies = {
+        "policy_0": PolicySpec(config={"gamma": 0.99}),
+        "policy_1": PolicySpec(config={"gamma": 0.95}),
+    }
+    policy_ids = list(policies.keys())
+
+    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
+        pol_id = policy_ids[agent_id]
+        return pol_id
+
+    config["multiagent"] = {
+        "policies": policies,
+        "policy_mapping_fn": policy_mapping_fn,
+    }
+
     for fw in framework_iterator(config):
         if fw in ["tf2", "tfe"] and \
                 alg in ["A3C", "APEX", "APEX_DDPG", "IMPALA"]:
             continue
         if alg in ["DDPG", "APEX_DDPG", "SAC"]:
-            a = get_agent_class(alg)(
+            a = get_trainer_class(alg)(
                 config=config, env="multi_agent_mountaincar")
         else:
-            a = get_agent_class(alg)(config=config, env="multi_agent_cartpole")
+            a = get_trainer_class(alg)(
+                config=config, env="multi_agent_cartpole")
 
-        print(a.train())
+        results = a.train()
+        check_train_results(results)
+        print(results)
         a.stop()
 
 
@@ -65,7 +86,7 @@ class TestSupportedMultiAgentPG(unittest.TestCase):
 class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=6)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -81,6 +102,9 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
                 "min_iter_time_s": 1,
                 "learning_starts": 10,
                 "target_network_update_freq": 100,
+                "optimizer": {
+                    "num_replay_buffer_shards": 1,
+                },
             })
 
     def test_apex_ddpg_multiagent(self):

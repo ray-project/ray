@@ -13,6 +13,7 @@ from mxnet.gluon.data.vision import transforms
 from gluoncv.model_zoo import get_model
 from gluoncv.data import transforms as gcv_transforms
 
+from ray.tune.schedulers import create_scheduler
 from ray import tune
 
 # Training settings
@@ -185,19 +186,9 @@ def train_cifar10(config):
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    sched = create_scheduler(args.scheduler)
 
-    import ray
-    from ray.tune.schedulers import AsyncHyperBandScheduler, FIFOScheduler
-
-    ray.init()
-    if args.scheduler == "fifo":
-        sched = FIFOScheduler()
-    elif args.scheduler == "asynchyperband":
-        sched = AsyncHyperBandScheduler(
-            metric="mean_loss", mode="min", max_t=400, grace_period=60)
-    else:
-        raise NotImplementedError
-    tune.run(
+    analysis = tune.run(
         train_cifar10,
         name=args.expname,
         verbose=2,
@@ -213,8 +204,7 @@ if __name__ == "__main__":
         num_samples=1 if args.smoke_test else args.num_samples,
         config={
             "args": args,
-            "lr": tune.sample_from(
-                lambda spec: np.power(10.0, np.random.uniform(-4, -1))),
-            "momentum": tune.sample_from(
-                lambda spec: np.random.uniform(0.85, 0.95)),
+            "lr": tune.loguniform(1e-4, 1e-1),
+            "momentum": tune.uniform(0.85, 0.95),
         })
+    print("Best hyperparameters found were: ", analysis.best_config)

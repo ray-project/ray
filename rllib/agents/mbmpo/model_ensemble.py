@@ -7,7 +7,7 @@ from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER
 from ray.rllib.utils.typing import SampleBatchType
-from ray.rllib.utils.torch_ops import convert_to_torch_tensor
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 torch, nn = try_import_torch()
 
@@ -136,6 +136,8 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
                 obs_space.low[0],
                 obs_space.high[0],
                 shape=(obs_space.shape[0] + action_space.shape[0], ))
+        else:
+            raise NotImplementedError
         super(DynamicsEnsembleCustomModel, self).__init__(
             input_space, action_space, num_outputs, model_config, name)
 
@@ -198,6 +200,9 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
     def fit(self):
         # Add env samples to Replay Buffer
         local_worker = get_global_worker()
+        for pid, pol in local_worker.policy_map.items():
+            pol.view_requirements[
+                SampleBatch.NEXT_OBS].used_for_training = True
         new_samples = local_worker.sample()
         # Initial Exploration of 8000 timesteps
         if not self.global_itr:
@@ -206,6 +211,11 @@ class DynamicsEnsembleCustomModel(TorchModelV2, nn.Module):
 
         # Process Samples
         new_samples = process_samples(new_samples)
+        if isinstance(self.action_space, Discrete):
+            act = new_samples["actions"]
+            new_act = np.zeros((act.size, act.max() + 1))
+            new_act[np.arange(act.size), act] = 1
+            new_samples["actions"] = new_act.astype("float32")
 
         if not self.replay_buffer:
             self.replay_buffer = new_samples

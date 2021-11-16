@@ -1,4 +1,5 @@
 import logging
+from typing import Optional, Type
 
 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
 from ray.rllib.agents.trainer import with_common_config
@@ -6,6 +7,10 @@ from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.execution.rollout_ops import AsyncGradients
 from ray.rllib.execution.train_ops import ApplyGradients
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
+from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.util.iter import LocalIterator
+from ray.rllib.policy.policy import Policy
 
 logger = logging.getLogger(__name__)
 
@@ -32,20 +37,28 @@ DEFAULT_CONFIG = with_common_config({
     "vf_loss_coeff": 0.5,
     # Entropy coefficient
     "entropy_coeff": 0.01,
+    # Entropy coefficient schedule
+    "entropy_coeff_schedule": None,
     # Min time per iteration
     "min_iter_time_s": 5,
     # Workers sample async. Note that this increases the effective
     # rollout_fragment_length by up to 5x due to async buffering of batches.
     "sample_async": True,
-    # Switch on Trajectory View API for A2/3C by default.
-    # NOTE: Only supported for PyTorch so far.
-    "_use_trajectory_view_api": True,
 })
 # __sphinx_doc_end__
 # yapf: enable
 
 
-def get_policy_class(config):
+def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
+    """Policy class picker function. Class is chosen based on DL-framework.
+
+    Args:
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        Optional[Type[Policy]]: The Policy class to use with DQNTrainer.
+            If None, use `default_policy` provided in build_trainer().
+    """
     if config["framework"] == "torch":
         from ray.rllib.agents.a3c.a3c_torch_policy import \
             A3CTorchPolicy
@@ -54,16 +67,33 @@ def get_policy_class(config):
         return A3CTFPolicy
 
 
-def validate_config(config):
+def validate_config(config: TrainerConfigDict) -> None:
+    """Checks and updates the config based on settings.
+
+    Rewrites rollout_fragment_length to take into account n_step truncation.
+    """
     if config["entropy_coeff"] < 0:
-        raise DeprecationWarning("`entropy_coeff` must be >= 0")
-    if config["sample_async"] and config["framework"] == "torch":
-        config["sample_async"] = False
-        logger.warning("`sample_async=True` is not supported for PyTorch! "
-                       "Multithreading can lead to crashes.")
+        raise ValueError("`entropy_coeff` must be >= 0.0!")
+    if config["num_workers"] <= 0 and config["sample_async"]:
+        raise ValueError("`num_workers` for A3C must be >= 1!")
 
 
-def execution_plan(workers, config):
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
+    """Execution plan of the MARWIL/BC algorithm. Defines the distributed
+    dataflow.
+
+    Args:
+        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
+            of the Trainer.
+        config (TrainerConfigDict): The trainer's configuration dict.
+
+    Returns:
+        LocalIterator[dict]: A local iterator over training metrics.
+    """
+    assert len(kwargs) == 0, (
+        "A3C execution_plan does NOT take any additional parameters")
+
     # For A3C, compute policy gradients remotely on the rollout workers.
     grads = AsyncGradients(workers)
 

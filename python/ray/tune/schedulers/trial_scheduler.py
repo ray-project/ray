@@ -1,6 +1,7 @@
 from typing import Dict, Optional
 
 from ray.tune import trial_runner
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.trial import Trial
 
 
@@ -13,9 +14,15 @@ class TrialScheduler:
 
     _metric = None
 
+    _supports_buffered_results = True
+
     @property
     def metric(self):
         return self._metric
+
+    @property
+    def supports_buffered_results(self):
+        return self._supports_buffered_results
 
     def set_search_properties(self, metric: Optional[str],
                               mode: Optional[str]) -> bool:
@@ -32,6 +39,11 @@ class TrialScheduler:
             return False
         if metric:
             self._metric = metric
+
+        if self._metric is None:
+            # Per default, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
         return True
 
     def on_trial_add(self, trial_runner: "trial_runner.TrialRunner",
@@ -92,6 +104,14 @@ class TrialScheduler:
 
         raise NotImplementedError
 
+    def save(self, checkpoint_path: str):
+        """Save trial scheduler to a checkpoint"""
+        raise NotImplementedError
+
+    def restore(self, checkpoint_path: str):
+        """Restore trial scheduler from checkpoint."""
+        raise NotImplementedError
+
 
 class FIFOScheduler(TrialScheduler):
     """Simple scheduler that just runs trials in submission order."""
@@ -120,11 +140,13 @@ class FIFOScheduler(TrialScheduler):
             self, trial_runner: "trial_runner.TrialRunner") -> Optional[Trial]:
         for trial in trial_runner.get_trials():
             if (trial.status == Trial.PENDING
-                    and trial_runner.has_resources(trial.resources)):
+                    and trial_runner.trial_executor.has_resources_for_trial(
+                        trial)):
                 return trial
         for trial in trial_runner.get_trials():
             if (trial.status == Trial.PAUSED
-                    and trial_runner.has_resources(trial.resources)):
+                    and trial_runner.trial_executor.has_resources_for_trial(
+                        trial)):
                 return trial
         return None
 

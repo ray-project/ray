@@ -1,6 +1,0 @@
-images:
- - name: controller
-   newTag: latest
-   newName: controller
-resources:
-- manager.yaml

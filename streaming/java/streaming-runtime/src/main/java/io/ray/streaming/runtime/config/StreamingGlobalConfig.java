@@ -15,9 +15,7 @@ import org.aeonbits.owner.ConfigFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/**
- * Streaming general config. May used by both JobMaster and JobWorker.
- */
+/** Streaming general config. May used by both JobMaster and JobWorker. */
 public class StreamingGlobalConfig implements Serializable {
 
   private static final Logger LOG = LoggerFactory.getLogger(StreamingGlobalConfig.class);
@@ -65,8 +63,7 @@ public class StreamingGlobalConfig implements Serializable {
         break;
       }
     }
-    Preconditions.checkArgument(configInterface != null,
-        "Can not get config interface.");
+    Preconditions.checkArgument(configInterface != null, "Can not get config interface.");
     Method[] methods = configInterface.getMethods();
 
     for (Method method : methods) {
@@ -78,8 +75,10 @@ public class StreamingGlobalConfig implements Serializable {
         try {
           value = method.invoke(config);
         } catch (Exception e) {
-          LOG.warn("Can not get value by method invoking for config key: {}. "
-              + "So use default value instead.", ownerKeyAnnotationValue);
+          LOG.warn(
+              "Can not get value by method invoking for config key: {}. "
+                  + "So use default value instead.",
+              ownerKeyAnnotationValue);
           String defaultValue = method.getAnnotation(DefaultValue.class).value();
           value = defaultValue;
         }

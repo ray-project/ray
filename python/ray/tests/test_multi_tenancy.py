@@ -3,27 +3,27 @@ import os
 import sys
 import time
 
-import grpc
 import pytest
+import numpy as np
 
 import ray
-import ray.test_utils
+from ray.core.generated import common_pb2
 from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
-from ray.test_utils import (wait_for_condition, wait_for_pid_to_exit,
-                            run_string_as_driver,
-                            run_string_as_driver_nonblocking)
+from ray._private.test_utils import (wait_for_condition, run_string_as_driver,
+                                     run_string_as_driver_nonblocking)
+from ray._private.utils import init_grpc_channel
 
 
 def get_workers():
     raylet = ray.nodes()[0]
     raylet_address = "{}:{}".format(raylet["NodeManagerAddress"],
                                     raylet["NodeManagerPort"])
-    channel = grpc.insecure_channel(raylet_address)
+    channel = init_grpc_channel(raylet_address)
     stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
     return [
         worker for worker in stub.GetNodeStats(
-            node_manager_pb2.GetNodeStatsRequest()).workers_stats
-        if not worker.is_driver
+            node_manager_pb2.GetNodeStatsRequest()).core_workers_stats
+        if worker.worker_type != common_pb2.DRIVER
     ]
 
 
@@ -42,6 +42,7 @@ def test_initial_workers(shutdown_only):
 # all the PIDs don't overlap. If overlapped, it means that tasks owned by
 # different drivers were scheduled to the same worker process, that is, tasks
 # of different jobs were not correctly isolated during execution.
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 def test_multi_drivers(shutdown_only):
     info = ray.init(num_cpus=10)
 
@@ -87,8 +88,8 @@ ray.shutdown()
         err = p.stderr.read().decode("ascii")
         p.wait()
         # out, err = p.communicate()
-        # out = ray.utils.decode(out)
-        # err = ray.utils.decode(err)
+        # out = ray._private.utils.decode(out)
+        # err = ray._private.utils.decode(err)
         if p.returncode != 0:
             print("Driver with PID {} returned error code {}".format(
                 p.pid, p.returncode))
@@ -110,12 +111,14 @@ ray.shutdown()
                     all_worker_pids.add(worker_pid)
 
 
-def test_worker_env(shutdown_only):
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_runtime_env(shutdown_only):
     ray.init(
-        job_config=ray.job_config.JobConfig(worker_env={
-            "foo1": "bar1",
-            "foo2": "bar2"
-        }))
+        job_config=ray.job_config.JobConfig(
+            runtime_env={"env_vars": {
+                "foo1": "bar1",
+                "foo2": "bar2"
+            }}))
 
     @ray.remote
     def get_env(key):
@@ -206,49 +209,6 @@ def test_worker_capping_run_chained_tasks(shutdown_only):
     assert len(get_workers()) == 2
 
 
-def test_worker_capping_fifo(shutdown_only):
-    # Start 2 initial workers by setting num_cpus to 2.
-    info = ray.init(num_cpus=2)
-    wait_for_condition(lambda: len(get_workers()) == 2)
-
-    time.sleep(1)
-
-    @ray.remote
-    def getpid():
-        return os.getpid()
-
-    worker1, worker2 = get_workers()
-
-    if worker1.pid == ray.get(getpid.remote()):
-        worker1, worker2 = [worker2, worker1]
-
-    # Worker 1 is before worker 2 in the FIFO queue.
-
-    driver_code = """
-import ray
-import time
-
-ray.init(address="{}")
-
-@ray.remote
-def foo():
-    pass
-
-ray.get(foo.remote())
-# Sleep a while to make sure an idle worker exits before this driver exits.
-time.sleep(2)
-ray.shutdown()
-    """.format(info["redis_address"])
-
-    run_string_as_driver(driver_code)
-
-    # Worker 1 should have been killed.
-    wait_for_pid_to_exit(worker1.pid)
-
-    wait_for_condition(lambda: len(get_workers()) == 1)
-    assert worker2.pid == get_workers()[0].pid
-
-
 def test_worker_registration_failure_after_driver_exit(shutdown_only):
     info = ray.init(num_cpus=1)
 
@@ -275,7 +235,81 @@ ray.shutdown()
 
     # wait for a while to let workers register
     time.sleep(2)
-    wait_for_condition(lambda: len(get_workers()) == before)
+    wait_for_condition(lambda: len(get_workers()) <= before)
+
+
+def test_not_killing_workers_that_own_objects(shutdown_only):
+    # Set the small interval for worker capping
+    # so that we can easily trigger it.
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            "kill_idle_workers_interval_ms": 10,
+            "worker_lease_timeout_milliseconds": 0
+        })
+
+    expected_num_workers = 6
+    # Create a nested tasks to start 8 workers each of which owns an object.
+
+    @ray.remote
+    def nested(i):
+        # The task owns an object.
+        if i >= expected_num_workers - 1:
+            return [ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))]
+        else:
+            return ([ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))] +
+                    ray.get(nested.remote(i + 1)))
+
+    ref = ray.get(nested.remote(0))
+    num_workers = len(get_workers())
+
+    # Wait for worker capping. worker capping should be triggered
+    # every 10 ms, but we wait long enough to avoid a flaky test.
+    time.sleep(1)
+    ref2 = ray.get(nested.remote(0))
+
+    # New workers shouldn't be registered because we reused the
+    # previous workers that own objects.
+    cur_num_workers = len(get_workers())
+    # TODO(ekl) ideally these would be exactly equal, however the test is
+    # occasionally flaky with that check.
+    assert abs(num_workers - cur_num_workers) < 2, \
+        (num_workers, cur_num_workers)
+    assert len(ref2) == expected_num_workers
+    assert len(ref) == expected_num_workers
+
+
+def test_kill_idle_workers_that_are_behind_owned_workers(shutdown_only):
+    # When the first N idle workers own objects, and if we have N+N
+    # total idle workers, we should make sure other N workers are killed.
+    # It is because the idle workers are killed in the FIFO order.
+    N = 4
+    ray.init(
+        num_cpus=1,
+        _system_config={
+            "kill_idle_workers_interval_ms": 10,
+            "worker_lease_timeout_milliseconds": 0
+        })
+
+    @ray.remote
+    def nested(i):
+        if i >= (N * 2) - 1:
+            return [ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))]
+        elif i >= N:
+            return ([ray.put(np.ones(1 * 1024 * 1024, dtype=np.uint8))] +
+                    ray.get(nested.remote(i + 1)))
+        else:
+            return ([1] + ray.get(nested.remote(i + 1)))
+
+    # The first N workers don't own objects
+    # and the later N workers do.
+    ref = ray.get(nested.remote(0))
+    assert len(ref) == N * 2
+    num_workers = len(get_workers())
+    assert num_workers == N * 2
+
+    # Make sure there are only N workers left after worker capping.
+    wait_for_condition(lambda: len(get_workers()) == N)
 
 
 if __name__ == "__main__":

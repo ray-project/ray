@@ -6,10 +6,12 @@ See https://github.com/ray-project/ray/issues/3721.
 
 # WARNING: Any additional ID types defined in this file must be added to the
 # _ID_TYPES list at the bottom of this file.
+
+from concurrent.futures import Future
+import logging
 import os
 
 from ray.includes.unique_ids cimport (
-    CActorCheckpointID,
     CActorClassID,
     CActorID,
     CNodeID,
@@ -24,7 +26,9 @@ from ray.includes.unique_ids cimport (
 )
 
 import ray
-from ray.utils import decode
+from ray._private.utils import decode
+
+logger = logging.getLogger(__name__)
 
 
 def check_id(b, size=kUniqueIDSize):
@@ -32,7 +36,7 @@ def check_id(b, size=kUniqueIDSize):
         raise TypeError("Unsupported type: " + str(type(b)))
     if len(b) != size:
         raise ValueError("ID string needs to have length " +
-                         str(size))
+                         str(size) + ", got " + str(len(b)))
 
 
 cdef extern from "ray/common/constants.h" nogil:
@@ -63,7 +67,7 @@ cdef class BaseID:
         return type(self) == type(other) and self.binary() == other.binary()
 
     def __ne__(self, other):
-        return self.binary() != other.binary()
+        return type(self) != type(other) or self.binary() != other.binary()
 
     def __bytes__(self):
         return self.binary()
@@ -152,6 +156,9 @@ cdef class TaskID(BaseID):
     def actor_id(self):
         return ActorID(self.data.ActorId().Binary())
 
+    def job_id(self):
+        return JobID(self.data.JobId().Binary())
+
     cdef size_t hash(self):
         return self.data.Hash()
 
@@ -164,8 +171,9 @@ cdef class TaskID(BaseID):
         return CTaskID.Size()
 
     @classmethod
-    def for_fake_task(cls):
-        return cls(CTaskID.ForFakeTask().Binary())
+    def for_fake_task(cls, job_id):
+        return cls(CTaskID.FromRandom(
+            CJobID.FromBinary(job_id.binary())).Binary())
 
     @classmethod
     def for_driver_task(cls, job_id):
@@ -205,6 +213,11 @@ cdef class NodeID(UniqueID):
         check_id(id)
         self.data = CNodeID.FromBinary(<c_string>id)
 
+    @classmethod
+    def from_hex(cls, hex_id):
+        binary_id = CNodeID.FromHex(<c_string>hex_id).Binary()
+        return cls(binary_id)
+
     cdef CNodeID native(self):
         return <CNodeID>self.data
 
@@ -232,6 +245,9 @@ cdef class JobID(BaseID):
     def size(cls):
         return CJobID.Size()
 
+    def int(self):
+        return self.data.ToInt()
+
     def binary(self):
         return self.data.Binary()
 
@@ -257,12 +273,10 @@ cdef class WorkerID(UniqueID):
         return <CWorkerID>self.data
 
 cdef class ActorID(BaseID):
+
     def __init__(self, id):
         check_id(id, CActorID.Size())
         self.data = CActorID.FromBinary(<c_string>id)
-
-    cdef CActorID native(self):
-        return <CActorID>self.data
 
     @classmethod
     def of(cls, job_id, parent_task_id, parent_task_counter):
@@ -284,14 +298,18 @@ cdef class ActorID(BaseID):
     def size(cls):
         return CActorID.Size()
 
+    def size(self):
+        return CActorID.Size()
+
+    @property
+    def job_id(self):
+        return JobID(self.data.JobId().Binary())
+
     def binary(self):
         return self.data.Binary()
 
     def hex(self):
         return decode(self.data.Hex())
-
-    def size(self):
-        return CActorID.Size()
 
     def is_nil(self):
         return self.data.IsNil()
@@ -299,15 +317,78 @@ cdef class ActorID(BaseID):
     cdef size_t hash(self):
         return self.data.Hash()
 
+    cdef CActorID native(self):
+        return <CActorID>self.data
 
-cdef class ActorCheckpointID(UniqueID):
 
-    def __init__(self, id):
-        check_id(id)
-        self.data = CActorCheckpointID.FromBinary(<c_string>id)
+cdef class ClientActorRef(ActorID):
 
-    cdef CActorCheckpointID native(self):
-        return <CActorCheckpointID>self.data
+    def __init__(self, id: Union[bytes, concurrent.futures.Future]):
+        self._mutex = threading.Lock()
+        if isinstance(id, bytes):
+            self._set_id(id)
+        elif isinstance(id, Future):
+            self._id_future = id
+        else:
+            raise TypeError("Unexpected type for id {}".format(id))
+
+    def __dealloc__(self):
+        if client is None or client.ray is None:
+            # The client package or client.ray object might be set
+            # to None when the script exits. Should be safe to skip
+            # call_release in this case, since the client should have already
+            # disconnected at this point.
+            return
+        if client.ray.is_connected():
+            try:
+                self._wait_for_id()
+            # cython would suppress this exception as well, but it tries to
+            # print out the exception which may crash. Log a simpler message
+            # instead.
+            except Exception:
+                logger.info(
+                    "Exception from actor creation is ignored in destructor. "
+                    "To receive this exception in application code, call "
+                    "a method on the actor reference before its destructor "
+                    "is run.")
+            if not self.data.IsNil():
+                client.ray.call_release(self.id)
+
+    def binary(self):
+        self._wait_for_id()
+        return self.data.Binary()
+
+    def hex(self):
+        self._wait_for_id()
+        return decode(self.data.Hex())
+
+    def is_nil(self):
+        self._wait_for_id()
+        return self.data.IsNil()
+
+    cdef size_t hash(self):
+        self._wait_for_id()
+        return self.data.Hash()
+
+    cdef CActorID native(self):
+        self._wait_for_id()
+        return <CActorID>self.data
+
+    @property
+    def id(self):
+        return self.binary()
+
+    cdef _set_id(self, id):
+        check_id(id, CActorID.Size())
+        self.data = CActorID.FromBinary(<c_string>id)
+        client.ray.call_retain(id)
+
+    cdef _wait_for_id(self, timeout=None):
+        if self._id_future:
+            with self._mutex:
+                if self._id_future:
+                    self._set_id(self._id_future.result(timeout=timeout))
+                    self._id_future = None
 
 
 cdef class FunctionID(UniqueID):
@@ -370,7 +451,6 @@ cdef class PlacementGroupID(BaseID):
         return self.data.Hash()
 
 _ID_TYPES = [
-    ActorCheckpointID,
     ActorClassID,
     ActorID,
     NodeID,

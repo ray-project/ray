@@ -1,17 +1,43 @@
 import copy
+import gym
 from gym.spaces import Box, Discrete
-import time
+import numpy as np
 import unittest
 
 import ray
+from ray.rllib.agents.callbacks import DefaultCallbacks
+import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.ppo as ppo
 from ray.rllib.examples.env.debug_counter_env import MultiAgentDebugCounterEnv
+from ray.rllib.examples.env.multi_agent import MultiAgentPendulum
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples.policy.episode_env_aware_policy import \
-    EpisodeEnvAwarePolicy
+    EpisodeEnvAwareAttentionPolicy, EpisodeEnvAwareLSTMPolicy
+from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
+from ray.rllib.policy.view_requirement import ViewRequirement
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import framework_iterator, check
+
+
+class MyCallbacks(DefaultCallbacks):
+    @override(DefaultCallbacks)
+    def on_learn_on_batch(self, *, policy, train_batch, result, **kwargs):
+        assert train_batch.count == 201
+        assert sum(train_batch[SampleBatch.SEQ_LENS]) == 201
+        for k, v in train_batch.items():
+            if k in ["state_in_0", SampleBatch.SEQ_LENS]:
+                assert len(v) == len(train_batch[SampleBatch.SEQ_LENS])
+            else:
+                assert len(v) == 201
+        current = None
+        for o in train_batch[SampleBatch.OBS]:
+            if current:
+                assert o == current + 1
+            current = o
+            if o == 15:
+                current = None
 
 
 class TestTrajectoryViewAPI(unittest.TestCase):
@@ -26,19 +52,28 @@ class TestTrajectoryViewAPI(unittest.TestCase):
     def test_traj_view_normal_case(self):
         """Tests, whether Model and Policy return the correct ViewRequirements.
         """
-        config = ppo.DEFAULT_CONFIG.copy()
-        for _ in framework_iterator(config, frameworks="torch"):
-            trainer = ppo.PPOTrainer(config, env="CartPole-v0")
+        config = dqn.DEFAULT_CONFIG.copy()
+        config["num_envs_per_worker"] = 10
+        config["rollout_fragment_length"] = 4
+
+        for _ in framework_iterator(config):
+            trainer = dqn.DQNTrainer(
+                config,
+                env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv")
             policy = trainer.get_policy()
-            view_req_model = policy.model.inference_view_requirements
+            view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
             assert len(view_req_model) == 1, view_req_model
-            assert len(view_req_policy) == 11, view_req_policy
+            assert len(view_req_policy) == 10, view_req_policy
             for key in [
-                    SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.REWARDS,
-                    SampleBatch.DONES, SampleBatch.NEXT_OBS,
-                    SampleBatch.VF_PREDS, "advantages", "value_targets",
-                    SampleBatch.ACTION_DIST_INPUTS, SampleBatch.ACTION_LOGP
+                    SampleBatch.OBS,
+                    SampleBatch.ACTIONS,
+                    SampleBatch.REWARDS,
+                    SampleBatch.DONES,
+                    SampleBatch.NEXT_OBS,
+                    SampleBatch.EPS_ID,
+                    SampleBatch.AGENT_INDEX,
+                    "weights",
             ]:
                 assert key in view_req_policy
                 # None of the view cols has a special underlying data_col,
@@ -48,6 +83,14 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
                     assert view_req_policy[key].shift == 1
+            rollout_worker = trainer.workers.local_worker()
+            sample_batch = rollout_worker.sample()
+            expected_count = \
+                config["num_envs_per_worker"] * \
+                config["rollout_fragment_length"]
+            assert sample_batch.count == expected_count
+            for v in sample_batch.values():
+                assert len(v) == expected_count
             trainer.stop()
 
     def test_traj_view_lstm_prev_actions_and_rewards(self):
@@ -57,15 +100,18 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         config["model"] = config["model"].copy()
         # Activate LSTM + prev-action + rewards.
         config["model"]["use_lstm"] = True
-        config["model"]["lstm_use_prev_action_reward"] = True
+        config["model"]["lstm_use_prev_action"] = True
+        config["model"]["lstm_use_prev_reward"] = True
 
-        for _ in framework_iterator(config, frameworks="torch"):
+        for _ in framework_iterator(config):
             trainer = ppo.PPOTrainer(config, env="CartPole-v0")
             policy = trainer.get_policy()
-            view_req_model = policy.model.inference_view_requirements
+            view_req_model = policy.model.view_requirements
             view_req_policy = policy.view_requirements
+            # 7=obs, prev-a + r, 2x state-in, 2x state-out.
             assert len(view_req_model) == 7, view_req_model
-            assert len(view_req_policy) == 17, view_req_policy
+            assert len(view_req_policy) == 20,\
+                (len(view_req_policy), view_req_policy)
             for key in [
                     SampleBatch.OBS, SampleBatch.ACTIONS, SampleBatch.REWARDS,
                     SampleBatch.DONES, SampleBatch.NEXT_OBS,
@@ -91,118 +137,111 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].shift == 1
             trainer.stop()
 
-    def test_traj_view_simple_performance(self):
-        """Test whether PPOTrainer runs faster w/ `_use_trajectory_view_api`.
-        """
-        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
+    def test_traj_view_attention_net(self):
+        config = ppo.DEFAULT_CONFIG.copy()
+        # Setup attention net.
+        config["model"] = config["model"].copy()
+        config["model"]["max_seq_len"] = 50
+        config["model"]["custom_model"] = GTrXLNet
+        config["model"]["custom_model_config"] = {
+            "num_transformer_units": 1,
+            "attention_dim": 64,
+            "num_heads": 2,
+            "memory_inference": 50,
+            "memory_training": 50,
+            "head_dim": 32,
+            "ff_hidden_dim": 32,
+        }
+        # Test with odd batch numbers.
+        config["train_batch_size"] = 1031
+        config["sgd_minibatch_size"] = 201
+        config["num_sgd_iter"] = 5
+        config["num_workers"] = 0
+        config["callbacks"] = MyCallbacks
+        config["env_config"] = {
+            "config": {
+                "start_at_t": 1
+            }
+        }  # first obs is [1.0]
+
+        for _ in framework_iterator(config, frameworks="tf2"):
+            trainer = ppo.PPOTrainer(
+                config,
+                env="ray.rllib.examples.env.debug_counter_env.DebugCounterEnv",
+            )
+            rw = trainer.workers.local_worker()
+            sample = rw.sample()
+            assert sample.count == trainer.config["rollout_fragment_length"]
+            results = trainer.train()
+            assert results["timesteps_total"] == config["train_batch_size"]
+            trainer.stop()
+
+    def test_traj_view_next_action(self):
         action_space = Discrete(2)
-        obs_space = Box(-1.0, 1.0, shape=(700, ))
+        rollout_worker_w_api = RolloutWorker(
+            env_creator=lambda _: gym.make("CartPole-v0"),
+            policy_config=ppo.DEFAULT_CONFIG,
+            rollout_fragment_length=200,
+            policy_spec=ppo.PPOTorchPolicy,
+            policy_mapping_fn=None,
+            num_envs=1,
+        )
+        # Add the next action (a') and 2nd next action (a'') to the view
+        # requirements of the policy.
+        # This should be visible then in postprocessing and train batches.
+        # Switch off for action computations (can't be there as we don't know
+        # the next actions already at action computation time).
+        rollout_worker_w_api.policy_map[DEFAULT_POLICY_ID].view_requirements[
+            "next_actions"] = ViewRequirement(
+                SampleBatch.ACTIONS,
+                shift=1,
+                space=action_space,
+                used_for_compute_actions=False)
+        rollout_worker_w_api.policy_map[DEFAULT_POLICY_ID].view_requirements[
+            "2nd_next_actions"] = ViewRequirement(
+                SampleBatch.ACTIONS,
+                shift=2,
+                space=action_space,
+                used_for_compute_actions=False)
 
-        from ray.rllib.examples.env.random_env import RandomMultiAgentEnv
-
-        from ray.tune import register_env
-        register_env("ma_env", lambda c: RandomMultiAgentEnv({
-            "num_agents": 2,
-            "p_done": 0.0,
-            "max_episode_len": 104,
-            "action_space": action_space,
-            "observation_space": obs_space
-        }))
-
-        config["num_workers"] = 3
-        config["num_envs_per_worker"] = 8
-        config["num_sgd_iter"] = 1  # Put less weight on training.
-
-        policies = {
-            "pol0": (None, obs_space, action_space, {}),
-        }
-
-        def policy_fn(agent_id):
-            return "pol0"
-
-        config["multiagent"] = {
-            "policies": policies,
-            "policy_mapping_fn": policy_fn,
-        }
-        num_iterations = 2
-        # Only works in torch so far.
-        for _ in framework_iterator(config, frameworks="torch"):
-            print("w/ traj. view API")
-            config["_use_trajectory_view_api"] = True
-            trainer = ppo.PPOTrainer(config=config, env="ma_env")
-            learn_time_w = 0.0
-            sampler_perf_w = {}
-            start = time.time()
-            for i in range(num_iterations):
-                out = trainer.train()
-                ts = out["timesteps_total"]
-                sampler_perf_ = out["sampler_perf"]
-                sampler_perf_w = {
-                    k:
-                    sampler_perf_w.get(k, 0.0) + (sampler_perf_[k] * 1000 / ts)
-                    for k, v in sampler_perf_.items()
-                }
-                delta = out["timers"]["learn_time_ms"] / ts
-                learn_time_w += delta
-                print("{}={}s".format(i, delta))
-            sampler_perf_w = {
-                k: sampler_perf_w[k] / (num_iterations if "mean_" in k else 1)
-                for k, v in sampler_perf_w.items()
-            }
-            duration_w = time.time() - start
-            print("Duration: {}s "
-                  "sampler-perf.={} learn-time/iter={}s".format(
-                      duration_w, sampler_perf_w,
-                      learn_time_w / num_iterations))
-            trainer.stop()
-
-            print("w/o traj. view API")
-            config["_use_trajectory_view_api"] = False
-            trainer = ppo.PPOTrainer(config=config, env="ma_env")
-            learn_time_wo = 0.0
-            sampler_perf_wo = {}
-            start = time.time()
-            for i in range(num_iterations):
-                out = trainer.train()
-                ts = out["timesteps_total"]
-                sampler_perf_ = out["sampler_perf"]
-                sampler_perf_wo = {
-                    k: sampler_perf_wo.get(k, 0.0) +
-                    (sampler_perf_[k] * 1000 / ts)
-                    for k, v in sampler_perf_.items()
-                }
-                delta = out["timers"]["learn_time_ms"] / ts
-                learn_time_wo += delta
-                print("{}={}s".format(i, delta))
-            sampler_perf_wo = {
-                k: sampler_perf_wo[k] / (num_iterations if "mean_" in k else 1)
-                for k, v in sampler_perf_wo.items()
-            }
-            duration_wo = time.time() - start
-            print("Duration: {}s "
-                  "sampler-perf.={} learn-time/iter={}s".format(
-                      duration_wo, sampler_perf_wo,
-                      learn_time_wo / num_iterations))
-            trainer.stop()
-
-            # Assert `_use_trajectory_view_api` is faster.
-            self.assertLess(sampler_perf_w["mean_raw_obs_processing_ms"],
-                            sampler_perf_wo["mean_raw_obs_processing_ms"])
-            self.assertLess(sampler_perf_w["mean_action_processing_ms"],
-                            sampler_perf_wo["mean_action_processing_ms"])
-            self.assertLess(duration_w, duration_wo)
+        # Make sure, we have DONEs as well.
+        rollout_worker_w_api.policy_map[DEFAULT_POLICY_ID].view_requirements[
+            "dones"] = ViewRequirement()
+        batch = rollout_worker_w_api.sample()
+        self.assertTrue("next_actions" in batch)
+        self.assertTrue("2nd_next_actions" in batch)
+        expected_a_ = None  # expected next action
+        expected_a__ = None  # expected 2nd next action
+        for i in range(len(batch["actions"])):
+            a, d, a_, a__ = \
+                batch["actions"][i], batch["dones"][i], \
+                batch["next_actions"][i], batch["2nd_next_actions"][i]
+            # Episode done: next action and 2nd next action should be 0.
+            if d:
+                check(a_, 0)
+                check(a__, 0)
+                expected_a_ = None
+                expected_a__ = None
+                continue
+            # Episode is not done and we have an expected next-a.
+            if expected_a_ is not None:
+                check(a, expected_a_)
+            if expected_a__ is not None:
+                check(a_, expected_a__)
+            expected_a__ = a__
+            expected_a_ = a_
 
     def test_traj_view_lstm_functionality(self):
-        action_space = Box(-float("inf"), float("inf"), shape=(3, ))
+        action_space = Box(float("-inf"), float("inf"), shape=(3, ))
         obs_space = Box(float("-inf"), float("inf"), (4, ))
         max_seq_len = 50
         rollout_fragment_length = 200
         assert rollout_fragment_length % max_seq_len == 0
         policies = {
-            "pol0": (EpisodeEnvAwarePolicy, obs_space, action_space, {}),
+            "pol0": (EpisodeEnvAwareLSTMPolicy, obs_space, action_space, {}),
         }
 
-        def policy_fn(agent_id):
+        def policy_fn(agent_id, episode, **kwargs):
             return "pol0"
 
         config = {
@@ -214,37 +253,249 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 "use_lstm": True,
                 "max_seq_len": max_seq_len,
             },
-        },
+        }
 
-        rollout_worker_w_api = RolloutWorker(
+        rw = RolloutWorker(
             env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
-            policy_config=dict(config, **{"_use_trajectory_view_api": True}),
+            policy_config=config,
             rollout_fragment_length=rollout_fragment_length,
-            policy=policies,
+            policy_spec=policies,
             policy_mapping_fn=policy_fn,
+            normalize_actions=False,
             num_envs=1,
         )
-        rollout_worker_wo_api = RolloutWorker(
-            env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
-            policy_config=dict(config, **{"_use_trajectory_view_api": False}),
-            rollout_fragment_length=rollout_fragment_length,
-            policy=policies,
-            policy_mapping_fn=policy_fn,
-            num_envs=1,
-        )
+
         for iteration in range(20):
-            result = rollout_worker_w_api.sample()
+            result = rw.sample()
             check(result.count, rollout_fragment_length)
             pol_batch_w = result.policy_batches["pol0"]
             assert pol_batch_w.count >= rollout_fragment_length
-            analyze_rnn_batch(pol_batch_w, max_seq_len)
+            analyze_rnn_batch(
+                pol_batch_w,
+                max_seq_len,
+                view_requirements=rw.policy_map["pol0"].view_requirements)
 
-            result = rollout_worker_wo_api.sample()
-            pol_batch_wo = result.policy_batches["pol0"]
-            check(pol_batch_w.data, pol_batch_wo.data)
+    def test_traj_view_attention_functionality(self):
+        action_space = Box(float("-inf"), float("inf"), shape=(3, ))
+        obs_space = Box(float("-inf"), float("inf"), (4, ))
+        max_seq_len = 50
+        rollout_fragment_length = 201
+        policies = {
+            "pol0": (EpisodeEnvAwareAttentionPolicy, obs_space, action_space,
+                     {}),
+        }
+
+        def policy_fn(agent_id, episode, **kwargs):
+            return "pol0"
+
+        config = {
+            "multiagent": {
+                "policies": policies,
+                "policy_mapping_fn": policy_fn,
+            },
+            "model": {
+                "max_seq_len": max_seq_len,
+            },
+        }
+
+        rollout_worker_w_api = RolloutWorker(
+            env_creator=lambda _: MultiAgentDebugCounterEnv({"num_agents": 4}),
+            policy_config=config,
+            rollout_fragment_length=rollout_fragment_length,
+            policy_spec=policies,
+            policy_mapping_fn=policy_fn,
+            normalize_actions=False,
+            num_envs=1,
+        )
+        batch = rollout_worker_w_api.sample()
+        print(batch)
+
+    def test_counting_by_agent_steps(self):
+        """Test whether a PPOTrainer can be built with all frameworks."""
+        config = copy.deepcopy(ppo.DEFAULT_CONFIG)
+
+        num_agents = 3
+
+        config["num_workers"] = 2
+        config["num_sgd_iter"] = 2
+        config["framework"] = "torch"
+        config["rollout_fragment_length"] = 21
+        config["train_batch_size"] = 147
+        config["multiagent"] = {
+            "policies": {f"p{i}"
+                         for i in range(num_agents)},
+            "policy_mapping_fn": lambda aid, **kwargs: "p{}".format(aid),
+            "count_steps_by": "agent_steps",
+        }
+        # Env setup.
+        config["env"] = MultiAgentPendulum
+        config["env_config"] = {"num_agents": num_agents}
+
+        num_iterations = 2
+        trainer = ppo.PPOTrainer(config=config)
+        results = None
+        for i in range(num_iterations):
+            results = trainer.train()
+        self.assertEqual(results["agent_timesteps_total"],
+                         results["timesteps_total"] * num_agents)
+        self.assertGreaterEqual(results["agent_timesteps_total"],
+                                num_iterations * config["train_batch_size"])
+        self.assertLessEqual(results["agent_timesteps_total"],
+                             (num_iterations + 1) * config["train_batch_size"])
+        trainer.stop()
+
+    def test_get_single_step_input_dict_batch_repeat_value_larger_1(self):
+        """Test whether a SampleBatch produces the correct 1-step input dict.
+        """
+        space = Box(-1.0, 1.0, ())
+
+        # With batch-repeat-value > 1: state_in_0 is only built every n
+        # timesteps.
+        view_reqs = {
+            "state_in_0": ViewRequirement(
+                data_col="state_out_0",
+                shift="-5:-1",
+                space=space,
+                batch_repeat_value=5,
+            ),
+            "state_out_0": ViewRequirement(
+                space=space, used_for_compute_actions=False),
+        }
+
+        # Trajectory of 1 ts (0) (we would like to compute the 1st).
+        batch = SampleBatch({
+            "state_in_0": np.array([
+                [0, 0, 0, 0, 0],  # ts=0
+            ]),
+            "state_out_0": np.array([1]),
+        })
+        input_dict = batch.get_single_step_input_dict(
+            view_requirements=view_reqs, index="last")
+        check(
+            input_dict,
+            {
+                "state_in_0": [[0, 0, 0, 0, 1]],  # ts=1
+                "seq_lens": [1],
+            })
+
+        # Trajectory of 6 ts (0-5) (we would like to compute the 6th).
+        batch = SampleBatch({
+            "state_in_0": np.array([
+                [0, 0, 0, 0, 0],  # ts=0
+                [1, 2, 3, 4, 5],  # ts=5
+            ]),
+            "state_out_0": np.array([1, 2, 3, 4, 5, 6]),
+        })
+        input_dict = batch.get_single_step_input_dict(
+            view_requirements=view_reqs, index="last")
+        check(
+            input_dict,
+            {
+                "state_in_0": [[2, 3, 4, 5, 6]],  # ts=6
+                "seq_lens": [1],
+            })
+
+        # Trajectory of 12 ts (0-11) (we would like to compute the 12th).
+        batch = SampleBatch({
+            "state_in_0": np.array([
+                [0, 0, 0, 0, 0],  # ts=0
+                [1, 2, 3, 4, 5],  # ts=5
+                [6, 7, 8, 9, 10],  # ts=10
+            ]),
+            "state_out_0": np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
+        })
+        input_dict = batch.get_single_step_input_dict(
+            view_requirements=view_reqs, index="last")
+        check(
+            input_dict,
+            {
+                "state_in_0": [[8, 9, 10, 11, 12]],  # ts=12
+                "seq_lens": [1],
+            })
+
+    def test_get_single_step_input_dict_batch_repeat_value_1(self):
+        """Test whether a SampleBatch produces the correct 1-step input dict.
+        """
+        space = Box(-1.0, 1.0, ())
+
+        # With batch-repeat-value==1: state_in_0 is built each timestep.
+        view_reqs = {
+            "state_in_0": ViewRequirement(
+                data_col="state_out_0",
+                shift="-5:-1",
+                space=space,
+                batch_repeat_value=1,
+            ),
+            "state_out_0": ViewRequirement(
+                space=space, used_for_compute_actions=False),
+        }
+
+        # Trajectory of 1 ts (0) (we would like to compute the 1st).
+        batch = SampleBatch({
+            "state_in_0": np.array([
+                [0, 0, 0, 0, 0],  # ts=0
+            ]),
+            "state_out_0": np.array([1]),
+        })
+        input_dict = batch.get_single_step_input_dict(
+            view_requirements=view_reqs, index="last")
+        check(
+            input_dict,
+            {
+                "state_in_0": [[0, 0, 0, 0, 1]],  # ts=1
+                "seq_lens": [1],
+            })
+
+        # Trajectory of 6 ts (0-5) (we would like to compute the 6th).
+        batch = SampleBatch({
+            "state_in_0": np.array([
+                [0, 0, 0, 0, 0],  # ts=0
+                [0, 0, 0, 0, 1],  # ts=1
+                [0, 0, 0, 1, 2],  # ts=2
+                [0, 0, 1, 2, 3],  # ts=3
+                [0, 1, 2, 3, 4],  # ts=4
+                [1, 2, 3, 4, 5],  # ts=5
+            ]),
+            "state_out_0": np.array([1, 2, 3, 4, 5, 6]),
+        })
+        input_dict = batch.get_single_step_input_dict(
+            view_requirements=view_reqs, index="last")
+        check(
+            input_dict,
+            {
+                "state_in_0": [[2, 3, 4, 5, 6]],  # ts=6
+                "seq_lens": [1],
+            })
+
+        # Trajectory of 12 ts (0-11) (we would like to compute the 12th).
+        batch = SampleBatch({
+            "state_in_0": np.array([
+                [0, 0, 0, 0, 0],  # ts=0
+                [0, 0, 0, 0, 1],  # ts=1
+                [0, 0, 0, 1, 2],  # ts=2
+                [0, 0, 1, 2, 3],  # ts=3
+                [0, 1, 2, 3, 4],  # ts=4
+                [1, 2, 3, 4, 5],  # ts=5
+                [2, 3, 4, 5, 6],  # ts=6
+                [3, 4, 5, 6, 7],  # ts=7
+                [4, 5, 6, 7, 8],  # ts=8
+                [5, 6, 7, 8, 9],  # ts=9
+                [6, 7, 8, 9, 10],  # ts=10
+                [7, 8, 9, 10, 11],  # ts=11
+            ]),
+            "state_out_0": np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]),
+        })
+        input_dict = batch.get_single_step_input_dict(
+            view_requirements=view_reqs, index="last")
+        check(
+            input_dict,
+            {
+                "state_in_0": [[8, 9, 10, 11, 12]],  # ts=12
+                "seq_lens": [1],
+            })
 
 
-def analyze_rnn_batch(batch, max_seq_len):
+def analyze_rnn_batch(batch, max_seq_len, view_requirements):
     count = batch.count
 
     # Check prev_reward/action, next_obs consistency.
@@ -262,8 +513,8 @@ def analyze_rnn_batch(batch, max_seq_len):
         state_in_1 = batch["state_in_1"][idx]
 
         # Check postprocessing outputs.
-        if "postprocessed_column" in batch:
-            postprocessed_col_t = batch["postprocessed_column"][idx]
+        if "2xobs" in batch:
+            postprocessed_col_t = batch["2xobs"][idx]
             assert (obs_t == postprocessed_col_t / 2.0).all()
 
         # Check state-in/out and next-obs values.
@@ -317,11 +568,13 @@ def analyze_rnn_batch(batch, max_seq_len):
         batch,
         max_seq_len=max_seq_len,
         shuffle=False,
-        batch_divisibility_req=1)
+        batch_divisibility_req=1,
+        view_requirements=view_requirements,
+    )
 
     # Check after seq-len 0-padding.
     cursor = 0
-    for i, seq_len in enumerate(batch["seq_lens"]):
+    for i, seq_len in enumerate(batch[SampleBatch.SEQ_LENS]):
         state_in_0 = batch["state_in_0"][i]
         state_in_1 = batch["state_in_1"][i]
         for j in range(seq_len):
@@ -332,8 +585,8 @@ def analyze_rnn_batch(batch, max_seq_len):
             r_t = batch["rewards"][k]
 
             # Check postprocessing outputs.
-            if "postprocessed_column" in batch:
-                postprocessed_col_t = batch["postprocessed_column"][k]
+            if "2xobs" in batch:
+                postprocessed_col_t = batch["2xobs"][k]
                 assert (obs_t == postprocessed_col_t / 2.0).all()
 
             # Check state-in/out and next-obs values.

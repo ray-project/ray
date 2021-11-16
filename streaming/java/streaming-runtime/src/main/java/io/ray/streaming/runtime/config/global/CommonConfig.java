@@ -2,9 +2,7 @@ package io.ray.streaming.runtime.config.global;
 
 import io.ray.streaming.runtime.config.Config;
 
-/**
- * Job common config.
- */
+/** Job common config. */
 public interface CommonConfig extends Config {
 
   String JOB_ID = "streaming.job.id";

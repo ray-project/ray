@@ -17,39 +17,43 @@
 #include "gtest/gtest.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
+#include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/rpc/node_manager/node_manager_client_pool.h"
 
 namespace ray {
 class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
-    gcs_pub_sub_ = std::make_shared<GcsServerMocker::MockGcsPubSub>(redis_client_);
+    raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
+    client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+        [this](const rpc::Address &) { return raylet_client_; });
+    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
+        std::make_unique<GcsServerMocker::MockGcsPubSub>(redis_client_));
   }
 
  protected:
-  std::shared_ptr<GcsServerMocker::MockGcsPubSub> gcs_pub_sub_;
   std::shared_ptr<gcs::RedisClient> redis_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
+  std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
+  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
 };
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
-  boost::asio::io_service io_service;
-  gcs::GcsNodeManager node_manager(io_service, io_service, gcs_pub_sub_,
-                                   gcs_table_storage_);
+  gcs::GcsNodeManager node_manager(gcs_publisher_, gcs_table_storage_, client_pool_);
   // Test Add/Get/Remove functionality.
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
 
   node_manager.AddNode(node);
-  ASSERT_EQ(node, node_manager.GetNode(node_id).value());
+  ASSERT_EQ(node, node_manager.GetAliveNode(node_id).value());
 
   node_manager.RemoveNode(node_id);
-  ASSERT_TRUE(!node_manager.GetNode(node_id).has_value());
+  ASSERT_TRUE(!node_manager.GetAliveNode(node_id).has_value());
 }
 
 TEST_F(GcsNodeManagerTest, TestListener) {
-  boost::asio::io_service io_service;
-  gcs::GcsNodeManager node_manager(io_service, io_service, gcs_pub_sub_,
-                                   gcs_table_storage_);
+  gcs::GcsNodeManager node_manager(gcs_publisher_, gcs_table_storage_, client_pool_);
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;
@@ -84,30 +88,6 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   for (int i = 0; i < node_count; ++i) {
     ASSERT_EQ(added_nodes[i], removed_nodes[i]);
   }
-}
-
-TEST_F(GcsNodeManagerTest, TestGetClusterRealtimeResources) {
-  boost::asio::io_service io_service;
-  gcs::GcsNodeManager node_manager(io_service, io_service, gcs_pub_sub_,
-                                   gcs_table_storage_);
-
-  auto node_id = NodeID::FromRandom();
-  rpc::HeartbeatTableData heartbeat;
-  const std::string cpu_resource = "CPU";
-  (*heartbeat.mutable_resources_available())[cpu_resource] = 10;
-  node_manager.UpdateNodeRealtimeResources(node_id, heartbeat);
-  auto node_resources = node_manager.GetClusterRealtimeResources();
-
-  ResourceSet required_resources;
-  required_resources.AddOrUpdateResource(cpu_resource, 9);
-  ASSERT_TRUE(required_resources.IsSubset(*node_resources[node_id]));
-  required_resources.AddOrUpdateResource(cpu_resource, 10);
-  ASSERT_TRUE(required_resources.IsSubset(*node_resources[node_id]));
-  required_resources.AddOrUpdateResource(cpu_resource, 10.1);
-  ASSERT_FALSE(required_resources.IsSubset(*node_resources[node_id]));
-  required_resources.DeleteResource(cpu_resource);
-  required_resources.AddOrUpdateResource("GPU", 9);
-  ASSERT_FALSE(required_resources.IsSubset(*node_resources[node_id]));
 }
 
 }  // namespace ray
