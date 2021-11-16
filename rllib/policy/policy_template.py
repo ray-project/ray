@@ -25,7 +25,7 @@ jax, _ = try_import_jax()
 torch, _ = try_import_torch()
 
 
-# TODO: Deprecate in favor of directly sub-classing from TorchPolicy.
+# TODO: (sven) Unify this with `build_tf_policy` as well.
 @DeveloperAPI
 def build_policy_class(
         name: str,
