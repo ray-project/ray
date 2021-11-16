@@ -94,7 +94,7 @@ def step(_func_or_class: Optional[Callable] = None,
     """Decorator used to define a pipeline step.
 
     Args:
-        execution_mode(ExecutionMode): The execution mode for this step.
+        execution_mode(:class:`ExecutionMode`): The execution mode for this step.
             Supported modes:
                 - ExecutionMode.LOCAL (default): executes this step inline in
                   the calling process.
@@ -111,7 +111,7 @@ def step(_func_or_class: Optional[Callable] = None,
             pass
 
     Returns:
-        PipelineStep
+        :class:`PipelineStep`
     """
 
     if isinstance(execution_mode, str):

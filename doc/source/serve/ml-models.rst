@@ -50,8 +50,8 @@ Model Composition
 =================
 
 .. note::
-  Serve recently added experimental first-class model composition API. Please
-  take a look at :ref:`Pipeline API <serve-pipeline-api>` and try it out!
+  Serve recently added an experimental first-class API for model composition (pipelines).
+  Please take a look at the :ref:`Pipeline API <serve-pipeline-api>` and try it out!
 
 Ray Serve supports composing individually scalable models into a single model
 out of the box. For instance, you can combine multiple models to perform

@@ -150,3 +150,20 @@ assert result == [898, 412, 600, 731, 463, 899, 618, 733, 463, 600]
 # __ensemble_pipeline_example_end__
 
 del ensemble_pipeline
+
+
+# __biz_logic_start__
+@pipeline.step(execution_mode="tasks")
+def dynamic_weighting_combine(*classifier_outputs):
+    # Pseudo-code:
+    # Example of bringing in custom business logic and arbitrary Python code.
+    # You can issue database queries, log metrics, and run complex computation.
+    my_weights = my_db.get("dynamic_weights")
+    weighted_output = average(classifier_outputs, my_weights)
+    my_logger.log(weighted_output)
+    my_api_response = my_response_model.reshape(
+        [out.astype("int") for out in weighted_output])
+    return my_api_response
+
+
+# __biz_logic_end__
