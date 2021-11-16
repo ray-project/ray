@@ -1779,7 +1779,7 @@ class Trainer(Trainable):
 
     @staticmethod
     def validate_framework(config: PartialTrainerConfigDict) -> None:
-        """Validates the config dictionary.
+        """Validates the config dictionary wrt the framework settings.
 
         Args:
             config: The config dictionary to be validated.
