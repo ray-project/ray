@@ -34,7 +34,7 @@ def attempt_to_load_balance(remote_function,
         locations = ray.get(
             [remote_function.remote(*args) for _ in range(total_tasks)])
         counts = collections.Counter(locations)
-        logger.info(f"Counts are {counts}")
+        print(f"Counts are {counts}")
         if (len(counts) == num_nodes
                 and counts.most_common()[-1][1] >= minimum_count):
             break
@@ -55,7 +55,7 @@ def test_load_balancing(ray_start_cluster):
 
     @ray.remote
     def f():
-        time.sleep(0.01)
+        time.sleep(0.10)
         return ray.worker.global_worker.node.unique_id
 
     attempt_to_load_balance(f, [], 100, num_nodes, 10)
@@ -221,52 +221,6 @@ def test_load_balancing_with_dependencies(ray_start_cluster, fast):
     x = ray.put(np.zeros(1000000))
 
     attempt_to_load_balance(f, [x], 100, num_nodes, 25)
-
-
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows. Multi node.")
-def test_load_balancing_under_constrained_memory(ray_start_cluster):
-    # This test ensures that tasks are being assigned to all raylets in a
-    # roughly equal manner even when the tasks have dependencies.
-    cluster = ray_start_cluster
-    num_nodes = 3
-    num_cpus = 4
-    object_size = 4e7
-    num_tasks = 100
-    for _ in range(num_nodes):
-        cluster.add_node(
-            num_cpus=num_cpus,
-            memory=(num_cpus - 2) * object_size,
-            object_store_memory=(num_cpus - 2) * object_size)
-    cluster.add_node(
-        num_cpus=0,
-        resources={"custom": 1},
-        memory=(num_tasks + 1) * object_size,
-        object_store_memory=(num_tasks + 1) * object_size)
-    ray.init(address=cluster.address)
-
-    @ray.remote(num_cpus=0, resources={"custom": 1})
-    def create_object():
-        return np.zeros(int(object_size), dtype=np.uint8)
-
-    @ray.remote
-    def f(i, x):
-        print(i, ray.worker.global_worker.node.unique_id)
-        time.sleep(0.1)
-        return ray.worker.global_worker.node.unique_id
-
-    deps = [create_object.remote() for _ in range(num_tasks)]
-    for i, dep in enumerate(deps):
-        print(i, dep)
-
-    # TODO(swang): Actually test load balancing. Load balancing is currently
-    # flaky on Travis, probably due to the scheduling policy ping-ponging
-    # waiting tasks.
-    deps = [create_object.remote() for _ in range(num_tasks)]
-    tasks = [f.remote(i, dep) for i, dep in enumerate(deps)]
-    for i, dep in enumerate(deps):
-        print(i, dep)
-    ray.get(tasks)
 
 
 @pytest.mark.skipif(
@@ -679,7 +633,6 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
     "ray_start_regular", [{
         "_system_config": {
             "metrics_report_interval_ms": 1000,
-            "complex_scheduling_class": True
         }
     }],
     indirect=True)

@@ -64,60 +64,61 @@ training.
 
   .. group-tab:: PyTorch
 
-    Ray Train will set up your distributed process group for you. You simply
-    need to add in the proper PyTorch hooks in your training function to
-    utilize it.
+    Ray Train will set up your distributed process group for you and also provides utility methods
+    to automatically prepare your model and data for distributed training.
 
-    **Step 1:** Wrap your model in ``DistributedDataParallel``.
+    First, use the ``prepare_model`` function to automatically move your model to the right device and wrap it in
+    ``DistributedDataParallel``
 
-    The `DistributedDataParallel <https://pytorch.org/docs/master/generated/torch.nn.parallel.DistributedDataParallel.html>`_
-    container will parallelize the input ``Module`` across the worker processes.
+    .. code-block:: diff
 
-    .. code-block:: python
-
+        import torch
         from torch.nn.parallel import DistributedDataParallel
+        +from ray import train
 
-        model = DistributedDataParallel(model)
-
-    **Step 2:** Update your ``DataLoader`` to use a ``DistributedSampler``.
-
-    The `DistributedSampler <https://pytorch.org/docs/master/data.html#torch.utils.data.distributed.DistributedSampler>`_
-    will split the data across the workers, so each process will train on
-    only a subset of the data.
-
-    .. code-block:: python
-
-        from torch.utils.data import DataLoader, DistributedSampler
-
-        data_loader = DataLoader(dataset,
-                                 batch_size=batch_size,
-                                 sampler=DistributedSampler(dataset))
-
-
-    **Step 3:** Set the proper CUDA device if you are using GPUs.
-
-    If you are using GPUs, you need to make sure to the CUDA devices are properly setup inside your training function.
-
-    This involves 3 steps:
-
-    1. Use the local rank to set the default CUDA device for the worker.
-    2. Move the model to the default CUDA device (or a specific CUDA device).
-    3. Specify ``device_ids`` when wrapping in ``DistributedDataParallel``.
-
-    .. code-block:: python
 
         def train_func():
-            device = torch.device(f"cuda:{train.local_rank()}" if
-                          torch.cuda.is_available() else "cpu")
-            torch.cuda.set_device(device)
+        -   device = torch.device(f"cuda:{train.local_rank()}" if
+        -         torch.cuda.is_available() else "cpu")
+        -   torch.cuda.set_device(device)
 
             # Create model.
             model = NeuralNetwork()
-            model = model.to(device)
-            model = DistributedDataParallel(
-                model,
-                device_ids=[train.local_rank()] if torch.cuda.is_available() else None)
 
+        -   model = model.to(device)
+        -   model = DistributedDataParallel(model,
+        -       device_ids=[train.local_rank()] if torch.cuda.is_available() else None)
+
+        +   model = train.torch.prepare_model(model)
+
+            ...
+
+
+    Then, use the ``prepare_data_loader`` function to automatically add a ``DistributedSampler`` to your ``DataLoader``
+    and move the batches to the right device.
+
+    .. code-block:: diff
+
+        import torch
+        from torch.utils.data import DataLoader, DistributedSampler
+        +from ray import train
+
+
+        def train_func():
+        -   device = torch.device(f"cuda:{train.local_rank()}" if
+        -          torch.cuda.is_available() else "cpu")
+        -   torch.cuda.set_device(device)
+
+            ...
+
+        -   data_loader = DataLoader(my_dataset, sampler=DistributedSampler(dataset))
+
+        +   data_loader = DataLoader(my_dataset)
+        +   data_loader = train.torch.prepare_data_loader(data_loader)
+
+            for X, y in data_loader:
+        -       X = X.to_device(device)
+        -       y = y.to_device(device)
 
   .. group-tab:: TensorFlow
 
@@ -205,7 +206,9 @@ To customize the ``backend`` setup, you can replace the string argument with a
 
     .. code-block:: python
 
-        from ray.train import Trainer, TorchConfig
+        from ray.train import Trainer
+        from ray.train.torch import TorchConfig
+
         trainer = Trainer(backend=TorchConfig(...), num_workers=2)
 
 
@@ -213,14 +216,18 @@ To customize the ``backend`` setup, you can replace the string argument with a
 
     .. code-block:: python
 
-        from ray.train import Trainer, TensorflowConfig
+        from ray.train import Trainer
+        from ray.train.tensorflow import TensorflowConfig
+
         trainer = Trainer(backend=TensorflowConfig(...), num_workers=2)
 
   .. group-tab:: Horovod
 
     .. code-block:: python
 
-        from ray.train import Trainer, HorovodConfig
+        from ray.train import Trainer
+        from ray.train.horovod import HorovodConfig
+
         trainer = Trainer(backend=HorovodConfig(...), num_workers=2)
 
 For more configurability, please reference the :ref:`train-api-trainer` API.

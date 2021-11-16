@@ -167,8 +167,6 @@ extern jfieldID java_call_options_concurrency_group_name;
 
 /// ActorCreationOptions class
 extern jclass java_actor_creation_options_class;
-/// global field of ActorCreationOptions class
-extern jfieldID java_actor_creation_options_global;
 /// isDetached field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_is_detached;
 /// name field of ActorCreationOptions class
@@ -199,8 +197,6 @@ extern jfieldID java_concurrency_group_impl_max_concurrency;
 extern jclass java_placement_group_creation_options_class;
 /// PlacementStrategy class
 extern jclass java_placement_group_creation_options_strategy_class;
-/// global field of PlacementGroupCreationOptions class
-extern jfieldID java_placement_group_creation_options_global;
 /// name field of PlacementGroupCreationOptions class
 extern jfieldID java_placement_group_creation_options_name;
 /// bundles field of PlacementGroupCreationOptions class
@@ -615,16 +611,6 @@ inline NativeT JavaProtobufObjectToNativeProtobufObject(JNIEnv *env, jobject jav
     env->DeleteLocalRef(bytes);
   }
   return native_obj;
-}
-
-// Return an actor or a placement group fullname with job id prepended if this is a global
-// actor or placement group.
-inline std::string GetFullName(bool global, std::string name) {
-  if (name.empty()) {
-    return "";
-  }
-  return global ? name
-                : CoreWorkerProcess::GetCoreWorker().GetCurrentJobId().Hex() + "-" + name;
 }
 
 inline std::shared_ptr<LocalMemoryBuffer> SerializeActorCreationException(
