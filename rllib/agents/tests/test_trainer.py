@@ -9,7 +9,7 @@ import ray
 import ray.rllib.agents.a3c as a3c
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.pg as pg
-from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
+from ray.rllib.agents.trainer import COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.parallel_evaluation_and_training import \
     AssertNumEvalEpisodesCallback

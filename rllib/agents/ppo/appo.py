@@ -119,8 +119,8 @@ def initialize_target(trainer: Trainer) -> None:
 class APPOTrainer(impala.ImpalaTrainer):
     def __init__(self, config, *args, **kwargs):
         # Before init: Add the update target and kl hook.
-        # This hook is called explicitly after each learner step in the execution
-        # setup for IMPALA.
+        # This hook is called explicitly after each learner step in the
+        # execution setup for IMPALA.
         config["after_train_step"] = UpdateTargetAndKL
 
         super().__init__(config, *args, **kwargs)
@@ -135,7 +135,8 @@ class APPOTrainer(impala.ImpalaTrainer):
     def get_default_policy_class(self, config: PartialTrainerConfigDict) -> \
             Optional[Type[Policy]]:
         if config["framework"] == "torch":
-            from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
+            from ray.rllib.agents.ppo.appo_torch_policy import \
+                AsyncPPOTorchPolicy
             return AsyncPPOTorchPolicy
         else:
             return AsyncPPOTFPolicy
