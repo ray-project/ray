@@ -1529,10 +1529,10 @@ def run_test_config(
                         create_or_find_compute_template(
                             sdk, project_id, compute_tpl)
 
-                    logger.info(
-                        f"Link to compute template: "
-                        f"{_format_link(anyscale_compute_tpl_url(compute_tpl_id))}"
-                    )
+                    url = _format_link(
+                        anyscale_compute_tpl_url(compute_tpl_id))
+
+                    logger.info(f"Link to compute template: {url}")
 
                     # Find/create app config
                     if app_config_id is None:
