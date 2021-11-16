@@ -265,6 +265,7 @@ if setup_spec.type == SetupType.RAY:
         "protobuf >= 3.15.3",
         "pyyaml",
         "redis >= 3.5.0",
+        "hiredis >= 0.1.4",
     ]
 
 
