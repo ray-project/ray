@@ -1615,15 +1615,15 @@ class Trainer(Trainable):
                     raise ImportError((
                         "TensorFlow was specified as the 'framework' "
                         "inside of your config dictionary. However, there was "
-                        "no installation found. You can install tensorflow via"
-                        " pip: pip install tensorflow"))
+                        "no installation found. You can install TensorFlow via "
+                        "`pip install tensorflow`"))
             elif framework == "torch":
                 if not _torch:
                     raise ImportError(
-                        ("torch was specified as the 'framework' inside "
+                        ("PyTorch was specified as the 'framework' inside "
                          "of your config dictionary. However, there was no "
                          "installation found. You can install torch via "
-                         "pip: pip install torch"))
+                         "`pip install torch`"))
 
         def resolve_tf_settings():
             """Check and resolve tf settings."""
