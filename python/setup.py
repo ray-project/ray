@@ -4,6 +4,7 @@ import glob
 import io
 import logging
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -266,6 +267,11 @@ if setup_spec.type == SetupType.RAY:
         "pyyaml",
         "redis >= 3.5.0, < 4.0.0",
     ]
+
+if platform.system() == "Darwin" and platform.machine() == "arm64":
+    setup_spec.install_requires.append("redis >= 3.5.0")
+else:
+    setup_spec.install_requires.append("redis[hiredis]")
 
 
 def is_native_windows_or_msys():
