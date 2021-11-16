@@ -12,7 +12,7 @@ import socket
 import math
 import traceback
 from typing import Optional, Any, List, Dict
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import redirect_stdout, redirect_stderr, contextmanager
 import yaml
 import logging
 import tempfile
@@ -979,3 +979,26 @@ def get_and_run_node_killer(node_kill_interval_s):
     print("Node killer actor is ready now.")
     node_killer.run.remote()
     return node_killer
+
+
+@contextmanager
+def chdir(d: str):
+    old_dir = os.getcwd()
+    os.chdir(d)
+    yield
+    os.chdir(old_dir)
+
+
+def test_get_directory_size():
+    with tempfile.TemporaryDirectory() as tmp_dir, chdir(tmp_dir):
+        assert ray._private.utils.get_directory_size(tmp_dir) == 0
+        with open("test_file", "wb") as f:
+            f.write(os.urandom(100))
+        assert ray._private.utils.get_directory_size(tmp_dir) == 100
+        with open("test_file_2", "wb") as f:
+            f.write(os.urandom(50))
+        assert ray._private.utils.get_directory_size(tmp_dir) == 150
+        os.mkdir("subdir")
+        with open("subdir/subdir_file", "wb") as f:
+            f.write(os.urandom(2))
+        assert ray._private.utils.get_directory_size(tmp_dir) == 152
