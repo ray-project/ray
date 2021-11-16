@@ -187,8 +187,6 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                                      f"{allocated_resource}")
                 context = RuntimeEnvContext(
                     env_vars=runtime_env.get("env_vars"))
-                self._conda_manager.setup(
-                    runtime_env, context, logger=per_job_logger)
                 self._container_manager.setup(
                     runtime_env, context, logger=per_job_logger)
 
@@ -210,22 +208,22 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     self._working_dir_manager.modify_context(
                         working_dir_uri, runtime_env, context)
 
-                # # Set up conda
-                # conda_uri = self._conda_manager.get_uri(runtime_env)
-                # if conda_uri is not None:
-                #     if conda_uri not in self._conda_uri_cache:
-                #         size_bytes = self._conda_manager.create(
-                #             conda_uri,
-                #             runtime_env,
-                #             context,
-                #             logger=per_job_logger)
-                #         self._conda_uri_cache.add(
-                #             conda_uri, size_bytes, logger=per_job_logger)
-                #     else:
-                #         self._conda_uri_cache.mark_used(
-                #             conda_uri, logger=per_job_logger)
-                #     self._conda_manager.modify_context(conda_uri, runtime_env,
-                #                                        context)
+                # Set up conda
+                conda_uri = self._conda_manager.get_uri(runtime_env)
+                if conda_uri is not None:
+                    if conda_uri not in self._conda_uri_cache:
+                        size_bytes = self._conda_manager.create(
+                            conda_uri,
+                            runtime_env,
+                            context,
+                            logger=per_job_logger)
+                        self._conda_uri_cache.add(
+                            conda_uri, size_bytes, logger=per_job_logger)
+                    else:
+                        self._conda_uri_cache.mark_used(
+                            conda_uri, logger=per_job_logger)
+                    self._conda_manager.modify_context(
+                        conda_uri, runtime_env, context, logger=per_job_logger)
 
                 # Set up py_modules
                 py_modules_uris = self._py_modules_manager.get_uris(
@@ -350,8 +348,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
             elif plugin == "py_modules":
                 self._py_modules_uri_cache.mark_unused(uri)
             elif plugin == "conda":
-                if not self._conda_manager.delete_uri(uri):
-                    failed_uris.append(uri)
+                self._conda_uri_cache.mark_unused(uri)
             else:
                 raise ValueError(
                     "RuntimeEnvAgent received DeleteURI request "
