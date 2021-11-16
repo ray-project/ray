@@ -81,7 +81,7 @@ Each trial has
 - a resource specification (``resources_per_trial`` or ``trial.placement_group_factory``)
 - And other configuration values.
 
-Each trial is also associated with one instance of a :ref:`Trainable <trainable-docs>`. You can access trial objects through the :ref:`ExperimentAnalysis object <tune-concepts-analysis>` provided after ``tune.run`` finishes.
+Each trial is also associated with one instance of a :ref:`Trainable <trainable-docs>`. You can access trial objects through the :ref:`Analysis object <tune-concepts-analysis>` provided after ``tune.run`` finishes.
 
 ``tune.run`` will execute until all trials stop or error:
 
@@ -225,7 +225,7 @@ See the documentation: :ref:`schedulers-ref`.
 Analysis
 --------
 
-``tune.run`` returns an :ref:`ExperimentAnalysis <tune-analysis-docs>` object which has methods you can use for analyzing your training.
+``tune.run`` returns an :ref:`Analysis <tune-analysis-docs>` object which has methods you can use for analyzing your training.
 
 .. code-block:: python
 

@@ -9,8 +9,8 @@ import pytest
 import numpy as np
 
 import ray
-from ray.tune import (run, Trainable, sample_from, ExperimentAnalysis,
-                      grid_search)
+from ray.tune import (run, Trainable, sample_from, Analysis,
+                      ExperimentAnalysis, grid_search)
 from ray.tune.result import DEBUG_METRICS
 from ray.tune.utils.mock import MyTrainableClass
 from ray.tune.utils.serialization import TuneFunctionEncoder
@@ -72,7 +72,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
 
         experiment_analysis = ExperimentAnalysis(experiment_checkpoint_path)
         self.assertEqual(len(experiment_analysis._checkpoints), 1)
-        self.assertFalse(experiment_analysis.trials)
+        self.assertTrue(experiment_analysis.trials is None)
 
     def testInit(self):
         experiment_checkpoint_path = os.path.join(self.test_dir,
@@ -93,7 +93,7 @@ class ExperimentAnalysisInMemorySuite(unittest.TestCase):
 
         experiment_analysis = ExperimentAnalysis(experiment_checkpoint_path)
         self.assertEqual(len(experiment_analysis._checkpoints), 1)
-        self.assertFalse(experiment_analysis.trials)
+        self.assertTrue(experiment_analysis.trials is None)
 
     def testInitException(self):
         experiment_checkpoint_path = os.path.join(self.test_dir, "mock.json")
@@ -184,7 +184,6 @@ class AnalysisSuite(unittest.TestCase):
         ray.shutdown()
 
     def setUp(self):
-        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "1"
         self.test_dir = tempfile.mkdtemp()
         self.num_samples = 10
         self.metric = "episode_reward_mean"
@@ -207,13 +206,13 @@ class AnalysisSuite(unittest.TestCase):
         shutil.rmtree(self.test_dir, ignore_errors=True)
 
     def testDataframe(self):
-        analysis = ExperimentAnalysis(self.test_dir)
+        analysis = Analysis(self.test_dir)
         df = analysis.dataframe(self.metric, mode="max")
         self.assertTrue(isinstance(df, pd.DataFrame))
         self.assertEqual(df.shape[0], self.num_samples * 2)
 
     def testBestLogdir(self):
-        analysis = ExperimentAnalysis(self.test_dir)
+        analysis = Analysis(self.test_dir)
         logdir = analysis.get_best_logdir(self.metric, mode="max")
         self.assertTrue(logdir.startswith(self.test_dir))
         logdir2 = analysis.get_best_logdir(self.metric, mode="min")
@@ -221,7 +220,7 @@ class AnalysisSuite(unittest.TestCase):
         self.assertNotEqual(logdir, logdir2)
 
     def testBestConfigIsLogdir(self):
-        analysis = ExperimentAnalysis(self.test_dir)
+        analysis = Analysis(self.test_dir)
         for metric, mode in [(self.metric, "min"), (self.metric, "max")]:
             logdir = analysis.get_best_logdir(metric, mode=mode)
             best_config = analysis.get_best_config(metric, mode=mode)
