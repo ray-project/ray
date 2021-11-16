@@ -38,8 +38,7 @@ def test_pip_requirements_files(tmpdir: str):
         import requests
         return requests.__version__
 
-    # TODO(architkulkarni): Uncomment after #19002 is fixed
-    # assert ray.get(get_version.remote()) == "2.16.0"
+    assert ray.get(get_version.remote()) == "2.16.0"
     assert ray.get(
         get_version.options(runtime_env=env_18).remote()) == "2.18.0"
 
@@ -49,9 +48,8 @@ def test_pip_requirements_files(tmpdir: str):
             import requests
             return requests.__version__
 
-    # TODO(architkulkarni): Uncomment after #19002 is fixed
-    # actor_18 = VersionActor.remote()
-    # assert ray.get(actor_18.get_version.remote()) == "2.18.0"
+    actor_18 = VersionActor.remote()
+    assert ray.get(actor_18.get_version.remote()) == "2.18.0"
 
     actor_16 = VersionActor.options(runtime_env=env_16).remote()
     assert ray.get(actor_16.get_version.remote()) == "2.16.0"
