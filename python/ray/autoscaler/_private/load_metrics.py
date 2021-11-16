@@ -6,7 +6,6 @@ from typing import Dict, List
 
 import numpy as np
 import ray.ray_constants
-import ray._private.services as services
 from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES,\
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 from ray._private.gcs_utils import PlacementGroupTableData

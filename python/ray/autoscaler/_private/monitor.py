@@ -26,8 +26,6 @@ from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
-from ray.autoscaler._private.fake_multi_node.node_provider import \
-    FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
     DEBUG_AUTOSCALING_ERROR, format_readonly_node_type
 
