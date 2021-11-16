@@ -12,11 +12,12 @@ python:
   conda_packages: []
 
 post_build_cmds:
-  - pip uninstall -y ray || true
-  - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 uninstall -y ray || true
+  # - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
+  - pip3 install https://ray-ci-artifact-pr-public.s3.amazonaws.com/f5ee040c01560d86b736e8e0b5bcbca73940dcb3/tmp/artifacts/.whl/ray-2.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
   - pip3 install ray[default] # Needed for Ray Client to work.
   - pip3 install -U "xgboost<1.5" xgboost_ray petastorm  # Install latest releases, pin xgboost to <1.5
-  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
+  # - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   - sudo mkdir -p /data || true
   - sudo chown ray:1000 /data || true
   - rm -rf /data/classification.parquet || true
