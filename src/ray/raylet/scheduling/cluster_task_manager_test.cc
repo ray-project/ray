@@ -186,7 +186,8 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
 };
 
 class FeatureFlagEnvironment : public ::testing::Environment {
- /// We should run these tests with feature flags on to ensure we are testing the flagged behavior.
+  /// We should run these tests with feature flags on to ensure we are testing the flagged
+  /// behavior.
  public:
   ~FeatureFlagEnvironment() override {}
 
@@ -199,7 +200,8 @@ class FeatureFlagEnvironment : public ::testing::Environment {
   void TearDown() override {}
 };
 
-testing::FeatureFlagEnvironment * const env = ::testing::AddGlobalTestEnvironment(new FeatureFlagEnvironment);
+testing::FeatureFlagEnvironment *const env =
+    ::testing::AddGlobalTestEnvironment(new FeatureFlagEnvironment);
 
 class ClusterTaskManagerTest : public ::testing::Test {
  public:
