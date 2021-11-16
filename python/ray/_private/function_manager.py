@@ -138,7 +138,7 @@ class FunctionActorManager:
             pos += 1
             holder = make_export_key(pos)
             if self._worker.gcs_client.internal_kv_put(
-                    holder, key, False, KV_NAMESPACE_FUNCTION_TABLE) == 0:
+                    holder, key, False, KV_NAMESPACE_FUNCTION_TABLE) > 0:
                 break
 
     def export(self, remote_function):
