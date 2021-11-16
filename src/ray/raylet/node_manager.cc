@@ -1514,14 +1514,7 @@ void NodeManager::HandleUpdateResourceUsage(
   next_resource_seq_no_ = resource_usage_batch.seq_no() + 1;
 
   for (const auto &resource_change_or_data : resource_usage_batch.batch()) {
-    if (resource_change_or_data.has_data()) {
-      const auto &resource_usage = resource_change_or_data.data();
-      auto node_id = NodeID::FromBinary(resource_usage.node_id());
-      // Skip messages from self.
-      if (node_id != self_node_id_) {
-        UpdateResourceUsage(node_id, resource_usage);
-      }
-    } else if (resource_change_or_data.has_change()) {
+    if (resource_change_or_data.has_change()) {
       const auto &resource_notification = resource_change_or_data.change();
       auto node_id = NodeID::FromBinary(resource_notification.node_id());
       if (resource_notification.updated_resources_size() != 0) {
@@ -1533,6 +1526,15 @@ void NodeManager::HandleUpdateResourceUsage(
       if (resource_notification.deleted_resources_size() != 0) {
         ResourceDeleted(node_id,
                         VectorFromProtobuf(resource_notification.deleted_resources()));
+      }
+    }
+
+    if (resource_change_or_data.has_data()) {
+      const auto &resource_usage = resource_change_or_data.data();
+      auto node_id = NodeID::FromBinary(resource_usage.node_id());
+      // Skip messages from self.
+      if (node_id != self_node_id_) {
+        UpdateResourceUsage(node_id, resource_usage);
       }
     }
   }
