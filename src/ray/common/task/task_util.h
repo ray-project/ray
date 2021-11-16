@@ -105,6 +105,7 @@ class TaskSpecBuilder {
       const std::unordered_map<std::string, double> &required_placement_resources,
       const BundleID &bundle_id, bool placement_group_capture_child_tasks,
       const std::string &debugger_breakpoint,
+      const Priority &priority,
       const std::string &serialized_runtime_env = "{}",
       const std::vector<std::string> &runtime_env_uris = {},
       const std::string &concurrency_group_name = "") {
@@ -129,6 +130,12 @@ class TaskSpecBuilder {
         placement_group_capture_child_tasks);
     message_->set_debugger_breakpoint(debugger_breakpoint);
     message_->mutable_runtime_env()->set_serialized_runtime_env(serialized_runtime_env);
+
+    auto pri = message_->mutable_priority();
+    for (auto &s : priority.score) {
+      pri->Add(s);
+    }
+
     for (const std::string &uri : runtime_env_uris) {
       message_->mutable_runtime_env()->add_uris(uri);
     }

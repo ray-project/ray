@@ -40,7 +40,9 @@ void BuildCommonTaskSpec(
     const std::unordered_map<std::string, double> &required_resources,
     const std::unordered_map<std::string, double> &required_placement_resources,
     const BundleID &bundle_id, bool placement_group_capture_child_tasks,
-    const std::string debugger_breakpoint, const std::string &serialized_runtime_env,
+    const std::string debugger_breakpoint,
+    const Priority &priority,
+    const std::string &serialized_runtime_env,
     const std::vector<std::string> &runtime_env_uris,
     const std::string &concurrency_group_name = "") {
   // Build common task spec.
@@ -48,7 +50,9 @@ void BuildCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint, serialized_runtime_env, runtime_env_uris,
+      debugger_breakpoint,
+      priority,
+      serialized_runtime_env, runtime_env_uris,
       concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
@@ -681,7 +685,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::move(lease_policy), memory_store_, task_manager_, local_raylet_id,
       RayConfig::instance().worker_lease_timeout_milliseconds(), actor_creator_,
       /*get_task_priority=*/[](const TaskSpecification &spec) {
-        return Priority();
+	    return spec.GetPriority();
       },
       RayConfig::instance().max_tasks_in_flight_per_worker(),
       boost::asio::steady_timer(io_service_));
@@ -1671,9 +1675,11 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, placement_options,
                       placement_group_capture_child_tasks, debugger_breakpoint,
+                      Priority(),
                       task_options.serialized_runtime_env, task_options.runtime_env_uris);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions);
   TaskSpecification task_spec = builder.Build();
+  //priority = task_manager_->GenerateTaskPriority(task_spec);
   RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
@@ -1683,6 +1689,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                                                   CurrentCallSite(), max_retries);
     io_service_.post(
         [this, task_spec]() {
+		//(Jae) This is the reason why tasks are not placed with priority
           RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
         },
         "CoreWorker.SubmitTask");
@@ -1727,6 +1734,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       new_placement_resources, actor_creation_options.placement_options,
                       actor_creation_options.placement_group_capture_child_tasks,
                       "", /* debugger_breakpoint */
+                      Priority(),
                       actor_creation_options.serialized_runtime_env,
                       actor_creation_options.runtime_env_uris);
 
@@ -1911,6 +1919,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
                       required_resources, std::make_pair(PlacementGroupID::Nil(), -1),
                       true, /* placement_group_capture_child_tasks */
                       "",   /* debugger_breakpoint */
+                      Priority(),
                       "{}", /* serialized_runtime_env */
                       {},   /* runtime_env_uris */
                       task_options.concurrency_group_name);
@@ -1923,6 +1932,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
 
   // Submit task.
   TaskSpecification task_spec = builder.Build();
+  std::vector<ObjectID> task_deps;
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
     returned_refs = ExecuteTaskLocalMode(task_spec, actor_id);

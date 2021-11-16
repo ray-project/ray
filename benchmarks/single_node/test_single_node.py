@@ -19,6 +19,7 @@ MAX_RAY_GET_SIZE = 100 * 2**30
 def assert_no_leaks():
     total = ray.cluster_resources()
     current = ray.available_resources()
+    print(total, current)
     total.pop("memory")
     total.pop("object_store_memory")
     current.pop("memory")
@@ -137,7 +138,8 @@ def test_large_object():
     assert big_obj[-1] == 0
 
 
-ray.init(address="auto")
+#ray.init(address="auto")
+ray.init()
 
 args_start = perf_counter()
 test_many_args()

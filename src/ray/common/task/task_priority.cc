@@ -11,6 +11,16 @@ void Priority::extend(int64_t size) const {
   }
 }
 
+void Priority::SetFromParentPriority(Priority &parent, int s){
+  //param s id the last score to add
+  if(parent.score.size() == 1 && parent.score[0] == INT_MAX){
+	score[0] = s;
+  }else{
+	score = parent.score;
+    score.push_back(s);
+  }
+}
+
 bool Priority::operator<(const Priority &rhs) const {
   rhs.extend(score.size());
   extend(rhs.score.size());
@@ -25,6 +35,19 @@ bool Priority::operator<=(const Priority &rhs) const {
   return score <= rhs.score;
 }
 
+bool Priority::operator>(const Priority &rhs) const {
+  rhs.extend(score.size());
+  extend(rhs.score.size());
+
+  return score > rhs.score;
+}
+
+bool Priority::operator>=(const Priority &rhs) const {
+  rhs.extend(score.size());
+  extend(rhs.score.size());
+
+  return score >= rhs.score;
+}
 
 std::ostream &operator<<(std::ostream &os, const Priority &p) {
   os << "[ ";

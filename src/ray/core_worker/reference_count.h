@@ -102,6 +102,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void RemoveLocalReference(const ObjectID &object_id, std::vector<ObjectID> *deleted)
       LOCKS_EXCLUDED(mutex_);
 
+  Priority& GetObjectPriority(const ObjectID &object_id);
+  void UpdateObjectPriority(
+		const ObjectID &object_id,
+		const Priority &priority);
+
   /// Add references for the provided object IDs that correspond to them being
   /// dependencies to a submitted task. If lineage pinning is enabled, then
   /// this will also pin the Reference entry for each new argument until the
@@ -633,6 +638,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
 
+  using PriorityTable = absl::flat_hash_map<ObjectID, Priority>;
+
   void SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -798,6 +805,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Holds all reference counts and dependency information for tracked ObjectIDs.
   ReferenceTable object_id_refs_ GUARDED_BY(mutex_);
+
+  /// Holds priority of tracked ObjectIDs.
+  PriorityTable object_id_priority_ GUARDED_BY(mutex_);
 
   /// Objects whose values have been freed by the language frontend.
   /// The values in plasma will not be pinned. An object ID is

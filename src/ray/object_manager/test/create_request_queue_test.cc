@@ -74,7 +74,51 @@ class CreateRequestQueueTest : public ::testing::Test {
   int num_global_gc_ = 0;
 };
 
-// TODO(jae): Add a test that checks for priority-based order.
+TEST_F(CreateRequestQueueTest, TestBtree) {
+  auto request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
+    result->data_size = 1234;
+    return PlasmaError::OK;
+  };
+  ray::TaskKey key(ray::Priority({5}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key2(ray::Priority({5,6}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key1(ray::Priority({1,2}), ObjectID::FromRandom().TaskId());
+  ray::TaskKey key3(ray::Priority({1}), ObjectID::FromRandom().TaskId());
+
+  // Advance the clock without processing objects. This shouldn't have an impact.
+  current_time_ns_ += 10e9;
+  auto client = std::make_shared<MockClient>();
+  auto req_id = queue_.AddRequest(key, ObjectID::Nil(), client, request, 1234);
+  auto req_id1 = queue_.AddRequest(key1, ObjectID::Nil(), client, request, 1234);
+  auto req_id2 = queue_.AddRequest(key2, ObjectID::Nil(), client, request, 1234);
+  auto req_id3 = queue_.AddRequest(key3, ObjectID::Nil(), client, request, 1234);
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id);
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id1);
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id2);
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id3);
+
+  
+  ASSERT_TRUE(queue_.ProcessFirstRequest().ok());
+  ASSERT_REQUEST_FINISHED(queue_, req_id1, PlasmaError::OK);
+  ASSERT_EQ(num_global_gc_, 0);
+  // Request gets cleaned up after we get it.
+  ASSERT_REQUEST_FINISHED(queue_, req_id1, PlasmaError::UnexpectedError);
+
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id);
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id2);
+  ASSERT_REQUEST_UNFINISHED(queue_, req_id3);
+
+  ASSERT_TRUE(queue_.ProcessRequests().ok());
+  ASSERT_REQUEST_FINISHED(queue_, req_id, PlasmaError::OK);
+  ASSERT_REQUEST_FINISHED(queue_, req_id2, PlasmaError::OK);
+  ASSERT_REQUEST_FINISHED(queue_, req_id3, PlasmaError::OK);
+  ASSERT_EQ(num_global_gc_, 0);
+  // Request gets cleaned up after we get it.
+  ASSERT_REQUEST_FINISHED(queue_, req_id, PlasmaError::UnexpectedError);
+  ASSERT_REQUEST_FINISHED(queue_, req_id2, PlasmaError::UnexpectedError);
+  ASSERT_REQUEST_FINISHED(queue_, req_id3, PlasmaError::UnexpectedError);
+  AssertNoLeaks();
+}
+
 TEST_F(CreateRequestQueueTest, TestSimple) {
   auto request = [&](bool fallback, PlasmaObject *result, bool *spill_requested) {
     result->data_size = 1234;

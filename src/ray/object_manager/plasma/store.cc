@@ -74,7 +74,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allo
                          std::function<void()> object_store_full_callback,
                          ray::AddObjectCallback add_object_callback,
                          ray::DeleteObjectCallback delete_object_callback,
-              ray::ObjectCreationBlockedCallback on_object_creation_blocked_callback)
+                         ray::ObjectCreationBlockedCallback on_object_creation_blocked_callback)
     : io_context_(main_service),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
@@ -160,13 +160,26 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
                    << ", data_size=" << object_info.data_size
                    << ", metadata_size=" << object_info.metadata_size;
   }
+  //TODO(Jae) Erase this later
+  /*
+  const int64_t footprint_limit = allocator_.GetFootprintLimit();
+  const float allocated_percentage =
+        static_cast<float>(allocator_.Allocated()) / footprint_limit;
+  if(allocated_percentage >= block_tasks_threshold_){
+	  blockTasks();
+  }
+  if(allocated_percentage >= evict_tasks_threshold_){
+	  evictTasks();
+  }
+  */
 
   // Trigger object spilling if current usage is above the specified threshold.
   if (spilling_required != nullptr) {
     const int64_t footprint_limit = allocator_.GetFootprintLimit();
     if (footprint_limit != 0) {
-      const float allocated_percentage =
-          static_cast<float>(allocator_.Allocated()) / footprint_limit;
+	  const int64_t footprint_limit = allocator_.GetFootprintLimit();
+	  const float allocated_percentage =
+        static_cast<float>(allocator_.Allocated()) / footprint_limit;
       if (allocated_percentage > object_spilling_threshold_) {
         RAY_LOG(DEBUG) << "Triggering object spilling because current usage "
                        << allocated_percentage << "% is above threshold "

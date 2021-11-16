@@ -263,8 +263,8 @@ class ObjectManager : public ObjectManagerInterface,
 
   bool PullManagerHasPullsQueued() const { return pull_manager_->HasPullsQueued(); }
 
-  void SetShouldSpill(bool should_spill) {
-    plasma::plasma_store_runner->SetShouldSpill(should_spill);
+  void SetShouldSpill(bool should_spill){
+	  plasma::plasma_store_runner->SetShouldSpill(should_spill);
   }
 
  private:

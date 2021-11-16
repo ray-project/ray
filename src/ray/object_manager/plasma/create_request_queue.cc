@@ -31,7 +31,6 @@ uint64_t CreateRequestQueue::AddRequest(const ray::TaskKey &task_id,
                                         size_t object_size) {
   auto req_id = next_req_id_++;
   fulfilled_requests_[req_id] = nullptr;
-  // TODO(jae): Convert from FIFO queue to priority queue (absl::btree_map).
   //auto taskId = task.GetTaskSpecification().GetTaskKey();
   queue_.emplace(
       task_id,
@@ -144,8 +143,8 @@ Status CreateRequestQueue::ProcessFirstRequest() {
   return Status::OK();
 }
 
-void CreateRequestQueue::SetShouldSpill(bool should_spill) {
-  should_spill_ = should_spill;
+void CreateRequestQueue::SetShouldSpill(bool should_spill){
+	should_spill_ = should_spill;
 }
 
 Status CreateRequestQueue::ProcessRequests() {
@@ -221,7 +220,7 @@ Status CreateRequestQueue::ProcessRequests() {
 }
 
 void CreateRequestQueue::FinishRequest(
-    absl::btree_map<ray::TaskKey, std::unique_ptr<CreateRequest>>::iterator queue_it) {
+	absl::btree_map<ray::TaskKey, std::unique_ptr<CreateRequest>>::iterator queue_it) {
   // Fulfill the request.
   //auto &request = *(queue_it->second);
   auto it = fulfilled_requests_.find(queue_it->second->request_id);

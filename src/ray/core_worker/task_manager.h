@@ -86,7 +86,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
           RemoveLineageReference(object_id, ids_to_release);
           ShutdownIfNeeded();
         });
+	new_priority_s = 0;
   }
+
+  Priority GenerateTaskPriority(TaskSpecification &spec, std::vector<ObjectID> &task_deps);
 
   /// Add a task that is pending execution.
   ///
@@ -96,7 +99,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// on failure.
   /// \return ObjectRefs returned by this task.
   std::vector<rpc::ObjectReference> AddPendingTask(const rpc::Address &caller_address,
-                                                   const TaskSpecification &spec,
+                                                   TaskSpecification &spec,
                                                    const std::string &call_site,
                                                    int max_retries = 0);
 
@@ -257,6 +260,10 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
+
+  // Priority id to assign when a new task is invoked.
+  // Sequentially increase new_priority_s after assign this to a new priority
+  int new_priority_s;
 
   /// Used for reference counting objects.
   /// The task manager is responsible for managing all references related to
