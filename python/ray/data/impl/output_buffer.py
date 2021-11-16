@@ -9,8 +9,8 @@ class BlockOutputBuffer(object):
 
     This class is used to turn a stream of items / blocks of arbitrary size
     into a stream of blocks of ``target_max_block_size``. The caller should
-    check ``has_next()`` after each ``add()`` call, and call ``next()`` to get the
-    next block when ``has_next()`` returns True.
+    check ``has_next()`` after each ``add()`` call, and call ``next()`` to get
+    the next block when ``has_next()`` returns True.
 
     When all items have been added, the caller must call ``finalize()`` and
     then check ``has_next()`` one last time.
