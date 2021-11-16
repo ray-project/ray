@@ -1,5 +1,6 @@
-"""
-Example using action masking to select/avoid actions depending on the current
+"""Example showing how to use "action masking" in RLlib.
+
+"Action masking" allows the agent to select actions based on the current
 observation. This is useful in many practical scenarios, where different
 actions are available in different time steps.
 Blog post explaining action masking: https://boring-guy.sh/posts/masking-rl/
