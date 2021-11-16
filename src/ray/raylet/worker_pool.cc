@@ -1387,10 +1387,13 @@ std::string WorkerPool::DebugString() const {
   std::stringstream result;
   result << "WorkerPool:";
   result << "\n- registered jobs: " << all_jobs_.size() - finished_jobs_.size();
-  result << "\n- process_failed_job_config_missing: " << process_failed_job_config_missing_;
+  result << "\n- process_failed_job_config_missing: "
+         << process_failed_job_config_missing_;
   result << "\n- process_failed_rate_limited: " << process_failed_rate_limited_;
-  result << "\n- process_failed_pending_registration: " << process_failed_pending_registration_;
-  result << "\n- process_failed_runtime_env_setup_failed: " << process_failed_runtime_env_setup_failed_;
+  result << "\n- process_failed_pending_registration: "
+         << process_failed_pending_registration_;
+  result << "\n- process_failed_runtime_env_setup_failed: "
+         << process_failed_runtime_env_setup_failed_;
   for (const auto &entry : states_by_lang_) {
     result << "\n- num " << Language_Name(entry.first)
            << " workers: " << entry.second.registered_workers.size();
