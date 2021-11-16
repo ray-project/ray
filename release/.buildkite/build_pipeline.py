@@ -81,6 +81,7 @@ CORE_NIGHTLY_TESTS = {
         "dask_on_ray_1tb_sort",
         SmokeTest("threaded_actors_stress_test"),
         "placement_group_performance_test",
+        "pg_long_running_performance_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",
