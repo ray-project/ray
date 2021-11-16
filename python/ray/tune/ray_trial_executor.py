@@ -740,7 +740,8 @@ class RayTrialExecutor(TrialExecutor):
         ready, _ = ray.wait(
             shuffled_results,
             timeout=timeout,
-            num_returns=len(shuffled_results))
+            num_returns=len(shuffled_results),
+            fetch_local=True)
         if not ready:
             return None
         wait_time = time.time() - start
@@ -785,6 +786,7 @@ class RayTrialExecutor(TrialExecutor):
             if not isinstance(result, list):
                 results[i] = [result]
         return results
+
 
     def _update_avail_resources(self, num_retries=5):
         if time.time() - self._last_resource_refresh < self._refresh_period:
