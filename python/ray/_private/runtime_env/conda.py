@@ -346,6 +346,9 @@ class CondaManager:
                        runtime_env: Dict,
                        context: RuntimeEnvContext,
                        logger: Optional[logging.Logger] = default_logger):
+        if runtime_env.get("conda") is None and runtime_env.get("pip") is None:
+            return
+
         if isinstance(runtime_env.get("conda"), str):
             conda_env_name = runtime_env["conda"]
         else:

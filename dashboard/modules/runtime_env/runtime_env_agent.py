@@ -227,8 +227,10 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     else:
                         self._conda_uri_cache.mark_used(
                             conda_uri, logger=per_job_logger)
-                    self._conda_manager.modify_context(
-                        conda_uri, runtime_env, context, logger=per_job_logger)
+                # Even if conda_uri is None, it might be the case that we're
+                # specifying an existing conda env, so run modify_context.
+                self._conda_manager.modify_context(
+                    conda_uri, runtime_env, context, logger=per_job_logger)
 
                 # Set up py_modules
                 py_modules_uris = self._py_modules_manager.get_uris(
