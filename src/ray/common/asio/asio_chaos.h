@@ -19,6 +19,6 @@ namespace testing {
 
 int64_t get_delay_ms(const std::string &name);
 void init();
-}
+}  // namespace testing
 }  // namespace asio
 }  // namespace ray

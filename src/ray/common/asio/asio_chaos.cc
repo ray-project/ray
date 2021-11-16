@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
- //  http://www.apache.org/licenses/LICENSE-2.0
+//  http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -42,9 +42,7 @@ namespace {
 */
 class DelayManager {
  public:
-  DelayManager() {
-    Init();
-  }
+  DelayManager() { Init(); }
 
   int64_t GetMethodDelay(const std::string &name) const {
     auto it = delay_.find(name);
@@ -77,13 +75,13 @@ class DelayManager {
   // method1=min:max
   void ParseItem(std::string_view val) {
     std::vector<std::string_view> item_val = absl::StrSplit(val, "=");
-    if(item_val.size() != 2) {
+    if (item_val.size() != 2) {
       RAY_LOG(ERROR) << "Error in syntax: " << val
                      << ", expected method=min_ms:max:ms. Skip this entry.";
     }
     auto delay_ms = ParseVal(item_val[1]);
-    if(delay_ms) {
-      if(item_val[0] == "*") {
+    if (delay_ms) {
+      if (item_val[0] == "*") {
         random_delay_ms_ = *delay_ms;
       } else {
         delay_[item_val[0]] = *delay_ms;
@@ -93,19 +91,19 @@ class DelayManager {
 
   std::optional<std::pair<int64_t, int64_t>> ParseVal(std::string_view val) {
     std::vector<std::string_view> delay_str_ms = absl::StrSplit(val, ":");
-    if(delay_str_ms.size() != 2) {
+    if (delay_str_ms.size() != 2) {
       RAY_LOG(ERROR) << "Error in syntax: " << val
                      << ", expected method=min_ms:max:ms. Skip this entry";
       return std::nullopt;
     }
     std::pair<int64_t, int64_t> delay_ms;
-    if(!absl::SimpleAtoi(delay_str_ms[0], &delay_ms.first) ||
-       !absl::SimpleAtoi(delay_str_ms[1], &delay_ms.second)) {
+    if (!absl::SimpleAtoi(delay_str_ms[0], &delay_ms.first) ||
+        !absl::SimpleAtoi(delay_str_ms[1], &delay_ms.second)) {
       RAY_LOG(ERROR) << "Error in syntax: " << val
                      << ", expected method=min_ms:max:ms. Skip this entry";
       return std::nullopt;
     }
-    if(delay_ms.first > delay_ms.second) {
+    if (delay_ms.first > delay_ms.second) {
       RAY_LOG(ERROR) << delay_ms.first << " is bigger than " << delay_ms.second
                      << ". Skip this entry.";
       return std::nullopt;
@@ -131,9 +129,7 @@ int64_t get_delay_ms(const std::string &name) {
   return _delay_manager.GetMethodDelay(name);
 }
 
-void init() {
-  return _delay_manager.Init();
-}
+void init() { return _delay_manager.Init(); }
 
 }  // namespace testing
 }  // namespace asio
