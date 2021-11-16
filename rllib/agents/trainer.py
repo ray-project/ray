@@ -1804,8 +1804,8 @@ class Trainer(Trainable):
                     raise ImportError((
                         "TensorFlow was specified as the 'framework' "
                         "inside of your config dictionary. However, there was "
-                        "no installation found. You can install TensorFlow via"
-                        " `pip install tensorflow`"))
+                        "no installation found. You can install TensorFlow via "
+                        "`pip install tensorflow`"))
             elif framework == "torch":
                 if not _torch:
                     raise ImportError(
