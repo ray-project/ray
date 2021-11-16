@@ -185,6 +185,22 @@ class MockTaskDependencyManager : public TaskDependencyManagerInterface {
   std::unordered_set<TaskID> blocked_tasks;
 };
 
+class FeatureFlagEnvironment : public ::testing::Environment {
+ /// We should run these tests with feature flags on to ensure we are testing the flagged behavior.
+ public:
+  ~FeatureFlagEnvironment() override {}
+
+  // Override this to define how to set up the environment.
+  void SetUp() override {
+    RayConfig::instance().worker_cap_initial_backoff_delay_ms() = 1000;
+  }
+
+  // Override this to define how to tear down the environment.
+  void TearDown() override {}
+};
+
+testing::FeatureFlagEnvironment * const env = ::testing::AddGlobalTestEnvironment(new FeatureFlagEnvironment);
+
 class ClusterTaskManagerTest : public ::testing::Test {
  public:
   ClusterTaskManagerTest(double num_cpus_at_head = 8.0, double num_gpus_at_head = 0.0)
