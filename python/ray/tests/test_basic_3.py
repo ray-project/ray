@@ -140,7 +140,11 @@ def test_many_fractional_resources(shutdown_only):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_background_tasks_with_max_calls(shutdown_only):
-    ray.init(num_cpus=2)
+    ray.init(
+        # TODO (Alex): We need to fix
+        # https://github.com/ray-project/ray/issues/20203 to remove this flag.
+        num_cpus=2,
+        _system_config={"worker_cap_initial_backoff_delay_ms": 0})
 
     @ray.remote
     def g():
