@@ -133,7 +133,7 @@ Placement groups are atomically created - meaning that if there exists a bundle 
     .. code-block:: c++
 
       // Wait for the placement group to be ready within the specified time(unit is seconds).
-      boll ready = pg.Wait(60);
+      bool ready = pg.Wait(60);
       assert(ready);
 
       // You can look at placement group states using this API.
