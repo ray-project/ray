@@ -95,22 +95,24 @@ class ParquetDatasource(FileBasedDatasource):
             logger.debug(f"Reading {len(pieces)} parquet pieces")
             use_threads = reader_args.pop("use_threads", False)
             for piece in pieces:
-                table = piece.to_table(
+                part = _get_partition_keys(piece.partition_expression)
+                batches = piece.to_batches(
                     use_threads=use_threads,
                     columns=columns,
                     schema=schema,
                     **reader_args)
-                part = _get_partition_keys(piece.partition_expression)
-                if part:
-                    for col, value in part.items():
-                        table = table.set_column(
-                            table.schema.get_field_index(col), col,
-                            pa.array([value] * len(table)))
-                # If the table is empty, drop it.
-                if table.num_rows > 0:
-                    output_buffer.add_block(table)
-                    if output_buffer.has_next():
-                        yield output_buffer.next()
+                for batch in batches:
+                    table = pyarrow.Table.from_batches([batch], schema=schema)
+                    if part:
+                        for col, value in part.items():
+                            table = table.set_column(
+                                table.schema.get_field_index(col), col,
+                                pa.array([value] * len(table)))
+                    # If the table is empty, drop it.
+                    if table.num_rows > 0:
+                        output_buffer.add_block(table)
+                        if output_buffer.has_next():
+                            yield output_buffer.next()
             output_buffer.finalize()
             if output_buffer.has_next():
                 yield output_buffer.next()

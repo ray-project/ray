@@ -80,10 +80,7 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
 
     def add(self, item: Any) -> None:
         if self._builder is None:
-            # TODO(ekl) this isn't efficient, but makes the identity map work
-            if isinstance(item, ArrowRow):
-                item = item.as_pydict()
-            if isinstance(item, dict):
+            if isinstance(item, dict) or isinstance(item, ArrowRow):
                 try:
                     check = ArrowBlockBuilder()
                     check.add(item)
