@@ -97,7 +97,7 @@ def step(_func_or_class: Optional[Callable] = None,
         execution_mode(:class:`ExecutionMode`): The execution mode for this
             step. Supported modes:
                 - ExecutionMode.LOCAL (default): executes this step inline in
-                    the calling process.
+                  the calling process.
                 - ExecutionMode.TASKS: executes this step in Ray tasks.
                 - ExecutionMode.ACTORS: executes this step in Ray actors.
         num_replicas (int): The number of Ray actors to start that
