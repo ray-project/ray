@@ -232,15 +232,22 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                 << WorkerID::FromBinary(actor_data.address().worker_id())
                 << ", raylet_id: " << NodeID::FromBinary(actor_data.address().raylet_id())
                 << ", num_restarts: " << actor_data.num_restarts()
-                << ", death context type="
-                << gcs::GetDeathCauseString(&actor_data.death_cause());
+                << ", has creation_task_exception="
+                << actor_data.has_creation_task_exception();
   if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
-    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(),
-                                             /*is_dead=*/false);
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), false);
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
     OnActorKilled(actor_id);
-    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(),
-                                             /*is_dead=*/true, &actor_data.death_cause());
+    std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
+    if (actor_data.has_creation_task_exception()) {
+      RAY_LOG(INFO) << "Creation task formatted exception: "
+                    << actor_data.creation_task_exception().formatted_exception_string()
+                    << ", actor_id: " << actor_id;
+      creation_task_exception =
+          std::make_shared<rpc::RayException>(actor_data.creation_task_exception());
+    }
+    direct_actor_submitter_->DisconnectActor(actor_id, actor_data.num_restarts(), true,
+                                             creation_task_exception);
     // We cannot erase the actor handle here because clients can still
     // submit tasks to dead actors. This also means we defer unsubscription,
     // otherwise we crash when bulk unsubscribing all actor handles.

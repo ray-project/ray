@@ -250,13 +250,12 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_node_manager_);
   std::unique_ptr<GcsActorSchedulerInterface> scheduler;
   auto schedule_failure_handler = [this](std::shared_ptr<GcsActor> actor,
-                                         bool runtime_env_setup_failed) {
+                                         bool destroy_actor) {
     // When there are no available nodes to schedule the actor the
     // gcs_actor_scheduler will treat it as failed and invoke this handler. In
     // this case, the actor manager should schedule the actor once an
     // eligible node is registered.
-    gcs_actor_manager_->OnActorSchedulingFailed(std::move(actor),
-                                                runtime_env_setup_failed);
+    gcs_actor_manager_->OnActorCreationFailed(std::move(actor), destroy_actor);
   };
   auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor,
                                          const rpc::PushTaskReply &reply) {
@@ -480,9 +479,10 @@ void GcsServer::InstallEventListeners() {
         auto &worker_address = worker_failure_data->worker_address();
         auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
         auto node_id = NodeID::FromBinary(worker_address.raylet_id());
-        const rpc::RayException *creation_task_exception = nullptr;
+        std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
         if (worker_failure_data->has_creation_task_exception()) {
-          creation_task_exception = &worker_failure_data->creation_task_exception();
+          creation_task_exception = std::make_shared<rpc::RayException>(
+              worker_failure_data->creation_task_exception());
         }
         gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
                                          worker_failure_data->exit_type(),

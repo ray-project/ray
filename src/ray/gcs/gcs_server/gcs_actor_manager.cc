@@ -601,8 +601,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
       });
 }
 
-void GcsActorManager::DestroyActor(const ActorID &actor_id,
-                                   const rpc::ActorDeathCause *death_cause) {
+void GcsActorManager::DestroyActor(const ActorID &actor_id) {
   RAY_LOG(INFO) << "Destroying actor, actor id = " << actor_id
                 << ", job id = " << actor_id.JobId();
   actor_to_register_callbacks_.erase(actor_id);
@@ -671,9 +670,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   auto time = current_sys_time_ms();
   mutable_actor_table_data->set_end_time(time);
   mutable_actor_table_data->set_timestamp(time);
-  if (death_cause != nullptr) {
-    mutable_actor_table_data->mutable_death_cause()->CopyFrom(*death_cause);
-  }
 
   auto actor_table_data =
       std::make_shared<rpc::ActorTableData>(*mutable_actor_table_data);
@@ -722,23 +718,17 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
   OnWorkerDead(node_id, worker_id, rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
 }
 
-void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
-                                   const ray::WorkerID &worker_id,
-                                   const rpc::WorkerExitType disconnect_type,
-                                   const rpc::RayException *creation_task_exception) {
+void GcsActorManager::OnWorkerDead(
+    const ray::NodeID &node_id, const ray::WorkerID &worker_id,
+    const rpc::WorkerExitType disconnect_type,
+    const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   std::string message = absl::StrCat(
       "Worker ", worker_id.Hex(), " on node ", node_id.Hex(),
       " exits, type=", rpc::WorkerExitType_Name(disconnect_type),
       ", has creation_task_exception = ", (creation_task_exception != nullptr));
-  std::unique_ptr<rpc::ActorDeathCause> death_cause = nullptr;
   if (creation_task_exception != nullptr) {
     absl::StrAppend(&message, " Formatted creation task exception: ",
                     creation_task_exception->formatted_exception_string());
-
-    death_cause = std::make_unique<rpc::ActorDeathCause>();
-    death_cause->mutable_creation_task_failure_context()
-        ->mutable_creation_task_exception()
-        ->CopyFrom(*creation_task_exception);
   }
   if (disconnect_type == rpc::WorkerExitType::INTENDED_EXIT ||
       disconnect_type == rpc::WorkerExitType::IDLE_EXIT) {
@@ -790,7 +780,8 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
 
   // Otherwise, try to reconstruct the actor that was already created or in the creation
   // process.
-  ReconstructActor(actor_id, /*need_reschedule=*/need_reconstruct, death_cause.get());
+  ReconstructActor(actor_id, /*need_reschedule=*/need_reconstruct,
+                   creation_task_exception);
 }
 
 void GcsActorManager::OnNodeDead(const NodeID &node_id) {
@@ -843,8 +834,9 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id) {
   ReconstructActor(actor_id, /*need_reschedule=*/true);
 }
 
-void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_reschedule,
-                                       const rpc::ActorDeathCause *death_cause) {
+void GcsActorManager::ReconstructActor(
+    const ActorID &actor_id, bool need_reschedule,
+    const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   // If the owner and this actor is dead at the same time, the actor
   // could've been destroyed and dereigstered before reconstruction.
   auto iter = registered_actors_.find(actor_id);
@@ -872,13 +864,10 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
     int64_t remaining = max_restarts - num_restarts;
     remaining_restarts = std::max(remaining, static_cast<int64_t>(0));
   }
-
-  RAY_LOG(INFO) << "Actor " << actor_id << " is failed on worker " << worker_id
+  RAY_LOG(INFO) << "Actor is failed " << actor_id << " on worker " << worker_id
                 << " at node " << node_id << ", need_reschedule = " << need_reschedule
-                << ", death context type = " << GetDeathCauseString(death_cause)
                 << ", remaining_restarts = " << remaining_restarts
                 << ", job id = " << actor_id.JobId();
-
   if (remaining_restarts != 0) {
     // num_restarts must be set before updating GCS, or num_restarts will be inconsistent
     // between memory cache and storage.
@@ -899,8 +888,9 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   } else {
     RemoveActorNameFromRegistry(actor);
     mutable_actor_table_data->set_state(rpc::ActorTableData::DEAD);
-    if (death_cause != nullptr) {
-      mutable_actor_table_data->mutable_death_cause()->CopyFrom(*death_cause);
+    if (creation_task_exception != nullptr) {
+      mutable_actor_table_data->set_allocated_creation_task_exception(
+          new rpc::RayException(*creation_task_exception));
     }
     auto time = current_sys_time_ms();
     mutable_actor_table_data->set_end_time(time);
@@ -925,22 +915,15 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
   }
 }
 
-void GcsActorManager::OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
-                                              bool runtime_env_setup_failed) {
-  if (!runtime_env_setup_failed) {
+void GcsActorManager::OnActorCreationFailed(std::shared_ptr<GcsActor> actor,
+                                            bool destroy_actor) {
+  if (destroy_actor) {
+    DestroyActor(actor->GetActorID());
+  } else {
     // We will attempt to schedule this actor once an eligible node is
     // registered.
     pending_actors_.emplace_back(std::move(actor));
-    return;
   }
-
-  auto death_cause = std::make_unique<rpc::ActorDeathCause>();
-  // TODO(sang, lixin) 1. Make this message more friendly 2. Show this message in
-  // object.get()'s error.
-  death_cause->mutable_runtime_env_setup_failure_context()->set_error_message(
-      "Cannot create an actor because the associated runtime env couldn't be created.");
-  // If there is runtime env failure, mark this actor as dead immediately.
-  DestroyActor(actor->GetActorID(), death_cause.get());
 }
 
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,

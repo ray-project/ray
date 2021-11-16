@@ -147,8 +147,10 @@ def test_invalid_conda_env(shutdown_only):
     # Check that another valid task can run.
     ray.get(f.remote())
 
+    # Check actor is also broken.
+    # TODO(sang): It should raise RuntimeEnvSetupError
     a = A.options(runtime_env=bad_env).remote()
-    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.f.remote())
 
     # The second time this runs it should be faster as the error is cached.
@@ -279,7 +281,8 @@ def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
     Test actor task raises an exception.
     """
     a = A.options(runtime_env=runtime_env).remote()
-    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
+    # TODO(sang): Raise a RuntimeEnvSetupError with proper error.
+    with pytest.raises(ray.exceptions.RayActorError):
         ray.get(a.ready.remote())
 
 

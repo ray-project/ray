@@ -605,7 +605,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
   void DisconnectClient(
       const std::shared_ptr<ClientConnection> &client,
       rpc::WorkerExitType disconnect_type = rpc::WorkerExitType::SYSTEM_ERROR_EXIT,
-      const rpc::RayException *creation_task_exception = nullptr);
+      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
 
   /// ID of this node.
   NodeID self_node_id_;

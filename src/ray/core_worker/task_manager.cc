@@ -373,10 +373,10 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
   }
 }
 
-bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                                    const Status *status,
-                                    const rpc::RayException *creation_task_exception,
-                                    bool immediately_mark_object_fail) {
+bool TaskManager::PendingTaskFailed(
+    const TaskID &task_id, rpc::ErrorType error_type, const Status *status,
+    const std::shared_ptr<rpc::RayException> &creation_task_exception,
+    bool immediately_mark_object_fail) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
@@ -539,7 +539,7 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
 
 void TaskManager::MarkPendingTaskFailed(
     const TaskSpecification &spec, rpc::ErrorType error_type,
-    const rpc::RayException *creation_task_exception) {
+    const std::shared_ptr<rpc::RayException> &creation_task_exception) {
   const TaskID task_id = spec.TaskId();
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
@@ -548,16 +548,10 @@ void TaskManager::MarkPendingTaskFailed(
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
     if (creation_task_exception != nullptr) {
       // Structure of bytes stored in object store:
-
-      // First serialize RayException by the following steps:
-      // PB's RayException
-      // --(PB Serialization)-->
-      // --(msgpack Serialization)-->
-      // msgpack_serialized_exception(MSE)
-
-      // Then add it's length to the head(for coross-language deserialization):
-      // [MSE's length(9 bytes)] [MSE]
-
+      // rpc::RayException
+      // ->pb-serialized bytes
+      // ->msgpack-serialized bytes
+      // ->[offset][msgpack-serialized bytes]
       std::string pb_serialized_exception;
       creation_task_exception->SerializeToString(&pb_serialized_exception);
       msgpack::sbuffer msgpack_serialized_exception;
