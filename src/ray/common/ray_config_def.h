@@ -113,7 +113,7 @@ RAY_CONFIG(bool, preallocate_plasma_memory, false)
 /// exponentially. The soft cap is needed to prevent deadlock in the case where
 /// a task begins to execute and tries to `ray.get` another task of the same
 /// class.
-RAY_CONFIG(int64_t, worker_cap_initial_backoff_delay_ms, 1000)
+RAY_CONFIG(int64_t, worker_cap_initial_backoff_delay_ms, 0)
 
 /// After reaching the worker cap, the backoff delay will grow exponentially,
 /// until it hits a maximum delay.
