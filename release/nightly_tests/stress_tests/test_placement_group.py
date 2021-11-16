@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 # TODO(sang): Increase the number in the actual stress test.
 # This number should be divisible by 3.
-RESOURCE_QUANTITY = 999
+RESOURCE_QUANTITY = 666
 NUM_NODES = 5
 CUSTOM_RESOURCES = {"pg_custom": RESOURCE_QUANTITY}
 # Create pg that uses 1 resource of cpu & custom resource.

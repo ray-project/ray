@@ -151,33 +151,34 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Get a handle to a named actor of current job.
+   * Get a handle to a named actor in current namespace.
    *
-   * <p>Gets a handle to a named actor with the given name. The actor must have been created with
-   * name specified.
+   * <p>Gets a handle to a named actor with the given name of current namespace. The actor must have
+   * been created with name specified.
    *
    * @param name The name of the named actor.
-   * @return an ActorHandle to the actor if the actor of specified name exists or an
-   *     Optional.empty()
+   * @return an ActorHandle to the actor if the actor of specified name exists in current namespace
+   *     or an Optional.empty()
    * @throws RayException An exception is raised if timed out.
    */
   public static <T extends BaseActorHandle> Optional<T> getActor(String name) {
-    return internal().getActor(name, false);
+    return internal().getActor(name, null);
   }
 
   /**
-   * Get a handle to a global named actor.
+   * Get a handle to a named actor in the given namespace.
    *
-   * <p>Gets a handle to a global named actor with the given name. The actor must have been created
-   * with global name specified.
+   * <p>Gets a handle to a named actor with the given name of the given namespace. The actor must
+   * have been created with name specified.
    *
-   * @param name The global name of the named actor.
-   * @return an ActorHandle to the actor if the actor of specified name exists or an
-   *     Optional.empty()
+   * @param name The name of the named actor.
+   * @param namespace The namespace of the actor.
+   * @return an ActorHandle to the actor if the actor of specified name exists in current namespace
+   *     or an Optional.empty()
    * @throws RayException An exception is raised if timed out.
    */
-  public static <T extends BaseActorHandle> Optional<T> getGlobalActor(String name) {
-    return internal().getActor(name, true);
+  public static <T extends BaseActorHandle> Optional<T> getActor(String name, String namespace) {
+    return internal().getActor(name, namespace);
   }
 
   /**
