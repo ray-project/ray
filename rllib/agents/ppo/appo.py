@@ -106,33 +106,6 @@ class UpdateTargetAndKL:
                 self.update_kl(fetches)
 
 
-def add_target_callback(config: TrainerConfigDict):
-    """Add the update target and kl hook.
-
-    This hook is called explicitly after each learner step in the execution
-    setup for IMPALA.
-
-    Args:
-        config (TrainerConfigDict): The APPO config dict.
-    """
-    config["after_train_step"] = UpdateTargetAndKL
-
-
-def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    """Policy class picker function. Class is chosen based on DL-framework.
-
-    Args:
-        config (TrainerConfigDict): The trainer's configuration dict.
-
-    Returns:
-        Optional[Type[Policy]]: The Policy class to use with PPOTrainer.
-            If None, use `default_policy` provided in build_trainer().
-    """
-    if config["framework"] == "torch":
-        from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
-        return AsyncPPOTorchPolicy
-
-
 def initialize_target(trainer: Trainer) -> None:
     """Updates target network on startup by synching it with the policy net.
 
@@ -145,7 +118,9 @@ def initialize_target(trainer: Trainer) -> None:
 
 class APPOTrainer(impala.ImpalaTrainer):
     def __init__(self, config, *args, **kwargs):
-        # Before init: Set the update target and KL hook via our config.
+        # Before init: Add the update target and kl hook.
+        # This hook is called explicitly after each learner step in the
+        # execution setup for IMPALA.
         config["after_train_step"] = UpdateTargetAndKL
 
         super().__init__(config, *args, **kwargs)
@@ -160,22 +135,8 @@ class APPOTrainer(impala.ImpalaTrainer):
     def get_default_policy_class(self, config: PartialTrainerConfigDict) -> \
             Optional[Type[Policy]]:
         if config["framework"] == "torch":
-            from ray.rllib.agents.ppo.appo_torch_policy import AsyncPPOTorchPolicy
+            from ray.rllib.agents.ppo.appo_torch_policy import \
+                AsyncPPOTorchPolicy
             return AsyncPPOTorchPolicy
         else:
             return AsyncPPOTFPolicy
-
-    #def validate_config(self, config):
-
-
-## Build a child class of `Trainer`, based on ImpalaTrainer's setup.
-## Note: The generated class is NOT a sub-class of ImpalaTrainer, but directly
-## of the `Trainer` class.
-#APPOTrainer = impala.ImpalaTrainer.with_updates(
-#name="APPO",
-#default_config=DEFAULT_CONFIG,
-#validate_config=add_target_callback,
-#default_policy=AsyncPPOTFPolicy,
-#get_policy_class=get_policy_class,
-#before_init=add_target_callback,
-#after_init=initialize_target)

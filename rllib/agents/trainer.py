@@ -1892,8 +1892,6 @@ class Trainer(Trainable):
             elif is_multi_agent:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
                 from ray.rllib.policy.torch_policy import TorchPolicy
-                #default_policy_cls = None if trainer_obj_or_none is None else \
-                #    getattr(trainer_obj_or_none, "_policy_class", None)
                 default_policy_cls = self.get_default_policy_class(config)
                 if any((p[0] or default_policy_cls) is None
                        or not issubclass(p[0] or default_policy_cls,
@@ -2251,20 +2249,20 @@ class Trainer(Trainable):
     def __repr__(self):
         return self._name
 
-    @Deprecated(new="Trainer.evaluate", error=False)
+    @Deprecated(new="Trainer.evaluate()", error=False)
     def _evaluate(self) -> dict:
         return self.evaluate()
 
-    @Deprecated(new="compute_single_action", error=False)
+    @Deprecated(new="Trainer.compute_single_action()", error=False)
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
 
-    @Deprecated(new="try_recover_from_step_attempt", error=False)
+    @Deprecated(new="Trainer.try_recover_from_step_attempt()", error=False)
     def _try_recover(self):
         return self.try_recover_from_step_attempt()
 
     @staticmethod
-    @Deprecated(new="validate_config", error=False)
+    @Deprecated(new="Trainer.validate_config()", error=False)
     def _validate_config(config, trainer_or_none):
         assert trainer_or_none is not None
         return trainer_or_none.validate_config(config)
