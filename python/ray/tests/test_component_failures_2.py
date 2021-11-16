@@ -33,59 +33,6 @@ def ray_start_workers_separate_multinode(request):
     cluster.shutdown()
 
 
-def test_worker_failed(ray_start_workers_separate_multinode):
-    num_nodes, num_initial_workers = (ray_start_workers_separate_multinode)
-
-    if num_nodes == 4 and sys.platform == "win32":
-        pytest.skip("Failing on Windows.")
-
-    @ray.remote
-    def get_pids():
-        time.sleep(0.25)
-        return os.getpid()
-
-    start_time = time.time()
-    pids = set()
-    while len(pids) < num_nodes * num_initial_workers:
-        new_pids = ray.get([
-            get_pids.remote()
-            for _ in range(2 * num_nodes * num_initial_workers)
-        ])
-        for pid in new_pids:
-            pids.add(pid)
-        if time.time() - start_time > 60:
-            raise RayTestTimeoutException(
-                "Timed out while waiting to get worker PIDs.")
-
-    @ray.remote
-    def f(x):
-        time.sleep(0.5)
-        return x
-
-    # Submit more tasks than there are workers so that all workers and
-    # cores are utilized.
-    object_refs = [f.remote(i) for i in range(num_initial_workers * num_nodes)]
-    object_refs += [f.remote(object_ref) for object_ref in object_refs]
-    # Allow the tasks some time to begin executing.
-    time.sleep(0.1)
-    # Kill the workers as the tasks execute.
-    for pid in pids:
-        try:
-            os.kill(pid, SIGKILL)
-        except OSError:
-            # The process may have already exited due to worker capping.
-            pass
-        time.sleep(0.1)
-    # Make sure that we either get the object or we get an appropriate
-    # exception.
-    for object_ref in object_refs:
-        try:
-            ray.get(object_ref)
-        except (ray.exceptions.RayTaskError,
-                ray.exceptions.WorkerCrashedError):
-            pass
-
-
 def _test_component_failed(cluster, component_type):
     """Kill a component on all worker nodes and check workload succeeds."""
     # Submit many tasks with many dependencies.

@@ -56,10 +56,17 @@ def test_worker_failed(ray_start_workers_separate_multinode):
         time.sleep(0.5)
         return x
 
+    # Define `f` and `g` separately so that we don't get rate limted in the
+    # number of workers we start.
+    @ray.remote
+    def g(x):
+        time.sleep(0.5)
+        return x
+
     # Submit more tasks than there are workers so that all workers and
     # cores are utilized.
     object_refs = [f.remote(i) for i in range(num_initial_workers * num_nodes)]
-    object_refs += [f.remote(object_ref) for object_ref in object_refs]
+    object_refs += [g.remote(object_ref) for object_ref in object_refs]
     # Allow the tasks some time to begin executing.
     time.sleep(0.1)
     # Kill the workers as the tasks execute.
