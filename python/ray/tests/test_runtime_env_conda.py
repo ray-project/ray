@@ -172,8 +172,6 @@ class TestGC:
         ]
         ray.get([a.test_import.remote() for a in actors])
         for i in range(5):
-            import time
-            time.sleep(10)
             assert not check_local_files_gced(cluster)
             ray.kill(actors[i])
         wait_for_condition(lambda: check_local_files_gced(cluster))
