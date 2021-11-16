@@ -224,6 +224,12 @@ formatter = logging.Formatter(fmt="[%(levelname)s %(asctime)s] "
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
+def _format_link(link: str):
+    # Use ANSI escape code to allow link to be clickable
+    # https://buildkite.com/docs/pipelines/links-and-images
+    # -in-log-output
+    return r"\033]1339;url='" + link + r"'\a\n"
+
 
 def getenv_default(key: str, default: Optional[str] = None):
     """Return environment variable with default value"""
@@ -898,7 +904,7 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
 
         if build.status == "succeeded":
             logger.info(f"Link to app config build: "
-                        f"{anyscale_app_config_build_url(build_id)}")
+                        f"{_format_link(anyscale_app_config_build_url(build_id))}")
             return build_id
 
     if last_status == "failed":
@@ -989,7 +995,7 @@ def create_and_wait_for_session(
     logger.info(f"Starting session {session_name} ({session_id})")
     session_url = anyscale_session_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id)
-    logger.info(f"Link to session: {session_url}")
+    logger.info(f"Link to session: {_format_link(session_url)}")
 
     result = sdk.start_session(session_id, start_session_options={})
     sop_id = result.result.id
@@ -1037,7 +1043,7 @@ def run_session_command(sdk: AnyscaleSDK,
     logger.info(f"Running command in session {session_id}: \n" f"{full_cmd}")
     session_url = anyscale_session_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id)
-    logger.info(f"Link to session: {session_url}")
+    logger.info(f"Link to session: {_format_link(session_url)}")
     result_queue.put(State(state_str, time.time(), None))
     result = sdk.create_session_command(
         dict(session_id=session_id, shell_command=full_cmd))
@@ -1522,7 +1528,7 @@ def run_test_config(
                             sdk, project_id, compute_tpl)
 
                     logger.info(f"Link to compute template: "
-                                f"{anyscale_compute_tpl_url(compute_tpl_id)}")
+                                f"{_format_link(anyscale_compute_tpl_url(compute_tpl_id))}")
 
                     # Find/create app config
                     if app_config_id is None:
@@ -1878,7 +1884,7 @@ def run_test_config(
 
     project_url = anyscale_project_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"])
-    logger.info(f"Link to project: {project_url}")
+    logger.info(f"Link to project: {_format_link(project_url)}")
 
     msg = f"This will now run test {test_name}."
     if smoke_test:
