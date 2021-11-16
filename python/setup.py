@@ -264,7 +264,7 @@ if setup_spec.type == SetupType.RAY:
         "numpy >= 1.19.3; python_version >= '3.9'",
         "protobuf >= 3.15.3",
         "pyyaml",
-        "redis >= 3.5.0",
+        "redis[hiredis] >= 3.5.0",
     ]
 
 
