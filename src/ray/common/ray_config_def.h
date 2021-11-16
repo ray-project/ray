@@ -92,11 +92,32 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
+/// Maximum amount of lineage to keep in bytes. This includes the specs of all
+/// tasks that have previously already finished but that may be retried again.
+/// If we reach this limit, 50% of the current lineage will be evicted and
+/// objects that are still in scope will no longer be reconstructed if lost.
+/// Each task spec is on the order of 1KB but can be much larger if it has many
+/// inlined args.
+RAY_CONFIG(int64_t, max_lineage_bytes, 1024 * 1024 * 1024)
+
 /// Whether to re-populate plasma memory. This avoids memory allocation failures
 /// at runtime (SIGBUS errors creating new objects), however it will use more memory
 /// upfront and can slow down Ray startup.
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
+
+/// We place a soft cap on the number of tasks of a given scheduling class that
+/// can run at once to limit the total nubmer of worker processes. After the
+/// specified interval, the new task above that cap is allowed to run. The time
+/// before the next tasks (above the cap) are allowed to run increases
+/// exponentially. The soft cap is needed to prevent deadlock in the case where
+/// a task begins to execute and tries to `ray.get` another task of the same
+/// class.
+RAY_CONFIG(int64_t, worker_cap_initial_backoff_delay_ms, 1000)
+
+/// After reaching the worker cap, the backoff delay will grow exponentially,
+/// until it hits a maximum delay.
+RAY_CONFIG(int64_t, worker_cap_max_backoff_delay_ms, 1000 * 10)
 
 /// The fraction of resource utilization on a node after which the scheduler starts
 /// to prefer spreading tasks to other nodes. This balances between locality and

@@ -26,7 +26,7 @@ public class NamespaceTest {
             Assert.assertThrows(
                 NoSuchElementException.class,
                 () -> {
-                  Ray.getGlobalActor("a").get();
+                  Ray.getActor("a").get();
                 }));
   }
 
@@ -36,7 +36,7 @@ public class NamespaceTest {
     testIsolation(
         MainClassForNamespaceTest.class,
         () -> {
-          ActorHandle<A> a = (ActorHandle<A>) Ray.getGlobalActor("a").get();
+          ActorHandle<A> a = (ActorHandle<A>) Ray.getActor("a").get();
           Assert.assertEquals("hello", a.task(A::hello).remote().get());
         });
   }
@@ -48,26 +48,53 @@ public class NamespaceTest {
             Assert.assertThrows(
                 NoSuchElementException.class,
                 () -> {
-                  Ray.getGlobalActor("a").get();
+                  Ray.getActor("a").get();
                 }));
+  }
+
+  private static String getNamespace() {
+    return Ray.getRuntimeContext().getNamespace();
+  }
+
+  private static class GetNamespaceActor {
+    public String getNamespace() {
+      return Ray.getRuntimeContext().getNamespace();
+    }
+  }
+
+  public void testGetNamespace() {
+    final String thisNamespace = "test_get_current_namespace";
+    System.setProperty("ray.job.namespace", thisNamespace);
+    try {
+      Ray.init();
+      /// Test in driver.
+      Assert.assertEquals(thisNamespace, Ray.getRuntimeContext().getNamespace());
+      /// Test in task.
+      Assert.assertEquals(thisNamespace, Ray.task(NamespaceTest::getNamespace).remote().get());
+      /// Test in actor.
+      ActorHandle<GetNamespaceActor> a = Ray.actor(GetNamespaceActor::new).remote();
+      Assert.assertEquals(thisNamespace, a.task(GetNamespaceActor::getNamespace).remote().get());
+    } finally {
+      Ray.shutdown();
+    }
   }
 
   public static class MainClassForNamespaceTest {
     public static void main(String[] args) throws IOException, InterruptedException {
       System.setProperty("ray.job.namespace", "test1");
-      startDriverWithGlobalActor();
+      startDriver();
     }
   }
 
   public static class MainClassForAnonymousNamespaceTest {
     public static void main(String[] args) throws IOException, InterruptedException {
-      startDriverWithGlobalActor();
+      startDriver();
     }
   }
 
-  private static void startDriverWithGlobalActor() throws InterruptedException {
+  private static void startDriver() throws InterruptedException {
     Ray.init();
-    ActorHandle<A> a = Ray.actor(A::new).setGlobalName("a").remote();
+    ActorHandle<A> a = Ray.actor(A::new).setName("a").remote();
     Assert.assertEquals("hello", a.task(A::hello).remote().get());
     /// Because we don't support long running job yet, so sleep to don't destroy
     /// it for a while. Otherwise the actor created in this job will be destroyed

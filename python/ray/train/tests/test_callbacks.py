@@ -13,7 +13,7 @@ from ray.train.constants import (TRAINING_ITERATION, DETAILED_AUTOFILLED_KEYS,
                                  BASIC_AUTOFILLED_KEYS,
                                  ENABLE_DETAILED_AUTOFILLED_METRICS_ENV)
 from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
-from ray.train.backends.backend import BackendConfig, BackendInterface
+from ray.train.backend import BackendConfig, Backend
 from ray.train.worker_group import WorkerGroup
 
 try:
@@ -46,7 +46,7 @@ class TestConfig(BackendConfig):
         return TestBackend
 
 
-class TestBackend(BackendInterface):
+class TestBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 
@@ -128,7 +128,7 @@ def _validate_tbx_result(events_dir):
     for event in summary_iterator(events_file):
         for v in event.summary.value:
             assert v.tag.startswith("ray/train")
-            results[v.tag[8:]].append(v.simple_value)
+            results[v.tag[10:]].append(v.simple_value)
 
     assert len(results["episode_reward_mean"]) == 3
     assert [int(res) for res in results["episode_reward_mean"]] == [4, 5, 6]

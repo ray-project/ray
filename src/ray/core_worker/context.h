@@ -82,6 +82,8 @@ class WorkerContext {
   // Returns the next put object index; used to calculate ObjectIDs for puts.
   ObjectIDIndexType GetNextPutIndex();
 
+  int64_t GetTaskDepth() const;
+
  protected:
   // allow unit test to set.
   bool current_actor_is_direct_call_ = false;
@@ -107,7 +109,7 @@ class WorkerContext {
   mutable absl::Mutex mutex_;
 
  private:
-  static WorkerThreadContext &GetThreadContext();
+  WorkerThreadContext &GetThreadContext() const;
 
   /// Per-thread worker context.
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;

@@ -78,8 +78,8 @@ public class RayDevRuntime extends AbstractRayRuntime {
 
   @SuppressWarnings("unchecked")
   @Override
-  public <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global) {
-    return (Optional<T>) ((LocalModeTaskSubmitter) taskSubmitter).getActor(name, global);
+  public <T extends BaseActorHandle> Optional<T> getActor(String name, String namespace) {
+    return (Optional<T>) ((LocalModeTaskSubmitter) taskSubmitter).getActor(name);
   }
 
   @Override
@@ -112,6 +112,11 @@ public class RayDevRuntime extends AbstractRayRuntime {
     // @TODO(clay4444): We need a LocalGcsClient before implements this.
     throw new UnsupportedOperationException(
         "Ray doesn't support placement group operations in local mode.");
+  }
+
+  @Override
+  public String getNamespace() {
+    return null;
   }
 
   @Override

@@ -15,7 +15,7 @@ logger = logging.getLogger("tune_framework")
 
 def run(smoke_test=False):
     stop = {"training_iteration": 1 if smoke_test else 50}
-    num_workers = 1 if smoke_test else 50
+    num_workers = 1 if smoke_test else 20
     num_gpus = 0 if smoke_test else 1
 
     config = {

@@ -102,6 +102,7 @@ class Policy(metaclass=ABCMeta):
         self.action_space_struct = get_base_struct_from_space(action_space)
 
         self.config: TrainerConfigDict = config
+        self.framework = self.config.get("framework")
         # Create the callbacks object to use for handling custom callbacks.
         if self.config.get("callbacks"):
             self.callbacks: "DefaultCallbacks" = self.config.get("callbacks")()
@@ -763,6 +764,12 @@ class Policy(metaclass=ABCMeta):
                 TensorType]]]): An optional stats function to be called after
                 the loss.
         """
+        # Signal Policy that currently we do not like to eager/jit trace
+        # any function calls. This is to be able to track, which columns
+        # in the dummy batch are accessed by the different function (e.g.
+        # loss) such that we can then adjust our view requirements.
+        self._no_tracing = True
+
         sample_batch_size = max(self.batch_divisibility_req * 4, 32)
         self._dummy_batch = self._get_dummy_batch_from_view_requirements(
             sample_batch_size)
@@ -770,6 +777,9 @@ class Policy(metaclass=ABCMeta):
         actions, state_outs, extra_outs = \
             self.compute_actions_from_input_dict(
                 self._dummy_batch, explore=False)
+        for key, view_req in self.view_requirements.items():
+            if key not in self._dummy_batch.accessed_keys:
+                view_req.used_for_compute_actions = False
         # Add all extra action outputs to view reqirements (these may be
         # filtered out later again, if not needed for postprocessing or loss).
         for key, value in extra_outs.items():
@@ -805,7 +815,7 @@ class Policy(metaclass=ABCMeta):
         # Switch on lazy to-tensor conversion on `postprocessed_batch`.
         train_batch = self._lazy_tensor_dict(postprocessed_batch)
         # Calling loss, so set `is_training` to True.
-        train_batch.is_training = True
+        train_batch.set_training(True)
         if seq_lens is not None:
             train_batch[SampleBatch.SEQ_LENS] = seq_lens
         train_batch.count = self._dummy_batch.count
@@ -815,6 +825,9 @@ class Policy(metaclass=ABCMeta):
         # Call the stats fn, if given.
         if stats_fn is not None:
             stats_fn(self, train_batch)
+
+        # Re-enable tracing.
+        self._no_tracing = False
 
         # Add new columns automatically to view-reqs.
         if auto_remove_unneeded_view_reqs:
@@ -858,7 +871,9 @@ class Policy(metaclass=ABCMeta):
                                 "automatically remove non-used items from the "
                                 "data stream. Remove the `del` from your "
                                 "postprocessing function.".format(key))
-                        else:
+                        # If we are not writing output to disk, save to erase
+                        # this key to save space in the sample batch.
+                        elif self.config["output"] is None:
                             del self.view_requirements[key]
 
     def _get_dummy_batch_from_view_requirements(
