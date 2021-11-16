@@ -272,6 +272,10 @@ if platform.system() == "Darwin" and platform.machine() == "arm64":
     # remove this, either when they add support, we remove redis, or we vendor
     # redis/hiredis ourselves.
     setup_spec.install_requires.append("redis >= 3.5.0")
+elif platform.system() == "Windows":
+    # TODO (Alex): Ray is not compatible with redis >= 4.0.0. We ened to either
+    # investigate why, or remove the redis dependency.
+    setup_spec.install_requires.append("redis >= 3.5.0, redis < 4.0")
 else:
     setup_spec.install_requires.append("redis[hiredis] >= 3.5.0")
 
