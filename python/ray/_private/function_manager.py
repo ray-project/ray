@@ -36,8 +36,10 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
 
 logger = logging.getLogger(__name__)
 
+
 def make_export_key(pos):
     return b"Exports:" + int(pos).to_bytes(8, "big")
+
 
 class FunctionActorManager:
     """A class used to export/load remote functions and actors.
@@ -134,7 +136,8 @@ class FunctionActorManager:
         while True:
             pos += 1
             holder = make_export_key(pos)
-            if self._worker.gcs_client.internal_kv_put(holder, key, False, KV_NAMESPACE_FUNCTION_TABLE) == 0:
+            if self._worker.gcs_client.internal_kv_put(
+                    holder, key, False, KV_NAMESPACE_FUNCTION_TABLE) == 0:
                 break
 
     def export(self, remote_function):

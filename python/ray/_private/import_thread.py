@@ -82,14 +82,16 @@ class ImportThread:
             import_pubsub_client.close()
 
     def _do_importing(self):
-        export_key = ray._private.function_manager.make_export_key(self.num_imported + 1)
-        key = self.gcs_client.internal_kv_get(
-            export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
-        if key is not None:
-            self._process_key(key)
-            self.num_imported += 1
-        else:
-            break
+        while True:
+            export_key = ray._private.function_manager.make_export_key(
+                self.num_imported + 1)
+            key = self.gcs_client.internal_kv_get(
+                export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+            if key is not None:
+                self._process_key(key)
+                self.num_imported += 1
+            else:
+                break
 
     def _get_import_info_for_collision_detection(self, key):
         """Retrieve the collision identifier, type, and name of the import."""
