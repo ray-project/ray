@@ -1025,38 +1025,38 @@ def test_repartition_shuffle(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.sum() == 190
-    assert ds._block_sizes() == [2] * 10
+    assert ds._block_num_rows() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=True)
     assert ds2.num_blocks() == 5
     assert ds2.sum() == 190
-    assert ds2._block_sizes() == [10, 10, 0, 0, 0]
+    assert ds2._block_num_rows() == [10, 10, 0, 0, 0]
 
     ds3 = ds2.repartition(20, shuffle=True)
     assert ds3.num_blocks() == 20
     assert ds3.sum() == 190
-    assert ds3._block_sizes() == [2] * 10 + [0] * 10
+    assert ds3._block_num_rows() == [2] * 10 + [0] * 10
 
     large = ray.data.range(10000, parallelism=10)
     large = large.repartition(20, shuffle=True)
-    assert large._block_sizes() == [500] * 20
+    assert large._block_num_rows() == [500] * 20
 
 
 def test_repartition_noshuffle(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.sum() == 190
-    assert ds._block_sizes() == [2] * 10
+    assert ds._block_num_rows() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=False)
     assert ds2.num_blocks() == 5
     assert ds2.sum() == 190
-    assert ds2._block_sizes() == [4, 4, 4, 4, 4]
+    assert ds2._block_num_rows() == [4, 4, 4, 4, 4]
 
     ds3 = ds2.repartition(20, shuffle=False)
     assert ds3.num_blocks() == 20
     assert ds3.sum() == 190
-    assert ds3._block_sizes() == [1] * 20
+    assert ds3._block_num_rows() == [1] * 20
 
     # Test num_partitions > num_rows
     ds4 = ds.repartition(40, shuffle=False)
@@ -1064,36 +1064,36 @@ def test_repartition_noshuffle(ray_start_regular_shared):
     blocks = ray.get(ds4.get_internal_block_refs())
     assert all(isinstance(block, list) for block in blocks), blocks
     assert ds4.sum() == 190
-    assert ds4._block_sizes() == ([1] * 20) + ([0] * 20)
+    assert ds4._block_num_rows() == ([1] * 20) + ([0] * 20)
 
     ds5 = ray.data.range(22).repartition(4)
     assert ds5.num_blocks() == 4
-    assert ds5._block_sizes() == [5, 6, 5, 6]
+    assert ds5._block_num_rows() == [5, 6, 5, 6]
 
     large = ray.data.range(10000, parallelism=10)
     large = large.repartition(20)
-    assert large._block_sizes() == [500] * 20
+    assert large._block_num_rows() == [500] * 20
 
 
 def test_repartition_shuffle_arrow(ray_start_regular_shared):
     ds = ray.data.range_arrow(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.count() == 20
-    assert ds._block_sizes() == [2] * 10
+    assert ds._block_num_rows() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=True)
     assert ds2.num_blocks() == 5
     assert ds2.count() == 20
-    assert ds2._block_sizes() == [10, 10, 0, 0, 0]
+    assert ds2._block_num_rows() == [10, 10, 0, 0, 0]
 
     ds3 = ds2.repartition(20, shuffle=True)
     assert ds3.num_blocks() == 20
     assert ds3.count() == 20
-    assert ds3._block_sizes() == [2] * 10 + [0] * 10
+    assert ds3._block_num_rows() == [2] * 10 + [0] * 10
 
     large = ray.data.range_arrow(10000, parallelism=10)
     large = large.repartition(20, shuffle=True)
-    assert large._block_sizes() == [500] * 20
+    assert large._block_num_rows() == [500] * 20
 
 
 def test_from_pandas(ray_start_regular_shared):
@@ -2044,7 +2044,7 @@ def test_split(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.sum() == 190
-    assert ds._block_sizes() == [2] * 10
+    assert ds._block_num_rows() == [2] * 10
 
     datasets = ds.split(5)
     assert [2] * 5 == [
@@ -3670,12 +3670,14 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
         def __init__(self):
             self.counter = Counter.remote()
 
-        def _read_file(self, f: "pa.NativeFile", path: str, **reader_args):
+        def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
             count = self.counter.increment.remote()
             if ray.get(count) == 1:
                 raise ValueError("oops")
             else:
-                return CSVDatasource._read_file(self, f, path, **reader_args)
+                for block in CSVDatasource._read_stream(
+                        self, f, path, **reader_args):
+                    yield block
 
         def _write_block(self, f: "pa.NativeFile", block: BlockAccessor,
                          **writer_args):

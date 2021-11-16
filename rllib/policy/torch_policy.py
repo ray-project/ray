@@ -8,11 +8,10 @@ import os
 import threading
 import time
 import tree  # pip install dm_tree
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, \
-    Union, TYPE_CHECKING
+from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union, \
+    TYPE_CHECKING
 
 import ray
-from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
@@ -20,7 +19,7 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list, NullContextManager
-from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -28,8 +27,8 @@ from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import GradInfoDict, ModelGradients, \
-    ModelWeights, TensorType, TensorStructType, TrainerConfigDict
+from ray.rllib.utils.typing import ModelGradients, ModelWeights, TensorType, \
+    TensorStructType, TrainerConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.evaluation import Episode  # noqa
@@ -50,12 +49,11 @@ class TorchPolicy(Policy):
             action_space: gym.spaces.Space,
             config: TrainerConfigDict,
             *,
-            model: Optional[TorchModelV2] = None,
-            loss: Optional[Callable[[
+            model: ModelV2,
+            loss: Callable[[
                 Policy, ModelV2, Type[TorchDistributionWrapper], SampleBatch
-            ], Union[TensorType, List[TensorType]]]] = None,
-            action_distribution_class: Optional[Type[
-                TorchDistributionWrapper]] = None,
+            ], Union[TensorType, List[TensorType]]],
+            action_distribution_class: Type[TorchDistributionWrapper],
             action_sampler_fn: Optional[Callable[[
                 TensorType, List[TensorType]
             ], Tuple[TensorType, TensorType]]] = None,
@@ -115,7 +113,7 @@ class TorchPolicy(Policy):
             get_batch_divisibility_req: Optional callable that returns the
                 divisibility requirement for sample batches given the Policy.
         """
-        self.framework = config["framework"] = "torch"
+        self.framework = "torch"
         super().__init__(observation_space, action_space, config)
 
         # Create multi-GPU model towers, if necessary.
@@ -129,19 +127,6 @@ class TorchPolicy(Policy):
         #   updating all towers' weights from the main model.
         # - In case of just one device (1 (fake or real) GPU or 1 CPU), no
         #   parallelization will be done.
-
-        # If no Model is provided, build a default one here.
-        if model is None:
-            dist_class, logit_dim = ModelCatalog.get_action_dist(
-                action_space, self.config["model"], framework=self.framework)
-            model = ModelCatalog.get_model_v2(
-                obs_space=self.observation_space,
-                action_space=self.action_space,
-                num_outputs=logit_dim,
-                model_config=self.config["model"],
-                framework=self.framework)
-            if action_distribution_class is None:
-                action_distribution_class = dist_class
 
         # Get devices to build the graph on.
         worker_idx = self.config.get("worker_index", 0)
@@ -228,18 +213,7 @@ class TorchPolicy(Policy):
 
         self.exploration = self._create_exploration()
         self.unwrapped_model = model  # used to support DistributedDataParallel
-        # To ensure backward compatibility:
-        # Old way: If `loss` provided here, use as-is (as a function).
-        if loss is not None:
-            self._loss = loss
-        # New way: Convert the overridden `self.loss` into a plain function,
-        # so it can be called the same way as `loss` would be, ensuring
-        # backward compatibility.
-        elif self.loss.__func__.__qualname__ != "Policy.loss":
-            self._loss = self.loss.__func__
-        # `loss` not provided nor overridden from Policy -> Set to None.
-        else:
-            self._loss = None
+        self._loss = loss
         self._optimizers = force_list(self.optimizer())
         # Store, which params (by index within the model's list of
         # parameters) should be updated per optimizer.
@@ -642,11 +616,11 @@ class TorchPolicy(Policy):
 
         Returns:
             The list of stats tensor (structs) of all towers, copied to this
-            Policy's device.
+                Policy's device.
 
         Raises:
             AssertionError: If the `stats_name` cannot be found in any one
-            of the tower's `tower_stats` dicts.
+                of the tower's `tower_stats` dicts.
         """
         data = []
         for tower in self.model_gpu_towers:
@@ -723,7 +697,7 @@ class TorchPolicy(Policy):
 
     @DeveloperAPI
     def extra_grad_process(self, optimizer: "torch.optim.Optimizer",
-                           loss: TensorType) -> Dict[str, TensorType]:
+                           loss: TensorType):
         """Called after each optimizer.zero_grad() + loss.backward() call.
 
         Called for each self._optimizers/loss-value pair.
@@ -731,21 +705,22 @@ class TorchPolicy(Policy):
         E.g. for gradient clipping.
 
         Args:
-            optimizer: A torch optimizer object.
-            loss: The loss tensor associated with the optimizer.
+            optimizer (torch.optim.Optimizer): A torch optimizer object.
+            loss (TensorType): The loss tensor associated with the optimizer.
 
         Returns:
-            An dict with information on the gradient processing step.
+            Dict[str, TensorType]: An dict with information on the gradient
+                processing step.
         """
         return {}
 
     @DeveloperAPI
-    def extra_compute_grad_fetches(self) -> Dict[str, Any]:
+    def extra_compute_grad_fetches(self) -> Dict[str, any]:
         """Extra values to fetch and return from compute_gradients().
 
         Returns:
-            Extra fetch dict to be added to the fetch dict of the
-            `compute_gradients` call.
+            Dict[str, any]: Extra fetch dict to be added to the fetch dict
+                of the compute_gradients call.
         """
         return {LEARNER_STATS_KEY: {}}  # e.g, stats, td error, etc.
 
@@ -757,15 +732,15 @@ class TorchPolicy(Policy):
         """Returns dict of extra info to include in experience batch.
 
         Args:
-            input_dict: Dict of model input tensors.
-            state_batches: List of state tensors.
-            model: Reference to the model object.
-            action_dist: Torch action dist object
+            input_dict (Dict[str, TensorType]): Dict of model input tensors.
+            state_batches (List[TensorType]): List of state tensors.
+            model (TorchModelV2): Reference to the model object.
+            action_dist (TorchDistributionWrapper): Torch action dist object
                 to get log-probs (e.g. for already sampled actions).
 
         Returns:
-            Extra outputs to return in a `compute_actions_from_input_dict()`
-            call (3rd return value).
+            Dict[str, TensorType]: Extra outputs to return in a
+                compute_actions() call (3rd return value).
         """
         return {}
 
@@ -775,11 +750,12 @@ class TorchPolicy(Policy):
         """Return dict of extra grad info.
 
         Args:
-            train_batch: The training batch for which to produce
+            train_batch (SampleBatch): The training batch for which to produce
                 extra grad info for.
 
         Returns:
-            The info dict carrying grad info per str key.
+            Dict[str, TensorType]: The info dict carrying grad info per str
+                key.
         """
         return {}
 
@@ -790,13 +766,19 @@ class TorchPolicy(Policy):
         """Custom the local PyTorch optimizer(s) to use.
 
         Returns:
-            The local PyTorch optimizer(s) to use for this Policy.
+            Union[List[torch.optim.Optimizer], torch.optim.Optimizer]:
+                The local PyTorch optimizer(s) to use for this Policy.
         """
         if hasattr(self, "config"):
-            return torch.optim.Adam(
-                self.model.parameters(), lr=self.config["lr"])
+            optimizers = [
+                torch.optim.Adam(
+                    self.model.parameters(), lr=self.config["lr"])
+            ]
         else:
-            return torch.optim.Adam(self.model.parameters())
+            optimizers = [torch.optim.Adam(self.model.parameters())]
+        if getattr(self, "exploration", None):
+            optimizers = self.exploration.get_exploration_optimizer(optimizers)
+        return optimizers
 
     @override(Policy)
     @DeveloperAPI
@@ -807,9 +789,7 @@ class TorchPolicy(Policy):
         Creates a TorchScript model and saves it.
 
         Args:
-            export_dir: Local writable directory or filename.
-            onnx: If given, will export model in ONNX format. The
-                value of this parameter set the ONNX OpSet version to use.
+            export_dir (str): Local writable directory or filename.
         """
         self._lazy_tensor_dict(self._dummy_batch)
         # Provide dummy state inputs if not an RNN (torch cannot jit with
@@ -872,7 +852,8 @@ class TorchPolicy(Policy):
         """Shared forward pass logic (w/ and w/o trajectory view API).
 
         Returns:
-            A tuple consisting of a) actions, b) state_out, c) extra_fetches.
+            Tuple:
+                - actions, state_out, extra_fetches, logp.
         """
         explore = explore if explore is not None else self.config["explore"]
         timestep = timestep if timestep is not None else self.global_timestep
@@ -975,9 +956,7 @@ class TorchPolicy(Policy):
                 convert_to_torch_tensor, device=device or self.device))
         return postprocessed_batch
 
-    def _multi_gpu_parallel_grad_calc(
-            self, sample_batches: List[SampleBatch]
-    ) -> List[Tuple[List[TensorType], GradInfoDict]]:
+    def _multi_gpu_parallel_grad_calc(self, sample_batches):
         """Performs a parallelized loss and gradient calculation over the batch.
 
         Splits up the given train batch into n shards (n=number of this
@@ -986,12 +965,12 @@ class TorchPolicy(Policy):
         (self.model_gpu_towers). Then returns each tower's outputs.
 
         Args:
-            sample_batches: A list of SampleBatch shards to
+            sample_batches (List[SampleBatch]): A list of SampleBatch shards to
                 calculate loss and gradients for.
 
         Returns:
-            A list (one item per device) of 2-tuples, each with 1) gradient
-            list and 2) grad info dict.
+            List[Tuple[List[TensorType], StatsDict]]: A list (one item per
+                device) of 2-tuples with 1) gradient list and 2) stats dict.
         """
         assert len(self.model_gpu_towers) == len(sample_batches)
         lock = threading.Lock()

@@ -66,8 +66,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPBadRequest.status_code)
 
     def job_exists(self, job_id: str) -> bool:
-        status: JobStatus = self._job_manager.get_job_status(job_id)
-        return status != JobStatus.DOES_NOT_EXIST
+        status = self._job_manager.get_job_status(job_id)
+        return status is not None
 
     @routes.get("/api/packages/{protocol}/{package_name}")
     @_init_ray_and_catch_exceptions

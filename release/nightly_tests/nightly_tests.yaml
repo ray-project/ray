@@ -357,6 +357,17 @@
     timeout: 1200
     script: python placement_group_tests/pg_run.py
 
+- name: pg_long_running_performance_test
+  cluster:
+    app_config: placement_group_tests/app_config.yaml
+    compute_template: placement_group_tests/long_running_test_compute.yaml
+
+  run:
+    timeout: 3600
+    prepare: python wait_cluster.py 2 600
+    script: python placement_group_tests/long_running_performance_test.py --num-stages 5000
+  stable: false
+
 - name: placement_group_performance_test
   cluster:
     app_config: placement_group_tests/app_config.yaml
