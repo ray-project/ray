@@ -1738,7 +1738,7 @@ def run_test_config(
                             "status": error_type,
                             "last_logs": logs,
                             "results": results,
-                            "exit_code": exit_code
+                            "exit_code": exit_code.value
                         }))
         finally:
             if no_terminate:
@@ -2112,7 +2112,7 @@ def run_test(test_config_file: str,
             # If the script terminates due to an uncaught error, it
             # will return exit code 1, so we use 2 per default to
             # catch these cases.
-            exit_code = result.get("exit_code", ExitCode.UNSPECIFIED)
+            exit_code = result.get("exit_code", ExitCode.UNSPECIFIED.value)
             logger.error(last_logs)
             sys.exit(exit_code)
 
