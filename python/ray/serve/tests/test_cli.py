@@ -34,7 +34,6 @@ def test_start_shutdown_in_namespace(ray_start_stop):
     subprocess.check_output(["serve", "-n", "test", "shutdown"])
 
 
-@serve.deployment
 class A:
     def __init__(self, value, increment=1):
         self.value = value
@@ -54,13 +53,20 @@ class A:
         return (self.value + self.increment - self.decrement) * self.multiplier
 
 
-def test_deploy(ray_start_stop, tmp_working_dir):  # noqa: F811
+@serve.deployment
+class DecoratedA(A):
+    pass
+
+
+@pytest.mark.parametrize("class_name", ["A", "DecoratedA"])
+def test_deploy(ray_start_stop, tmp_working_dir, class_name):  # noqa: F811
     subprocess.check_output(["serve", "start"])
     subprocess.check_output([
         "serve", "--runtime-env-json",
         json.dumps({
             "working_dir": tmp_working_dir,
-        }), "deploy", "ray.serve.tests.test_cli.A", "--options-json",
+        }), "deploy", f"ray.serve.tests.test_cli.{class_name}",
+        "--options-json",
         json.dumps({
             "name": "B",
             "init_args": [42],

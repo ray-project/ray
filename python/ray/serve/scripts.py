@@ -95,7 +95,7 @@ def shutdown():
 [Experimental]
 Create a deployment in running Serve instance. The required argument is the
 import path for the deployment: ``my_module.sub_module.file.MyClass``. The
-class should already be decorated with ``@serve.deployment``.
+class may or may not be decorated with ``@serve.deployment``.
 """,
     hidden=True,
 )
@@ -109,7 +109,6 @@ class should already be decorated with ``@serve.deployment``.
 def deploy(deployment: str, options_json: str):
     deployment_cls = import_attr(deployment)
     if not isinstance(deployment_cls, Deployment):
-        raise ValueError(
-            f"{deployment} is not decorated with @serve.deployment.")
+        deployment_cls = serve.deployment(deployment_cls)
     options = json.loads(options_json)
     deployment_cls.options(**options).deploy()

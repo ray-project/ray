@@ -840,7 +840,7 @@ def test_input_validation():
 
     with pytest.raises(TypeError):
 
-        @serve.deployment(init_args=[1, 2, 3])
+        @serve.deployment(init_args={1, 2, 3})
         class BadInitArgs:
             pass
 
