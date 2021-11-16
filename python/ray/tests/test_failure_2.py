@@ -131,18 +131,18 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
         nested_wait.locked.remote(),
     ])
 
-    @ray.remote(num_cpus=0.25)
+    @ray.remote
     def f():
         time.sleep(1000)
         return 1
 
-    @ray.remote(num_cpus=0.25)
+    @ray.remote
     def h(nested_waits):
         nested_wait.release.remote()
         ray.get(nested_waits)
         ray.get(f.remote())
 
-    @ray.remote(num_cpus=0.25)
+    @ray.remote
     def g(remote_waits, nested_waits):
         # Sleep so that the f tasks all get submitted to the scheduler after
         # the g tasks.
