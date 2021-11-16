@@ -169,6 +169,8 @@ extern jfieldID java_call_options_concurrency_group_name;
 extern jclass java_actor_creation_options_class;
 /// global field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_global;
+/// isDetached field of ActorCreationOptions class
+extern jfieldID java_actor_creation_options_is_detached;
 /// name field of ActorCreationOptions class
 extern jfieldID java_actor_creation_options_name;
 /// maxRestarts field of ActorCreationOptions class

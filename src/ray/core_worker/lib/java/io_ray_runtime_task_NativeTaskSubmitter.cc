@@ -151,6 +151,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   uint64_t max_concurrency = 1;
   auto placement_options = std::make_pair(PlacementGroupID::Nil(), -1);
   std::vector<ConcurrencyGroup> concurrency_groups;
+  bool is_detached = false;
 
   if (actorCreationOptions) {
     global =
@@ -188,6 +189,8 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
     // Convert concurrency groups from Java to native.
     jobject java_concurrency_groups_field = env->GetObjectField(
         actorCreationOptions, java_actor_creation_options_concurrency_groups);
+    is_detached = env->GetBooleanField(actorCreationOptions,
+                                       java_actor_creation_options_is_detached);
     RAY_CHECK(java_concurrency_groups_field != nullptr);
     JavaListToNativeVector<ray::ConcurrencyGroup>(
         env, java_concurrency_groups_field, &concurrency_groups,
@@ -230,7 +233,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       resources,
       resources,
       dynamic_worker_options,
-      /*is_detached=*/false,
+      is_detached,
       full_name,
       ray_namespace,
       /*is_asyncio=*/false,

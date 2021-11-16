@@ -18,6 +18,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final PlacementGroup group;
   public final int bundleIndex;
   public final List<ConcurrencyGroup> concurrencyGroups;
+  public final boolean isDetached;
 
   private ActorCreationOptions(
       boolean global,
@@ -28,7 +29,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
       int maxConcurrency,
       PlacementGroup group,
       int bundleIndex,
-      List<ConcurrencyGroup> concurrencyGroups) {
+      List<ConcurrencyGroup> concurrencyGroups,
+      boolean isDetached) {
     super(resources);
     this.global = global;
     this.name = name;
@@ -38,6 +40,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     this.group = group;
     this.bundleIndex = bundleIndex;
     this.concurrencyGroups = concurrencyGroups;
+    this.isDetached = isDetached;
   }
 
   /** The inner class for building ActorCreationOptions. */
@@ -51,6 +54,7 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private PlacementGroup group;
     private int bundleIndex;
     private List<ConcurrencyGroup> concurrencyGroups = new ArrayList<>();
+    private boolean isDetached;
 
     /**
      * Set the actor name of a named actor. This named actor is only accessible from this job by
@@ -164,6 +168,17 @@ public class ActorCreationOptions extends BaseTaskOptions {
       return this;
     }
 
+  /**
+   * Set whether this actor is detached.
+   *
+   * @param isDetached Whether this actor is detached.
+   * @return self
+   */
+    public Builder isDetached(boolean isDetached) {
+      this.isDetached = isDetached;
+      return this;
+    }
+
     public ActorCreationOptions build() {
       return new ActorCreationOptions(
           global,
@@ -174,7 +189,8 @@ public class ActorCreationOptions extends BaseTaskOptions {
           maxConcurrency,
           group,
           bundleIndex,
-          concurrencyGroups);
+          concurrencyGroups,
+          isDetached);
     }
 
     /** Set the concurrency groups for this actor. */

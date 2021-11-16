@@ -102,6 +102,7 @@ jfieldID java_actor_creation_options_max_concurrency;
 jfieldID java_actor_creation_options_group;
 jfieldID java_actor_creation_options_bundle_index;
 jfieldID java_actor_creation_options_concurrency_groups;
+jfieldID java_actor_creation_options_is_detached;
 
 jclass java_placement_group_creation_options_class;
 jclass java_placement_group_creation_options_strategy_class;
@@ -291,6 +292,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       LoadClass(env, "io/ray/api/options/ActorCreationOptions");
   java_actor_creation_options_global =
       env->GetFieldID(java_actor_creation_options_class, "global", "Z");
+  java_actor_creation_options_is_detached =
+      env->GetFieldID(java_actor_creation_options_class, "isDetached", "Z");
   java_actor_creation_options_name =
       env->GetFieldID(java_actor_creation_options_class, "name", "Ljava/lang/String;");
   java_actor_creation_options_max_restarts =

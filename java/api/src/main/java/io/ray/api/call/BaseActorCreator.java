@@ -100,6 +100,18 @@ public class BaseActorCreator<T extends BaseActorCreator> {
   }
 
   /**
+   * Set whether this actor is detached.
+   *
+   * @param isDetached Whether this actor is detached.
+   * @return self
+   * @see ActorCreationOptions.Builder#isDetached(boolean)
+   */
+  public T isDetached(boolean isDetached) {
+    builder.isDetached(isDetached);
+    return self();
+  }
+
+  /**
    * Set the placement group to place this actor in.
    *
    * @param group The placement group of the actor.
