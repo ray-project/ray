@@ -95,7 +95,9 @@ class TestGC:
 
         # Ensure that the runtime env has been installed.
         assert ray.get(f.remote())
-
+        # TODO(architkulkarni): Conda envs actually take a some seconds to
+        # uninstall, so we should sleep some seconds before checking that we
+        # didn't GC. Otherwise this check will spuriously pass.
         assert not check_local_files_gced(cluster)
 
         ray.shutdown()
@@ -170,6 +172,8 @@ class TestGC:
         ]
         ray.get([a.test_import.remote() for a in actors])
         for i in range(5):
+            import time
+            time.sleep(10)
             assert not check_local_files_gced(cluster)
             ray.kill(actors[i])
         wait_for_condition(lambda: check_local_files_gced(cluster))

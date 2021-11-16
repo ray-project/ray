@@ -11,6 +11,8 @@ from ray._private.test_utils import wait_for_condition, get_error_message
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url)
 
+from ray.dashboard.modules.runtime_env.runtime_env_agent import URICache
+
 
 def test_get_wheel_filename():
     ray_version = "2.0.0.dev0"
@@ -281,6 +283,66 @@ def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
     a = A.options(runtime_env=runtime_env).remote()
     with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
         ray.get(a.ready.remote())
+
+
+class TestURICache:
+    def test_zero_cache_size(self):
+        cache = URICache(max_total_size_bytes=0)
+        cache.add("5", 5)
+        assert cache.get_total_size_bytes() == 5
+        cache.mark_unused("5")
+        assert cache.get_total_size_bytes() == 0
+        cache.add("3", 3)
+        cache.add("5", 5)
+        assert cache.get_total_size_bytes() == 8
+        cache.mark_unused("3")
+        cache.mark_unused("5")
+        assert cache.get_total_size_bytes() == 0
+
+    def test_nonzero_cache_size(self):
+        cache = URICache(max_total_size_bytes=10)
+        cache.add("a", 4)
+        cache.add("b", 4)
+        cache.mark_unused("a")
+        assert "a" in cache
+        cache.add("c", 4)
+        # Now we have total size 12, which exceeds the max size 10.
+        assert cache.get_total_size_bytes() == 8
+        # "a" was the only unused URI, so it must have been deleted.
+        assert "b" and "c" in cache and "a" not in cache
+
+    def test_mark_used_nonadded_uri_error(self):
+        cache = URICache()
+        with pytest.raises(ValueError):
+            cache.mark_used("nonadded_uri")
+
+    def test_mark_used(self):
+        cache = URICache(max_total_size_bytes=10)
+        cache.add("a", 3)
+        cache.add("b", 3)
+        cache.mark_unused("a")
+        cache.mark_unused("b")
+        assert "a" in cache and "b" in cache
+        assert cache.get_total_size_bytes() == 6
+
+        cache.mark_used("a")
+        cache.add("big", 300)
+        # We are over capacity and the only unused URI is "b", so we delete it
+        assert "a" in cache and "big" in cache and "b" not in cache
+        assert cache.get_total_size_bytes() == 303
+
+        cache.mark_unused("big")
+        assert "big" not in cache
+        assert cache.get_total_size_bytes() == 3
+
+    def test_many_URIs(self):
+        cache = URICache()
+        for i in range(1000):
+            cache.add(str(i), i)
+        for i in range(1000):
+            cache.mark_unused(str(i))
+        for i in range(1000):
+            assert str(i) in cache
 
 
 if __name__ == "__main__":

@@ -52,7 +52,7 @@ class CreatedEnvResult:
 class URICache:
     def __init__(
             self,
-            delete_fn: Callable[[str, logging.Logger], int],
+            delete_fn: Callable[[str, logging.Logger], int] = lambda x, y: 0,
             max_total_size_bytes: int = DEFAULT_MAX_URI_CACHE_SIZE_BYTES,
     ):
         # Maps URIs to the size in bytes of their corresponding disk contents.
@@ -63,6 +63,7 @@ class URICache:
         self.max_total_size_bytes = max_total_size_bytes
 
     def mark_unused(self, uri: str, logger: logging.Logger = default_logger):
+        """Mark a URI as unused and okay to be deleted."""
         if uri not in self._used_uris:
             logger.error(f"URI {uri} is already unused.")
         else:
@@ -73,6 +74,7 @@ class URICache:
         self._check_valid()
 
     def mark_used(self, uri: str, logger: logging.Logger = default_logger):
+        """Mark a URI as in use.  URIs in use will not be deleted."""
         if uri in self._used_uris:
             return
         elif uri in self._unused_uris:
@@ -103,10 +105,10 @@ class URICache:
         return sum(self._used_uris.values()) + sum(self._unused_uris.values())
 
     def _evict_if_needed(self, logger: logging.Logger = default_logger):
-        """Evict unused URIs (if they exist) until we fall below max size."""
+        """Evict unused URIs (if they exist) until total size <= max size."""
         while (self._unused_uris
                and self.get_total_size_bytes() > self.max_total_size_bytes):
-            # TODO(architkulkarni): Use an LRU cache instead
+            # TODO(architkulkarni): Evict least recently used URI instead
             arbitrary_unused_uri = next(iter(self._unused_uris))
             del self._unused_uris[arbitrary_unused_uri]
             self._delete_fn(arbitrary_unused_uri, logger)
@@ -116,6 +118,9 @@ class URICache:
 
     def __contains__(self, uri):
         return uri in self._used_uris or uri in self._unused_uris
+
+    def __repr__(self):
+        return str(str(self.__dict__))
 
 
 class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
