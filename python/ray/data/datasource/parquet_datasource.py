@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 PIECES_PER_META_FETCH = 6
 PARALLELIZE_META_FETCH_THRESHOLD = 24
 
+# The number of rows to read per batch. This is sized to generate 10MiB batches
+# for rows about 1KiB in size.
+PARQUET_READER_ROW_BATCH_SIZE = 100000
+
 
 class ParquetDatasource(FileBasedDatasource):
     """Parquet datasource, for reading and writing Parquet files.
@@ -100,6 +104,7 @@ class ParquetDatasource(FileBasedDatasource):
                     use_threads=use_threads,
                     columns=columns,
                     schema=schema,
+                    batch_size=PARQUET_READER_ROW_BATCH_SIZE,
                     **reader_args)
                 for batch in batches:
                     table = pyarrow.Table.from_batches([batch], schema=schema)
