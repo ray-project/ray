@@ -1,5 +1,6 @@
 # coding: utf-8
 import copy
+import inspect
 from collections import deque
 from functools import partial
 import logging
@@ -383,6 +384,24 @@ class RayTrialExecutor(TrialExecutor):
             # with trainables that don't provide these keyword arguments
             kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
             kwargs["sync_function_tpl"] = trial.sync_function_tpl
+
+            # Throw a meaningful error if trainable does not use the
+            # new API
+            sig = inspect.signature(trial.get_trainable_cls())
+            try:
+                sig.bind_partial(**kwargs)
+            except Exception as e:
+                raise RuntimeError(
+                    "Your trainable class does not accept a "
+                    "`remote_checkpoint_dir` or `sync_function_tpl` argument "
+                    "in its constructor, but you've passed a "
+                    "`upload_dir` to your SyncConfig. Without accepting "
+                    "these parameters and passing them to the base trainable "
+                    "constructor in the init call, cloud checkpointing is "
+                    "effectively disabled. To resolve this issue, add the "
+                    "parameters to your trainable class constructor or "
+                    "disable cloud checkpointing by setting `upload_dir=None`."
+                ) from e
 
         with self._change_working_directory(trial):
             return full_actor_class.remote(**kwargs)
