@@ -179,7 +179,7 @@ class Simulator:
         )
         self.head_ip = self.provider.non_terminated_node_ips({})[0]
 
-        self.load_metrics = LoadMetrics(local_ip=self.head_ip)
+        self.load_metrics = LoadMetrics()
         self.autoscaler = MockAutoscaler(
             self.config_path,
             self.load_metrics,

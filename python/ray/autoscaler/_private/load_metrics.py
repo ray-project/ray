@@ -17,8 +17,7 @@ from ray.core.generated.common_pb2 import PlacementStrategy
 logger = logging.getLogger(__name__)
 
 LoadMetricsSummary = namedtuple("LoadMetricsSummary", [
-    "head_ip", "usage", "resource_demand", "pg_demand", "request_demand",
-    "node_types"
+    "usage", "resource_demand", "pg_demand", "request_demand", "node_types"
 ])
 
 
@@ -71,15 +70,13 @@ class LoadMetrics:
     can be removed.
     """
 
-    def __init__(self, local_ip=None):
+    def __init__(self):
         self.last_used_time_by_ip = {}
         self.last_heartbeat_time_by_ip = {}
         self.static_resources_by_ip = {}
         self.dynamic_resources_by_ip = {}
         self.raylet_id_by_ip = {}
         self.resource_load_by_ip = {}
-        self.local_ip = services.get_node_ip_address(
-        ) if local_ip is None else local_ip
         self.waiting_bundles = []
         self.infeasible_bundles = []
         self.pending_placement_groups = []
@@ -149,7 +146,6 @@ class LoadMetrics:
             active_ips (List[str]): The node ips known to the autoscaler.
         """
         active_ips = set(active_ips)
-        active_ips.add(self.local_ip)
 
         def prune(mapping, should_log):
             unwanted_ips = set(mapping) - active_ips
@@ -307,7 +303,6 @@ class LoadMetrics:
         nodes_summary = freq_of_dicts(self.static_resources_by_ip.values())
 
         return LoadMetricsSummary(
-            head_ip=self.local_ip,
             usage=usage_dict,
             resource_demand=summarized_demand_vector,
             pg_demand=summarized_placement_groups,

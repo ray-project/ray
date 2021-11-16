@@ -168,10 +168,7 @@ class Monitor:
         head_node_ip = redis_address.split(":")[0]
         self.redis_address = redis_address
         self.redis_password = redis_password
-        if os.environ.get("RAY_FAKE_CLUSTER"):
-            self.load_metrics = LoadMetrics(local_ip=FAKE_HEAD_NODE_ID)
-        else:
-            self.load_metrics = LoadMetrics(local_ip=head_node_ip)
+        self.load_metrics = LoadMetrics()
         self.last_avail_resources = None
         self.event_summarizer = EventSummarizer()
         self.prefix_cluster_info = prefix_cluster_info

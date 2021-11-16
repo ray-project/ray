@@ -1601,7 +1601,6 @@ class AutoscalingTest(unittest.TestCase):
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(11)])
         lm = LoadMetrics()
-        lm.local_ip = head_ip
 
         autoscaler = MockAutoscaler(
             config_path,
@@ -1645,7 +1644,6 @@ class AutoscalingTest(unittest.TestCase):
         for ip in worker_ips:
             # Mark workers inactive.
             lm.last_used_time_by_ip[ip] = 0
-        fill_in_raylet_ids(self.provider, lm)
         autoscaler.update()
         self.waitForNodes(1)  # only the head node
         # Make sure they don't get overwritten.

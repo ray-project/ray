@@ -23,7 +23,7 @@ from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
     TAG_RAY_USER_NODE_TYPE, STATUS_UP_TO_DATE, STATUS_UPDATE_FAILED,
-    NODE_KIND_WORKER, NODE_KIND_UNMANAGED)
+    NODE_KIND_WORKER, NODE_KIND_UNMANAGED, NODE_KIND_HEAD)
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.legacy_info_string import legacy_log_info_string
 from ray.autoscaler._private.load_metrics import LoadMetrics
@@ -145,7 +145,6 @@ class StandardAutoscaler:
             AutoscalerPrometheusMetrics()
         self.resource_demand_scheduler = None
         self.reset(errors_fatal=True)
-        self.head_node_ip = load_metrics.local_ip
         self.load_metrics = load_metrics
 
         self.max_failures = max_failures
@@ -162,14 +161,16 @@ class StandardAutoscaler:
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
 
-        # Track active nodes
+        # The following block of data on active nodes is filled once per
+        # autoscaler update in `self.update_node_lists()`.
         # Managed worker nodes (node kind "worker"):
         self.workers = []
         # Managed and unmanaged worker nodes
         # (node kinds "worker" and "unmanaged"):
         self.all_workers = []
-        # All nodes (worker and head)
+        # All nodes (workers, unmanaged workers,  and head)
         self.all_nodes = []
+        self.head_node_ip = ""
 
         # Tracks nodes scheduled for termination
         self.nodes_to_terminate = []
@@ -254,7 +255,7 @@ class StandardAutoscaler:
 
         # Remove from LoadMetrics the ips unknown to the NodeProvider.
         self.load_metrics.prune_active_ips([
-            self.provider.internal_ip(node_id) for node_id in self.all_workers
+            self.provider.internal_ip(node_id) for node_id in self.all_nodes
         ])
 
         # Update status strings
@@ -1118,6 +1119,9 @@ class StandardAutoscaler:
                 self.all_workers.append(node)
             elif node_kind == NODE_KIND_UNMANAGED:
                 self.all_workers.append(node)
+            elif (not self.head_node_ip) and (node_kind == NODE_KIND_HEAD):
+                # Determine head node's ip if needed.
+                self.head_node_ip = self.provider.internal_ip(node)
 
         # Update running nodes gauge
         self.prom_metrics.running_workers.set(len(self.workers))
