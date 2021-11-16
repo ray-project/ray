@@ -422,8 +422,11 @@ def check_compute_single_action(trainer,
         if what is trainer:
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            worker_set = getattr(trainer, "workers",
-                                 getattr(trainer, "_workers", None))
+            worker_set = getattr(trainer, "workers")
+            # TODO: ES and ARS use `self._workers` instead of `self.workers` to
+            #  store their rollout worker set. Change to `self.workers`.
+            if worker_set is None:
+                worker_set = getattr(trainer, "_workers", None)
             assert worker_set
             if isinstance(worker_set, list):
                 obs_space = trainer.get_policy().observation_space

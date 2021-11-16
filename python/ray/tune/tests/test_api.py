@@ -253,8 +253,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], steps)
 
     def testBuiltInTrainableResources(self):
-        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
-
         class B(Trainable):
             @classmethod
             def default_resource_request(cls, config):
@@ -274,15 +272,56 @@ class TrainableFunctionApiTest(unittest.TestCase):
                         "gpu": gpus,
                     },
                 }
-            })[0]
+            }, )[0]
 
-        # Should all succeed
-        self.assertEqual(f(0, 0).status, Trial.TERMINATED)
+        # TODO(xwjiang): https://github.com/ray-project/ray/issues/19959
+        # self.assertEqual(f(0, 0).status, Trial.TERMINATED)
 
-        # Too large resource request
-        self.assertRaises(TuneError, lambda: f(100, 100))
-        self.assertRaises(TuneError, lambda: f(0, 100))
-        self.assertRaises(TuneError, lambda: f(100, 0))
+        # TODO(xwjiang): Make FailureInjectorCallback a test util.
+        class FailureInjectorCallback(Callback):
+            """Adds random failure injection to the TrialExecutor."""
+
+            def __init__(self, steps=4):
+                self._step = 0
+                self.steps = steps
+
+            def on_step_begin(self, iteration, trials, **info):
+                self._step += 1
+                if self._step >= self.steps:
+                    raise RuntimeError
+
+        def g(cpus, gpus):
+            return run_experiments(
+                {
+                    "foo": {
+                        "run": "B",
+                        "config": {
+                            "cpu": cpus,
+                            "gpu": gpus,
+                        },
+                    }
+                },
+                callbacks=[FailureInjectorCallback()],
+            )[0]
+
+        # Too large resource requests are infeasible
+        # TODO(xwjiang): Throw TuneError after https://github.com/ray-project/ray/issues/19985.  # noqa
+        os.environ["TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S"] = "0"
+
+        with self.assertRaises(RuntimeError), patch.object(
+                ray.tune.trial_executor.logger, "warning") as warn_mock:
+            self.assertRaises(TuneError, lambda: g(100, 100))
+            assert warn_mock.assert_called_once()
+
+        with self.assertRaises(RuntimeError), patch.object(
+                ray.tune.trial_executor.logger, "warning") as warn_mock:
+            self.assertRaises(TuneError, lambda: g(0, 100))
+            assert warn_mock.assert_called_once()
+
+        with self.assertRaises(RuntimeError), patch.object(
+                ray.tune.trial_executor.logger, "warning") as warn_mock:
+            self.assertRaises(TuneError, lambda: g(100, 0))
+            assert warn_mock.assert_called_once()
 
     def testRewriteEnv(self):
         def train(config, reporter):

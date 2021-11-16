@@ -99,10 +99,10 @@ public interface RayRuntime {
    * name specified.
    *
    * @param name The name of the named actor.
-   * @param global Whether the named actor is global.
+   * @param namespace The namespace of the actor.
    * @return ActorHandle to the actor.
    */
-  <T extends BaseActorHandle> Optional<T> getActor(String name, boolean global);
+  <T extends BaseActorHandle> Optional<T> getActor(String name, String namespace);
 
   /**
    * Kill the actor immediately.
@@ -229,10 +229,10 @@ public interface RayRuntime {
    * Get a placement group by name.
    *
    * @param name The name of the placement group.
-   * @param global Whether the named placement group is global.
+   * @param namespace The namespace of the placement group.
    * @return The placement group.
    */
-  PlacementGroup getPlacementGroup(String name, boolean global);
+  PlacementGroup getPlacementGroup(String name, String namespace);
 
   /**
    * Get all placement groups in this cluster.

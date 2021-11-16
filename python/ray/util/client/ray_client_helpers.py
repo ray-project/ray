@@ -21,8 +21,8 @@ def ray_start_client_server_pair(metadata=None,
                                  **kwargs):
     ray._inside_client_test = True
     server = ray_client_server.serve(
-        "localhost:50051", ray_connect_handler=ray_connect_handler)
-    ray.connect("localhost:50051", metadata=metadata, **kwargs)
+        "127.0.0.1:50051", ray_connect_handler=ray_connect_handler)
+    ray.connect("127.0.0.1:50051", metadata=metadata, **kwargs)
     try:
         yield ray, server
     finally:
@@ -39,8 +39,8 @@ def ray_start_cluster_client_server_pair(address):
         real_ray.init(address=address)
 
     server = ray_client_server.serve(
-        "localhost:50051", ray_connect_handler=ray_connect_handler)
-    ray.connect("localhost:50051")
+        "127.0.0.1:50051", ray_connect_handler=ray_connect_handler)
+    ray.connect("127.0.0.1:50051")
     try:
         yield ray, server
     finally:
