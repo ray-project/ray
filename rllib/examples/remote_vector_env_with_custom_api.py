@@ -54,8 +54,8 @@ parser.add_argument(
     help="Reward at which we stop training.")
 
 
-class NonVectorizedEnvToBeVectorizedIntoRemoteVectorEnv(TaskSettableEnv):
-    """Class for a single sub-env to be vectorized into RemoteVectorEnv.
+class NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv(TaskSettableEnv):
+    """Class for a single sub-env to be vectorized into RemoteBaseEnv.
 
     If you specify this class directly under the "env" config key, RLlib
     will auto-wrap
@@ -108,7 +108,7 @@ if __name__ == "__main__":
         # Specify your custom (single, non-vectorized) env directly as a
         # class. This way, RLlib can auto-create Actors from this class
         # and handle everything correctly.
-        "env": NonVectorizedEnvToBeVectorizedIntoRemoteVectorEnv,
+        "env": NonVectorizedEnvToBeVectorizedIntoRemoteBaseEnv,
         # Set up our own callbacks.
         "callbacks": TaskSettingCallback,
         # Force sub-envs to be ray.actor.ActorHandles, so we can step
