@@ -12,40 +12,35 @@ the different algorithms. Also users can customize an algo's exploration
 behavior by sub-classing the Exploration base class and implementing
 their own logic:
 
-Base Exploration class (ray.rllib.utils.explorations.exploration.Exploration)
+Base Exploration class (ray.rllib.utils.exploration.exploration.Exploration)
 -----------------------------------------------------------------------------
 
-.. autoclass:: ray.rllib.utils.explorations.exploration.Exploration
+.. autoclass:: ray.rllib.utils.exploration.exploration.Exploration
     :members:
 
 All built-in Exploration classes
 --------------------------------
 
-.. autoclass:: ray.rllib.utils.explorations.random.Random
+.. autoclass:: ray.rllib.utils.exploration.random.Random
     :special-members: __init__
     :members:
 
-.. autoclass:: ray.rllib.utils.explorations.stochastic_sampling.StochasticSampling
+.. autoclass:: ray.rllib.utils.exploration.stochastic_sampling.StochasticSampling
     :special-members: __init__
     :members:
 
-.. autoclass:: ray.rllib.utils.explorations.epsilon_greedy.EpsilonGreedy
+.. autoclass:: ray.rllib.utils.exploration.epsilon_greedy.EpsilonGreedy
     :special-members: __init__
     :members:
 
-.. autoclass:: ray.rllib.utils.explorations.gaussian_noise.GaussianNoise
+.. autoclass:: ray.rllib.utils.exploration.gaussian_noise.GaussianNoise
     :special-members: __init__
     :members:
 
-.. autoclass:: ray.rllib.utils.explorations.ornstein_uhlenbeck_noise.OrnsteinUhlenbeckNoise
+.. autoclass:: ray.rllib.utils.exploration.ornstein_uhlenbeck_noise.OrnsteinUhlenbeckNoise
     :special-members: __init__
     :members:
 
-.. autoclass:: ray.rllib.utils.explorations.parameter_noise.ParameterNoise
+.. autoclass:: ray.rllib.utils.exploration.parameter_noise.ParameterNoise
     :special-members: __init__
     :members:
-
-.. autoclass:: ray.rllib.utils.explorations.epsilon_greedy.EpsilonGreedy
-    :special-members: __init__
-    :members:
-

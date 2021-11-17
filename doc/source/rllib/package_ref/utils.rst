@@ -3,6 +3,8 @@
 RLlib Utilities
 ===============
 
+The RLlib `utils/` directory contains useful tools and utilities for RL and deep-learning:
+
 .. toctree::
    :maxdepth: 1
 
@@ -12,17 +14,5 @@ RLlib Utilities
    utils/framework.rst
    utils/tf_utils.rst
    utils/torch_utils.rst
-   utils/deprecation.rst
    utils/numpy.rst
-
-
-Schedules
-=========
-
-
-
-Utility Functions
-=================
-
-.. automodule:: ray.rllib.utils.
-    :members:
+   utils/deprecation.rst

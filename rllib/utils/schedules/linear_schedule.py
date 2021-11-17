@@ -12,4 +12,5 @@ class LinearSchedule(PolynomialSchedule):
     """
 
     def __init__(self, **kwargs):
+        """Initializes a LinearSchedule instance."""
         super().__init__(power=1.0, **kwargs)
