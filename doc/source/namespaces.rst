@@ -66,7 +66,7 @@ Named actors are only accessible within their namespaces.
     // `ray start --head` has been run to launch a local cluster.
 
     // Job 1 creates two actors, "orange" and "purple" in the "colors" namespace.
-    System.setProperty("ray.address", "127.0.0.1:6379");
+    System.setProperty("ray.address", "localhost:10001");
     System.setProperty("ray.job.namespace", "colors");
     try {
       Ray.init();
@@ -77,7 +77,7 @@ Named actors are only accessible within their namespaces.
     }
 
     // Job 2 is now connecting to a different namespace.
-    System.setProperty("ray.address", "127.0.0.1:6379");
+    System.setProperty("ray.address", "localhost:10001");
     System.setProperty("ray.job.namespace", "fruits");
     try {
       Ray.init();
@@ -91,7 +91,7 @@ Named actors are only accessible within their namespaces.
     }
 
     // Job 3 connects to the original "colors" namespace.
-    System.setProperty("ray.address", "127.0.0.1:6379");
+    System.setProperty("ray.address", "localhost:10001");
     System.setProperty("ray.job.namespace", "colors");
     try {
       Ray.init();
@@ -137,7 +137,7 @@ will not have access to actors in other namespaces.
     // `ray start --head` has been run to launch a local cluster.
 
     // Job 1 connects to an anonymous namespace by default.
-    System.setProperty("ray.address", "127.0.0.1:6379");
+    System.setProperty("ray.address", "localhost:10001");
     try {
       Ray.init();
       Ray.actor(Actor::new).setName("my_actor").remote();
@@ -146,7 +146,7 @@ will not have access to actors in other namespaces.
     }
 
     // Job 2 connects to a _different_ anonymous namespace by default
-    System.setProperty("ray.address", "127.0.0.1:6379");
+    System.setProperty("ray.address", "localhost:10001");
     try {
       Ray.init();
       // This succeeds because the second job is in its own namespace.
