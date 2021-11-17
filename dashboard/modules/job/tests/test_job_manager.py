@@ -31,25 +31,30 @@ def _driver_script_path(file_name: str) -> str:
 
 def check_job_succeeded(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
-    if status == JobStatus.FAILED:
-        logs = job_manager.get_job_logs(job_id)
-        raise RuntimeError(f"Job failed! logs:\n{logs}")
-    assert status in {
+    print(status)
+    print(repr(status))
+    if status.status == JobStatus.FAILED:
+        raise RuntimeError(f"Job failed! {status.message}")
+    assert status.status in {
         JobStatus.PENDING, JobStatus.RUNNING, JobStatus.SUCCEEDED
     }
-    return status == JobStatus.SUCCEEDED
+    return status.status == JobStatus.SUCCEEDED
 
 
 def check_job_failed(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
-    assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.FAILED}
-    return status == JobStatus.FAILED
+    assert status.status in {
+        JobStatus.PENDING, JobStatus.RUNNING, JobStatus.FAILED
+    }
+    return status.status == JobStatus.FAILED
 
 
 def check_job_stopped(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
-    assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.STOPPED}
-    return status == JobStatus.STOPPED
+    assert status.status in {
+        JobStatus.PENDING, JobStatus.RUNNING, JobStatus.STOPPED
+    }
+    return status.status == JobStatus.STOPPED
 
 
 def check_subprocess_cleaned(pid):
@@ -198,13 +203,13 @@ class TestRuntimeEnv:
         """Ensure job status is correctly set as failed if job supervisor
         actor failed to setup runtime_env.
         """
-        with pytest.raises(RuntimeError):
-            run_cmd = f"python {_driver_script_path('override_env_var.py')}"
-            job_id = job_manager.submit_job(
-                entrypoint=run_cmd,
-                runtime_env={"working_dir": "path_not_exist"})
+        run_cmd = f"python {_driver_script_path('override_env_var.py')}"
+        job_id = job_manager.submit_job(
+            entrypoint=run_cmd, runtime_env={"working_dir": "path_not_exist"})
 
-            assert job_manager.get_job_status(job_id) == JobStatus.FAILED
+        status = job_manager.get_job_status(job_id)
+        assert status.status == JobStatus.FAILED
+        assert "Failed to set up runtime_env for the job" in status.message
 
     def test_pass_metadata(self, job_manager):
         def dict_to_str(d):
@@ -265,11 +270,11 @@ class TestAsyncAPI:
             time.sleep(0.1)
             status = job_manager.get_job_status(job_id)
             if _start_signal_actor:
-                assert status == JobStatus.PENDING
+                assert status.status == JobStatus.PENDING
                 logs = job_manager.get_job_logs(job_id)
                 assert logs == ""
             else:
-                assert status == JobStatus.RUNNING
+                assert status.status == JobStatus.RUNNING
                 logs = job_manager.get_job_logs(job_id)
                 assert "Waiting..." in logs
 

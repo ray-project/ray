@@ -14,7 +14,6 @@ from ray._private.runtime_env.packaging import (package_exists,
                                                 upload_package_to_gcs)
 from ray.dashboard.modules.job.common import (
     http_uri_components_to_uri,
-    JobStatus,
     JobStatusInfo,
     JobSubmitRequest,
     JobSubmitResponse,
@@ -164,7 +163,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPNotFound.status_code)
 
         status: JobStatusInfo = self._job_manager.get_job_status(job_id)
-        resp = JobStatusResponse(status=status.status, message=status.message, context=status.context)
+        resp = JobStatusResponse(
+            status=status.status,
+            message=status.message,
+            context=status.context)
         return Response(
             text=json.dumps(dataclasses.asdict(resp)),
             content_type="application/json")

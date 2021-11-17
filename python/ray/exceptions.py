@@ -429,10 +429,8 @@ class RuntimeEnvSetupError(RayError):
     """Raised when a runtime environment fails to be set up."""
 
     def __str__(self):
-        return (
-            "The runtime environment for this task or actor failed to be "
-            "installed. Corresponding error logs should have been streamed "
-            "to the driver's STDOUT.")
+        return ("The runtime environment for this task or actor failed to be "
+                "installed.")
 
 
 RAY_EXCEPTION_TYPES = [

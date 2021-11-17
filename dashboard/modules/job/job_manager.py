@@ -10,6 +10,7 @@ from typing import Any, Dict, Tuple, Optional
 from uuid import uuid4
 
 import ray
+from ray.exceptions import RuntimeEnvSetupError
 import ray.ray_constants as ray_constants
 from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
@@ -38,6 +39,11 @@ class JobLogStorageClient:
         except FileNotFoundError:
             return ""
 
+    def tail_logs(self, job_id: str, n_lines=20):
+        all_logs = self.get_logs(job_id)
+        # TODO(edoakes): optimize this to not read the whole file into memory.
+        "\n".join(all_logs.split("\n")[:-n_lines])
+
     def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
         """
         Get the file path to the logs of a given job. Example:
@@ -60,12 +66,13 @@ class JobSupervisor:
 
     SUBPROCESS_POLL_PERIOD_S = 0.1
 
-    def __init__(self, job_id: str, metadata: Dict[str, str]):
+    def __init__(self, job_id: str, entrypoint: str, metadata: Dict[str, str]):
         self._job_id = job_id
         self._status_client = JobStatusStorageClient()
         self._log_client = JobLogStorageClient()
         self._runtime_env = ray.get_runtime_context().runtime_env
 
+        self._entrypoint = entrypoint
         self._metadata = metadata
         self._metadata[JOB_ID_METADATA_KEY] = job_id
 
@@ -79,18 +86,16 @@ class JobSupervisor:
         """
         pass
 
-    async def _exec_entrypoint_cmd(self, entrypoint_cmd: str,
-                                   logs_path: str) -> subprocess.Popen:
+    async def _exec_entrypoint(self, logs_path: str) -> subprocess.Popen:
         """
-        Runs a command as a child process, streaming stderr & stdout to given
-        log files.
+        Runs the entrypoint command as a child process, streaming stderr &
+        stdout to given log files.
 
         Meanwhile we start a demon process and group driver
         subprocess in same pgid, such that if job actor dies, entire process
         group also fate share with it.
 
         Args:
-            entrypoint_cmd: Driver command to execute in subprocess.
             logs_path: File path on head node's local disk to store driver
                 command's stdout & stderr.
         Returns:
@@ -99,7 +104,7 @@ class JobSupervisor:
         """
         with open(logs_path, "w") as logs_file:
             child_process = subprocess.Popen(
-                entrypoint_cmd,
+                self._entrypoint,
                 shell=True,
                 start_new_session=True,
                 stdout=logs_file,
@@ -139,7 +144,6 @@ class JobSupervisor:
 
     async def run(
             self,
-            entrypoint_cmd: str,
             # Signal actor used in testing to capture PENDING -> RUNNING cases
             _start_signal_actor: Optional[ActorHandle] = None):
         """
@@ -152,14 +156,15 @@ class JobSupervisor:
         3) Handle concurrent events of driver execution and
         """
         cur_status = self._get_status()
-        assert cur_status == JobStatus.PENDING, (
+        assert cur_status.status == JobStatus.PENDING, (
             "Run should only be called once.")
 
         if _start_signal_actor:
             # Block in PENDING state until start signal received.
             await _start_signal_actor.wait.remote()
 
-        self._status_client.put_status(self._job_id, JobStatusInfo(JobStatus.RUNNING))
+        self._status_client.put_status(self._job_id,
+                                       JobStatusInfo(JobStatus.RUNNING))
 
         try:
             # Set JobConfig for the child process (runtime_env, metadata).
@@ -173,8 +178,7 @@ class JobSupervisor:
                        RAY_ADDRESS_ENVIRONMENT_VARIABLE] = ray_redis_address
 
             log_path = self._log_client.get_log_file_path(self._job_id)
-            child_process = await self._exec_entrypoint_cmd(
-                entrypoint_cmd, log_path)
+            child_process = await self._exec_entrypoint(log_path)
 
             polling_task = create_task(self._polling(child_process))
             finished, _ = await asyncio.wait(
@@ -197,9 +201,16 @@ class JobSupervisor:
                     self._status_client.put_status(self._job_id,
                                                    JobStatus.SUCCEEDED)
                 else:
-                    # XXX: add context from log file.
-                    self._status_client.put_status(self._job_id,
-                                                   JobStatus.FAILED)
+                    log_tail = self._log_client.tail_logs(self._job_id)
+                    if log_tail:
+                        message = (
+                            "Job failed, last available logs:\n" + log_tail)
+                    else:
+                        message = None
+                    self._status_client.put_status(
+                        self._job_id,
+                        JobStatusInfo(
+                            status=JobStatus.FAILED, message=message))
         except Exception:
             logger.error(
                 "Got unexpected exception while trying to execute driver "
@@ -252,23 +263,41 @@ class JobManager:
             raise ValueError(
                 "Cannot found the node dictionary for current node.")
 
-    async def _wait_for_supervisor_actor(self, actor: ActorHandle, job_id: str):
+    async def _start_supervisor_actor(
+            self,
+            job_id: str,
+            actor: ActorHandle,
+            _start_signal_actor: Optional[ActorHandle] = None):
         try:
+            actor = self._supervisor_actor_cls.options(
+                lifetime="detached",
+                name=self.JOB_ACTOR_NAME.format(job_id=job_id),
+                num_cpus=0,
+                # Currently we assume JobManager is created by dashboard server
+                # running on headnode, same for job supervisor actors scheduled
+                resources={
+                    self._get_current_node_resource_key(): 0.001,
+                },
+                runtime_env=runtime_env).remote(job_id, entrypoint, metadata
+                                                or {})
             await actor.ready.remote()
             # Kick off the job to run in the background.
-            supervisor.run.remote(entrypoint, _start_signal_actor)
+            actor.run.remote(_start_signal_actor)
             return
-        except RayActorError as e:
-            raise RuntimeError(
-                f"Failed to start actor for job {job_id}. This could be "
-                "runtime_env configuration failure or invalid runtime_env."
-                f"Exception message: {str(e)}")
-            # XXX
-            self._status_client.put_status(job_id, JobStatus.FAILED)
         except RuntimeEnvSetupError as e:
-            # XXX
-            self._status_client.put_status(job_id, JobStatus.FAILED)
+            logger.info(f"Failed to set up runtime_env for job {job_id}.")
+            self._status_client.put_status(
+                job_id,
+                JobStatusInfo(
+                    status=JobStatus.FAILED,
+                    message=f"Failed to set up runtime_env for the job: {e}."))
         except Exception as e:
+            logger.exception(f"Failed to start supervisor for job {job_id}.")
+            self._status_client.put_status(
+                job_id,
+                JobStatusInfo(
+                    status=JobStatus.FAILED,
+                    message=("Error occurred while starting the job: {e}.")))
             self._status_client.put_status(job_id, JobStatus.FAILED)
 
     def submit_job(self,
@@ -295,9 +324,7 @@ class JobManager:
                 Represents the entrypoint to start user application.
             runtime_env: Runtime environment used to execute driver command,
                 which could contain its own ray.init() to configure runtime
-                env at ray cluster, task and actor level. For now, we
-                assume same runtime_env used for job supervisor actor and
-                driver command.
+                env at ray cluster, task and actor level.
             metadata: Support passing arbitrary data to driver command in
                 case needed.
             _start_signal_actor: Used in testing only to capture state
@@ -313,24 +340,19 @@ class JobManager:
         elif self._status_client.get_status(job_id) is not None:
             raise RuntimeError(f"Job {job_id} already exists.")
 
+        logger.info(f"Starting job with job_id: {job_id}")
         self._status_client.put_status(job_id, JobStatus.PENDING)
 
-        logger.debug(
-            f"Submitting job with generated internal job_id: {job_id}")
-        supervisor = self._supervisor_actor_cls.options(
-            lifetime="detached",
-            name=self.JOB_ACTOR_NAME.format(job_id=job_id),
-            num_cpus=0,
-            # Currently we assume JobManager is created by dashboard server
-            # running on headnode, same for job supervisor actors scheduled
-            resources={
-                self._get_current_node_resource_key(): 0.001,
-            },
-            # For now we assume supervisor actor and driver script have
-            # same runtime_env.
-            runtime_env=runtime_env).remote(job_id, metadata or {})
-
-        # XXX: schedule coroutine.
+        # Wait for the actor to start up in a coroutine so that this call
+        # always returns immediately and we can catch errors with the actor
+        # starting up.
+        asyncio.get_event_loop().run_until_complete(
+            self._start_supervisor_actor(
+                job_id,
+                entrypoint,
+                runtime_env or {},
+                metadata or {},
+                _start_signal_actor=_start_signal_actor))
 
         return job_id
 

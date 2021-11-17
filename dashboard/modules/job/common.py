@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 import pickle
 
 from ray import ray_constants
@@ -26,24 +26,24 @@ class JobStatus(str, Enum):
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
 
+
 @dataclass
 class JobStatusInfo:
     status: JobStatus
     message: Optional[str] = None
-    context: Optional[str] = None
 
     def __post_init__(self):
         if self.message is None:
-            if status == JobStatus.PENDING:
-                self.message = ("Job has not started up yet, likely waiting "
-                "for the runtime_env to be set up.")
-            elif status == JobStatus.RUNNING:
+            if self.status == JobStatus.PENDING:
+                self.message = ("Job has not started yet, likely waiting "
+                                "for the runtime_env to be set up.")
+            elif self.status == JobStatus.RUNNING:
                 self.message = "Job is currently running."
-            elif status == JobStatus.STOPPED:
+            elif self.status == JobStatus.STOPPED:
                 self.message = "Job was intentionally stopped."
-            elif status == JobStatus.SUCCEEDED:
+            elif self.status == JobStatus.SUCCEEDED:
                 self.message = "Job finished successfully."
-            elif status == JobStatus.FAILED:
+            elif self.status == JobStatus.FAILED:
                 self.message = "Job failed due to an application error."
 
 
@@ -161,7 +161,6 @@ class JobStopResponse:
 class JobStatusResponse:
     status: JobStatus
     message: Optional[str]
-    context: Optional[str]
 
 
 # TODO(jiaodong): Support log streaming #19415
