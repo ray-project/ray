@@ -25,7 +25,7 @@ first connect to the cluster.
       System.setProperty("ray.job.namespace", "hello"); // set it before Ray.init()
       Ray.init();
 
-    // Please refer to `Driver Options <configure#driver-options>`__ for ways of configuring a Java application.
+    Please refer to `Driver Options <configure.html#driver-options>`__ for ways of configuring a Java application.
 
 Named actors are only accessible within their namespaces.
 
