@@ -10,16 +10,18 @@ In order to set your applications namespace, it should be specified when you
 first connect to the cluster.
 
 .. tabs::
-  .. code-tab:: python
+  .. group-tab: Python
+    .. code-block:: python
 
-    ray.init(namespace="hello")
-    # or using ray client
-    ray.init("ray://<head_node_host>:10001", namespace="world")
+      ray.init(namespace="hello")
+      # or using ray client
+      ray.init("ray://<head_node_host>:10001", namespace="world")
 
-  .. code-tab:: java
+  .. group-tab: Java
+    .. code-tab:: java
 
-    System.setProperty("ray.job.namespace", "hello"); // set it before Ray.init()
-    Ray.init();
+      System.setProperty("ray.job.namespace", "hello"); // set it before Ray.init()
+      Ray.init();
     // Please refer to `Driver Options <configure#driver-options>`__ for ways of configuring a Java application.
 
 Named actors are only accessible within their namespaces.
