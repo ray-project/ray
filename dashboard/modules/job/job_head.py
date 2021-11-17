@@ -163,10 +163,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPNotFound.status_code)
 
         status: JobStatusInfo = self._job_manager.get_job_status(job_id)
-        resp = JobStatusResponse(
-            status=status.status,
-            message=status.message,
-            context=status.context)
+        resp = JobStatusResponse(status=status.status, message=status.message)
         return Response(
             text=json.dumps(dataclasses.asdict(resp)),
             content_type="application/json")

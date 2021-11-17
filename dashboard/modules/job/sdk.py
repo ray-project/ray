@@ -224,10 +224,7 @@ class JobSubmissionClient:
         if r.status_code == 200:
             response = JobStatusResponse(**r.json())
             return JobStatusInfo(
-                status=response.status,
-                message=response.message,
-                context=response.context,
-            )
+                status=response.status, message=response.message)
         else:
             self._raise_error(r)
 

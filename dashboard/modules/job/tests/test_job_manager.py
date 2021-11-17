@@ -1,8 +1,9 @@
-from uuid import uuid4
-import tempfile
 import os
-import time
 import psutil
+import tempfile
+import time
+import sys
+from uuid import uuid4
 
 import pytest
 
@@ -31,8 +32,6 @@ def _driver_script_path(file_name: str) -> str:
 
 def check_job_succeeded(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
-    print(status)
-    print(repr(status))
     if status.status == JobStatus.FAILED:
         raise RuntimeError(f"Job failed! {status.message}")
     assert status.status in {
@@ -117,6 +116,10 @@ class TestShellScriptExecution:
         assert last_line == "Exception: Script failed with exception !"
         assert job_manager._get_actor_for_job(job_id) is None
 
+        status = job_manager.get_job_status(job_id)
+        assert status.status == JobStatus.FAILED
+        assert "Exception: Script failed with exception !" in status.message
+
     def test_submit_with_s3_runtime_env(self, job_manager):
         job_id = job_manager.submit_job(
             entrypoint="python script.py",
@@ -199,9 +202,9 @@ class TestRuntimeEnv:
             "are provided")
         assert "JOB_1_VAR" in logs
 
-    def test_failed_runtime_env_configuration(self, job_manager):
-        """Ensure job status is correctly set as failed if job supervisor
-        actor failed to setup runtime_env.
+    def test_failed_runtime_env_validation(self, job_manager):
+        """Ensure job status is correctly set as failed if job has an invalid
+        runtime_env.
         """
         run_cmd = f"python {_driver_script_path('override_env_var.py')}"
         job_id = job_manager.submit_job(
@@ -209,7 +212,20 @@ class TestRuntimeEnv:
 
         status = job_manager.get_job_status(job_id)
         assert status.status == JobStatus.FAILED
-        assert "Failed to set up runtime_env for the job" in status.message
+        assert "path_not_exist is not a valid URI" in status.message
+
+    def test_failed_runtime_env_setup(self, job_manager):
+        """Ensure job status is correctly set as failed if job has a valid
+        runtime_env that fails to be set up.
+        """
+        run_cmd = f"python {_driver_script_path('override_env_var.py')}"
+        job_id = job_manager.submit_job(
+            entrypoint=run_cmd,
+            runtime_env={"working_dir": "s3://does_not_exist.zip"})
+
+        status = job_manager.get_job_status(job_id)
+        assert status.status == JobStatus.FAILED
+        assert "runtime_env failed to be set up" in status.message
 
     def test_pass_metadata(self, job_manager):
         def dict_to_str(d):
@@ -407,6 +423,4 @@ class TestAsyncAPI:
 
 
 if __name__ == "__main__":
-    import sys
-    import pytest
     sys.exit(pytest.main(["-v", __file__]))

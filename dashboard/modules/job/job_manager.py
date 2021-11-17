@@ -42,7 +42,9 @@ class JobLogStorageClient:
     def tail_logs(self, job_id: str, n_lines=20):
         all_logs = self.get_logs(job_id)
         # TODO(edoakes): optimize this to not read the whole file into memory.
-        "\n".join(all_logs.split("\n")[:-n_lines])
+        log_lines = all_logs.split("\n")
+        start = max(0, len(log_lines) - n_lines)
+        return "\n".join(log_lines[start:])
 
     def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
         """
@@ -79,14 +81,14 @@ class JobSupervisor:
         # fire and forget call from outer job manager to this actor
         self._stop_event = asyncio.Event()
 
-    async def ready(self):
+    def ready(self):
         """Dummy object ref. Return of this function represents job supervisor
         actor stated successfully with runtime_env configured, and is ready to
         move on to running state.
         """
         pass
 
-    async def _exec_entrypoint(self, logs_path: str) -> subprocess.Popen:
+    def _exec_entrypoint(self, logs_path: str) -> subprocess.Popen:
         """
         Runs the entrypoint command as a child process, streaming stderr &
         stdout to given log files.
@@ -178,7 +180,7 @@ class JobSupervisor:
                        RAY_ADDRESS_ENVIRONMENT_VARIABLE] = ray_redis_address
 
             log_path = self._log_client.get_log_file_path(self._job_id)
-            child_process = await self._exec_entrypoint(log_path)
+            child_process = self._exec_entrypoint(log_path)
 
             polling_task = create_task(self._polling(child_process))
             finished, _ = await asyncio.wait(
@@ -203,8 +205,8 @@ class JobSupervisor:
                 else:
                     log_tail = self._log_client.tail_logs(self._job_id)
                     if log_tail:
-                        message = (
-                            "Job failed, last available logs:\n" + log_tail)
+                        message = ("Job failed due to an application error, "
+                                   "last available logs:\n" + log_tail)
                     else:
                         message = None
                     self._status_client.put_status(
@@ -229,10 +231,10 @@ class JobSupervisor:
 
 
 class JobManager:
-    """
-    Provide python APIs for job submission and management. It does not provide
-    job id generation or persistence, where all runtime data should be expected
-    as lost once the ray cluster running job manager instance is down.
+    """Provide python APIs for job submission and management.
+
+    It does not provide persistence, all info will be lost if the cluster
+    goes down.
     """
     JOB_ACTOR_NAME = "_ray_internal_job_actor_{job_id}"
 
@@ -261,44 +263,32 @@ class JobManager:
                         return key
         else:
             raise ValueError(
-                "Cannot found the node dictionary for current node.")
+                "Cannot find the node dictionary for current node.")
 
-    async def _start_supervisor_actor(
-            self,
-            job_id: str,
-            actor: ActorHandle,
-            _start_signal_actor: Optional[ActorHandle] = None):
-        try:
-            actor = self._supervisor_actor_cls.options(
-                lifetime="detached",
-                name=self.JOB_ACTOR_NAME.format(job_id=job_id),
-                num_cpus=0,
-                # Currently we assume JobManager is created by dashboard server
-                # running on headnode, same for job supervisor actors scheduled
-                resources={
-                    self._get_current_node_resource_key(): 0.001,
-                },
-                runtime_env=runtime_env).remote(job_id, entrypoint, metadata
-                                                or {})
-            await actor.ready.remote()
-            # Kick off the job to run in the background.
-            actor.run.remote(_start_signal_actor)
+    async def _handle_supervisor_started(self, job_id: str,
+                                         result: Optional[Exception]):
+        if result is None:
             return
-        except RuntimeEnvSetupError as e:
+        elif isinstance(result, RuntimeEnvSetupError):
             logger.info(f"Failed to set up runtime_env for job {job_id}.")
             self._status_client.put_status(
                 job_id,
                 JobStatusInfo(
                     status=JobStatus.FAILED,
-                    message=f"Failed to set up runtime_env for the job: {e}."))
-        except Exception as e:
-            logger.exception(f"Failed to start supervisor for job {job_id}.")
+                    message=(
+                        f"Failed to set up runtime_env for the job: {result}."
+                    )))
+        elif isinstance(result, Exception):
+            logger.error(
+                f"Failed to start supervisor for job {job_id}: {result}.")
             self._status_client.put_status(
                 job_id,
                 JobStatusInfo(
                     status=JobStatus.FAILED,
-                    message=("Error occurred while starting the job: {e}.")))
-            self._status_client.put_status(job_id, JobStatus.FAILED)
+                    message=f"Error occurred while starting the job: {result}."
+                ))
+        else:
+            assert False
 
     def submit_job(self,
                    *,
@@ -343,16 +333,25 @@ class JobManager:
         logger.info(f"Starting job with job_id: {job_id}")
         self._status_client.put_status(job_id, JobStatus.PENDING)
 
-        # Wait for the actor to start up in a coroutine so that this call
-        # always returns immediately and we can catch errors with the actor
-        # starting up.
-        asyncio.get_event_loop().run_until_complete(
-            self._start_supervisor_actor(
-                job_id,
-                entrypoint,
-                runtime_env or {},
-                metadata or {},
-                _start_signal_actor=_start_signal_actor))
+        # Wait for the actor to start up asynchronously so this call always
+        # returns immediately and we can catch errors with the actor starting
+        # up. We may want to put this in an actor instead in the future.
+        actor = self._supervisor_actor_cls.options(
+            lifetime="detached",
+            name=self.JOB_ACTOR_NAME.format(job_id=job_id),
+            num_cpus=0,
+            # Currently we assume JobManager is created by dashboard server
+            # running on headnode, same for job supervisor actors scheduled
+            resources={
+                self._get_current_node_resource_key(): 0.001,
+            },
+            runtime_env=runtime_env).remote(job_id, entrypoint, metadata or {})
+        actor.run.remote(_start_signal_actor=_start_signal_actor)
+
+        def callback(result: Optional[Exception]):
+            return self._handle_supervisor_started(job_id, result)
+
+        actor.ready.remote()._on_completed(callback)
 
         return job_id
 
@@ -395,7 +394,9 @@ class JobManager:
             # left job in non-terminal status in case actor failed without
             # updating GCS with latest status.
             last_status = self._status_client.get_status(job_id)
-            if last_status.status in {JobStatus.PENDING, JobStatus.RUNNING}:
+            if last_status and last_status.status in {
+                    JobStatus.PENDING, JobStatus.RUNNING
+            }:
                 self._status_client.put_status(job_id, JobStatus.FAILED)
 
         return self._status_client.get_status(job_id)

@@ -44,7 +44,7 @@ class JobStatusInfo:
             elif self.status == JobStatus.SUCCEEDED:
                 self.message = "Job finished successfully."
             elif self.status == JobStatus.FAILED:
-                self.message = "Job failed due to an application error."
+                self.message = "Job failed."
 
 
 class JobStatusStorageClient:
