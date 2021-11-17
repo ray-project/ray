@@ -236,7 +236,7 @@ Once you have uploaded your ``working_dir`` contents or your ``py_module`` depen
 
 You have two options to get the HTTPS URL.
 The first option is to use the remote Git provider's "Download Zip" feature, which redirects you to an HTTPS link that zips and downloads your repository.
-This is quick, but it is **not recommended** because it only allows you to download a zip file of the repository's main branch at the latest commit.
+This is quick, but it is **not recommended** because it only allows you to download a zip file of a repository branch's latest commit.
 To find a GitHub URL, navigate to your repository on `GitHub <github.com>`_, choose a branch, and click on the green "Code" drop down button:
 
 .. figure:: ray_repo.png
