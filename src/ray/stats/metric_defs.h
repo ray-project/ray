@@ -113,6 +113,10 @@ static Histogram ProcessStartupTimeMs("process_startup_time_ms",
                                       "Time to start up a worker process.", "ms",
                                       {1, 10, 100, 1000, 10000});
 
+static Histogram WorkerRegisterTimeMs("worker_register_time_ms",
+                                      "Time to start and register a worker process.", "ms",
+                                      {1, 10, 100, 1000, 10000});
+
 static Sum NumWorkersStarted(
     "internal_num_processes_started",
     "The total number of worker processes the worker pool has created.", "processes");

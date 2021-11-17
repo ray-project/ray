@@ -421,7 +421,7 @@ Process WorkerPool::StartWorkerProcess(
                                worker_type);
   state.starting_worker_processes.emplace(
       worker_startup_token_counter_,
-      StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc});
+      StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc, start});
   update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
@@ -592,7 +592,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
                                   std::function<void(Status, int)> send_reply_callback) {
   RAY_CHECK(worker);
   auto &state = GetStateForLanguage(worker->GetLanguage());
-  if (state.starting_worker_processes.count(worker_startup_token) == 0) {
+  auto it = state.starting_worker_processes.find(worker_startup_token);
+  if (it == state.starting_worker_processes.end()) {
     RAY_LOG(WARNING)
         << "Received a register request from an unknown worker shim process: "
         << worker_shim_pid;
@@ -613,8 +614,12 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     send_reply_callback(status, /*port=*/0);
     return status;
   }
+  auto &starting_process_info = it->second;
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - starting_process_info.start_time);
+  stats::WorkerRegisterTimeMs.Record(duration.count());
   RAY_LOG(DEBUG) << "Registering worker " << worker->WorkerId() << " with pid " << pid
-                 << ", port: " << port
+                 << ", port: " << port << ", register cost: " << duration.count()
                  << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
   worker->SetAssignedPort(port);
 
