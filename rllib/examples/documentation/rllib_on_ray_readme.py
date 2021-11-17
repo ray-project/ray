@@ -9,7 +9,7 @@ class SimpleCorridor(gym.Env):
         self.end_pos = config["corridor_length"]
         self.cur_pos = 0
         self.action_space = gym.spaces.Discrete(2)
-        self.observation_space = gym.spaces.Box(0.0, self.end_pos, shape=(1,))
+        self.observation_space = gym.spaces.Box(0.0, self.end_pos, shape=(1, ))
 
     def reset(self):
         self.cur_pos = 0
@@ -28,11 +28,15 @@ class SimpleCorridor(gym.Env):
 
 
 # Create an RLlib Trainer instance.
-trainer = PPOTrainer(env=SimpleCorridor, config={
-    "env": SimpleCorridor,
-    "env_config": {"corridor_length": 20},  # customize the environment
-    "num_workers": 3,  # parallelize environment rollouts
-})
+trainer = PPOTrainer(
+    env=SimpleCorridor,
+    config={
+        "env": SimpleCorridor,
+        "env_config": {
+            "corridor_length": 20
+        },  # customize the environment
+        "num_workers": 3,  # parallelize environment rollouts
+    })
 
 # Train for n iterations.
 for i in range(5):
