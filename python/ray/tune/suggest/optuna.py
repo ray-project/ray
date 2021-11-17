@@ -3,7 +3,7 @@ import logging
 import pickle
 import functools
 import warnings
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
@@ -257,8 +257,7 @@ class OptunaSearch(Searcher):
                      Tuple], Callable[["OptunaTrial"], Optional[Dict[
                          str, Any]]]]] = None,
                  metric: Optional[Union[str, List[str]]] = None,
-                 mode: Optional[Union[Literal["min"], Literal["max"], List[
-                     Union[Literal["min"], Literal["max"]]]]] = None,
+                 mode: Optional[Union[str, List[str]]] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
                  sampler: Optional["BaseSampler"] = None,
                  seed: Optional[int] = None,
