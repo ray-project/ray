@@ -38,9 +38,10 @@ class RemoteBaseEnv(BaseEnv):
             multiagent: Whether this is a multiagent env or not.
             remote_env_batch_wait_ms: Time to wait for (ray.remote)
                 sub-environments to have new observations available when
-                polled. When none of the sub-environments is ready, simply
-                repeat the ray.wait call until at least one sub-env is
-                ready.
+                polled. Only when none of the sub-environments is ready,
+                repeat the `ray.wait()` call until at least one sub-env
+                is ready. Then return only the observations of the ready
+                sub-environment(s).
             existing_envs: Optional list of already created sub-environments.
                 These will be used as-is and only as many new sub-envs as
                 necessary (`num_envs - len(existing_envs)`) will be created.
@@ -57,7 +58,10 @@ class RemoteBaseEnv(BaseEnv):
         self.multiagent = multiagent
         self.poll_timeout = remote_env_batch_wait_ms / 1000
 
+        # List of ray actor handles (each handle points to one @ray.remote
+        # sub-environment).
         self.actors = None  # lazy init
+        # List of pending
         self.pending = None  # lazy init
 
     @override(BaseEnv)
@@ -91,6 +95,8 @@ class RemoteBaseEnv(BaseEnv):
                     make_remote_env(i) for i in range(self.num_envs)
                 ]
 
+        # Lazy initialization. Call `reset()` on all @ray.remote
+        # sub-environment actors at the beginning.
         if self.pending is None:
             self.pending = {a.reset.remote(): a for a in self.actors}
 
@@ -98,7 +104,7 @@ class RemoteBaseEnv(BaseEnv):
         obs, rewards, dones, infos = {}, {}, {}, {}
         ready = []
 
-        # Wait for at least 1 env to be ready here
+        # Wait for at least 1 env to be ready here.
         while not ready:
             ready, _ = ray.wait(
                 list(self.pending),
@@ -129,11 +135,15 @@ class RemoteBaseEnv(BaseEnv):
                     else:
                         ob = {_DUMMY_AGENT_ID: ret}
 
+                # If this is a `reset()` return value, we only have the initial
+                # observations: Set rewards, dones, and infos to dummy values.
                 if rew is None:
                     rew = {agent_id: 0 for agent_id in ob.keys()}
                     done = {"__all__": False}
                     info = {agent_id: {} for agent_id in ob.keys()}
-            # Our sub-envs are auto-wrapped and already behave like multi-agent
+
+            # Our sub-envs are auto-wrapped (by `_RemoteSingleAgentEnv` or
+            # `_RemoteMultiAgentEnv`) and already behave like multi-agent
             # envs.
             else:
                 ob, rew, done, info = ret
