@@ -270,7 +270,8 @@ TEST_F(DirectActorSubmitterTest, TestActorDead) {
   ASSERT_EQ(worker_client_->callbacks.size(), 1);
 
   // Simulate the actor dying. All in-flight tasks should get failed.
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task1.TaskId(), _, _, _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task1.TaskId(), _, _, _, _))
+      .Times(1);
   EXPECT_CALL(*task_finisher_, CompletePendingTask(_, _, _)).Times(0);
   while (!worker_client_->callbacks.empty()) {
     ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
@@ -279,7 +280,8 @@ TEST_F(DirectActorSubmitterTest, TestActorDead) {
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(_, _, _, _, _)).Times(0);
   submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
   // Actor marked as dead. All queued tasks should get failed.
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _))
+      .Times(1);
   submitter_.DisconnectActor(actor_id, 2, /*dead=*/true);
 }
 
@@ -304,8 +306,10 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
 
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task1.TaskId(), _, _)).Times(1);
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _)).Times(1);
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task3.TaskId(), _, _, _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _))
+      .Times(1);
+  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task3.TaskId(), _, _, _, _))
+      .Times(1);
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task4.TaskId(), _, _)).Times(1);
   // First task finishes. Second task fails.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
@@ -483,7 +487,8 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_EQ(num_clients_connected_, 2);
 
   // The actor dies permanently. All tasks are failed.
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task.TaskId(), _, _, _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task.TaskId(), _, _, _, _))
+      .Times(1);
   submitter_.DisconnectActor(actor_id, 3, /*dead=*/true);
   ASSERT_EQ(num_clients_connected_, 2);
 
@@ -494,7 +499,8 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_EQ(num_clients_connected_, 2);
   // Submit a task.
   task = CreateActorTaskHelper(actor_id, worker_id, 4);
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task.TaskId(), _, _, _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task.TaskId(), _, _, _, _))
+      .Times(1);
   ASSERT_TRUE(submitter_.SubmitTask(task).ok());
 }
 
@@ -523,16 +529,20 @@ TEST_F(DirectActorSubmitterTest, TestActorRestartFailInflightTasks) {
   ASSERT_TRUE(submitter_.SubmitTask(task3).ok());
   // Actor failed, but the task replies are delayed (or in some scenarios, lost).
   // We should still be able to fail the inflight tasks.
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _)).Times(1);
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task3.TaskId(), _, _, _, _)).Times(1);
+  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _))
+      .Times(1);
+  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task3.TaskId(), _, _, _, _))
+      .Times(1);
   submitter_.DisconnectActor(actor_id, 1, /*dead=*/false);
 
   // The task replies are now received. Since the tasks are already failed, they will not
   // be marked as failed or finished again.
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task2.TaskId(), _, _)).Times(0);
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task2.TaskId(), _, _, _, _))
+      .Times(0);
   EXPECT_CALL(*task_finisher_, CompletePendingTask(task3.TaskId(), _, _)).Times(0);
-  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task3.TaskId(), _, _, _, _)).Times(0);
+  EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task3.TaskId(), _, _, _, _))
+      .Times(0);
   // Task 2 replied with OK.
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::OK()));
   // Task 3 replied with error.

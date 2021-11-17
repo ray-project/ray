@@ -121,9 +121,9 @@ class MockTaskFinisher : public TaskFinisherInterface {
   }
 
   bool FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
-                         const Status *status,
-                         const rpc::RayException *creation_task_exception = nullptr,
-                         bool mark_task_object_failed = true) override {
+                              const Status *status,
+                              const rpc::RayException *creation_task_exception = nullptr,
+                              bool mark_task_object_failed = true) override {
     num_tasks_failed++;
     return true;
   }

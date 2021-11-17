@@ -122,7 +122,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
     // No need to increment the number of completed tasks since the actor is
     // dead.
     RAY_UNUSED(!task_finisher_.FailOrRetryPendingTask(task_id, error_type, &status,
-                                                 creation_task_exception));
+                                                      creation_task_exception));
   }
 
   // If the task submission subsequently fails, then the client will receive
@@ -268,7 +268,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
         // No need to increment the number of completed tasks since the actor is
         // dead.
         RAY_UNUSED(!task_finisher_.FailOrRetryPendingTask(task_id, error_type, &status,
-                                                     creation_task_exception));
+                                                          creation_task_exception));
       }
 
       auto &wait_for_death_info_tasks = queue->second.wait_for_death_info_tasks;
@@ -276,8 +276,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       RAY_LOG(INFO) << "Failing tasks waiting for death info, size="
                     << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
       for (auto &net_err_task : wait_for_death_info_tasks) {
-        RAY_UNUSED(task_finisher_.MarkPendingTaskObjectFailed(net_err_task.second, error_type,
-                                                        creation_task_exception));
+        RAY_UNUSED(task_finisher_.MarkPendingTaskObjectFailed(
+            net_err_task.second, error_type, creation_task_exception));
       }
 
       // No need to clean up tasks that have been sent and are waiting for
@@ -414,9 +414,10 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
           will_retry = task_finisher_.FailOrRetryPendingTask(
               task_id, GenErrorTypeFromDeathCause(queue.death_cause.get()), &status,
               GetCreationTaskExceptionFromDeathCause(queue.death_cause.get()),
-              /*mark_task_object_failed*/is_actor_dead);
+              /*mark_task_object_failed*/ is_actor_dead);
           if (!is_actor_dead) {
-            // If actor is not dead yet, wait for the grace period until we mark the return object as failed.
+            // If actor is not dead yet, wait for the grace period until we mark the
+            // return object as failed.
             int64_t death_info_grace_period_ms =
                 current_time_ms() +
                 RayConfig::instance().timeout_ms_task_wait_for_death_info();

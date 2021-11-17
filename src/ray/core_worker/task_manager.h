@@ -146,19 +146,20 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// return object as failed.
   /// \return Whether the task will be retried or not.
   bool FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
-                         const Status *status = nullptr,
-                         const rpc::RayException *creation_task_exception = nullptr,
-                         bool mark_task_object_failed = true) override;
+                              const Status *status = nullptr,
+                              const rpc::RayException *creation_task_exception = nullptr,
+                              bool mark_task_object_failed = true) override;
 
-  /// Treat a pending task's returned Ray object as failed. The lock should not be held when calling
-  /// this method because it may trigger callbacks in this or other classes.
+  /// Treat a pending task's returned Ray object as failed. The lock should not be held
+  /// when calling this method because it may trigger callbacks in this or other classes.
   ///
   /// \param[in] spec The TaskSpec that contains return object.
   /// \param[in] error_type The error type the returned Ray object will store.
   /// \param[in] creation_task_exception The serialized actor init exception.
-  void MarkPendingTaskObjectFailed(const TaskSpecification &spec, rpc::ErrorType error_type,
-                             const rpc::RayException *creation_task_exception =
-                                 nullptr) override LOCKS_EXCLUDED(mu_);
+  void MarkPendingTaskObjectFailed(
+      const TaskSpecification &spec, rpc::ErrorType error_type,
+      const rpc::RayException *creation_task_exception = nullptr) override
+      LOCKS_EXCLUDED(mu_);
 
   /// A task's dependencies were inlined in the task spec. This will decrement
   /// the ref count for the dependency IDs. If the dependencies contained other
