@@ -199,12 +199,9 @@ class OptunaSearch(Searcher):
             metric=["loss1", "loss2"],
             mode=["min", "max"])
 
-        # The metric and mode specified here will be used for sorting
-        # trials, and not during search itself
+        # Do not specify metric and mode here!
         tune.run(
             trainable,
-            metric="loss1",
-            mode="min",
             search_alg=optuna_search
         )
 
@@ -297,24 +294,22 @@ class OptunaSearch(Searcher):
                 "You passed an initialized sampler to `OptunaSearch`. The "
                 "`seed` parameter has to be passed to the sampler directly "
                 "and will be ignored.")
+        elif sampler:
+            assert isinstance(
+                self._sampler,
+                BaseSampler), ("You can only pass an instance of "
+                               "`optuna.samplers.BaseSampler` "
+                               "as a sampler to `OptunaSearcher`.")
 
-        if sampler:
-            self._sampler = sampler
-        elif isinstance(mode, list):
-            self._sampler = ot.samplers.MOTPESampler(seed=seed)
-        else:
-            self._sampler = ot.samplers.TPESampler(seed=seed)
-
-        assert isinstance(self._sampler, BaseSampler), \
-            "You can only pass an instance of `optuna.samplers.BaseSampler` " \
-            "as a sampler to `OptunaSearcher`."
+        self._sampler = sampler
+        self._seed = seed
 
         self._ot_trials = {}
         self._ot_study = None
         if self._space:
             self._setup_study(mode)
 
-    def _setup_study(self, mode: str):
+    def _setup_study(self, mode: Union[str, list]):
         if self._metric is None and self._mode:
             if isinstance(self._mode, list):
                 raise ValueError(
@@ -325,6 +320,13 @@ class OptunaSearch(Searcher):
 
         pruner = ot.pruners.NopPruner()
         storage = ot.storages.InMemoryStorage()
+
+        if self._sampler:
+            sampler = self._sampler
+        elif isinstance(mode, list):
+            sampler = ot.samplers.MOTPESampler(seed=self._seed)
+        else:
+            sampler = ot.samplers.TPESampler(seed=self._seed)
 
         if isinstance(mode, list):
             study_direction_args = dict(
@@ -337,7 +339,7 @@ class OptunaSearch(Searcher):
 
         self._ot_study = ot.study.create_study(
             storage=storage,
-            sampler=self._sampler,
+            sampler=sampler,
             pruner=pruner,
             study_name=self._study_name,
             load_if_exists=True,
