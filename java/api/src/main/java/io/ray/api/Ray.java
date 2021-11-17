@@ -81,10 +81,32 @@ public final class Ray extends RayCall {
    * Get an object by `ObjectRef` from the object store.
    *
    * @param objectRef The reference of the object to get.
+   * @param timeoutMs The maximum amount of time in miliseconds to wait before returning.
+   * @return The Java object.
+   */
+  public static <T> T get(ObjectRef<T> objectRef, long timeoutMs) {
+    return internal().get(objectRef, timeoutMs);
+  }
+
+  /**
+   * Get an object by `ObjectRef` from the object store.
+   *
+   * @param objectRef The reference of the object to get.
    * @return The Java object.
    */
   public static <T> T get(ObjectRef<T> objectRef) {
     return internal().get(objectRef);
+  }
+
+  /**
+   * Get a list of objects by `ObjectRef`s from the object store.
+   *
+   * @param objectList A list of object references.
+   * @param timeoutMs The maximum amount of time in miliseconds to wait before returning.
+   * @return A list of Java objects.
+   */
+  public static <T> List<T> get(List<ObjectRef<T>> objectList, long timeoutMs) {
+    return internal().get(objectList, timeoutMs);
   }
 
   /**

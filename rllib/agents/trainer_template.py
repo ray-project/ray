@@ -9,6 +9,7 @@ from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.typing import EnvConfigDict, EnvType, \
     PartialTrainerConfigDict, ResultDict, TrainerConfigDict
+from ray.tune.logger import Logger
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +93,14 @@ def build_trainer(
         _default_config = default_config or COMMON_CONFIG
         _policy_class = default_policy
 
-        def __init__(self, config=None, env=None, logger_creator=None):
-            Trainer.__init__(self, config, env, logger_creator)
+        def __init__(self,
+                     config: TrainerConfigDict = None,
+                     env: Union[str, EnvType, None] = None,
+                     logger_creator: Callable[[], Logger] = None,
+                     remote_checkpoint_dir: Optional[str] = None,
+                     sync_function_tpl: Optional[str] = None):
+            Trainer.__init__(self, config, env, logger_creator,
+                             remote_checkpoint_dir, sync_function_tpl)
 
         @override(base)
         def setup(self, config: PartialTrainerConfigDict):
@@ -172,11 +179,15 @@ def build_trainer(
                     and `overrides`.
 
             Examples:
-                >>> MyClass = SomeOtherClass.with_updates({"name": "Mine"})
-                >>> issubclass(MyClass, SomeOtherClass)
-                ... False
-                >>> issubclass(MyClass, Trainer)
-                ... True
+                >>> from ray.rllib.agents.ppo import PPOTrainer
+                >>> MyPPOClass = PPOTrainer.with_updates({"name": "MyPPO"})
+                >>> issubclass(MyPPOClass, PPOTrainer)
+                False
+                >>> issubclass(MyPPOClass, Trainer)
+                True
+                >>> trainer = MyPPOClass()
+                >>> print(trainer)
+                MyPPO
             """
             return build_trainer(**dict(original_kwargs, **overrides))
 
