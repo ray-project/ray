@@ -56,11 +56,14 @@ class PlasmaStore {
   PlasmaStore(instrumented_io_context &main_service, IAllocator &allocator,
               const std::string &socket_name, uint32_t delay_on_oom_ms,
               float object_spilling_threshold,
+			  float block_tasks_threshold,
+			  float evict_tasks_threshold,
               ray::SpillObjectsCallback spill_objects_callback,
               std::function<void()> object_store_full_callback,
               ray::AddObjectCallback add_object_callback,
               ray::DeleteObjectCallback delete_object_callback,
-              ray::ObjectCreationBlockedCallback on_object_creation_blocked_callback);
+              ray::ObjectCreationBlockedCallback on_object_creation_blocked_callback,
+			  ray::ObjectEvictCallback on_object_evict_callback);
 
   ~PlasmaStore();
 
@@ -201,7 +204,9 @@ class PlasmaStore {
   PlasmaError HandleCreateObjectRequest(const std::shared_ptr<Client> &client,
                                         const std::vector<uint8_t> &message,
                                         bool fallback_allocator, PlasmaObject *object,
-                                        bool *spilling_required)
+                                        bool *spilling_required,
+										bool *block_tasks_required,
+										bool *evict_tasks_required)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void ReplyToCreateClient(const std::shared_ptr<Client> &client,
@@ -269,8 +274,8 @@ class PlasmaStore {
 
   /// The percentage of object store memory used above which 
   //blocking new tasks is triggerted 
-  const float block_request_threshold_ = 0.8;
-  const float evict_request_threshold_ = 0.8;
+  const float block_tasks_threshold_;
+  const float evict_tasks_threshold_;
 
   /// A timer that is set when the first request in the queue is not
   /// serviceable because there is not enough memory. The request will be

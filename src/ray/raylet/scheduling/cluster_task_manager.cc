@@ -1211,9 +1211,7 @@ bool ClusterTaskManager::EvictTasks(Priority base_priority) {
   for (auto &entry : leased_workers_) {
     std::shared_ptr<WorkerInterface> worker = entry.second;
     Priority priority = worker->GetAssignedTask().GetTaskSpecification().GetPriority();
-    //Smaller priority have higher priority
-    //Does not have less than check it
-    if (priority >= base_priority){
+    if (priority > base_priority){
       workers_to_kill.push_back(worker);
       should_spill = false;
     }

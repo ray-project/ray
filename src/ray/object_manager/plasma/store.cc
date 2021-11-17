@@ -70,11 +70,14 @@ ray::ObjectID GetCreateRequestObjectId(const std::vector<uint8_t> &message) {
 PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allocator,
                          const std::string &socket_name, uint32_t delay_on_oom_ms,
                          float object_spilling_threshold,
+						 float block_tasks_threshold,
+						 float evict_tasks_threshold,
                          ray::SpillObjectsCallback spill_objects_callback,
                          std::function<void()> object_store_full_callback,
                          ray::AddObjectCallback add_object_callback,
                          ray::DeleteObjectCallback delete_object_callback,
-                         ray::ObjectCreationBlockedCallback on_object_creation_blocked_callback)
+                         ray::ObjectCreationBlockedCallback on_object_creation_blocked_callback,
+						 ray::ObjectEvictCallback on_object_evict_callback)
     : io_context_(main_service),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
@@ -85,10 +88,13 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allo
       object_lifecycle_mgr_(allocator_, delete_object_callback_),
       delay_on_oom_ms_(delay_on_oom_ms),
       object_spilling_threshold_(object_spilling_threshold),
+	  block_tasks_threshold_(block_tasks_threshold),
+	  evict_tasks_threshold_(evict_tasks_threshold),
       create_request_queue_(
           /*oom_grace_period_s=*/RayConfig::instance().oom_grace_period_s(),
           spill_objects_callback,
           on_object_creation_blocked_callback,
+		  on_object_evict_callback,
           object_store_full_callback,
           /*get_time=*/
           []() { return absl::GetCurrentTimeNanos(); },
@@ -141,7 +147,9 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
                                                    const std::vector<uint8_t> &message,
                                                    bool fallback_allocator,
                                                    PlasmaObject *object,
-                                                   bool *spilling_required) {
+                                                   bool *spilling_required,
+												   bool *block_tasks_required,
+												   bool *evict_tasks_required) {
   uint8_t *input = (uint8_t *)message.data();
   size_t input_size = message.size();
   ray::ObjectInfo object_info;
@@ -161,25 +169,28 @@ PlasmaError PlasmaStore::HandleCreateObjectRequest(const std::shared_ptr<Client>
                    << ", metadata_size=" << object_info.metadata_size;
   }
   //TODO(Jae) Erase this later
-  /*
   const int64_t footprint_limit = allocator_.GetFootprintLimit();
-  const float allocated_percentage =
-        static_cast<float>(allocator_.Allocated()) / footprint_limit;
-  if(allocated_percentage >= block_tasks_threshold_){
-	  blockTasks();
+  float allocated_percentage;
+  if(footprint_limit != 0){
+	  allocated_percentage =
+			static_cast<float>(allocator_.Allocated()) / footprint_limit;
+  }else{
+	  allocated_percentage = 0;
   }
-  if(allocated_percentage >= evict_tasks_threshold_){
-	  evictTasks();
+  if(block_tasks_required != nullptr){
+    if(allocated_percentage >= block_tasks_threshold_){
+	    *block_tasks_required = true;
+    }
   }
-  */
+  if(evict_tasks_required != nullptr){
+    if(allocated_percentage >= evict_tasks_threshold_){
+	    *evict_tasks_required = true;
+    }
+  }
 
   // Trigger object spilling if current usage is above the specified threshold.
   if (spilling_required != nullptr) {
-    const int64_t footprint_limit = allocator_.GetFootprintLimit();
     if (footprint_limit != 0) {
-	  const int64_t footprint_limit = allocator_.GetFootprintLimit();
-	  const float allocated_percentage =
-        static_cast<float>(allocator_.Allocated()) / footprint_limit;
       if (allocated_percentage > object_spilling_threshold_) {
         RAY_LOG(DEBUG) << "Triggering object spilling because current usage "
                        << allocated_percentage << "% is above threshold "
@@ -377,10 +388,12 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     // absl failed analyze mutex safety for lambda
     auto handle_create = [this, client, message](
                              bool fallback_allocator, PlasmaObject *result,
-                             bool *spilling_required) ABSL_NO_THREAD_SAFETY_ANALYSIS {
+                             bool *spilling_required, bool *block_tasks_required,
+							 bool *evict_tasks_required) ABSL_NO_THREAD_SAFETY_ANALYSIS {
       mutex_.AssertHeld();
       return HandleCreateObjectRequest(client, message, fallback_allocator, result,
-                                       spilling_required);
+                                       spilling_required, block_tasks_required,
+									   evict_tasks_required);
     };
 
     if (request->try_immediately()) {

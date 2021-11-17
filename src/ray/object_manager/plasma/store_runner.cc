@@ -80,6 +80,7 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name, int64_t system_mem
 
 void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
                               ray::ObjectCreationBlockedCallback on_object_creation_blocked_callback,
+							  ray::ObjectEvictCallback on_object_evict_callback,
                               std::function<void()> object_store_full_callback,
                               ray::AddObjectCallback add_object_callback,
                               ray::DeleteObjectCallback delete_object_callback) {
@@ -92,9 +93,12 @@ void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
     store_.reset(new PlasmaStore(main_service_, *allocator_, socket_name_,
                                  RayConfig::instance().object_store_full_delay_ms(),
                                  RayConfig::instance().object_spilling_threshold(),
+                                 RayConfig::instance().block_tasks_threshold(),
+                                 RayConfig::instance().evict_tasks_threshold(),
                                  spill_objects_callback, object_store_full_callback,
                                  add_object_callback, delete_object_callback,
-                                 on_object_creation_blocked_callback));
+                                 on_object_creation_blocked_callback,
+								 on_object_evict_callback));
     store_->Start();
   }
   main_service_.run();

@@ -374,7 +374,20 @@ RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
 /// If set to less than 1.0, Ray will start spilling objects when existing objects
 /// take more than this percentage of the available memory.
-RAY_CONFIG(float, object_spilling_threshold, 1.0)
+RAY_CONFIG(float, object_spilling_threshold, 0.8)
+
+RAY_CONFIG(float, block_tasks_threshold, 0.8)
+
+RAY_CONFIG(float, evict_tasks_threshold, 1.0)
+
+// Whether to use BlockTasks 
+RAY_CONFIG(bool, enable_BlockTasks, false)
+
+// Whether to use EvictTasks when spill required
+RAY_CONFIG(bool, enable_EvictTasks, false)
+
+// Whether to use EvictTasks when spill required
+RAY_CONFIG(bool, enable_BlockandEvictTasks, true)
 
 /// Maximum number of objects that can be fused into a single file.
 RAY_CONFIG(int64_t, max_fused_object_count, 2000)

@@ -34,17 +34,20 @@ namespace plasma {
 class CreateRequestQueue {
  public:
   using CreateObjectCallback = std::function<PlasmaError(
-      bool fallback_allocator, PlasmaObject *result, bool *spilling_required)>;
+      bool fallback_allocator, PlasmaObject *result, bool *spilling_required,
+	  bool *block_tasks_required, bool *evict_tasks_required)>;
 
   CreateRequestQueue(int64_t oom_grace_period_s,
                      ray::SpillObjectsCallback spill_objects_callback,
                      ray::ObjectCreationBlockedCallback on_object_creation_blocked_callback,
+					 ray::ObjectEvictCallback on_object_evict_callback,
                      std::function<void()> trigger_global_gc,
                      std::function<int64_t()> get_time,
                      std::function<std::string()> dump_debug_info_callback = nullptr)
       : oom_grace_period_ns_(oom_grace_period_s * 1e9),
         spill_objects_callback_(spill_objects_callback),
         on_object_creation_blocked_callback_(on_object_creation_blocked_callback),
+		on_object_evict_callback_(on_object_evict_callback),
         trigger_global_gc_(trigger_global_gc),
         get_time_(get_time),
         dump_debug_info_callback_(dump_debug_info_callback) {}
@@ -158,7 +161,8 @@ class CreateRequestQueue {
   /// returned by the request handler inside. Returns OK if the request can be
   /// finished.
   Status ProcessRequest(bool fallback_allocator, std::unique_ptr<CreateRequest> &request,
-                        bool *spilling_required);
+                        bool *spilling_required, bool *block_tasks_required, 
+												bool *evict_tasks_required);
 
   /// Finish a queued request and remove it from the queue.
   void FinishRequest(absl::btree_map<ray::TaskKey, std::unique_ptr<CreateRequest>>::iterator queue_it);
@@ -178,6 +182,7 @@ class CreateRequestQueue {
 
   const ray::ObjectCreationBlockedCallback on_object_creation_blocked_callback_;
 
+  const ray::ObjectEvictCallback on_object_evict_callback_;
   /// A callback to trigger global GC in the cluster if the object store is
   /// full.
   const std::function<void()> trigger_global_gc_;

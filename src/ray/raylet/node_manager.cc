@@ -228,10 +228,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           },
           /*on_object_creation_blocked_callback=*/
           [this](const Priority &base_priority) {
-            //cluster_task_manager_->BlockTasks(priority);
-            //TODO(Jae) Remove this line and set the actual value for should_spill
-            //from the ClusterTaskManager
             cluster_task_manager_->BlockTasks(base_priority);
+		  },
+          /*on_object_evict_callback=*/
+          [this](const Priority &base_priority) {
             bool should_spill = cluster_task_manager_->EvictTasks(base_priority);
             io_service_.post([this, should_spill](){
               object_manager_.SetShouldSpill(should_spill);
@@ -332,9 +332,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
   }
   auto destroy_worker = [this](std::shared_ptr<WorkerInterface> worker,
                                 rpc::WorkerExitType disconnect_type) {
-    DisconnectClient(worker->Connection(), disconnect_type);
-    worker->MarkDead();
-    KillWorker(worker);
+	  DestroyWorker(worker, disconnect_type);
   };
   auto is_owner_alive = [this](const WorkerID &owner_worker_id,
                                const NodeID &owner_node_id) {
@@ -536,7 +534,6 @@ void NodeManager::KillWorker(std::shared_ptr<WorkerInterface> worker) {
   });
 }
 
-//when make a change in this function make sure to change destroy_worker lammbda function as well
 void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
                                 rpc::WorkerExitType disconnect_type) {
   // We should disconnect the client first. Otherwise, we'll remove bundle resources

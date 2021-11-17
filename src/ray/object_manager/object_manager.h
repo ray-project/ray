@@ -93,6 +93,7 @@ class ObjectStoreRunner {
   ObjectStoreRunner(const ObjectManagerConfig &config,
                     SpillObjectsCallback spill_objects_callback,
                     ObjectCreationBlockedCallback on_object_creation_blocked_callback,
+					ObjectEvictCallback on_object_evict_callback,
                     std::function<void()> object_store_full_callback,
                     AddObjectCallback add_object_callback,
                     DeleteObjectCallback delete_object_callback);
@@ -170,6 +171,7 @@ class ObjectManager : public ObjectManagerInterface,
       std::function<std::string(const ObjectID &)> get_spilled_object_url,
       SpillObjectsCallback spill_objects_callback,
       ObjectCreationBlockedCallback on_object_creation_blocked_callback,
+	  ObjectEvictCallback on_object_evict_callback,
       std::function<void()> object_store_full_callback,
       AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object);
