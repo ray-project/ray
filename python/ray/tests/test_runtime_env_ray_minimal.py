@@ -111,15 +111,19 @@ def test_ray_client_init(call_ray_start):
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") != "1",
     reason="This test is only run in CI with a minimal Ray installation.")
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25552 --port 0"],
+    indirect=True)
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
-def test_remote_package_uri(start_cluster, option):
+def test_remote_package_uri(call_ray_start, option):
     """
     Test is based on test_remote_package_uri from
     test_runtime_env_working_dir.py file. Ensures that runtime_env logic
     gracefully raises error if smart_open is not installed and a remote URI
     is specified for a dependency package.
     """
-    cluster, address = start_cluster
+    address = "ray://localhost:25552"
     uri = "s3://bucket/file.zip"
 
     if option == "working_dir":
@@ -127,12 +131,9 @@ def test_remote_package_uri(start_cluster, option):
     elif option == "py_modules":
         env = {"py_modules": [uri]}
 
-    try:
-        with pytest.raises(Exception) as err:
-            ray.init(address, runtime_env=env)
-        assert "pip install smart_open" in str(err.value)
-    except Failed:
-        assert True
+    with pytest.raises(Exception) as err:
+        ray.init(address, runtime_env=env)
+    assert "pip install smart_open" in str(err.value)
 
 
 @pytest.mark.skipif(
@@ -140,14 +141,18 @@ def test_remote_package_uri(start_cluster, option):
 @pytest.mark.skipif(
     os.environ.get("RAY_MINIMAL") != "1",
     reason="This test is only run in CI with a minimal Ray installation.")
-def test_empty_working_dir(start_cluster):
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25552 --port 0"],
+    indirect=True)
+def test_empty_working_dir(call_ray_start):
     """
     Test is based on test_empty_working_dir from
     test_runtime_env_working_dir.py file. Ensures that runtime_env logic
     still supports uploading local packages to GCS, even when smart_open is
     not installed.
     """
-    cluster, address = start_cluster
+    address = "ray://localhost:25552"
     with tempfile.TemporaryDirectory() as working_dir:
         ray.init(address, runtime_env={"working_dir": working_dir})
 
