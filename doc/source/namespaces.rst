@@ -20,7 +20,7 @@ first connect to the cluster.
 
     System.setProperty("ray.job.namespace", "hello"); // set it before Ray.init()
     Ray.init();
-    // Or you can specified the namespace in your configure file.
+    // Please refer to `Driver Options <configure#driver-options>`__ for ways of configuring a Java application.
 
 Named actors are only accessible within their namespaces.
 
@@ -86,14 +86,6 @@ Named actors are only accessible within their namespaces.
     }
 
     // Job 3 connects to the original "colors" namespace.
-    context = ray.init("ray://localhost:10001", namespace="colors")
-    # This fails because "watermelon" was in the fruits namespace.
-    ray.get_actor("watermelon")
-    # This returns the "orange" actor we created in the first job, not the second.
-    ray.get_actor("orange")
-    context.disconnect()
-    # We are manually managing the scope of the connection in this example.
-
     System.setProperty("ray.address", "127.0.0.1:6379");
     System.setProperty("ray.job.namespace", "colors");
     try {
