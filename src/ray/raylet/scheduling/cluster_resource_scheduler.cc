@@ -514,6 +514,27 @@ void ClusterResourceScheduler::DeleteResource(const std::string &node_id_string,
   }
 }
 
+bool ClusterResourceScheduler::ContainResource(const std::string &resource_name) {
+  int idx = -1;
+  if (resource_name == ray::kCPU_ResourceLabel) {
+    idx = (int)CPU;
+  } else if (resource_name == ray::kGPU_ResourceLabel) {
+    idx = (int)GPU;
+  } else if (resource_name == ray::kObjectStoreMemory_ResourceLabel) {
+    idx = (int)OBJECT_STORE_MEM;
+  } else if (resource_name == ray::kMemory_ResourceLabel) {
+    idx = (int)MEM;
+  };
+  if (idx != -1) {
+    // Return true directly for predefined resources as we always initialize this kind of resources at the beginning.
+    return true;
+  } else {
+    int64_t resource_id = string_to_int_map_.Get(resource_name);
+    const auto &it = local_resources_.custom_resources.find(resource_id);
+    return it != local_resources_.custom_resources.end();
+  }
+}
+
 std::string ClusterResourceScheduler::SerializedTaskResourceInstances(
     std::shared_ptr<TaskResourceInstances> task_allocation) const {
   bool has_added_resource = false;

@@ -168,6 +168,18 @@ bool ClusterTaskManager::PoppedWorkerHandler(
     not_detached_with_owner_failed = true;
   }
 
+  // Check whether the placement group was removed or not.
+  if (task.GetTaskSpecification().PlacementGroupBundleId().first != PlacementGroupID::Nil()) {
+    const auto &required_resource = task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+    for (auto &entry: required_resource) {
+      if (!cluster_resource_scheduler_->ContainResource(entry.first)) {
+        RAY_LOG(DEBUG) << "The placement group: " << task.GetTaskSpecification().PlacementGroupBundleId().first << " was removed when poping workers for task: " << task_id << ", will cancel the task.";
+        CancelTask(task_id, false);
+        canceled = true;
+      }
+    }
+  }
+
   auto erase_from_dispatch_queue_fn = [this](const std::shared_ptr<internal::Work> &work,
                                              const SchedulingClass &scheduling_class) {
     auto shapes_it = tasks_to_dispatch_.find(scheduling_class);
