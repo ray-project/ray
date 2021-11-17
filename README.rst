@@ -118,7 +118,6 @@ This example runs a parallel grid search to optimize an example objective functi
 
 .. code-block:: python
 
-
     from ray import tune
 
 
@@ -162,46 +161,19 @@ If TensorBoard is installed, automatically visualize all trial results:
 RLlib Quick Start
 -----------------
 
-.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/rllib-wide.jpg
+.. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/rllib/rllib-logo.svg
 
-`RLlib`_ is an open-source library for reinforcement learning built on top of Ray that offers both high scalability and a unified API for a variety of applications.
+`RLlib`_ is an industry-grade, open-source library for reinforcement learning (RL) built on top of Ray.
+RLlib offers high scalability and unified APIs for a variety of industry- and research applications.
 
 .. code-block:: bash
 
-  pip install tensorflow  # or tensorflow-gpu
-  pip install "ray[rllib]"
+    $ pip install "ray[rllib]" tensorflow  # or torch
 
-.. code-block:: python
-
-    import gym
-    from gym.spaces import Discrete, Box
-    from ray import tune
-
-    class SimpleCorridor(gym.Env):
-        def __init__(self, config):
-            self.end_pos = config["corridor_length"]
-            self.cur_pos = 0
-            self.action_space = Discrete(2)
-            self.observation_space = Box(0.0, self.end_pos, shape=(1, ))
-
-        def reset(self):
-            self.cur_pos = 0
-            return [self.cur_pos]
-
-        def step(self, action):
-            if action == 0 and self.cur_pos > 0:
-                self.cur_pos -= 1
-            elif action == 1:
-                self.cur_pos += 1
-            done = self.cur_pos >= self.end_pos
-            return [self.cur_pos], 1 if done else 0, done, {}
-
-    tune.run(
-        "PPO",
-        config={
-            "env": SimpleCorridor,
-            "num_workers": 4,
-            "env_config": {"corridor_length": 5}})
+.. literalinclude:: rllib/examples/documentation/rllib_on_ray_readme.py
+   :language: python
+   :start-after: __quick_start_begin__
+   :end-before: __quick_start_end__
 
 .. _`RLlib`: https://docs.ray.io/en/master/rllib/index.html
 

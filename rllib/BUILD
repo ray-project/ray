@@ -2727,3 +2727,11 @@ py_test(
     size = "medium",
     srcs = ["examples/documentation/rllib_in_60s.py"],
 )
+
+py_test(
+    name = "examples/documentation/rllib_on_ray_readme",
+    main = "examples/documentation/rllib_on_ray_readme.py",
+    tags = ["team:ml", "documentation"],
+    size = "medium",
+    srcs = ["examples/documentation/rllib_on_ray_readme.py"],
+)
