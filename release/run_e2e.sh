@@ -32,17 +32,6 @@ done
 
 export RAY_REPO RAY_BRANCH RAY_VERSION RAY_WHEELS RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
 
-if [ -z "${TEST_FILE}" ]; then
-  echo "You need to specify a test file with --test-file"
-  exit 1
-fi
-
-if [ -z "${TEST_NAME}" ]; then
-  echo "You need to specify a test name with --test-name"
-  exit 1
-fi
-
-
 echo pip install -q -r release/requirements.txt,
 echo pip install -U boto3 botocore,
 echo git clone -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" ~/ray
