@@ -143,9 +143,9 @@ def test_remote_package_uri(start_cluster, option):
 def test_empty_working_dir(start_cluster):
     """
     Test is based on test_empty_working_dir from
-    test_runtime_env_working_dir.py file. Ensures that runtime_env logic still
-    supports uploading local packages to GCS, even when smart_open is not
-    installed.
+    test_runtime_env_working_dir.py file. Ensures that runtime_env logic
+    still supports uploading local packages to GCS, even when smart_open is
+    not installed.
     """
     cluster, address = start_cluster
     with tempfile.TemporaryDirectory() as working_dir:
