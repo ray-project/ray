@@ -793,10 +793,15 @@ class TorchPolicy(Policy):
             The local PyTorch optimizer(s) to use for this Policy.
         """
         if hasattr(self, "config"):
-            return torch.optim.Adam(
-                self.model.parameters(), lr=self.config["lr"])
+            optimizers = [
+                torch.optim.Adam(
+                    self.model.parameters(), lr=self.config["lr"])
+            ]
         else:
-            return torch.optim.Adam(self.model.parameters())
+            optimizers = [torch.optim.Adam(self.model.parameters())]
+        if getattr(self, "exploration", None):
+            optimizers = self.exploration.get_exploration_optimizer(optimizers)
+        return optimizers
 
     @override(Policy)
     @DeveloperAPI
