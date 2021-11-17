@@ -60,9 +60,9 @@ from ray._private.ray_logging import setup_logger
 from ray._private.ray_logging import global_worker_stdstream_dispatcher
 from ray._private.utils import check_oversized_function
 from ray.util.inspect import is_cython
-from ray.experimental.internal_kv import _internal_kv_get, \
-    _internal_kv_initialized, _initialize_internal_kv, \
-    _internal_kv_reset
+from ray.experimental.internal_kv import (_internal_kv_initialized,
+                                          _initialize_internal_kv,
+                                          _internal_kv_reset, _internal_kv_get)
 from ray._private.client_mode_hook import client_mode_hook
 
 SCRIPT_MODE = 0
@@ -394,8 +394,10 @@ class Worker:
             # We always run the task locally.
             function({"worker": self})
             # Check if the function has already been put into redis.
-            function_exported = self.redis_client.setnx(b"Lock:" + key, 1)
-            if not function_exported:
+            function_exported = self.gcs_client.internal_kv_put(
+                b"Lock:" + key, b"1", False,
+                ray_constants.KV_NAMESPACE_FUNCTION_TABLE) == 0
+            if function_exported is True:
                 # In this case, the function has already been exported, so
                 # we don't need to export it again.
                 return
@@ -404,13 +406,13 @@ class Worker:
                                      "function", self)
 
             # Run the function on all workers.
-            self.redis_client.hset(
+            self.gcs_client.internal_kv_put(
                 key,
-                mapping={
+                pickle.dumps({
                     "job_id": self.current_job_id.binary(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
-                })
+                }), True, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
             # successfully completes the hset and rpush, then the program will
@@ -624,12 +626,11 @@ def init(
 
         ray.init()
 
-    To connect to an existing local cluster, use this as follows (substituting
-    in the appropriate port if needed).
+    To connect to an existing local cluster, use this as follows.
 
     .. code-block:: python
 
-        ray.init(address="localhost:6379")
+        ray.init(address="auto")
 
     To connect to an existing remote cluster, use this as follows (substituting
     in the appropriate address). Note the addition of "ray://" at the beginning
@@ -1260,7 +1261,7 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
     """
-    worker.gcs_subscriber = GcsSubscriber(channel=worker.gcs_channel)
+    worker.gcs_subscriber = GcsSubscriber(channel=worker.gcs_channel.channel())
     # Exports that are published after the call to
     # gcs_subscriber.subscribe_error() and before the call to
     # gcs_subscriber.poll_error() will still be processed in the loop.
@@ -1361,16 +1362,16 @@ def connect(node,
     # that is not true of Redis pubsub clients. See the documentation at
     # https://github.com/andymccurdy/redis-py#thread-safety.
     worker.redis_client = node.create_redis_client()
-    worker.gcs_channel = gcs_utils.create_gcs_channel(
-        gcs_utils.get_gcs_address_from_redis(worker.redis_client))
-    worker.gcs_client = gcs_utils.GcsClient(channel=worker.gcs_channel)
+    worker.gcs_channel = gcs_utils.GcsChannel(redis_client=worker.redis_client)
+    worker.gcs_client = gcs_utils.GcsClient(worker.gcs_channel)
     _initialize_internal_kv(worker.gcs_client)
     ray.state.state._initialize_global_state(
         node.redis_address, redis_password=node.redis_password)
     worker.gcs_pubsub_enabled = gcs_pubsub_enabled()
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
-        worker.gcs_publisher = GcsPublisher(channel=worker.gcs_channel)
+        worker.gcs_publisher = GcsPublisher(
+            channel=worker.gcs_channel.channel())
 
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
@@ -1551,16 +1552,13 @@ def connect(node,
     worker.cached_functions_to_run = None
 
     # Setup tracing here
-    if _internal_kv_get(
-            "tracing_startup_hook",
-            namespace=ray_constants.KV_NAMESPACE_TRACING):
+    tracing_hook_val = worker.gcs_client.internal_kv_get(
+        b"tracing_startup_hook", ray_constants.KV_NAMESPACE_TRACING)
+    if tracing_hook_val is not None:
         ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
         if not getattr(ray, "__traced__", False):
             _setup_tracing = import_from_string(
-                _internal_kv_get(
-                    "tracing_startup_hook",
-                    namespace=ray_constants.KV_NAMESPACE_TRACING).decode(
-                        "utf-8"))
+                tracing_hook_val.decode("utf-8"))
             _setup_tracing()
             ray.__traced__ = True
 
@@ -2128,7 +2126,7 @@ def remote(*args, **kwargs):
         @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
         def f():
             return 1, 2
-        g = f.options(num_gpus=2, max_calls=None)
+        g = f.options(num_gpus=2)
 
         @ray.remote(num_cpus=2, resources={"CustomResource": 1})
         class Foo:
