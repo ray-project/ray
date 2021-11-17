@@ -155,7 +155,7 @@ message ActorTableData {
   Address owner_address = 10;
   // Whether the actor is persistent.
   bool is_detached = 11;
-  // Name of the actor. Only populated if is_detached is true.
+  // Name of the actor.
   string name = 12;
   // Last timestamp that the actor state was updated.
   double timestamp = 13;

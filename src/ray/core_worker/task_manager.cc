@@ -438,7 +438,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
 
 bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
                                          const Status *status,
-                                         const rpc::RayException *creation_task_exception,
+                                         const rpc::RayErrorInfo *ray_error_info,
                                          bool mark_task_object_failed) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
@@ -487,7 +487,7 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType e
     RemoveFinishedTaskReferences(spec, release_lineage, rpc::Address(),
                                  ReferenceCounter::ReferenceTableProto());
     if (mark_task_object_failed) {
-      MarkPendingTaskObjectFailed(spec, error_type, creation_task_exception);
+      MarkPendingTaskObjectFailed(spec, error_type, ray_error_info);
     }
   }
 
@@ -611,22 +611,26 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
   return it != submissible_tasks_.end();
 }
 
-void TaskManager::MarkPendingTaskObjectFailed(
-    const TaskSpecification &spec, rpc::ErrorType error_type,
-    const rpc::RayException *creation_task_exception) {
+void TaskManager::MarkPendingTaskObjectFailed(const TaskSpecification &spec,
+                                              rpc::ErrorType error_type,
+                                              const rpc::RayErrorInfo *ray_error_info) {
   const TaskID task_id = spec.TaskId();
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
-    if (creation_task_exception != nullptr) {
+    if (ray_error_info == nullptr) {
+      RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
+      continue;
+    }
+
+    if (ray_error_info->has_actor_init_failure()) {
+      auto creation_task_exception = ray_error_info->actor_init_failure();
       const auto final_buffer =
-          SerializePBToMsgPack<rpc::RayException>(creation_task_exception);
+          SerializePBToMsgPack<rpc::RayException>(&creation_task_exception);
       RAY_UNUSED(in_memory_store_->Put(
           RayObject(error_type, final_buffer->Data(), final_buffer->Size()), object_id));
-    } else {
-      RAY_UNUSED(in_memory_store_->Put(RayObject(error_type), object_id));
     }
   }
 }

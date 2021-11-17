@@ -146,6 +146,14 @@ enum ErrorType {
   OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED = 13;
 }
 
+/// The information per ray error type.
+message RayErrorInfo {
+  oneof error {
+    RayException actor_init_failure = 1;
+    RayActorDiedError actor_died = 2;
+  }
+}
+
 /// The task exception encapsulates all information about task
 /// execution execeptions.
 message RayException {
@@ -155,6 +163,19 @@ message RayException {
   bytes serialized_exception = 2;
   // The formatted exception string.
   string formatted_exception_string = 3;
+}
+
+message RayActorDiedError {
+  // The address of the the actor.
+  Address address = 1;
+  // Name of the actor.
+  string name = 2;
+  // The process id of this actor.
+  uint32 pid = 3;
+  // The class name of the dead actor.
+  string class_name = 4;
+  // The error message of the dead actor error.
+  string error_message = 5;
 }
 
 /// The runtime environment describes all the runtime packages needed to
