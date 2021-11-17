@@ -1323,8 +1323,9 @@ cdef class CoreWorker:
             if total_bytes > 0:
                 if isinstance(serialized_object, ArrowSerializedObject):
                     arrow_object = <ArrowSerializedObject>serialized_object
-                    sink = pa.FixedSizeBufferWriter(pa.py_buffer(Buffer.make(data)))
-                    writer = pa.ipc.new_stream(sink, arrow_object.schema)    
+                    sink = pa.FixedSizeBufferWriter(
+                        pa.py_buffer(Buffer.make(data)))
+                    writer = pa.ipc.new_stream(sink, arrow_object.schema)
                     writer.write(arrow_object.value)
                     writer.close()
                 else:

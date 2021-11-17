@@ -14,16 +14,10 @@ from ray.exceptions import (RayError, PlasmaObjectNotAvailable, RayTaskError,
                             ObjectReconstructionFailedMaxAttemptsExceededError,
                             ObjectReconstructionFailedLineageEvictedError,
                             RaySystemError, RuntimeEnvSetupError)
-from ray._raylet import (
-    split_buffer,
-    unpack_pickle5_buffers,
-    Pickle5Writer,
-    Pickle5SerializedObject,
-    MessagePackSerializer,
-    MessagePackSerializedObject,
-    RawSerializedObject,
-    ArrowSerializedObject
-)
+from ray._raylet import (split_buffer, unpack_pickle5_buffers, Pickle5Writer,
+                         Pickle5SerializedObject, MessagePackSerializer,
+                         MessagePackSerializedObject, RawSerializedObject,
+                         ArrowSerializedObject)
 from ray import serialization_addons
 
 import pyarrow as pa
@@ -200,7 +194,8 @@ class SerializationContext:
                 if data is None:
                     return b""
                 return data.to_pybytes()
-            elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ARROW:
+            elif metadata_fields[
+                    0] == ray_constants.OBJECT_METADATA_TYPE_ARROW:
                 import pyarrow as pa
                 reader = pa.BufferReader(data)
                 return pa.ipc.open_stream(reader).read_all()
