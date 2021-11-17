@@ -54,7 +54,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         flatbuffers \
         cython==0.29.23 \
         # Necessary for Dataset to work properly.
-        numpy>=1.20 \
+        numpy\>=1.20 \
         psutil \
         blist \ 
     # blist is needed for numpy (which is re-installed when ray is installed)
