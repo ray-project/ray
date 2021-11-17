@@ -20,7 +20,6 @@ def pull_from_queue(ready, pending):
         pending.append(p)
     pull_from_queue.step(workflow.wait(pending))
 
-
 @ray.remote
 def record(msg):
     with p.open(mode='a') as f:
@@ -31,4 +30,4 @@ def record(msg):
 def process_event(e):
     return record.remote(e.get("Messages"))
 
-pull_from_queue.step(None).run("sqs-job")
+pull_from_queue.step([], []).run("sqs-job")
