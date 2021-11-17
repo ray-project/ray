@@ -72,7 +72,7 @@ py_test(
 
 py_test(
     name = "test_commands",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_commands.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_C"],

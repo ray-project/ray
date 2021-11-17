@@ -110,7 +110,7 @@ def build_trainer(
             if override_all_subkeys_if_type_changes is not None:
                 self._override_all_subkeys_if_type_changes += \
                     override_all_subkeys_if_type_changes
-            super().setup(config)
+            Trainer.setup(self, config)
 
         def _init(self, config: TrainerConfigDict,
                   env_creator: Callable[[EnvConfigDict], EnvType]):
