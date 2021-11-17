@@ -1,7 +1,7 @@
 import collections
 import random
 import heapq
-from typing import Iterator, List, Union, Tuple, Any, TypeVar, Optional, \
+from typing import Dict, Iterator, List, Union, Tuple, Any, TypeVar, Optional, \
     TYPE_CHECKING
 
 import numpy as np
@@ -14,6 +14,7 @@ except ImportError:
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
+from ray.data.impl.table_block import TableRow, TableBlockBuilder
 from ray.data.aggregate import AggregateFn
 from ray.data.impl.size_estimator import SizeEstimator
 
@@ -27,26 +28,10 @@ T = TypeVar("T")
 SortKeyT = List[Tuple[str, str]]
 GroupKeyT = Union[None, str]
 
-# The max size of Python tuples to buffer before compacting them into an Arrow
-# table in the BlockBuilder.
-MAX_UNCOMPACTED_SIZE_BYTES = 50 * 1024 * 1024
 
-
-class ArrowRow:
-    def __init__(self, row: "pyarrow.Table"):
-        self._row = row
-
+class ArrowRow(TableRow):
     def as_pydict(self) -> dict:
         return {k: v[0] for k, v in self._row.to_pydict().items()}
-
-    def keys(self) -> Iterator[str]:
-        return self.as_pydict().keys()
-
-    def values(self) -> Iterator[Any]:
-        return self.as_pydict().values()
-
-    def items(self) -> Iterator[Tuple[str, Any]]:
-        return self.as_pydict().items()
 
     def __getitem__(self, key: str) -> Any:
         col = self._row[key]
@@ -61,120 +46,24 @@ class ArrowRow:
             # that it is bypassing pyarrow's scalar model.
             return item
 
-    def __eq__(self, other: Any) -> bool:
-        return self.as_pydict() == other
-
-    def __str__(self):
-        return str(self.as_pydict())
-
-    def __repr__(self):
-        return str(self)
-
     def __len__(self):
         return self._row.num_columns
 
 
-class DelegatingArrowBlockBuilder(BlockBuilder[T]):
-    def __init__(self):
-        self._builder = None
-
-    def add(self, item: Any) -> None:
-        if self._builder is None:
-            if isinstance(item, dict) or isinstance(item, ArrowRow):
-                try:
-                    check = ArrowBlockBuilder()
-                    check.add(item)
-                    check.build()
-                    self._builder = ArrowBlockBuilder()
-                except (TypeError, pyarrow.lib.ArrowInvalid):
-                    self._builder = SimpleBlockBuilder()
-            else:
-                self._builder = SimpleBlockBuilder()
-        self._builder.add(item)
-
-    def add_block(self, block: Block) -> None:
-        if self._builder is None:
-            self._builder = BlockAccessor.for_block(block).builder()
-        self._builder.add_block(block)
-
-    def build(self) -> Block:
-        if self._builder is None:
-            self._builder = ArrowBlockBuilder()
-        return self._builder.build()
-
-    def num_rows(self) -> int:
-        return self._builder.num_rows() if self._builder is not None else 0
-
-    def get_estimated_memory_usage(self) -> int:
-        if self._builder is None:
-            return 0
-        return self._builder.get_estimated_memory_usage()
-
-
-class ArrowBlockBuilder(BlockBuilder[T]):
+class ArrowBlockBuilder(TableBlockBuilder[T]):
     def __init__(self):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
-        # The set of uncompacted Python values buffered.
-        self._columns = collections.defaultdict(list)
-        # The set of compacted tables we have built so far.
-        self._tables: List["pyarrow.Table"] = []
-        self._tables_nbytes = 0
-        # Size estimator for un-compacted table values.
-        self._uncompacted_size = SizeEstimator()
-        self._num_rows = 0
-        self._num_compactions = 0
+        TableBlockBuilder.__init()
 
-    def add(self, item: Union[dict, ArrowRow]) -> None:
-        if isinstance(item, ArrowRow):
-            item = item.as_pydict()
-        if not isinstance(item, dict):
-            raise ValueError(
-                "Returned elements of an ArrowBlock must be of type `dict`, "
-                "got {} (type {}).".format(item, type(item)))
-        for key, value in item.items():
-            self._columns[key].append(value)
-        self._num_rows += 1
-        self._compact_if_needed()
-        self._uncompacted_size.add(item)
+    def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
+        return pyarrow.Table.from_pydict(columns)
 
-    def add_block(self, block: "pyarrow.Table") -> None:
-        assert isinstance(block, pyarrow.Table), block
-        self._tables.append(block)
-        self._tables_nbytes += block.nbytes
-        self._num_rows += block.num_rows
+    def _concat_tables(self, tables: List[Block]) -> Block:
+        return pyarrow.concat_tables(tables, promote=True)
 
-    def build(self) -> Block:
-        if self._columns:
-            tables = [pyarrow.Table.from_pydict(self._columns)]
-        else:
-            tables = []
-        tables.extend(self._tables)
-        if len(tables) > 1:
-            return pyarrow.concat_tables(tables, promote=True)
-        elif len(tables) > 0:
-            return tables[0]
-        else:
-            return pyarrow.Table.from_pydict({})
-
-    def num_rows(self) -> int:
-        return self._num_rows
-
-    def get_estimated_memory_usage(self) -> int:
-        if self._num_rows == 0:
-            return 0
-        return self._tables_nbytes + self._uncompacted_size.size_bytes()
-
-    def _compact_if_needed(self) -> None:
-        assert self._columns
-        if self._uncompacted_size.size_bytes() < MAX_UNCOMPACTED_SIZE_BYTES:
-            return
-        block = pyarrow.Table.from_pydict(self._columns)
-        self._tables.append(block)
-        self._tables_nbytes += block.nbytes
-        self._uncompacted_size = SizeEstimator()
-        self._columns.clear()
-        self._num_compactions += 1
+    def _empty_table(self):
+        raise pyarrow.Table.from_pydict({})
 
 
 class ArrowBlockAccessor(BlockAccessor):

@@ -23,7 +23,7 @@ AggType = TypeVar("AggType")
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
-Block = Union[List[T], "pyarrow.Table", bytes]
+Block = Union[List[T], "pyarrow.Table", "pandas.DataFrame", bytes]
 
 # A list of block references pending computation by a single task. For example,
 # this may be the output of a task reading a file.
