@@ -460,7 +460,7 @@ def create_test_step(
 
     logging.info(f"Creating step for {test_file}/{test_name}{ray_wheels_str}")
 
-    cmd = (f".release/run_e2e.sh "
+    cmd = (f"./release/run_e2e.sh "
            f"--ray-repo=\"{ray_repo}\" "
            f"--ray-branch=\"{ray_branch}\" "
            f"--ray-version=\"{ray_version}\" "
