@@ -99,7 +99,7 @@ ray::internal::TaskCaller<F> Task(F func);
 template <typename F>
 ray::internal::ActorCreator<F> Actor(F create_func);
 
-/// Get a handle to a named actor of current job.
+/// Get a handle to a named actor in current namespace.
 /// Gets a handle to a named actor with the given name. The actor must have been created
 /// with name specified.
 ///
@@ -138,7 +138,7 @@ PlacementGroup GetPlacementGroupById(const std::string &id);
 /// Get a placement group by name.
 PlacementGroup GetPlacementGroup(const std::string &name);
 
-/// Get a placement group by placement group name from all jobs.
+/// Get a placement group by placement group name from all namespace.
 PlacementGroup GetGlobalPlacementGroup(const std::string &name);
 
 /// Returns true if the current actor was restarted, otherwise false.
