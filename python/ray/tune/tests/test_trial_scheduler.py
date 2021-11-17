@@ -994,6 +994,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
 
         # no checkpoint: haven't hit next perturbation interval yet
         self.assertEqual(pbt.last_scores(trials), [0, 50, 100, 150, 200])
+
         self.assertEqual(
             pbt.on_trial_result(runner, trials[0], result(15, 200)),
             TrialScheduler.CONTINUE)
@@ -1029,7 +1030,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         # perturb since it's lower quantile
         self.assertEqual(
             pbt.on_trial_result(runner, trials[0], result(20, -100)),
-            TrialScheduler.CONTINUE)
+            TrialScheduler.NONE)
         self.assertEqual(pbt.last_scores(trials), [-100, 50, 100, 150, 200])
         self.assertTrue("@perturbed" in trials[0].experiment_tag)
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
@@ -1038,7 +1039,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         # also perturbed
         self.assertEqual(
             pbt.on_trial_result(runner, trials[2], result(20, 40)),
-            TrialScheduler.CONTINUE)
+            TrialScheduler.NONE)
         self.assertEqual(pbt.last_scores(trials), [-100, 50, 40, 150, 200])
         self.assertEqual(pbt._num_perturbations, 2)
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
@@ -1078,7 +1079,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trials = runner.get_trials()
         self.assertEqual(
             pbt.on_trial_result(runner, trials[0], result(20, -100)),
-            TrialScheduler.CONTINUE)
+            TrialScheduler.NONE)
+        self.assertEqual(trials[0].status, Trial.PAUSED)
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
         self.assertIn(trials[0].config["id_factor"], [100])
         self.assertIn(trials[0].config["float_factor"], [2.4, 1.6])
@@ -1092,7 +1094,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trials = runner.get_trials()
         self.assertEqual(
             pbt.on_trial_result(runner, trials[0], result(20, -100)),
-            TrialScheduler.CONTINUE)
+            TrialScheduler.NONE)
+        self.assertEqual(trials[0].status, Trial.PAUSED)
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
         self.assertEqual(trials[0].config["id_factor"], 100)
         self.assertEqual(trials[0].config["float_factor"], 100.0)
@@ -1112,7 +1115,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trials = runner.get_trials()
         self.assertEqual(
             pbt.on_trial_result(runner, trials[0], result(20, -100)),
-            TrialScheduler.CONTINUE)
+            TrialScheduler.NONE)
+        self.assertEqual(trials[0].status, Trial.PAUSED)
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
         self.assertEqual(trials[0].config["id_factor"], 100)
         self.assertEqual(trials[0].config["float_factor"], 100.0)
@@ -1275,7 +1279,8 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trials = runner.get_trials()
         self.assertEqual(
             pbt.on_trial_result(runner, trials[0], result(20, -100)),
-            TrialScheduler.CONTINUE)
+            TrialScheduler.NONE)
+        self.assertEqual(trials[0].status, Trial.PAUSED)
         self.assertIn(trials[0].restored_checkpoint, ["trial_3", "trial_4"])
         self.assertEqual(trials[0].config["float_factor"], 100.0)
         self.assertIsInstance(trials[0].config["float_factor"], float)
@@ -1289,7 +1294,6 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         pbt, runner = self.basicSetup()
         trials = runner.get_trials()
         trials[0].status = Trial.PENDING  # simulate not enough resources
-
         self.assertEqual(
             pbt.on_trial_result(runner, trials[1], result(20, 1000)),
             TrialScheduler.PAUSE)
@@ -1339,8 +1343,10 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         self.assertEqual(pbt._num_perturbations, 0)
         pbt.on_trial_result(runner, trials[3], result(500, 1002))
         self.assertEqual(pbt._num_perturbations, 1)
+        trials[3].status = Trial.RUNNING
         pbt.on_trial_result(runner, trials[3], result(600, 100))
         self.assertEqual(pbt._num_perturbations, 1)
+        trials[3].status = Trial.RUNNING
         pbt.on_trial_result(runner, trials[3], result(11000, 100))
         self.assertEqual(pbt._num_perturbations, 2)
 
@@ -1471,6 +1477,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             trial_state[k].forward(res[TRAINING_ITERATION])
 
             old_config = trials[k].config
+            trials[k].status = Trial.RUNNING
             pbt.on_trial_result(runner, trials[k], res)
             new_config = trials[k].config
             trial_state[k].config = new_config.copy()
@@ -1753,7 +1760,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
         trials = runner.get_trials()
         self.assertEqual(
             pbt.on_trial_result(runner, trials[0], result(20, -100)),
-            TrialScheduler.CONTINUE)
+            TrialScheduler.NONE)
         self.assertEqual(trials[0].config["id_factor"], 42)
         self.assertEqual(trials[0].config["float_factor"], 43)
 
