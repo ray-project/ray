@@ -228,6 +228,7 @@ Papers
    ray-overview/index.rst
    ray-libraries.rst
    installation.rst
+   Ray Job Submission <ray-job-submission/overview.rst>
 
 .. toctree::
    :hidden:
