@@ -6,11 +6,14 @@ import ray.cloudpickle as pickle
 from ray import ray_constants
 import ray._private.utils
 from ray._private.gcs_utils import ErrorType
-from ray.exceptions import (
-    RayError, PlasmaObjectNotAvailable, RayTaskError, RayActorError,
-    TaskCancelledError, WorkerCrashedError, ObjectLostError,
-    ReferenceCountingAssertionError, OwnerDiedError,
-    ObjectReconstructionFailedError, RaySystemError, RuntimeEnvSetupError)
+from ray.exceptions import (RayError, PlasmaObjectNotAvailable, RayTaskError,
+                            RayActorError, TaskCancelledError,
+                            WorkerCrashedError, ObjectLostError,
+                            ReferenceCountingAssertionError, OwnerDiedError,
+                            ObjectReconstructionFailedError,
+                            ObjectReconstructionFailedMaxAttemptsExceededError,
+                            ObjectReconstructionFailedLineageEvictedError,
+                            RaySystemError, RuntimeEnvSetupError)
 from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
@@ -244,6 +247,16 @@ class SerializationContext:
                                       object_ref.call_site())
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
                 return ObjectReconstructionFailedError(
+                    object_ref.hex(), object_ref.owner_address(),
+                    object_ref.call_site())
+            elif error_type == ErrorType.Value(
+                    "OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED"):
+                return ObjectReconstructionFailedMaxAttemptsExceededError(
+                    object_ref.hex(), object_ref.owner_address(),
+                    object_ref.call_site())
+            elif error_type == ErrorType.Value(
+                    "OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED"):
+                return ObjectReconstructionFailedLineageEvictedError(
                     object_ref.hex(), object_ref.owner_address(),
                     object_ref.call_site())
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):

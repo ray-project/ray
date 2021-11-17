@@ -2,14 +2,12 @@
 Calling Deployments via HTTP and Python
 =======================================
 
+This section should help you:
+
+- understand how deployments can be called in two ways: from HTTP and from Python
+- integrate Ray Serve with an existing web server
+
 .. contents:: Calling Deployments via HTTP and Python
-
-Overview
-========
-
-Deployments can be called in two ways: from HTTP and from Python.
-On this page we will show you both of these approaches and then give a tutorial
-on how to integrate Ray Serve with an existing web server.
 
 Calling Deployments via HTTP
 ============================

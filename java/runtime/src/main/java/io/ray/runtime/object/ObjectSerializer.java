@@ -33,6 +33,11 @@ public class ObjectSerializer {
       String.valueOf(ErrorType.ACTOR_DIED.getNumber()).getBytes();
   private static final byte[] UNRECONSTRUCTABLE_EXCEPTION_META =
       String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE.getNumber()).getBytes();
+  private static final byte[] UNRECONSTRUCTABLE_LINEAGE_EVICTED_EXCEPTION_META =
+      String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED.getNumber()).getBytes();
+  private static final byte[] UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED_EXCEPTION_META =
+      String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED.getNumber())
+          .getBytes();
   private static final byte[] OBJECT_LOST_META =
       String.valueOf(ErrorType.OBJECT_LOST.getNumber()).getBytes();
   private static final byte[] OWNER_DIED_META =
@@ -85,6 +90,8 @@ public class ObjectSerializer {
       } else if (Bytes.indexOf(meta, WORKER_EXCEPTION_META) == 0) {
         return new RayWorkerException();
       } else if (Bytes.indexOf(meta, UNRECONSTRUCTABLE_EXCEPTION_META) == 0
+          || Bytes.indexOf(meta, UNRECONSTRUCTABLE_LINEAGE_EVICTED_EXCEPTION_META) == 0
+          || Bytes.indexOf(meta, UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED_EXCEPTION_META) == 0
           || Bytes.indexOf(meta, OBJECT_LOST_META) == 0
           || Bytes.indexOf(meta, OWNER_DIED_META) == 0
           || Bytes.indexOf(meta, OBJECT_DELETED_META) == 0) {

@@ -84,29 +84,38 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
   {
     absl::MutexLock lock(&mu_);
-    RAY_CHECK(submissible_tasks_
-                  .emplace(spec.TaskId(), TaskEntry(spec, max_retries, num_returns))
-                  .second);
+    auto inserted = submissible_tasks_.emplace(spec.TaskId(),
+                                               TaskEntry(spec, max_retries, num_returns));
+    RAY_CHECK(inserted.second);
     num_pending_tasks_++;
   }
 
   return returned_refs;
 }
 
-Status TaskManager::ResubmitTask(const TaskID &task_id,
-                                 std::vector<ObjectID> *task_deps) {
+bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) {
   TaskSpecification spec;
   bool resubmit = false;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
     if (it == submissible_tasks_.end()) {
-      return Status::Invalid("Task spec missing");
+      // This can happen when the task has already been
+      // retried up to its max attempts.
+      return false;
     }
 
     if (!it->second.pending) {
       resubmit = true;
       it->second.pending = true;
+      num_pending_tasks_++;
+
+      // The task is pending again, so it's no longer counted as lineage. If
+      // the task finishes and we still need the spec, we'll add the task back
+      // to the footprint sum.
+      total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
+      it->second.lineage_footprint_bytes = 0;
+
       if (it->second.num_retries_left > 0) {
         it->second.num_retries_left--;
       } else {
@@ -140,7 +149,7 @@ Status TaskManager::ResubmitTask(const TaskID &task_id,
     retry_task_callback_(spec, /*delay=*/false);
   }
 
-  return Status::OK();
+  return true;
 }
 
 void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
@@ -273,6 +282,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 
   TaskSpecification spec;
   bool release_lineage = true;
+  int64_t min_lineage_bytes_to_evict = 0;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -304,12 +314,26 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     if (task_retryable) {
       // Pin the task spec if it may be retried again.
       release_lineage = false;
+      it->second.lineage_footprint_bytes = it->second.spec.GetMessage().ByteSizeLong();
+      total_lineage_footprint_bytes_ += it->second.lineage_footprint_bytes;
+      if (total_lineage_footprint_bytes_ > max_lineage_bytes_) {
+        RAY_LOG(INFO) << "Total lineage size is " << total_lineage_footprint_bytes_ / 1e6
+                      << "MB, which exceeds the limit of " << max_lineage_bytes_ / 1e6
+                      << "MB";
+        min_lineage_bytes_to_evict =
+            total_lineage_footprint_bytes_ - (max_lineage_bytes_ / 2);
+      }
     } else {
       submissible_tasks_.erase(it);
     }
   }
 
   RemoveFinishedTaskReferences(spec, release_lineage, worker_addr, reply.borrowed_refs());
+  if (min_lineage_bytes_to_evict > 0) {
+    // Evict at least half of the current lineage.
+    auto bytes_evicted = reference_counter_->EvictLineage(min_lineage_bytes_to_evict);
+    RAY_LOG(INFO) << "Evicted " << bytes_evicted / 1e6 << "MB of task lineage.";
+  }
 
   ShutdownIfNeeded();
 }
@@ -349,10 +373,10 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id) {
   }
 }
 
-bool TaskManager::PendingTaskFailed(
-    const TaskID &task_id, rpc::ErrorType error_type, const Status *status,
-    const std::shared_ptr<rpc::RayException> &creation_task_exception,
-    bool immediately_mark_object_fail) {
+bool TaskManager::PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+                                    const Status *status,
+                                    const rpc::RayException *creation_task_exception,
+                                    bool immediately_mark_object_fail) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
@@ -460,14 +484,16 @@ void TaskManager::RemoveFinishedTaskReferences(
   in_memory_store_->Delete(deleted);
 }
 
-void TaskManager::RemoveLineageReference(const ObjectID &object_id,
-                                         std::vector<ObjectID> *released_objects) {
+int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
+                                            std::vector<ObjectID> *released_objects) {
   absl::MutexLock lock(&mu_);
+  const int64_t total_lineage_footprint_bytes_prev(total_lineage_footprint_bytes_);
+
   const TaskID &task_id = object_id.TaskId();
   auto it = submissible_tasks_.find(task_id);
   if (it == submissible_tasks_.end()) {
     RAY_LOG(DEBUG) << "No lineage for object " << object_id;
-    return;
+    return 0;
   }
 
   RAY_LOG(DEBUG) << "Plasma object " << object_id << " out of scope";
@@ -493,10 +519,13 @@ void TaskManager::RemoveLineageReference(const ObjectID &object_id,
       }
     }
 
+    total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
     // The task has finished and none of the return IDs are in scope anymore,
     // so it is safe to remove the task spec.
     submissible_tasks_.erase(it);
   }
+
+  return total_lineage_footprint_bytes_ - total_lineage_footprint_bytes_prev;
 }
 
 bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
@@ -510,7 +539,7 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
 
 void TaskManager::MarkPendingTaskFailed(
     const TaskSpecification &spec, rpc::ErrorType error_type,
-    const std::shared_ptr<rpc::RayException> &creation_task_exception) {
+    const rpc::RayException *creation_task_exception) {
   const TaskID task_id = spec.TaskId();
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
                  << ", error_type: " << ErrorType_Name(error_type);
@@ -519,10 +548,16 @@ void TaskManager::MarkPendingTaskFailed(
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
     if (creation_task_exception != nullptr) {
       // Structure of bytes stored in object store:
-      // rpc::RayException
-      // ->pb-serialized bytes
-      // ->msgpack-serialized bytes
-      // ->[offset][msgpack-serialized bytes]
+
+      // First serialize RayException by the following steps:
+      // PB's RayException
+      // --(PB Serialization)-->
+      // --(msgpack Serialization)-->
+      // msgpack_serialized_exception(MSE)
+
+      // Then add it's length to the head(for coross-language deserialization):
+      // [MSE's length(9 bytes)] [MSE]
+
       std::string pb_serialized_exception;
       creation_task_exception->SerializeToString(&pb_serialized_exception);
       msgpack::sbuffer msgpack_serialized_exception;

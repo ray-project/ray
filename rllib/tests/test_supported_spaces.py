@@ -114,7 +114,7 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
 class TestSupportedSpacesPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
