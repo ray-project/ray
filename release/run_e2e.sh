@@ -39,6 +39,14 @@ RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}
 
 export RAY_REPO RAY_BRANCH RAY_VERSION RAY_WHEELS RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
 
+# Disable this for now as it also affects manual retries
+# RETRY_COUNT=${BUILDKITE_RETRY_COUNT-0}
+# if [ $RETRY_COUNT -ge 1 ]; then
+#   SLEEP_TIME=$((600 * RETRY_COUNT))
+#   echo "Retry count: ${RETRY_COUNT}. Sleeping for ${SLEEP_TIME} seconds before retrying the run."
+#   sleep ${SLEEP_TIME}
+# fi
+
 pip install -q -r requirements.txt
 pip install -U boto3 botocore
 git clone -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" ~/ray

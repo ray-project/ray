@@ -461,12 +461,12 @@ def create_test_step(
     logging.info(f"Creating step for {test_file}/{test_name}{ray_wheels_str}")
 
     cmd = (f"./release/run_e2e.sh "
-           f"--ray-repo=\"{ray_repo}\" "
-           f"--ray-branch=\"{ray_branch}\" "
-           f"--ray-version=\"{ray_version}\" "
-           f"--ray-wheels=\"{ray_wheels}\" "
-           f"--ray-test-repo=\"{ray_test_repo}\" "
-           f"--ray-test-branch=\"{ray_test_branch}\" ")
+           f"--ray-repo \"{ray_repo}\" "
+           f"--ray-branch \"{ray_branch}\" "
+           f"--ray-version \"{ray_version}\" "
+           f"--ray-wheels \"{ray_wheels}\" "
+           f"--ray-test-repo \"{ray_test_repo}\" "
+           f"--ray-test-branch \"{ray_test_branch}\" ")
 
     args = (f"--category {ray_branch} "
             f"--test-config {test_file} "
@@ -487,6 +487,24 @@ def create_test_step(
                 "exit_status": "*",
                 "limit": test_name.retry
             }]
+        }
+    else:
+        # Default retry logic
+        step_conf["retry"] = {
+            "automatic": [
+                {
+                    "exit_status": 7,  # Prepare timeout
+                    "limit": 2
+                },
+                {
+                    "session_timeout": 9,  # Session timeout
+                    "limit": 2
+                },
+                {
+                    "exit_status": 10,  # Prepare error
+                    "limit": 2
+                }
+            ],
         }
 
     step_conf["command"] = cmd + args
