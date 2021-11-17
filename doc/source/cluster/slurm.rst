@@ -52,13 +52,13 @@ You'll need to tell SLURM to allocate nodes specifically for Ray. Ray will then 
   #SBATCH --nodes=4
   #SBATCH --exclusive
 
-Important: To ensure that each Ray worker runtime will run on a separate node, set ``tasks-per-node``.
+Important: To ensure that each Ray worker runtime will run on a separate node, set ``ntasks-per-node``.
 
 .. code-block:: bash
 
-  #SBATCH --tasks-per-node=1
+  #SBATCH --ntasks-per-node=1
 
-Since we've set `tasks-per-node = 1`, this will be used to guarantee that each Ray worker runtime will obtain the
+Since we've set `ntasks-per-node = 1`, this will be used to guarantee that each Ray worker runtime will obtain the
 proper resources. In this example, we ask for at least 5 CPUs and 5 GB of memory per node.
 
 .. code-block:: bash
@@ -106,7 +106,7 @@ Starting the Ray head node
 
 After detecting the head node hostname and head node IP, we'll want to create
 a Ray head node runtime. We'll do this by using ``srun`` as a background task
-as a single task/node (recall that ``tasks-per-node=1``).
+as a single task/node (recall that ``ntasks-per-node=1``).
 
 Below, you'll see that we explicitly specify the number of CPUs (``num-cpus``)
 and number of GPUs (``num-gpus``) to Ray, as this will prevent Ray from using
