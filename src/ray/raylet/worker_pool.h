@@ -681,6 +681,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::function<double()> get_time_;
   /// Agent manager.
   std::shared_ptr<AgentManager> agent_manager_;
+
+  /// Stats
+  int64_t process_failed_job_config_missing_ = 0;
+  int64_t process_failed_rate_limited_ = 0;
+  int64_t process_failed_pending_registration_ = 0;
+  int64_t process_failed_runtime_env_setup_failed_ = 0;
 };
 
 }  // namespace raylet
