@@ -94,6 +94,7 @@ class Node:
             raylet_ip_address = ray_params.raylet_ip_address
         else:
             raylet_ip_address = node_ip_address
+        self._gcs_client = None
 
         if raylet_ip_address != node_ip_address and (not connect_only or head):
             raise ValueError(
@@ -104,7 +105,7 @@ class Node:
                 ray_params._system_config) > 0 and (not head
                                                     and not connect_only):
             raise ValueError(
-                "Internal config parameters can only be set on the head node.")
+                "System config parameters can only be set on the head node.")
 
         self._raylet_ip_address = raylet_ip_address
 
@@ -212,25 +213,23 @@ class Node:
         # Start processes.
         if head:
             self.start_head_processes()
-            ray.experimental.internal_kv._internal_kv_put(
-                "session_name",
-                self.session_name,
-                namespace=ray_constants.KV_NAMESPACE_SESSION)
-            ray.experimental.internal_kv._internal_kv_put(
-                "session_dir",
-                self._session_dir,
-                namespace=ray_constants.KV_NAMESPACE_SESSION)
-            ray.experimental.internal_kv._internal_kv_put(
-                "temp_dir",
-                self._temp_dir,
-                namespace=ray_constants.KV_NAMESPACE_SESSION)
+            # Make sure gcs is up
+            self.get_gcs_client().internal_kv_put(
+                b"session_name", self.session_name.encode(), True,
+                ray_constants.KV_NAMESPACE_SESSION)
+            self.get_gcs_client().internal_kv_put(
+                b"session_dir", self._session_dir.encode(), True,
+                ray_constants.KV_NAMESPACE_SESSION)
+            self.get_gcs_client().internal_kv_put(
+                b"temp_dir", self._temp_dir.encode(), True,
+                ray_constants.KV_NAMESPACE_SESSION)
             # Add tracing_startup_hook to redis / internal kv manually
             # since internal kv is not yet initialized.
             if ray_params.tracing_startup_hook:
-                ray.experimental.internal_kv._internal_kv_put(
-                    "tracing_startup_hook",
-                    ray_params.tracing_startup_hook,
-                    namespace=ray_constants.KV_NAMESPACE_TRACING)
+                self.get_gcs_client().internal_kv_put(
+                    b"tracing_startup_hook",
+                    ray_params.tracing_startup_hook.encode(), True,
+                    ray_constants.KV_NAMESPACE_TRACING)
 
         if not connect_only:
             self.start_ray_processes()
@@ -451,12 +450,22 @@ class Node:
         return ray._private.services.create_redis_client(
             self._redis_address, self._ray_params.redis_password)
 
-    def initialize_internal_kv(self):
-        """Initialize internal kv."""
-        if not ray.experimental.internal_kv._internal_kv_initialized():
-            gcs_client = ray._private.gcs_utils.GcsClient.create_from_redis(
-                self.create_redis_client())
-            ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+    def get_gcs_client(self):
+        if self._gcs_client is None:
+            num_retries = NUM_REDIS_GET_RETRIES
+            for i in range(num_retries):
+                try:
+                    self._gcs_client = \
+                        ray._private.gcs_utils.GcsClient.create_from_redis(
+                            self.create_redis_client())
+                    break
+                except Exception as e:
+                    time.sleep(1)
+                    logger.debug(f"Waiting for gcs up {e}")
+            ray.experimental.internal_kv._initialize_internal_kv(
+                self._gcs_client)
+
+        return self._gcs_client
 
     def get_temp_dir_path(self):
         """Get the path of the temporary directory."""
@@ -753,11 +762,9 @@ class Node:
             self.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD] = [
                 process_info,
             ]
-            self.initialize_internal_kv()
-            ray.experimental.internal_kv._internal_kv_put(
-                "webui:url",
-                self._webui_url,
-                namespace=ray_constants.KV_NAMESPACE_DASHBOARD)
+            self.get_gcs_client().internal_kv_put(
+                b"webui:url", self._webui_url.encode(), True,
+                ray_constants.KV_NAMESPACE_DASHBOARD)
 
     def start_gcs_server(self):
         """Start the gcs server.
@@ -780,14 +787,8 @@ class Node:
         self.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER] = [
             process_info,
         ]
-        ray.experimental.internal_kv._internal_kv_reset()
-        while True:
-            try:
-                self.initialize_internal_kv()
-                break
-            except Exception:
-                time.sleep(1)
-                logger.debug("Waiting for gcs up")
+        # Init gcs client
+        self.get_gcs_client()
 
     def start_raylet(self,
                      plasma_directory,
@@ -901,7 +902,6 @@ class Node:
         self.start_redis()
 
         self.start_gcs_server()
-
         if not self._ray_params.no_monitor:
             self.start_monitor()
 
@@ -1277,14 +1277,13 @@ class Node:
                                     namespace,
                                     num_retries=NUM_REDIS_GET_RETRIES):
         result = None
+        if isinstance(key, str):
+            key = key.encode()
         for i in range(num_retries):
             try:
-                self.initialize_internal_kv()
-                result = ray.experimental.internal_kv._internal_kv_get(
-                    key, namespace=namespace)
-            except Exception:
-                ray.experimental.internal_kv._internal_kv_reset()
-                self.initialize_internal_kv()
+                result = self.get_gcs_client().internal_kv_get(key, namespace)
+            except Exception as e:
+                logger.error(f"ERROR as {e}")
                 result = None
 
             if result is not None:
