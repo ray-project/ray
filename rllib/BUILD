@@ -1488,6 +1488,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_nn_framework_import_errors",
+    tags = ["team:ml", "tests_dir", "tests_dir_N"],
+    size = "small",
+    srcs = ["tests/test_nn_framework_import_errors.py"]
+)
+
+py_test(
     name = "tests/test_pettingzoo_env",
     tags = ["team:ml", "tests_dir", "tests_dir_P"],
     size = "medium",
@@ -1654,7 +1661,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_A"],
     size = "medium",
     srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--stop-reward=60"]
+    args = ["--as-test", "--stop-reward=70"]
 )
 
 py_test(
@@ -1663,7 +1670,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_A"],
     size = "medium",
     srcs = ["examples/attention_net.py"],
-    args = ["--as-test", "--stop-reward=60", "--framework torch"]
+    args = ["--as-test", "--stop-reward=70", "--framework torch"]
 )
 
 py_test(

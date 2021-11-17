@@ -72,7 +72,7 @@ py_test(
 
 py_test(
     name = "test_commands",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_commands.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_C"],
@@ -427,6 +427,15 @@ py_test(
     srcs = ["examples/cifar10_pytorch.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "pytorch"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "custom_func_checkpointing",
+    size = "small",
+    srcs = ["examples/custom_func_checkpointing.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 

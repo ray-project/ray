@@ -15,7 +15,6 @@ from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
 import logging
-import pytest
 import tempfile
 import grpc
 
@@ -26,6 +25,7 @@ import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsSubscriber
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray.util.queue import Queue, _QueueActor, Empty
 from ray.scripts.scripts import main as ray_main
@@ -502,24 +502,40 @@ def get_non_head_nodes(cluster):
 
 def init_error_pubsub():
     """Initialize redis error info pub/sub"""
-    p = ray.worker.global_worker.redis_client.pubsub(
-        ignore_subscribe_messages=True)
-    error_pubsub_channel = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
-    p.psubscribe(error_pubsub_channel)
-    return p
+    if gcs_pubsub_enabled():
+        s = GcsSubscriber(
+            channel=ray.worker.global_worker.gcs_channel.channel())
+        s.subscribe_error()
+    else:
+        s = ray.worker.global_worker.redis_client.pubsub(
+            ignore_subscribe_messages=True)
+        s.psubscribe(gcs_utils.RAY_ERROR_PUBSUB_PATTERN)
+    return s
 
 
-def get_error_message(pub_sub, num, error_type=None, timeout=20):
-    """Get errors through pub/sub."""
-    start_time = time.time()
+def get_error_message(subscriber, num, error_type=None, timeout=20):
+    """Get errors through subscriber."""
+    deadline = time.time() + timeout
     msgs = []
-    while time.time() - start_time < timeout and len(msgs) < num:
-        msg = pub_sub.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            continue
-        pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
-        error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
+    while time.time() < deadline and len(msgs) < num:
+        if isinstance(subscriber, GcsSubscriber):
+            try:
+                _, error_data = subscriber.poll_error(timeout=deadline -
+                                                      time.time())
+            except grpc.RpcError as e:
+                # Failed to match error message before timeout.
+                if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+                    logging.warning("get_error_message() timed out")
+                    return []
+                # Otherwise, the error is unexpected.
+                raise
+        else:
+            msg = subscriber.get_message()
+            if msg is None:
+                time.sleep(0.01)
+                continue
+            pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
+            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
         if error_type is None or error_type == error_data.type:
             msgs.append(error_data)
         else:
@@ -855,6 +871,7 @@ def monitor_memory_usage(print_interval_s: int = 30,
 
 def setup_tls():
     """Sets up required environment variables for tls"""
+    import pytest
     if sys.platform == "darwin":
         pytest.skip("Cryptography doesn't install in Mac build pipeline")
     cert, key = generate_self_signed_tls_certs()

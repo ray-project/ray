@@ -138,6 +138,13 @@ try:
                 unit="exceptions",
                 namespace="autoscaler",
                 registry=self.registry)
+            self.drain_node_exceptions: Counter = Counter(
+                "drain_node_exceptions",
+                "Number of exceptions raised when making a DrainNode rpc"
+                "prior to node termination.",
+                unit="exceptions",
+                namespace="autoscaler",
+                registry=self.registry)
 except ImportError:
 
     class NullMetric:

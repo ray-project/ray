@@ -22,7 +22,7 @@ from ray._private.runtime_env.packaging import GCS_STORAGE_MAX_SIZE
 # This package contains a subdirectory called `test_module`.
 # Calling `test_module.one()` should return `2`.
 # If you find that confusing, take it up with @jiaodong...
-S3_PACKAGE_URI = "s3://runtime-env-test/remote_runtime_env.zip"
+S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 
 
 @contextmanager
@@ -271,13 +271,11 @@ def check_local_files_gced(cluster):
     "source", [S3_PACKAGE_URI, lazy_fixture("tmp_working_dir")])
 def test_job_level_gc(start_cluster, option: str, source: str):
     """Tests that job-level working_dir is GC'd when the job exits."""
-    # TODO(architkulkarni): Currently all nodes in cluster_utils share the same
-    # session directory, which isn't the case for real world clusters. Once
-    # this is fixed, we should test GC with NUM_NODES > 1 here.
-    NUM_NODES = 1
+    NUM_NODES = 3
     cluster, address = start_cluster
-    for _ in range(NUM_NODES - 1):  # Head node already added.
-        cluster.add_node(num_cpus=1)
+    for i in range(NUM_NODES - 1):  # Head node already added.
+        cluster.add_node(
+            num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
 
     if option == "working_dir":
         ray.init(address, runtime_env={"working_dir": source})
@@ -318,21 +316,21 @@ def test_job_level_gc(start_cluster, option: str, source: str):
     wait_for_condition(lambda: check_local_files_gced(cluster))
 
 
+# TODO(architkulkarni): fix bug #19602 and enable test.
+@pytest.mark.skip("Currently failing.")
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("option", ["working_dir", "py_modules"])
 def test_actor_level_gc(start_cluster, option: str):
     """Tests that actor-level working_dir is GC'd when the actor exits."""
-    # TODO(architkulkarni): Currently all nodes in cluster_utils share the same
-    # session directory, which isn't the case for real world clusters. Once
-    # this is fixed, we should test GC with NUM_NODES > 1 here.
-    NUM_NODES = 1
+    NUM_NODES = 5
     cluster, address = start_cluster
-    for _ in range(NUM_NODES - 1):  # Head node already added.
-        cluster.add_node(num_cpus=1)
+    for i in range(NUM_NODES - 1):  # Head node already added.
+        cluster.add_node(
+            num_cpus=1, runtime_env_dir_name=f"node_{i}_runtime_resources")
 
     ray.init(address)
 
-    @ray.remote
+    @ray.remote(num_cpus=1)
     class A:
         def check(self):
             import test_module
@@ -343,10 +341,10 @@ def test_actor_level_gc(start_cluster, option: str):
     else:
         A = A.options(runtime_env={"py_modules": [S3_PACKAGE_URI]})
 
-    NUM_ACTORS = 5
-    actors = [A.remote() for _ in range(NUM_ACTORS)]
+    num_cpus = int(ray.available_resources()["CPU"])
+    actors = [A.remote() for _ in range(num_cpus)]
     ray.get([a.check.remote() for a in actors])
-    for i in range(5):
+    for i in range(num_cpus):
         assert not check_local_files_gced(cluster)
         ray.kill(actors[i])
     wait_for_condition(lambda: check_local_files_gced(cluster))

@@ -70,6 +70,9 @@ class ArrowRow:
     def __repr__(self):
         return str(self)
 
+    def __len__(self):
+        return self._row.num_columns
+
 
 class DelegatingArrowBlockBuilder(BlockBuilder[T]):
     def __init__(self):
@@ -77,7 +80,7 @@ class DelegatingArrowBlockBuilder(BlockBuilder[T]):
 
     def add(self, item: Any) -> None:
         if self._builder is None:
-            if isinstance(item, dict):
+            if isinstance(item, dict) or isinstance(item, ArrowRow):
                 try:
                     check = ArrowBlockBuilder()
                     check.add(item)

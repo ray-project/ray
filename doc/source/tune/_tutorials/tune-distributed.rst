@@ -127,33 +127,30 @@ If you used a cluster configuration (starting a cluster with ``ray up`` or ``ray
     1. In the examples, the Ray redis address commonly used is ``localhost:6379``.
     2. If the Ray cluster is already started, you should not need to run anything on the worker nodes.
 
+
 Syncing
 -------
 
-Tune automatically syncs the trial folder on remote nodes back to the head node. This requires the ray cluster to be started with the :ref:`cluster launcher <cluster-cloud>`.
-By default, local syncing requires rsync to be installed. You can customize the sync command with the ``sync_to_driver`` argument in ``tune.SyncConfig`` by providing either a function or a string.
-
-If a string is provided, then it must include replacement fields ``{source}`` and ``{target}``, like ``rsync -savz -e "ssh -i ssh_key.pem" {source} {target}``. Alternatively, a function can be provided with the following signature:
+In a distributed experiment, you should try to use :ref:`cloud checkpointing <tune-cloud-checkpointing>` to
+reduce synchronization overhead. For this, you just have to specify an ``upload_dir`` in the
+:class:`tune.SyncConfig <ray.tune.SyncConfig>`:
 
 .. code-block:: python
 
-    def custom_sync_func(source, target):
-        sync_cmd = "rsync {source} {target}".format(
-            source=source,
-            target=target)
-        sync_process = subprocess.Popen(sync_cmd, shell=True)
-        sync_process.wait()
+    from ray import tune
 
     tune.run(
-        MyTrainableClass,
+        trainable,
         name="experiment_name",
         sync_config=tune.SyncConfig(
-            sync_to_driver=custom_sync_func
+            upload_dir="s3://bucket-name/sub-path/"
         )
     )
 
-When syncing results back to the driver, the source would be a path similar to ``ubuntu@192.0.0.1:/home/ubuntu/ray_results/trial1``, and the target would be a local path.
-This custom sync command is used to restart trials under failure. The ``sync_to_driver`` is invoked to push a checkpoint to new node for a paused/pre-empted trial to resume.
+
+For more details or customization, see our
+:ref:`guide on checkpointing <tune-checkpoint-syncing>`.
+
 
 
 .. _tune-distributed-spot:

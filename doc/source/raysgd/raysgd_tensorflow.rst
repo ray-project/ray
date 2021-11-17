@@ -69,6 +69,7 @@ In your training program, insert the following, and **customize** for each worke
 
 And on each machine, launch a separate process that contains the index of the worker and information about all other nodes of the cluster.
 
+.. _ray-train-tftrainer-example:
 
 TFTrainer Example
 -----------------

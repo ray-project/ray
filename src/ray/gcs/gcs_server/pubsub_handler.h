@@ -16,6 +16,7 @@
 
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -27,6 +28,10 @@ class InternalPubSubHandler : public rpc::InternalPubSubHandler {
  public:
   explicit InternalPubSubHandler(const std::shared_ptr<gcs::GcsPublisher> &gcs_publisher)
       : gcs_publisher_(gcs_publisher) {}
+
+  void HandleGcsPublish(const rpc::GcsPublishRequest &request,
+                        rpc::GcsPublishReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) final;
 
   void HandleGcsSubscriberPoll(const rpc::GcsSubscriberPollRequest &request,
                                rpc::GcsSubscriberPollReply *reply,
