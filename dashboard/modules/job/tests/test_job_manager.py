@@ -223,8 +223,10 @@ class TestRuntimeEnv:
             entrypoint=run_cmd,
             runtime_env={"working_dir": "s3://does_not_exist.zip"})
 
+        wait_for_condition(
+            check_job_failed, job_manager=job_manager, job_id=job_id)
+
         status = job_manager.get_job_status(job_id)
-        assert status.status == JobStatus.FAILED
         assert "runtime_env failed to be set up" in status.message
 
     def test_pass_metadata(self, job_manager):
