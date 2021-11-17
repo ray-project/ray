@@ -424,15 +424,34 @@ class RayExecutorPlacementGroupTest(unittest.TestCase):
             name="no_name",
             lifetime=None)
 
+        pgf_3 = PlacementGroupFactory(
+            [{
+                "custom": 7,
+                "GPU": 4,
+                "CPU": 2.0,
+                "custom2": 0
+            }, {
+                "custom": 1.0,
+                "GPU": 2,
+                "CPU": 3,
+                "custom2": 0
+            }],
+            strategy="PACK",
+            name="no_name",
+            lifetime=None)
+
         self.assertEqual(pgf_1, pgf_2)
+        self.assertEqual(pgf_2, pgf_3)
 
         # Hash testing
         counter = Counter()
         counter[pgf_1] += 1
         counter[pgf_2] += 1
+        counter[pgf_3] += 1
 
-        self.assertEqual(counter[pgf_1], 2)
-        self.assertEqual(counter[pgf_2], 2)
+        self.assertEqual(counter[pgf_1], 3)
+        self.assertEqual(counter[pgf_2], 3)
+        self.assertEqual(counter[pgf_3], 3)
 
 
 class LocalModeExecutorTest(RayTrialExecutorTest):

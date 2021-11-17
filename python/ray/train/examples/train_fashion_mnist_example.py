@@ -6,8 +6,7 @@ import ray.train as train
 from ray.train.trainer import Trainer
 from ray.train.callbacks import JsonLoggerCallback
 from torch import nn
-from torch.nn.parallel import DistributedDataParallel
-from torch.utils.data import DataLoader, DistributedSampler
+from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 
@@ -43,11 +42,9 @@ class NeuralNetwork(nn.Module):
         return logits
 
 
-def train_epoch(dataloader, model, loss_fn, optimizer, device):
+def train_epoch(dataloader, model, loss_fn, optimizer):
     size = len(dataloader.dataset)
     for batch, (X, y) in enumerate(dataloader):
-        X, y = X.to(device), y.to(device)
-
         # Compute prediction error
         pred = model(X)
         loss = loss_fn(pred, y)
@@ -62,14 +59,13 @@ def train_epoch(dataloader, model, loss_fn, optimizer, device):
             print(f"loss: {loss:>7f}  [{current:>5d}/{size:>5d}]")
 
 
-def validate_epoch(dataloader, model, loss_fn, device):
+def validate_epoch(dataloader, model, loss_fn):
     size = len(dataloader.dataset)
     num_batches = len(dataloader)
     model.eval()
     test_loss, correct = 0, 0
     with torch.no_grad():
         for X, y in dataloader:
-            X, y = X.to(device), y.to(device)
             pred = model(X)
             test_loss += loss_fn(pred, y).item()
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
@@ -86,25 +82,16 @@ def train_func(config: Dict):
     lr = config["lr"]
     epochs = config["epochs"]
 
-    device = torch.device(f"cuda:{train.local_rank()}"
-                          if torch.cuda.is_available() else "cpu")
-
     # Create data loaders.
-    train_dataloader = DataLoader(
-        training_data,
-        batch_size=batch_size,
-        sampler=DistributedSampler(training_data))
-    test_dataloader = DataLoader(
-        test_data,
-        batch_size=batch_size,
-        sampler=DistributedSampler(test_data))
+    train_dataloader = DataLoader(training_data, batch_size=batch_size)
+    test_dataloader = DataLoader(test_data, batch_size=batch_size)
+
+    train_dataloader = train.torch.prepare_data_loader(train_dataloader)
+    test_dataloader = train.torch.prepare_data_loader(test_dataloader)
 
     # Create model.
     model = NeuralNetwork()
-    model = model.to(device)
-    model = DistributedDataParallel(
-        model,
-        device_ids=[device.index] if torch.cuda.is_available() else None)
+    model = train.torch.prepare_model(model)
 
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
@@ -112,8 +99,8 @@ def train_func(config: Dict):
     loss_results = []
 
     for _ in range(epochs):
-        train_epoch(train_dataloader, model, loss_fn, optimizer, device)
-        loss = validate_epoch(test_dataloader, model, loss_fn, device)
+        train_epoch(train_dataloader, model, loss_fn, optimizer)
+        loss = validate_epoch(test_dataloader, model, loss_fn)
         train.report(loss=loss)
         loss_results.append(loss)
 
