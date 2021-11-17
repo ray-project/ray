@@ -4,7 +4,7 @@ import random
 from ray.actor import ActorHandle
 from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer, \
+from ray.rllib.execution.buffers.replay_buffer import MultiAgentReplayBuffer, \
     warn_replay_capacity
 from ray.rllib.execution.common import \
     STEPS_SAMPLED_COUNTER, _get_shared_metrics
@@ -32,12 +32,12 @@ class StoreToReplayBuffer:
     def __init__(
             self,
             *,
-            local_buffer: Optional[LocalReplayBuffer] = None,
+            local_buffer: Optional[MultiAgentReplayBuffer] = None,
             actors: Optional[List[ActorHandle]] = None,
     ):
         """
         Args:
-            local_buffer (LocalReplayBuffer): The local replay buffer to store
+            local_buffer (MultiAgentReplayBuffer): The local replay buffer to store
                 the data into.
             actors (Optional[List[ActorHandle]]): An optional list of replay
                 actors to use instead of `local_buffer`.
@@ -64,7 +64,7 @@ class StoreToReplayBuffer:
 
 
 def Replay(*,
-           local_buffer: LocalReplayBuffer = None,
+           local_buffer: MultiAgentReplayBuffer = None,
            actors: List[ActorHandle] = None,
            num_async: int = 4) -> LocalIterator[SampleBatchType]:
     """Replay experiences from the given buffer or actors.
@@ -73,7 +73,7 @@ def Replay(*,
     Concurrently() operator.
 
     Args:
-        local_buffer (LocalReplayBuffer): Local buffer to use. Only one of this
+        local_buffer (MultiAgentReplayBuffer): Local buffer to use. Only one of this
             and replay_actors can be specified.
         actors (list): List of replay actors. Only one of this and
             local_buffer can be specified.

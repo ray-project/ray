@@ -357,7 +357,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 _local_replay_buffer = None
 
 
-class LocalReplayBuffer(ParallelIteratorWorker):
+class MultiAgentReplayBuffer(ParallelIteratorWorker):
     """A replay buffer shard storing data for all policies (in multiagent setup).
 
     Ray actors are single-threaded, so for scalability, multiple replay actors
@@ -378,7 +378,7 @@ class LocalReplayBuffer(ParallelIteratorWorker):
             replay_zero_init_states: bool = True,
             buffer_size=DEPRECATED_VALUE,
     ):
-        """Initializes a LocalReplayBuffer instance.
+        """Initializes a MultiAgentReplayBuffer instance.
 
         Args:
             num_shards (int): The number of buffer shards that exist in total
@@ -568,4 +568,4 @@ class LocalReplayBuffer(ParallelIteratorWorker):
             self.replay_buffers[policy_id].set_state(buffer_states[policy_id])
 
 
-ReplayActor = ray.remote(num_cpus=0)(LocalReplayBuffer)
+ReplayActor = ray.remote(num_cpus=0)(MultiAgentReplayBuffer)
