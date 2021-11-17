@@ -248,6 +248,28 @@ def test_ray_start(configure_lang):
 @pytest.mark.skipif(
     sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
     reason=("Mac builds don't provide proper locale support"))
+def test_ray_start_gcs_only(configure_lang):
+    runner = CliRunner()
+    temp_dir = os.path.join("/tmp", uuid.uuid4().hex)
+    result = runner.invoke(scripts.start, [
+        "--head", "--log-style=pretty", "--log-color", "False", "--port", "0",
+        "--gcs-only", "--temp-dir", temp_dir
+    ])
+
+    assert os.path.isfile(os.path.join(temp_dir, "ray_current_cluster"))
+    assert os.path.isdir(os.path.join(temp_dir, "session_latest"))
+    # Check that --gcs-only arg worked:
+    assert not os.path.isfile(
+        os.path.join(temp_dir, "session_latest", "logs", "raylet.out"))
+
+    _die_on_error(runner.invoke(scripts.stop))
+
+    _check_output_via_pattern("test_ray_start.txt", result)
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"))
 @mock_ec2
 @mock_iam
 def test_ray_up(configure_lang, _unlink_test_ssh_key, configure_aws):
