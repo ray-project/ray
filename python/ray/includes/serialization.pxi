@@ -2,6 +2,8 @@ from libc.string cimport memcpy
 from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
 import cython
 
+import pyarrow as pa
+
 DEF MEMCOPY_THREADS = 6
 
 # This is the default alignment value for len(buffer) < 2048.
@@ -513,3 +515,36 @@ cdef class RawSerializedObject(SerializedObject):
                              MEMCOPY_THREADS)
         else:
             memcpy(&buffer[0], self.value_ptr, self._total_bytes)
+
+cdef class ArrowSerializedObject(SerializedObject):
+    cdef:
+        object value
+        int64_t _total_bytes
+
+    def __init__(self, value):
+        super(ArrowSerializedObject,
+              self).__init__(ray_constants.OBJECT_METADATA_TYPE_ARROW)
+        self.value = value
+        sink = pa.MockOutputStream()
+        writer = pa.ipc.new_stream(sink, self.value.schema)
+        writer.write(self.value)
+        writer.close()
+        self._total_bytes = sink.size()
+
+    @property
+    def value(self):
+        return self.value
+
+    @property
+    def total_bytes(self):
+        return self._total_bytes
+
+    @property
+    def schema(self):
+        return self.value.schema
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    cdef void write_to(self, uint8_t[:] buffer) nogil:
+        raise NotImplementedError("{}.write_to not implemented.".format(
+                type(self).__name__))

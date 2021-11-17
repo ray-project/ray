@@ -19,8 +19,11 @@ from ray._raylet import (
     MessagePackSerializer,
     MessagePackSerializedObject,
     RawSerializedObject,
+    ArrowSerializedObject
 )
 from ray import serialization_addons
+
+import pyarrow as pa
 
 logger = logging.getLogger(__name__)
 
@@ -348,5 +351,7 @@ class SerializationContext:
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
             return RawSerializedObject(value)
+        elif isinstance(value, pa.Table) or isinstance(value, pa.RecordBatch):
+            return ArrowSerializedObject(value)
         else:
             return self._serialize_to_msgpack(value)

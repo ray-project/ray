@@ -13,6 +13,7 @@ import logging
 import msgpack
 import os
 import pickle
+import pyarrow as pa
 import setproctitle
 import sys
 import threading
@@ -1318,8 +1319,15 @@ cdef class CoreWorker:
 
         if not object_already_exists:
             if total_bytes > 0:
-                (<SerializedObject>serialized_object).write_to(
-                    Buffer.make(data))
+                if isinstance(serialized_object, ArrowSerializedObject):
+                    arrow_object = <ArrowSerializedObject>serialized_object
+                    sink = pa.FixedSizeBufferWriter(pa.py_buffer(Buffer.make(data)))
+                    writer = pa.ipc.new_stream(sink, arrow_object.schema)    
+                    writer.write(arrow_object.value)
+                    writer.close()
+                else:
+                    (<SerializedObject>serialized_object).write_to(
+                        Buffer.make(data))
             if self.is_local_mode or (put_small_object_in_memory_store
                and <int64_t>total_bytes < put_threshold):
                 contained_object_refs = (
