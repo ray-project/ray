@@ -3,5 +3,6 @@ describe('Ray Dashboard Test', () => {
         cy.visit('localhost:8653')
         cy.contains('Ray')
         cy.contains('Memory').click()
+        cy.contains('Tune').click()
     })
   })
