@@ -42,7 +42,7 @@ esac
 shift
 done
 
-RAY_TEST_REPO=${RAY_TEST_BRANCH-https://github.com/ray-project/ray.git}
+RAY_TEST_REPO=${RAY_TEST_REPO-https://github.com/ray-project/ray.git}
 RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}
 
 export RAY_REPO RAY_BRANCH RAY_VERSION RAY_WHEELS RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
