@@ -2,7 +2,7 @@ from ray.tune.error import TuneError
 from ray.tune.tune import run_experiments, run
 from ray.tune.syncer import SyncConfig
 from ray.tune.experiment import Experiment
-from ray.tune.analysis import ExperimentAnalysis, Analysis
+from ray.tune.analysis import Analysis, ExperimentAnalysis
 from ray.tune.stopper import Stopper
 from ray.tune.registry import register_env, register_trainable
 from ray.tune.trainable import Trainable
@@ -28,7 +28,7 @@ __all__ = [
     "run_experiments", "with_parameters", "Stopper", "Experiment", "function",
     "sample_from", "track", "uniform", "quniform", "choice", "randint",
     "lograndint", "qrandint", "qlograndint", "randn", "qrandn", "loguniform",
-    "qloguniform", "ExperimentAnalysis", "Analysis", "CLIReporter",
+    "qloguniform", "Analysis", "ExperimentAnalysis", "CLIReporter",
     "JupyterNotebookReporter", "ProgressReporter", "report", "get_trial_dir",
     "get_trial_name", "get_trial_id", "get_trial_resources",
     "make_checkpoint_dir", "save_checkpoint", "is_session_enabled",

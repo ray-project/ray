@@ -95,6 +95,8 @@ message RequestMetadata {
   string endpoint = 2;
 
   string call_method = 3;
+
+  map<string, string> context = 4;
 }
 
 message RequestWrapper {

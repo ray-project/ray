@@ -1,3 +1,4 @@
+import abc
 import os
 from contextlib import closing
 import logging
@@ -102,3 +103,19 @@ def update_env_vars(env_vars: Dict[str, Any]):
     """
     sanitized = {k: str(v) for k, v in env_vars.items()}
     os.environ.update(sanitized)
+
+
+class Singleton(abc.ABCMeta):
+    """Singleton Abstract Base Class
+
+    https://stackoverflow.com/questions/33364070/implementing
+    -singleton-as-metaclass-but-for-abstract-classes
+    """
+
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super(Singleton, cls).__call__(
+                *args, **kwargs)
+        return cls._instances[cls]
