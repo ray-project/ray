@@ -18,8 +18,6 @@ import ray
 from ray.exceptions import RuntimeEnvSetupError
 from ray._private.test_utils import wait_for_condition
 
-from _pytest.outcomes import Failed
-
 
 def _test_task_and_actor(capsys):
     @ray.remote
