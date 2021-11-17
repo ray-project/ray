@@ -24,7 +24,8 @@ class Executor(ABC):
 class LocalExecutor(Executor):
     """Executor that runs code in-process."""
 
-    def __init__(self, serialized_callable_factory: bytes, config: StepConfig):
+    def __init__(self, serialized_callable_factory: bytes,
+                 _config: StepConfig):
         self._callable: Callable = cloudpickle.loads(
             serialized_callable_factory)()
 
@@ -83,6 +84,7 @@ class ActorsExecutor(Executor):
         ray.get([actor.ready.remote() for actor in self._actors])
 
     def call(self, *args: Tuple[Any]) -> ObjectRef:
+        # TODO(simon): use ActorGroup to load balance.
         return random.choice(self._actors).call.remote(*args)
 
     async def call_async(self) -> ObjectRef:

@@ -225,7 +225,11 @@ class _MockTrialExecutor(TrialExecutor):
         trial.status = Trial.RUNNING
         return True
 
-    def stop_trial(self, trial, error=False, error_msg=None):
+    def stop_trial(self,
+                   trial,
+                   error=False,
+                   error_msg=None,
+                   destroy_pg_if_cannot_replace=True):
         trial.status = Trial.ERROR if error else Trial.TERMINATED
 
     def restore(self, trial, checkpoint=None, block=False):
@@ -255,11 +259,8 @@ class _MockTrialExecutor(TrialExecutor):
     def get_running_trials(self):
         return []
 
-    def has_resources(self):
-        return False
-
-    def resource_string(self):
-        return "This is a mock resource_string."
+    def has_resources_for_trial(self, trial: Trial):
+        return True
 
 
 class _MockTrialRunner():
@@ -291,12 +292,6 @@ class _MockTrialRunner():
 
     def get_trials(self):
         return self.trials
-
-    def has_resources_for_trial(self, trial):
-        return True
-
-    def has_resources(self, resources):
-        return True
 
     def _pause_trial(self, trial):
         self.trial_executor.save(trial, Checkpoint.MEMORY, None)
@@ -1884,9 +1879,6 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
                     f.write("OK")
                 return checkpoint
 
-            def reset_config(self, config):
-                return True
-
         trial_hyperparams = {
             "float_factor": 2.0,
             "const_factor": 3,
@@ -1921,9 +1913,6 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
 
             def load_checkpoint(self, state):
                 self.state = state
-
-            def reset_config(self, config):
-                return True
 
         trial_hyperparams = {
             "float_factor": 2.0,

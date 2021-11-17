@@ -12,6 +12,7 @@ scikit-image
 pandas
 pickle5
 pillow
+pyarrow
 pydantic
 pygments
 pyyaml

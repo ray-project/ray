@@ -17,6 +17,7 @@ class JSONDatasource(FileBasedDatasource):
         ... [{"a": 1, "b": "foo"}, ...]
     """
 
+    # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
         from pyarrow import json
 

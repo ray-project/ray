@@ -5,26 +5,18 @@ from dataclasses import dataclass
 from typing import List
 
 import ray
-from ray.train.backends.backend import BackendConfig, Backend
+from ray.train.backend import BackendConfig, Backend
 from ray.train.session import shutdown_session
 from ray.train.utils import get_address_and_port
 from ray.train.worker_group import WorkerGroup
-
-try:
-    import tensorflow
-except ImportError:
-    tensorflow = None
+from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="beta")
 @dataclass
 class TensorflowConfig(BackendConfig):
-    def __post_init__(self):
-        if tensorflow is None:
-            raise ValueError("`tensorflow` is not installed. "
-                             "Please install tensorflow to use this backend.")
-
     @property
     def backend_cls(self):
         return TensorflowBackend
