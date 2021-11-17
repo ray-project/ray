@@ -1719,7 +1719,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
     const TaskOptions &task_options, int max_retries, bool retry_exceptions,
     BundleID placement_options, bool placement_group_capture_child_tasks,
-    const std::string &debugger_breakpoint) {
+    TaskSchedulingPolicy scheduling_policy, const std::string &debugger_breakpoint) {
   TaskSpecBuilder builder;
   const auto next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -1740,7 +1740,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       constrained_resources, required_resources, placement_options,
                       placement_group_capture_child_tasks, debugger_breakpoint, depth,
                       task_options.serialized_runtime_env, task_options.runtime_env_uris);
-  builder.SetNormalTaskSpec(max_retries, retry_exceptions);
+  builder.SetNormalTaskSpec(max_retries, retry_exceptions, scheduling_policy);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;

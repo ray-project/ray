@@ -150,6 +150,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CPlacementStrategy "ray::core::PlacementStrategy":
         pass
+    cdef cppclass CTaskSchedulingPolicy "ray::core::TaskSchedulingPolicy":
+        pass
     cdef cppclass CAddress "ray::rpc::Address":
         CAddress()
         const c_string &SerializeAsString() const
@@ -175,6 +177,12 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_SPILL_WORKER "ray::core::WorkerType::SPILL_WORKER"  # noqa: E501
     cdef CWorkerType WORKER_TYPE_RESTORE_WORKER "ray::core::WorkerType::RESTORE_WORKER"  # noqa: E501
     cdef CWorkerType WORKER_TYPE_UTIL_WORKER "ray::core::WorkerType::UTIL_WORKER"  # noqa: E501
+
+cdef extern from "src/ray/protobuf/common.pb.h" nogil:
+    cdef CTaskSchedulingPolicy TASK_SCHEDULING_POLICY_DEFAULT \
+        "ray::core::TaskSchedulingPolicy::TASK_SCHEDULING_POLICY_DEFAULT"
+    cdef CTaskSchedulingPolicy TASK_SCHEDULING_POLICY_SPREAD \
+        "ray::core::TaskSchedulingPolicy::TASK_SCHEDULING_POLICY_SPREAD"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"

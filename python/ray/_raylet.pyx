@@ -57,6 +57,7 @@ from ray.includes.common cimport (
     CTaskArgByValue,
     CTaskType,
     CPlacementStrategy,
+    CTaskSchedulingPolicy,
     CRayFunction,
     CWorkerType,
     CJobConfig,
@@ -77,6 +78,8 @@ from ray.includes.common cimport (
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
     PLACEMENT_STRATEGY_STRICT_SPREAD,
+    TASK_SCHEDULING_POLICY_SPREAD,
+    TASK_SCHEDULING_POLICY_DEFAULT,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -1428,6 +1431,7 @@ cdef class CoreWorker:
                     PlacementGroupID placement_group_id,
                     int64_t placement_group_bundle_index,
                     c_bool placement_group_capture_child_tasks,
+                    scheduling_policy,
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env,
                     runtime_env_uris,
@@ -1440,6 +1444,14 @@ cdef class CoreWorker:
                 placement_group_id.native()
             c_vector[c_string] c_runtime_env_uris = runtime_env_uris
             c_vector[CObjectReference] return_refs
+            CTaskSchedulingPolicy c_scheduling_policy
+
+        if scheduling_policy is None:
+            c_scheduling_policy = TASK_SCHEDULING_POLICY_DEFAULT
+        elif scheduling_policy == "SPREAD":
+            c_scheduling_policy = TASK_SCHEDULING_POLICY_SPREAD
+        else:
+            raise TypeError(scheduling_policy)
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -1461,6 +1473,7 @@ cdef class CoreWorker:
                 c_pair[CPlacementGroupID, int64_t](
                     c_placement_group_id, placement_group_bundle_index),
                 placement_group_capture_child_tasks,
+                c_scheduling_policy,
                 debugger_breakpoint)
 
             return VectorToObjectRefs(return_refs)
@@ -1485,6 +1498,7 @@ cdef class CoreWorker:
                      c_string serialized_runtime_env,
                      runtime_env_uris,
                      concurrency_groups_dict,
+                     scheduling_policy,
                      ):
         cdef:
             CRayFunction ray_function

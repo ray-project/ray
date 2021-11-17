@@ -372,10 +372,11 @@ class ActorClass:
                         f"use '{self.__ray_metadata__.class_name}.remote()'.")
 
     @classmethod
-    def _ray_from_modified_class(
-            cls, modified_class, class_id, max_restarts, max_task_retries,
-            num_cpus, num_gpus, memory, object_store_memory, resources,
-            accelerator_type, runtime_env, concurrency_groups):
+    def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
+                                 max_task_retries, num_cpus, num_gpus, memory,
+                                 object_store_memory, resources,
+                                 accelerator_type, runtime_env,
+                                 concurrency_groups, scheduling_policy):
         for attribute in [
                 "remote",
                 "_remote",
@@ -1098,7 +1099,7 @@ def modify_class(cls):
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
                accelerator_type, max_restarts, max_task_retries, runtime_env,
-               concurrency_groups):
+               concurrency_groups, scheduling_policy):
     Class = modify_class(cls)
     _inject_tracing_into_class(Class)
 
@@ -1126,7 +1127,7 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
     return ActorClass._ray_from_modified_class(
         Class, ActorClassID.from_random(), max_restarts, max_task_retries,
         num_cpus, num_gpus, memory, object_store_memory, resources,
-        accelerator_type, runtime_env, concurrency_groups)
+        accelerator_type, runtime_env, concurrency_groups, scheduling_policy)
 
 
 def exit_actor():

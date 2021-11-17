@@ -26,6 +26,7 @@ namespace ray {
 namespace core {
 
 using WorkerType = rpc::WorkerType;
+using TaskSchedulingPolicy = rpc::TaskSchedulingPolicy;
 
 // Return a string representation of the worker type.
 std::string WorkerTypeString(WorkerType type);
@@ -156,6 +157,7 @@ struct ActorCreationOptions {
   /// The actor concurrency groups to indicate how this actor perform its
   /// methods concurrently.
   const std::vector<ConcurrencyGroup> concurrency_groups;
+  TaskSchedulingPolicy scheduling_policy;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

@@ -137,9 +137,11 @@ class TaskSpecBuilder {
     return *this;
   }
 
-  TaskSpecBuilder &SetNormalTaskSpec(int max_retries, bool retry_exceptions) {
+  TaskSpecBuilder &SetNormalTaskSpec(int max_retries, bool retry_exceptions,
+                                     rpc::TaskSchedulingPolicy scheduling_policy) {
     message_->set_max_retries(max_retries);
     message_->set_retry_exceptions(retry_exceptions);
+    message_->set_scheduling_policy(scheduling_policy);
     return *this;
   }
 

@@ -44,6 +44,7 @@ from ray.includes.common cimport (
     LocalMemoryBuffer,
     CJobConfig,
     CConcurrencyGroup,
+    CTaskSchedulingPolicy,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -109,6 +110,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool retry_exceptions,
             c_pair[CPlacementGroupID, int64_t] placement_options,
             c_bool placement_group_capture_child_tasks,
+            CTaskSchedulingPolicy scheduling_policy,
             c_string debugger_breakpoint)
         CRayStatus CreateActor(
             const CRayFunction &function,

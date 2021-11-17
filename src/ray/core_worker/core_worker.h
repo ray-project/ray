@@ -717,7 +717,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
       const TaskOptions &task_options, int max_retries, bool retry_exceptions,
       BundleID placement_options, bool placement_group_capture_child_tasks,
-      const std::string &debugger_breakpoint);
+      TaskSchedulingPolicy scheduling_policy, const std::string &debugger_breakpoint);
 
   /// Create an actor.
   ///

@@ -47,6 +47,13 @@ enum TaskType {
   DRIVER_TASK = 3;
 }
 
+enum TaskSchedulingPolicy {
+  // Default scheduling based on spread threshold.
+  TASK_SCHEDULING_POLICY_DEFAULT = 0;
+  // Spread scheduling on a best effort basis.
+  TASK_SCHEDULING_POLICY_SPREAD = 1;
+}
+
 // Address of a worker or node manager.
 message Address {
   bytes raylet_id = 1;
@@ -232,6 +239,8 @@ message TaskSpec {
   // The depth of the task. The driver has depth 0, anything it calls has depth
   // 1, etc.
   int64 depth = 26;
+  // Policy about how to schedule this task.
+  TaskSchedulingPolicy scheduling_policy = 27;
 }
 
 message Bundle {
