@@ -86,7 +86,7 @@ class Node:
                  shutdown_at_exit=True,
                  spawn_reaper=True,
                  connect_only=False,
-                 workerless=False):
+                 no_worker=False):
         """Start a node.
 
         Args:
@@ -101,6 +101,7 @@ class Node:
                 other spawned processes if this process dies unexpectedly.
             connect_only (bool): If true, connect to the node without starting
                 new processes.
+            no_worker (bool): If true, raylet will not start.
         """
         if shutdown_at_exit:
             if connect_only:
@@ -211,7 +212,7 @@ class Node:
                 self._raylet_socket_name = node_info.raylet_socket_name
                 self._ray_params.node_manager_port = (
                     node_info.node_manager_port)
-        elif not workerless:
+        elif not no_worker:
             # If the user specified a socket name, use it.
             self._plasma_store_socket_name = self._prepare_socket_file(
                 self._ray_params.plasma_store_socket_name,
@@ -257,7 +258,7 @@ class Node:
                 redis_client.hset("tracing_startup_hook", "value",
                                   ray_params.tracing_startup_hook)
 
-        if not connect_only and not workerless:
+        if not connect_only and not no_worker:
             self.start_ray_processes()
             # we should update the address info after the node has been started
             try:

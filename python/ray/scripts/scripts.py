@@ -366,7 +366,7 @@ def debug(address):
     default=False,
     help="provide this argument for the head node")
 @click.option(
-    "--workerless",
+    "--gcs-only",
     is_flag=True,
     default=False,
     help="provide this argument for the head node. If set,"
@@ -480,7 +480,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
           min_worker_port, max_worker_port, worker_port_list,
           ray_client_server_port, memory, object_store_memory,
-          redis_max_memory, num_cpus, num_gpus, resources, head, workerless,
+          redis_max_memory, num_cpus, num_gpus, resources, head, gcs_only,
           include_dashboard, dashboard_host, dashboard_port,
           dashboard_agent_listen_port, block, plasma_directory,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
@@ -547,8 +547,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external)
-    if not head and workerless:
-        raise ValueError("workerless can only be set on the head node.")
+    if not head and gcs_only:
+        raise ValueError("gcs_only can only be set on the head node.")
     if head:
         # Use default if port is none, allocate an available port if port is 0
         if port is None:
@@ -634,7 +634,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             head=True,
             shutdown_at_exit=block,
             spawn_reaper=block,
-            workerless=workerless)
+            no_worker=gcs_only)
 
         redis_address = node.redis_address
         if temp_dir is None:
