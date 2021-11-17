@@ -70,6 +70,13 @@ def OverrideToImplementCustomLogic(obj):
 
     Used in Trainer and Policy to tag methods that need overriding, e.g.
     `Policy.loss()`.
+
+    Examples:
+    >>> @overrides(TorchPolicy)
+    ... @OverrideToImplementCustomLogic
+    ... def loss(self, ...):
+    ...     # implement custom loss function here ...
+    ...     # ... w/o calling the corresponding `super().loss()` method.
     """
     return obj
 

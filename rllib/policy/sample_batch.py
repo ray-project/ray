@@ -761,7 +761,7 @@ class SampleBatch(dict):
     def compress(self,
                  bulk: bool = False,
                  columns: Set[str] = frozenset(["obs", "new_obs"])) -> \
-        "SampleBatch":
+            "SampleBatch":
         """Compresses the data buffers (by column) in place.
 
         Args:
