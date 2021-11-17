@@ -3,7 +3,7 @@ import logging
 import pickle
 import functools
 import warnings
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
 from ray.tune.sample import Categorical, Domain, Float, Integer, LogUniform, \
@@ -76,6 +76,8 @@ class OptunaSearch(Searcher):
     You can pass any Optuna sampler, which will be used to generate
     hyperparameter suggestions.
 
+    Multi-objective optimization is supported.
+
     Args:
         space (dict|Callable): Hyperparameter search space definition for
             Optuna's sampler. This can be either a :class:`dict` with
@@ -92,18 +94,23 @@ class OptunaSearch(Searcher):
                 function. Instead, put the training logic inside the function
                 or class trainable passed to ``tune.run``.
 
-        metric (str): The training result objective value attribute. If None
-            but a mode was passed, the anonymous metric `_metric` will be used
-            per default.
-        mode (str): One of {min, max}. Determines whether objective is
-            minimizing or maximizing the metric attribute.
+        metric (str|list): The training result objective value attribute. If
+            None but a mode was passed, the anonymous metric ``_metric``
+            will be used per default. Can be a list of metrics for
+            multi-objective optimization.
+        mode (str|list): One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute. Can be a list of
+            modes for multi-objective optimization (corresponding to
+            ``metric``).
         points_to_evaluate (list): Initial parameter suggestions to be run
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
             configurations.
         sampler (optuna.samplers.BaseSampler): Optuna sampler used to
-            draw hyperparameter configurations. Defaults to ``TPESampler``.
+            draw hyperparameter configurations. Defaults to ``TPESampler``
+            for single-objective optimization and ``MOTPESampler`` for
+            multi-objective optimization.
         seed (int): Seed to initialize sampler with. This parameter is only
             used when ``sampler=None``. In all other cases, the sampler
             you pass should be initialized with the seed already.
@@ -173,6 +180,34 @@ class OptunaSearch(Searcher):
 
         tune.run(trainable, search_alg=optuna_search)
 
+    Multi-objective optimization is supported:
+
+    .. code-block:: python
+
+        from ray.tune.suggest.optuna import OptunaSearch
+        import optuna
+
+        space = {
+            "a": optuna.distributions.UniformDistribution(6, 8),
+            "b": optuna.distributions.LogUniformDistribution(1e-4, 1e-2),
+        }
+
+        # Note you have to specify metric and mode here instead of
+        # in tune.run
+        optuna_search = OptunaSearch(
+            space,
+            metric=["loss1", "loss2"],
+            mode=["min", "max"])
+
+        # The metric and mode specified here will be used for sorting
+        # trials, and not during search itself
+        tune.run(
+            trainable,
+            metric="loss1",
+            mode="min",
+            search_alg=optuna_search
+        )
+
     You can pass configs that will be evaluated first using
     ``points_to_evaluate``:
 
@@ -224,8 +259,9 @@ class OptunaSearch(Searcher):
                  space: Optional[Union[Dict[str, "OptunaDistribution"], List[
                      Tuple], Callable[["OptunaTrial"], Optional[Dict[
                          str, Any]]]]] = None,
-                 metric: Optional[str] = None,
-                 mode: Optional[str] = None,
+                 metric: Optional[Union[str, List[str]]] = None,
+                 mode: Optional[Union[Literal["min"], Literal["max"], List[
+                     Union[Literal["min"], Literal["max"]]]]] = None,
                  points_to_evaluate: Optional[List[Dict]] = None,
                  sampler: Optional["BaseSampler"] = None,
                  seed: Optional[int] = None,
@@ -262,7 +298,12 @@ class OptunaSearch(Searcher):
                 "`seed` parameter has to be passed to the sampler directly "
                 "and will be ignored.")
 
-        self._sampler = sampler or ot.samplers.TPESampler(seed=seed)
+        if sampler:
+            self._sampler = sampler
+        elif isinstance(mode, list):
+            self._sampler = ot.samplers.MOTPESampler(seed=seed)
+        else:
+            self._sampler = ot.samplers.TPESampler(seed=seed)
 
         assert isinstance(self._sampler, BaseSampler), \
             "You can only pass an instance of `optuna.samplers.BaseSampler` " \
@@ -275,19 +316,32 @@ class OptunaSearch(Searcher):
 
     def _setup_study(self, mode: str):
         if self._metric is None and self._mode:
+            if isinstance(self._mode, list):
+                raise ValueError(
+                    "If ``mode`` is a list (multi-objective optimization "
+                    "case), ``metric`` must be defined.")
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
 
         pruner = ot.pruners.NopPruner()
         storage = ot.storages.InMemoryStorage()
 
+        if isinstance(mode, list):
+            study_direction_args = dict(
+                directions=[
+                    "minimize" if m == "min" else "maximize" for m in mode
+                ], )
+        else:
+            study_direction_args = dict(
+                direction="minimize" if mode == "min" else "maximize", )
+
         self._ot_study = ot.study.create_study(
             storage=storage,
             sampler=self._sampler,
             pruner=pruner,
             study_name=self._study_name,
-            direction="minimize" if mode == "min" else "maximize",
-            load_if_exists=True)
+            load_if_exists=True,
+            **study_direction_args)
 
         if self._points_to_evaluate:
             validate_warmstart(
@@ -314,7 +368,7 @@ class OptunaSearch(Searcher):
         if mode:
             self._mode = mode
 
-        self._setup_study(mode)
+        self._setup_study(self._mode)
         return True
 
     def _suggest_from_define_by_run_func(
@@ -360,6 +414,7 @@ class OptunaSearch(Searcher):
                     metric=self._metric,
                     mode=self._mode))
         if callable(self._space):
+            # Define-by-run case
             if trial_id not in self._ot_trials:
                 self._ot_trials[trial_id] = self._ot_study.ask()
 
@@ -378,6 +433,10 @@ class OptunaSearch(Searcher):
         return unflatten_dict(params)
 
     def on_trial_result(self, trial_id: str, result: Dict):
+        if isinstance(self.metric, list):
+            # Optuna doesn't support incremental results
+            # for multi-objective optimization
+            return
         metric = result[self.metric]
         step = result[TRAINING_ITERATION]
         ot_trial = self._ot_trials[trial_id]
@@ -389,7 +448,13 @@ class OptunaSearch(Searcher):
                           error: bool = False):
         ot_trial = self._ot_trials[trial_id]
 
-        val = result.get(self.metric, None) if result else None
+        if result:
+            if isinstance(self.metric, list):
+                val = [result.get(metric, None) for metric in self.metric]
+            else:
+                val = result.get(self.metric, None)
+        else:
+            val = None
         ot_trial_state = OptunaTrialState.COMPLETE
         if val is None:
             if error:
