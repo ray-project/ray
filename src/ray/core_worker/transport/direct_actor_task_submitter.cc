@@ -410,10 +410,6 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
           const Status &status, const rpc::PushTaskReply &reply) {
         bool increment_completed_tasks = true;
 
-        absl::MutexLock lock(&mu_);
-        auto queue_pair = client_queues_.find(actor_id);
-        RAY_CHECK(queue_pair != client_queues_.end());
-        auto &queue = queue_pair->second;
         if (task_skipped) {
           // NOTE(simon):Increment the task counter regardless of the status because the
           // reply for a previously completed task. We are not calling CompletePendingTask
@@ -424,6 +420,11 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
         } else {
           // push task failed due to network error. For example, actor is dead
           // and no process response for the push task.
+          absl::MutexLock lock(&mu_);
+          auto queue_pair = client_queues_.find(actor_id);
+          RAY_CHECK(queue_pair != client_queues_.end());
+          auto &queue = queue_pair->second;
+
           bool immediately_mark_object_fail = (queue.state == rpc::ActorTableData::DEAD);
           bool will_retry = task_finisher_.PendingTaskFailed(
               task_id, GenErrorTypeFromDeathCause(queue.death_cause.get()), &status,
@@ -445,11 +446,16 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
                 << ", wait queue size=" << queue.wait_for_death_info_tasks.size();
           }
         }
-
-        if (increment_completed_tasks) {
-          queue.actor_submit_queue->MarkTaskCompleted(actor_counter, task_spec);
+        {
+          absl::MutexLock lock(&mu_);
+          auto queue_pair = client_queues_.find(actor_id);
+          RAY_CHECK(queue_pair != client_queues_.end());
+          auto &queue = queue_pair->second;
+          if (increment_completed_tasks) {
+            queue.actor_submit_queue->MarkTaskCompleted(actor_counter, task_spec);
+          }
+          queue.cur_pending_calls--;
         }
-        queue.cur_pending_calls--;
       };
 
   queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback));
