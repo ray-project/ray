@@ -10,7 +10,7 @@ In order to set your applications namespace, it should be specified when you
 first connect to the cluster.
 
 .. tabs::
-  .. group-tab: Python
+  .. group-tab:: Python
 
     .. code-block:: python
 
@@ -18,9 +18,9 @@ first connect to the cluster.
       # or using ray client
       ray.init("ray://<head_node_host>:10001", namespace="world")
 
-  .. group-tab: Java
+  .. group-tab:: Java
 
-    .. code-tab:: java
+    .. code-block:: java
 
       System.setProperty("ray.job.namespace", "hello"); // set it before Ray.init()
       Ray.init();
