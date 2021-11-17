@@ -12,13 +12,16 @@ p.touch()
 @workflow.step
 def pull_from_queue(task):
     w = workflow.wait_for_event(SQSEventListener)
-    print("Another pull")
     return pull_from_queue.step(process_event.step(w))
+
+@ray.remote
+def record(msg):
+    with p.open(mode='a') as f:
+        f.write(json.dumps(msg))
+        f.write("\n")
 
 @workflow.step
 def process_event(e):
-    with p.open(mode='a') as f:
-        f.write(json.dumps(e))
-        f.write("\n")
+    return record.remote(e.get("Messages"))
 
 pull_from_queue.step(None).run("sqs-job")
