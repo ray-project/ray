@@ -167,12 +167,17 @@ class ActorReplicaWrapper:
         """
         Start a new actor for current DeploymentReplica instance.
         """
-        self._actor_resources = deployment_info.replica_config.resource_dict
         self._max_concurrent_queries = (
             deployment_info.deployment_config.max_concurrent_queries)
         self._graceful_shutdown_timeout_s = (
             deployment_info.deployment_config.graceful_shutdown_timeout_s)
-        if USE_PLACEMENT_GROUP:
+
+        self._actor_resources = deployment_info.replica_config.resource_dict
+        # it is currently not possiible to create a placement group
+        # with no resources (https://github.com/ray-project/ray/issues/20401)
+        has_resources_assigned = all(
+            (r > 0 for r in self._actor_resources.values()))
+        if USE_PLACEMENT_GROUP and has_resources_assigned:
             self._placement_group = self.create_placement_group(
                 self._placement_group_name, self._actor_resources)
 
