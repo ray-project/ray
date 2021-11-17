@@ -265,8 +265,8 @@ class JobManager:
             raise ValueError(
                 "Cannot find the node dictionary for current node.")
 
-    async def _handle_supervisor_started(self, job_id: str,
-                                         result: Optional[Exception]):
+    def _handle_supervisor_started(self, job_id: str,
+                                   result: Optional[Exception]):
         if result is None:
             return
         elif isinstance(result, RuntimeEnvSetupError):
@@ -336,22 +336,26 @@ class JobManager:
         # Wait for the actor to start up asynchronously so this call always
         # returns immediately and we can catch errors with the actor starting
         # up. We may want to put this in an actor instead in the future.
-        actor = self._supervisor_actor_cls.options(
-            lifetime="detached",
-            name=self.JOB_ACTOR_NAME.format(job_id=job_id),
-            num_cpus=0,
-            # Currently we assume JobManager is created by dashboard server
-            # running on headnode, same for job supervisor actors scheduled
-            resources={
-                self._get_current_node_resource_key(): 0.001,
-            },
-            runtime_env=runtime_env).remote(job_id, entrypoint, metadata or {})
-        actor.run.remote(_start_signal_actor=_start_signal_actor)
+        try:
+            actor = self._supervisor_actor_cls.options(
+                lifetime="detached",
+                name=self.JOB_ACTOR_NAME.format(job_id=job_id),
+                num_cpus=0,
+                # Currently we assume JobManager is created by dashboard server
+                # running on headnode, same for job supervisor actors scheduled
+                resources={
+                    self._get_current_node_resource_key(): 0.001,
+                },
+                runtime_env=runtime_env).remote(job_id, entrypoint, metadata
+                                                or {})
+            actor.run.remote(_start_signal_actor=_start_signal_actor)
 
-        def callback(result: Optional[Exception]):
-            return self._handle_supervisor_started(job_id, result)
+            def callback(result: Optional[Exception]):
+                return self._handle_supervisor_started(job_id, result)
 
-        actor.ready.remote()._on_completed(callback)
+            actor.ready.remote()._on_completed(callback)
+        except Exception as e:
+            self._handle_supervisor_started(job_id, e)
 
         return job_id
 
