@@ -121,7 +121,14 @@ def job_status(address: Optional[str], job_id: str):
         >>> ray job status <my_job_id>
     """
     client = _get_sdk_client(address)
-    logger.info(f"Job status for '{job_id}': {client.get_job_status(job_id)}")
+    status = client.get_job_status(job_id)
+    logger.info(f"Job status for '{job_id}':\n")
+    logger.info(f"Status: {status.status}")
+    if status.message is not None:
+        logger.info(f"Message: {status.message}")
+
+    if status.context is not None:
+        logger.info(f"Context:\n{status.context}")
 
 
 @job_cli_group.command("stop", help="Attempt to stop a running job.")

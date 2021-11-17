@@ -13,7 +13,7 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
-    JobStatus, JobStatusStorageClient, JOB_ID_METADATA_KEY)
+    JobStatus, JobStatusInfo, JobStatusStorageClient, JOB_ID_METADATA_KEY)
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 
 logger = logging.getLogger(__name__)
@@ -159,7 +159,7 @@ class JobSupervisor:
             # Block in PENDING state until start signal received.
             await _start_signal_actor.wait.remote()
 
-        self._status_client.put_status(self._job_id, JobStatus.RUNNING)
+        self._status_client.put_status(self._job_id, JobStatusInfo(JobStatus.RUNNING))
 
         try:
             # Set JobConfig for the child process (runtime_env, metadata).
@@ -197,6 +197,7 @@ class JobSupervisor:
                     self._status_client.put_status(self._job_id,
                                                    JobStatus.SUCCEEDED)
                 else:
+                    # XXX: add context from log file.
                     self._status_client.put_status(self._job_id,
                                                    JobStatus.FAILED)
         except Exception:
@@ -207,7 +208,7 @@ class JobSupervisor:
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
 
-    def _get_status(self) -> Optional[JobStatus]:
+    def _get_status(self) -> Optional[JobStatusInfo]:
         return self._status_client.get_status(self._job_id)
 
     def stop(self):
@@ -250,6 +251,25 @@ class JobManager:
         else:
             raise ValueError(
                 "Cannot found the node dictionary for current node.")
+
+    async def _wait_for_supervisor_actor(self, actor: ActorHandle, job_id: str):
+        try:
+            await actor.ready.remote()
+            # Kick off the job to run in the background.
+            supervisor.run.remote(entrypoint, _start_signal_actor)
+            return
+        except RayActorError as e:
+            raise RuntimeError(
+                f"Failed to start actor for job {job_id}. This could be "
+                "runtime_env configuration failure or invalid runtime_env."
+                f"Exception message: {str(e)}")
+            # XXX
+            self._status_client.put_status(job_id, JobStatus.FAILED)
+        except RuntimeEnvSetupError as e:
+            # XXX
+            self._status_client.put_status(job_id, JobStatus.FAILED)
+        except Exception as e:
+            self._status_client.put_status(job_id, JobStatus.FAILED)
 
     def submit_job(self,
                    *,
@@ -295,34 +315,22 @@ class JobManager:
 
         self._status_client.put_status(job_id, JobStatus.PENDING)
 
-        supervisor = None
-        try:
-            logger.debug(
-                f"Submitting job with generated internal job_id: {job_id}")
-            supervisor = self._supervisor_actor_cls.options(
-                lifetime="detached",
-                name=self.JOB_ACTOR_NAME.format(job_id=job_id),
-                num_cpus=0,
-                # Currently we assume JobManager is created by dashboard server
-                # running on headnode, same for job supervisor actors scheduled
-                resources={
-                    self._get_current_node_resource_key(): 0.001,
-                },
-                # For now we assume supervisor actor and driver script have
-                # same runtime_env.
-                runtime_env=runtime_env).remote(job_id, metadata or {})
-            ray.get(supervisor.ready.remote())
-        except Exception as e:
-            if supervisor:
-                ray.kill(supervisor, no_restart=True)
-            self._status_client.put_status(job_id, JobStatus.FAILED)
-            raise RuntimeError(
-                f"Failed to start actor for job {job_id}. This could be "
-                "runtime_env configuration failure or invalid runtime_env."
-                f"Exception message: {str(e)}")
+        logger.debug(
+            f"Submitting job with generated internal job_id: {job_id}")
+        supervisor = self._supervisor_actor_cls.options(
+            lifetime="detached",
+            name=self.JOB_ACTOR_NAME.format(job_id=job_id),
+            num_cpus=0,
+            # Currently we assume JobManager is created by dashboard server
+            # running on headnode, same for job supervisor actors scheduled
+            resources={
+                self._get_current_node_resource_key(): 0.001,
+            },
+            # For now we assume supervisor actor and driver script have
+            # same runtime_env.
+            runtime_env=runtime_env).remote(job_id, metadata or {})
 
-        # Kick off the job to run in the background.
-        supervisor.run.remote(entrypoint, _start_signal_actor)
+        # XXX: schedule coroutine.
 
         return job_id
 
@@ -346,7 +354,7 @@ class JobManager:
         else:
             return False
 
-    def get_job_status(self, job_id: str) -> JobStatus:
+    def get_job_status(self, job_id: str) -> JobStatusInfo:
         """Get latest status of a job. If job supervisor actor is no longer
         alive, it will also attempt to make adjustments needed to bring job
         to correct terminiation state.
@@ -365,7 +373,7 @@ class JobManager:
             # left job in non-terminal status in case actor failed without
             # updating GCS with latest status.
             last_status = self._status_client.get_status(job_id)
-            if last_status in {JobStatus.PENDING, JobStatus.RUNNING}:
+            if last_status.status in {JobStatus.PENDING, JobStatus.RUNNING}:
                 self._status_client.put_status(job_id, JobStatus.FAILED)
 
         return self._status_client.get_status(job_id)
