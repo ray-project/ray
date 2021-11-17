@@ -242,7 +242,8 @@ To find a GitHub URL, navigate to your repository on `GitHub <github.com>`_, cho
 .. figure:: ray_repo.png
    :width: 500px
 
-This will drop down a menu that provides three options: "Clone" which provides HTTPS/SSH links to clone the repository, "Open with GitHub Desktop", and "Download ZIP."
+This will drop down a menu that provides three options: "Clone" which provides HTTPS/SSH links to clone the repository, 
+"Open with GitHub Desktop", and "Download ZIP."
 Right click on "Download Zip."
 This will open a pop-up near your cursor. Select "Copy Link Address":
 
