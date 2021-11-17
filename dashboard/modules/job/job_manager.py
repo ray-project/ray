@@ -14,7 +14,8 @@ import ray
 import ray.ray_constants as ray_constants
 from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
-    JobStatus, JobStatusStorageClient, JOB_ID_METADATA_KEY)
+    JobStatus, JobStatusStorageClient, JOB_ID_METADATA_KEY,
+    JOB_NAME_METADATA_KEY)
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 
 logger = logging.getLogger(__name__)
@@ -82,7 +83,10 @@ class JobSupervisor:
         self._runtime_env = ray.get_runtime_context().runtime_env
 
         self._metadata = metadata
-        self._metadata[JOB_ID_METADATA_KEY] = job_id
+        if JOB_ID_METADATA_KEY not in self._metadata:
+            self._metadata[JOB_ID_METADATA_KEY] = job_id
+        if JOB_NAME_METADATA_KEY not in self._metadata:
+            self._metadata[JOB_NAME_METADATA_KEY] = job_id
 
         # fire and forget call from outer job manager to this actor
         self._stop_event = asyncio.Event()
