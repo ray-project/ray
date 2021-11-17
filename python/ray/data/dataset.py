@@ -1838,6 +1838,9 @@ class Dataset(Generic[T]):
             element on the base iterator (iterable) isn't consumed until the
             first sliding window containing that element is reached.
 
+            If n > len(iterable), then a single len(iterable) window is
+            returned.
+
             Args:
                 iterable: The iterable on which the sliding window will be
                     created.
@@ -1845,12 +1848,16 @@ class Dataset(Generic[T]):
 
             Returns:
                 An iterator of n-width windows over iterable.
+                If n > len(iterable), then a single len(iterable) window is
+                returned.
             """
-            iters = itertools.tee(iter(iterable), n)
-            for i in range(1, n):
-                for it in iters[i:]:
-                    next(it, None)
-            return zip(*iters)
+            it = iter(iterable)
+            window = collections.deque(itertools.islice(it, n), maxlen=n)
+            if len(window) > 0:
+                yield tuple(window)
+            for elem in it:
+                window.append(elem)
+                yield tuple(window)
 
         def format_batch(batch: Block, format: str) -> BatchType:
             if batch_format == "native":

@@ -1830,8 +1830,9 @@ def test_iter_batches_basic(ray_start_regular_shared):
         batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
 
     # Prefetch.
-    for batch, df in zip(
-            ds.iter_batches(prefetch_blocks=1, batch_format="pandas"), dfs):
+    batches = list(ds.iter_batches(prefetch_blocks=1, batch_format="pandas"))
+    assert len(batches) == len(dfs)
+    for batch, df in zip(batches, dfs):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
 
@@ -1844,6 +1845,14 @@ def test_iter_batches_basic(ray_start_regular_shared):
         (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
     assert pd.concat(
         batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
+
+    # Prefetch more than number of blocks.
+    batches = list(
+        ds.iter_batches(prefetch_blocks=len(dfs), batch_format="pandas"))
+    assert len(batches) == len(dfs)
+    for batch, df in zip(batches, dfs):
+        assert isinstance(batch, pd.DataFrame)
+        assert batch.equals(df)
 
 
 def test_iter_batches_grid(ray_start_regular_shared):
