@@ -497,7 +497,7 @@ def create_test_step(
                     "limit": 2
                 },
                 {
-                    "session_timeout": 9,  # Session timeout
+                    "exit_status": 9,  # Session timeout
                     "limit": 2
                 },
                 {
