@@ -253,12 +253,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
               result = std::move(results[0]);
             }
             return result;
-          },
-          /*fail_pull_request=*/
-          [this](const ObjectID &object_id) {
-            rpc::ObjectReference ref;
-            ref.set_object_id(object_id.Binary());
-            MarkObjectsAsFailed(rpc::ErrorType::OBJECT_LOST, {ref}, JobID::Nil());
           }),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
@@ -544,7 +538,9 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(DEBUG) << "HandleJobStarted for job " << job_id;
+  RAY_LOG(INFO) << "New job has started. Job id " << job_id << " Driver pid "
+                << job_data.driver_pid() << " is dead: " << job_data.is_dead()
+                << " driver address: " << job_data.driver_ip_address();
   worker_pool_.HandleJobStarted(job_id, job_data.config());
   // NOTE: Technically `HandleJobStarted` isn't idempotent because we'll
   // increment the ref count multiple times. This is fine because

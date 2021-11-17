@@ -187,7 +187,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         return deployments
 
     async def get_session_name(self):
-        # TODO: Use async version if performance is an issue
+        # TODO(yic): Use async version if performance is an issue
         encoded_name = ray.experimental.internal_kv._internal_kv_get(
             "session_name", namespace=ray_constants.KV_NAMESPACE_SESSION)
         return encoded_name.decode()

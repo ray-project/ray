@@ -1488,6 +1488,13 @@ py_test(
 )
 
 py_test(
+    name = "tests/test_nn_framework_import_errors",
+    tags = ["team:ml", "tests_dir", "tests_dir_N"],
+    size = "small",
+    srcs = ["tests/test_nn_framework_import_errors.py"]
+)
+
+py_test(
     name = "tests/test_pettingzoo_env",
     tags = ["team:ml", "tests_dir", "tests_dir_P"],
     size = "medium",
