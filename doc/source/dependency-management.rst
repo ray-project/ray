@@ -235,6 +235,10 @@ so you can directly upload your ``working_dir`` contents or your ``py_module`` d
 Once you have uploaded your ``working_dir`` contents or your ``py_module`` dependency, you need the HTTPS URL of the repository zip file, so you can specify it in your ``runtime_env`` dictionary.
 
 You have two options to get the HTTPS URL.
+
+Option 1: Download Zip (quicker to implement, but not recommended for production environments)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 The first option is to use the remote Git provider's "Download Zip" feature, which provides an HTTPS link that zips and downloads your repository.
 This is quick, but it is **not recommended** because it only allows you to download a zip file of a repository branch's latest commit.
 To find a GitHub URL, navigate to your repository on `GitHub <https://github.com/>`_, choose a branch, and click on the green "Code" drop down button:
@@ -261,28 +265,24 @@ Now your HTTPS link is copied to your clipboard. You can paste it into your ``ru
   This creates a consistency risk: if you push an update to your remote Git repository while your cluster's nodes are pulling the repository's contents, 
   some nodes may pull the version of your package just before you pushed, and some nodes may pull the version just after.
   For consistency, it is better to specify a particular commit, so all the nodes use the same package.
-  See the following recommended option (manually crafting the HTTPS URL) to create a URL pointing to a specific commit.
+  See "Option 2: Manually Create URL" to create a URL pointing to a specific commit.
 
-The second option is to manually craft this URL by pattern-matching your specific use case with one of the following examples.
+Option 2: Manually Create URL (slower to implement, but recommended for production environments)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The second option is to manually create this URL by pattern-matching your specific use case with one of the following examples.
 **This is recommended** because it provides finer-grained control over which repository branch and commit to use when generating your dependency zip file.
 These options prevent consistency issues on Ray Clusters (see the warning above for more info).
 To create the URL, pick a URL template below that fits your use case, and fill in all parameters in brackets (e.g. [username], [repository], etc.) with the specific values from your repository.
-For instance, suppose your GitHub username is ``example_user`` and the repository's name is ``example_repository``.
-If ``example_repository`` is public and you want to retrieve the latest commit (which matches the first example use case below), the URL would be:
+For instance, suppose your GitHub username is ``example_user``, the repository's name is ``example_repository``, and the desired commit hash is ``abcdefg``.
+If ``example_repository`` is public and you want to retrieve the ``abcdefg`` commit (which matches the first example use case), the URL would be:
 
 .. code-block:: python
 
     runtime_env = {"working_dir": ("https://github.com"
-                                   "/example_user/example_repository/archive/HEAD.zip")}
+                                   "/example_user/example_repository/archive/abcdefg.zip")}
 
 Here is a list of different use cases and corresponding URLs:
-
-- Example: Retrieve package from a public GitHub repository's latest commit
-
-.. code-block:: python
-
-    runtime_env = {"working_dir": ("https://github.com"
-                                   "/[username]/[repository]/archive/HEAD.zip")}
 
 - Example: Retrieve package from a specific commit hash on a public GitHub repository
 
@@ -305,6 +305,13 @@ Here is a list of different use cases and corresponding URLs:
     runtime_env = {"working_dir": ("https://[username]:[personal access token]@github.com"
                                    "/[username]/[private repository]/archive/[commit hash].zip")}
 
+- Example: Retrieve package from a public GitHub repository's latest commit
+
+.. code-block:: python
+
+    runtime_env = {"working_dir": ("https://github.com"
+                                   "/[username]/[repository]/archive/HEAD.zip")}
+
 - Example: Retrieve package from a specific commit hash on a public Bitbucket repository
 
 .. code-block:: python
@@ -316,7 +323,7 @@ Here is a list of different use cases and corresponding URLs:
 
   It is recommended to specify a particular commit instead of always using the latest commit.
   This prevents consistency issues on a multi-node Ray Cluster.
-  See the warning above for more info.
+  See the warning below "Option 1: Download Zip" for more info.
 
 Once you have specified the URL in your ``runtime_env`` dictionary, you can pass the dictionary 
 into a ``ray.init()`` or ``.options()`` call. Congratulations! You have now hosted a ``runtime_env`` dependency 
