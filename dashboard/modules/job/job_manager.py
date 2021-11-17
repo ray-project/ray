@@ -76,17 +76,18 @@ class JobSupervisor:
 
     SUBPROCESS_POLL_PERIOD_S = 0.1
 
-    def __init__(self, job_id: str, metadata: Dict[str, str]):
+    def __init__(self, job_id: str, user_metadata: Dict[str, str]):
         self._job_id = job_id
         self._status_client = JobStatusStorageClient()
         self._log_client = JobLogStorageClient()
         self._runtime_env = ray.get_runtime_context().runtime_env
 
-        self._metadata = metadata
-        if JOB_ID_METADATA_KEY not in self._metadata:
-            self._metadata[JOB_ID_METADATA_KEY] = job_id
-        if JOB_NAME_METADATA_KEY not in self._metadata:
-            self._metadata[JOB_NAME_METADATA_KEY] = job_id
+        # Default metadata if not passed by the user.
+        self._metadata = {
+            JOB_ID_METADATA_KEY: job_id,
+            JOB_NAME_METADATA_KEY: job_id
+        }
+        self._metadata.update(user_metadata)
 
         # fire and forget call from outer job manager to this actor
         self._stop_event = asyncio.Event()
