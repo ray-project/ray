@@ -526,7 +526,8 @@ bool ClusterResourceScheduler::ContainResource(const std::string &resource_name)
     idx = (int)MEM;
   };
   if (idx != -1) {
-    // Return true directly for predefined resources as we always initialize this kind of resources at the beginning.
+    // Return true directly for predefined resources as we always initialize this kind of
+    // resources at the beginning.
     return true;
   } else {
     int64_t resource_id = string_to_int_map_.Get(resource_name);
