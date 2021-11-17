@@ -1211,6 +1211,8 @@ class TrialRunner:
         elif decision == TrialScheduler.STOP:
             self.trial_executor.export_trial_if_needed(trial)
             self.trial_executor.stop_trial(trial)
+        elif decision == TrialScheduler.NONE:
+            pass
         else:
             raise ValueError("Invalid decision: {}".format(decision))
 
