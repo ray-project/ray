@@ -1,6 +1,7 @@
 import aioboto3
 from ray import workflow
 
+
 class SQSEventListener(workflow.EventListener):
     def __init__(self):
         self.session = aioboto3.Session(region_name='us-west-2')
@@ -10,13 +11,17 @@ class SQSEventListener(workflow.EventListener):
         async with self.session.client('sqs') as sqs:
             while True:
                 print("!!!")
-                ret = await sqs.receive_message(QueueUrl=self.url, WaitTimeSeconds=20)
+                ret = await sqs.receive_message(
+                    QueueUrl=self.url, WaitTimeSeconds=20)
                 if ret.get("Messages") is not None:
                     return ret
 
     async def event_checkpointed(self, event) -> None:
         try:
-            entries = [{'Id': e['MessageId'], 'ReceiptHandle': e['ReceiptHandle']} for e in event['Messages']]
+            entries = [{
+                'Id': e['MessageId'],
+                'ReceiptHandle': e['ReceiptHandle']
+            } for e in event['Messages']]
         except Exception as e:
             print("Error", e)
             return

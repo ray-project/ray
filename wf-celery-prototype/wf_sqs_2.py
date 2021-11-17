@@ -10,11 +10,15 @@ p = Path("/tmp/ray/record.txt")
 p.unlink(missing_ok=True)
 p.touch()
 
+max_concurrency = 10
 
 @workflow.step
-def pull_from_queue(task):
-    w = workflow.wait_for_event(SQSEventListener)
-    return pull_from_queue.step(process_event.step(w))
+def pull_from_queue(ready, pending):
+    for _ in range(max_concurrency - len(pending)):
+        w = workflow.wait_for_event(SQSEventListener)
+        p = process_event.step(w)
+        pending.append(p)
+    pull_from_queue.step(workflow.wait(pending))
 
 
 @ray.remote
@@ -23,10 +27,8 @@ def record(msg):
         f.write(json.dumps(msg))
         f.write("\n")
 
-
 @workflow.step
 def process_event(e):
     return record.remote(e.get("Messages"))
-
 
 pull_from_queue.step(None).run("sqs-job")
