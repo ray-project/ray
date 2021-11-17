@@ -113,6 +113,9 @@ class TorchBackend(Backend):
 
                 worker_group.execute(
                     set_env_vars, addr=master_addr, port=master_port)
+                # TODO consider if multiple workers are on the same host.
+                worker_group.execute_single(
+                    0, set_env_vars, addr="127.0.0.1", port=master_port)
                 url = "env://"
             elif backend_config.init_method == "tcp":
                 url = f"tcp://{master_addr}:{master_port}"
