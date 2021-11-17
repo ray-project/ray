@@ -23,6 +23,33 @@ from ray.util.debug import log_once
 logger = logging.getLogger(__name__)
 
 
+class _ExploitResult(Enum):
+    """Implementation details of how exploitation is done through executor.
+
+    As of now, this has an implication on how PbtScheduler interacts with
+    Tune loop through scheduler decision.
+    This is far from ideal and is only temporary until we unify the
+    the interaction between schedulers and executors.
+    """
+    # The trial was paused and is still paused after transfer.
+    # This is only possible in sync pbt mode.
+    # In this case, the post-transfer trial will continue to run through
+    # `runner.step()` and `pbt.choose_trial_to_run` logic.
+    SYNC_TRANSFERRED = 1
+    # The trial was running and is still running after transfer.
+    # This is for async pbt mode. Transfer mechanism is done through
+    # `reset_config`. In this case, it is subject to the logic in
+    # `on_trial_result` to decide whether this trial should yield to
+    # other trials.
+    ASYNC_TRANSFERRED_THROUGH_RESET = 2
+    # The trial was running and is currently paused after transfer.
+    # This is for async pbt mode. Transfer mechanism is through
+    # pausing the trial and then updating it with new config and tag etc.
+    # In this case, the post-transfer trial will continue to run through
+    # `runner.step()` and `pbt.choose_trial_to_run` logic.
+    ASYNC_TRANSFERRED_AND_PAUSED = 3  # The trial is currently paused
+
+
 class PBTTrialState:
     """Internal PBT state tracked per-trial."""
 
@@ -399,14 +426,14 @@ class PopulationBasedTraining(FIFOScheduler):
             state.last_perturbation_time = time
             lower_quantile, upper_quantile = self._quantiles()
             decision = TrialScheduler.CONTINUE
-            for _ in trial_runner.get_trials():
-                if _.status in [Trial.PENDING, Trial.PAUSED]:
+            for other_trial in trial_runner.get_trials():
+                if other_trial.status in [Trial.PENDING, Trial.PAUSED]:
                     decision = TrialScheduler.PAUSE
                     break
             if self._checkpoint_or_exploit(
                     trial, trial_runner.trial_executor, upper_quantile,
                     lower_quantile
-            ) == PopulationBasedTraining._ExploitResult.ASYNC_TRANSFERRED_AND_PAUSED:  # noqa
+            ) == _ExploitResult.ASYNC_TRANSFERRED_AND_PAUSED:
                 return TrialScheduler.NONE
             return decision
         else:
@@ -466,32 +493,6 @@ class PopulationBasedTraining(FIFOScheduler):
         state.last_result = result
 
         return score
-
-    class _ExploitResult(Enum):
-        """Implementation details of how exploitation is done through executor.
-
-        As of now, this has an implication on how PbtScheduler interacts with
-        Tune loop through scheduler decision.
-        This is far from ideal and is only temporary until we unify the
-        the interaction between schedulers and executors.
-        """
-        # The trial was paused and is still paused after transfer.
-        # This is only possible in sync pbt mode.
-        # In this case, the post-transfer trial will continue to run through
-        # `runner.step()` and `pbt.choose_trial_to_run` logic.
-        SYNC_TRANSFERRED = 1
-        # The trial was running and is still running after transfer.
-        # This is for async pbt mode. Transfer mechanism is done through
-        # `reset_config`. In this case, it is subject to the logic in
-        # `on_trial_result` to decide whether this trial should yield to
-        # other trials.
-        ASYNC_TRANSFERRED_THROUGH_RESET = 2
-        # The trial was running and is currently paused after transfer.
-        # This is for async pbt mode. Transfer mechanism is through
-        # pausing the trial and then updating it with new config and tag etc.
-        # In this case, the post-transfer trial will continue to run through
-        # `runner.step()` and `pbt.choose_trial_to_run` logic.
-        ASYNC_TRANSFERRED_AND_PAUSED = 3  # The trial is currently paused
 
     def _checkpoint_or_exploit(
             self, trial: Trial,
@@ -613,8 +614,7 @@ class PopulationBasedTraining(FIFOScheduler):
             trial.set_experiment_tag(new_tag)
             trial.set_config(new_config)
             trial.on_checkpoint(new_state.last_checkpoint)
-            exploit_result = (
-                PopulationBasedTraining._ExploitResult.SYNC_TRANSFERRED)
+            exploit_result = _ExploitResult.SYNC_TRANSFERRED
         else:
             # If trial is running, we first try to reset it.
             # If that is unsuccessful, then we have to stop it and start it
@@ -628,19 +628,13 @@ class PopulationBasedTraining(FIFOScheduler):
             if reset_successful:
                 trial_executor.restore(
                     trial, new_state.last_checkpoint, block=True)
-                exploit_result = (
-                    PopulationBasedTraining._ExploitResult.
-                    ASYNC_TRANSFERRED_THROUGH_RESET
-                )
+                exploit_result = _ExploitResult.ASYNC_TRANSFERRED_THROUGH_RESET
             else:
                 trial_executor.pause_trial(trial)
                 trial.set_experiment_tag(new_tag)
                 trial.set_config(new_config)
                 trial.on_checkpoint(new_state.last_checkpoint)
-                exploit_result = (
-                    PopulationBasedTraining._ExploitResult.
-                    ASYNC_TRANSFERRED_AND_PAUSED
-                )
+                exploit_result = _ExploitResult.ASYNC_TRANSFERRED_AND_PAUSED
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
