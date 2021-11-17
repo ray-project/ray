@@ -232,19 +232,19 @@ First, create a repository on GitHub to store your ``working_dir`` contents or y
 By default, when you download a zip file of your repository, the zip file will already contain a single top-level directory that holds the repository contents,
 so you can directly upload your ``working_dir`` contents or your ``py_module`` dependency to the GitHub repository.
 
-Once you have uploaded your ``working_dir`` contents or your ``py_module`` dependency, you need the ``HTTPS`` URL of the repository zip file, so you can specify it in your ``runtime_env`` dictionary.
+Once you have uploaded your ``working_dir`` contents or your ``py_module`` dependency, you need the HTTPS URL of the repository zip file, so you can specify it in your ``runtime_env`` dictionary.
 
 You have two options to get the HTTPS URL.
-The first option is to use the remote Git provider's "Download Zip" feature, which redirects you to an HTTPS link that zips and downloads your repository.
+The first option is to use the remote Git provider's "Download Zip" feature, which provides an HTTPS link that zips and downloads your repository.
 This is quick, but it is **not recommended** because it only allows you to download a zip file of a repository branch's latest commit.
-To find a GitHub URL, navigate to your repository on `GitHub <github.com>`_, choose a branch, and click on the green "Code" drop down button:
+To find a GitHub URL, navigate to your repository on `GitHub <https://github.com/>`_, choose a branch, and click on the green "Code" drop down button:
 
 .. figure:: ray_repo.png
    :width: 500px
 
 This will drop down a menu that provides three options: "Clone" which provides HTTPS/SSH links to clone the repository, 
 "Open with GitHub Desktop", and "Download ZIP."
-Right click on "Download Zip."
+Right-click on "Download Zip."
 This will open a pop-up near your cursor. Select "Copy Link Address":
 
 .. figure:: download_zip_url.png
@@ -256,18 +256,19 @@ Now your HTTPS link is copied to your clipboard. You can paste it into your ``ru
 
   Using the HTTPS URL from your Git provider's "Download as Zip" feature is not recommended if the URL always points to the latest commit.
   For instance, using this method on GitHub generates a link that always points to the latest commit on the chosen branch.
+
   By specifying this link in the ``runtime_env`` dictionary, your Ray Cluster always uses the chosen branch's latest commit.
   This creates a consistency risk: if you push an update to your remote Git repository while your cluster's nodes are pulling the repository's contents, 
   some nodes may pull the version of your package just before you pushed, and some nodes may pull the version just after.
   For consistency, it is better to specify a particular commit, so all the nodes use the same package.
   See the following recommended option (manually crafting the HTTPS URL) to create a URL pointing to a specific commit.
 
-The second option is to craft this URL by pattern-matching your specific use case with one of the following examples.
+The second option is to manually craft this URL by pattern-matching your specific use case with one of the following examples.
 **This is recommended** because it provides finer-grained control over which repository branch and commit to use when generating your dependency zip file.
 These options prevent consistency issues on Ray Clusters (see the warning above for more info).
 To create the URL, pick a URL template below that fits your use case, and fill in all parameters in brackets (e.g. [username], [repository], etc.) with the specific values from your repository.
 For instance, suppose your GitHub username is ``example_user`` and the repository's name is ``example_repository``.
-If ``example_repository`` is public and you want to retrieve the latest commit, the URL would be:
+If ``example_repository`` is public and you want to retrieve the latest commit (which matches the first example use case below), the URL would be:
 
 .. code-block:: python
 
@@ -276,35 +277,35 @@ If ``example_repository`` is public and you want to retrieve the latest commit, 
 
 Here is a list of different use cases and corresponding URLs:
 
-- Example: Retrieve package from a GitHub public repository's latest commit
+- Example: Retrieve package from a public GitHub repository's latest commit
 
 .. code-block:: python
 
     runtime_env = {"working_dir": ("https://github.com"
                                    "/[username]/[repository]/archive/HEAD.zip")}
 
-- Example: Retrieve package from a specific commit hash on a GitHub public repository
+- Example: Retrieve package from a specific commit hash on a public GitHub repository
 
 .. code-block:: python
 
     runtime_env = {"working_dir": ("https://github.com"
                                    "/[username]/[repository]/archive/[commit hash].zip")}
 
-- Example: Retrieve package from a GitHub private repository using username and password
+- Example: Retrieve package from a private GitHub repository using username and password
 
 .. code-block:: python
 
     runtime_env = {"working_dir": ("https://[username]:[password]@github.com"
                                    "/[username]/[private repository]/archive/[commit hash].zip")}
 
-- Example: Retrieve package from a GitHub private repository using a Personal Access Token
+- Example: Retrieve package from a private GitHub repository using a Personal Access Token
 
 .. code-block:: python
 
     runtime_env = {"working_dir": ("https://[username]:[personal access token]@github.com"
                                    "/[username]/[private repository]/archive/[commit hash].zip")}
 
-- Example: Retrieve package from a specific commit hash on a Bitbucket public repository
+- Example: Retrieve package from a specific commit hash on a public Bitbucket repository
 
 .. code-block:: python
 
