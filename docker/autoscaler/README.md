@@ -1,3 +1,12 @@
+Build this image:
+
+BASE_IMAGE="ubuntu:focal" docker build .
+
+docker tag <image> pcmoritz/autoscaler
+
+docker push pcmoritz/autoscaler
+
+
 # DEPRECATED -- Please use [`rayproject/ray-ml`](https://hub.docker.com/repository/docker/rayproject/ray-ml)
 ## About
 This image used to be the base image for the Ray autoscaler, but it has been replaced by [`rayproject/ray-ml`](https://hub.docker.com/repository/docker/rayproject/ray-ml). 
