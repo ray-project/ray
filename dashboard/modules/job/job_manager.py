@@ -4,10 +4,11 @@ import os
 import json
 import logging
 import traceback
+import random
 import subprocess
+import string
 
 from typing import Any, Dict, Tuple, Optional
-from uuid import uuid4
 
 import ray
 import ray.ray_constants as ray_constants
@@ -23,6 +24,20 @@ try:
     create_task = asyncio.create_task
 except AttributeError:
     create_task = asyncio.ensure_future
+
+
+def generate_job_id() -> str:
+    """Returns a job_id of the form 'raysubmit_XYZ'.
+
+    Prefixed with 'raysubmit' to avoid confusion with Ray JobID (driver ID).
+    """
+    rand = random.SystemRandom()
+    possible_characters = list(
+        set(string.ascii_letters + string.digits) -
+        {"I", "l", "o", "O", "0"}  # No confusing characters
+    )
+    id_part = "".join(rand.choices(possible_characters, k=16))
+    return f"raysubmit_{id_part}"
 
 
 class JobLogStorageClient:
@@ -263,7 +278,7 @@ class JobManager:
 
         1) Generate a new unique id for this job submission, each call of this
             method assumes they're independent submission with its own new
-            uuid, job supervisor actor and child process.
+            ID, job supervisor actor, and child process.
         2) Create new detached actor with same runtime_env as job spec
 
         Actual setting up runtime_env, subprocess group, driver command
@@ -289,7 +304,7 @@ class JobManager:
                 within the same ray cluster.
         """
         if job_id is None:
-            job_id = str(uuid4())
+            job_id = generate_job_id()
         elif self._status_client.get_status(job_id) is not None:
             raise RuntimeError(f"Job {job_id} already exists.")
 
@@ -330,8 +345,7 @@ class JobManager:
         """Request job to exit, fire and forget.
 
         Args:
-            job_id: Generated uuid from submit_job. Only valid in same ray
-                cluster.
+            job_id: ID of the job.
         Returns:
             stopped:
                 True if there's running job
@@ -354,8 +368,7 @@ class JobManager:
         All job status is stored and read only from GCS.
 
         Args:
-            job_id: Generated uuid from submit_job. Only valid in same ray
-                cluster.
+            job_id: ID of the job.
         Returns:
             job_status: Latest known job status
         """

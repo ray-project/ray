@@ -8,7 +8,7 @@ import pytest
 
 import ray
 from ray.dashboard.modules.job.common import JobStatus, JOB_ID_METADATA_KEY
-from ray.dashboard.modules.job.job_manager import JobManager
+from ray.dashboard.modules.job.job_manager import generate_job_id, JobManager
 from ray._private.test_utils import SignalActor, wait_for_condition
 
 TEST_NAMESPACE = "jobs_test_namespace"
@@ -54,6 +54,19 @@ def check_job_stopped(job_manager, job_id):
 
 def check_subprocess_cleaned(pid):
     return psutil.pid_exists(pid) is False
+
+
+def test_generate_job_id():
+    ids = set()
+    for _ in range(10000):
+        new_id = generate_job_id()
+        assert new_id.startswith("raysubmit_")
+        assert new_id.count("_") == 1
+        assert "-" not in new_id
+        assert "/" not in new_id
+        ids.add(new_id)
+
+    assert len(ids) == 10000
 
 
 def test_pass_job_id(job_manager):
