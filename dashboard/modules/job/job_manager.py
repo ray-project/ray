@@ -8,7 +8,7 @@ import random
 import subprocess
 import string
 
-from typing import Any, Dict, Tuple, Optional
+from typing import Any, Dict, Iterator, Tuple, Optional
 
 import ray
 from ray.exceptions import RuntimeEnvSetupError
@@ -17,6 +17,7 @@ from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
     JobStatus, JobStatusInfo, JobStatusStorageClient, JOB_ID_METADATA_KEY,
     JOB_NAME_METADATA_KEY)
+from ray.dashboard.modules.job.utils import file_tail_iterator
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 
 logger = logging.getLogger(__name__)
@@ -55,12 +56,8 @@ class JobLogStorageClient:
         except FileNotFoundError:
             return ""
 
-    def tail_logs(self, job_id: str, n_lines=10) -> str:
-        all_logs = self.get_logs(job_id)
-        # TODO(edoakes): optimize this to not read the whole file into memory.
-        log_lines = all_logs.split("\n")
-        start = max(0, len(log_lines) - n_lines)
-        return "\n".join(log_lines[start:])
+    def tail_logs(self, job_id: str) -> Iterator[str]:
+        return file_tail_iterator(self.get_log_file_path(job_id))
 
     def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
         """
@@ -258,6 +255,9 @@ class JobManager:
     goes down.
     """
     JOB_ACTOR_NAME = "_ray_internal_job_actor_{job_id}"
+    # Time that we will sleep while tailing logs if no new log line is
+    # available.
+    LOG_TAIL_SLEEP_S = 0.1
 
     def __init__(self):
         self._status_client = JobStatusStorageClient()
@@ -405,7 +405,7 @@ class JobManager:
         else:
             return False
 
-    def get_job_status(self, job_id: str) -> JobStatusInfo:
+    def get_job_status(self, job_id: str) -> Optional[JobStatus]:
         """Get latest status of a job. If job supervisor actor is no longer
         alive, it will also attempt to make adjustments needed to bring job
         to correct terminiation state.
@@ -430,5 +430,20 @@ class JobManager:
 
         return self._status_client.get_status(job_id)
 
-    def get_job_logs(self, job_id: str) -> bytes:
+    def get_job_logs(self, job_id: str) -> str:
         return self._log_client.get_logs(job_id)
+
+    async def tail_job_logs(self, job_id: str) -> Iterator[str]:
+        if self.get_job_status(job_id) is None:
+            raise RuntimeError(f"Job '{job_id}' does not exist.")
+
+        for line in self._log_client.tail_logs(job_id):
+            if line is None:
+                # Return if the job has exited and there are no new log lines.
+                status = self.get_job_status(job_id)
+                if status not in {JobStatus.PENDING, JobStatus.RUNNING}:
+                    return
+
+                await asyncio.sleep(self.LOG_TAIL_SLEEP_S)
+            else:
+                yield line
