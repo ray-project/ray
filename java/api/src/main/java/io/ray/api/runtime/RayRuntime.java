@@ -67,6 +67,24 @@ public interface RayRuntime {
   <T> List<T> get(List<ObjectRef<T>> objectRefs);
 
   /**
+   * Get an object from the object store.
+   *
+   * @param objectRef The reference of the object to get.
+   * @param timeoutMs The maximum amount of time in millseconds to wait before returning.
+   * @return The Java object.
+   */
+  <T> T get(ObjectRef<T> objectRef, long timeoutMs);
+
+  /**
+   * Get a list of objects from the object store.
+   *
+   * @param objectRefs The list of object references.
+   * @param timeoutMs The maximum amount of time in millseconds to wait before returning.
+   * @return A list of Java objects.
+   */
+  <T> List<T> get(List<ObjectRef<T>> objectRefs, long timeoutMs);
+
+  /**
    * Wait for a list of RayObjects to be available, until specified number of objects are ready, or
    * specified timeout has passed.
    *
