@@ -54,6 +54,7 @@ ClusterTaskManager::ClusterTaskManager(
       get_task_arguments_(get_task_arguments),
       max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes),
       get_time_ms_(get_time_ms),
+      sched_cls_cap_enabled_(RayConfig::instance().worker_cap_enabled()),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
       sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()),
       metric_tasks_queued_(0),
@@ -309,7 +310,8 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
       }
 
       // Check if the scheduling class is at capacity now.
-      if (sched_cls_info.running_tasks.size() >= sched_cls_info.capacity &&
+      if (sched_cls_cap_enabled_ &&
+          sched_cls_info.running_tasks.size() >= sched_cls_info.capacity &&
           work->GetState() == internal::WorkStatus::WAITING) {
         RAY_LOG(DEBUG) << "Hit cap! time=" << get_time_ms_()
                        << " next update time=" << sched_cls_info.next_update_time;

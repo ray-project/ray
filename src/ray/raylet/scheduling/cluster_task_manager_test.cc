@@ -193,7 +193,7 @@ class FeatureFlagEnvironment : public ::testing::Environment {
 
   // Override this to define how to set up the environment.
   void SetUp() override {
-    RayConfig::instance().worker_cap_initial_backoff_delay_ms() = 1000;
+    RayConfig::instance().worker_cap_enabled() = true;
   }
 
   // Override this to define how to tear down the environment.
