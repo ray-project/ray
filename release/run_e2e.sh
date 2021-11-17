@@ -24,6 +24,14 @@ case $key in
     shift
     RAY_WHEELS=$1
     ;;
+    --ray-test-repo)
+    shift
+    RAY_TEST_REPO=$1
+    ;;
+    --ray-test-branch)
+    shift
+    RAY_TEST_BRANCH=$1
+    ;;
     --release-results-dir)
     shift
     RELEASE_RESULTS_DIR=$1
