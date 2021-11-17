@@ -192,9 +192,7 @@ class FeatureFlagEnvironment : public ::testing::Environment {
   ~FeatureFlagEnvironment() override {}
 
   // Override this to define how to set up the environment.
-  void SetUp() override {
-    RayConfig::instance().worker_cap_enabled() = true;
-  }
+  void SetUp() override { RayConfig::instance().worker_cap_enabled() = true; }
 
   // Override this to define how to tear down the environment.
   void TearDown() override {}
