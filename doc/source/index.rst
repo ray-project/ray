@@ -332,7 +332,7 @@ Papers
    rllib-offline.rst
    rllib-concepts.rst
    rllib-examples.rst
-   rllib-package-ref.rst
+   rllib/package_ref/index.rst
    rllib-dev.rst
 
 .. toctree::
