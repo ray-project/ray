@@ -759,8 +759,9 @@ def run_learning_tests_from_yaml(
 
                 # Record performance.
                 stats[experiment] = {
-                    "episode_reward_mean": episode_reward_mean,
-                    "throughput": throughput,
+                    "episode_reward_mean": float(episode_reward_mean),
+                    "throughput": (float(throughput)
+                                   if throughput is not None else 0.0),
                 }
 
                 print(f" ... Desired reward={desired_reward}; "
@@ -787,9 +788,9 @@ def run_learning_tests_from_yaml(
 
     # Create results dict and write it to disk.
     result = {
-        "time_taken": time_taken,
+        "time_taken": float(time_taken),
         "trial_states": dict(Counter([trial.status for trial in all_trials])),
-        "last_update": time.time(),
+        "last_update": float(time.time()),
         "stats": stats,
         "passed": [k for k, exp in checks.items() if exp["passed"]],
         "failures": {
