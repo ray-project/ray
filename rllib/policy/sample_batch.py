@@ -71,7 +71,7 @@ class SampleBatch(dict):
         as-is to the parent dict constructor.
 
         Keyword Args:
-            _time_major (Optinal[bool]): Whether data in this sample batch
+            _time_major (Optional[bool]): Whether data in this sample batch
                 is time-major. This is False by default and only relevant
                 if the data contains sequences.
             _max_seq_len (Optional[bool]): The max sequence chunk length
@@ -156,7 +156,7 @@ class SampleBatch(dict):
         self._slice_map = []
 
     @PublicAPI
-    def __len__(self):
+    def __len__(self) -> int:
         """Returns the amount of samples in the sample batch."""
         return self.count
 
@@ -168,12 +168,11 @@ class SampleBatch(dict):
         """Concatenates n SampleBatches or MultiAgentBatches.
 
         Args:
-            samples (Union[List[SampleBatch], List[MultiAgentBatch]]): List of
-                SampleBatches or MultiAgentBatches to be concatenated.
+            samples: List of SampleBatches or MultiAgentBatches to be
+                concatenated.
 
         Returns:
-            Union[SampleBatch, MultiAgentBatch]: A new (concatenated)
-                SampleBatch or MultiAgentBatch.
+            A new (concatenated) SampleBatch or MultiAgentBatch.
 
         Examples:
             >>> b1 = SampleBatch({"a": np.array([1, 2]),
@@ -238,12 +237,10 @@ class SampleBatch(dict):
         """Concatenates `other` to this one and returns a new SampleBatch.
 
         Args:
-            other (SampleBatch): The other SampleBatch object to concat to this
-                one.
+            other: The other SampleBatch object to concat to this one.
 
         Returns:
-            SampleBatch: The new SampleBatch, resulting from concating `other`
-                to `self`.
+            The new SampleBatch, resulting from concating `other` to `self`.
 
         Examples:
             >>> b1 = SampleBatch({"a": np.array([1, 2])})
@@ -258,10 +255,10 @@ class SampleBatch(dict):
         """Creates a deep or shallow copy of this SampleBatch and returns it.
 
         Args:
-            shallow (bool): Whether the copying should be done shallowly.
+            shallow: Whether the copying should be done shallowly.
 
         Returns:
-            SampleBatch: A deep or shallow copy of this SampleBatch object.
+            A deep or shallow copy of this SampleBatch object.
         """
         copy_ = {k: v for k, v in self.items()}
         data = tree.map_structure(
@@ -283,8 +280,7 @@ class SampleBatch(dict):
         Note that if `seq_lens` is set in self, we set it to [1] in the rows.
 
         Yields:
-            Dict[str, TensorType]: The column values of the row in this
-                iteration.
+            The column values of the row in this iteration.
 
         Examples:
             >>> batch = SampleBatch({
@@ -316,11 +312,11 @@ class SampleBatch(dict):
         """Returns a list of the batch-data in the specified columns.
 
         Args:
-            keys (List[str]): List of column names fo which to return the data.
+            keys: List of column names fo which to return the data.
 
         Returns:
-            List[any]: The list of data items ordered by the order of column
-                names in `keys`.
+            The list of data items ordered by the order of column
+            names in `keys`.
 
         Examples:
             >>> batch = SampleBatch({"a": [1], "b": [2], "c": [3]})
@@ -335,11 +331,11 @@ class SampleBatch(dict):
         return out
 
     @PublicAPI
-    def shuffle(self) -> None:
+    def shuffle(self) -> "SampleBatch":
         """Shuffles the rows of this batch in-place.
 
         Returns:
-            SampleBatch: This very (now shuffled) SampleBatch.
+            This very (now shuffled) SampleBatch.
 
         Raises:
             ValueError: If self[SampleBatch.SEQ_LENS] is defined.
@@ -381,7 +377,7 @@ class SampleBatch(dict):
         """Splits by `eps_id` column and returns list of new batches.
 
         Returns:
-            List[SampleBatch]: List of batches, one per distinct episode.
+            List of batches, one per distinct episode.
 
         Raises:
             KeyError: If the `eps_id` AND `dones` columns are not present.
