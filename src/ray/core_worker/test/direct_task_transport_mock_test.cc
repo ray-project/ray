@@ -79,7 +79,7 @@ TEST_F(DirectTaskTransportTest, ActorCreationFail) {
   auto task_spec = GetCreatingTaskSpec(actor_id);
   EXPECT_CALL(*task_finisher, CompletePendingTask(_, _, _)).Times(0);
   EXPECT_CALL(*task_finisher,
-              PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED,
+              FailOrRetryPendingTask(task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED,
                                 _, _, true));
   rpc::ClientCallback<rpc::CreateActorReply> create_cb;
   EXPECT_CALL(*actor_creator, AsyncCreateActor(task_spec, _))

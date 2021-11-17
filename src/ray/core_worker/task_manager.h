@@ -33,10 +33,10 @@ class TaskFinisherInterface {
 
   virtual bool RetryTaskIfPossible(const TaskID &task_id) = 0;
 
-  virtual bool PendingTaskFailed(
+  virtual bool FailOrRetryPendingTask(
       const TaskID &task_id, rpc::ErrorType error_type, const Status *status,
       const rpc::RayException *creation_task_exception = nullptr,
-      bool immediately_mark_object_fail = true) = 0;
+      bool mark_task_object_failed = true) = 0;
 
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
@@ -44,7 +44,7 @@ class TaskFinisherInterface {
 
   virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
 
-  virtual void MarkPendingTaskFailed(
+  virtual void MarkPendingTaskObjectFailed(
       const TaskSpecification &spec, rpc::ErrorType error_type,
       const rpc::RayException *creation_task_exception = nullptr) = 0;
 
@@ -142,17 +142,21 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] creation_task_exception If this arg is set, it means this task failed
   /// because the callee actor is dead caused by an exception thrown in creation task,
   /// only applies when error_type=ACTOR_DIED.
-  /// \param[in] immediately_mark_object_fail whether immediately mark the task
-  /// result object as failed.
+  /// \param[in] mark_task_object_failed whether or not it marks the task
+  /// return object as failed.
   /// \return Whether the task will be retried or not.
-  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
+  bool FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
                          const Status *status = nullptr,
                          const rpc::RayException *creation_task_exception = nullptr,
-                         bool immediately_mark_object_fail = true) override;
+                         bool mark_task_object_failed = true) override;
 
-  /// Treat a pending task as failed. The lock should not be held when calling
+  /// Treat a pending task's returned Ray object as failed. The lock should not be held when calling
   /// this method because it may trigger callbacks in this or other classes.
-  void MarkPendingTaskFailed(const TaskSpecification &spec, rpc::ErrorType error_type,
+  ///
+  /// \param[in] spec The TaskSpec that contains return object.
+  /// \param[in] error_type The error type the returned Ray object will store.
+  /// \param[in] creation_task_exception The serialized actor init exception.
+  void MarkPendingTaskObjectFailed(const TaskSpecification &spec, rpc::ErrorType error_type,
                              const rpc::RayException *creation_task_exception =
                                  nullptr) override LOCKS_EXCLUDED(mu_);
 
