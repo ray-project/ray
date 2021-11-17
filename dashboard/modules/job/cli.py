@@ -1,11 +1,14 @@
+import asyncio
 import json
 import logging
 import os
+import time
 from typing import Optional, Tuple
 import yaml
 
 import click
 
+from ray.dashboard.modules.job.common import JobStatus
 from ray.dashboard.modules.job.sdk import JobSubmissionClient
 
 logger = logging.getLogger(__name__)
@@ -22,6 +25,13 @@ def _get_sdk_client(address: Optional[str],
         address = os.environ["RAY_ADDRESS"]
 
     return JobSubmissionClient(address, create_cluster_if_needed)
+
+
+async def _tail_logs(client: JobSubmissionClient, job_id: str):
+    async for lines in client.tail_job_logs(job_id):
+        print(lines, end="")
+
+    logger.info(f"Job finished with status: {client.get_job_status(job_id)}.")
 
 
 @click.group("job")
@@ -66,10 +76,17 @@ def job_cli_group():
           "local directory or a remote URI to a .zip file (S3, GS, HTTP). "
           "If specified, this overrides the option in --runtime-env."),
 )
+@click.option(
+    "--no-wait",
+    is_flag=True,
+    type=bool,
+    default=False,
+    help="If set, will not tail logs and wait for the job to exit.")
 @click.argument("entrypoint", nargs=-1, required=True, type=click.UNPROCESSED)
 def job_submit(address: Optional[str], job_id: Optional[str],
                runtime_env: Optional[str], runtime_env_json: Optional[str],
-               working_dir: Optional[str], entrypoint: Tuple[str]):
+               working_dir: Optional[str], entrypoint: Tuple[str],
+               no_wait: bool):
     """Submits a job to be run on the cluster.
 
     Example:
@@ -104,6 +121,12 @@ def job_submit(address: Optional[str], job_id: Optional[str],
     logger.info(
         f"Query the status of the job using: `ray job status {job_id}`.")
 
+    if no_wait:
+        logger.info(
+            f"Query the logs of the job using: `ray job logs {job_id}`.")
+    else:
+        asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
+
 
 @job_cli_group.command("status", help="Get the status of a running job.")
 @click.option(
@@ -132,16 +155,36 @@ def job_status(address: Optional[str], job_id: str):
     required=False,
     help=("Address of the Ray cluster to connect to. Can also be specified "
           "using the RAY_ADDRESS environment variable."))
+@click.option(
+    "--no-wait",
+    is_flag=True,
+    type=bool,
+    default=False,
+    help="If set, will not wait for the job to exit.")
 @click.argument("job-id", type=str)
-def job_stop(address: Optional[str], job_id: str):
+def job_stop(address: Optional[str], no_wait: bool, job_id: str):
     """Attempts to stop a job.
 
     Example:
         >>> ray job stop <my_job_id>
     """
-    # TODO(edoakes): should we wait for the job to exit afterwards?
     client = _get_sdk_client(address)
+    logger.info(f"Attempting to stop job {job_id}.")
     client.stop_job(job_id)
+
+    if no_wait:
+        return
+
+    while True:
+        status = client.get_job_status(job_id)
+        if status in {
+                JobStatus.STOPPED, JobStatus.SUCCEEDED, JobStatus.FAILED
+        }:
+            logger.info(f"Job exited with status: {status}.")
+            break
+        else:
+            logger.info(f"Waiting for job to exit. Status: {status}.")
+            time.sleep(1)
 
 
 @job_cli_group.command("logs", help="Get the logs of a running job.")
@@ -153,11 +196,21 @@ def job_stop(address: Optional[str], job_id: str):
     help=("Address of the Ray cluster to connect to. Can also be specified "
           "using the RAY_ADDRESS environment variable."))
 @click.argument("job-id", type=str)
-def job_logs(address: Optional[str], job_id: str):
+@click.option(
+    "-f",
+    "--follow",
+    is_flag=True,
+    type=bool,
+    default=False,
+    help="If set, follow the logs (like `tail -f`).")
+def job_logs(address: Optional[str], job_id: str, follow: bool):
     """Gets the logs of a job.
 
     Example:
         >>> ray job logs <my_job_id>
     """
     client = _get_sdk_client(address)
-    print(client.get_job_logs(job_id), end="")
+    if follow:
+        asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
+    else:
+        print(client.get_job_logs(job_id), end="")
