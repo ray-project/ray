@@ -11,14 +11,6 @@ from ray.tune.trial import Trial
 logger = logging.getLogger(__name__)
 
 
-def _import_mlflow():
-    try:
-        import mlflow
-    except ImportError:
-        mlflow = None
-    return mlflow
-
-
 class MLflowLoggerCallback(LoggerCallback):
     """MLflow Logger to automatically log Tune results and config to MLflow.
 
