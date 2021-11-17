@@ -54,6 +54,7 @@ class _ColorfulMock:
 try:
     import colorful as _cf
     from colorful.core import ColorfulString
+    _cf.use_8_ansi_colors()
 except ModuleNotFoundError:
     # We mock Colorful to restrict the colors used for consistency
     # anyway, so we also allow for not having colorful at all.
