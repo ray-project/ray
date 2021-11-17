@@ -421,7 +421,8 @@ Process WorkerPool::StartWorkerProcess(
                                worker_type);
   state.starting_worker_processes.emplace(
       worker_startup_token_counter_,
-      StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc, start});
+      StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc,
+                                start});
   update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
@@ -616,7 +617,8 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   }
   auto &starting_process_info = it->second;
   auto end = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - starting_process_info.start_time);
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      end - starting_process_info.start_time);
   stats::WorkerRegisterTimeMs.Record(duration.count());
   RAY_LOG(DEBUG) << "Registering worker " << worker->WorkerId() << " with pid " << pid
                  << ", port: " << port << ", register cost: " << duration.count()
