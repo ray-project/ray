@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import random
 import re
-from typing import List, Optional
+from typing import List, Optional, Union
 from urllib.parse import urlparse
 import zipfile
 
@@ -32,17 +32,20 @@ WINDOWS_DRIVES = [chr(i) for i in range(ord("c"), ord("z") + 1)]
 class JsonReader(InputReader):
     """Reader object that loads experiences from JSON file chunks.
 
-    The input files will be read from in an random order."""
+    The input files will be read from in random order.
+    """
 
     @PublicAPI
-    def __init__(self, inputs: List[str], ioctx: IOContext = None):
-        """Initialize a JsonReader.
+    def __init__(self,
+                 inputs: Union[str, List[str]],
+                 ioctx: Optional[IOContext] = None):
+        """Initializes a JsonReader instance.
 
         Args:
-            inputs (str|list): Either a glob expression for files, e.g.,
-                "/tmp/**/*.json", or a list of single file paths or URIs, e.g.,
+            inputs: Either a glob expression for files, e.g. `/tmp/**/*.json`,
+                or a list of single file paths or URIs, e.g.,
                 ["s3://bucket/file.json", "s3://bucket/file2.json"].
-            ioctx (IOContext): Current IO context object.
+            ioctx: Current IO context object or None.
         """
 
         self.ioctx = ioctx or IOContext()
@@ -72,8 +75,8 @@ class JsonReader(InputReader):
                 self.files = []
                 for i in inputs:
                     self.files.extend(glob.glob(i))
-        elif type(inputs) is list:
-            self.files = inputs
+        elif isinstance(inputs, (list, tuple)):
+            self.files = list(inputs)
         else:
             raise ValueError(
                 "type of inputs must be list or str, not {}".format(inputs))
@@ -97,6 +100,26 @@ class JsonReader(InputReader):
                     self.cur_file))
 
         return self._postprocess_if_needed(batch)
+
+    def read_all_files(self) -> SampleBatchType:
+        """Reads through all files and yields one SampleBatchType per line.
+
+        When reaching the end of the last file, will start from the beginning
+        again.
+
+        Yields:
+            One SampleBatch or MultiAgentBatch per line in all input files.
+        """
+        for path in self.files:
+            file = self._try_open_file(path)
+            while True:
+                line = file.readline()
+                if not line:
+                    break
+                batch = self._try_parse(line)
+                if batch is None:
+                    break
+                yield batch
 
     def _postprocess_if_needed(self,
                                batch: SampleBatchType) -> SampleBatchType:
@@ -123,6 +146,10 @@ class JsonReader(InputReader):
                     "from URIs like {}".format(path))
             ctx = smart_open
         else:
+            # Allow shortcut for home directory ("~/" -> env[HOME]).
+            if path.startswith("~/"):
+                path = os.path.join(os.environ.get("HOME", ""), path[2:])
+
             # If path doesn't exist, try to interpret is as relative to the
             # rllib directory (located ../../ from this very module).
             path_orig = path
@@ -177,18 +204,6 @@ class JsonReader(InputReader):
                         b[SampleBatch.ACTIONS],
                         self.ioctx.worker.policy_map[pid].action_space_struct)
         return batch
-
-    def read_all_files(self):
-        for path in self.files:
-            file = self._try_open_file(path)
-            while True:
-                line = file.readline()
-                if not line:
-                    break
-                batch = self._try_parse(line)
-                if batch is None:
-                    break
-                yield batch
 
     def _next_line(self) -> str:
         if not self.cur_file:

@@ -14,9 +14,15 @@ class TrialScheduler:
 
     _metric = None
 
+    _supports_buffered_results = True
+
     @property
     def metric(self):
         return self._metric
+
+    @property
+    def supports_buffered_results(self):
+        return self._supports_buffered_results
 
     def set_search_properties(self, metric: Optional[str],
                               mode: Optional[str]) -> bool:
@@ -134,11 +140,13 @@ class FIFOScheduler(TrialScheduler):
             self, trial_runner: "trial_runner.TrialRunner") -> Optional[Trial]:
         for trial in trial_runner.get_trials():
             if (trial.status == Trial.PENDING
-                    and trial_runner.has_resources_for_trial(trial)):
+                    and trial_runner.trial_executor.has_resources_for_trial(
+                        trial)):
                 return trial
         for trial in trial_runner.get_trials():
             if (trial.status == Trial.PAUSED
-                    and trial_runner.has_resources_for_trial(trial)):
+                    and trial_runner.trial_executor.has_resources_for_trial(
+                        trial)):
                 return trial
         return None
 

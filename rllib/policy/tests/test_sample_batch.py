@@ -213,6 +213,16 @@ class TestSampleBatch(unittest.TestCase):
                 SampleBatch.SEQ_LENS: [2, 3],
                 "state_in_0": [1.0, 3.0],
             })
+        # Split above seq-len boundary.
+        check(
+            s2[:50], {
+                "a": [1, 2, 3, 2, 3, 4],
+                "b": {
+                    "c": [4, 5, 6, 5, 6, 7]
+                },
+                SampleBatch.SEQ_LENS: [2, 3, 1],
+                "state_in_0": [1.0, 3.0, 4.0],
+            })
         check(
             s2[:], {
                 "a": [1, 2, 3, 2, 3, 4],

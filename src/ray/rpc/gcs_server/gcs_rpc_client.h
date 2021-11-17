@@ -102,8 +102,6 @@ class GcsRpcClient {
                                                                  client_call_manager);
     heartbeat_info_grpc_client_ = std::make_unique<GrpcClient<HeartbeatInfoGcsService>>(
         address, port, client_call_manager);
-    object_info_grpc_client_ = std::make_unique<GrpcClient<ObjectInfoGcsService>>(
-        address, port, client_call_manager);
     task_info_grpc_client_ = std::make_unique<GrpcClient<TaskInfoGcsService>>(
         address, port, client_call_manager);
     stats_grpc_client_ =
@@ -114,6 +112,8 @@ class GcsRpcClient {
         std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(address, port,
                                                                    client_call_manager);
     internal_kv_grpc_client_ = std::make_unique<GrpcClient<InternalKVGcsService>>(
+        address, port, client_call_manager);
+    internal_pubsub_grpc_client_ = std::make_unique<GrpcClient<InternalPubSubGcsService>>(
         address, port, client_call_manager);
   }
 
@@ -162,7 +162,7 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, RegisterNode, node_info_grpc_client_, )
 
   /// Unregister a node from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, UnregisterNode, node_info_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, DrainNode, node_info_grpc_client_, )
 
   /// Get information of all nodes from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService, GetAllNodeInfo, node_info_grpc_client_, )
@@ -202,22 +202,6 @@ class GcsRpcClient {
   /// Check GCS is alive.
   VOID_GCS_RPC_CLIENT_METHOD(HeartbeatInfoGcsService, CheckAlive,
                              heartbeat_info_grpc_client_, )
-
-  /// Get object's locations from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetObjectLocations,
-                             object_info_grpc_client_, )
-
-  /// Get all object's locations from GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, GetAllObjectLocations,
-                             object_info_grpc_client_, )
-
-  /// Add location of object to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, AddObjectLocation,
-                             object_info_grpc_client_, )
-
-  /// Remove location of object to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(ObjectInfoGcsService, RemoveObjectLocation,
-                             object_info_grpc_client_, )
 
   /// Add a task to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(TaskInfoGcsService, AddTask, task_info_grpc_client_, )
@@ -292,6 +276,13 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVKeys,
                              internal_kv_grpc_client_, )
 
+  /// Operations for pubsub
+  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService, GcsPublish,
+                             internal_pubsub_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService, GcsSubscriberPoll,
+                             internal_pubsub_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService, GcsSubscriberCommandBatch,
+                             internal_pubsub_grpc_client_, )
  private:
   std::function<void(GcsServiceFailureType)> gcs_service_failure_detected_;
 
@@ -301,13 +292,13 @@ class GcsRpcClient {
   std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
   std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>> node_resource_info_grpc_client_;
   std::unique_ptr<GrpcClient<HeartbeatInfoGcsService>> heartbeat_info_grpc_client_;
-  std::unique_ptr<GrpcClient<ObjectInfoGcsService>> object_info_grpc_client_;
   std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
   std::unique_ptr<GrpcClient<StatsGcsService>> stats_grpc_client_;
   std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
   std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>
       placement_group_info_grpc_client_;
   std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
+  std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
 };
 
 }  // namespace rpc

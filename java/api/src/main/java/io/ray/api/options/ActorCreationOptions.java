@@ -4,14 +4,12 @@ import io.ray.api.Ray;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.placementgroup.PlacementGroup;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /** The options for creating actor. */
 public class ActorCreationOptions extends BaseTaskOptions {
-  public final boolean global;
   public final String name;
   public final int maxRestarts;
   public final List<String> jvmOptions;
@@ -21,7 +19,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
   public final List<ConcurrencyGroup> concurrencyGroups;
 
   private ActorCreationOptions(
-      boolean global,
       String name,
       Map<String, Double> resources,
       int maxRestarts,
@@ -31,7 +28,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
       int bundleIndex,
       List<ConcurrencyGroup> concurrencyGroups) {
     super(resources);
-    this.global = global;
     this.name = name;
     this.maxRestarts = maxRestarts;
     this.jvmOptions = jvmOptions;
@@ -43,7 +39,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
   /** The inner class for building ActorCreationOptions. */
   public static class Builder {
-    private boolean global;
     private String name;
     private Map<String, Double> resources = new HashMap<>();
     private int maxRestarts = 0;
@@ -54,30 +49,15 @@ public class ActorCreationOptions extends BaseTaskOptions {
     private List<ConcurrencyGroup> concurrencyGroups = new ArrayList<>();
 
     /**
-     * Set the actor name of a named actor. This named actor is only accessible from this job by
-     * this name via {@link Ray#getActor(java.lang.String)}. If you want create a named actor that
-     * is accessible from all jobs, use {@link Builder#setGlobalName(java.lang.String)} instead.
+     * Set the actor name of a named actor. This named actor is accessible in this namespace by this
+     * name via {@link Ray#getActor(java.lang.String)} and in other namespaces via {@link
+     * Ray#getActor(java.lang.String, java.lang.String)}.
      *
      * @param name The name of the named actor.
      * @return self
      */
     public Builder setName(String name) {
       this.name = name;
-      this.global = false;
-      return this;
-    }
-
-    /**
-     * Set the name of this actor. This actor will be accessible from all jobs by this name via
-     * {@link Ray#getGlobalActor(java.lang.String)}. If you want to create a named actor that is
-     * only accessible from this job, use {@link Builder#setName(java.lang.String)} instead.
-     *
-     * @param name The name of the named actor.
-     * @return self
-     */
-    public Builder setGlobalName(String name) {
-      this.name = name;
-      this.global = true;
       return this;
     }
 
@@ -128,20 +108,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
      *
      * @param jvmOptions JVM options for the Java worker that this actor is running in.
      * @return self
-     * @deprecated Use {@link #setJvmOptions(List)} instead.
-     */
-    public Builder setJvmOptions(String jvmOptions) {
-      this.jvmOptions = Arrays.asList(jvmOptions.split(" +"));
-      return this;
-    }
-
-    /**
-     * Set the JVM options for the Java worker that this actor is running in.
-     *
-     * <p>Note, if this is set, this actor won't share Java worker with other actors or tasks.
-     *
-     * @param jvmOptions JVM options for the Java worker that this actor is running in.
-     * @return self
      */
     public Builder setJvmOptions(List<String> jvmOptions) {
       this.jvmOptions = jvmOptions;
@@ -181,7 +147,6 @@ public class ActorCreationOptions extends BaseTaskOptions {
 
     public ActorCreationOptions build() {
       return new ActorCreationOptions(
-          global,
           name,
           resources,
           maxRestarts,

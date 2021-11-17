@@ -16,9 +16,9 @@
 
 #include <vector>
 
+#include "absl/functional/bind_front.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/ray_object.h"
@@ -44,10 +44,13 @@ class ReferenceCountTest : public ::testing::Test {
   }
 
   virtual void TearDown() {
+    AssertNoLeaks();
     publisher_.reset();
     subscriber_.reset();
     rc.reset();
   }
+
+  void AssertNoLeaks() { ASSERT_EQ(rc->NumObjectIDsInScope(), 0); }
 
   std::shared_ptr<mock_pubsub::MockPublisher> publisher_;
   std::shared_ptr<mock_pubsub::MockSubscriber> subscriber_;
@@ -81,7 +84,8 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
 class MockDistributedSubscriber;
 class MockDistributedPublisher;
 
-using ObjectToCallbackMap = std::unordered_map<ObjectID, pubsub::SubscriptionCallback>;
+using ObjectToCallbackMap =
+    std::unordered_map<ObjectID, pubsub::SubscriptionItemCallback>;
 using ObjectToFailureCallbackMap =
     std::unordered_map<ObjectID, pubsub::SubscriptionFailureCallback>;
 using SubscriptionCallbackMap = std::unordered_map<std::string, ObjectToCallbackMap>;
@@ -91,7 +95,7 @@ using SubscriptionFailureCallbackMap =
 // static maps are used to simulate distirubted environment.
 static SubscriptionCallbackMap subscription_callback_map;
 static SubscriptionFailureCallbackMap subscription_failure_callback_map;
-static pubsub::pub_internal::SubscriptionIndex<ObjectID> directory;
+static pubsub::pub_internal::SubscriptionIndex directory;
 
 static std::string GenerateID(UniqueID publisher_id, UniqueID subscriber_id) {
   return publisher_id.Binary() + subscriber_id.Binary();
@@ -110,7 +114,7 @@ using PublisherFactoryFn =
 class MockDistributedSubscriber : public pubsub::SubscriberInterface {
  public:
   MockDistributedSubscriber(
-      pubsub::pub_internal::SubscriptionIndex<ObjectID> *directory,
+      pubsub::pub_internal::SubscriptionIndex *directory,
       SubscriptionCallbackMap *subscription_callback_map,
       SubscriptionFailureCallbackMap *subscription_failure_callback_map,
       WorkerID subscriber_id, PublisherFactoryFn client_factory)
@@ -122,11 +126,12 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
 
   ~MockDistributedSubscriber() = default;
 
-  void Subscribe(
+  bool Subscribe(
       const std::unique_ptr<rpc::SubMessage> sub_message,
       const rpc::ChannelType channel_type, const rpc::Address &publisher_address,
       const std::string &key_id_binary,
-      pubsub::SubscriptionCallback subscription_callback,
+      pubsub::SubscribeDoneCallback subscribe_done_callback,
+      pubsub::SubscriptionItemCallback subscription_callback,
       pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
     const auto &request = sub_message->worker_ref_removed_message();
     // Register the borrower callback first. It will be flushable by
@@ -138,7 +143,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
       client_factory_(publisher_address)
           ->WaitForRefRemoved(object_id, contained_in_id, owner_address);
     }
-    // Due to the test env, there are times that the same mssage id from the same
+    // Due to the test env, there are times that the same message id from the same
     // subscriber is subscribed twice. We should just no-op in this case.
     if (!(directory_->HasKeyId(key_id_binary) &&
           directory_->HasSubscriber(subscriber_id_))) {
@@ -160,7 +165,17 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
 
     const auto oid = ObjectID::FromBinary(key_id_binary);
     callback_it->second.emplace(oid, subscription_callback);
-    failure_callback_it->second.emplace(oid, subscription_failure_callback);
+    return failure_callback_it->second.emplace(oid, subscription_failure_callback).second;
+  }
+
+  bool SubscribeChannel(
+      const std::unique_ptr<rpc::SubMessage> sub_message,
+      const rpc::ChannelType channel_type, const rpc::Address &publisher_address,
+      pubsub::SubscribeDoneCallback subscribe_done_callback,
+      pubsub::SubscriptionItemCallback subscription_callback,
+      pubsub::SubscriptionFailureCallback subscription_failure_callback) override {
+    RAY_LOG(FATAL) << "Unimplemented!";
+    return false;
   }
 
   bool Unsubscribe(const rpc::ChannelType channel_type,
@@ -169,12 +184,24 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
     return true;
   }
 
+  bool UnsubscribeChannel(const rpc::ChannelType channel_type,
+                          const rpc::Address &publisher_address) override {
+    return true;
+  }
+
+  bool IsSubscribed(const rpc::ChannelType channel_type,
+                    const rpc::Address &publisher_address,
+                    const std::string &key_id_binary) const override {
+    return directory_->HasKeyId(key_id_binary) &&
+           directory_->HasSubscriber(subscriber_id_);
+  }
+
   std::string DebugString() const override {
     RAY_LOG(FATAL) << "No need to implement it for testing.";
     return "";
   }
 
-  pubsub::pub_internal::SubscriptionIndex<ObjectID> *directory_;
+  pubsub::pub_internal::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
   WorkerID subscriber_id_;
@@ -184,7 +211,7 @@ class MockDistributedSubscriber : public pubsub::SubscriberInterface {
 class MockDistributedPublisher : public pubsub::PublisherInterface {
  public:
   MockDistributedPublisher(
-      pubsub::pub_internal::SubscriptionIndex<ObjectID> *directory,
+      pubsub::pub_internal::SubscriptionIndex *directory,
       SubscriptionCallbackMap *subscription_callback_map,
       SubscriptionFailureCallbackMap *subscription_failure_callback_map,
       WorkerID publisher_id)
@@ -196,7 +223,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
 
   bool RegisterSubscription(const rpc::ChannelType channel_type,
                             const pubsub::SubscriberID &subscriber_id,
-                            const std::string &key_id_binary) {
+                            const std::optional<std::string> &key_id_binary) {
     RAY_CHECK(false) << "No need to implement it for testing.";
     return false;
   }
@@ -206,10 +233,9 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
     RAY_LOG(FATAL) << "No need to implement it for testing.";
   }
 
-  void Publish(const rpc::ChannelType channel_type, const rpc::PubMessage &pub_message,
-               const std::string &key_id_binary) {
-    auto maybe_subscribers = directory_->GetSubscriberIdsByKeyId(key_id_binary);
-    const auto oid = ObjectID::FromBinary(key_id_binary);
+  void Publish(const rpc::PubMessage &pub_message) {
+    auto maybe_subscribers = directory_->GetSubscriberIdsByKeyId(pub_message.key_id());
+    const auto oid = ObjectID::FromBinary(pub_message.key_id());
     RAY_CHECK(maybe_subscribers.has_value());
     for (const auto &subscriber_id : maybe_subscribers.value().get()) {
       const auto id = GenerateID(publisher_id_, subscriber_id);
@@ -223,11 +249,11 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
 
   bool UnregisterSubscription(const rpc::ChannelType channel_type,
                               const pubsub::SubscriberID &subscriber_id,
-                              const std::string &key_id_binary) {
+                              const std::optional<std::string> &key_id_binary) {
     return true;
   }
 
-  pubsub::pub_internal::SubscriptionIndex<ObjectID> *directory_;
+  pubsub::pub_internal::SubscriptionIndex *directory_;
   SubscriptionCallbackMap *subscription_callback_map_;
   SubscriptionFailureCallbackMap *subscription_failure_callback_map_;
   WorkerID publisher_id_;
@@ -236,7 +262,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
 class MockWorkerClient : public MockCoreWorkerClientInterface {
  public:
   // Helper function to generate a random address.
-  rpc::Address CreateRandomAddress(const std::string &addr) {
+  static rpc::Address CreateRandomAddress(const std::string &addr) {
     rpc::Address address;
     address.set_ip_address(addr);
     address.set_raylet_id(NodeID::FromRandom().Binary());
@@ -255,13 +281,19 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
         rc_(rpc::WorkerAddress(address_), publisher_.get(), subscriber_.get(),
             /*lineage_pinning_enabled=*/false, client_factory) {}
 
+  ~MockWorkerClient() override {
+    if (!failed_) {
+      AssertNoLeaks();
+    }
+  }
+
   void WaitForRefRemoved(const ObjectID object_id, const ObjectID contained_in_id,
                          rpc::Address owner_address) override {
     auto r = num_requests_;
 
     auto borrower_callback = [=]() {
       auto ref_removed_callback =
-          boost::bind(&ReferenceCounter::HandleRefRemoved, &rc_, _1);
+          absl::bind_front(&ReferenceCounter::HandleRefRemoved, &rc_);
       rc_.SetRefRemovedCallback(object_id, contained_in_id, owner_address,
                                 ref_removed_callback);
     };
@@ -276,10 +308,12 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     if (borrower_callbacks_.empty()) {
       return false;
     } else {
-      for (auto &callback : borrower_callbacks_) {
+      // Copy borrower callbacks in case we modify during the callbacks.
+      auto borrower_callbacks_copy = borrower_callbacks_;
+      borrower_callbacks_.clear();
+      for (auto &callback : borrower_callbacks_copy) {
         callback.second();
       }
-      borrower_callbacks_.clear();
       return true;
     }
   }
@@ -291,10 +325,11 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
       for (const auto &callback_it : callback_map) {
         const auto object_id = callback_it.first;
         const auto failure_callback = callback_it.second;
-        failure_callback(object_id.Binary());
+        failure_callback(object_id.Binary(), Status::UnknownError("Test failure"));
       }
     }
     subscription_failure_callback_map.clear();
+    failed_ = true;
   }
 
   // The below methods mirror a core worker's operations, e.g., `Put` simulates
@@ -302,6 +337,11 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   void Put(const ObjectID &object_id) {
     rc_.AddOwnedObject(object_id, {}, address_, "", 0, false);
     rc_.AddLocalReference(object_id, "");
+  }
+
+  void PutWithForeignOwner(const ObjectID &object_id, const rpc::Address &owner_address) {
+    rc_.AddLocalReference(object_id, "");
+    rc_.AddBorrowedObject(object_id, {}, owner_address, /*foreign=*/true);
   }
 
   void PutWrappedId(const ObjectID outer_id, const ObjectID &inner_id) {
@@ -324,11 +364,14 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   }
 
   ObjectID SubmitTaskWithArg(const ObjectID &arg_id) {
-    rc_.UpdateSubmittedTaskReferences({arg_id});
+    if (!arg_id.IsNil()) {
+      rc_.UpdateSubmittedTaskReferences({arg_id});
+    }
     ObjectID return_id = ObjectID::FromRandom();
     rc_.AddOwnedObject(return_id, {}, address_, "", 0, false);
     // Add a sentinel reference to keep all nested object IDs in scope.
     rc_.AddLocalReference(return_id, "");
+    return_ids_.push_back(return_id);
     return return_id;
   }
 
@@ -342,9 +385,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
 
     ReferenceCounter::ReferenceTableProto refs;
     if (!arg_id.IsNil()) {
-      rc_.GetAndClearLocalBorrowers({arg_id}, &refs);
-      // Remove the sentinel reference.
-      rc_.RemoveLocalReference(arg_id, nullptr);
+      rc_.PopAndClearLocalBorrowers({arg_id}, &refs, nullptr);
     }
     return refs;
   }
@@ -355,6 +396,10 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
       const rpc::Address &borrower_address = empty_borrower,
       const ReferenceCounter::ReferenceTableProto &borrower_refs = empty_refs) {
     std::vector<ObjectID> arguments;
+    for (const auto &pair : nested_return_ids) {
+      // NOTE(swang): https://github.com/ray-project/ray/issues/17553.
+      rc_.AddNestedObjectIds(pair.first, pair.second, address_);
+    }
     if (!arg_id.IsNil()) {
       arguments.push_back(arg_id);
     }
@@ -363,6 +408,18 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   }
 
   WorkerID GetID() const { return WorkerID::FromBinary(address_.worker_id()); }
+
+  void AssertNoLeaks() {
+    for (const auto &return_id : return_ids_) {
+      if (rc_.HasReference(return_id)) {
+        rc_.RemoveLocalReference(return_id, nullptr);
+      }
+    }
+    for (const auto &id : rc_.GetAllInScopeObjectIDs()) {
+      RAY_LOG(INFO) << id;
+    }
+    ASSERT_EQ(rc_.NumObjectIDsInScope(), 0);
+  }
 
   // Global map from Worker ID -> MockWorkerClient.
   // Global map from Object ID -> owner worker ID, list of objects that it depends on,
@@ -375,6 +432,8 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   ReferenceCounter rc_;
   std::unordered_map<int, std::function<void()>> borrower_callbacks_;
   int num_requests_ = 0;
+  std::vector<ObjectID> return_ids_;
+  bool failed_ = false;
 };
 
 // Tests basic incrementing/decrementing of direct/submitted task reference counts. An
@@ -504,6 +563,9 @@ TEST_F(ReferenceCountTest, TestReferenceStats) {
   ASSERT_EQ(stats2.object_refs(0).local_ref_count(), 0);
   ASSERT_EQ(stats2.object_refs(0).object_size(), 100);
   ASSERT_EQ(stats2.object_refs(0).call_site(), "file2.py:43");
+
+  rc->AddLocalReference(id2, "");
+  rc->RemoveLocalReference(id2, nullptr);
 }
 
 // Tests fetching of locality data from reference table.
@@ -571,6 +633,11 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
                      absl::optional<NodeID>(node2));
   auto locality_data_obj2_no_object_size = rc->GetLocalityData(obj2);
   ASSERT_FALSE(locality_data_obj2_no_object_size.has_value());
+
+  rc->AddLocalReference(obj1, "");
+  rc->RemoveLocalReference(obj1, nullptr);
+  rc->AddLocalReference(obj2, "");
+  rc->RemoveLocalReference(obj2, nullptr);
 }
 
 // Tests that we can get the owner address correctly for objects that we own,
@@ -597,6 +664,12 @@ TEST_F(ReferenceCountTest, TestOwnerAddress) {
   ASSERT_FALSE(rc->GetOwner(object_id3, &added_address));
   rc->AddLocalReference(object_id3, "");
   ASSERT_FALSE(rc->GetOwner(object_id3, &added_address));
+
+  rc->AddLocalReference(object_id, "");
+  rc->RemoveLocalReference(object_id, nullptr);
+  rc->AddLocalReference(object_id2, "");
+  rc->RemoveLocalReference(object_id2, nullptr);
+  rc->RemoveLocalReference(object_id3, nullptr);
 }
 
 // Tests that the ref counts are properly integrated into the local
@@ -611,7 +684,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
   auto subscriber = std::make_shared<mock_pubsub::MockSubscriber>();
   auto rc = std::shared_ptr<ReferenceCounter>(new ReferenceCounter(
       rpc::WorkerAddress(rpc::Address()), publisher.get(), subscriber.get()));
-  CoreWorkerMemoryStore store(nullptr, rc);
+  CoreWorkerMemoryStore store(rc);
 
   // Tests putting an object with no references is ignored.
   RAY_CHECK(store.Put(buffer, id2));
@@ -1474,6 +1547,100 @@ TEST(DistributedReferenceCountTest, TestDuplicateBorrower) {
   ASSERT_FALSE(owner->rc_.HasReference(outer_id));
 }
 
+// Two tasks execute on the same worker. After the inner object id returned is
+// transited twice on the same worker, a WaitForRefRemoved RPC is still able
+// to retrieve the right containment metadata about the inner id.
+//
+// This unit test covers scenarios from test_dataset.py::test_callable_classes
+// and test_dataset_pipeline.py::test_pipeline_actors.
+//
+// @ray.remote
+// def owner_task1():
+//     inner_id = ray.put(data, _owner=owner)
+//     return inner_id
+//
+// @ray.remote
+// def owner_task2(x):
+//     ray.put(data, _owner=owner)
+//
+// return_id = owner_task1.remote()
+// inner_id = ray.get(outer_id)[0]
+// return_id2 = owner_task2.remote(inner_id)
+//
+TEST(DistributedReferenceCountTest, TestForeignOwner) {
+  auto caller = std::make_shared<MockWorkerClient>("1");
+  auto owner = std::make_shared<MockWorkerClient>("2");
+  auto foreign_owner =
+      std::make_shared<MockWorkerClient>("3", [&](const rpc::Address &addr) {
+        if (addr.ip_address() == owner->address_.ip_address()) {
+          return owner;
+        } else
+          return caller;
+      });
+
+  //
+  // Phase 1 -- submit and execute owner_task1()
+  //
+  // Caller submits a task.
+  auto return_id = caller->SubmitTaskWithArg(ObjectID::Nil());
+  // Task returns inner_id as its return value.
+  auto inner_id = ObjectID::FromRandom();
+  owner->PutWithForeignOwner(inner_id, foreign_owner->address_);
+  rpc::WorkerAddress addr(caller->address_);
+  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
+  auto refs = owner->FinishExecutingTask(ObjectID::Nil(), return_id, &inner_id, &addr);
+  ASSERT_TRUE(refs.empty());
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
+  // Caller receives the owner's message, but inner_id is still in scope
+  // because caller has a reference to return_id.
+  caller->HandleSubmittedTaskFinished(ObjectID::Nil(), {{return_id, {inner_id}}});
+  ASSERT_TRUE(caller->rc_.HasReference(inner_id));
+
+  //
+  // Phase 2 -- submit and execute owner_task2(x)
+  //
+  auto return_id2 = caller->SubmitTaskWithArg(return_id);
+  caller->rc_.RemoveLocalReference(return_id, nullptr);
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(caller->rc_.HasReference(inner_id));
+  caller->rc_.RemoveLocalReference(return_id2, nullptr);
+  // Owner receives a reference to inner_id. It still has a reference when
+  // the task returns.
+  owner->ExecuteTaskWithArg(return_id, inner_id, caller->address_);
+  auto refs2 = owner->FinishExecutingTask(return_id, return_id2);
+  // owner merges ref count into the caller.
+  caller->HandleSubmittedTaskFinished(return_id, {}, owner->address_, refs2);
+  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_.HasReference(return_id));
+  ASSERT_FALSE(caller->rc_.HasReference(return_id));
+  ASSERT_FALSE(owner->rc_.HasReference(return_id2));
+  ASSERT_FALSE(caller->rc_.HasReference(return_id2));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  //
+  // Phase 3 -- foreign owner gets ref removed information.
+  //
+  // Emulate ref removed callback.
+  foreign_owner->rc_.AddOwnedObject(inner_id, {}, foreign_owner->address_, "", 0, false);
+  foreign_owner->rc_.AddBorrowerAddress(inner_id, owner->address_);
+
+  // Foreign owner waits on owner.
+  ASSERT_TRUE(owner->FlushBorrowerCallbacks());
+  ASSERT_TRUE(foreign_owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(caller->FlushBorrowerCallbacks());
+  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  caller->rc_.RemoveLocalReference(inner_id, nullptr);
+
+  // Foreign owner waits on caller next.
+  ASSERT_TRUE(caller->FlushBorrowerCallbacks());
+  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(foreign_owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(caller->rc_.HasReference(inner_id));
+}
+
 // A borrower is given references to 2 different objects, which each contain a
 // reference to an object ID. The borrower unwraps both objects and receives a
 // duplicate reference to the inner ID.
@@ -2122,6 +2289,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestBasicLineage) {
   rc->SetReleaseLineageCallback(
       [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
         lineage_deleted.push_back(object_id);
+        return 0;
       });
 
   // We should not keep lineage for borrowed objects.
@@ -2167,6 +2335,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
         if (i > 0) {
           ids_to_release->push_back(ids[i - 1]);
         }
+        return 0;
       });
 
   for (size_t i = 0; i < ids.size() - 1; i++) {
@@ -2199,6 +2368,53 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
   ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
 }
 
+TEST_F(ReferenceCountLineageEnabledTest, TestEvictLineage) {
+  std::vector<ObjectID> ids;
+  for (int i = 0; i < 3; i++) {
+    ObjectID id = ObjectID::FromRandom();
+    ids.push_back(id);
+    rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true);
+  }
+  std::vector<ObjectID> lineage_deleted;
+  rc->SetReleaseLineageCallback(
+      [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+        lineage_deleted.push_back(object_id);
+        if (object_id == ids[1]) {
+          // ID1 depends on ID0.
+          ids_to_release->push_back(ids[0]);
+        }
+
+        return 10;
+      });
+
+  // ID1 depends on ID0.
+  rc->UpdateSubmittedTaskReferences({ids[0]});
+  rc->UpdateFinishedTaskReferences({ids[0]}, /*release_lineage=*/false, empty_borrower,
+                                   empty_refs, nullptr);
+  rc->AddLocalReference(ids[1], "");
+  rc->AddLocalReference(ids[2], "");
+
+  bool lineage_evicted = false;
+  for (const auto &id : ids) {
+    ASSERT_TRUE(rc->IsObjectReconstructable(id, &lineage_evicted));
+    ASSERT_FALSE(lineage_evicted);
+  }
+
+  // IDs 0 and 1 should be evicted because they were created before ID2, and
+  // ID1 depends on ID0.
+  auto bytes_evicted = rc->EvictLineage(10);
+  ASSERT_EQ(bytes_evicted, 20);
+  ASSERT_EQ(lineage_deleted.size(), 2);
+  ASSERT_FALSE(rc->HasReference(ids[0]));
+  ASSERT_TRUE(rc->HasReference(ids[1]));
+  ASSERT_TRUE(rc->HasReference(ids[2]));
+  // ID1 is no longer reconstructable due to lineage eviction.
+  ASSERT_FALSE(rc->IsObjectReconstructable(ids[1], &lineage_evicted));
+  ASSERT_TRUE(lineage_evicted);
+  ASSERT_TRUE(rc->IsObjectReconstructable(ids[2], &lineage_evicted));
+  ASSERT_FALSE(lineage_evicted);
+}
+
 TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
   std::vector<ObjectID> out;
   std::vector<ObjectID> lineage_deleted;
@@ -2209,6 +2425,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
   rc->SetReleaseLineageCallback(
       [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
         lineage_deleted.push_back(object_id);
+        return 0;
       });
 
   // Local references.
@@ -2331,6 +2548,175 @@ TEST_F(ReferenceCountTest, TestRemoveOwnedObject) {
   ASSERT_TRUE(rc->HasReference(id));
   rc->RemoveOwnedObject(id);
   ASSERT_FALSE(rc->HasReference(id));
+}
+
+TEST_F(ReferenceCountTest, TestGetObjectStatusReplyDelayed) {
+  // https://github.com/ray-project/ray/issues/18557.
+  // Check that we track an ObjectRef nested inside another borrowed ObjectRef.
+  ObjectID outer_id = ObjectID::FromRandom();
+  ObjectID inner_id = ObjectID::FromRandom();
+
+  // We have a reference to the borrowed ObjectRef.
+  rpc::Address owner_address(MockWorkerClient::CreateRandomAddress("1234"));
+  rc->AddLocalReference(outer_id, "");
+  rc->AddBorrowedObject(outer_id, ObjectID::Nil(), owner_address);
+  ASSERT_TRUE(rc->HasReference(outer_id));
+  // Task finishes and our local ref to the outer ObjectRef is deleted. We
+  // return borrower information to the owner.
+  ReferenceCounter::ReferenceTableProto refs_proto;
+  rc->PopAndClearLocalBorrowers({outer_id}, &refs_proto, nullptr);
+  ASSERT_FALSE(rc->HasReference(outer_id));
+  // Future resolution is async, so we may receive information about the inner
+  // ObjectRef after we deleted the outer ObjectRef. Check that we do not leak
+  // the inner Reference info.
+  rc->AddBorrowedObject(inner_id, outer_id, owner_address);
+  ASSERT_FALSE(rc->HasReference(inner_id));
+
+  // Now we do it again but the future is resolved while the outer ObjectRef is
+  // still in scope.
+  rc->AddLocalReference(outer_id, "");
+  rc->AddBorrowedObject(outer_id, ObjectID::Nil(), owner_address);
+  ASSERT_TRUE(rc->HasReference(outer_id));
+  // Future is resolved and we receive information about the inner ObjectRef.
+  // This time we keep the Reference information.
+  rc->AddBorrowedObject(inner_id, outer_id, owner_address);
+  ASSERT_TRUE(rc->HasReference(inner_id));
+  refs_proto.Clear();
+  rc->PopAndClearLocalBorrowers({outer_id}, &refs_proto, nullptr);
+  // Inner ObjectRef info gets popped with the outer ObjectRef.
+  ASSERT_FALSE(rc->HasReference(outer_id));
+  ASSERT_FALSE(rc->HasReference(inner_id));
+}
+
+TEST_F(ReferenceCountTest, TestDelayedWaitForRefRemoved) {
+  auto borrower = std::make_shared<MockWorkerClient>("1");
+  auto owner = std::make_shared<MockWorkerClient>(
+      "2", [&](const rpc::Address &addr) { return borrower; });
+
+  // Owner owns a nested object ref, borrower is using the outer ObjectRef.
+  ObjectID outer_id = ObjectID::FromRandom();
+  ObjectID inner_id = ObjectID::FromRandom();
+  owner->rc_.AddOwnedObject(outer_id, {}, owner->address_, "", 0, false);
+  owner->rc_.AddBorrowerAddress(outer_id, borrower->address_);
+  owner->rc_.AddOwnedObject(inner_id, {}, owner->address_, "", 0, false);
+  owner->rc_.AddLocalReference(inner_id, "");
+  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  borrower->rc_.AddLocalReference(outer_id, "");
+  borrower->rc_.AddBorrowedObject(outer_id, ObjectID::Nil(), owner->address_);
+  // Borrower deserializes the inner ObjectRef.
+  borrower->rc_.AddLocalReference(inner_id, "");
+  borrower->rc_.AddBorrowedObject(inner_id, outer_id, owner->address_);
+  ASSERT_TRUE(borrower->rc_.HasReference(outer_id));
+  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+
+  // Borrower deletes the outer ObjectRef. Inner ObjectRef is still in scope.
+  borrower->rc_.RemoveLocalReference(outer_id, nullptr);
+  // WaitForRefRemoved RPC from owner arrives after outer object ref has been deleted.
+  ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
+  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // Inner ObjectRef is still in scope because the borrower is still using it.
+  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // Delete all refs to the inner ObjectRef.
+  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
+  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+}
+
+TEST_F(ReferenceCountTest, TestRepeatedDeserialization) {
+  auto borrower = std::make_shared<MockWorkerClient>("1");
+  auto owner = std::make_shared<MockWorkerClient>(
+      "2", [&](const rpc::Address &addr) { return borrower; });
+
+  // Owner owns a nested object ref, borrower is using the outer ObjectRef.
+  ObjectID outer_id = ObjectID::FromRandom();
+  ObjectID middle_id = ObjectID::FromRandom();
+  ObjectID inner_id = ObjectID::FromRandom();
+  owner->rc_.AddOwnedObject(inner_id, {}, owner->address_, "", 0, false);
+  owner->rc_.AddOwnedObject(middle_id, {inner_id}, owner->address_, "", 0, false);
+  owner->rc_.AddOwnedObject(outer_id, {middle_id}, owner->address_, "", 0, false);
+  owner->rc_.AddBorrowerAddress(outer_id, borrower->address_);
+  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_.HasReference(middle_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  borrower->rc_.AddLocalReference(outer_id, "");
+  borrower->rc_.AddBorrowedObject(outer_id, ObjectID::Nil(), owner->address_);
+  borrower->rc_.AddLocalReference(middle_id, "");
+  borrower->rc_.AddBorrowedObject(middle_id, outer_id, owner->address_);
+  // Borrower receives the inlined inner ObjectRef.
+  // This also simulates the case where the borrower deserializes the inner
+  // ObjectRef, then deletes it.
+  borrower->rc_.AddBorrowedObject(inner_id, middle_id, owner->address_);
+
+  borrower->rc_.RemoveLocalReference(outer_id, nullptr);
+  ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
+  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_.HasReference(middle_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // Borrower deserializes the inner ObjectRef.
+  borrower->rc_.AddLocalReference(inner_id, "");
+  borrower->rc_.RemoveLocalReference(middle_id, nullptr);
+  ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
+  ASSERT_FALSE(owner->rc_.HasReference(middle_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(borrower->FlushBorrowerCallbacks());
+  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+}
+
+// Matches test_reference_counting_2.py::test_forward_nested_ref.
+TEST_F(ReferenceCountTest, TestForwardNestedRefs) {
+  auto borrower1 = std::make_shared<MockWorkerClient>("1");
+  auto borrower2 = std::make_shared<MockWorkerClient>("2");
+  bool first_borrower = true;
+  auto owner = std::make_shared<MockWorkerClient>("2", [&](const rpc::Address &addr) {
+    return first_borrower ? borrower1 : borrower2;
+  });
+
+  // Owner owns a nested object ref, borrower1 is using the outer ObjectRef.
+  ObjectID outer_id = ObjectID::FromRandom();
+  ObjectID middle_id = ObjectID::FromRandom();
+  ObjectID inner_id = ObjectID::FromRandom();
+  owner->rc_.AddOwnedObject(inner_id, {}, owner->address_, "", 0, false);
+  owner->rc_.AddOwnedObject(middle_id, {inner_id}, owner->address_, "", 0, false);
+  owner->rc_.AddOwnedObject(outer_id, {middle_id}, owner->address_, "", 0, false);
+  owner->rc_.AddBorrowerAddress(outer_id, borrower1->address_);
+  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_.HasReference(middle_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // Borrower 1 forwards the ObjectRef to borrower 2 via task submission.
+  borrower1->rc_.AddLocalReference(outer_id, "");
+  borrower1->rc_.AddBorrowedObject(outer_id, ObjectID::Nil(), owner->address_);
+  borrower1->SubmitTaskWithArg(outer_id);
+
+  // Borrower 2 executes the task, keeps ref to inner ref.
+  borrower2->ExecuteTaskWithArg(outer_id, middle_id, owner->address_);
+  borrower2->GetSerializedObjectId(middle_id, inner_id, owner->address_);
+  borrower2->rc_.RemoveLocalReference(middle_id, nullptr);
+  auto borrower_refs = borrower2->FinishExecutingTask(outer_id, ObjectID::Nil());
+  borrower1->HandleSubmittedTaskFinished(outer_id, {}, borrower2->address_,
+                                         borrower_refs);
+  borrower1->rc_.RemoveLocalReference(outer_id, nullptr);
+
+  // Now the owner should contact borrower 2.
+  first_borrower = false;
+  ASSERT_TRUE(borrower1->FlushBorrowerCallbacks());
+  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+  ASSERT_FALSE(owner->rc_.HasReference(middle_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  ASSERT_TRUE(borrower2->FlushBorrowerCallbacks());
+  borrower2->rc_.RemoveLocalReference(inner_id, nullptr);
 }
 
 }  // namespace core

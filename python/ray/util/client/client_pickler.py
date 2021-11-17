@@ -49,12 +49,17 @@ if sys.version_info < (3, 8):
 else:
     import pickle  # noqa: F401
 
+
 # NOTE(barakmich): These PickleStubs are really close to
-# the data for an exectuion, with no arguments. Combine the two?
-PickleStub = NamedTuple("PickleStub",
-                        [("type", str), ("client_id", str), ("ref_id", bytes),
-                         ("name", Optional[str]),
-                         ("baseline_options", Optional[Dict])])
+# the data for an execution, with no arguments. Combine the two?
+class PickleStub(
+        NamedTuple("PickleStub", [("type", str), ("client_id", str),
+                                  ("ref_id", bytes), ("name", Optional[str]),
+                                  ("baseline_options", Optional[Dict])])):
+    def __reduce__(self):
+        # PySpark's namedtuple monkey patch breaks compatibility with
+        # cloudpickle. Thus we revert this patch here if it exists.
+        return object.__reduce__(self)
 
 
 class ClientPickler(cloudpickle.CloudPickler):
@@ -83,7 +88,7 @@ class ClientPickler(cloudpickle.CloudPickler):
             return PickleStub(
                 type="Actor",
                 client_id=self.client_id,
-                ref_id=obj._actor_id,
+                ref_id=obj._actor_id.id,
                 name=None,
                 baseline_options=None,
             )
@@ -141,9 +146,9 @@ class ServerUnpickler(pickle.Unpickler):
     def persistent_load(self, pid):
         assert isinstance(pid, PickleStub)
         if pid.type == "Object":
-            return ClientObjectRef(id=pid.ref_id)
+            return ClientObjectRef(pid.ref_id)
         elif pid.type == "Actor":
-            return ClientActorHandle(ClientActorRef(id=pid.ref_id))
+            return ClientActorHandle(ClientActorRef(pid.ref_id))
         else:
             raise NotImplementedError("Being passed back an unknown stub")
 

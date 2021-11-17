@@ -8,17 +8,20 @@ import shutil
 import sys
 import tempfile
 import time
-from typing import Any, Dict, Union
+from typing import Any, Dict, Optional, Union, Callable
 import uuid
 
 import ray
 import ray.cloudpickle as pickle
+from ray.tune.logger import Logger
 from ray.tune.resources import Resources
 from ray.tune.result import (
-    DEFAULT_RESULTS_DIR, SHOULD_CHECKPOINT, TIME_THIS_ITER_S,
-    TIMESTEPS_THIS_ITER, DONE, TIMESTEPS_TOTAL, EPISODES_THIS_ITER,
-    EPISODES_TOTAL, TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_INFO,
-    STDOUT_FILE, STDERR_FILE)
+    DEBUG_METRICS, DEFAULT_RESULTS_DIR, HOSTNAME, NODE_IP, PID,
+    SHOULD_CHECKPOINT, TIME_THIS_ITER_S, TIME_TOTAL_S, TIMESTEPS_THIS_ITER,
+    DONE, TIMESTEPS_TOTAL, EPISODES_THIS_ITER, EPISODES_TOTAL,
+    TRAINING_ITERATION, RESULT_DUPLICATE, TRIAL_ID, TRIAL_INFO, STDOUT_FILE,
+    STDERR_FILE)
+from ray.tune.sync_client import get_sync_client, get_cloud_sync_client
 from ray.tune.utils import UtilMonitor
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
@@ -54,9 +57,17 @@ class Trainable:
     runs on a separate process. Tune will also change the current working
     directory of this process to ``self.logdir``.
 
-    """
+    This class supports checkpointing to and restoring from remote storage.
 
-    def __init__(self, config=None, logger_creator=None):
+
+    """
+    _sync_function_tpl = None
+
+    def __init__(self,
+                 config: Dict[str, Any] = None,
+                 logger_creator: Callable[[Dict[str, Any]], Logger] = None,
+                 remote_checkpoint_dir: Optional[str] = None,
+                 sync_function_tpl: Optional[str] = None):
         """Initialize an Trainable.
 
         Sets up logging and points ``self.logdir`` to a directory in which
@@ -70,13 +81,17 @@ class Trainable:
                 will be saved as ``self.config``.
             logger_creator (func): Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
+            remote_checkpoint_dir (str): Upload directory (S3 or GS path).
+            sync_function_tpl (str): Sync function template to use. Defaults
+              to `cls._sync_function` (which defaults to `None`).
         """
 
         self._experiment_id = uuid.uuid4().hex
         self.config = config or {}
         trial_info = self.config.pop(TRIAL_INFO, None)
 
-        disable_ipython()
+        if self.is_actor():
+            disable_ipython()
 
         self._result_logger = self._logdir = None
         self._create_logger(self.config, logger_creator)
@@ -102,6 +117,7 @@ class Trainable:
         self._stderr_file = stderr_file
 
         start_time = time.time()
+        self._local_ip = self.get_current_ip()
         self.setup(copy.deepcopy(self.config))
         setup_time = time.time() - start_time
         if setup_time > SETUP_TIME_THRESHOLD:
@@ -109,9 +125,29 @@ class Trainable:
                         "trainable is slow to initialize, consider setting "
                         "reuse_actors=True to reduce actor creation "
                         "overheads.".format(setup_time))
-        self._local_ip = self.get_current_ip()
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
+
+        self.remote_checkpoint_dir = remote_checkpoint_dir
+        self.sync_function_tpl = sync_function_tpl or self._sync_function_tpl
+        self.storage_client = None
+
+        if self.uses_cloud_checkpointing:
+            self.storage_client = self._create_storage_client()
+
+    @property
+    def uses_cloud_checkpointing(self):
+        return bool(self.remote_checkpoint_dir)
+
+    def _create_storage_client(self):
+        """Returns a storage client."""
+        return get_sync_client(
+            self.sync_function_tpl) or get_cloud_sync_client(
+                self.remote_checkpoint_dir)
+
+    def _storage_path(self, local_path):
+        rel_local_path = os.path.relpath(local_path, self.logdir)
+        return os.path.join(self.remote_checkpoint_dir, rel_local_path)
 
     @classmethod
     def default_resource_request(cls, config: Dict[str, Any]) -> \
@@ -125,11 +161,8 @@ class Trainable:
 
             @classmethod
             def default_resource_request(cls, config):
-                return Resources(
-                    cpu=0,
-                    gpu=0,
-                    extra_cpu=config["workers"],
-                    extra_gpu=int(config["use_gpu"]) * config["workers"])
+                return PlacementGroupFactory([{"CPU": 1}, {"CPU": 1}]])
+
 
         Args:
             config[Dict[str, Any]]: The Trainable's config dict.
@@ -152,6 +185,48 @@ class Trainable:
     def get_current_ip(self):
         self._local_ip = ray.util.get_node_ip_address()
         return self._local_ip
+
+    def get_auto_filled_metrics(self,
+                                now: Optional[datetime] = None,
+                                time_this_iter: Optional[float] = None,
+                                debug_metrics_only: bool = False) -> dict:
+        """Return a dict with metrics auto-filled by the trainable.
+
+        If ``debug_metrics_only`` is True, only metrics that don't
+        require at least one iteration will be returned
+        (``ray.tune.result.DEBUG_METRICS``).
+        """
+        if now is None:
+            now = datetime.today()
+        autofilled = {
+            TRIAL_ID: self.trial_id,
+            "experiment_id": self._experiment_id,
+            "date": now.strftime("%Y-%m-%d_%H-%M-%S"),
+            "timestamp": int(time.mktime(now.timetuple())),
+            TIME_THIS_ITER_S: time_this_iter,
+            TIME_TOTAL_S: self._time_total,
+            PID: os.getpid(),
+            HOSTNAME: platform.node(),
+            NODE_IP: self._local_ip,
+            "config": self.config,
+            "time_since_restore": self._time_since_restore,
+            "timesteps_since_restore": self._timesteps_since_restore,
+            "iterations_since_restore": self._iterations_since_restore
+        }
+        if debug_metrics_only:
+            autofilled = {
+                k: v
+                for k, v in autofilled.items() if k in DEBUG_METRICS
+            }
+        return autofilled
+
+    def is_actor(self):
+        try:
+            actor_id = ray.worker.global_worker.actor_id
+            return actor_id != actor_id.nil()
+        except Exception:
+            # If global_worker is not instantiated, we're not in an actor
+            return False
 
     def train_buffered(self,
                        buffer_time_s: float,
@@ -280,19 +355,7 @@ class Trainable:
             result.setdefault("neg_mean_loss", -result["mean_loss"])
 
         now = datetime.today()
-        result.update(
-            experiment_id=self._experiment_id,
-            date=now.strftime("%Y-%m-%d_%H-%M-%S"),
-            timestamp=int(time.mktime(now.timetuple())),
-            time_this_iter_s=time_this_iter,
-            time_total_s=self._time_total,
-            pid=os.getpid(),
-            hostname=platform.node(),
-            node_ip=self._local_ip,
-            config=self.config,
-            time_since_restore=self._time_since_restore,
-            timesteps_since_restore=self._timesteps_since_restore,
-            iterations_since_restore=self._iterations_since_restore)
+        result.update(self.get_auto_filled_metrics(now, time_this_iter))
 
         monitor_data = self._monitor.get_data()
         if monitor_data:
@@ -323,6 +386,9 @@ class Trainable:
         Subclasses should override ``save_checkpoint()`` instead to save state.
         This method dumps additional metadata alongside the saved path.
 
+        If a remote checkpoint dir is given, this will also sync up to remote
+        storage.
+
         Args:
             checkpoint_dir (str): Optional dir to place the checkpoint.
 
@@ -337,7 +403,18 @@ class Trainable:
             checkpoint,
             parent_dir=checkpoint_dir,
             trainable_state=trainable_state)
+
+        # Maybe sync to cloud
+        self._maybe_save_to_cloud()
+
         return checkpoint_path
+
+    def _maybe_save_to_cloud(self):
+        # Derived classes like the FunctionRunner might call this
+        if self.uses_cloud_checkpointing:
+            self.storage_client.sync_up(self.logdir,
+                                        self.remote_checkpoint_dir)
+            self.storage_client.wait()
 
     def save_to_object(self):
         """Saves the current model state to a Python object.
@@ -362,6 +439,12 @@ class Trainable:
         Subclasses should override ``_restore()`` instead to restore state.
         This method restores additional metadata saved with the checkpoint.
         """
+        # Maybe sync from cloud
+        if self.uses_cloud_checkpointing:
+            self.storage_client.sync_down(self.remote_checkpoint_dir,
+                                          self.logdir)
+            self.storage_client.wait()
+
         with open(checkpoint_path + ".tune_metadata", "rb") as f:
             metadata = pickle.load(f)
         self._experiment_id = metadata["experiment_id"]
@@ -412,8 +495,14 @@ class Trainable:
         except FileNotFoundError:
             # The checkpoint won't exist locally if the
             # trial was rescheduled to another worker.
-            logger.debug("Checkpoint not found during garbage collection.")
+            logger.debug(
+                f"Local checkpoint not found during garbage collection: "
+                f"{self.trial_id} - {checkpoint_path}")
             return
+        else:
+            if self.uses_cloud_checkpointing:
+                self.storage_client.delete(self._storage_path(checkpoint_dir))
+
         if os.path.exists(checkpoint_dir):
             shutil.rmtree(checkpoint_dir)
 
@@ -519,7 +608,10 @@ class Trainable:
         """
         return
 
-    def _create_logger(self, config, logger_creator=None):
+    def _create_logger(
+            self,
+            config: Dict[str, Any],
+            logger_creator: Callable[[Dict[str, Any]], Logger] = None):
         """Create logger from logger creator.
 
         Sets _logdir and _result_logger.
@@ -692,7 +784,7 @@ class Trainable:
 
         """
         if self._implements_method("_train") and log_once("_train"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._train is deprecated and is now removed. Override "
                 "Trainable.step instead.")
         raise NotImplementedError
@@ -734,7 +826,7 @@ class Trainable:
             "/tmp/NEW_CHECKPOINT_PATH/my_checkpoint_file" # This will error.
         """
         if self._implements_method("_save") and log_once("_save"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._save is deprecated and is now removed. Override "
                 "Trainable.save_checkpoint instead.")
         raise NotImplementedError
@@ -783,7 +875,7 @@ class Trainable:
                 underneath the `checkpoint_dir` `save_checkpoint` is preserved.
         """
         if self._implements_method("_restore") and log_once("_restore"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._restore is deprecated and is now removed. "
                 "Override Trainable.load_checkpoint instead.")
         raise NotImplementedError
@@ -799,7 +891,7 @@ class Trainable:
 
         """
         if self._implements_method("_setup") and log_once("_setup"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._setup is deprecated and is now removed. Override "
                 "Trainable.setup instead.")
         pass
@@ -817,7 +909,7 @@ class Trainable:
             result (dict): Training result returned by step().
         """
         if self._implements_method("_log_result") and log_once("_log_result"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._log_result is deprecated and is now removed. "
                 "Override Trainable.log_result instead.")
         self._result_logger.on_result(result)
@@ -834,7 +926,7 @@ class Trainable:
         .. versionadded:: 0.8.7
         """
         if self._implements_method("_stop") and log_once("_stop"):
-            logger.warning(
+            raise DeprecationWarning(
                 "Trainable._stop is deprecated and is now removed. Override "
                 "Trainable.cleanup instead.")
         pass

@@ -107,7 +107,7 @@ ModelGradients = Union[List[Tuple[TensorType, TensorType]], List[TensorType]]
 # Type of dict returned by get_weights() representing model weights.
 ModelWeights = dict
 
-# An input dict used for direct ModelV2 calls or `ModelV2.from_batch` calls.
+# An input dict used for direct ModelV2 calls.
 ModelInputDict = Dict[str, TensorType]
 
 # Some kind of sample batch.

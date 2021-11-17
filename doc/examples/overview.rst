@@ -61,6 +61,8 @@ Machine Learning Examples
    plot_lbfgs.rst
    plot_example-lm.rst
    plot_newsreader.rst
+   dask_xgboost/dask_xgboost.rst
+   modin_xgboost/modin_xgboost.rst
 
 
 .. customgalleryitem::
@@ -86,6 +88,14 @@ Machine Learning Examples
    :tooltip: Implementing a simple news reader using Ray.
    :description: :doc:`/auto_examples/plot_newsreader`
 
+.. customgalleryitem::
+   :tooltip: Train an XGBoost-Ray model using Dask for data processing.
+   :description: :doc:`/auto_examples/dask_xgboost/dask_xgboost`
+
+.. customgalleryitem::
+   :tooltip: Train an XGBoost-Ray model using Modin for data processing.
+   :description: :doc:`/auto_examples/modin_xgboost/modin_xgboost`
+
 
 .. raw:: html
 
@@ -95,7 +105,7 @@ Machine Learning Examples
 Reinforcement Learning Examples
 -------------------------------
 
-These are simple examples that show you how to leverage Ray Core. For Ray's production-grade reinforcement learning library, see `RLlib <http://docs.ray.io/en/master/rllib.html>`__.
+These are simple examples that show you how to leverage Ray Core. For Ray's production-grade reinforcement learning library, see `RLlib <http://docs.ray.io/en/latest/rllib.html>`__.
 
 .. raw:: html
 

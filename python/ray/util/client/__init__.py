@@ -5,13 +5,15 @@ from ray._private.client_mode_hook import (_explicitly_disable_client_mode,
 import os
 import sys
 import logging
-import json
 import threading
+import grpc
+import ray.ray_constants as ray_constants
+from ray._private.ray_logging import setup_logger
 logger = logging.getLogger(__name__)
 
 # This version string is incremented to indicate breaking changes in the
 # protocol that require upgrading the client version.
-CURRENT_PROTOCOL_VERSION = "2021-08-16"
+CURRENT_PROTOCOL_VERSION = "2021-09-22"
 
 
 class _ClientContext:
@@ -32,6 +34,7 @@ class _ClientContext:
                 namespace: str = None,
                 *,
                 ignore_version: bool = False,
+                _credentials: Optional[grpc.ChannelCredentials] = None,
                 ray_init_kwargs: Optional[Dict[str, Any]] = None
                 ) -> Dict[str, Any]:
         """Connect the Ray Client to a server.
@@ -54,7 +57,7 @@ class _ClientContext:
             if self._connected_with_init:
                 return
             raise Exception(
-                "ray.connect() called, but ray client is already connected")
+                "ray.init() called, but ray client is already connected")
         if not self._inside_client_test:
             # If we're calling a client connect specifically and we're not
             # currently in client mode, ensure we are.
@@ -62,17 +65,23 @@ class _ClientContext:
         if namespace is not None:
             job_config = job_config or JobConfig()
             job_config.set_ray_namespace(namespace)
-        if job_config is not None:
-            runtime_env = json.loads(job_config.get_serialized_runtime_env())
-            if runtime_env.get("pip") or runtime_env.get("conda"):
-                logger.warning("The 'pip' or 'conda' field was specified in "
-                               "the runtime env, so it may take some time to "
-                               "install the environment before ray.connect() "
-                               "returns.")
+
+        logging_level = ray_constants.LOGGER_LEVEL
+        logging_format = ray_constants.LOGGER_FORMAT
+
+        if ray_init_kwargs is not None:
+            if ray_init_kwargs.get("logging_level") is not None:
+                logging_level = ray_init_kwargs["logging_level"]
+            if ray_init_kwargs.get("logging_format") is not None:
+                logging_format = ray_init_kwargs["logging_format"]
+
+        setup_logger(logging_level, logging_format)
+
         try:
             self.client_worker = Worker(
                 conn_str,
                 secure=secure,
+                _credentials=_credentials,
                 metadata=metadata,
                 connection_retries=connection_retries)
             self.api.worker = self.client_worker
@@ -146,7 +155,7 @@ class _ClientContext:
             return lambda: False
         else:
             raise Exception("Ray Client is not connected. "
-                            "Please connect by calling `ray.connect`.")
+                            "Please connect by calling `ray.init`.")
 
     def is_connected(self) -> bool:
         if self.client_worker is None:
@@ -158,9 +167,9 @@ class _ClientContext:
             raise Exception("Trying to start two instances of ray via client")
         import ray.util.client.server.server as ray_client_server
         server_handle, address_info = ray_client_server.init_and_serve(
-            "localhost:50051", *args, **kwargs)
+            "127.0.0.1:50051", *args, **kwargs)
         self._server = server_handle.grpc_server
-        self.connect("localhost:50051")
+        self.connect("127.0.0.1:50051")
         self._connected_with_init = True
         return address_info
 

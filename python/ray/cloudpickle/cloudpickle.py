@@ -55,6 +55,7 @@ import typing
 import warnings
 
 from .compat import pickle
+from collections import OrderedDict
 from typing import Generic, Union, Tuple, Callable
 from pickle import _getattribute
 from importlib._bootstrap import _find_spec
@@ -86,6 +87,9 @@ else:
 # communicating processes to run the same Python version hence we favor
 # communication speed over compatibility:
 DEFAULT_PROTOCOL = pickle.HIGHEST_PROTOCOL
+
+# Names of modules whose resources should be treated as dynamic.
+_PICKLE_BY_VALUE_MODULES = set()
 
 # Track the provenance of reconstructed dynamic classes to make it possible to
 # reconstruct instances from the matching singleton class definition when
@@ -121,6 +125,77 @@ def _lookup_class_or_track(class_tracker_id, class_def):
                 class_tracker_id, class_def)
             _DYNAMIC_CLASS_TRACKER_BY_CLASS[class_def] = class_tracker_id
     return class_def
+
+
+def register_pickle_by_value(module):
+    """Register a module to make it functions and classes picklable by value.
+
+    By default, functions and classes that are attributes of an importable
+    module are to be pickled by reference, that is relying on re-importing
+    the attribute from the module at load time.
+
+    If `register_pickle_by_value(module)` is called, all its functions and
+    classes are subsequently to be pickled by value, meaning that they can
+    be loaded in Python processes where the module is not importable.
+
+    This is especially useful when developing a module in a distributed
+    execution environment: restarting the client Python process with the new
+    source code is enough: there is no need to re-install the new version
+    of the module on all the worker nodes nor to restart the workers.
+
+    Note: this feature is considered experimental. See the cloudpickle
+    README.md file for more details and limitations.
+    """
+    if not isinstance(module, types.ModuleType):
+        raise ValueError(
+            f"Input should be a module object, got {str(module)} instead"
+        )
+    # In the future, cloudpickle may need a way to access any module registered
+    # for pickling by value in order to introspect relative imports inside
+    # functions pickled by value. (see
+    # https://github.com/cloudpipe/cloudpickle/pull/417#issuecomment-873684633).
+    # This access can be ensured by checking that module is present in
+    # sys.modules at registering time and assuming that it will still be in
+    # there when accessed during pickling. Another alternative would be to
+    # store a weakref to the module. Even though cloudpickle does not implement
+    # this introspection yet, in order to avoid a possible breaking change
+    # later, we still enforce the presence of module inside sys.modules.
+    if module.__name__ not in sys.modules:
+        raise ValueError(
+            f"{module} was not imported correctly, have you used an "
+            f"`import` statement to access it?"
+        )
+    _PICKLE_BY_VALUE_MODULES.add(module.__name__)
+
+
+def unregister_pickle_by_value(module):
+    """Unregister that the input module should be pickled by value."""
+    if not isinstance(module, types.ModuleType):
+        raise ValueError(
+            f"Input should be a module object, got {str(module)} instead"
+        )
+    if module.__name__ not in _PICKLE_BY_VALUE_MODULES:
+        raise ValueError(f"{module} is not registered for pickle by value")
+    else:
+        _PICKLE_BY_VALUE_MODULES.remove(module.__name__)
+
+
+def list_registry_pickle_by_value():
+    return _PICKLE_BY_VALUE_MODULES.copy()
+
+
+def _is_registered_pickle_by_value(module):
+    module_name = module.__name__
+    if module_name in _PICKLE_BY_VALUE_MODULES:
+        return True
+    while True:
+        parent_name = module_name.rsplit(".", 1)[0]
+        if parent_name == module_name:
+            break
+        if parent_name in _PICKLE_BY_VALUE_MODULES:
+            return True
+        module_name = parent_name
+    return False
 
 
 def _whichmodule(obj, name):
@@ -169,18 +244,35 @@ def _whichmodule(obj, name):
     return None
 
 
-def _is_importable(obj, name=None):
-    """Dispatcher utility to test the importability of various constructs."""
-    if isinstance(obj, types.FunctionType):
-        return _lookup_module_and_qualname(obj, name=name) is not None
-    elif issubclass(type(obj), type):
-        return _lookup_module_and_qualname(obj, name=name) is not None
+def _should_pickle_by_reference(obj, name=None):
+    """Test whether an function or a class should be pickled by reference
+
+     Pickling by reference means by that the object (typically a function or a
+     class) is an attribute of a module that is assumed to be importable in the
+     target Python environment. Loading will therefore rely on importing the
+     module and then calling `getattr` on it to access the function or class.
+
+     Pickling by reference is the only option to pickle functions and classes
+     in the standard library. In cloudpickle the alternative option is to
+     pickle by value (for instance for interactively or locally defined
+     functions and classes or for attributes of modules that have been
+     explicitly registered to be pickled by value.
+     """
+    if isinstance(obj, types.FunctionType) or issubclass(type(obj), type):
+        module_and_name = _lookup_module_and_qualname(obj, name=name)
+        if module_and_name is None:
+            return False
+        module, name = module_and_name
+        return not _is_registered_pickle_by_value(module)
+
     elif isinstance(obj, types.ModuleType):
         # We assume that sys.modules is primarily used as a cache mechanism for
         # the Python import machinery. Checking if a module has been added in
-        # is sys.modules therefore a cheap and simple heuristic to tell us whether
-        # we can assume  that a given module could be imported by name in
-        # another Python process.
+        # is sys.modules therefore a cheap and simple heuristic to tell us
+        # whether we can assume that a given module could be imported by name
+        # in another Python process.
+        if _is_registered_pickle_by_value(obj):
+            return False
         return obj.__name__ in sys.modules
     else:
         raise TypeError(
@@ -236,7 +328,10 @@ def _extract_code_globals(co):
     out_names = _extract_code_globals_cache.get(co)
     if out_names is None:
         names = co.co_names
-        out_names = {names[oparg] for _, oparg in _walk_global_ops(co)}
+        # We use a dict with None values instead of a set to get a
+        # deterministic order (assuming Python 3.6+) and avoid introducing
+        # non-deterministic pickle bytes as a results.
+        out_names = {names[oparg]: None for _, oparg in _walk_global_ops(co)}
 
         # Declaring a function inside another one using the "def ..."
         # syntax generates a constant code object corresponding to the one
@@ -247,7 +342,7 @@ def _extract_code_globals(co):
         if co.co_consts:
             for const in co.co_consts:
                 if isinstance(const, types.CodeType):
-                    out_names |= _extract_code_globals(const)
+                    out_names.update(_extract_code_globals(const))
 
         _extract_code_globals_cache[co] = out_names
 
@@ -835,10 +930,15 @@ def _decompose_typevar(obj):
 
 
 def _typevar_reduce(obj):
-    # TypeVar instances have no __qualname__ hence we pass the name explicitly.
+    # TypeVar instances require the module information hence why we
+    # are not using the _should_pickle_by_reference directly
     module_and_name = _lookup_module_and_qualname(obj, name=obj.__name__)
+
     if module_and_name is None:
         return (_make_typevar, _decompose_typevar(obj))
+    elif _is_registered_pickle_by_value(module_and_name[0]):
+        return (_make_typevar, _decompose_typevar(obj))
+
     return (getattr, module_and_name)
 
 
@@ -852,13 +952,22 @@ def _get_bases(typ):
     return getattr(typ, bases_attr)
 
 
-def _make_dict_keys(obj):
-    return dict.fromkeys(obj).keys()
+def _make_dict_keys(obj, is_ordered=False):
+    if is_ordered:
+        return OrderedDict.fromkeys(obj).keys()
+    else:
+        return dict.fromkeys(obj).keys()
 
 
-def _make_dict_values(obj):
-    return {i: _ for i, _ in enumerate(obj)}.values()
+def _make_dict_values(obj, is_ordered=False):
+    if is_ordered:
+        return OrderedDict((i, _) for i, _ in enumerate(obj)).values()
+    else:
+        return {i: _ for i, _ in enumerate(obj)}.values()
 
 
-def _make_dict_items(obj):
-    return obj.items()
+def _make_dict_items(obj, is_ordered=False):
+    if is_ordered:
+        return OrderedDict(obj).items()
+    else:
+        return obj.items()

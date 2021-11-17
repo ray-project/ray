@@ -9,7 +9,7 @@ import pandas as pd
 from pandas.api.types import is_string_dtype, is_numeric_dtype
 from ray.tune.result import (DEFAULT_EXPERIMENT_INFO_KEYS, DEFAULT_RESULT_KEYS,
                              CONFIG_PREFIX)
-from ray.tune.analysis import Analysis
+from ray.tune.analysis import ExperimentAnalysis
 from ray.tune import TuneError
 try:
     from tabulate import tabulate
@@ -116,10 +116,10 @@ def list_trials(experiment_path,
     _check_tabulate()
 
     try:
-        checkpoints_df = Analysis(experiment_path).dataframe(
-            metric="episode_reward_mean", mode="max")
-    except TuneError:
-        raise click.ClickException("No trial data found!")
+        checkpoints_df = ExperimentAnalysis(
+            experiment_path).dataframe()  # last result
+    except TuneError as e:
+        raise click.ClickException("No trial data found!") from e
 
     def key_filter(k):
         return k in DEFAULT_CLI_KEYS or k.startswith(CONFIG_PREFIX)

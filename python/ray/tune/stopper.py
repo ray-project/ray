@@ -1,11 +1,10 @@
-import warnings
 from typing import Dict, Optional
 import time
 from collections import defaultdict, deque
 import numpy as np
 
 from ray import logger
-from ray.util.annotations import PublicAPI, Deprecated
+from ray.util.annotations import PublicAPI
 
 
 @PublicAPI
@@ -217,18 +216,6 @@ class ExperimentPlateauStopper(Stopper):
     def stop_all(self):
         """Return whether to stop and prevent trials from starting."""
         return self.has_plateaued() and self._iterations >= self._patience
-
-
-# Deprecate: 1.4
-@Deprecated
-class EarlyStopping(ExperimentPlateauStopper):
-    def __init__(self, *args, **kwargs):
-        warnings.warn(
-            "The `EarlyStopping` stopper has been renamed to "
-            "`ExperimentPlateauStopper`. The reference will be removed "
-            "in a future version of Ray. Please use ExperimentPlateauStopper"
-            "instead.", DeprecationWarning)
-        super(EarlyStopping, self).__init__(*args, **kwargs)
 
 
 @PublicAPI

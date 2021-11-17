@@ -1,6 +1,6 @@
 import numpy as np
 import gym
-from typing import List
+from typing import List, Optional
 
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.framework import try_import_tf
@@ -29,9 +29,9 @@ class DDPGTFModel(TFModelV2):
             model_config: ModelConfigDict,
             name: str,
             # Extra DDPGActionModel args:
-            actor_hiddens: List[int] = [256, 256],
+            actor_hiddens: Optional[List[int]] = None,
             actor_hidden_activation: str = "relu",
-            critic_hiddens: List[int] = [256, 256],
+            critic_hiddens: Optional[List[int]] = None,
             critic_hidden_activation: str = "relu",
             twin_q: bool = False,
             add_layer_norm: bool = False):
@@ -47,6 +47,12 @@ class DDPGTFModel(TFModelV2):
         only defines the layers for the DDPG head. Those layers for forward()
         should be defined in subclasses of DDPGActionModel.
         """
+
+        if actor_hiddens is None:
+            actor_hiddens = [256, 256]
+
+        if critic_hiddens is None:
+            critic_hiddens = [256, 256]
 
         super(DDPGTFModel, self).__init__(obs_space, action_space, num_outputs,
                                           model_config, name)

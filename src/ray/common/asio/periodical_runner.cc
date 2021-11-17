@@ -20,9 +20,10 @@
 namespace ray {
 
 PeriodicalRunner::PeriodicalRunner(instrumented_io_context &io_service)
-    : io_service_(io_service) {}
+    : io_service_(io_service), mutex_() {}
 
 PeriodicalRunner::~PeriodicalRunner() {
+  absl::MutexLock lock(&mutex_);
   for (const auto &timer : timers_) {
     timer->cancel();
   }
@@ -33,7 +34,10 @@ void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn, uint64_t peri
                                          const std::string name) {
   if (period_ms > 0) {
     auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
-    timers_.push_back(timer);
+    {
+      absl::MutexLock lock(&mutex_);
+      timers_.push_back(timer);
+    }
     io_service_.post(
         [this, fn = std::move(fn), period_ms, name, timer = std::move(timer)]() {
           if (RayConfig::instance().event_stats()) {
@@ -50,6 +54,7 @@ void PeriodicalRunner::DoRunFnPeriodically(const std::function<void()> &fn,
                                            boost::posix_time::milliseconds period,
                                            boost::asio::deadline_timer &timer) {
   fn();
+  absl::MutexLock lock(&mutex_);
   timer.expires_from_now(period);
   timer.async_wait(
       [this, fn = std::move(fn), period, &timer](const boost::system::error_code &error) {
@@ -68,6 +73,7 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
     const std::function<void()> &fn, boost::posix_time::milliseconds period,
     boost::asio::deadline_timer &timer, const std::string name) {
   fn();
+  absl::MutexLock lock(&mutex_);
   timer.expires_from_now(period);
   // NOTE: We add the timer period to the enqueue time in order only measure the time in
   // which the handler was elgible to execute on the event loop but was queued by the

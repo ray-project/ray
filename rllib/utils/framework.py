@@ -4,26 +4,20 @@ import os
 import sys
 from typing import Any, Optional
 
-from ray.rllib.utils.annotations import Deprecated
-from ray.rllib.utils.typing import TensorStructType, TensorShape, TensorType
+from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.typing import TensorShape, TensorType
 
 logger = logging.getLogger(__name__)
 
-# Represents a generic tensor type.
-TensorType = TensorType
 
-# Either a plain tensor, or a dict or tuple of tensors (or StructTensors).
-TensorStructType = TensorStructType
-
-
-def try_import_jax(error=False):
+def try_import_jax(error: bool = False):
     """Tries importing JAX and FLAX and returns both modules (or Nones).
 
     Args:
-        error (bool): Whether to raise an error if JAX/FLAX cannot be imported.
+        error: Whether to raise an error if JAX/FLAX cannot be imported.
 
     Returns:
-        Tuple: The jax- and the flax modules.
+        Tuple containing the jax- and the flax modules.
 
     Raises:
         ImportError: If error=True and JAX is not installed.
@@ -45,18 +39,17 @@ def try_import_jax(error=False):
     return jax, flax
 
 
-def try_import_tf(error=False):
+def try_import_tf(error: bool = False):
     """Tries importing tf and returns the module (or None).
 
     Args:
-        error (bool): Whether to raise an error if tf cannot be imported.
+        error: Whether to raise an error if tf cannot be imported.
 
     Returns:
-        Tuple:
-            - tf1.x module (either from tf2.x.compat.v1 OR as tf1.x).
-            - tf module (resulting from `import tensorflow`).
-                Either tf1.x or 2.x.
-            - The actually installed tf version as int: 1 or 2.
+        Tuple containing
+        1) tf1.x module (either from tf2.x.compat.v1 OR as tf1.x).
+        2) tf module (resulting from `import tensorflow`). Either tf1.x or
+        2.x. 3) The actually installed tf version as int: 1 or 2.
 
     Raises:
         ImportError: If error=True and tf is not installed.
@@ -125,11 +118,11 @@ def tf_function(tf_module):
     return decorator
 
 
-def try_import_tfp(error=False):
+def try_import_tfp(error: bool = False):
     """Tries importing tfp and returns the module (or None).
 
     Args:
-        error (bool): Whether to raise an error if tfp cannot be imported.
+        error: Whether to raise an error if tfp cannot be imported.
 
     Returns:
         The tfp module.
@@ -165,14 +158,14 @@ class ModuleStub:
         raise ImportError("Could not import `torch`.")
 
 
-def try_import_torch(error=False):
+def try_import_torch(error: bool = False):
     """Tries importing torch and returns the module (or None).
 
     Args:
-        error (bool): Whether to raise an error if torch cannot be imported.
+        error: Whether to raise an error if torch cannot be imported.
 
     Returns:
-        tuple: torch AND torch.nn modules.
+        Tuple consisting of the torch- AND torch.nn modules.
 
     Raises:
         ImportError: If error=True and PyTorch is not installed.
@@ -199,37 +192,38 @@ def _torch_stubs():
     return None, nn
 
 
-def get_variable(value,
+def get_variable(value: Any,
                  framework: str = "tf",
                  trainable: bool = False,
                  tf_name: str = "unnamed-variable",
                  torch_tensor: bool = False,
                  device: Optional[str] = None,
                  shape: Optional[TensorShape] = None,
-                 dtype: Optional[Any] = None):
-    """
+                 dtype: Optional[TensorType] = None) -> Any:
+    """Creates a tf variable, a torch tensor, or a python primitive.
+
     Args:
-        value (any): The initial value to use. In the non-tf case, this will
+        value: The initial value to use. In the non-tf case, this will
             be returned as is. In the tf case, this could be a tf-Initializer
             object.
-        framework (str): One of "tf", "torch", or None.
-        trainable (bool): Whether the generated variable should be
+        framework: One of "tf", "torch", or None.
+        trainable: Whether the generated variable should be
             trainable (tf)/require_grad (torch) or not (default: False).
-        tf_name (str): For framework="tf": An optional name for the
+        tf_name: For framework="tf": An optional name for the
             tf.Variable.
-        torch_tensor (bool): For framework="torch": Whether to actually create
+        torch_tensor: For framework="torch": Whether to actually create
             a torch.tensor, or just a python value (default).
-        device (Optional[torch.Device]): An optional torch device to use for
+        device: An optional torch device to use for
             the created torch tensor.
-        shape (Optional[TensorShape]): An optional shape to use iff `value`
+        shape: An optional shape to use iff `value`
             does not have any (e.g. if it's an initializer w/o explicit value).
-        dtype (Optional[TensorType]): An optional dtype to use iff `value` does
+        dtype: An optional dtype to use iff `value` does
             not have any (e.g. if it's an initializer w/o explicit value).
             This should always be a numpy dtype (e.g. np.float32, np.int64).
 
     Returns:
-        any: A framework-specific variable (tf.Variable, torch.tensor, or
-            python primitive).
+        A framework-specific variable (tf.Variable, torch.tensor, or
+        python primitive).
     """
     if framework in ["tf2", "tf", "tfe"]:
         import tensorflow as tf
@@ -264,8 +258,8 @@ def get_variable(value,
 
 
 @Deprecated(
-    old="rllib/models/utils.py::get_activation_fn",
-    new="rllib/utils/framework.py::get_activation_fn",
+    old="rllib/utils/framework.py::get_activation_fn",
+    new="rllib/models/utils.py::get_activation_fn",
     error=False)
 def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
     """Returns a framework specific activation function, given a name string.
@@ -286,7 +280,7 @@ def get_activation_fn(name: Optional[str] = None, framework: str = "tf"):
         if name in ["linear", None]:
             return None
         if name in ["swish", "silu"]:
-            from ray.rllib.utils.torch_ops import Swish
+            from ray.rllib.utils.torch_utils import Swish
             return Swish
         _, nn = try_import_torch()
         if name == "relu":

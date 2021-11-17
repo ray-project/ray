@@ -15,6 +15,7 @@ import ray.ray_constants as ray_constants
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
 import ray._private.utils
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
 from ray._private.ray_logging import setup_component_logger
 
 # Logger for this module. It should be configured at the entry point
@@ -55,6 +56,8 @@ class LogFileInfo:
         self.is_err_file = is_err_file
         self.job_id = job_id
         self.worker_pid = worker_pid
+        self.actor_name = None
+        self.task_name = None
 
 
 class LogMonitor:
@@ -252,10 +255,29 @@ class LogMonitor:
             True if anything was published and false otherwise.
         """
         anything_published = False
+        lines_to_publish = []
+
+        def flush():
+            nonlocal lines_to_publish
+            nonlocal anything_published
+            if len(lines_to_publish) > 0:
+                self.redis_client.publish(
+                    gcs_utils.LOG_FILE_CHANNEL,
+                    json.dumps({
+                        "ip": self.ip,
+                        "pid": file_info.worker_pid,
+                        "job": file_info.job_id,
+                        "is_err": file_info.is_err_file,
+                        "lines": lines_to_publish,
+                        "actor_name": file_info.actor_name,
+                        "task_name": file_info.task_name,
+                    }))
+                anything_published = True
+                lines_to_publish = []
+
         for file_info in self.open_file_infos:
             assert not file_info.file_handle.closed
 
-            lines_to_publish = []
             max_num_lines_to_read = 100
             for _ in range(max_num_lines_to_read):
                 try:
@@ -268,7 +290,32 @@ class LogMonitor:
                         break
                     if next_line[-1] == "\n":
                         next_line = next_line[:-1]
-                    lines_to_publish.append(next_line)
+                    if next_line.startswith(
+                            ray_constants.LOG_PREFIX_ACTOR_NAME):
+                        flush()  # Possible change of task/actor name.
+                        file_info.actor_name = next_line.split(
+                            ray_constants.LOG_PREFIX_ACTOR_NAME, 1)[1]
+                        file_info.task_name = None
+                    elif next_line.startswith(
+                            ray_constants.LOG_PREFIX_TASK_NAME):
+                        flush()  # Possible change of task/actor name.
+                        file_info.task_name = next_line.split(
+                            ray_constants.LOG_PREFIX_TASK_NAME, 1)[1]
+                    elif next_line.startswith(
+                            "Windows fatal exception: access violation"):
+                        # We are suppressing the
+                        # 'Windows fatal exception: access violation'
+                        # message on workers on Windows here.
+                        # As far as we know it is harmless,
+                        # but is frequently popping up if Python
+                        # functions are run inside the core
+                        # worker C extension. See the investigation in
+                        # github.com/ray-project/ray/issues/18944
+                        # Also skip the following line, which is an
+                        # empty line.
+                        file_info.file_handle.readline()
+                    else:
+                        lines_to_publish.append(next_line)
                 except Exception:
                     logger.error(
                         f"Error: Reading file: {file_info.filename}, "
@@ -288,18 +335,7 @@ class LogMonitor:
 
             # Record the current position in the file.
             file_info.file_position = file_info.file_handle.tell()
-
-            if len(lines_to_publish) > 0:
-                self.redis_client.publish(
-                    gcs_utils.LOG_FILE_CHANNEL,
-                    json.dumps({
-                        "ip": self.ip,
-                        "pid": file_info.worker_pid,
-                        "job": file_info.job_id,
-                        "is_err": file_info.is_err_file,
-                        "lines": lines_to_publish
-                    }))
-                anything_published = True
+            flush()
 
         return anything_published
 
@@ -330,6 +366,11 @@ if __name__ == "__main__":
         description=("Parse Redis server for the "
                      "log monitor to connect "
                      "to."))
+    parser.add_argument(
+        "--gcs-address",
+        required=False,
+        type=str,
+        help="The address (ip:port) of GCS.")
     parser.add_argument(
         "--redis-address",
         required=True,
@@ -401,11 +442,20 @@ if __name__ == "__main__":
         # Something went wrong, so push an error to all drivers.
         redis_client = ray._private.services.create_redis_client(
             args.redis_address, password=args.redis_password)
+        gcs_publisher = None
+        if args.gcs_address:
+            gcs_publisher = GcsPublisher(address=args.gcs_address)
+        elif gcs_pubsub_enabled():
+            gcs_publisher = GcsPublisher(
+                address=gcs_utils.get_gcs_address_from_redis(redis_client))
         traceback_str = ray._private.utils.format_error_message(
             traceback.format_exc())
         message = (f"The log monitor on node {platform.node()} "
                    f"failed with the following error:\n{traceback_str}")
-        ray._private.utils.push_error_to_driver_through_redis(
-            redis_client, ray_constants.LOG_MONITOR_DIED_ERROR, message)
+        ray._private.utils.publish_error_to_driver(
+            ray_constants.LOG_MONITOR_DIED_ERROR,
+            message,
+            redis_client=redis_client,
+            gcs_publisher=gcs_publisher)
         logger.error(message)
         raise e

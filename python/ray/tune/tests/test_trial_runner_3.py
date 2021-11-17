@@ -24,6 +24,7 @@ from ray.tune.suggest.repeater import Repeater
 from ray.tune.suggest._mock import _MockSuggestionAlgorithm
 from ray.tune.suggest.suggestion import Searcher, ConcurrencyLimiter
 from ray.tune.suggest.search_generator import SearchGenerator
+from ray.tune.syncer import SyncConfig
 
 
 class TrialRunnerTest3(unittest.TestCase):
@@ -32,6 +33,7 @@ class TrialRunnerTest3(unittest.TestCase):
         os.environ["TUNE_PLACEMENT_GROUP_WAIT_S"] = "5"
         # Block for results even when placement groups are pending
         os.environ["TUNE_TRIAL_STARTUP_GRACE_PERIOD"] = "0"
+        os.environ["TUNE_TRIAL_RESULT_WAIT_TIME_S"] = "99999"
 
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "auto"  # Reset default
 
@@ -554,7 +556,8 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(
             runner2.get_trial("checkpoint").status == Trial.TERMINATED)
         self.assertTrue(runner2.get_trial("pending").status == Trial.PENDING)
-        self.assertTrue(not runner2.get_trial("pending").last_result)
+        self.assertTrue(
+            not runner2.get_trial("pending").has_reported_at_least_once)
         runner2.step()
 
     def testCheckpointWithFunction(self):
@@ -777,7 +780,7 @@ class TrialRunnerTest3(unittest.TestCase):
         self.assertTrue(trials[0].has_checkpoint())
         self.assertEqual(num_checkpoints(trials[0]), 2)
 
-    @patch("ray.tune.syncer.CLOUD_SYNC_PERIOD", 0)
+    @patch("ray.tune.syncer.SYNC_PERIOD", 0)
     def testCheckpointAutoPeriod(self):
         ray.init(num_cpus=3)
 
@@ -789,7 +792,7 @@ class TrialRunnerTest3(unittest.TestCase):
         runner = TrialRunner(
             local_checkpoint_dir=self.tmpdir,
             checkpoint_period="auto",
-            sync_to_cloud=sync_up,
+            sync_config=SyncConfig(upload_dir="fake", syncer=sync_up),
             remote_checkpoint_dir="fake")
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 1}))
 

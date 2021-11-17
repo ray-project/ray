@@ -22,6 +22,7 @@ from ray.tune.schedulers import (FIFOScheduler, HyperBandScheduler,
 
 from ray.tune.schedulers.pbt import explore, PopulationBasedTrainingReplay
 from ray.tune.suggest._mock import _MockSearcher
+from ray.tune.suggest.suggestion import ConcurrencyLimiter
 from ray.tune.trial import Trial, Checkpoint
 from ray.tune.trial_executor import TrialExecutor
 from ray.tune.resources import Resources
@@ -258,11 +259,8 @@ class _MockTrialExecutor(TrialExecutor):
     def get_running_trials(self):
         return []
 
-    def has_resources(self):
-        return False
-
-    def resource_string(self):
-        return "This is a mock resource_string."
+    def has_resources_for_trial(self, trial: Trial):
+        return True
 
 
 class _MockTrialRunner():
@@ -294,12 +292,6 @@ class _MockTrialRunner():
 
     def get_trials(self):
         return self.trials
-
-    def has_resources_for_trial(self, trial):
-        return True
-
-    def has_resources(self, resources):
-        return True
 
     def _pause_trial(self, trial):
         self.trial_executor.save(trial, Checkpoint.MEMORY, None)
@@ -816,7 +808,7 @@ class BOHBSuite(unittest.TestCase):
         config = {"test_variable": tune.uniform(0, 20)}
         sched = HyperBandForBOHB(
             max_t=10, reduction_factor=3, stop_last_trials=False)
-        alg = TuneBOHB(max_concurrent=4)
+        alg = ConcurrencyLimiter(TuneBOHB(), 4)
         analysis = tune.run(
             train,
             scheduler=sched,
@@ -846,6 +838,7 @@ class _MockTrial(Trial):
         self.resources = Resources(1, 0)
         self.custom_trial_name = None
         self.custom_dirname = None
+        self._default_result_or_future = None
 
     def on_checkpoint(self, checkpoint):
         self.restored_checkpoint = checkpoint.value

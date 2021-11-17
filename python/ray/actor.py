@@ -5,11 +5,11 @@ import weakref
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray._private.signature as signature
-import ray._private.runtime_env as runtime_support
+from ray._private.runtime_env.validation import (
+    override_task_or_actor_runtime_env, ParsedRuntimeEnv)
 import ray.worker
 from ray.util.annotations import PublicAPI
-from ray.util.placement_group import (
-    PlacementGroup, check_placement_group_index, get_current_placement_group)
+from ray.util.placement_group import configure_placement_group_based_on_context
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 @PublicAPI
-@client_mode_hook
+@client_mode_hook(auto_init=False)
 def method(*args, **kwargs):
     """Annotate an actor method.
 
@@ -53,11 +53,14 @@ def method(*args, **kwargs):
     """
     assert len(args) == 0
     assert len(kwargs) == 1
-    assert "num_returns" in kwargs
-    num_returns = kwargs["num_returns"]
+
+    assert "num_returns" in kwargs or "concurrency_group" in kwargs
 
     def annotate_method(method):
-        method.__ray_num_returns__ = num_returns
+        if "num_returns" in kwargs:
+            method.__ray_num_returns__ = kwargs["num_returns"]
+        if "concurrency_group" in kwargs:
+            method.__ray_concurrency_group__ = kwargs["concurrency_group"]
         return method
 
     return annotate_method
@@ -137,7 +140,12 @@ class ActorMethod:
         return FuncWrapper()
 
     @_tracing_actor_method_invocation
-    def _remote(self, args=None, kwargs=None, name="", num_returns=None):
+    def _remote(self,
+                args=None,
+                kwargs=None,
+                name="",
+                num_returns=None,
+                concurrency_group=None):
         if num_returns is None:
             num_returns = self._num_returns
 
@@ -221,6 +229,8 @@ class ActorClassMethodMetadata(object):
         self.decorators = {}
         self.signatures = {}
         self.num_returns = {}
+        self.concurrency_group_for_methods = {}
+
         for method_name, method in actor_methods:
             # Whether or not this method requires binding of its first
             # argument. For class and static methods, we do not want to bind
@@ -245,6 +255,10 @@ class ActorClassMethodMetadata(object):
             if hasattr(method, "__ray_invocation_decorator__"):
                 self.decorators[method_name] = (
                     method.__ray_invocation_decorator__)
+
+            if hasattr(method, "__ray_concurrency_group__"):
+                self.concurrency_group_for_methods[method_name] = (
+                    method.__ray_concurrency_group__)
 
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
@@ -284,8 +298,8 @@ class ActorClassMetadata:
     def __init__(self, language, modified_class,
                  actor_creation_function_descriptor, class_id, max_restarts,
                  max_task_retries, num_cpus, num_gpus, memory,
-                 object_store_memory, resources, accelerator_type,
-                 runtime_env):
+                 object_store_memory, resources, accelerator_type, runtime_env,
+                 concurrency_groups):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \
@@ -302,6 +316,7 @@ class ActorClassMetadata:
         self.resources = resources
         self.accelerator_type = accelerator_type
         self.runtime_env = runtime_env
+        self.concurrency_groups = concurrency_groups
         self.last_export_session_and_job = None
         self.method_meta = ActorClassMethodMetadata.create(
             modified_class, actor_creation_function_descriptor)
@@ -357,10 +372,10 @@ class ActorClass:
                         f"use '{self.__ray_metadata__.class_name}.remote()'.")
 
     @classmethod
-    def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
-                                 max_task_retries, num_cpus, num_gpus, memory,
-                                 object_store_memory, resources,
-                                 accelerator_type, runtime_env):
+    def _ray_from_modified_class(
+            cls, modified_class, class_id, max_restarts, max_task_retries,
+            num_cpus, num_gpus, memory, object_store_memory, resources,
+            accelerator_type, runtime_env, concurrency_groups):
         for attribute in [
                 "remote",
                 "_remote",
@@ -388,11 +403,16 @@ class ActorClass:
             PythonFunctionDescriptor.from_class(
                 modified_class.__ray_actor_class__)
 
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        new_runtime_env = ParsedRuntimeEnv(runtime_env or {})
+
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON, modified_class,
             actor_creation_function_descriptor, class_id, max_restarts,
             max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
-            resources, accelerator_type, runtime_env)
+            resources, accelerator_type, new_runtime_env, concurrency_groups)
 
         return self
 
@@ -403,10 +423,16 @@ class ActorClass:
             resources, accelerator_type, runtime_env):
         self = ActorClass.__new__(ActorClass)
 
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        new_runtime_env = ParsedRuntimeEnv(runtime_env or {})
+
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
             max_restarts, max_task_retries, num_cpus, num_gpus, memory,
-            object_store_memory, resources, accelerator_type, runtime_env)
+            object_store_memory, resources, accelerator_type, new_runtime_env,
+            [])
 
         return self
 
@@ -442,8 +468,7 @@ class ActorClass:
                 placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                runtime_env=None,
-                override_environment_variables=None):
+                runtime_env=None):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -463,6 +488,17 @@ class ActorClass:
         """
 
         actor_cls = self
+
+        # Parse local pip/conda config files here. If we instead did it in
+        # .remote(), it would get run in the Ray Client server, which runs on
+        # a remote node where the files aren't available.
+        if runtime_env is not None:
+            new_runtime_env = ParsedRuntimeEnv(runtime_env)
+        else:
+            # Keep the runtime_env as None.  In .remote(), we need to know if
+            # runtime_env is None to know whether or not to fall back to the
+            # runtime_env specified in the @ray.remote decorator.
+            new_runtime_env = runtime_env
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
@@ -485,9 +521,7 @@ class ActorClass:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
-                    runtime_env=runtime_env,
-                    override_environment_variables=(
-                        override_environment_variables))
+                    runtime_env=new_runtime_env)
 
         return ActorOptionWrapper()
 
@@ -510,8 +544,7 @@ class ActorClass:
                 placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                runtime_env=None,
-                override_environment_variables=None):
+                runtime_env=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -557,9 +590,6 @@ class ActorClass:
                 this actor or task and its children (see
                 :ref:`runtime-environments` for details).  This API is in beta
                 and may change before becoming stable.
-            override_environment_variables: Environment variables to override
-                and/or introduce for this actor.  This is a dictionary mapping
-                variable names to their values.
 
         Returns:
             A handle to the newly created actor.
@@ -584,7 +614,7 @@ class ActorClass:
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be >= 1")
 
-        if client_mode_should_convert():
+        if client_mode_should_convert(auto_init=True):
             return client_mode_convert_actor(
                 self,
                 args,
@@ -605,9 +635,7 @@ class ActorClass:
                 placement_group_bundle_index=placement_group_bundle_index,
                 placement_group_capture_child_tasks=(
                     placement_group_capture_child_tasks),
-                runtime_env=runtime_env,
-                override_environment_variables=(
-                    override_environment_variables))
+                runtime_env=runtime_env)
 
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -646,22 +674,6 @@ class ActorClass:
             raise ValueError(
                 "actor `lifetime` argument must be either `None` or 'detached'"
             )
-
-        if placement_group_capture_child_tasks is None:
-            placement_group_capture_child_tasks = (
-                worker.should_capture_child_tasks_in_placement_group)
-
-        if placement_group == "default":
-            if placement_group_capture_child_tasks:
-                placement_group = get_current_placement_group()
-            else:
-                placement_group = PlacementGroup.empty()
-
-        if not placement_group:
-            placement_group = PlacementGroup.empty()
-
-        check_placement_group_index(placement_group,
-                                    placement_group_bundle_index)
 
         # Set the actor's default resources if not already set. First three
         # conditions are to check that no resources were specified in the
@@ -722,24 +734,47 @@ class ActorClass:
             function_signature = meta.method_meta.signatures["__init__"]
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
-        if runtime_env is None:
-            runtime_env = meta.runtime_env
-        if runtime_env:
-            if runtime_env.get("working_dir"):
-                raise NotImplementedError(
-                    "Overriding working_dir for actors is not supported. "
-                    "Please use ray.init(runtime_env={'working_dir': ...}) "
-                    "to configure per-job environment instead.")
-            runtime_env_dict = runtime_support.RuntimeEnvDict(
-                runtime_env).get_parsed_dict()
-        else:
-            runtime_env_dict = {}
 
-        if override_environment_variables:
-            logger.warning("override_environment_variables is deprecated and "
-                           "will be removed in Ray 1.6.  Please use "
-                           ".options(runtime_env={'env_vars': {...}}).remote()"
-                           "instead.")
+        if placement_group_capture_child_tasks is None:
+            placement_group_capture_child_tasks = (
+                worker.should_capture_child_tasks_in_placement_group)
+        placement_group = configure_placement_group_based_on_context(
+            placement_group_capture_child_tasks,
+            placement_group_bundle_index,
+            resources,
+            actor_placement_resources,
+            meta.class_name,
+            placement_group=placement_group)
+
+        if runtime_env and not isinstance(runtime_env, ParsedRuntimeEnv):
+            runtime_env = ParsedRuntimeEnv(runtime_env)
+        elif isinstance(runtime_env, ParsedRuntimeEnv):
+            pass
+        else:
+            runtime_env = meta.runtime_env
+
+        parent_runtime_env = worker.core_worker.get_current_runtime_env()
+        parsed_runtime_env = override_task_or_actor_runtime_env(
+            runtime_env, parent_runtime_env)
+
+        concurrency_groups_dict = {}
+        for cg_name in meta.concurrency_groups:
+            concurrency_groups_dict[cg_name] = {
+                "name": cg_name,
+                "max_concurrency": meta.concurrency_groups[cg_name],
+                "function_descriptors": [],
+            }
+
+        # Update methods
+        for method_name in meta.method_meta.concurrency_group_for_methods:
+            cg_name = meta.method_meta.concurrency_group_for_methods[
+                method_name]
+            assert cg_name in concurrency_groups_dict
+
+            module_name = meta.actor_creation_function_descriptor.module_name
+            class_name = meta.actor_creation_function_descriptor.class_name
+            concurrency_groups_dict[cg_name]["function_descriptors"].append(
+                PythonFunctionDescriptor(module_name, method_name, class_name))
 
         actor_id = worker.core_worker.create_actor(
             meta.language,
@@ -759,9 +794,9 @@ class ActorClass:
             placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
-            runtime_env_dict=runtime_env_dict,
-            override_environment_variables=override_environment_variables
-            or dict())
+            serialized_runtime_env=parsed_runtime_env.serialize(),
+            runtime_env_uris=parsed_runtime_env.get_uris(),
+            concurrency_groups_dict=concurrency_groups_dict or dict())
 
         actor_handle = ActorHandle(
             meta.language,
@@ -1062,7 +1097,8 @@ def modify_class(cls):
 
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
-               accelerator_type, max_restarts, max_task_retries, runtime_env):
+               accelerator_type, max_restarts, max_task_retries, runtime_env,
+               concurrency_groups):
     Class = modify_class(cls)
     _inject_tracing_into_class(Class)
 
@@ -1070,6 +1106,8 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
         max_restarts = 0
     if max_task_retries is None:
         max_task_retries = 0
+    if concurrency_groups is None:
+        concurrency_groups = []
 
     infinite_restart = max_restarts == -1
     if not infinite_restart:
@@ -1088,7 +1126,7 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
     return ActorClass._ray_from_modified_class(
         Class, ActorClassID.from_random(), max_restarts, max_task_retries,
         num_cpus, num_gpus, memory, object_store_memory, resources,
-        accelerator_type, runtime_env)
+        accelerator_type, runtime_env, concurrency_groups)
 
 
 def exit_actor():

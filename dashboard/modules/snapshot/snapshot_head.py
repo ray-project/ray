@@ -1,25 +1,53 @@
-from typing import Dict, Any, List
+from typing import Any, Dict, List, Optional
 import hashlib
 
 import ray
+from ray import ray_constants
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_pb2
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_list
-
-import ray.new_dashboard.utils as dashboard_utils
+from ray.experimental.internal_kv import (_internal_kv_initialized,
+                                          _internal_kv_get, _internal_kv_list)
+import ray.dashboard.utils as dashboard_utils
+from ray.dashboard.modules.job.common import (JobStatusStorageClient,
+                                              JOB_ID_METADATA_KEY)
 
 import json
+import aiohttp.web
 
 routes = dashboard_utils.ClassMethodRouteTable
 
 
-class SnapshotHead(dashboard_utils.DashboardHeadModule):
+class APIHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._gcs_job_info_stub = None
         self._gcs_actor_info_stub = None
         self._dashboard_head = dashboard_head
+
+        assert _internal_kv_initialized()
+        self._job_status_client = JobStatusStorageClient()
+
+    @routes.get("/api/actors/kill")
+    async def kill_actor_gcs(self, req) -> aiohttp.web.Response:
+        actor_id = req.query.get("actor_id")
+        force_kill = req.query.get("force_kill", False) in ("true", "True")
+        no_restart = req.query.get("no_restart", False) in ("true", "True")
+        if not actor_id:
+            return dashboard_utils.rest_response(
+                success=False, message="actor_id is required.")
+
+        request = gcs_service_pb2.KillActorViaGcsRequest()
+        request.actor_id = bytes.fromhex(actor_id)
+        request.force_kill = force_kill
+        request.no_restart = no_restart
+        await self._gcs_actor_info_stub.KillActorViaGcs(request, timeout=5)
+
+        message = (f"Force killed actor with id {actor_id}" if force_kill else
+                   f"Requested actor with id {actor_id} to terminate. " +
+                   "It will exit once running tasks complete")
+
+        return dashboard_utils.rest_response(success=True, message=message)
 
     @routes.get("/api/snapshot")
     async def snapshot(self, req):
@@ -38,6 +66,16 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         return dashboard_utils.rest_response(
             success=True, message="hello", snapshot=snapshot)
 
+    def _get_job_status(self, metadata: Dict[str, str]) -> Optional[str]:
+        status = None
+        job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
+        # If a job submission ID has been added to a job, the status is
+        # guaranteed to be returned.
+        if job_submission_id is not None:
+            status = str(self._job_status_client.get_status(job_submission_id))
+
+        return status
+
     async def get_job_info(self):
         request = gcs_service_pb2.GetAllJobInfoRequest()
         reply = await self._gcs_job_info_stub.GetAllJobInfo(request, timeout=5)
@@ -45,14 +83,15 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         jobs = {}
         for job_table_entry in reply.job_info_list:
             job_id = job_table_entry.job_id.hex()
+            metadata = dict(job_table_entry.config.metadata)
             config = {
-                "env_vars": dict(job_table_entry.config.worker_env),
                 "namespace": job_table_entry.config.ray_namespace,
-                "metadata": dict(job_table_entry.config.metadata),
+                "metadata": metadata,
                 "runtime_env": json.loads(
-                    job_table_entry.config.serialized_runtime_env),
+                    job_table_entry.config.runtime_env.serialized_runtime_env),
             }
             entry = {
+                "status": self._get_job_status(metadata),
                 "is_dead": job_table_entry.is_dead,
                 "start_time": job_table_entry.start_time,
                 "end_time": job_table_entry.end_time,
@@ -117,20 +156,20 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         except Exception:
             return {}
 
-        gcs_client = self._dashboard_head.gcs_client
-
         # Serve wraps Ray's internal KV store and specially formats the keys.
         # These are the keys we are interested in:
         # SERVE_CONTROLLER_NAME(+ optional random letters):SERVE_SNAPSHOT_KEY
 
-        serve_keys = _internal_kv_list(SERVE_CONTROLLER_NAME, gcs_client)
+        serve_keys = _internal_kv_list(
+            SERVE_CONTROLLER_NAME, namespace=ray_constants.KV_NAMESPACE_SERVE)
         serve_snapshot_keys = filter(lambda k: SERVE_SNAPSHOT_KEY in str(k),
                                      serve_keys)
 
         deployments_per_controller: List[Dict[str, Any]] = []
         for key in serve_snapshot_keys:
-            val_bytes = _internal_kv_get(key,
-                                         gcs_client) or "{}".encode("utf-8")
+            val_bytes = _internal_kv_get(
+                key, namespace=ray_constants.KV_NAMESPACE_SERVE
+            ) or "{}".encode("utf-8")
             deployments_per_controller.append(
                 json.loads(val_bytes.decode("utf-8")))
         # Merge the deployments dicts of all controllers.
@@ -148,8 +187,9 @@ class SnapshotHead(dashboard_utils.DashboardHeadModule):
         return deployments
 
     async def get_session_name(self):
-        encoded_name = await self._dashboard_head.aioredis_client.get(
-            "session_name")
+        # TODO(yic): Use async version if performance is an issue
+        encoded_name = ray.experimental.internal_kv._internal_kv_get(
+            "session_name", namespace=ray_constants.KV_NAMESPACE_SESSION)
         return encoded_name.decode()
 
     async def run(self, server):

@@ -263,6 +263,43 @@ class ExperimentAnalysisPropertySuite(unittest.TestCase):
         self.assertEquals(ea.best_result_df.loc[trials[2].trial_id, "res"],
                           309)
 
+    def testDataframeBestResult(self):
+        def train(config):
+            if config["var"] == 1:
+                tune.report(loss=9)
+                tune.report(loss=7)
+                tune.report(loss=5)
+            else:
+                tune.report(loss=10)
+                tune.report(loss=4)
+                tune.report(loss=10)
+
+        analysis = tune.run(
+            train,
+            config={"var": tune.grid_search([1, 2])},
+            metric="loss",
+            mode="min")
+
+        self.assertEqual(analysis.best_config["var"], 1)
+
+        with self.assertRaises(ValueError):
+            # Should raise because we didn't pass a metric
+            df = analysis.dataframe(mode="max")
+
+        # If we specify `min`, we expect the lowest ever observed result
+        df = analysis.dataframe(metric="loss", mode="min")
+        var = df[df.loss == df.loss.min()]["config/var"].values[0]
+        self.assertEqual(var, 2)
+
+        # If we don't pass a mode, we just fetch the last result
+        df = analysis.dataframe(metric="loss")
+        var = df[df.loss == df.loss.min()]["config/var"].values[0]
+        self.assertEqual(var, 1)
+
+        df = analysis.dataframe()
+        var = df[df.loss == df.loss.min()]["config/var"].values[0]
+        self.assertEqual(var, 1)
+
 
 if __name__ == "__main__":
     import pytest

@@ -3,11 +3,14 @@ The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
 import os
+import subprocess
 import sys
 import socket
 from typing import Optional
+from tempfile import mkstemp
 
 import pytest
+import pydantic
 import requests
 
 import ray
@@ -18,16 +21,14 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.utils import (block_until_http_ready, get_all_node_ids,
                              format_actor_name)
 from ray.serve.config import HTTPOptions
-from ray._private.test_utils import wait_for_condition
+from ray.serve.api import _get_global_client
+from ray._private.test_utils import run_string_as_driver, wait_for_condition
 from ray._private.services import new_port
 import ray._private.gcs_utils as gcs_utils
 
-
-@pytest.fixture
-def ray_shutdown():
-    yield
-    serve.shutdown()
-    ray.shutdown()
+# Explicitly importing it here because it is a ray core tests utility (
+# not in the tree)
+from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
 
 
 @pytest.fixture
@@ -98,7 +99,7 @@ def test_detached_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
     cluster = ray_cluster
-    head_node = cluster.add_node(node_ip_address="127.0.0.1", num_cpus=6)
+    head_node = cluster.add_node(num_cpus=6)
 
     # Create first job, check we can run a simple serve endpoint
     ray.init(head_node.address, namespace="serve")
@@ -115,7 +116,7 @@ def test_detached_deployment(ray_cluster):
     serve.api._global_client = None
     ray.shutdown()
 
-    # Create the second job, make sure we can still create new backends.
+    # Create the second job, make sure we can still create new deployments.
     ray.init(head_node.address, namespace="serve")
     assert ray.get_runtime_context().job_id != first_job_id
 
@@ -289,6 +290,7 @@ def test_http_root_url(ray_shutdown):
     f.deploy()
     assert f.url == root_url + "/f"
     serve.shutdown()
+    ray.shutdown()
     del os.environ[SERVE_ROOT_URL_ENV_KEY]
 
     port = new_port()
@@ -297,6 +299,15 @@ def test_http_root_url(ray_shutdown):
     assert f.url != root_url + "/f"
     assert f.url == f"http://127.0.0.1:{port}/f"
     serve.shutdown()
+    ray.shutdown()
+
+    ray.init(runtime_env={"env_vars": {SERVE_ROOT_URL_ENV_KEY: root_url}})
+    port = new_port()
+    serve.start(http_options=dict(port=port))
+    f.deploy()
+    assert f.url == root_url + "/f"
+    serve.shutdown()
+    ray.shutdown()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
@@ -375,6 +386,44 @@ def test_http_head_only(ray_cluster):
     assert cpu_per_nodes == {4, 4}
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+@pytest.mark.skipif(
+    not hasattr(socket, "SO_REUSEPORT"),
+    reason=("Port sharing only works on newer verion of Linux. "
+            "This test can only be ran when port sharing is supported."))
+def test_fixed_number_proxies(ray_cluster):
+    cluster = ray_cluster
+    head_node = cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4)
+
+    ray.init(head_node.address)
+    node_ids = ray.state.node_ids()
+    assert len(node_ids) == 3
+
+    with pytest.raises(
+            pydantic.ValidationError,
+            match="you must specify the `fixed_number_replicas` parameter."):
+        serve.start(http_options={
+            "location": "FixedNumber",
+        })
+
+    serve.start(http_options={
+        "port": new_port(),
+        "location": "FixedNumber",
+        "fixed_number_replicas": 2
+    })
+
+    # Only the controller and two http proxy should be started.
+    controller_handle = _get_global_client()._controller
+    node_to_http_actors = ray.get(controller_handle.get_http_proxies.remote())
+    assert len(node_to_http_actors) == 2
+
+    serve.shutdown()
+    ray.shutdown()
+    cluster.shutdown()
+
+
 def test_serve_shutdown(ray_shutdown):
     ray.init(namespace="serve")
     serve.start(detached=True)
@@ -409,6 +458,7 @@ def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
     serve.start(detached=True)
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 @pytest.mark.parametrize("namespace", [None, "test_namespace"])
 @pytest.mark.parametrize("detached", [True, False])
 def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
@@ -432,6 +482,137 @@ def test_serve_controller_namespace(ray_shutdown, namespace: Optional[str],
 
     assert ray.get_actor(
         client._controller_name, namespace=controller_namespace)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
+def test_checkpoint_isolation_namespace(ray_shutdown):
+    info = ray.init(namespace="test_namespace1")
+
+    address = info["redis_address"]
+
+    driver_template = """
+import ray
+from ray import serve
+
+ray.init(address="{address}", namespace="{namespace}")
+
+serve.start(detached=True, http_options={{"port": {port}}})
+
+@serve.deployment
+class A:
+    pass
+
+A.deploy()"""
+
+    run_string_as_driver(
+        driver_template.format(
+            address=address, namespace="test_namespace1", port=8000))
+    run_string_as_driver(
+        driver_template.format(
+            address=address, namespace="test_namespace2", port=8001))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+def test_local_store_recovery(ray_shutdown):
+    _, tmp_path = mkstemp()
+
+    @serve.deployment
+    def hello(_):
+        return "hello"
+
+    # https://github.com/ray-project/ray/issues/19987
+    @serve.deployment
+    def world(_):
+        return "world"
+
+    def check(name):
+        try:
+            resp = requests.get(f"http://localhost:8000/{name}")
+            assert resp.text == name
+            return True
+        except Exception:
+            return False
+
+    # https://github.com/ray-project/ray/issues/20159
+    # https://github.com/ray-project/ray/issues/20158
+    def clean_up_leaked_processes():
+        import psutil
+        for proc in psutil.process_iter():
+            try:
+                cmdline = " ".join(proc.cmdline())
+                if "ray::" in cmdline:
+                    print(f"Kill {proc} {cmdline}")
+                    proc.kill()
+            except Exception:
+                pass
+
+    def crash():
+        subprocess.call(["ray", "stop", "--force"])
+        clean_up_leaked_processes()
+        ray.shutdown()
+        serve.shutdown()
+
+    serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
+    hello.deploy()
+    world.deploy()
+    assert check("hello")
+    assert check("world")
+    crash()
+
+    # Simulate a crash
+
+    serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
+    wait_for_condition(lambda: check("hello"))
+    # wait_for_condition(lambda: check("world"))
+    crash()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize(
+    "ray_start_with_dashboard", [{
+        "num_cpus": 4
+    }], indirect=True)
+def test_snapshot_always_written_to_internal_kv(
+        ray_start_with_dashboard,  # noqa: F811
+        ray_shutdown):
+    # https://github.com/ray-project/ray/issues/19752
+    _, tmp_path = mkstemp()
+
+    @serve.deployment()
+    def hello(_):
+        return "hello"
+
+    def check():
+        try:
+            resp = requests.get("http://localhost:8000/hello")
+            assert resp.text == "hello"
+            return True
+        except Exception:
+            return False
+
+    serve.start(detached=True, _checkpoint_path=f"file://{tmp_path}")
+    hello.deploy()
+    check()
+
+    webui_url = ray_start_with_dashboard["webui_url"]
+
+    def get_deployment_snapshot():
+        snapshot = requests.get(f"http://{webui_url}/api/snapshot").json()[
+            "data"]["snapshot"]
+        return snapshot["deployments"]
+
+    # Make sure /api/snapshot return non-empty deployment status.
+    def verify_snapshot():
+        return get_deployment_snapshot() != {}
+
+    wait_for_condition(verify_snapshot)
+
+    # Sanity check the snapshot is correct
+    snapshot = get_deployment_snapshot()
+    assert len(snapshot) == 1
+    hello_deployment = list(snapshot.values())[0]
+    assert hello_deployment["name"] == "hello"
+    assert hello_deployment["status"] == "RUNNING"
 
 
 if __name__ == "__main__":

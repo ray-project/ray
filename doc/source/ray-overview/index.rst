@@ -155,7 +155,7 @@ Ray has a rich ecosystem of libraries and frameworks built on top of it. The mai
 
 - :doc:`../tune/index`
 - :ref:`rllib-index`
-- :ref:`sgd-index`
+- :ref:`train-docs`
 - :ref:`rayserve`
 
 
@@ -170,7 +170,7 @@ Tune Quick Start
 
     .. code-block:: bash
 
-        $ pip install 'ray[tune]'
+        $ pip install "ray[tune]"
 
 
 This example runs a small grid search with an iterative training function.
@@ -196,7 +196,7 @@ RLlib Quick Start
 .. code-block:: bash
 
   pip install tensorflow  # or tensorflow-gpu
-  pip install ray[rllib]
+  pip install "ray[rllib]"
 
 .. code-block:: python
 

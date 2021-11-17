@@ -1,11 +1,12 @@
 import pickle
 from collections import Counter
-import shutil
-import tempfile
 import copy
+import gym
 import numpy as np
 import os
+import shutil
 import sys
+import tempfile
 import time
 import unittest
 from unittest.mock import patch
@@ -14,13 +15,15 @@ import ray
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune import (DurableTrainable, Trainable, TuneError, Stopper,
-                      EarlyStopping, run)
+from ray.tune import (Trainable, TuneError, Stopper, run)
+from ray.tune.function_runner import wrap_function
 from ray.tune import register_env, register_trainable, run_experiments
-from ray.tune.durable_trainable import durable
+from ray.tune.callback import Callback
 from ray.tune.schedulers import (TrialScheduler, FIFOScheduler,
                                  AsyncHyperBandScheduler)
-from ray.tune.stopper import MaximumIterationStopper, TrialPlateauStopper
+from ray.tune.stopper import (MaximumIterationStopper, TrialPlateauStopper,
+                              ExperimentPlateauStopper)
+from ray.tune.suggest.suggestion import ConcurrencyLimiter
 from ray.tune.sync_client import CommandBasedClient
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
@@ -223,6 +226,14 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertRaises(TypeError, lambda: register_trainable("foo", A))
         self.assertRaises(TypeError, lambda: Experiment("foo", A))
 
+    def testRegisterTrainableThrice(self):
+        def train(config, reporter):
+            pass
+
+        register_trainable("foo", train)
+        register_trainable("foo", train)
+        register_trainable("foo", train)
+
     def testTrainableCallable(self):
         def dummy_fn(config, reporter, steps):
             reporter(timesteps_total=steps, done=True)
@@ -242,8 +253,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], steps)
 
     def testBuiltInTrainableResources(self):
-        os.environ["TUNE_PLACEMENT_GROUP_AUTO_DISABLED"] = "1"
-
         class B(Trainable):
             @classmethod
             def default_resource_request(cls, config):
@@ -254,7 +263,34 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         register_trainable("B", B)
 
-        def f(cpus, gpus, queue_trials):
+        def f(cpus, gpus):
+            return run_experiments({
+                "foo": {
+                    "run": "B",
+                    "config": {
+                        "cpu": cpus,
+                        "gpu": gpus,
+                    },
+                }
+            }, )[0]
+
+        # TODO(xwjiang): https://github.com/ray-project/ray/issues/19959
+        # self.assertEqual(f(0, 0).status, Trial.TERMINATED)
+
+        # TODO(xwjiang): Make FailureInjectorCallback a test util.
+        class FailureInjectorCallback(Callback):
+            """Adds random failure injection to the TrialExecutor."""
+
+            def __init__(self, steps=4):
+                self._step = 0
+                self.steps = steps
+
+            def on_step_begin(self, iteration, trials, **info):
+                self._step += 1
+                if self._step >= self.steps:
+                    raise RuntimeError
+
+        def g(cpus, gpus):
             return run_experiments(
                 {
                     "foo": {
@@ -265,20 +301,27 @@ class TrainableFunctionApiTest(unittest.TestCase):
                         },
                     }
                 },
-                queue_trials=queue_trials)[0]
+                callbacks=[FailureInjectorCallback()],
+            )[0]
 
-        # Should all succeed
-        self.assertEqual(f(0, 0, False).status, Trial.TERMINATED)
-        self.assertEqual(f(1, 0, True).status, Trial.TERMINATED)
-        self.assertEqual(f(1, 0, True).status, Trial.TERMINATED)
+        # Too large resource requests are infeasible
+        # TODO(xwjiang): Throw TuneError after https://github.com/ray-project/ray/issues/19985.  # noqa
+        os.environ["TUNE_WARN_INSUFFICENT_RESOURCE_THRESHOLD_S"] = "0"
 
-        # Too large resource request
-        self.assertRaises(TuneError, lambda: f(100, 100, False))
-        self.assertRaises(TuneError, lambda: f(0, 100, False))
-        self.assertRaises(TuneError, lambda: f(100, 0, False))
+        with self.assertRaises(RuntimeError), patch.object(
+                ray.tune.trial_executor.logger, "warning") as warn_mock:
+            self.assertRaises(TuneError, lambda: g(100, 100))
+            assert warn_mock.assert_called_once()
 
-        # TODO(ekl) how can we test this is queued (hangs)?
-        # f(100, 0, True)
+        with self.assertRaises(RuntimeError), patch.object(
+                ray.tune.trial_executor.logger, "warning") as warn_mock:
+            self.assertRaises(TuneError, lambda: g(0, 100))
+            assert warn_mock.assert_called_once()
+
+        with self.assertRaises(RuntimeError), patch.object(
+                ray.tune.trial_executor.logger, "warning") as warn_mock:
+            self.assertRaises(TuneError, lambda: g(100, 0))
+            assert warn_mock.assert_called_once()
 
     def testRewriteEnv(self):
         def train(config, reporter):
@@ -511,19 +554,19 @@ class TrainableFunctionApiTest(unittest.TestCase):
         top = 3
 
         with self.assertRaises(ValueError):
-            EarlyStopping("test", top=0)
+            ExperimentPlateauStopper("test", top=0)
         with self.assertRaises(ValueError):
-            EarlyStopping("test", top="0")
+            ExperimentPlateauStopper("test", top="0")
         with self.assertRaises(ValueError):
-            EarlyStopping("test", std=0)
+            ExperimentPlateauStopper("test", std=0)
         with self.assertRaises(ValueError):
-            EarlyStopping("test", patience=-1)
+            ExperimentPlateauStopper("test", patience=-1)
         with self.assertRaises(ValueError):
-            EarlyStopping("test", std="0")
+            ExperimentPlateauStopper("test", std="0")
         with self.assertRaises(ValueError):
-            EarlyStopping("test", mode="0")
+            ExperimentPlateauStopper("test", mode="0")
 
-        stopper = EarlyStopping("test", top=top, mode="min")
+        stopper = ExperimentPlateauStopper("test", top=top, mode="min")
 
         analysis = tune.run(train, num_samples=10, stop=stopper)
         self.assertTrue(
@@ -532,7 +575,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
             len(analysis.dataframe(metric="test", mode="max")) <= top)
 
         patience = 5
-        stopper = EarlyStopping("test", top=top, mode="min", patience=patience)
+        stopper = ExperimentPlateauStopper(
+            "test", top=top, mode="min", patience=patience)
 
         analysis = tune.run(train, num_samples=20, stop=stopper)
         self.assertTrue(
@@ -540,7 +584,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertTrue(
             len(analysis.dataframe(metric="test", mode="max")) <= patience)
 
-        stopper = EarlyStopping("test", top=top, mode="min")
+        stopper = ExperimentPlateauStopper("test", top=top, mode="min")
 
         analysis = tune.run(train, num_samples=10, stop=stopper)
         self.assertTrue(
@@ -694,6 +738,51 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(Counter(t.status for t in new_trials)["ERROR"], 0)
         self.assertTrue(
             all(t.last_result.get("hello") == 123 for t in new_trials))
+
+    # Test rerunning rllib trials with ERRORED_ONLY.
+    def testRerunRlLib(self):
+        class TestEnv(gym.Env):
+            counter = 0
+
+            def __init__(self, config):
+                self.observation_space = gym.spaces.Discrete(1)
+                self.action_space = gym.spaces.Discrete(1)
+                TestEnv.counter += 1
+
+            def reset(self):
+                return 0
+
+            def step(self, act):
+                return [0, 1, True, {}]
+
+        class FailureInjectionCallback(Callback):
+            def on_trial_start(self, trials, **info):
+                raise RuntimeError
+
+        with self.assertRaises(Exception):
+            tune.run(
+                "PPO",
+                config={
+                    "env": TestEnv,
+                    "framework": "torch",
+                    "num_workers": 0,
+                },
+                name="my_experiment",
+                callbacks=[FailureInjectionCallback()],
+                stop={"training_iteration": 1})
+        trials = tune.run(
+            "PPO",
+            config={
+                "env": TestEnv,
+                "framework": "torch",
+                "num_workers": 0,
+            },
+            name="my_experiment",
+            resume="ERRORED_ONLY",
+            stop={
+                "training_iteration": 1
+            }).trials
+        assert len(trials) == 1 and trials[0].status == Trial.TERMINATED
 
     def testTrialInfoAccess(self):
         class TestTrainable(Trainable):
@@ -879,7 +968,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def _testDurableTrainable(self, trainable, function=False, cleanup=True):
         sync_client = mock_storage_client()
-        mock_get_client = "ray.tune.durable_trainable.get_cloud_sync_client"
+        mock_get_client = "ray.tune.trainable.get_cloud_sync_client"
         with patch(mock_get_client) as mock_get_cloud_sync_client:
             mock_get_cloud_sync_client.return_value = sync_client
             test_trainable = trainable(remote_checkpoint_dir=MOCK_REMOTE_DIR)
@@ -911,27 +1000,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
             self.addCleanup(shutil.rmtree, MOCK_REMOTE_DIR)
 
     def testDurableTrainableClass(self):
-        class TestTrain(DurableTrainable):
-            def setup(self, config):
-                self.state = {"hi": 1, "iter": 0}
-
-            def step(self):
-                self.state["iter"] += 1
-                return {
-                    "timesteps_this_iter": 1,
-                    "metric": self.state["iter"],
-                    "done": self.state["iter"] > 3
-                }
-
-            def save_checkpoint(self, path):
-                return self.state
-
-            def load_checkpoint(self, state):
-                self.state = state
-
-        self._testDurableTrainable(TestTrain)
-
-    def testDurableTrainableWrapped(self):
         class TestTrain(Trainable):
             def setup(self, config):
                 self.state = {"hi": 1, "iter": 0}
@@ -950,11 +1018,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             def load_checkpoint(self, state):
                 self.state = state
 
-        self._testDurableTrainable(durable(TestTrain), cleanup=False)
-
-        tune.register_trainable("test_train", TestTrain)
-
-        self._testDurableTrainable(durable("test_train"))
+        self._testDurableTrainable(TestTrain)
 
     def testDurableTrainableFunction(self):
         def test_train(config, checkpoint_dir=None):
@@ -976,12 +1040,12 @@ class TrainableFunctionApiTest(unittest.TestCase):
                         "done": state["iter"] > 3
                     })
 
-        self._testDurableTrainable(durable(test_train), function=True)
+        self._testDurableTrainable(wrap_function(test_train), function=True)
 
     def testDurableTrainableSyncFunction(self):
         """Check custom sync functions in durable trainables"""
 
-        class TestDurable(DurableTrainable):
+        class TestDurable(Trainable):
             def __init__(self, *args, **kwargs):
                 # Mock distutils.spawn.find_executable
                 # so `aws` command is found
@@ -1004,9 +1068,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
             exp = Experiment(
                 name="test_durable_sync",
                 run=trainable_cls,
-                sync_to_cloud=sync_to_cloud,
-                sync_to_driver=False,
-                upload_dir=upload_dir)
+                sync_config=tune.SyncConfig(
+                    syncer=sync_to_cloud, upload_dir=upload_dir))
 
             searchers = BasicVariantGenerator()
             searchers.add_configurations([exp])
@@ -1014,7 +1077,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
             cls = trial.get_trainable_cls()
             actor = ray.remote(cls).remote(
                 remote_checkpoint_dir=upload_dir,
-                sync_function_tpl=trial.sync_to_cloud)
+                sync_function_tpl=trial.sync_function_tpl)
             return actor
 
         # This actor should create a default aws syncer, so check should fail
@@ -1598,7 +1661,7 @@ class ApiTestFast(unittest.TestCase):
                          scheduler=None,
                          local_checkpoint_dir=None,
                          remote_checkpoint_dir=None,
-                         sync_to_cloud=None,
+                         sync_config=None,
                          stopper=None,
                          resume=False,
                          server_port=None,
@@ -1606,7 +1669,8 @@ class ApiTestFast(unittest.TestCase):
                          checkpoint_period=None,
                          trial_executor=None,
                          callbacks=None,
-                         metric=None):
+                         metric=None,
+                         driver_sync_trial_checkpoints=True):
                 # should be converted from strings at this case
                 # and not None
                 capture["search_alg"] = search_alg
@@ -1616,7 +1680,7 @@ class ApiTestFast(unittest.TestCase):
                     scheduler=scheduler,
                     local_checkpoint_dir=local_checkpoint_dir,
                     remote_checkpoint_dir=remote_checkpoint_dir,
-                    sync_to_cloud=sync_to_cloud,
+                    sync_config=sync_config,
                     stopper=stopper,
                     resume=resume,
                     server_port=server_port,
@@ -1624,7 +1688,8 @@ class ApiTestFast(unittest.TestCase):
                     checkpoint_period=checkpoint_period,
                     trial_executor=trial_executor,
                     callbacks=callbacks,
-                    metric=metric)
+                    metric=metric,
+                    driver_sync_trial_checkpoints=True)
 
         with patch("ray.tune.tune.TrialRunner", MockTrialRunner):
             tune.run(
@@ -1635,10 +1700,125 @@ class ApiTestFast(unittest.TestCase):
                 mode="max",
                 stop={TRAINING_ITERATION: 1})
 
-        self.assertTrue(
-            isinstance(capture["search_alg"], BasicVariantGenerator))
-        self.assertTrue(
-            isinstance(capture["scheduler"], AsyncHyperBandScheduler))
+        self.assertIsInstance(capture["search_alg"], BasicVariantGenerator)
+        self.assertIsInstance(capture["scheduler"], AsyncHyperBandScheduler)
+
+
+class MaxConcurrentTrialsTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        ray.init(
+            num_cpus=4, num_gpus=0, local_mode=False, include_dashboard=False)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+        _register_all()
+
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def testMaxConcurrentTrials(self):
+        def train(config):
+            tune.report(metric=1)
+
+        capture = {}
+
+        class MockTrialRunner(TrialRunner):
+            def __init__(self,
+                         search_alg=None,
+                         scheduler=None,
+                         local_checkpoint_dir=None,
+                         remote_checkpoint_dir=None,
+                         sync_config=None,
+                         stopper=None,
+                         resume=False,
+                         server_port=None,
+                         fail_fast=False,
+                         checkpoint_period=None,
+                         trial_executor=None,
+                         callbacks=None,
+                         metric=None,
+                         driver_sync_trial_checkpoints=True):
+                capture["search_alg"] = search_alg
+                capture["scheduler"] = scheduler
+                super().__init__(
+                    search_alg=search_alg,
+                    scheduler=scheduler,
+                    local_checkpoint_dir=local_checkpoint_dir,
+                    remote_checkpoint_dir=remote_checkpoint_dir,
+                    sync_config=sync_config,
+                    stopper=stopper,
+                    resume=resume,
+                    server_port=server_port,
+                    fail_fast=fail_fast,
+                    checkpoint_period=checkpoint_period,
+                    trial_executor=trial_executor,
+                    callbacks=callbacks,
+                    metric=metric,
+                    driver_sync_trial_checkpoints=driver_sync_trial_checkpoints
+                )
+
+        with patch("ray.tune.tune.TrialRunner", MockTrialRunner):
+            tune.run(
+                train,
+                config={"a": tune.randint(0, 2)},
+                metric="metric",
+                mode="max",
+                stop={TRAINING_ITERATION: 1})
+
+            self.assertIsInstance(capture["search_alg"], BasicVariantGenerator)
+            self.assertEqual(capture["search_alg"].max_concurrent, 0)
+
+            tune.run(
+                train,
+                max_concurrent_trials=2,
+                config={"a": tune.randint(0, 2)},
+                metric="metric",
+                mode="max",
+                stop={TRAINING_ITERATION: 1})
+
+            self.assertIsInstance(capture["search_alg"], BasicVariantGenerator)
+            self.assertEqual(capture["search_alg"].max_concurrent, 2)
+
+            tune.run(
+                train,
+                search_alg=HyperOptSearch(),
+                config={"a": tune.randint(0, 2)},
+                metric="metric",
+                mode="max",
+                stop={TRAINING_ITERATION: 1})
+
+            self.assertIsInstance(capture["search_alg"].searcher,
+                                  HyperOptSearch)
+
+            tune.run(
+                train,
+                search_alg=HyperOptSearch(),
+                max_concurrent_trials=2,
+                config={"a": tune.randint(0, 2)},
+                metric="metric",
+                mode="max",
+                stop={TRAINING_ITERATION: 1})
+
+            self.assertIsInstance(capture["search_alg"].searcher,
+                                  ConcurrencyLimiter)
+            self.assertEqual(capture["search_alg"].searcher.max_concurrent, 2)
+
+            # max_concurrent_trials should not override ConcurrencyLimiter
+            with self.assertRaisesRegex(ValueError, "max_concurrent_trials"):
+                tune.run(
+                    train,
+                    search_alg=ConcurrencyLimiter(
+                        HyperOptSearch(), max_concurrent=3),
+                    max_concurrent_trials=2,
+                    config={"a": tune.randint(0, 2)},
+                    metric="metric",
+                    mode="max",
+                    stop={TRAINING_ITERATION: 1})
 
 
 if __name__ == "__main__":

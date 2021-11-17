@@ -7,10 +7,7 @@ import string
 import time
 from typing import Iterable, Tuple
 import os
-from collections import UserDict
 
-import starlette.requests
-import starlette.responses
 import requests
 import numpy as np
 import pydantic
@@ -19,80 +16,15 @@ import ray
 import ray.serialization_addons
 from ray.util.serialization import StandaloneSerializationContext
 from ray.serve.constants import HTTP_PROXY_TIMEOUT
-from ray.serve.exceptions import RayServeException
 from ray.serve.http_util import build_starlette_request, HTTPRequestWrapper
 
 ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
 
 
-class ServeMultiDict(UserDict):
-    """Compatible data structure to simulate Starlette Request query_args."""
-
-    def getlist(self, key):
-        """Return the list of items for a given key."""
-        return self.data.get(key, [])
-
-
-class ServeRequest:
-    """The request object used when passing arguments via ServeHandle.
-
-    ServeRequest partially implements the API of Starlette Request. You only
-    need to write your model serving code once; it can be queried by both HTTP
-    and Python.
-
-    To use the full Starlette Request interface with ServeHandle, you may
-    instead directly pass in a Starlette Request object to the ServeHandle.
-    """
-
-    def __init__(self, data, kwargs, headers, method):
-        self._data = data
-        self._kwargs = ServeMultiDict(kwargs)
-        self._headers = headers
-        self._method = method
-
-    @property
-    def headers(self):
-        """The HTTP headers from ``handle.option(http_headers=...)``."""
-        return self._headers
-
-    @property
-    def method(self):
-        """The HTTP method data from ``handle.option(http_method=...)``."""
-        return self._method
-
-    @property
-    def query_params(self):
-        """The keyword arguments from ``handle.remote(**kwargs)``."""
-        return self._kwargs
-
-    async def json(self):
-        """The request dictionary, from ``handle.remote(dict)``."""
-        if not isinstance(self._data, dict):
-            raise RayServeException("Request data is not a dictionary. "
-                                    f"It is {type(self._data)}.")
-        return self._data
-
-    async def form(self):
-        """The request dictionary, from ``handle.remote(dict)``."""
-        if not isinstance(self._data, dict):
-            raise RayServeException("Request data is not a dictionary. "
-                                    f"It is {type(self._data)}.")
-        return self._data
-
-    async def body(self):
-        """The request data from ``handle.remote(obj)``."""
-        return self._data
-
-
 def parse_request_item(request_item):
-    if len(request_item.args) <= 1:
-        arg = request_item.args[0] if len(request_item.args) == 1 else None
-
-        # If the input data from handle is web request, we don't need to wrap
-        # it in ServeRequest.
-        if isinstance(arg, starlette.requests.Request):
-            return (arg, ), {}
-        elif request_item.metadata.http_arg_is_pickled:
+    if len(request_item.args) == 1:
+        arg = request_item.args[0]
+        if request_item.metadata.http_arg_is_pickled:
             assert isinstance(arg, bytes)
             arg: HTTPRequestWrapper = pickle.loads(arg)
             return (build_starlette_request(arg.scope, arg.body), ), {}

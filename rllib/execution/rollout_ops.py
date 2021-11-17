@@ -4,14 +4,15 @@ import time
 
 from ray.util.iter import from_actors, LocalIterator
 from ray.util.iter_metrics import SharedMetrics
-from ray.rllib.evaluation.metrics import get_learner_stats
 from ray.rllib.evaluation.rollout_worker import get_global_worker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import AGENT_STEPS_SAMPLED_COUNTER, \
-    STEPS_SAMPLED_COUNTER, LEARNER_INFO, SAMPLE_TIMER, GRAD_WAIT_TIMER, \
+    STEPS_SAMPLED_COUNTER, SAMPLE_TIMER, GRAD_WAIT_TIMER, \
     _check_sample_batch_type, _get_shared_metrics
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
+from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, \
+    LEARNER_STATS_KEY
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.typing import PolicyID, SampleBatchType, ModelGradients
 
@@ -130,7 +131,9 @@ def AsyncGradients(
             (grads, info), count = item
             metrics = _get_shared_metrics()
             metrics.counters[STEPS_SAMPLED_COUNTER] += count
-            metrics.info[LEARNER_INFO] = get_learner_stats(info)
+            metrics.info[LEARNER_INFO] = {
+                DEFAULT_POLICY_ID: info
+            } if LEARNER_STATS_KEY in info else info
             metrics.timers[GRAD_WAIT_TIMER].push(time.perf_counter() -
                                                  self.fetch_start_time)
             return grads, count
@@ -162,15 +165,24 @@ class ConcatBatches:
 
     def __call__(self, batch: SampleBatchType) -> List[SampleBatchType]:
         _check_sample_batch_type(batch)
-        self.buffer.append(batch)
 
         if self.count_steps_by == "env_steps":
-            self.count += batch.count
+            size = batch.count
         else:
             assert isinstance(batch, MultiAgentBatch), \
                 "`count_steps_by=agent_steps` only allowed in multi-agent " \
                 "environments!"
-            self.count += batch.agent_steps()
+            size = batch.agent_steps()
+
+        # Incoming batch is an empty dummy batch -> Ignore.
+        # Possibly produced automatically by a PolicyServer to unblock
+        # an external env waiting for inputs from unresponsive/disconnected
+        # client(s).
+        if size == 0:
+            return []
+
+        self.count += size
+        self.buffer.append(batch)
 
         if self.count >= self.min_batch_size:
             if self.count > self.min_batch_size * 2:

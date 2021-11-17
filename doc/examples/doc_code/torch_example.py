@@ -8,6 +8,8 @@ in the documentation.
 """
 # yapf: disable
 # __torch_model_start__
+import argparse
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -30,6 +32,8 @@ class Model(nn.Module):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return F.log_softmax(x, dim=1)
+
+
 # __torch_model_end__
 # yapf: enable
 
@@ -77,34 +81,36 @@ def test(model, device, test_loader):
     }
 
 
-def dataset_creator(use_cuda):
+def dataset_creator(use_cuda, data_dir):
     kwargs = {"num_workers": 1, "pin_memory": True} if use_cuda else {}
     with FileLock("./data.lock"):
         train_loader = torch.utils.data.DataLoader(
             datasets.MNIST(
-                "~/data",
+                data_dir,
                 train=True,
                 download=True,
                 transform=transforms.Compose([
                     transforms.ToTensor(),
-                    transforms.Normalize((0.1307, ), (0.3081, ))
+                    transforms.Normalize((0.1307,), (0.3081,))
                 ])),
             batch_size=128,
             shuffle=True,
             **kwargs)
     test_loader = torch.utils.data.DataLoader(
         datasets.MNIST(
-            "~/data",
+            data_dir,
             train=False,
             transform=transforms.Compose([
                 transforms.ToTensor(),
-                transforms.Normalize((0.1307, ), (0.3081, ))
+                transforms.Normalize((0.1307,), (0.3081,))
             ])),
         batch_size=128,
         shuffle=True,
         **kwargs)
 
     return train_loader, test_loader
+
+
 # __torch_helper_end__
 # yapf: enable
 
@@ -114,10 +120,10 @@ import torch.optim as optim
 
 
 class Network(object):
-    def __init__(self, lr=0.01, momentum=0.5):
+    def __init__(self, lr=0.01, momentum=0.5, data_dir="~/data"):
         use_cuda = torch.cuda.is_available()
         self.device = device = torch.device("cuda" if use_cuda else "cpu")
-        self.train_loader, self.test_loader = dataset_creator(use_cuda)
+        self.train_loader, self.test_loader = dataset_creator(use_cuda, data_dir)
 
         self.model = Model().to(device)
         self.optimizer = optim.SGD(
@@ -137,7 +143,16 @@ class Network(object):
         torch.save(self.model.state_dict(), "mnist_cnn.pt")
 
 
-net = Network()
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--data-dir",
+    type=str,
+    default="~/data/",
+    help="Set the path of the dataset."
+)
+args = parser.parse_args()
+
+net = Network(data_dir=args.data_dir)
 net.train()
 # __torch_net_end__
 # yapf: enable
@@ -145,6 +160,7 @@ net.train()
 # yapf: disable
 # __torch_ray_start__
 import ray
+
 ray.init()
 
 RemoteNetwork = ray.remote(Network)
@@ -169,6 +185,7 @@ weights = ray.get(
      NetworkActor2.get_weights.remote()])
 
 from collections import OrderedDict
+
 averaged_weights = OrderedDict(
     [(k, (weights[0][k] + weights[1][k]) / 2) for k in weights[0]])
 

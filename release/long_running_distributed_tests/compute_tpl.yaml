@@ -22,3 +22,8 @@ aws:
           Value: '{{env["ANYSCALE_USER"]}}'
         - Key: anyscale-expiration
           Value: '{{env["EXPIRATION_2D"]}}'
+
+  BlockDeviceMappings:
+    - DeviceName: /dev/sda1
+      Ebs:
+        VolumeSize: 202

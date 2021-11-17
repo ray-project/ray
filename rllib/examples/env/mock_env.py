@@ -37,6 +37,32 @@ class MockEnv2(gym.Env):
     def __init__(self, episode_length):
         self.episode_length = episode_length
         self.i = 0
+        self.observation_space = gym.spaces.Discrete(self.episode_length + 1)
+        self.action_space = gym.spaces.Discrete(2)
+        self.rng_seed = None
+
+    def reset(self):
+        self.i = 0
+        return self.i
+
+    def step(self, action):
+        self.i += 1
+        return self.i, 100.0, self.i >= self.episode_length, {}
+
+    def seed(self, rng_seed):
+        self.rng_seed = rng_seed
+
+
+class MockEnv3(gym.Env):
+    """Mock environment for testing purposes.
+
+    Observation=ts (discrete space!), reward=100.0, episode-len is
+    configurable. Actions are ignored.
+    """
+
+    def __init__(self, episode_length):
+        self.episode_length = episode_length
+        self.i = 0
         self.observation_space = gym.spaces.Discrete(100)
         self.action_space = gym.spaces.Discrete(2)
 
@@ -46,7 +72,9 @@ class MockEnv2(gym.Env):
 
     def step(self, action):
         self.i += 1
-        return self.i, 100.0, self.i >= self.episode_length, {}
+        return self.i, self.i, self.i >= self.episode_length, {
+            "timestep": self.i
+        }
 
 
 class VectorizedMockEnv(VectorEnv):
@@ -83,7 +111,7 @@ class VectorizedMockEnv(VectorEnv):
         return obs_batch, rew_batch, done_batch, info_batch
 
     @override(VectorEnv)
-    def get_unwrapped(self):
+    def get_sub_environments(self):
         return self.envs
 
 
@@ -140,7 +168,7 @@ class MockVectorEnv(VectorEnv):
         return obs_batch, rew_batch, done_batch, info_batch
 
     @override(VectorEnv)
-    def get_unwrapped(self):
+    def get_sub_environments(self):
         # You may also leave this method as-is, in which case, it would
         # return an empty list.
         return [self.env for _ in range(self.num_envs)]

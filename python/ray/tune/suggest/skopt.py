@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple, Union, Any
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.sample import Categorical, Domain, Float, Integer, Quantized, \
     LogUniform
+from ray.tune.suggest import Searcher
 from ray.tune.suggest.suggestion import UNRESOLVED_SEARCH_SPACE, \
     UNDEFINED_METRIC_MODE, UNDEFINED_SEARCH_SPACE
 from ray.tune.suggest.variant_generator import parse_spec_vars
@@ -18,8 +19,6 @@ try:
     import skopt as sko
 except ImportError:
     sko = None
-
-from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
 
@@ -221,7 +220,7 @@ class SkOptSearch(Searcher):
             self._metric = DEFAULT_METRIC
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict) -> bool:
+                              config: Dict, **spec) -> bool:
         if self._skopt_opt:
             return False
         space = self.convert_search_space(config)
@@ -297,13 +296,18 @@ class SkOptSearch(Searcher):
         self.__dict__.update(state)
 
     def save(self, checkpoint_path: str):
-        with open(checkpoint_path, "wb") as f:
-            pickle.dump((self._initial_points, self._skopt_opt), f)
+        save_object = self.__dict__
+        with open(checkpoint_path, "wb") as outputFile:
+            pickle.dump(save_object, outputFile)
 
     def restore(self, checkpoint_path: str):
-        with open(checkpoint_path, "rb") as f:
-            state = pickle.load(f)
-        self._initial_points, self._skopt_opt = state
+        with open(checkpoint_path, "rb") as inputFile:
+            save_object = pickle.load(inputFile)
+        if not isinstance(save_object, dict):
+            # backwards compatibility
+            # Deprecate: 1.8
+            self._initial_points, self._skopt_opt = save_object
+        self.__dict__.update(save_object)
 
     @staticmethod
     def convert_search_space(spec: Dict, join: bool = False) -> Dict:

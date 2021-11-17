@@ -8,6 +8,7 @@ from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.images import resize
+from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
 
 ATARI_OBS_SHAPE = (210, 160, 3)
 ATARI_RAM_OBS_SHAPE = (128, )
@@ -39,6 +40,7 @@ class Preprocessor:
         self.shape = self._init_shape(obs_space, self._options)
         self._size = int(np.product(self.shape))
         self._i = 0
+        self._obs_for_type_matching = self._obs_space.sample()
 
     @PublicAPI
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
@@ -58,14 +60,20 @@ class Preprocessor:
     def check_shape(self, observation: Any) -> None:
         """Checks the shape of the given observation."""
         if self._i % OBS_VALIDATION_INTERVAL == 0:
+            # Convert lists to np.ndarrays.
             if type(observation) is list and isinstance(
                     self._obs_space, gym.spaces.Box):
-                observation = np.array(observation)
+                observation = np.array(observation).astype(np.float32)
+            if not self._obs_space.contains(observation):
+                observation = convert_element_to_space_type(
+                    observation, self._obs_for_type_matching)
             try:
                 if not self._obs_space.contains(observation):
                     raise ValueError(
-                        "Observation ({}) outside given space ({})!",
-                        observation, self._obs_space)
+                        "Observation ({} dtype={}) outside given space ({})!",
+                        observation, observation.dtype if isinstance(
+                            self._obs_space,
+                            gym.spaces.Box) else None, self._obs_space)
             except AttributeError:
                 raise ValueError(
                     "Observation for a Box/MultiBinary/MultiDiscrete space "
@@ -213,9 +221,14 @@ class TupleFlatteningPreprocessor(Preprocessor):
         for i in range(len(self._obs_space.spaces)):
             space = self._obs_space.spaces[i]
             logger.debug("Creating sub-preprocessor for {}".format(space))
-            preprocessor = get_preprocessor(space)(space, self._options)
+            preprocessor_class = get_preprocessor(space)
+            if preprocessor_class is not None:
+                preprocessor = preprocessor_class(space, self._options)
+                size += preprocessor.size
+            else:
+                preprocessor = None
+                size += int(np.product(space.shape))
             self.preprocessors.append(preprocessor)
-            size += preprocessor.size
         return (size, )
 
     @override(Preprocessor)
@@ -247,9 +260,14 @@ class DictFlatteningPreprocessor(Preprocessor):
         self.preprocessors = []
         for space in self._obs_space.spaces.values():
             logger.debug("Creating sub-preprocessor for {}".format(space))
-            preprocessor = get_preprocessor(space)(space, self._options)
+            preprocessor_class = get_preprocessor(space)
+            if preprocessor_class is not None:
+                preprocessor = preprocessor_class(space, self._options)
+                size += preprocessor.size
+            else:
+                preprocessor = None
+                size += int(np.product(space.shape))
             self.preprocessors.append(preprocessor)
-            size += preprocessor.size
         return (size, )
 
     @override(Preprocessor)

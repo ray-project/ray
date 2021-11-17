@@ -1,3 +1,9 @@
+"""
+If you ever run into issues like
+https://gist.github.com/xwjiang2010/13e6df091e5938aff5b44769bec8ffb8,
+change your pytest running directory to ray/python/ray/tune/tests/
+"""
+
 from collections import defaultdict
 from unittest.mock import patch
 
@@ -6,6 +12,7 @@ import unittest
 
 from ray import tune
 from ray.tune import Experiment
+from ray.tune.suggest.util import logger
 from ray.tune.suggest.variant_generator import generate_variants
 
 
@@ -380,14 +387,14 @@ class SearchSpaceTest(unittest.TestCase):
         for k in ignore:
             config.pop(k)
 
-        if hasattr(GenerationStep, "num_trials"):
-            generation_strategy = GenerationStrategy(
-                steps=[GenerationStep(model=Models.UNIFORM, num_trials=-1)])
-        else:
-            # Legacy Ax versions (compatbile with Python 3.6)
-            # use `num_arms` instead
+        # Legacy Ax versions (compatbile with Python 3.6)
+        # use `num_arms` instead
+        try:
             generation_strategy = GenerationStrategy(
                 steps=[GenerationStep(model=Models.UNIFORM, num_arms=-1)])
+        except TypeError:
+            generation_strategy = GenerationStrategy(
+                steps=[GenerationStep(model=Models.UNIFORM, num_trials=-1)])
 
         client1 = AxClient(
             enforce_sequential_optimization=False,
@@ -563,8 +570,7 @@ class SearchSpaceTest(unittest.TestCase):
         for k in ignore:
             config.pop(k)
 
-        searcher = TuneBOHB(
-            space=config, metric="a", mode="max", max_concurrent=1000)
+        searcher = TuneBOHB(space=config, metric="a", mode="max")
 
         def config_generator():
             for i in range(1000):
@@ -992,7 +998,7 @@ class SearchSpaceTest(unittest.TestCase):
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
     def testConvertOptuna(self):
-        from ray.tune.suggest.optuna import OptunaSearch, param
+        from ray.tune.suggest.optuna import OptunaSearch
         import optuna
         from optuna.samplers import RandomSampler
 
@@ -1018,11 +1024,6 @@ class SearchSpaceTest(unittest.TestCase):
                 "z": optuna.distributions.LogUniformDistribution(1e-4, 1e-2)
             }
         }
-        legacy_optuna_config = [
-            param.suggest_categorical("a", [2, 3, 4]),
-            param.suggest_int("b/x", 0, 5, 2),
-            param.suggest_loguniform("b/z", 1e-4, 1e-2)
-        ]
 
         def optuna_define_by_run(ot_trial):
             ot_trial.suggest_categorical("a", [2, 3, 4])
@@ -1051,47 +1052,38 @@ class SearchSpaceTest(unittest.TestCase):
 
         sampler3 = RandomSampler(seed=1234)
         searcher3 = OptunaSearch(
-            space=legacy_optuna_config,
+            space=optuna_define_by_run,
             sampler=sampler3,
             metric="a",
             mode="max")
 
         sampler4 = RandomSampler(seed=1234)
         searcher4 = OptunaSearch(
-            space=optuna_define_by_run,
+            space=optuna_define_by_run_with_constants,
             sampler=sampler4,
             metric="a",
             mode="max")
 
+        config_constant = searcher4.suggest("0")
+        self.assertIn("constant", config_constant)
+        config_constant.pop("constant")
+
         sampler5 = RandomSampler(seed=1234)
         searcher5 = OptunaSearch(
-            space=optuna_define_by_run_with_constants,
+            space=optuna_define_by_run_invalid,
             sampler=sampler5,
             metric="a",
             mode="max")
 
-        config_constant = searcher5.suggest("0")
-        self.assertIn("constant", config_constant)
-        config_constant.pop("constant")
-
-        sampler6 = RandomSampler(seed=1234)
-        searcher6 = OptunaSearch(
-            space=optuna_define_by_run_invalid,
-            sampler=sampler6,
-            metric="a",
-            mode="max")
-
         with self.assertRaises(TypeError):
-            searcher6.suggest("0")
+            searcher5.suggest("0")
 
         config1 = searcher1.suggest("0")
         config2 = searcher2.suggest("0")
         config3 = searcher3.suggest("0")
-        config4 = searcher4.suggest("0")
 
         self.assertEqual(config1, config2)
         self.assertEqual(config1, config3)
-        self.assertEqual(config1, config4)
         self.assertEqual(config1, config_constant)
         self.assertIn(config1["a"], [2, 3, 4])
         self.assertIn(config1["b"]["x"], list(range(5)))
@@ -1475,6 +1467,31 @@ class SearchSpaceTest(unittest.TestCase):
         from ray.tune.suggest.hyperopt import HyperOptSearch
         return self._testPointsToEvaluate(HyperOptSearch, config)
 
+    def testPointsToEvaluateHyperOptNested(self):
+        space = {
+            "nested": [
+                tune.sample.Integer(0, 10),
+                tune.sample.Integer(0, 10),
+            ],
+            "nosample": [4, 8]
+        }
+
+        points_to_evaluate = [{"nested": [2, 4], "nosample": [4, 8]}]
+
+        from ray.tune.suggest.hyperopt import HyperOptSearch
+        searcher = HyperOptSearch(
+            space=space,
+            metric="_",
+            mode="max",
+            points_to_evaluate=points_to_evaluate)
+        config = searcher.suggest(trial_id="0")
+
+        self.assertSequenceEqual(config["nested"],
+                                 points_to_evaluate[0]["nested"])
+
+        self.assertSequenceEqual(config["nosample"],
+                                 points_to_evaluate[0]["nosample"])
+
     def testPointsToEvaluateNevergrad(self):
         config = {
             "metric": tune.sample.Categorical([1, 2, 3, 4]).uniform(),
@@ -1743,6 +1760,32 @@ class SearchSpaceTest(unittest.TestCase):
         # Also, for different samples the random variables should differ
         self.assertEqual(configs[0]["grid"], configs[3]["grid"])
         self.assertNotEqual(configs[0]["rand"], configs[3]["rand"])
+
+    @patch.object(logger, "warning")
+    def testSetSearchPropertiesBackwardsCompatibility(self,
+                                                      mocked_warning_method):
+        from ray.tune.suggest import Searcher
+
+        class MySearcher(Searcher):
+            def __init__(self, metric="a", mode="min", **kwargs):
+                super(MySearcher, self).__init__(
+                    metric=metric, mode=mode, **kwargs)
+
+            def suggest(self, trial_id):
+                return {}
+
+            def on_trial_complete(self, trial_id, result, **kwargs):
+                pass
+
+            # impl that has not been updated yet.
+            def set_search_properties(self, metric, mode, config):
+                pass
+
+        tune.run(_mock_objective, config={"a": 1}, search_alg=MySearcher())
+        mocked_warning_method.assert_called_once_with(
+            "Please update custom Searcher to take in function signature "
+            "as ``def set_search_properties(metric, mode, config, "
+            "**spec) -> bool``.")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import gym
 from gym.spaces import Box, Discrete
 import numpy as np
+import tree  # pip install dm_tree
 from typing import Dict, List, Optional
 
 from ray.rllib.models.catalog import ModelCatalog
@@ -281,7 +282,12 @@ class SACTorchModel(TorchModelV2, nn.Module):
             if isinstance(model_out, (list, tuple)):
                 model_out = torch.cat(model_out, dim=-1)
             elif isinstance(model_out, dict):
-                model_out = torch.cat(list(model_out.values()), dim=-1)
+                model_out = torch.cat(
+                    [
+                        torch.unsqueeze(val, 1) if len(val.shape) == 1 else val
+                        for val in tree.flatten(model_out.values())
+                    ],
+                    dim=-1)
         out, _ = self.action_model({"obs": model_out}, [], None)
         return out
 

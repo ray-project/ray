@@ -1,10 +1,9 @@
-import copy
 import unittest
 
 import ray
 import ray.rllib.agents.a3c as a3c
 from ray.rllib.utils.test_utils import check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 
 
 class TestA2C(unittest.TestCase):
@@ -25,44 +24,23 @@ class TestA2C(unittest.TestCase):
         num_iterations = 1
 
         # Test against all frameworks.
-        for _ in framework_iterator(config):
-            for env in ["PongDeterministic-v0"]:
+        for _ in framework_iterator(config, with_eager_tracing=True):
+            for env in ["CartPole-v0", "Pendulum-v1", "PongDeterministic-v0"]:
                 trainer = a3c.A2CTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()
+                    check_train_results(results)
                     print(results)
                 check_compute_single_action(trainer)
                 trainer.stop()
-
-    def test_a2c_fake_multi_gpu_learning(self):
-        """Test whether A2CTrainer can learn CartPole w/ faked multi-GPU."""
-        config = copy.deepcopy(a3c.a2c.A2C_DEFAULT_CONFIG)
-
-        # Fake GPU setup.
-        config["num_gpus"] = 2
-        config["_fake_gpus"] = True
-
-        config["framework"] = "tf"
-        # Mimic tuned_example for A2C CartPole.
-        config["lr"] = 0.001
-
-        trainer = a3c.A2CTrainer(config=config, env="CartPole-v0")
-        num_iterations = 100
-        learnt = False
-        for i in range(num_iterations):
-            results = trainer.train()
-            print("reward={}".format(results["episode_reward_mean"]))
-            if results["episode_reward_mean"] > 100.0:
-                learnt = True
-                break
-        assert learnt, "A2C multi-GPU (with fake-GPUs) did not learn CartPole!"
-        trainer.stop()
 
     def test_a2c_exec_impl(ray_start_regular):
         config = {"min_iter_time_s": 0}
         for _ in framework_iterator(config):
             trainer = a3c.A2CTrainer(env="CartPole-v0", config=config)
-            assert isinstance(trainer.train(), dict)
+            results = trainer.train()
+            check_train_results(results)
+            print(results)
             check_compute_single_action(trainer)
             trainer.stop()
 
@@ -73,7 +51,9 @@ class TestA2C(unittest.TestCase):
         }
         for _ in framework_iterator(config):
             trainer = a3c.A2CTrainer(env="CartPole-v0", config=config)
-            assert isinstance(trainer.train(), dict)
+            results = trainer.train()
+            check_train_results(results)
+            print(results)
             check_compute_single_action(trainer)
             trainer.stop()
 

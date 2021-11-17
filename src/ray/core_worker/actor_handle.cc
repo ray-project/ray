@@ -24,7 +24,8 @@ rpc::ActorHandle CreateInnerActorHandle(
     const rpc::Address &owner_address, const class JobID &job_id,
     const ObjectID &initial_cursor, const Language actor_language,
     const FunctionDescriptor &actor_creation_task_function_descriptor,
-    const std::string &extension_data, int64_t max_task_retries) {
+    const std::string &extension_data, int64_t max_task_retries, const std::string &name,
+    const std::string &ray_namespace) {
   rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
   inner.set_owner_id(owner_id.Binary());
@@ -36,6 +37,8 @@ rpc::ActorHandle CreateInnerActorHandle(
   inner.set_actor_cursor(initial_cursor.Binary());
   inner.set_extension_data(extension_data);
   inner.set_max_task_retries(max_task_retries);
+  inner.set_name(name);
+  inner.set_ray_namespace(ray_namespace);
   return inner;
 }
 
@@ -61,6 +64,9 @@ rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
       actor_table_data.task_spec().actor_creation_task_spec().extension_data());
   inner.set_max_task_retries(
       actor_table_data.task_spec().actor_creation_task_spec().max_task_retries());
+  inner.set_name(actor_table_data.task_spec().actor_creation_task_spec().name());
+  inner.set_ray_namespace(
+      actor_table_data.task_spec().actor_creation_task_spec().ray_namespace());
   return inner;
 }
 
@@ -69,10 +75,12 @@ ActorHandle::ActorHandle(
     const rpc::Address &owner_address, const class JobID &job_id,
     const ObjectID &initial_cursor, const Language actor_language,
     const FunctionDescriptor &actor_creation_task_function_descriptor,
-    const std::string &extension_data, int64_t max_task_retries)
+    const std::string &extension_data, int64_t max_task_retries, const std::string &name,
+    const std::string &ray_namespace)
     : ActorHandle(CreateInnerActorHandle(
           actor_id, owner_id, owner_address, job_id, initial_cursor, actor_language,
-          actor_creation_task_function_descriptor, extension_data, max_task_retries)) {}
+          actor_creation_task_function_descriptor, extension_data, max_task_retries, name,
+          ray_namespace)) {}
 
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
@@ -102,6 +110,10 @@ void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec,
 }
 
 void ActorHandle::Serialize(std::string *output) { inner_.SerializeToString(output); }
+
+std::string ActorHandle::GetName() const { return inner_.name(); }
+
+std::string ActorHandle::GetNamespace() const { return inner_.ray_namespace(); }
 
 }  // namespace core
 }  // namespace ray

@@ -45,7 +45,7 @@ async def _send_request_to_handle(handle, scope, receive, send):
         del scope["endpoint"]
 
     # NOTE(edoakes): it's important that we defer building the starlette
-    # request until it reaches the backend replica to avoid unnecessary
+    # request until it reaches the replica to avoid unnecessary
     # serialization cost, so we use a simple dataclass here.
     request = HTTPRequestWrapper(scope, http_body_bytes)
     # Perform a pickle here to improve latency. Stdlib pickle for simple
@@ -59,19 +59,29 @@ async def _send_request_to_handle(handle, scope, receive, send):
         try:
             result = await object_ref
             break
+        except RayTaskError as error:
+            error_message = "Task Error. Traceback: {}.".format(error)
+            await Response(
+                error_message, status_code=500).send(scope, receive, send)
+            return
         except RayActorError:
             logger.warning("Request failed due to replica failure. There are "
                            f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
                            "remaining.")
             await asyncio.sleep(backoff_time_s)
-            backoff_time_s *= 2
+            # Be careful about the expotential backoff scaling here.
+            # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
+            # initial backoff time, while 2x scaling means 512x the initial.
+            backoff_time_s *= 1.5
             retries += 1
-
-    if isinstance(result, RayTaskError):
-        error_message = "Task Error. Traceback: {}.".format(result)
+    else:
+        error_message = ("Task failed with "
+                         f"{MAX_REPLICA_FAILURE_RETRIES} retries.")
         await Response(
             error_message, status_code=500).send(scope, receive, send)
-    elif isinstance(result, starlette.responses.Response):
+        return
+
+    if isinstance(result, starlette.responses.Response):
         await result(scope, receive, send)
     else:
         await Response(result).send(scope, receive, send)
@@ -85,8 +95,8 @@ class LongestPrefixRouter:
         self._get_handle = get_handle
         # Routes sorted in order of decreasing length.
         self.sorted_routes: List[str] = list()
-        # Endpoints and methods associated with the routes.
-        self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
+        # Endpoints associated with the routes.
+        self.route_info: Dict[str, EndpointTag] = dict()
         # Contains a ServeHandle for each endpoint.
         self.handles: Dict[str, RayServeHandle] = dict()
 
@@ -108,7 +118,7 @@ class LongestPrefixRouter:
                 route = info.route
 
             routes.append(route)
-            route_info[route] = (endpoint, info.http_methods)
+            route_info[route] = endpoint
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
@@ -123,13 +133,12 @@ class LongestPrefixRouter:
         self.sorted_routes = sorted(routes, key=lambda x: len(x), reverse=True)
         self.route_info = route_info
 
-    def match_route(self, target_route: str, target_method: str
+    def match_route(self, target_route: str
                     ) -> Tuple[Optional[str], Optional[RayServeHandle]]:
         """Return the longest prefix match among existing routes for the route.
 
         Args:
             target_route (str): route to match against.
-            target_method (str): method to match against.
 
         Returns:
             (matched_route (str), serve_handle (RayServeHandle)) if found,
@@ -154,9 +163,8 @@ class LongestPrefixRouter:
                     matched = True
 
                 if matched:
-                    endpoint, methods = self.route_info[route]
-                    if target_method in methods:
-                        return route, self.handles[endpoint]
+                    endpoint = self.route_info[route]
+                    return route, self.handles[endpoint]
 
         return None, None
 
@@ -175,7 +183,7 @@ class HTTPProxy:
                                                     controller_name, None)
 
         # Used only for displaying the route table.
-        self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
+        self.route_info: Dict[str, EndpointTag] = dict()
 
         def get_handle(name):
             return serve.api._get_global_client().get_handle(
@@ -201,7 +209,7 @@ class HTTPProxy:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
         for endpoint, info in endpoints.items():
             route = info.route if info.route is not None else f"/{endpoint}"
-            self.route_info[route] = (endpoint, info.http_methods)
+            self.route_info[route] = endpoint
 
         self.prefix_router.update_routes(endpoints)
 
@@ -212,7 +220,7 @@ class HTTPProxy:
             if time.time() - start > timeout_s:
                 raise TimeoutError(
                     f"Waited {timeout_s} for {endpoint} to propagate.")
-            for existing_endpoint, _ in self.route_info.values():
+            for existing_endpoint in self.route_info.values():
                 if existing_endpoint == endpoint:
                     return
             await asyncio.sleep(0.2)
@@ -239,8 +247,7 @@ class HTTPProxy:
             return await starlette.responses.JSONResponse(self.route_info)(
                 scope, receive, send)
 
-        route_prefix, handle = self.prefix_router.match_route(
-            scope["path"], scope["method"])
+        route_prefix, handle = self.prefix_router.match_route(scope["path"])
         if route_prefix is None:
             return await self._not_found(scope, receive, send)
 
@@ -262,8 +269,11 @@ class HTTPProxyActor:
                  port: int,
                  controller_name: str,
                  controller_namespace: str,
-                 http_middlewares: List[
-                     "starlette.middleware.Middleware"] = []):  # noqa: F821
+                 http_middlewares: Optional[List[
+                     "starlette.middleware.Middleware"]] = None):  # noqa: F821
+        if http_middlewares is None:
+            http_middlewares = []
+
         self.host = host
         self.port = port
 

@@ -38,6 +38,7 @@ parser.add_argument(
     type=str,
     required=True,
     help="The directory in which to find all yamls to test.")
+parser.add_argument("--num-cpus", type=int, default=6)
 parser.add_argument(
     "--local-mode",
     action="store_true",
@@ -76,7 +77,7 @@ if __name__ == "__main__":
 
     # Loop through all collected files.
     for yaml_file in yaml_files:
-        experiments = yaml.load(open(yaml_file).read())
+        experiments = yaml.safe_load(open(yaml_file).read())
         assert len(experiments) == 1,\
             "Error, can only run a single experiment per yaml file!"
 
@@ -87,6 +88,9 @@ if __name__ == "__main__":
             deprecation_warning(old="--torch", new="--framework=torch")
             exp["config"]["framework"] = "torch"
             args.framework = "torch"
+        # Always run with eager-tracing when framework=tf2.
+        if args.framework in ["tf2", "tfe"]:
+            exp["config"]["eager_tracing"] = True
 
         # Print out the actual config.
         print("== Test config ==")
@@ -98,7 +102,7 @@ if __name__ == "__main__":
         for i in range(3):
             # Try starting a new ray cluster.
             try:
-                ray.init(num_cpus=5, local_mode=args.local_mode)
+                ray.init(num_cpus=args.num_cpus, local_mode=args.local_mode)
             # Allow running this script on existing cluster as well.
             except ConnectionError:
                 ray.init()
@@ -129,9 +133,11 @@ if __name__ == "__main__":
                         t.stopping_criterion.get("episode_reward_mean"))
                 # Otherwise, expect `episode_reward_mean` to be set.
                 else:
-                    min_reward = t.stopping_criterion["episode_reward_mean"]
+                    min_reward = t.stopping_criterion.get(
+                        "episode_reward_mean")
 
-                if reward_mean >= min_reward:
+                # If min reward not defined, always pass.
+                if min_reward is None or reward_mean >= min_reward:
                     passed = True
                     break
 

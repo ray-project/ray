@@ -208,7 +208,7 @@ def test_store_to_replay_local(ray_start_regular_shared):
     buf = LocalReplayBuffer(
         num_shards=1,
         learning_starts=200,
-        buffer_size=1000,
+        capacity=1000,
         replay_batch_size=100,
         prioritized_replay_alpha=0.6,
         prioritized_replay_beta=0.4,

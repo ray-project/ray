@@ -33,6 +33,13 @@ class NodeProvider:
         self._internal_ip_cache: Dict[str, str] = {}
         self._external_ip_cache: Dict[str, str] = {}
 
+    def is_readonly(self) -> bool:
+        """Returns whether this provider is readonly.
+
+        Readonly node providers do not allow nodes to be created or terminated.
+        """
+        return False
+
     def non_terminated_nodes(self, tag_filters: Dict[str, str]) -> List[str]:
         """Return a list of node ids filtered by the specified tags dict.
 
@@ -116,6 +123,18 @@ class NodeProvider:
         Optionally returns a mapping from created node ids to node metadata.
         """
         raise NotImplementedError
+
+    def create_node_with_resources(
+            self, node_config: Dict[str, Any], tags: Dict[str, str],
+            count: int,
+            resources: Dict[str, float]) -> Optional[Dict[str, Any]]:
+        """Create nodes with a given resource config.
+
+        This is the method actually called by the autoscaler. Prefer to
+        implement this when possible directly, otherwise it delegates to the
+        create_node() implementation.
+        """
+        return self.create_node(node_config, tags, count)
 
     def set_node_tags(self, node_id: str, tags: Dict[str, str]) -> None:
         """Sets the tag values (string dict) for the specified node."""

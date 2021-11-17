@@ -69,6 +69,14 @@ def small_value_batch(n):
     return 0
 
 
+@ray.remote
+def create_object_containing_ref():
+    obj_refs = []
+    for _ in range(10000):
+        obj_refs.append(ray.put(1))
+    return obj_refs
+
+
 def check_optimized_build():
     if not ray._raylet.OPTIMIZED:
         msg = ("WARNING: Unoptimized build! "
@@ -130,6 +138,13 @@ def main(results=None):
 
     results += timeit("single client put gigabytes", put_large, 8 * 0.1)
 
+    def small_value_batch():
+        submitted = [small_value.remote() for _ in range(1000)]
+        ray.get(submitted)
+        return 0
+
+    results += timeit("single client tasks and get batch", small_value_batch)
+
     @ray.remote
     def do_put():
         for _ in range(10):
@@ -139,6 +154,14 @@ def main(results=None):
         ray.get([do_put.remote() for _ in range(10)])
 
     results += timeit("multi client put gigabytes", put_multi, 10 * 8 * 0.1)
+
+    obj_containing_ref = create_object_containing_ref.remote()
+
+    def get_containing_object_ref():
+        ray.get(obj_containing_ref)
+
+    results += timeit("single client get object containing 10k refs",
+                      get_containing_object_ref)
 
     def small_task():
         ray.get(small_value.remote())
@@ -260,6 +283,29 @@ def main(results=None):
         ray.get([async_actor_work.remote(a) for _ in range(m)])
 
     results += timeit("n:n async-actor calls async", async_actor_multi, m * n)
+    ray.shutdown()
+
+    NUM_PGS = 100
+    NUM_BUNDLES = 1
+    ray.init(resources={"custom": 100})
+
+    def placement_group_create_removal(num_pgs):
+        pgs = [
+            ray.util.placement_group(bundles=[{
+                "custom": 0.001
+            } for _ in range(NUM_BUNDLES)]) for _ in range(num_pgs)
+        ]
+        [pg.wait(timeout_seconds=30) for pg in pgs]
+        # Include placement group removal here to clean up.
+        # If we don't clean up placement groups, the whole performance
+        # gets slower as it runs more.
+        # Since timeit function runs multiple times without
+        # the cleaning logic, we should have this method here.
+        for pg in pgs:
+            ray.util.remove_placement_group(pg)
+
+    results += timeit("placement group create/removal",
+                      lambda: placement_group_create_removal(NUM_PGS), NUM_PGS)
     ray.shutdown()
 
     client_microbenchmark_main(results)

@@ -8,7 +8,7 @@ import starlette.responses
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import SignalActor, wait_for_condition
 
 
 def test_e2e(serve_instance):
@@ -85,7 +85,74 @@ def test_starlette_response(serve_instance):
     assert resp.status_code == 418
 
 
-def test_backend_user_config(serve_instance):
+def test_deploy_sync_function_no_params(serve_instance):
+    @serve.deployment()
+    def sync_d():
+        return "sync!"
+
+    serve.start()
+
+    sync_d.deploy()
+    assert requests.get("http://localhost:8000/sync_d").text == "sync!"
+    assert ray.get(sync_d.get_handle().remote()) == "sync!"
+
+
+def test_deploy_async_function_no_params(serve_instance):
+    @serve.deployment()
+    async def async_d():
+        await asyncio.sleep(5)
+        return "async!"
+
+    serve.start()
+
+    async_d.deploy()
+    assert requests.get("http://localhost:8000/async_d").text == "async!"
+    assert ray.get(async_d.get_handle().remote()) == "async!"
+
+
+def test_deploy_sync_class_no_params(serve_instance):
+    @serve.deployment
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def __call__(self):
+            self.count += 1
+            return {"count": self.count}
+
+    serve.start()
+    Counter.deploy()
+
+    assert requests.get("http://127.0.0.1:8000/Counter").json() == {"count": 1}
+    assert requests.get("http://127.0.0.1:8000/Counter").json() == {"count": 2}
+    assert ray.get(Counter.get_handle().remote()) == {"count": 3}
+
+
+def test_deploy_async_class_no_params(serve_instance):
+    @serve.deployment
+    class AsyncCounter:
+        async def __init__(self):
+            await asyncio.sleep(5)
+            self.count = 0
+
+        async def __call__(self):
+            self.count += 1
+            await asyncio.sleep(5)
+            return {"count": self.count}
+
+    serve.start()
+    AsyncCounter.deploy()
+
+    assert requests.get("http://127.0.0.1:8000/AsyncCounter").json() == {
+        "count": 1
+    }
+    assert requests.get("http://127.0.0.1:8000/AsyncCounter").json() == {
+        "count": 2
+    }
+    assert ray.get(AsyncCounter.get_handle().remote()) == {"count": 3}
+
+
+def test_user_config(serve_instance):
     @serve.deployment(
         "counter", num_replicas=2, user_config={
             "count": 123,
@@ -185,7 +252,7 @@ def test_scaling_replicas(serve_instance):
     assert max(counter_result) - min(counter_result) > 6
 
 
-def test_delete_backend(serve_instance):
+def test_delete_deployment(serve_instance):
     @serve.deployment(name="delete")
     def function(_):
         return "hello"
@@ -241,6 +308,28 @@ def test_start_idempotent(serve_instance):
     serve.start(detached=True)
     serve.start()
     assert "start" in serve.list_deployments()
+
+
+def test_shutdown_destructor(serve_instance):
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    class A:
+        def __del__(self):
+            signal.send.remote()
+
+    A.deploy()
+    A.delete()
+    ray.get(signal.wait.remote(), timeout=10)
+
+    # If the destructor errored, it should be logged but also cleaned up.
+    @serve.deployment
+    class B:
+        def __del__(self):
+            raise RuntimeError("Opps")
+
+    B.deploy()
+    B.delete()
 
 
 if __name__ == "__main__":
