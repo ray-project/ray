@@ -4,22 +4,19 @@ from dataclasses import dataclass
 from typing import Optional, Set
 
 import ray
-from ray.train.backends.backend import BackendConfig, Backend
+from ray.train.backend import BackendConfig, Backend
 from ray.train.utils import update_env_vars
 from ray.train.worker_group import WorkerGroup, Worker
 
-try:
-    from horovod.ray.runner import Coordinator
-    from horovod.ray.utils import detect_nics, nics_to_env_var
-    from horovod.runner.common.util import secret, timeout
-except ImportError:
-    Coordinator = None
-    detect_nics = None
-    nics_to_env_var = None
+from horovod.ray.runner import Coordinator
+from horovod.ray.utils import detect_nics, nics_to_env_var
+from horovod.runner.common.util import secret, timeout
+from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="beta")
 @dataclass
 class HorovodConfig(BackendConfig):
     """Configurations for Horovod setup.
@@ -59,11 +56,6 @@ class HorovodConfig(BackendConfig):
             "parameter if you have too many servers.")
 
     def __post_init__(self):
-        if Coordinator is None:
-            raise ValueError(
-                "`horovod[ray]` is not installed. "
-                "Please install 'horovod[ray]' to use this backend.")
-
         if self.ssh_str and not os.path.exists(self.ssh_identity_file):
             with open(self.ssh_identity_file, "w") as f:
                 os.chmod(self.ssh_identity_file, 0o600)

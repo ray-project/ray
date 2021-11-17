@@ -1,3 +1,5 @@
+.. include:: rllib/we_are_hiring.rst
+
 RLlib Models, Preprocessors, and Action Distributions
 =====================================================
 

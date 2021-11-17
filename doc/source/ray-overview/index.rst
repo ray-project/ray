@@ -155,7 +155,7 @@ Ray has a rich ecosystem of libraries and frameworks built on top of it. The mai
 
 - :doc:`../tune/index`
 - :ref:`rllib-index`
-- :ref:`sgd-index`
+- :ref:`train-docs`
 - :ref:`rayserve`
 
 

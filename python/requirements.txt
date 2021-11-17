@@ -7,9 +7,11 @@
 # setup.py install_requires
 aiohttp>=3.7
 aioredis < 2
+aiosignal
 click >= 7.0
 cloudpickle
 filelock
+frozenlist
 gpustat >= 1.0.0b1
 grpcio >= 1.28.1
 jsonschema
@@ -21,7 +23,7 @@ protobuf >= 3.8.0
 py-spy >= 0.2.0
 pydantic >= 1.8
 pyyaml
-redis >= 3.5.0
+redis >= 3.5.0, < 4.0.0
 requests
 
 ## setup.py extras

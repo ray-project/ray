@@ -1,3 +1,5 @@
+.. include:: rllib/we_are_hiring.rst
+
 .. _rllib-reference-docs:
 
 RLlib API Reference
