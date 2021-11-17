@@ -426,12 +426,11 @@ class SampleBatch(dict):
         """Returns a slice of the row data of this batch (w/o copying).
 
         Args:
-            start (int): Starting index. If < 0, will left-zero-pad.
-            end (int): Ending index.
+            start: Starting index. If < 0, will left-zero-pad.
+            end: Ending index.
 
         Returns:
-            SampleBatch: A new SampleBatch, which has a slice of this batch's
-                data.
+            A new SampleBatch, which has a slice of this batch's data.
         """
         if self.get(SampleBatch.SEQ_LENS) is not None and \
                 len(self[SampleBatch.SEQ_LENS]) > 0:
@@ -520,15 +519,14 @@ class SampleBatch(dict):
         Will start from timestep 0 and produce slices of size=k.
 
         Args:
-            size (Optional[int]): The size (in timesteps) of each returned
-                SampleBatch.
-            num_slices (Optional[int]): The number of slices to produce.
-            k (int): Obsoleted: Use size or num_slices instead!
-                The size (in timesteps) of each returned SampleBatch.
+            size: The size (in timesteps) of each returned SampleBatch.
+            num_slices: The number of slices to produce.
+            k: Deprecated: Use size or num_slices instead. The size
+                (in timesteps) of each returned SampleBatch.
 
         Returns:
-            List[SampleBatch]: The list of `num_slices` (new) SampleBatches
-                or n (new) SampleBatches each one of size `size`.
+            The list of `num_slices` (new) SampleBatches or n (new)
+            SampleBatches each one of size `size`.
         """
         if size is None and num_slices is None:
             deprecation_warning("k", "size or num_slices")
@@ -581,7 +579,7 @@ class SampleBatch(dict):
                 as-is.
 
         Returns:
-            SampleBatch: This very (now right-zero-padded) SampleBatch.
+            This very (now right-zero-padded) SampleBatch.
 
         Raises:
             ValueError: If self[SampleBatch.SEQ_LENS] is None (not defined).
@@ -664,7 +662,7 @@ class SampleBatch(dict):
         sys.getsizeof(...).
 
         Returns:
-            int: The overall size in bytes of the data buffer (all columns).
+            The overall size in bytes of the data buffer (all columns).
         """
         return sum(
             v.nbytes if isinstance(v, np.ndarray) else sys.getsizeof(v)
@@ -681,12 +679,11 @@ class SampleBatch(dict):
         """Returns one column (by key) from the data or a sliced new batch.
 
         Args:
-            key (Union[str, slice]): The key (column name) to return or
+            key: The key (column name) to return or
                 a slice object for slicing this SampleBatch.
 
         Returns:
-            TensorType: The data under the given key or a sliced version of
-                this batch.
+            The data under the given key or a sliced version of this batch.
         """
         if isinstance(key, slice):
             return self._slice(key)
@@ -715,8 +712,8 @@ class SampleBatch(dict):
         """Inserts (overrides) an entire column (by key) in the data buffer.
 
         Args:
-            key (str): The column name to set a value for.
-            item (TensorType): The data to insert.
+            key: The column name to set a value for.
+            item: The data to insert.
         """
         # Defend against creating SampleBatch via pickle (no property
         # `added_keys` and first item is already set).
@@ -763,18 +760,19 @@ class SampleBatch(dict):
     @DeveloperAPI
     def compress(self,
                  bulk: bool = False,
-                 columns: Set[str] = frozenset(["obs", "new_obs"])) -> None:
+                 columns: Set[str] = frozenset(["obs", "new_obs"])) -> \
+        "SampleBatch":
         """Compresses the data buffers (by column) in place.
 
         Args:
-            bulk (bool): Whether to compress across the batch dimension (0)
+            bulk: Whether to compress across the batch dimension (0)
                 as well. If False will compress n separate list items, where n
                 is the batch size.
-            columns (Set[str]): The columns to compress. Default: Only
+            columns: The columns to compress. Default: Only
                 compress the obs and new_obs columns.
 
         Returns:
-            SampleBatch: This very (now compressed) SampleBatch.
+            This very (now compressed) SampleBatch.
         """
 
         def _compress_in_place(path, value):
@@ -800,11 +798,11 @@ class SampleBatch(dict):
         """Decompresses data buffers (per column if not compressed) in place.
 
         Args:
-            columns (Set[str]): The columns to decompress. Default: Only
+            columns: The columns to decompress. Default: Only
                 decompress the obs and new_obs columns.
 
         Returns:
-            SampleBatch: This very (now uncompressed) SampleBatch.
+            This very (now uncompressed) SampleBatch.
         """
 
         def _decompress_in_place(path, value):
@@ -840,7 +838,7 @@ class SampleBatch(dict):
             return f"SampleBatch({self.count} " \
                    f"(seqs={len(self['seq_lens'])}): {keys})"
 
-    def _slice(self, slice_: slice):
+    def _slice(self, slice_: slice) -> "SampleBatch":
         """Helper method to handle SampleBatch slicing using a slice object.
 
         The returned SampleBatch uses the same underlying data object as
@@ -851,11 +849,11 @@ class SampleBatch(dict):
         same).
 
         Args:
-            slice_ (slice): The python slice object to slice by.
+            slice_: The python slice object to slice by.
 
         Returns:
-            SampleBatch: A new SampleBatch, however "linking" into the same
-                data (sliced) as self.
+            A new SampleBatch, however "linking" into the same data
+            (sliced) as self.
         """
         start = slice_.start or 0
         stop = slice_.stop or len(self)
@@ -1043,12 +1041,12 @@ class MultiAgentBatch:
     @PublicAPI
     def __init__(self, policy_batches: Dict[PolicyID, SampleBatch],
                  env_steps: int):
-        """Initialize a MultiAgentBatch object.
+        """Initialize a MultiAgentBatch instance.
 
         Args:
-            policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
+            policy_batches: Mapping from policy
                 ids to SampleBatches of experiences.
-            env_steps (int): The number of environment steps in the environment
+            env_steps: The number of environment steps in the environment
                 this batch contains. This will be less than the number of
                 transitions this batch contains across all policies in total.
         """
@@ -1066,7 +1064,7 @@ class MultiAgentBatch:
         """The number of env steps (there are >= 1 agent steps per env step).
 
         Returns:
-            int: The number of environment steps contained in this batch.
+            The number of environment steps contained in this batch.
         """
         return self.count
 
@@ -1075,7 +1073,7 @@ class MultiAgentBatch:
         """The number of agent steps (there are >= 1 agent steps per env step).
 
         Returns:
-            int: The number of agent steps total in this batch.
+            The number of agent steps total in this batch.
         """
         ct = 0
         for batch in self.policy_batches.values():
@@ -1148,13 +1146,12 @@ class MultiAgentBatch:
         """Returns SampleBatch or MultiAgentBatch, depending on given policies.
 
         Args:
-            policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
-                ids to SampleBatch.
-            env_steps (int): Number of env steps in the batch.
+            policy_batches: Mapping from policy ids to SampleBatch.
+            env_steps: Number of env steps in the batch.
 
         Returns:
-            Union[SampleBatch, MultiAgentBatch]: The single default policy's
-                SampleBatch or a MultiAgentBatch (more than one policy).
+            The single default policy's SampleBatch or a MultiAgentBatch
+            (more than one policy).
         """
         if len(policy_batches) == 1 and DEFAULT_POLICY_ID in policy_batches:
             return policy_batches[DEFAULT_POLICY_ID]
@@ -1167,12 +1164,10 @@ class MultiAgentBatch:
         """Concatenates a list of MultiAgentBatches into a new MultiAgentBatch.
 
         Args:
-            samples (List[MultiAgentBatch]): List of MultiagentBatch objects
-                to concatenate.
+            samples: List of MultiagentBatch objects to concatenate.
 
         Returns:
-            MultiAgentBatch: A new MultiAgentBatch consisting of the
-                concatenated inputs.
+            A new MultiAgentBatch consisting of the concatenated inputs.
         """
         policy_batches = collections.defaultdict(list)
         env_steps = 0
@@ -1199,7 +1194,7 @@ class MultiAgentBatch:
         """Deep-copies self into a new MultiAgentBatch.
 
         Returns:
-            MultiAgentBatch: The copy of self with deep-copied data.
+            The copy of self with deep-copied data.
         """
         return MultiAgentBatch(
             {k: v.copy()
@@ -1209,7 +1204,7 @@ class MultiAgentBatch:
     def size_bytes(self) -> int:
         """
         Returns:
-            int: The overall size in bytes of all policy batches (all columns).
+            The overall size in bytes of all policy batches (all columns).
         """
         return sum(b.size_bytes() for b in self.policy_batches.values())
 
@@ -1220,10 +1215,10 @@ class MultiAgentBatch:
         """Compresses each policy batch (per column) in place.
 
         Args:
-            bulk (bool): Whether to compress across the batch dimension (0)
+            bulk: Whether to compress across the batch dimension (0)
                 as well. If False will compress n separate list items, where n
                 is the batch size.
-            columns (Set[str]): Set of column names to compress.
+            columns: Set of column names to compress.
         """
         for batch in self.policy_batches.values():
             batch.compress(bulk=bulk, columns=columns)
@@ -1235,10 +1230,10 @@ class MultiAgentBatch:
         """Decompresses each policy batch (per column), if already compressed.
 
         Args:
-            columns (Set[str]): Set of column names to decompress.
+            columns: Set of column names to decompress.
 
         Returns:
-            MultiAgentBatch: This very MultiAgentBatch.
+            This very MultiAgentBatch.
         """
         for batch in self.policy_batches.values():
             batch.decompress_if_needed(columns)
