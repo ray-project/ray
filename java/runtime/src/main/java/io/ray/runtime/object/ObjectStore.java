@@ -114,8 +114,20 @@ public abstract class ObjectStore {
    */
   @SuppressWarnings("unchecked")
   public <T> List<T> get(List<ObjectId> ids, Class<?> elementType) {
-    // Pass -1 as timeout to wait until all objects are available in object store.
-    List<NativeRayObject> dataAndMetaList = getRaw(ids, -1);
+    return get(ids, elementType, -1);
+  }
+
+  /**
+   * Get a list of objects from the object store.
+   *
+   * @param ids List of the object ids.
+   * @param <T> Type of these objects.
+   * @param timeoutMs The maximum amount of time in seconds to wait before returning.
+   * @return A list of GetResult objects.
+   */
+  @SuppressWarnings("unchecked")
+  public <T> List<T> get(List<ObjectId> ids, Class<?> elementType, long timeoutMs) {
+    List<NativeRayObject> dataAndMetaList = getRaw(ids, timeoutMs);
 
     List<T> results = new ArrayList<>();
     for (int i = 0; i < dataAndMetaList.size(); i++) {

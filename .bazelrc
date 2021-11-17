@@ -7,9 +7,6 @@ build --enable_platform_specific_config
 build --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
-# Generate minimal debug symbols on Linux and MacOS
-build:linux --copt="-g1"
-build:macos --copt="-g1"
 # Using C++ 17 on all platforms.
 build:linux --cxxopt="-std=c++17"
 build:macos --cxxopt="-std=c++17"
