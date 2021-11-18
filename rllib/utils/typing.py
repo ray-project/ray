@@ -32,7 +32,7 @@ ModelConfigDict = dict
 FromConfigSpec = Union[Dict[str, Any], type, str]
 
 # Represents a BaseEnv, MultiAgentEnv, ExternalEnv, ExternalMultiAgentEnv,
-# VectorEnv, or gym.Env.
+# VectorEnv, gym.Env, or ActorHandle.
 EnvType = Any
 
 # Represents a generic identifier for an agent (e.g., "agent1").

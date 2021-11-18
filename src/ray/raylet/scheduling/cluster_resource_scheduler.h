@@ -386,9 +386,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
 
-  /// Get the number of cpus on this node.
-  uint64_t GetNumCpus() const;
-
   /// Check whether a task request is schedulable on a the local node. A node is
   /// schedulable if it has the available resources needed to execute the task.
   ///

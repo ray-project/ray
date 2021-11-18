@@ -298,13 +298,9 @@ void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
 }
 
 void ReferenceCounter::UpdateSubmittedTaskReferences(
-    const std::vector<ObjectID> return_ids,
     const std::vector<ObjectID> &argument_ids_to_add,
     const std::vector<ObjectID> &argument_ids_to_remove, std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
-  for (const auto &return_id : return_ids) {
-    UpdateObjectPendingCreation(return_id, true);
-  }
   for (const ObjectID &argument_id : argument_ids_to_add) {
     RAY_LOG(DEBUG) << "Increment ref count for submitted task argument " << argument_id;
     auto it = object_id_refs_.find(argument_id);
@@ -329,11 +325,8 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
 }
 
 void ReferenceCounter::UpdateResubmittedTaskReferences(
-    const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids) {
+    const std::vector<ObjectID> &argument_ids) {
   absl::MutexLock lock(&mutex_);
-  for (const auto &return_id : return_ids) {
-    UpdateObjectPendingCreation(return_id, true);
-  }
   for (const ObjectID &argument_id : argument_ids) {
     auto it = object_id_refs_.find(argument_id);
     RAY_CHECK(it != object_id_refs_.end());
@@ -346,13 +339,10 @@ void ReferenceCounter::UpdateResubmittedTaskReferences(
 }
 
 void ReferenceCounter::UpdateFinishedTaskReferences(
-    const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids,
-    bool release_lineage, const rpc::Address &worker_addr,
-    const ReferenceTableProto &borrowed_refs, std::vector<ObjectID> *deleted) {
+    const std::vector<ObjectID> &argument_ids, bool release_lineage,
+    const rpc::Address &worker_addr, const ReferenceTableProto &borrowed_refs,
+    std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
-  for (const auto &return_id : return_ids) {
-    UpdateObjectPendingCreation(return_id, false);
-  }
   // Must merge the borrower refs before decrementing any ref counts. This is
   // to make sure that for serialized IDs, we increment the borrower count for
   // the inner ID before decrementing the submitted_task_ref_count for the
@@ -1122,19 +1112,6 @@ bool ReferenceCounter::RemoveObjectLocation(const ObjectID &object_id,
   return true;
 }
 
-void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,
-                                                   bool pending_creation) {
-  auto it = object_id_refs_.find(object_id);
-  bool push = false;
-  if (it != object_id_refs_.end()) {
-    push = (it->second.pending_creation != pending_creation);
-    it->second.pending_creation = pending_creation;
-  }
-  if (push) {
-    PushToLocationSubscribers(it);
-  }
-}
-
 absl::optional<absl::flat_hash_set<NodeID>> ReferenceCounter::GetObjectLocations(
     const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
@@ -1278,15 +1255,6 @@ bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id,
   return it->second.is_reconstructable;
 }
 
-bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const {
-  absl::MutexLock lock(&mutex_);
-  auto it = object_id_refs_.find(object_id);
-  if (it == object_id_refs_.end()) {
-    return false;
-  }
-  return it->second.pending_creation;
-}
-
 void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   const auto &object_id = it->first;
   const auto &locations = it->second.locations;
@@ -1299,8 +1267,7 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
                  << " locations, spilled url: [" << spilled_url
                  << "], spilled node ID: " << spilled_node_id
                  << ", and object size: " << object_size
-                 << ", and primary node ID: " << primary_node_id << ", pending creation? "
-                 << it->second.pending_creation;
+                 << ", and primary node ID: " << primary_node_id;
   rpc::PubMessage pub_message;
   pub_message.set_key_id(object_id.Binary());
   pub_message.set_channel_type(rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL);
@@ -1336,7 +1303,6 @@ void ReferenceCounter::FillObjectInformationInternal(
   object_info->set_spilled_node_id(it->second.spilled_node_id.Binary());
   auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());
   object_info->set_primary_node_id(primary_node_id.Binary());
-  object_info->set_pending_creation(it->second.pending_creation);
 }
 
 void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) {
