@@ -181,5 +181,5 @@ def test_exponential_wait(shutdown_only):
 
 if __name__ == "__main__":
     import pytest
-    os.environ["RAY_worker_cap_initial_backoff_delay_ms"] = "1000"
+    os.environ["RAY_worker_cap_enabled"] = "true"
     sys.exit(pytest.main(["-v", __file__]))
