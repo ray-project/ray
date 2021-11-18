@@ -58,7 +58,7 @@ DEFAULT_FULL_TEST_NUM_REPLICA = 1000
 # TODO(simon): we should change this back to 100. But due to long poll issue
 # we temporarily downscoped this test.
 # https://github.com/ray-project/ray/pull/20270
-DEFAULT_FULL_TEST_NUM_DEPLOYMENTS = 10  # 10 replicas each
+DEFAULT_FULL_TEST_NUM_DEPLOYMENTS = 10  # 100 replicas each
 
 # Experiment configs - wrk specific
 DEFAULT_SMOKE_TEST_TRIAL_LENGTH = "5s"
