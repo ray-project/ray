@@ -159,14 +159,32 @@ The latest Ray Java snapshot can be found in `sonatype repository <https://oss.s
 
 .. _apple-silcon-supprt:
 
-Apple Silicon Support
+M1 Mac (Apple Silicon) Support
 ---------------------
 
 Ray has experimental support for machines running Apple Silicon (such as M1 macs). To get started:
 
-1. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
-2. Ensure that the ``grpcio`` package is installed via forge and **not pypi**: ``pip uninstall grpcio; conda install grpcio``.
-3. Install Ray as you normally would: ``pip install ray``.
+#. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
+
+   * ``wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh``
+   
+   * ``bash Miniforge3-MacOSX-arm64.sh``
+   
+   * ``rm https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh # Cleanup.``
+   
+#. Ensure you're using the miniforge environment (you should see (base) in your terminal).
+   
+   * ``source ~/.bash_profile``
+   
+   * ``conda activate``
+   
+#. Ensure that the ``grpcio`` package is installed via forge and **not pypi**. Grpcio currently requires special compilation flags, which pypi will _not_ correctly build with. Miniforge provides a prebuilt version of grpcio for M1 macs. 
+   
+   * ``pip uninstall grpcio; conda install grpcio``.
+
+#. Install Ray as you normally would.
+
+   * ``pip install ray``
 
 .. note::
 
