@@ -29,7 +29,6 @@ from ray.util.inspect import (
     is_class_method,
     is_static_method,
 )
-from ray._private.gcs_pubsub import gcs_pubsub_enabled
 
 FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
                                    ["function", "function_name", "max_calls"])
