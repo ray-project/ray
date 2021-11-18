@@ -78,6 +78,7 @@ In general, **Option 2 is recommended for most users** because it allows you to 
 
   my_func.deploy()
 
+
 Deploying on Kubernetes
 =======================
 
