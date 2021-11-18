@@ -159,7 +159,7 @@ The latest Ray Java snapshot can be found in `sonatype repository <https://oss.s
 
 .. _apple-silcon-supprt:
 
-M1 Mac support (Apple Silicon) Support
+M1 Mac (Apple Silicon) Support
 ---------------------
 
 Ray has experimental support for machines running Apple Silicon (such as M1 macs). To get started:
