@@ -126,13 +126,35 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
 
     @staticmethod
     def get_instance_for_testing():
+        """Return a MultiAgentReplayBuffer instance that has been previously
+        instantiated.
+
+        Returns:
+            _local_replay_buffer: The lastly instantiated
+            MultiAgentReplayBuffer.
+
+        """
         global _local_replay_buffer
         return _local_replay_buffer
 
     def get_host(self) -> str:
+        """Returns the computer's network name.
+        
+        Returns:
+            The computer's networks name or an empty string, if the network 
+            name could not be determined.
+        """
         return platform.node()
 
     def add_batch(self, batch: SampleBatchType) -> None:
+        """Adds a batch to the appropriate policy's replay buffer.
+
+        Turns the batch into a MultiAgentBatch of the DEFAULT_POLICY_ID if
+        it is not a MultiAgentBatch. Subsequently adds the batch to
+        
+        Args:
+            batch (SampleBatchType): The batch to be added.
+        """
         # Make a copy so the replay buffer doesn't pin plasma memory.
         batch = batch.copy()
         # Handle everything as if multiagent
@@ -171,6 +193,9 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
         self.num_added += batch.count
 
     def replay(self) -> SampleBatchType:
+        """If this buffer was given a fake batch, return it, otherwise return
+        a MultiAgentBatch with samples.
+        """
         if self._fake_batch:
             fake_batch = SampleBatch(self._fake_batch)
             return MultiAgentBatch({
@@ -194,6 +219,16 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
                 return MultiAgentBatch(samples, self.replay_batch_size)
 
     def update_priorities(self, prio_dict: Dict) -> None:
+        """Updates the priorities of underlying replay buffers.
+
+        Computes new priorities from td_errors and prioritized_replay_eps.
+        These priorities are used to update underlying replay buffers per
+        policy_id.
+
+        Args:
+            prio_dict (Dict): A dictionary containing td_errors for
+            batches saved in underlying replay buffers.
+        """
         with self.update_priorities_timer:
             for policy_id, (batch_indexes, td_errors) in prio_dict.items():
                 new_priorities = (
@@ -202,6 +237,15 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
                     batch_indexes, new_priorities)
 
     def stats(self, debug: bool = False) -> Dict:
+        """Returns the stats of this buffer and all underlying buffers.
+
+        Args:
+            debug (bool): If True, stats of underlying replay buffers will
+            be fetched with debug=True.
+
+        Returns:
+            stat: Dictionary of buffer stats.
+        """
         stat = {
             "add_batch_time_ms": round(1000 * self.add_batch_timer.mean, 3),
             "replay_time_ms": round(1000 * self.replay_timer.mean, 3),

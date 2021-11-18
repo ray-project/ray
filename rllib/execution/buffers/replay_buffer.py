@@ -88,6 +88,13 @@ class ReplayBuffer:
 
     @DeveloperAPI
     def add(self, item: SampleBatchType, weight: float) -> None:
+        """Add a natcj of experioences.
+
+        Args:
+            item (SampleBatchType): SampleBatch to add to this buffer's storage.
+            weight (float): The weight of the added sample used in subsequent sampling steps.
+                Only relevant if this ReplayBuffer is a PrioritizedReplayBuffer.
+        """
         assert item.count > 0, item
         warn_replay_capacity(item=item, num_items=self.capacity / item.count)
 
@@ -125,7 +132,7 @@ class ReplayBuffer:
             num_items (int): Number of items to sample from this buffer.
 
         Returns:
-            SampleBatchType: concatenated batch of items.
+            SampleBatchType: Concatenated batch of items.
         """
         idxes = [
             random.randint(0,
@@ -135,7 +142,15 @@ class ReplayBuffer:
         return self._encode_sample(idxes)
 
     @DeveloperAPI
-    def stats(self, debug=False) -> dict:
+    def stats(self, debug: bool = False) -> dict:
+        """Returns the stats of this buffer.
+
+        Args:
+            debug (bool): If true, adds sample eviction statistics to the returned stats dict.
+
+        Returns:
+            dict: A dictionary of stats about this buffer.
+        """
         data = {
             "added_count": self._num_timesteps_added,
             "added_count_wrapped": self._num_timesteps_added_wrap,
@@ -210,6 +225,12 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     @DeveloperAPI
     @override(ReplayBuffer)
     def add(self, item: SampleBatchType, weight: float) -> None:
+        """Add a natcj of experioences.
+
+        Args:
+            item (SampleBatchType): SampleBatch to add to this buffer's storage.
+            weight (float): The weight of the added sample used in subsequent sampling steps.
+        """
         idx = self._next_idx
         super(PrioritizedReplayBuffer, self).add(item, weight)
         if weight is None:
@@ -278,17 +299,14 @@ class PrioritizedReplayBuffer(ReplayBuffer):
                           priorities: List[float]) -> None:
         """Update priorities of sampled transitions.
 
-        sets priority of transition at index idxes[i] in buffer
+        Sets priority of transition at index idxes[i] in buffer
         to priorities[i].
 
-        Parameters
-        ----------
-        idxes: [int]
-          List of idxes of sampled transitions
-        priorities: [float]
-          List of updated priorities corresponding to
-          transitions at the sampled idxes denoted by
-          variable `idxes`.
+        Args:
+            idxes (int): List of idxes of sampled transitions
+            priorities (float): List of updated priorities corresponding to
+                transitions at the sampled idxes denoted by
+                variable `idxes`.
         """
         # Making sure we don't pass in e.g. a torch tensor.
         assert isinstance(idxes, (list, np.ndarray)), \
@@ -308,6 +326,14 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     @DeveloperAPI
     @override(ReplayBuffer)
     def stats(self, debug: bool = False) -> Dict:
+        """Returns the stats of this buffer.
+
+        Args:
+            debug (bool): If true, adds sample eviction statistics to the returned stats dict.
+
+        Returns:
+            dict: A dictionary of stats about this buffer.
+        """
         parent = ReplayBuffer.stats(self, debug)
         if debug:
             parent.update(self._prio_change_stats.stats())

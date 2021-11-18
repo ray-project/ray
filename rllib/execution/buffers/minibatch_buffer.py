@@ -17,11 +17,12 @@ class MinibatchBuffer:
         """Initialize a minibatch buffer.
 
         Args:
-           inqueue: Queue to populate the internal ring buffer from.
-           size: Max number of data items to buffer.
-           timeout: Queue timeout
-           num_passes: Max num times each data item should be emitted.
-           init_num_passes: Initial max passes for each data item
+           inqueue (queue.Queue): Queue to populate the internal ring buffer
+           from.
+           size (int): Max number of data items to buffer.
+           timeout (float): Queue timeout
+           num_passes (int): Max num times each data item should be emitted.
+           init_num_passes (int): Initial max passes for each data item
        """
         self.inqueue = inqueue
         self.size = size
