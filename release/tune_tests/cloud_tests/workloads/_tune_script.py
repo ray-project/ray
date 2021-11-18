@@ -33,13 +33,8 @@ def fn_trainable(config, checkpoint_dir=None):
 
 
 class RLLibCallback(DefaultCallbacks):
-    def __init__(self):
-        super(RLLibCallback, self).__init__()
-        self.internal_iter = 0
-
     def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
-        result["internal_iter"] = self.internal_iter
-        self.internal_iter += 1
+        result["internal_iter"] = result["training_iteration"]
 
 
 class IndicatorCallback(tune.Callback):
