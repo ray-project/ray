@@ -2717,8 +2717,16 @@ py_test(
 #
 # Tag: documentation
 #
-# NOTE: Add tests alphabetically into this list.
+# NOTE: Add tests alphabetically to this list.
 # --------------------------------------------------------------------
+
+py_test(
+    name = "examples/documentation/custom_gym_env",
+    main = "examples/documentation/custom_gym_env.py",
+    tags = ["team:ml", "documentation"],
+    size = "medium",
+    srcs = ["examples/documentation/custom_gym_env.py"],
+)
 
 py_test(
     name = "examples/documentation/rllib_in_60s",

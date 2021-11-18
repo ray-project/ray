@@ -202,6 +202,7 @@ def test_job_metadata(job_sdk_client):
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
     assert str({
+        "job_name": job_id,
         "job_submission_id": job_id,
         "key1": "val1",
         "key2": "val2"

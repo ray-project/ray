@@ -8,8 +8,9 @@ import signal
 import pytest
 
 import ray
-from ray.dashboard.modules.job.common import JobStatus, JOB_ID_METADATA_KEY
-from ray.dashboard.modules.job.job_manager import JobManager
+from ray.dashboard.modules.job.common import (JobStatus, JOB_ID_METADATA_KEY,
+                                              JOB_NAME_METADATA_KEY)
+from ray.dashboard.modules.job.job_manager import generate_job_id, JobManager
 from ray._private.test_utils import SignalActor, wait_for_condition
 
 TEST_NAMESPACE = "jobs_test_namespace"
@@ -82,6 +83,19 @@ def check_job_stopped(job_manager, job_id):
 
 def check_subprocess_cleaned(pid):
     return psutil.pid_exists(pid) is False
+
+
+def test_generate_job_id():
+    ids = set()
+    for _ in range(10000):
+        new_id = generate_job_id()
+        assert new_id.startswith("raysubmit_")
+        assert new_id.count("_") == 1
+        assert "-" not in new_id
+        assert "/" not in new_id
+        ids.add(new_id)
+
+    assert len(ids) == 10000
 
 
 def test_pass_job_id(job_manager):
@@ -246,12 +260,13 @@ class TestRuntimeEnv:
             "print(dict(sorted(job_config.metadata.items())))"
             "\"")
 
-        # Check that we default to only the job ID.
+        # Check that we default to only the job ID and job name.
         job_id = job_manager.submit_job(entrypoint=print_metadata_cmd)
 
         wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id)
         assert dict_to_str({
+            JOB_NAME_METADATA_KEY: job_id,
             JOB_ID_METADATA_KEY: job_id
         }) in job_manager.get_job_logs(job_id)
 
@@ -266,9 +281,22 @@ class TestRuntimeEnv:
         wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id)
         assert dict_to_str({
+            JOB_NAME_METADATA_KEY: job_id,
             JOB_ID_METADATA_KEY: job_id,
             "key1": "val1",
             "key2": "val2"
+        }) in job_manager.get_job_logs(job_id)
+
+        # Check that we can override job name.
+        job_id = job_manager.submit_job(
+            entrypoint=print_metadata_cmd,
+            metadata={JOB_NAME_METADATA_KEY: "custom_name"})
+
+        wait_for_condition(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id)
+        assert dict_to_str({
+            JOB_NAME_METADATA_KEY: "custom_name",
+            JOB_ID_METADATA_KEY: job_id
         }) in job_manager.get_job_logs(job_id)
 
 
