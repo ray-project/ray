@@ -29,6 +29,9 @@ def start_event(e):
     @workflow.step
     def do_process(e):
         record.remote(e)
-    do_process.step(e.get("Messages")).run_async(e["ResponseMetadata"]["RequestId"])
+
+    do_process.step(e.get("Messages")).run_async(
+        e["ResponseMetadata"]["RequestId"])
+
 
 pull_from_queue.step(None).run("sqs-job")
