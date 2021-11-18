@@ -153,7 +153,8 @@ StreamingStatus DataWriter::Init(const std::vector<ObjectID> &queue_id_vec,
   switch (runtime_context_->GetConfig().GetFlowControlType()) {
   case proto::FlowControlType::UnconsumedSeqFlowControl:
     flow_controller_ = std::make_shared<UnconsumedSeqFlowControl>(
-        channel_map_, runtime_context_->GetConfig().GetWriterConsumedStep());
+        channel_map_, runtime_context_->GetConfig().GetWriterConsumedStep(),
+        runtime_context_->GetConfig().GetBundleConsumedStep());
     break;
   default:
     flow_controller_ = std::make_shared<NoFlowControl>();
@@ -289,6 +290,7 @@ StreamingStatus DataWriter::WriteEmptyMessage(ProducerChannelInfo &channel_info)
 
   q_ringbuffer->FreeTransientBuffer();
   RETURN_IF_NOT_OK(status)
+  channel_info.sent_empty_cnt++;
   channel_info.message_pass_by_ts = current_time_ms();
   return StreamingStatus::OK;
 }
@@ -419,6 +421,7 @@ bool DataWriter::WriteAllToChannel(ProducerChannelInfo *info) {
     int64_t current_ts = current_time_ms();
     if (StreamingStatus::OK == write_status) {
       channel_info.message_pass_by_ts = current_ts;
+      channel_info.sent_empty_cnt = 0;
     } else if (StreamingStatus::FullChannel == write_status ||
                StreamingStatus::OutOfMemory == write_status) {
       channel_info.flow_control = true;
@@ -442,7 +445,9 @@ bool DataWriter::WriteAllToChannel(ProducerChannelInfo *info) {
 }
 
 bool DataWriter::SendEmptyToChannel(ProducerChannelInfo *channel_info) {
-  WriteEmptyMessage(*channel_info);
+  if (!flow_controller_->ShouldFlowControl(channel_info)) {
+    WriteEmptyMessage(*channel_info);
+  }
   return true;
 }
 
@@ -468,7 +473,6 @@ void DataWriter::EmptyMessageTimerCallback() {
           runtime_context_->GetConfig().GetEmptyMessageTimeInterval()) {
         Event event(&channel_info, EventType::EmptyEvent, true);
         event_service_->Push(event);
-        ++channel_info.sent_empty_cnt;
         ++count;
         continue;
       }

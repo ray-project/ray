@@ -136,6 +136,7 @@ class WriterQueue : public Queue {
         seq_id_(QUEUE_INITIAL_SEQ_ID),
         eviction_limit_(QUEUE_INVALID_SEQ_ID),
         min_consumed_msg_id_(QUEUE_INVALID_SEQ_ID),
+        min_consumed_bundle_id_(QUEUE_INVALID_SEQ_ID),
         peer_last_msg_id_(0),
         peer_last_seq_id_(QUEUE_INVALID_SEQ_ID),
         transport_(transport),
@@ -178,6 +179,8 @@ class WriterQueue : public Queue {
 
   uint64_t GetMinConsumedMsgID() { return min_consumed_msg_id_; }
 
+  uint64_t GetMinConsumedBundleID() { return min_consumed_bundle_id_; }
+
   void SetPeerLastIds(uint64_t msg_id, uint64_t seq_id) {
     peer_last_msg_id_ = msg_id;
     peer_last_seq_id_ = seq_id;
@@ -186,6 +189,8 @@ class WriterQueue : public Queue {
   uint64_t GetPeerLastMsgId() { return peer_last_msg_id_; }
 
   uint64_t GetPeerLastSeqId() { return peer_last_seq_id_; }
+
+  uint64_t GetCurrentSeqId() { return seq_id_; }
 
  private:
   /// Resend an item to peer.
@@ -216,6 +221,7 @@ class WriterQueue : public Queue {
   uint64_t seq_id_;
   uint64_t eviction_limit_;
   uint64_t min_consumed_msg_id_;
+  uint64_t min_consumed_bundle_id_;
   uint64_t peer_last_msg_id_;
   uint64_t peer_last_seq_id_;
   std::shared_ptr<Transport> transport_;
@@ -244,7 +250,9 @@ class ReaderQueue : public Queue {
 
   /// Delete processed items whose seq id <= seq_id,
   /// then notify upstream queue.
-  void OnConsumed(uint64_t seq_id);
+  /// \param msg_id, the last messag id of bundle
+  /// \param bundle_id, the raw bundle id of channel
+  void OnConsumed(uint64_t seq_id, uint64_t bundle_id);
 
   void OnData(QueueItem &item);
   /// Callback function, will be called when PullPeer DATA comes.
@@ -256,7 +264,7 @@ class ReaderQueue : public Queue {
   inline uint64_t GetLastRecvMsgId() { return last_recv_msg_id_; }
 
  private:
-  void Notify(uint64_t seq_id);
+  void Notify(uint64_t seq_id, uint64_t bundle_id);
   void CreateNotifyTask(uint64_t seq_id, std::vector<TaskArg> &task_args);
 
  private:

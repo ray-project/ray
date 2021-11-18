@@ -21,10 +21,16 @@ enum class TransferCreationStatus : uint32_t {
 };
 
 struct StreamingQueueInfo {
+  // First message id in channel.
   uint64_t first_seq_id = 0;
+  // Last message id in channel.
   uint64_t last_message_id = 0;
+  // Target message id for flow control with consuemd window size.
   uint64_t target_message_id = 0;
+  // Message id in last upstream notification.
   uint64_t consumed_message_id = 0;
+  // Last bundle id consumed by downstream.
+  uint64_t consumed_bundled_id = -1;
 };
 
 struct ChannelCreationParameter {
@@ -39,6 +45,8 @@ struct ProducerChannelInfo {
   ObjectID channel_id;
   StreamingRingBufferPtr writer_ring_buffer;
   uint64_t current_message_id;
+  // Lastest bundle id of last bundle.
+  uint64_t current_bundle_id;
   uint64_t message_last_commit_id;
   StreamingQueueInfo queue_info;
   uint32_t queue_size;
@@ -97,6 +105,7 @@ class ProducerChannel {
   virtual StreamingStatus RefreshChannelInfo() = 0;
   virtual StreamingStatus ProduceItemToChannel(uint8_t *data, uint32_t data_size) = 0;
   virtual StreamingStatus NotifyChannelConsumed(uint64_t channel_offset) = 0;
+  virtual uint64_t GetLastBundleId() = 0;
 
  protected:
   std::shared_ptr<Config> transfer_config_;
@@ -113,7 +122,7 @@ class ConsumerChannel {
   virtual StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
                                                   uint64_t checkpoint_offset) = 0;
   virtual StreamingStatus RefreshChannelInfo() = 0;
-  virtual StreamingStatus ConsumeItemFromChannel(uint8_t *&data, uint32_t &data_size,
+  virtual StreamingStatus ConsumeItemFromChannel(std::shared_ptr<DataBundle> &message,
                                                  uint32_t timeout) = 0;
   virtual StreamingStatus NotifyChannelConsumed(uint64_t offset_id) = 0;
 
@@ -134,6 +143,7 @@ class StreamingQueueProducer : public ProducerChannel {
   StreamingStatus RefreshChannelInfo() override;
   StreamingStatus ProduceItemToChannel(uint8_t *data, uint32_t data_size) override;
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;
+  uint64_t GetLastBundleId();
 
  private:
   StreamingStatus CreateQueue();
@@ -154,7 +164,7 @@ class StreamingQueueConsumer : public ConsumerChannel {
   StreamingStatus ClearTransferCheckpoint(uint64_t checkpoint_id,
                                           uint64_t checkpoint_offset) override;
   StreamingStatus RefreshChannelInfo() override;
-  StreamingStatus ConsumeItemFromChannel(uint8_t *&data, uint32_t &data_size,
+  StreamingStatus ConsumeItemFromChannel(std::shared_ptr<DataBundle> &message,
                                          uint32_t timeout) override;
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;
 
@@ -189,6 +199,10 @@ class MockProducer : public ProducerChannel {
   StreamingStatus NotifyChannelConsumed(uint64_t channel_offset) override {
     return StreamingStatus::OK;
   }
+  uint64_t GetLastBundleId() { return current_bundle_id_; }
+
+ private:
+  uint64_t current_bundle_id_;
 };
 
 class MockConsumer : public ConsumerChannel {
@@ -205,7 +219,7 @@ class MockConsumer : public ConsumerChannel {
     return StreamingStatus::OK;
   }
   StreamingStatus RefreshChannelInfo() override;
-  StreamingStatus ConsumeItemFromChannel(uint8_t *&data, uint32_t &data_size,
+  StreamingStatus ConsumeItemFromChannel(std::shared_ptr<DataBundle> &message,
                                          uint32_t timeout) override;
   StreamingStatus NotifyChannelConsumed(uint64_t offset_id) override;
 };

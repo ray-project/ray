@@ -48,6 +48,7 @@ message StreamingQueueCheckRspMsg {
 message StreamingQueueNotificationMsg {
   MessageCommon common = 1;
   uint64 seq_id = 2;
+  uint64 bundle_id = 3;
 }
 
 // for test

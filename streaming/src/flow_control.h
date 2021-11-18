@@ -38,7 +38,8 @@ class UnconsumedSeqFlowControl : public FlowControl {
   /// in multithread situation. Especially, while rescaling, channel_map_ maybe
   /// changed. But for now, FlowControlThread is stopped before rescaling.
   std::unordered_map<ObjectID, std::shared_ptr<ProducerChannel>> &channel_map_;
-  uint32_t consumed_step_;
+  uint32_t message_consumed_step_;
+  uint32_t bundle_consumed_step_;
 };
 }  // namespace streaming
 }  // namespace ray

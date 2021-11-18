@@ -156,8 +156,7 @@ StreamingStatus DataReader::GetMessageFromChannel(ConsumerChannelInfo &channel_i
     /// In AT_LEAST_ONCE, wait_time_ms is set to 0, means `ConsumeItemFromChannel`
     /// will return immediately if no items in queue. At the same time, `timeout_ms` is
     /// ignored.
-    channel_map_[channel_info.channel_id]->ConsumeItemFromChannel(
-        message->data, message->data_size, wait_time_ms);
+    channel_map_[channel_info.channel_id]->ConsumeItemFromChannel(message, wait_time_ms);
 
     STREAMING_LOG(DEBUG) << "ConsumeItemFromChannel done, bytes="
                          << Util::Byte2hex(message->data, message->data_size);
@@ -456,6 +455,16 @@ void DataReader::NotifyConsumed(std::shared_ptr<DataBundle> &message) {
   auto &queue_info = channel_info.queue_info;
   channel_info.notify_cnt++;
   if (queue_info.target_message_id <= message->meta->GetLastMessageId()) {
+    // NOTE(lingxuan.zlx): For minimum change in channel api, we reset consumed bundle id
+    // in reader notify consumed function so only message offset should be passed in
+    // notification in streaming data reader view.
+    // To avoid replicated small bundle id, we only mark the latest bundle if for
+    // notification.
+    if (queue_info.consumed_bundle_id == static_cast<uint64_t>(-1) ||
+        queue_info.consumed_bundle_id < message->bundle_id) {
+      queue_info.consumed_bundle_id = message->bundle_id;
+    }
+
     NotifyConsumedItem(channel_info, message->meta->GetLastMessageId());
 
     channel_map_[channel_info.channel_id]->RefreshChannelInfo();

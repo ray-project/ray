@@ -102,8 +102,10 @@ class DataMessage : public Message {
 class NotificationMessage : public Message {
  public:
   NotificationMessage(const ActorID &actor_id, const ActorID &peer_actor_id,
-                      const ObjectID &queue_id, uint64_t msg_id)
-      : Message(actor_id, peer_actor_id, queue_id), msg_id_(msg_id) {}
+                      const ObjectID &queue_id, uint64_t msg_id, uint64_t bundle_id)
+      : Message(actor_id, peer_actor_id, queue_id),
+        msg_id_(msg_id),
+        bundle_id_(bundle_id) {}
 
   virtual ~NotificationMessage() {}
 
@@ -115,6 +117,7 @@ class NotificationMessage : public Message {
 
  private:
   uint64_t msg_id_;
+  uint64_t bundle_id_;
   const queue::protobuf::StreamingQueueMessageType type_ =
       queue::protobuf::StreamingQueueMessageType::StreamingQueueNotificationMsgType;
 };

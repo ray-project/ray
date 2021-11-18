@@ -188,7 +188,11 @@ class StreamingMessageBundle : public StreamingMessageBundleMeta {
 struct DataBundle {
   uint8_t *data = nullptr;
   uint32_t data_size;
+  // Source channel id.
   ObjectID from;
+  // Seq id for recording message bundle.
+  uint64_t bundle_id;
+  // Current barrier id in this channel.
   uint32_t last_barrier_id;
   StreamingMessageBundleMetaPtr meta;
   bool is_reallocated = false;

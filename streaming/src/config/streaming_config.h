@@ -57,6 +57,10 @@ class StreamingConfig {
 
   // Default writer and reader consumed step.
   uint32_t writer_consumed_step_ = 1000;
+
+  // Bundle step for empty message flow control.
+  uint32_t bundle_consumed_step = 10;
+
   uint32_t reader_consumed_step_ = 100;
 
   uint32_t event_driven_flow_control_interval_ = 1;
@@ -81,6 +85,7 @@ class StreamingConfig {
   DECL_GET_SET_PROPERTY(streaming::proto::NodeType, NodeType, node_type_)
   DECL_GET_SET_PROPERTY(const std::string &, JobName, job_name_)
   DECL_GET_SET_PROPERTY(uint32_t, WriterConsumedStep, writer_consumed_step_)
+  DECL_GET_SET_PROPERTY(uint32_t, BundleConsumedStep, bundle_consumed_step)
   DECL_GET_SET_PROPERTY(uint32_t, ReaderConsumedStep, reader_consumed_step_)
   DECL_GET_SET_PROPERTY(streaming::proto::FlowControlType, FlowControlType,
                         flow_control_type_)
