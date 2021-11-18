@@ -94,7 +94,8 @@ class NonTerminatedNodes:
 
     def remove_terminating_nodes(self,
                                  terminating_nodes: List[NodeID]) -> None:
-        """Remove nodes we're in the process of terminating."""
+        """Remove nodes we're in the process of terminating from internal
+        state."""
 
         def not_terminating(node):
             return node not in terminating_nodes
