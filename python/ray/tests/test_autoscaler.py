@@ -23,7 +23,8 @@ from ray.autoscaler._private.util import prepare_config, validate_config
 from ray.autoscaler._private import commands
 from ray.autoscaler.sdk import get_docker_host_mount_location
 from ray.autoscaler._private.load_metrics import LoadMetrics
-from ray.autoscaler._private.autoscaler import StandardAutoscaler
+from ray.autoscaler._private.autoscaler import StandardAutoscaler,\
+    NonTerminatedNodes
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.providers import (
     _NODE_PROVIDERS, _clear_provider_cache, _DEFAULT_CONFIGS)
@@ -326,10 +327,16 @@ class MockProvider(NodeProvider):
             return self.mock_nodes[node_id].state == "running"
 
     def is_terminated(self, node_id):
+        if node_id is None:
+            # Circumvent test-cases where there's no head node.
+            return True
         with self.lock:
             return self.mock_nodes[node_id].state in ["stopped", "terminated"]
 
     def node_tags(self, node_id):
+        if node_id is None:
+            # Circumvent test-cases where there's no head node.
+            return {}
         # Don't assume that node providers can retrieve tags from
         # terminated nodes.
         if self.is_terminated(node_id):
@@ -338,6 +345,9 @@ class MockProvider(NodeProvider):
             return self.mock_nodes[node_id].tags
 
     def internal_ip(self, node_id):
+        if node_id is None:
+            # Circumvent test-cases where there's no head node.
+            return "mock"
         with self.lock:
             return self.mock_nodes[node_id].internal_ip
 
@@ -2157,8 +2167,7 @@ class AutoscalingTest(unittest.TestCase):
             assert "empty_node" not in event
 
         node_type_counts = defaultdict(int)
-        autoscaler.update_node_lists()
-        for node_id in autoscaler.workers:
+        for node_id in NonTerminatedNodes(self.provider).workers:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
@@ -3153,8 +3162,7 @@ MemAvailable:   33000000 kB
         # Node 0 was terminated during the last update.
         # Node 1's updater failed, but node 1 won't be terminated until the
         # next autoscaler update.
-        autoscaler.update_node_lists()
-        assert 0 not in autoscaler.workers, "Node zero still non-terminated."
+        assert 0 not in NonTerminatedNodes(self.provider).workers, "Node zero still non-terminated."
         assert not self.provider.is_terminated(1),\
             "Node one terminated prematurely."
 
@@ -3184,8 +3192,7 @@ MemAvailable:   33000000 kB
         fill_in_raylet_ids(self.provider, lm)
         autoscaler.update()
         self.waitForNodes(2)
-        autoscaler.update_node_lists()
-        assert set(autoscaler.workers) == {2, 3},\
+        assert set(NonTerminatedNodes(self.provider).workers) == {2, 3},\
             "Unexpected node_ids"
 
         assert mock_metrics.stopped_nodes.inc.call_count == 1

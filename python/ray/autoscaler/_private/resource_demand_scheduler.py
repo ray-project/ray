@@ -128,7 +128,7 @@ class ResourceDemandScheduler:
 
     def get_nodes_to_launch(
             self,
-            nodes: NonTerminatedNodes,
+            nodes: "NonTerminatedNodes",
             launching_nodes: Dict[NodeType, int],
             resource_demands: List[ResourceDict],
             unused_resources_by_ip: Dict[NodeIP, ResourceDict],
@@ -263,7 +263,7 @@ class ResourceDemandScheduler:
         return total_nodes_to_add, final_unfulfilled
 
     def _legacy_worker_node_to_launch(
-            self, nodes: NonTerminatedNodes, launching_nodes: Dict[NodeType, int],
+            self, nodes: "NonTerminatedNodes", launching_nodes: Dict[NodeType, int],
             node_resources: List[ResourceDict],
             resource_demands: List[ResourceDict]) -> Dict[NodeType, int]:
         """Get worker nodes to launch when resources missing in legacy yamls.
@@ -274,7 +274,7 @@ class ResourceDemandScheduler:
         """
         if self.max_workers == 0:
             return {}
-        elif sum(launching_nodes.values()) + len(self.nodes.workers) > 0:
+        elif sum(launching_nodes.values()) + len(nodes.workers) > 0:
             # If we are already launching a worker node, wait for its resources
             # to be known.
             # TODO(ameer): Note that if first worker node fails this will never
@@ -337,7 +337,7 @@ class ResourceDemandScheduler:
                     self.node_resource_updated.add(node_type)
 
     def _infer_legacy_node_resources_if_needed(
-            self, nodes: NonTerminatedNodes,
+            self, nodes: "NonTerminatedNodes",
             max_resources_by_ip: Dict[NodeIP, ResourceDict]
     ) -> (bool, Dict[NodeType, int]):
         """Infers node resources for legacy config files.
@@ -351,7 +351,7 @@ class ResourceDemandScheduler:
         # We fill the head node resources only once.
         if not self.node_types[NODE_TYPE_LEGACY_HEAD]["resources"]:
             try:
-                head_ip = self.provider.internal_ip(nodes.head_node)
+                head_ip = self.provider.internal_ip(nodes.head)
                 self.node_types[NODE_TYPE_LEGACY_HEAD]["resources"] = \
                     copy.deepcopy(max_resources_by_ip[head_ip])
             except (IndexError, KeyError):
@@ -362,7 +362,7 @@ class ResourceDemandScheduler:
             # from which we can directly get the node_resources.
             worker_node_ips = [
                 self.provider.internal_ip(node_id)
-                for node_id in nodes.worker_nodes
+                for node_id in nodes.workers
             ]
             for ip in worker_node_ips:
                 if ip in max_resources_by_ip:
