@@ -15,8 +15,10 @@ def process(v):
     time.sleep(2)
     return v
 
+
 process_remote = ray.remote(process)
 process_step = workflow.step(process)
+
 
 @workflow.step
 def pull_from_queue(task):
@@ -28,12 +30,13 @@ def pull_from_queue(task):
     w = workflow.wait_for_event(SQSEventListener)
     return pull_from_queue.step(w)
 
+
 @serve.deployment(route_prefix="/infer")
 @serve.ingress(app)
 class InferenceService:
     def __init__(self):
-        # import nest_asyncio
-        # nest_asyncio.apply()
+        import nest_asyncio
+        nest_asyncio.apply()
         workflow.init()
         pull_from_queue.step(None).run_async("sqs-job")
         workflow.resume_all()
@@ -67,17 +70,27 @@ class InferenceService:
         process_step.step(e).run_async(workflow_id=job_id)
         return job_id
 
+
 InferenceService.deploy()
 
 # need to setup sqs queue and crediential in ray/wf-serve/sqs_listener.py
 
-# python push-to-queue.py
-# curl -X GET http://127.0.0.1:8000/infer/list_all
+# >> python push-to-queue.py
+# >> curl -X GET http://127.0.0.1:8000/infer/list_all
 # [["sqs_12dd5164-4833-11ec-bfc2-06ac50ea2df5","RUNNING"],["sqs-job","RUNNING"]]
-# wait for 2 seconds
-# curl -X GET http://127.0.0.1:8000/infer/list_all
+# # wait for 2 seconds
+# >> curl -X GET http://127.0.0.1:8000/infer/list_all
 # [["sqs_12dd5164-4833-11ec-bfc2-06ac50ea2df5","SUCCESSFUL"],["sqs-job","RUNNING"]]
-# curl -X GET http://127.0.0.1:8000/infer/get_result?task_id=sqs_12dd5164-4833-11ec-bfc2-06ac50ea2df5
+# >> curl -X GET http://127.0.0.1:8000/infer/get_result?task_id=sqs_12dd5164-4833-11ec-bfc2-06ac50ea2df5
 #
-# curl -X GET http://127.0.0.1:8000/infer/run_job?e=abc
-# curl -X GET http://127.0.0.1:8000/infer/run_job?e=abc
+# >> curl -X GET http://127.0.0.1:8000/infer/schedule?e=ABC
+# "http_f449184c-4836-11ec-bfc2-06ac50ea2df5"
+# >> curl -X GET http://127.0.0.1:8000/infer/list_all
+# [["sqs-job","RUNNING"],["http_f449184c-4836-11ec-bfc2-06ac50ea2df5","SUCCESSFUL"], ["sqs_12dd5164-4833-11ec-bfc2-06ac50ea2df5","SUCCESSFUL"]]
+# >> curl -X GET http://127.0.0.1:8000/infer/get_result?task_id=http_f449184c-4836-11ec-bfc2-06ac50ea2df5
+# "ABC"
+# >> curl -X GET http://127.0.0.1:8000/infer/run_job?e=abc
+# "abc"
+# >> curl -X GET http://127.0.0.1:8000/infer/list_all
+
+# [["sqs-job","RUNNING"],["http_f449184c-4836-11ec-bfc2-06ac50ea2df5","SUCCESSFUL"], ["sqs_12dd5164-4833-11ec-bfc2-06ac50ea2df5","SUCCESSFUL"]]

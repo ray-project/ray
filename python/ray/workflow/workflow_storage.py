@@ -51,8 +51,17 @@ DUPLICATE_NAME_COUNTER = "duplicate_name_counter"
 
 
 # TODO: Get rid of this and use asyncio.run instead once we don't support py36
+def get_event_loop():
+    try:
+        return asyncio.get_event_loop()
+    except Exception:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+        return asyncio.get_event_loop()
+
+get_event_loop()
+
 def asyncio_run(coro):
-    loop = asyncio.get_event_loop()
+    loop = get_event_loop()
     return loop.run_until_complete(coro)
 
 

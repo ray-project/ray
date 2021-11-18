@@ -11,7 +11,6 @@ p.unlink(missing_ok=True)
 p.touch()
 
 
-
 @ray.remote
 def record(msg):
     with p.open(mode='a') as f:
