@@ -78,16 +78,17 @@ class _ColorfulProxy:
         "bold",
         "italic",
         "underlined",
-        "with_style",
 
         # used instead of `gray` as `dimmed` adapts to
         # both light and dark themes
         "dimmed",
         "dodgerBlue",  # group
-        "limeGreen",  # success
-        "red",  # error
-        "orange",  # warning
-        "skyBlue"  # label
+        "limeGreen",   # success
+        "red",         # error
+        "orange",      # warning
+        "skyBlue",     # label
+        "magenta",     # syntax highlighting key words and symbols
+        "yellow",      # syntax highlighting strings
     ]
 
     def __getattr__(self, name):
