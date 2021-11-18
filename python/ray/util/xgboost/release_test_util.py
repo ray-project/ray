@@ -59,6 +59,7 @@ class TrackingCallback(TrainingCallback):
             print(f"[Rank {get_actor_rank()}] I am at iteration {epoch}")
         put_queue(get_world_size())
 
+
 def get_parquet_files(path, num_files):
     path = os.path.expanduser(path)
     if not os.path.exists(path):
@@ -68,6 +69,7 @@ def get_parquet_files(path, num_files):
     while num_files > len(files):
         files = files + files
     return files[0:num_files]
+
 
 def train_ray(path,
               num_workers,
