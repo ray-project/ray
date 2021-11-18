@@ -83,12 +83,12 @@ class _ColorfulProxy:
         # both light and dark themes
         "dimmed",
         "dodgerBlue",  # group
-        "limeGreen",   # success
-        "red",         # error
-        "orange",      # warning
-        "skyBlue",     # label
-        "magenta",     # syntax highlighting key words and symbols
-        "yellow",      # syntax highlighting strings
+        "limeGreen",  # success
+        "red",  # error
+        "orange",  # warning
+        "skyBlue",  # label
+        "magenta",  # syntax highlighting key words and symbols
+        "yellow",  # syntax highlighting strings
     ]
 
     def __getattr__(self, name):

@@ -669,8 +669,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                     "ray{}init(address{}{}{})", cf.magenta("."),
                     cf.magenta("="), cf.yellow("'auto'"),
                     ", _redis_password{}{}".format(
-                        cf.magenta("="),
-                        cf.yellow("'" + redis_password + "'"))
+                        cf.magenta("="), cf.yellow("'" + redis_password + "'"))
                     if redis_password else "")
             cli_logger.newline()
             cli_logger.print("To connect to this Ray runtime from outside of "
@@ -681,8 +680,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             with cli_logger.indented():
                 cli_logger.print("{} ray", cf.magenta("import"))
                 cli_logger.print(
-                    "ray{}init(address{}{})", cf.magenta("."),
-                    cf.magenta("="),
+                    "ray{}init(address{}{})", cf.magenta("."), cf.magenta("="),
                     cf.yellow("'ray://<head_node_ip_address>:"
                               f"{ray_client_server_port}'"))
             cli_logger.newline()
