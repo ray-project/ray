@@ -326,8 +326,8 @@ async def test_async_obj_unhandled_errors(ray_start_regular_shared):
     fut = ref.future()
     fut.add_done_callback(cb)
     wait_for_condition(lambda: isinstance(_result, ray.exceptions.RayError))
-    # This error should be marked handled even though there are not explicit
-    # ray.get
+    # This error should be marked handled even though there are no explicit
+    # ray.get. Therefore the num_exceptions should not increase.
     assert num_exceptions == 1, num_exceptions
 
 
