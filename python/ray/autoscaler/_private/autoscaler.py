@@ -317,7 +317,7 @@ class StandardAutoscaler:
         # Dict[NodeType, int], List[ResourceDict]
         to_launch, unfulfilled = (
             self.resource_demand_scheduler.get_nodes_to_launch(
-                self.nodes,
+                self.nodes.all_nodes,
                 self.pending_launches.breakdown(),
                 self.load_metrics.get_resource_demand_vector(),
                 self.load_metrics.get_resource_utilization(),
