@@ -790,7 +790,7 @@ class TrialRunner:
             self._live_trials.add(trial)
         with warn_if_slow("scheduler.on_trial_add"):
             self._scheduler_alg.on_trial_add(self, trial)
-        self.trial_executor.try_checkpoint_metadata(trial)
+        self.trial_executor.mark_trial_to_checkpoint(trial)
 
     def debug_string(self, delim="\n"):
         from ray.tune.progress_reporter import trial_progress_str
@@ -1025,6 +1025,8 @@ class TrialRunner:
         if not is_duplicate:
             trial.update_last_result(
                 result, terminate=(decision == TrialScheduler.STOP))
+            # Include in next experiment checkpoint
+            self.trial_executor.mark_trial_to_checkpoint(trial)
 
         # Checkpoints to disk. This should be checked even if
         # the scheduler decision is STOP or PAUSE. Note that
@@ -1127,7 +1129,8 @@ class TrialRunner:
                     trial=trial,
                     checkpoint=trial.saving_to)
                 trial.on_checkpoint(trial.saving_to)
-                self.trial_executor.try_checkpoint_metadata(trial)
+                if trial.checkpoint.storage != Checkpoint.MEMORY:
+                    self.trial_executor.mark_trial_to_checkpoint(trial)
             except Exception:
                 logger.exception("Trial %s: Error handling checkpoint %s",
                                  trial, checkpoint_value)

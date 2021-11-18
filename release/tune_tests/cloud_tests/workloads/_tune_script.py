@@ -60,7 +60,7 @@ def run_tune(no_syncer: bool,
     if trainable == "function":
         train = fn_trainable
         config = {
-            "max_iterations": 30,
+            "max_iterations": 100,
             "sleep_time": 5,
             "checkpoint_freq": 2,
             "score_multiplied": tune.randint(0, 100),
@@ -80,8 +80,10 @@ def run_tune(no_syncer: bool,
         }
         kwargs = {
             "stop": {
-                "training_iteration": 10
+                "training_iteration": 100
             },
+            "checkpoint_freq": 2,
+            "checkpoint_at_end": True,
         }
     else:
         raise RuntimeError(f"Unknown trainable: {trainable}")
