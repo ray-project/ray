@@ -17,7 +17,7 @@ from pytest_lazyfixture import lazy_fixture
 import ray
 
 from ray.tests.conftest import *  # noqa
-from ray.data.dataset import Dataset
+from ray.data.dataset import Dataset, _sliding_window
 from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
@@ -1760,6 +1760,25 @@ def test_read_binary_files_s3(ray_start_regular_shared):
         "https://anyscale-data.s3.us-west-2.amazonaws.com/small-files/0.dat"
     ).content
     assert item == expected
+
+
+def test_sliding_window():
+    arr = list(range(10))
+
+    # Test all windows over this iterable.
+    window_sizes = list(range(1, len(arr) + 1))
+    for window_size in window_sizes:
+        windows = list(_sliding_window(arr, window_size))
+        assert len(windows) == len(arr) - window_size + 1
+        assert all(len(window) == window_size for window in windows)
+        assert all(
+            list(window) == arr[i:i + window_size]
+            for i, window in enumerate(windows))
+
+    # Test window size larger than iterable length.
+    windows = list(_sliding_window(arr, 15))
+    assert len(windows) == 1
+    assert list(windows[0]) == arr
 
 
 def test_iter_batches_basic(ray_start_regular_shared):

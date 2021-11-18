@@ -1832,33 +1832,6 @@ class Dataset(Generic[T]):
             A list of iterators over record batches.
         """
 
-        def sliding_window(iterable: Iterable, n: int):
-            """Creates an iterator consisting of n-width sliding windows over
-            iterable. The sliding windows are constructed lazily such that an
-            element on the base iterator (iterable) isn't consumed until the
-            first sliding window containing that element is reached.
-
-            If n > len(iterable), then a single len(iterable) window is
-            returned.
-
-            Args:
-                iterable: The iterable on which the sliding window will be
-                    created.
-                n: The width of the sliding window.
-
-            Returns:
-                An iterator of n-width windows over iterable.
-                If n > len(iterable), then a single len(iterable) window is
-                returned.
-            """
-            it = iter(iterable)
-            window = collections.deque(itertools.islice(it, n), maxlen=n)
-            if len(window) > 0:
-                yield tuple(window)
-            for elem in it:
-                window.append(elem)
-                yield tuple(window)
-
         def format_batch(batch: Block, format: str) -> BatchType:
             if batch_format == "native":
                 return batch
@@ -1882,8 +1855,8 @@ class Dataset(Generic[T]):
                 yield format_batch(batcher.next_batch(), batch_format)
 
         block_window = []  # Handle empty sliding window gracefully.
-        for block_window in sliding_window(self._blocks.iter_blocks(),
-                                           prefetch_blocks + 1):
+        for block_window in _sliding_window(self._blocks.iter_blocks(),
+                                            prefetch_blocks + 1):
             block_window = list(block_window)
             ray.wait(block_window, num_returns=1, fetch_local=True)
             yield from batch_block(block_window[0])
@@ -2516,6 +2489,34 @@ def _block_to_ndarray(block: Block, column: Optional[str]):
 def _block_to_arrow(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_arrow()
+
+
+def _sliding_window(iterable: Iterable, n: int):
+    """Creates an iterator consisting of n-width sliding windows over
+    iterable. The sliding windows are constructed lazily such that an
+    element on the base iterator (iterable) isn't consumed until the
+    first sliding window containing that element is reached.
+
+    If n > len(iterable), then a single len(iterable) window is
+    returned.
+
+    Args:
+        iterable: The iterable on which the sliding window will be
+            created.
+        n: The width of the sliding window.
+
+    Returns:
+        An iterator of n-width windows over iterable.
+        If n > len(iterable), then a single len(iterable) window is
+        returned.
+    """
+    it = iter(iterable)
+    window = collections.deque(itertools.islice(it, n), maxlen=n)
+    if len(window) > 0:
+        yield tuple(window)
+    for elem in it:
+        window.append(elem)
+        yield tuple(window)
 
 
 def _split_block(
