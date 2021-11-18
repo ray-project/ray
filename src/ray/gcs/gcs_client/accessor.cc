@@ -559,11 +559,14 @@ void NodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
   // Add the notification to our cache.
   RAY_LOG(INFO) << "Received notification for node id = " << node_id
                 << ", IsAlive = " << is_alive;
+
+  auto &node = node_cache_[node_id];
   if (is_alive) {
-    node_cache_[node_id] = node_info;
+    node = node_info;
   } else {
-    node_cache_[node_id].set_state(rpc::GcsNodeInfo::DEAD);
-    node_cache_[node_id].set_timestamp(node_info.timestamp());
+    node.set_node_id(node_info.node_id());
+    node.set_state(rpc::GcsNodeInfo::DEAD);
+    node.set_timestamp(node_info.timestamp());
   }
 
   // If the notification is new, call registered callback.
