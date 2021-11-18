@@ -55,7 +55,7 @@ class JobLogStorageClient:
         except FileNotFoundError:
             return ""
 
-    def tail_logs(self, job_id: str, n_lines=20):
+    def tail_logs(self, job_id: str, n_lines=10):
         all_logs = self.get_logs(job_id)
         # TODO(edoakes): optimize this to not read the whole file into memory.
         log_lines = all_logs.split("\n")
