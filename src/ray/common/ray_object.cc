@@ -94,13 +94,10 @@ RayObject::RayObject(rpc::ErrorType error_type, const rpc::RayErrorInfo *ray_err
     Init(nullptr, MakeErrorMetadataBuffer(error_type), {});
     return;
   }
-
-  RAY_CHECK(ray_error_info->has_actor_init_failure());
   // This is temporarily here because changing this requires changes in all language
   // frontend.
   // TODO(sang, lixin): Remove it.
-  const auto final_buffer =
-      SerializeErrorInfo<rpc::RayException>(ray_error_info->actor_init_failure());
+  const auto final_buffer = SerializeErrorInfo<rpc::RayErrorInfo>(*ray_error_info);
   Init(MakeBufferFromString(final_buffer->Data(), final_buffer->Size()),
        MakeErrorMetadataBuffer(error_type), {});
   return;

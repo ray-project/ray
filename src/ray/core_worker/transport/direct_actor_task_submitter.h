@@ -50,7 +50,7 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
   virtual void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
                             int64_t num_restarts) = 0;
   virtual void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead,
-                               const rpc::ActorDeathCause *death_cause = nullptr) = 0;
+                               const rpc::ActorDeathCause &death_cause) = 0;
   virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
 
   virtual void CheckTimeoutTasks() = 0;
@@ -118,7 +118,7 @@ class CoreWorkerDirectActorTaskSubmitter
   /// pending tasks for the actor should be failed.
   /// \param[in] death_cause Context about why this actor is dead.
   void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead,
-                       const rpc::ActorDeathCause *death_cause = nullptr);
+                       const rpc::ActorDeathCause &death_cause);
 
   /// Set the timerstamp for the caller.
   void SetCallerCreationTimestamp(int64_t timestamp);

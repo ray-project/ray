@@ -213,7 +213,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
 
 void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
     const ActorID &actor_id, int64_t num_restarts, bool dead,
-    const rpc::ActorDeathCause *death_cause) {
+    const rpc::ActorDeathCause &death_cause) {
   RAY_LOG(DEBUG) << "Disconnecting from actor " << actor_id
                  << ", death context type=" << GetDeathCauseString(death_cause);
 
@@ -245,17 +245,15 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
 
     if (dead) {
       queue->second.state = rpc::ActorTableData::DEAD;
-      if (death_cause != nullptr) {
-        queue->second.death_cause = std::make_unique<rpc::ActorDeathCause>(*death_cause);
-      }
+      queue->second.death_cause = std::make_unique<rpc::ActorDeathCause>(death_cause);
       // If there are pending requests, treat the pending tasks as failed.
       RAY_LOG(INFO) << "Failing pending tasks for actor " << actor_id
                     << " because the actor is already dead.";
 
       auto status = Status::IOError("cancelling all pending tasks of dead actor");
       auto task_ids = queue->second.actor_submit_queue->ClearAllTasks();
-      rpc::ErrorType error_type = GenErrorTypeFromDeathCause(death_cause);
-      const auto error_info = GetErrorInfoFromActorDeathCause(death_cause);
+      rpc::ErrorType error_type = GenErrorTypeFromDeathCause(&death_cause);
+      const auto error_info = GetErrorInfoFromActorDeathCause(&death_cause);
 
       for (auto &task_id : task_ids) {
         task_finisher_.MarkTaskCanceled(task_id);
