@@ -16,7 +16,9 @@ from ray.train.utils import RayDataset
 from ray.train.checkpoint import CheckpointStrategy, TuneCheckpointManager, \
     CheckpointManager
 from ray.train.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
-    TUNE_CHECKPOINT_FILE_NAME
+    TUNE_CHECKPOINT_FILE_NAME, ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV, \
+    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV, TRAIN_ENABLE_WORKER_SPREAD_ENV
 
 # Ray Train should be usable even if Tune is not installed.
 from ray.train.utils import construct_path
@@ -46,6 +48,12 @@ BACKEND_NAME_TO_CONFIG_CLS_NAME = {
     "horovod": "HorovodConfig",
     "tensorflow": "TensorflowConfig",
     "torch": "TorchConfig"
+}
+
+BACKEND_ENV_VARS = {
+    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV, TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
+    TRAIN_ENABLE_WORKER_SPREAD_ENV
 }
 
 
@@ -143,15 +151,23 @@ class Trainer:
                     "request a positive number of `GPU` in "
                     "`resources_per_worker.")
 
+        runtime_env = {
+            "env_vars": {
+                var_name: os.environ.get(var_name, "")
+                for var_name in BACKEND_ENV_VARS
+            }
+        }
+
         remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
 
-        self._backend_executor_actor = remote_executor.remote(
-            backend_config=self._backend_config,
-            num_workers=num_workers,
-            num_cpus_per_worker=num_cpus,
-            num_gpus_per_worker=num_gpus,
-            additional_resources_per_worker=resources_per_worker,
-            max_retries=max_retries)
+        self._backend_executor_actor = remote_executor.options(
+            runtime_env=runtime_env).remote(
+                backend_config=self._backend_config,
+                num_workers=num_workers,
+                num_cpus_per_worker=num_cpus,
+                num_gpus_per_worker=num_gpus,
+                additional_resources_per_worker=resources_per_worker,
+                max_retries=max_retries)
 
         if self._is_tune_enabled():
             self.checkpoint_manager = TuneCheckpointManager()
