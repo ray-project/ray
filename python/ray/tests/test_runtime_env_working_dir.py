@@ -284,10 +284,16 @@ def test_input_validation(start_cluster, option: str):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
-@pytest.mark.parametrize("remote_uri", REMOTE_URIS)
+@pytest.mark.parametrize("remote_uri", REMOTE_URIS + ["use_http_magic"])
 @pytest.mark.parametrize("option", ["failure", "working_dir", "py_modules"])
 @pytest.mark.parametrize("per_task_actor", [True, False])
-def test_remote_package_uri(start_cluster, remote_uri, option, per_task_actor):
+def test_remote_package_uri(
+        start_cluster,
+        remote_uri,
+        option,
+        per_task_actor,
+        http_file_server,
+):
     """Tests the case where we lazily read files or import inside a task/actor.
 
     In this case, the files come from a remote location.
@@ -296,6 +302,16 @@ def test_remote_package_uri(start_cluster, remote_uri, option, per_task_actor):
     passes with it.
     """
     cluster, address = start_cluster
+    dir_path, http_port = http_file_server
+
+    # NOTE(simon)
+    # Just downloading the remote https file for now because I don't know
+    # how was the package created.
+    if remote_uri == "use_http_magic":
+        with open(os.path.join(dir_path, "HEAD.zip"), "wb") as f:
+            resp = requests.get(HTTPS_PACKAGE_URI)
+            f.write(resp.content)
+        remote_uri = f"http://127.0.0.1:{http_port}/HEAD.zip"
 
     if option == "working_dir":
         env = {"working_dir": remote_uri}
