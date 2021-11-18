@@ -64,9 +64,7 @@ class ExternalEnv(threading.Thread):
 
         Your loop should continuously:
             1. Call self.start_episode(episode_id)
-            2. Call self.get_action(episode_id, obs)
-                    -or-
-                    self.log_action(episode_id, obs, action)
+            2. Call self.[get|log]_action(episode_id, obs, [action]?)
             3. Call self.log_returns(episode_id, reward)
             4. Call self.end_episode(episode_id, obs)
             5. Wait if nothing to do.

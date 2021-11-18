@@ -115,10 +115,13 @@ class MockReplicaActorWrapper:
             self.version = self.starting_version
         return ready, self.version
 
-    def resource_requirements(
-            self) -> Tuple[Dict[str, float], Dict[str, float]]:
+    def resource_requirements(self) -> Tuple[str, str]:
         assert self.started
-        return {"REQUIRED_RESOURCE": 1.0}, {"AVAILABLE_RESOURCE": 1.0}
+        return str({
+            "REQUIRED_RESOURCE": 1.0
+        }), str({
+            "AVAILABLE_RESOURCE": 1.0
+        })
 
     @property
     def actor_resources(self) -> Dict[str, float]:
