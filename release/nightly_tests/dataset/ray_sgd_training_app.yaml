@@ -1,13 +1,9 @@
-base_image: "anyscale/ray-ml:pinned-nightly-py37-gpu"
+base_image: "anyscale/ray:nightly-py37-cu102"
 
 python:
   pip_packages: []
   conda_packages: []
 
 post_build_cmds:
-    - pip3 uninstall -y ray
     - pip3 install llvmlite --ignore-installed
-    - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
-    - pip3 install -U ray[default,data]
-    - pip3 install -U jupyter==1.0.0 torch==1.10.0 pyarrow==6.0.0 tensorboard==2.7.0 boto3==1.14.5 fsspec==0.7.1 pickle5==0.0.11 dask==2.14.0 dask_ml==2021.10.17 s3fs==0.4.0 mlflow==1.21.0 torchvision==0.11.1
-    - mkdir -p data inference models runs
+    - pip3 install -U torch==1.6 dask dask_ml mlflow tensorboard torchvision pickle5 s3fs

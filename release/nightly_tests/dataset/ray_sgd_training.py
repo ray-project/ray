@@ -555,7 +555,7 @@ if __name__ == "__main__":
         # TODO: TBXLoggerCallback should create nonexistent logdir
         #       and should also create 1 directory per file.
         callbacks = [
-            TBXLoggerCallback(logdir="./runs"),
+            TBXLoggerCallback(logdir="/tmp"),
             MLflowCallback(config)
         ]
 
