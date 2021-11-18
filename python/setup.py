@@ -267,12 +267,11 @@ if setup_spec.type == SetupType.RAY:
         "pyyaml",
     ]
 
-if platform.system() == "Darwin" and platform.machine() == "arm64":
+if platform.system() == "Windows" or (platform.system() == "Darwin"
+                                      and platform.machine() == "arm64"):
     # TODO (Alex): `hiredis` doesn't have prebuilt M1 mac wheels yet. We can
     # remove this, either when they add support, we remove redis, or we vendor
     # redis/hiredis ourselves.
-    setup_spec.install_requires.append("redis >= 3.5.0")
-elif platform.system() == "Windows":
     # TODO (Alex): Ray is not compatible with redis >= 4.0.0. We ened to either
     # investigate why, or remove the redis dependency.
     setup_spec.install_requires.append("redis >= 3.5.0, < 4.0")
