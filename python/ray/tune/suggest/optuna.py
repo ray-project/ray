@@ -3,6 +3,7 @@ import logging
 import pickle
 import functools
 import warnings
+from packaging import version
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
@@ -108,9 +109,9 @@ class OptunaSearch(Searcher):
             for future parameters. Needs to be a list of dicts containing the
             configurations.
         sampler (optuna.samplers.BaseSampler): Optuna sampler used to
-            draw hyperparameter configurations. Defaults to ``TPESampler``
-            for single-objective optimization and ``MOTPESampler`` for
-            multi-objective optimization.
+            draw hyperparameter configurations. Defaults to ``MOTPESampler``
+            for multi-objective optimization with Optuna<2.9.0, and
+            ``TPESampler`` in every other case.
         seed (int): Seed to initialize sampler with. This parameter is only
             used when ``sampler=None``. In all other cases, the sampler
             you pass should be initialized with the seed already.
@@ -295,10 +296,9 @@ class OptunaSearch(Searcher):
                 "and will be ignored.")
         elif sampler:
             assert isinstance(
-                self._sampler,
-                BaseSampler), ("You can only pass an instance of "
-                               "`optuna.samplers.BaseSampler` "
-                               "as a sampler to `OptunaSearcher`.")
+                sampler, BaseSampler), ("You can only pass an instance of "
+                                        "`optuna.samplers.BaseSampler` "
+                                        "as a sampler to `OptunaSearcher`.")
 
         self._sampler = sampler
         self._seed = seed
@@ -322,7 +322,9 @@ class OptunaSearch(Searcher):
 
         if self._sampler:
             sampler = self._sampler
-        elif isinstance(mode, list):
+        elif isinstance(mode, list) and version.parse(
+                ot.__version__) < version.parse("2.9.0"):
+            # MOTPESampler deprecated in Optuna>=2.9.0
             sampler = ot.samplers.MOTPESampler(seed=self._seed)
         else:
             sampler = ot.samplers.TPESampler(seed=self._seed)
