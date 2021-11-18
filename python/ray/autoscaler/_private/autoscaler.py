@@ -2,6 +2,7 @@ from collections import defaultdict, namedtuple, Counter
 from typing import Any, Optional, Dict, List, Set, FrozenSet, Tuple, Union, \
     Callable
 import copy
+from dataclasses import dataclass
 import logging
 import math
 import operator
@@ -50,15 +51,21 @@ from six.moves import queue
 
 logger = logging.getLogger(__name__)
 
+# Status of a node e.g. "up-to-date", see ray/autoscaler/tags.py
+NodeStatus = str
+
 # Tuple of modified fields for the given node_id returned by should_update
 # that will be passed into a NodeUpdaterThread.
 UpdateInstructions = namedtuple(
     "UpdateInstructions",
     ["node_id", "setup_commands", "ray_start_commands", "docker_config"])
 
-AutoscalerSummary = namedtuple(
-    "AutoscalerSummary",
-    ["active_nodes", "pending_nodes", "pending_launches", "failed_nodes"])
+@dataclass
+class AutoscalerSummary:
+    active_nodes: Dict[NodeType, int]
+    pending_nodes: List[Tuple[NodeIP, NodeType, NodeStatus]]
+    pending_launches: Dict[NodeType, int]
+    failed_nodes: List[Tuple[NodeIP, NodeType]]
 
 # Whether a worker should be kept based on the min_workers and
 # max_workers constraints.

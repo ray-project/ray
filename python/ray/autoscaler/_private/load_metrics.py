@@ -23,9 +23,14 @@ DictCount = Tuple[Dict, Number]
 
 @dataclass
 class LoadMetricsSummary:
+    # Map of resource name (e.g. "memory") to pair of (Used, Available) numbers.
     usage: Dict[str, Tuple[Number, Number]]
+    # Counts of demand bundles from task/actor demand.
+    # e.g. [({"CPU": 1}, 5), ({"GPU":1}, 2)]
     resource_demand: List[DictCount]
+    # Counts of pending placement groups
     pg_demand: List[DictCount]
+    # Counts of demand bundles requested by autoscaler.sdk.request_resources
     request_demand: List[DictCount]
     node_types: List[DictCount]
 
