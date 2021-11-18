@@ -2316,6 +2316,7 @@ filegroup(
     srcs = [
         "//src/ray/protobuf:agent_manager_py_proto",
         "//src/ray/protobuf:common_py_proto",
+        "//src/ray/protobuf:runtime_env_common_py_proto",
         "//src/ray/protobuf:core_worker_py_proto",
         "//src/ray/protobuf:event_py_proto",
         "//src/ray/protobuf:gcs_py_proto",

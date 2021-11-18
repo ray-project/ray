@@ -98,13 +98,8 @@ class JobConfig:
 
     def runtime_env_has_uris(self):
         """Whether there are uris in runtime env or not"""
-        uris = self._validate_runtime_env()[0].get_proto_runtime_env().uris
-        if uris.working_dir_uri \
-           or uris.py_modules_uris \
-           or uris.conda_uri \
-           or uris.plugin_uris:
-            return True
-        return False
+        return self._validate_runtime_env()[
+            0].get_proto_runtime_env().has_uris()
 
     def get_serialized_runtime_env(self) -> str:
         """Return the JSON-serialized parsed runtime env dict"""

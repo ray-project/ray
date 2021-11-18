@@ -3,29 +3,7 @@ from abc import ABC, abstractstaticmethod
 from typing import Tuple
 from ray.util.annotations import DeveloperAPI
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray.core.generated.common_pb2 import RuntimeEnv
-import json
-
-
-def build_proto_plugin_runtime_env(runtime_env_dict: dict,
-                                   runtime_env: RuntimeEnv):
-    """ Construct plugin runtime env protobuf from runtime env dict.
-    """
-    if runtime_env_dict.get("plugins"):
-        for class_path, plugin_field in runtime_env_dict["plugins"].items():
-            plugin = runtime_env.py_plugin_runtime_env.plugins.add()
-            plugin.class_path = class_path
-            plugin.config = json.dumps(plugin_field, sort_keys=True)
-
-
-def parse_proto_plugin_runtime_env(runtime_env: RuntimeEnv,
-                                   runtime_env_dict: dict):
-    """ Parse plugin runtime env protobuf to runtime env dict.
-    """
-    if runtime_env.HasField("py_plugin_runtime_env"):
-        for plugin in runtime_env.py_plugin_runtime_env.plugins:
-            runtime_env_dict["plugins"][plugin.class_path] = dict(
-                json.loads(plugin.config))
+from ray._private.runtime_env.utils import RuntimeEnv
 
 
 def encode_plugin_uri(plugin: str, uri: str) -> str:

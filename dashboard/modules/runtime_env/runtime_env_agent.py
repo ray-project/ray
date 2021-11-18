@@ -11,8 +11,6 @@ from ray._private.utils import import_attr
 from ray.core.generated import runtime_env_agent_pb2
 from ray.core.generated import runtime_env_agent_pb2_grpc
 from ray.core.generated import agent_manager_pb2
-from ray.core.generated.common_pb2 import RuntimeEnv
-from google.protobuf import json_format
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.modules.runtime_env.runtime_env_consts \
     as runtime_env_consts
@@ -25,6 +23,7 @@ from ray._private.runtime_env.py_modules import PyModulesManager
 from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.plugin import decode_plugin_uri
+from ray._private.runtime_env.utils import RuntimeEnv
 
 logger = logging.getLogger(__name__)
 
@@ -89,10 +88,8 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                                      serialized_allocated_resource_instances):
             # This function will be ran inside a thread
             def run_setup_with_logger():
-                logger.info(
-                    f"Setting up runtime_env: {serialized_runtime_env}")
-                runtime_env: RuntimeEnv = json_format.Parse(
-                    serialized_runtime_env, RuntimeEnv())
+                runtime_env = RuntimeEnv(
+                    serialized_runtime_env=serialized_runtime_env)
                 allocated_resource: dict = json.loads(
                     serialized_allocated_resource_instances or "{}")
 
@@ -102,8 +99,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 # avoid lint error. That will be moved to cgroup plugin.
                 per_job_logger.debug(f"Worker has resource :"
                                      f"{allocated_resource}")
-                context = RuntimeEnvContext(
-                    env_vars=dict(runtime_env.env_vars))
+                context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
                 self._conda_manager.setup(
                     runtime_env, context, logger=per_job_logger)
                 self._py_modules_manager.setup(
@@ -115,24 +111,22 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
                 # Add the mapping of URIs -> the serialized environment to be
                 # used for cache invalidation.
-                if runtime_env.uris.working_dir_uri:
-                    uri = runtime_env.uris.working_dir_uri
+                if runtime_env.working_dir_uri():
+                    uri = runtime_env.working_dir_uri()
                     self._uris_to_envs[uri].add(serialized_runtime_env)
-                if runtime_env.uris.py_modules_uris:
-                    for uri in runtime_env.uris.py_modules_uris:
+                if runtime_env.py_modules_uris():
+                    for uri in runtime_env.py_modules_uris():
                         self._uris_to_envs[uri].add(serialized_runtime_env)
-                if runtime_env.uris.conda_uri:
-                    uri = runtime_env.uris.conda_uri
+                if runtime_env.conda_uri():
+                    uri = runtime_env.conda_uri()
                     self._uris_to_envs[uri].add(serialized_runtime_env)
-                if runtime_env.uris.plugin_uris:
-                    for uri in runtime_env.uris.plugin_uris:
+                if runtime_env.plugin_uris():
+                    for uri in runtime_env.plugin_uris():
                         self._uris_to_envs[uri].add(serialized_runtime_env)
 
                 # Run setup function from all the plugins
-                for plugin in runtime_env.py_plugin_runtime_env.plugins:
-                    plugin_class_path = plugin.class_path
+                for plugin_class_path, config in runtime_env.plugins():
                     plugin_class = import_attr(plugin_class_path)
-                    config = plugin.config
                     # TODO(simon): implement uri support
                     plugin_class.create("uri not implemented",
                                         json.loads(config), context)

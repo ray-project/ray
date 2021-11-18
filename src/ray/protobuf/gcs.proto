@@ -18,6 +18,7 @@ option cc_enable_arenas = true;
 package ray.rpc;
 
 import "src/ray/protobuf/common.proto";
+import "src/ray/protobuf/runtime_env_common.proto";
 
 option java_package = "io.ray.runtime.generated";
 

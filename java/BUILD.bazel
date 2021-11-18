@@ -189,6 +189,11 @@ java_proto_compile(
 )
 
 java_proto_compile(
+    name = "runtime_env_common_java_proto",
+    deps = ["@//src/ray/protobuf:runtime_env_common_proto"],
+)
+
+java_proto_compile(
     name = "gcs_java_proto",
     deps = ["@//src/ray/protobuf:gcs_proto"],
 )
@@ -203,6 +208,7 @@ filegroup(
     srcs = [
         ":common_java_proto",
         ":gcs_java_proto",
+        ":runtime_env_common_java_proto",
     ],
 )
 

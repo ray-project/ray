@@ -1,5 +1,4 @@
 import copy
-import json
 import logging
 import os
 from pathlib import Path
@@ -8,18 +7,10 @@ from typing import Any, Dict, List, Optional, Set, Union
 import yaml
 
 import ray
-from ray.core.generated.common_pb2 import RuntimeEnv
-from ray._private.runtime_env.plugin import (
-    RuntimeEnvPlugin, build_proto_plugin_runtime_env,
-    parse_proto_plugin_runtime_env, encode_plugin_uri)
-from ray._private.runtime_env.pip import (build_proto_pip_runtime_env,
-                                          parse_proto_pip_runtime_env)
-from ray._private.runtime_env.conda import (build_proto_conda_runtime_env,
-                                            parse_proto_conda_runtime_env)
-from ray._private.runtime_env.container import (
-    build_proto_container_runtime_env, parse_proto_container_runtime_env)
+from ray._private.runtime_env.plugin import (RuntimeEnvPlugin,
+                                             encode_plugin_uri)
+from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.utils import import_attr
-from google.protobuf import json_format
 from ray._private.runtime_env import conda
 
 logger = logging.getLogger(__name__)
@@ -365,59 +356,17 @@ class ParsedRuntimeEnv(dict):
     def get_proto_runtime_env(self):
         """Return the protobuf structure of RuntimeEnv."""
         if self._cached_pb is None:
-            pb = RuntimeEnv()
-            pb.py_modules.extend(self.get("py_modules", []))
-            pb.working_dir = self.get("working_dir", "")
-            if "working_dir" in self:
-                pb.uris.working_dir_uri = self["working_dir"]
-            if "py_modules" in self:
-                for uri in self["py_modules"]:
-                    pb.uris.py_modules_uris.append(uri)
-            if "conda" or "pip" in self:
-                uri = conda.get_uri(self)
-                if uri is not None:
-                    pb.uris.conda_uri = uri
-            env_vars = self.get("env_vars", {})
-            pb.env_vars.update(env_vars.items())
-            if "_ray_release" in self:
-                pb.extensions["_ray_release"] = str(self["_ray_release"])
-            if "_ray_commit" in self:
-                pb.extensions["_ray_commit"] = str(self["_ray_commit"])
-            if "_inject_current_ray" in self:
-                pb.extensions["_inject_current_ray"] = str(
-                    self["_inject_current_ray"])
-            build_proto_pip_runtime_env(self, pb)
-            build_proto_conda_runtime_env(self, pb)
-            build_proto_container_runtime_env(self, pb)
-            build_proto_plugin_runtime_env(self, pb)
-            self._cached_pb = pb
+            self._cached_pb = RuntimeEnv.from_dict(self, conda.get_uri)
 
         return self._cached_pb
 
     @classmethod
     def deserialize(cls, serialized: str) -> "ParsedRuntimeEnv":
-        runtime_env = json_format.Parse(serialized, RuntimeEnv())
-        initialize_dict: Dict[str, Any] = {}
-        if runtime_env.py_modules:
-            initialize_dict["py_modules"] = list(runtime_env.py_modules)
-        if runtime_env.working_dir:
-            initialize_dict["working_dir"] = runtime_env.working_dir
-        if runtime_env.env_vars:
-            initialize_dict["env_vars"] = dict(runtime_env.env_vars)
-        if runtime_env.extensions:
-            initialize_dict.update(dict(runtime_env.extensions))
-        parse_proto_pip_runtime_env(runtime_env, initialize_dict)
-        parse_proto_conda_runtime_env(runtime_env, initialize_dict)
-        parse_proto_container_runtime_env(runtime_env, initialize_dict)
-        parse_proto_plugin_runtime_env(runtime_env, initialize_dict)
-        return cls(initialize_dict, _validate=False)
+        runtime_env = RuntimeEnv(serialized_runtime_env=serialized)
+        return cls(runtime_env.to_dict(), _validate=False)
 
     def serialize(self) -> str:
-        # Sort the keys we can compare the serialized string for equality.
-        return json.dumps(
-            json.loads(
-                json_format.MessageToJson(self.get_proto_runtime_env())),
-            sort_keys=True)
+        return self.get_proto_runtime_env().serialize()
 
 
 def override_task_or_actor_runtime_env(
