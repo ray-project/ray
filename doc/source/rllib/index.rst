@@ -28,7 +28,7 @@ RLlib is already used in production by industry leaders in many different vertic
 `gaming <https://www.anyscale.com/events/2021/06/22/using-reinforcement-learning-to-optimize-iap-offer-recommendations-in-mobile-games>`_,
 `automobile <https://www.anyscale.com/events/2021/06/23/using-rllib-in-an-enterprise-scale-reinforcement-learning-solution>`_,
 `robotics <https://www.anyscale.com/events/2021/06/23/introducing-amazon-sagemaker-kubeflow-reinforcement-learning-pipelines-for>`_,
-`sailing/ship design <https://www.youtube.com/watch?v=cLCK13ryTpw>`_,
+`boat design <https://www.youtube.com/watch?v=cLCK13ryTpw>`_,
 and many others.
 
 

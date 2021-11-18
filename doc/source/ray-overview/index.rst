@@ -191,7 +191,7 @@ If TensorBoard is installed, automatically visualize all trial results:
 RLlib Quick Start
 -----------------
 
-`RLlib`_ is an industry-grade, open-source library for reinforcement learning (RL) built on top of Ray.
+`RLlib`_ is an industry-grade library for reinforcement learning (RL) built on top of Ray.
 RLlib offers high scalability and unified APIs for a variety of industry- and research applications.
 
 **Quick Installation:**
