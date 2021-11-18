@@ -20,6 +20,7 @@ try:
 except ImportError:
     MaxRetryError = None
 
+from ray.autoscaler.node_provider import NodeProvider
 from ray.autoscaler.tags import (
     TAG_RAY_LAUNCH_CONFIG, TAG_RAY_RUNTIME_CONFIG,
     TAG_RAY_FILE_MOUNTS_CONTENTS, TAG_RAY_NODE_STATUS, TAG_RAY_NODE_KIND,
@@ -66,6 +67,40 @@ class AutoscalerSummary:
     pending_nodes: List[Tuple[NodeIP, NodeType, NodeStatus]]
     pending_launches: Dict[NodeType, int]
     failed_nodes: List[Tuple[NodeIP, NodeType]]
+
+class NonTerminatedNodes:
+    """Class to extract and organize information on non-terminated nodes."""
+    def __init__(self, provider: NodeProvider):
+        # Managed worker nodes (node kind "worker"):
+        self.workers: List[NodeID] = []
+        # Unmanaged worker nodes (node kind "unmanaged")
+        self.unmanaged_workers: List[NodeID] = []
+        # The head node (node kind "head")
+        self.head: Optional[NodeID] = None
+
+        for node in provider.non_terminated_nodes(tag_filters={}):
+            node_kind = provider.node_tags(node)[TAG_RAY_NODE_KIND]
+            if node_kind == NODE_KIND_WORKER:
+                self.workers.append(node)
+            elif node_kind == NODE_KIND_UNMANAGED:
+                self.unmanaged_workers.append(node)
+            elif node_kind == NODE_KIND_HEAD:
+                self.head = node
+        # Make sure we determined the head node.
+        assert self.head
+
+    @property
+    def all_nodes(self):
+        return [self.head] + self.workers + self.unmanaged_workers
+
+    def remove_terminating_nodes(self, terminating_nodes: List[NodeID]):
+        #Remove nodes we're in the process of terminating.
+        def not_terminating(node):
+            return node not in terminating_nodes
+
+        self.workers = filter(not_terminating, self.workers)
+        self.unmanaged_workers = filter(not_terminating,
+                                        self.unmanaged_workers)
 
 # Whether a worker should be kept based on the min_workers and
 # max_workers constraints.
@@ -168,19 +203,11 @@ class StandardAutoscaler:
         self.last_update_time = 0.0
         self.update_interval_s = update_interval_s
 
-        # The following block of data on active nodes is filled once per
-        # autoscaler update in `self.update_node_lists()`.
-        # Managed worker nodes (node kind "worker"):
-        self.workers = []
-        # Managed and unmanaged worker nodes
-        # (node kinds "worker" and "unmanaged"):
-        self.all_workers = []
-        # All nodes (workers, unmanaged workers, and head)
-        self.all_nodes = []
-        self.head_node_ip = ""
+        # Keeps track of pending and running nodes
+        self.nodes: Optional[Nodes] = None
 
         # Tracks nodes scheduled for termination
-        self.nodes_to_terminate = []
+        self.nodes_to_terminate: List[NodeID] = []
 
         # Disable NodeUpdater threads if true.
         # Should be set to true in situations where another component, such as
@@ -257,16 +284,24 @@ class StandardAutoscaler:
 
         self.last_update_time = now
 
-        # Query node provider to update workers, all_workers, and all_nodes.
-        self.update_node_lists()
+        # Query the provider to update the list of non-terminated nodes
+        self.nodes = NonTerminatedNodes(self.provider)
+
+        # Update running nodes gauge
+        num_workers = len(self.nodes.workers)
+        self.prom_metrics.running_workers.set(num_workers)
 
         # Remove from LoadMetrics the ips unknown to the NodeProvider.
         self.load_metrics.prune_active_ips(
-            [self.provider.internal_ip(node_id) for node_id in self.all_nodes])
+            active_ips = [
+                self.provider.internal_ip(node_id)
+                for node_id in self.nodes.all_nodes
+            ]
+        )
 
         # Update status strings
         logger.info(self.info_string())
-        legacy_log_info_string(self, self.workers)
+        legacy_log_info_string(self, self.nodes.workers)
 
         if not self.provider.is_readonly():
             self.terminate_nodes_to_enforce_config_constraints(now)
@@ -282,7 +317,7 @@ class StandardAutoscaler:
         # Dict[NodeType, int], List[ResourceDict]
         to_launch, unfulfilled = (
             self.resource_demand_scheduler.get_nodes_to_launch(
-                self.all_nodes,
+                self.nodes,
                 self.pending_launches.breakdown(),
                 self.load_metrics.get_resource_demand_vector(),
                 self.load_metrics.get_resource_utilization(),
@@ -315,7 +350,7 @@ class StandardAutoscaler:
         # were most recently used. Otherwise, _keep_min_workers_of_node_type
         # might keep a node that should be terminated.
         sorted_node_ids = self._sort_based_on_last_used(
-            self.workers, last_used)
+            self.nodes.workers, last_used)
 
         # Don't terminate nodes needed by request_resources()
         nodes_not_allowed_to_terminate: FrozenSet[NodeID] = {}
@@ -362,7 +397,8 @@ class StandardAutoscaler:
                 nodes_we_could_terminate.append(node_id)
 
         # Terminate nodes if there are too many
-        num_extra_nodes_to_terminate = (len(self.workers) - len(
+        num_workers = len(self.nodes.workers)
+        num_extra_nodes_to_terminate = (len(num_workers) - len(
             self.nodes_to_terminate) - self.config["max_workers"])
 
         if num_extra_nodes_to_terminate > len(nodes_we_could_terminate):
@@ -408,22 +444,17 @@ class StandardAutoscaler:
         """Terminate scheduled nodes and clean associated autoscaler state."""
         if not self.nodes_to_terminate:
             return
+
+        # Do Ray-internal preparation for termination
         self.drain_nodes_via_gcs(self.nodes_to_terminate)
+        # Terminate the nodes
         self.provider.terminate_nodes(self.nodes_to_terminate)
         for node in self.nodes_to_terminate:
             self.node_tracker.untrack(node)
             self.prom_metrics.stopped_nodes.inc()
 
         # Update internal node lists
-        def filter_out_terminating(node_list):
-            return [
-                node for node in node_list
-                if node not in self.nodes_to_terminate
-            ]
-
-        self.workers = filter_out_terminating(self.workers)
-        self.all_workers = filter_out_terminating(self.all_workers)
-        self.all_nodes = filter_out_terminating(self.all_nodes)
+        self.remove_terminating_nodes(self.nodes_to_terminate)
 
         self.nodes_to_terminate = []
 
@@ -677,7 +708,8 @@ class StandardAutoscaler:
                 NodeIP,
                 ResourceDict] = \
                 self.load_metrics.get_static_node_resources_by_ip()
-            head_node_resources = static_nodes.get(self.head_node_ip, {})
+            head_node_ip = self.provider.internal_ip(self.nodes.head)
+            head_node_resources = static_nodes.get(head_node_ip, {})
 
         max_node_resources: List[ResourceDict] = [head_node_resources]
         resource_demand_vector_worker_node_ids = []
@@ -964,6 +996,7 @@ class StandardAutoscaler:
             " (lost contact with raylet).",
             quantity=1,
             aggregate=operator.add)
+        head_node_ip = self.provider.internal_ip(self.nodes.head)
         updater = NodeUpdaterThread(
             node_id=node_id,
             provider_config=self.config["provider"],
@@ -1129,8 +1162,6 @@ class StandardAutoscaler:
                 # Determine head node's ip if needed.
                 self.head_node_ip = self.provider.internal_ip(node)
 
-        # Update running nodes gauge
-        self.prom_metrics.running_workers.set(len(self.workers))
 
     def kill_workers(self):
         logger.error("StandardAutoscaler: kill_workers triggered")
