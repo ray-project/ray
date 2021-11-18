@@ -671,6 +671,15 @@ py_test(
 )
 
 py_test(
+    name = "optuna_multiobjective_example",
+    size = "small",
+    srcs = ["examples/optuna_multiobjective_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
     name = "pb2_example",
     size = "medium",
     srcs = ["examples/pb2_example.py"],
