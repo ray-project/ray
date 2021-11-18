@@ -76,9 +76,9 @@ class DefaultCallbacks:
             base_env: BaseEnv running the episode. The underlying
                 sub environment objects can be retrieved by calling
                 `base_env.get_sub_environments()`.
-            policies: Mapping of policy id
-                to policy objects. In single agent mode there will only be a
-                single "default_policy".
+            policies: Mapping of policy id to policy objects.
+                In single agent mode there will only be a single
+                "default_policy".
             episode: Episode object which contains episode
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
