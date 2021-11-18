@@ -80,3 +80,19 @@ dt:target, span.highlighted {
 img.horizontal-scroll {
     max-width: none;
 }
+
+.clear-both {
+    clear: both;
+    min-height: 100px;
+    margin-top: 15px;
+}
+
+.buttons-float-left {
+    width: 150px;
+    float: left;
+}
+
+.buttons-float-right {
+    width: 150px;
+    float: right;
+}

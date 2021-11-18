@@ -1,4 +1,4 @@
-base_image: "anyscale/ray:1.5.0-py37-gpu"
+base_image: "anyscale/ray-ml:nightly-py37-gpu"
 env_vars: {}
 debian_packages:
   - curl
@@ -11,11 +11,9 @@ python:
   conda_packages: []
 
 post_build_cmds:
-  - pip uninstall -y numpy ray || true
-  - sudo rm -rf /home/ray/anaconda3/lib/python3.7/site-packages/numpy || true
-  - pip3 install numpy || true
+  - pip uninstall -y ray || true
   - pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
-  - pip3 install -U "xgboost_ray" petastorm  # Install latest releases
+  - pip install -U xgboost xgboost_ray petastorm  # Install latest releases
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
   - sudo mkdir -p /data || true
   - sudo chown ray:1000 /data || true

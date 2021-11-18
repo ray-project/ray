@@ -10,10 +10,10 @@ public class KeyTypeTest {
 
   @Test
   public void hashTest() {
-    KeyType k1 = new KeyType(LongPollNamespace.BACKEND_CONFIGS, "k1");
-    KeyType k2 = new KeyType(LongPollNamespace.BACKEND_CONFIGS, "k1");
-    KeyType k3 = new KeyType(LongPollNamespace.BACKEND_CONFIGS, null);
-    KeyType k4 = new KeyType(LongPollNamespace.REPLICA_HANDLES, "k4");
+    KeyType k1 = new KeyType(LongPollNamespace.ROUTE_TABLE, "k1");
+    KeyType k2 = new KeyType(LongPollNamespace.ROUTE_TABLE, "k1");
+    KeyType k3 = new KeyType(LongPollNamespace.ROUTE_TABLE, null);
+    KeyType k4 = new KeyType(LongPollNamespace.ROUTE_TABLE, "k4");
 
     Assert.assertEquals(k1, k1);
     Assert.assertEquals(k1.hashCode(), k1.hashCode());
@@ -34,7 +34,7 @@ public class KeyTypeTest {
 
   @Test
   public void jsonTest() {
-    KeyType k1 = new KeyType(LongPollNamespace.BACKEND_CONFIGS, "k1");
+    KeyType k1 = new KeyType(LongPollNamespace.ROUTE_TABLE, "k1");
     String json = GSON.toJson(k1);
 
     KeyType k2 = GSON.fromJson(json, KeyType.class);

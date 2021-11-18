@@ -67,7 +67,10 @@ class MockRemoteTrainer(_MockTrainer):
 class MockDurableTrainer(_MockTrainer):
     """Mock DurableTrainable that saves at tmp for simulated clusters."""
 
-    def __init__(self, remote_checkpoint_dir, sync_function_tpl, *args,
+    def __init__(self,
+                 remote_checkpoint_dir=None,
+                 sync_function_tpl=None,
+                 *args,
                  **kwargs):
         _MockTrainer.__init__(self, *args, **kwargs)
         kwargs["remote_checkpoint_dir"] = remote_checkpoint_dir

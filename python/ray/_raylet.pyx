@@ -634,9 +634,12 @@ cdef execute_task(
                             # task. In that case we just exit the debugger.
                             ray.experimental.internal_kv._internal_kv_put(
                                 "RAY_PDB_{}".format(next_breakpoint),
-                                "{\"exit_debugger\": true}")
+                                "{\"exit_debugger\": true}",
+                                namespace=ray_constants.KV_NAMESPACE_PDB
+                            )
                             ray.experimental.internal_kv._internal_kv_del(
-                                "RAY_PDB_CONTINUE_{}".format(next_breakpoint)
+                                "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
+                                namespace=ray_constants.KV_NAMESPACE_PDB
                             )
                             ray.worker.global_worker.debugger_breakpoint = b""
                     task_exception = False
@@ -728,7 +731,6 @@ cdef execute_task(
             exit.is_ray_terminate = True
             raise exit
 
-# return a protobuf-serialized ray_exception
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
     return make_shared[LocalMemoryBuffer](

@@ -3,6 +3,7 @@ package io.ray.runtime.task;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import io.ray.api.BaseActorHandle;
+import io.ray.api.PlacementGroups;
 import io.ray.api.Ray;
 import io.ray.api.id.ActorId;
 import io.ray.api.id.ObjectId;
@@ -50,8 +51,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
       }
 
       if (StringUtils.isNotBlank(options.name)) {
-        Optional<BaseActorHandle> actor =
-            options.global ? Ray.getGlobalActor(options.name) : Ray.getActor(options.name);
+        Optional<BaseActorHandle> actor = Ray.getActor(options.name);
         Preconditions.checkArgument(
             !actor.isPresent(), String.format("Actor of name %s exists", options.name));
       }
@@ -91,11 +91,7 @@ public class NativeTaskSubmitter implements TaskSubmitter {
   @Override
   public PlacementGroup createPlacementGroup(PlacementGroupCreationOptions creationOptions) {
     if (StringUtils.isNotBlank(creationOptions.name)) {
-      PlacementGroup placementGroup =
-          creationOptions.global
-              ? Ray.getGlobalPlacementGroup(creationOptions.name)
-              : Ray.getPlacementGroup(creationOptions.name);
-
+      PlacementGroup placementGroup = PlacementGroups.getPlacementGroup(creationOptions.name);
       Preconditions.checkArgument(
           placementGroup == null,
           String.format("Placement group with name %s exists!", creationOptions.name));

@@ -1,6 +1,7 @@
 import copy
 import logging
 import os
+import re
 import sys
 
 import yaml
@@ -78,8 +79,9 @@ CORE_NIGHTLY_TESTS = {
         SmokeTest("stress_test_dead_actors"),
         "shuffle_data_loader",
         "dask_on_ray_1tb_sort",
-        "many_nodes_actor_test",
         SmokeTest("threaded_actors_stress_test"),
+        "placement_group_performance_test",
+        "pg_long_running_performance_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",
@@ -127,6 +129,7 @@ NIGHTLY_TESTS = {
         "dask_on_ray_large_scale_test_spilling",
         "pg_autoscaling_regression_test",
         "threaded_actors_stress_test",
+        "many_nodes_actor_test",
     ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("actor_deaths"),
@@ -156,6 +159,8 @@ NIGHTLY_TESTS = {
         "aws_no_sync_down",
         "aws_ssh_sync",
         "aws_durable_upload",
+        # "aws_durable_upload_rllib_str",
+        # "aws_durable_upload_rllib_trainer",
         "gcp_k8s_durable_upload",
     ],
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
@@ -444,6 +449,14 @@ def create_test_step(
         test_file: str,
         test_name: ReleaseTest,
 ):
+    custom_commit_str = "custom_wheels_url"
+    if ray_wheels:
+        # Extract commit from url
+        p = re.compile(r"([a-f0-9]{40})")
+        m = p.search(ray_wheels)
+        if m is not None:
+            custom_commit_str = m.group(1)
+
     ray_wheels_str = f" ({ray_wheels}) " if ray_wheels else ""
 
     logging.info(f"Creating step for {test_file}/{test_name}{ray_wheels_str}")
@@ -484,7 +497,7 @@ def create_test_step(
 
     step_conf["label"] = (
         f"{test_name} "
-        f"({'custom_wheels_url' if ray_wheels_str else ray_branch}) - "
+        f"({custom_commit_str if ray_wheels_str else ray_branch}) - "
         f"{ray_test_branch}/{ray_test_repo}")
     return step_conf
 

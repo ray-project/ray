@@ -12,7 +12,8 @@ import ray
 import ray.ray_constants
 from ray.autoscaler._private.util import prepare_config, format_info_string
 from ray.tests.test_autoscaler import SMALL_CLUSTER, MOCK_DEFAULT_CONFIG, \
-    MULTI_WORKER_CLUSTER, TYPES_A, MockProvider, MockProcessRunner
+    MULTI_WORKER_CLUSTER, TYPES_A, MockProvider, MockProcessRunner, \
+    MockNodeInfoStub, mock_raylet_id, fill_in_raylet_ids
 from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
                                                _clear_provider_cache)
 from ray.autoscaler._private.autoscaler import StandardAutoscaler, \
@@ -1191,9 +1192,11 @@ def test_handle_legacy_cluster_config_yaml():
         worker_ips = []
         for ip in ips:
             if ip == head_ip:
-                lm.update(ip, head_resources, head_resources, {})
+                lm.update(ip, mock_raylet_id(), head_resources, head_resources,
+                          {})
             else:
-                lm.update(ip, worker_resources, worker_resources, {})
+                lm.update(ip, mock_raylet_id(), worker_resources,
+                          worker_resources, {})
                 worker_ips.append(ip)
 
         assert not scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]
@@ -1246,7 +1249,8 @@ class LoadMetricsTest(unittest.TestCase):
     def testResourceDemandVector(self):
         lm = LoadMetrics()
         lm.update(
-            "1.1.1.1", {"CPU": 2}, {"CPU": 1}, {},
+            "1.1.1.1",
+            mock_raylet_id(), {"CPU": 2}, {"CPU": 1}, {},
             waiting_bundles=[{
                 "GPU": 1
             }],
@@ -1272,7 +1276,8 @@ class LoadMetricsTest(unittest.TestCase):
                 bundles=([Bundle(unit_resources={"GPU": 2})] * 2)),
         ]
         lm.update(
-            "1.1.1.1", {}, {}, {},
+            "1.1.1.1",
+            mock_raylet_id(), {}, {}, {},
             pending_placement_groups=pending_placement_groups)
         assert lm.get_pending_placement_groups() == pending_placement_groups
 
@@ -1291,6 +1296,7 @@ class LoadMetricsTest(unittest.TestCase):
         ]
         lm.update(
             "1.1.1.1",
+            mock_raylet_id(),
             {
                 "CPU": 64,
                 "memory": 1000 * 1024 * 1024,
@@ -1302,7 +1308,7 @@ class LoadMetricsTest(unittest.TestCase):
                 "object_store_memory": 1000 * 1024 * 1024,
             },
             {})
-        lm.update("1.1.1.2", {
+        lm.update("1.1.1.2", mock_raylet_id(), {
             "CPU": 64,
             "GPU": 8,
             "accelerator_type:V100": 1,
@@ -1311,7 +1317,7 @@ class LoadMetricsTest(unittest.TestCase):
             "GPU": 1,
             "accelerator_type:V100": 1,
         }, {})
-        lm.update("1.1.1.3", {
+        lm.update("1.1.1.3", mock_raylet_id(), {
             "CPU": 64,
             "GPU": 8,
             "accelerator_type:V100": 1
@@ -1321,7 +1327,8 @@ class LoadMetricsTest(unittest.TestCase):
             "accelerator_type:V100": 0.92
         }, {})
         lm.update(
-            "1.1.1.4", {"CPU": 2}, {"CPU": 2}, {},
+            "1.1.1.4",
+            mock_raylet_id(), {"CPU": 2}, {"CPU": 2}, {},
             waiting_bundles=[{
                 "GPU": 2
             }] * 10,
@@ -1490,6 +1497,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             max_launch_batch=1,
             max_concurrent_launches=10,
@@ -1500,9 +1508,9 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(3)
 
         for ip in self.provider.non_terminated_node_ips({}):
-            lm.update(ip, {"CPU": 2}, {"CPU": 0}, {})
+            lm.update(ip, mock_raylet_id(), {"CPU": 2}, {"CPU": 0}, {})
 
-        lm.update(head_ip, {"CPU": 16}, {"CPU": 1}, {})
+        lm.update(head_ip, mock_raylet_id(), {"CPU": 16}, {"CPU": 1}, {})
         autoscaler.update()
 
         while True:
@@ -1516,7 +1524,9 @@ class AutoscalingTest(unittest.TestCase):
         runner.ready_to_run.clear()
 
         lm.update(
-            head_ip, {"CPU": 16}, {"CPU": 1}, {}, waiting_bundles=[{
+            head_ip,
+            mock_raylet_id(), {"CPU": 16}, {"CPU": 1}, {},
+            waiting_bundles=[{
                 "GPU": 1
             }])
 
@@ -1565,6 +1575,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics("172.0.0.0"),
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1591,6 +1602,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics("172.0.0.0"),
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1620,6 +1632,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1647,7 +1660,8 @@ class AutoscalingTest(unittest.TestCase):
             "GPU_group_6c2506ac733bc37496295b02c4fad446": 0.0101
         }]
         lm.update(
-            head_ip, {"CPU": 16}, {"CPU": 16}, {},
+            head_ip,
+            mock_raylet_id(), {"CPU": 16}, {"CPU": 16}, {},
             infeasible_bundles=placement_group_resource_demands,
             waiting_bundles=[{
                 "GPU": 8
@@ -1688,6 +1702,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1716,6 +1731,7 @@ class AutoscalingTest(unittest.TestCase):
         # min workers.
         for node_id in self.provider.non_terminated_nodes({}):
             lm.last_used_time_by_ip[self.provider.internal_ip(node_id)] = -60
+        fill_in_raylet_ids(self.provider, lm)
         autoscaler.update()
         self.waitForNodes(3)
 
@@ -1751,16 +1767,18 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
         autoscaler.update()
         self.waitForNodes(1)
-        lm.update(head_ip, {"CPU": 4, "GPU": 1}, {}, {})
+        lm.update(head_ip, mock_raylet_id(), {"CPU": 4, "GPU": 1}, {}, {})
         self.waitForNodes(1)
 
         lm.update(
-            head_ip, {
+            head_ip,
+            mock_raylet_id(), {
                 "CPU": 4,
                 "GPU": 1
             }, {"GPU": 0}, {},
@@ -1788,6 +1806,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics(),
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1826,6 +1845,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics("172.0.0.0"),
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1863,6 +1883,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics("172.0.0.0"),
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1909,6 +1930,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1917,7 +1939,8 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(0, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         autoscaler.update()
         lm.update(
-            "1.2.3.4", {}, {}, {},
+            "1.2.3.4",
+            mock_raylet_id(), {}, {}, {},
             waiting_bundles=[{
                 "GPU": 1
             }],
@@ -1952,10 +1975,11 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
         lm = LoadMetrics("172.0.0.0")
-        lm.update("172.0.0.0", {"CPU": 0}, {"CPU": 0}, {})
+        lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 0}, {"CPU": 0}, {})
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -2016,6 +2040,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics("172.0.0.0"),
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -2093,9 +2118,11 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
+        lm = LoadMetrics("172.0.0.0")
         autoscaler = StandardAutoscaler(
             config_path,
-            LoadMetrics("172.0.0.0"),
+            lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -2106,6 +2133,7 @@ class AutoscalingTest(unittest.TestCase):
         config["available_node_types"]["m4.large"]["node_config"][
             "field_changed"] = 1
         config_path = self.write_config(config)
+        fill_in_raylet_ids(self.provider, lm)
         autoscaler.update()
         self.waitForNodes(0, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
@@ -2125,6 +2153,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             LoadMetrics("172.0.0.0"),
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -2175,6 +2204,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -2195,6 +2225,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.provider.mock_nodes[node_id].state = "unterminatable"
         lm.update(
             node_ip,
+            mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"], {},
             waiting_bundles=[{
@@ -2216,6 +2247,7 @@ class AutoscalingTest(unittest.TestCase):
         }])
         lm.update(
             node_ip,
+            mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"], {}, {},
             waiting_bundles=[{
                 "CPU": 0.2,
@@ -2225,6 +2257,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         lm.update(
             node_ip,
+            mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"], {},
             waiting_bundles=[{
@@ -2240,6 +2273,7 @@ class AutoscalingTest(unittest.TestCase):
             node_id].state == "unterminatable"
         lm.update(
             "172.0.0.2",
+            mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"], {},
             waiting_bundles=[{
@@ -2292,6 +2326,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -2311,6 +2346,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.provider.mock_nodes[node_id].state = "unterminatable"
         lm.update(
             node_ip,
+            mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"], {},
             waiting_bundles=[{
@@ -2338,6 +2374,7 @@ class AutoscalingTest(unittest.TestCase):
         }] * 3)
         lm.update(
             node_ip,
+            mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"], {}, {},
             waiting_bundles=[{
                 "CPU": 0.2,
@@ -2347,15 +2384,15 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(3, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         autoscaler.load_metrics.set_resource_requests([])
 
-        lm.update("172.0.0.2",
+        lm.update("172.0.0.2", mock_raylet_id(),
                   config["available_node_types"]["def_worker"]["resources"],
                   config["available_node_types"]["def_worker"]["resources"],
                   {})
-        lm.update("172.0.0.3",
+        lm.update("172.0.0.3", mock_raylet_id(),
                   config["available_node_types"]["def_worker"]["resources"],
                   config["available_node_types"]["def_worker"]["resources"],
                   {})
-        lm.update(node_ip,
+        lm.update(node_ip, mock_raylet_id(),
                   config["available_node_types"]["def_worker"]["resources"],
                   {}, {})
         print("============ Should scale down from here =============",
@@ -2405,6 +2442,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -2458,11 +2496,13 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler = StandardAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
         lm.update(
-            "127.0.0.0", {
+            "127.0.0.0",
+            mock_raylet_id(), {
                 "CPU": 2,
                 "GPU": 1
             }, {"CPU": 2}, {},
@@ -2477,7 +2517,8 @@ class AutoscalingTest(unittest.TestCase):
         # 1 head, 1 worker.
         self.waitForNodes(2)
         lm.update(
-            "127.0.0.0", {
+            "127.0.0.0",
+            mock_raylet_id(), {
                 "CPU": 2,
                 "GPU": 1
             }, {"CPU": 2}, {},

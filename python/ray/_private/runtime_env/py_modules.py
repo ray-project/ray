@@ -19,8 +19,8 @@ def _check_is_uri(s: str) -> bool:
     except ValueError:
         protocol, path = None, None
 
-    if protocol == Protocol.S3 and not path.endswith(".zip"):
-        raise ValueError("Only .zip files supported for S3 URIs.")
+    if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
+        raise ValueError("Only .zip files supported for remote URIs.")
 
     return protocol is not None
 

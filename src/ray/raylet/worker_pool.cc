@@ -192,6 +192,7 @@ Process WorkerPool::StartWorkerProcess(
       RAY_LOG(DEBUG) << "Job config of job " << job_id << " are not local yet.";
       // Will reschedule ready tasks in `NodeManager::HandleJobStarted`.
       *status = PopWorkerStatus::JobConfigMissing;
+      process_failed_job_config_missing_++;
       return Process();
     }
     job_config = &it->second;
@@ -214,6 +215,7 @@ Process WorkerPool::StartWorkerProcess(
                    << " workers of language type " << static_cast<int>(language)
                    << " pending registration";
     *status = PopWorkerStatus::TooManyStartingWorkerProcesses;
+    process_failed_rate_limited_++;
     return Process();
   }
   // Either there are no workers pending registration or the worker start is being forced.
@@ -442,6 +444,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
       RAY_LOG(INFO) << "Some workers of the worker process(" << proc.GetId()
                     << ") have not registered to raylet within timeout.";
       PopWorkerStatus status = PopWorkerStatus::WorkerPendingRegistration;
+      process_failed_pending_registration_++;
       bool found;
       bool used;
       TaskID task_id;
@@ -1063,13 +1066,14 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         // create runtime env.
         CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnvString(), task_spec.JobId(),
-            [start_worker_process_fn, callback, &state, task_spec, dynamic_options](
+            [this, start_worker_process_fn, callback, &state, task_spec, dynamic_options](
                 bool successful, const std::string &serialized_runtime_env_context) {
               if (successful) {
                 start_worker_process_fn(task_spec, state, dynamic_options, true,
                                         task_spec.SerializedRuntimeEnvString(),
                                         serialized_runtime_env_context, callback);
               } else {
+                process_failed_runtime_env_setup_failed_++;
                 callback(nullptr, PopWorkerStatus::RuntimeEnvCreationFailed);
                 RAY_LOG(WARNING)
                     << "Create runtime env failed for task " << task_spec.TaskId()
@@ -1121,13 +1125,14 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         // create runtime env.
         CreateRuntimeEnv(
             task_spec.SerializedRuntimeEnvString(), task_spec.JobId(),
-            [start_worker_process_fn, callback, &state, task_spec](
+            [this, start_worker_process_fn, callback, &state, task_spec](
                 bool successful, const std::string &serialized_runtime_env_context) {
               if (successful) {
                 start_worker_process_fn(task_spec, state, {}, false,
                                         task_spec.SerializedRuntimeEnvString(),
                                         serialized_runtime_env_context, callback);
               } else {
+                process_failed_runtime_env_setup_failed_++;
                 callback(nullptr, PopWorkerStatus::RuntimeEnvCreationFailed);
                 RAY_LOG(WARNING)
                     << "Create runtime env failed for task " << task_spec.TaskId()
@@ -1377,6 +1382,14 @@ std::unordered_set<std::shared_ptr<WorkerInterface>> WorkerPool::GetWorkersByPro
 std::string WorkerPool::DebugString() const {
   std::stringstream result;
   result << "WorkerPool:";
+  result << "\n- registered jobs: " << all_jobs_.size() - finished_jobs_.size();
+  result << "\n- process_failed_job_config_missing: "
+         << process_failed_job_config_missing_;
+  result << "\n- process_failed_rate_limited: " << process_failed_rate_limited_;
+  result << "\n- process_failed_pending_registration: "
+         << process_failed_pending_registration_;
+  result << "\n- process_failed_runtime_env_setup_failed: "
+         << process_failed_runtime_env_setup_failed_;
   for (const auto &entry : states_by_lang_) {
     result << "\n- num " << Language_Name(entry.first)
            << " workers: " << entry.second.registered_workers.size();

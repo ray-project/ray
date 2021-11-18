@@ -1,4 +1,4 @@
-from typing import Union, Callable, Generic, Tuple, List
+from typing import Union, Callable, Generic, Tuple, List, Optional
 import numpy as np
 import ray
 from ray.util.annotations import PublicAPI
@@ -12,7 +12,10 @@ from ray.data.impl.progress_bar import ProgressBar
 from ray.data.block import Block, BlockAccessor, BlockMetadata, \
     T, U, KeyType
 
-GroupKeyT = Union[None, Callable[[T], KeyType], str, List[str]]
+GroupKeyBaseT = Union[Callable[[T], KeyType], str]
+GroupKeyT = Optional[Union[GroupKeyBaseT, List[GroupKeyBaseT]]]
+
+AggregateOnTs = Union[AggregateOnT, List[AggregateOnT]]
 
 
 @PublicAPI(stability="beta")
@@ -41,7 +44,7 @@ class GroupedDataset(Generic[T]):
             self._key = key
 
     def aggregate(self, *aggs: AggregateFn) -> Dataset[U]:
-        """Implements the accumulator-based aggregation.
+        """Implements an accumulator-based aggregation.
 
         This is a blocking operation.
 
@@ -57,14 +60,14 @@ class GroupedDataset(Generic[T]):
             aggs: Aggregations to do.
 
         Returns:
-            If the input dataset is simple dataset then the output is
-            a simple dataset of (k, v_1, ..., v_n) tuples where k is the
-            groupby key and v_i is the result of the ith given aggregation.
-            If the input dataset is Arrow dataset then the output is
-            an Arrow dataset of n + 1 columns where first column is
-            the groupby key and the second through n + 1 columns are the
+            If the input dataset is simple dataset then the output is a simple
+            dataset of ``(k, v_1, ..., v_n)`` tuples where ``k`` is the groupby
+            key and ``v_i`` is the result of the ith given aggregation.
+            If the input dataset is an Arrow dataset then the output is an
+            Arrow dataset of ``n + 1`` columns where the first column is the
+            groupby key and the second through ``n + 1`` columns are the
             results of the aggregations.
-            If groupby key is None then the key part of return is omitted.
+            If groupby key is ``None`` then the key part of return is omitted.
         """
 
         if len(aggs) == 0:
@@ -111,6 +114,19 @@ class GroupedDataset(Generic[T]):
         metadata = ray.get(metadata)
         return Dataset(BlockList(blocks, metadata), self._dataset._epoch)
 
+    def _aggregate_on(self, agg_cls: type, on: Optional[AggregateOnTs], *args,
+                      **kwargs):
+        """Helper for aggregating on a particular subset of the dataset.
+
+        This validates the `on` argument, and converts a list of column names
+        or lambdas to a multi-aggregation. A null `on` results in a
+        multi-aggregation on all columns for an Arrow Dataset, and a single
+        aggregation on the entire row for a simple Dataset.
+        """
+        aggs = self._dataset._build_multicolumn_aggs(
+            agg_cls, on, *args, skip_cols=self._key, **kwargs)
+        return self.aggregate(*aggs)
+
     def count(self) -> Dataset[U]:
         """Compute count aggregation.
 
@@ -123,120 +139,245 @@ class GroupedDataset(Generic[T]):
             ...     "A").count()
 
         Returns:
-            A simple dataset of (k, v) pairs or
-            an Arrow dataset of [k, v] columns
-            where k is the groupby key and
-            v is the number of rows with that key.
-            If groupby key is None then the key part of return is omitted.
+            A simple dataset of ``(k, v)`` pairs or an Arrow dataset of
+            ``[k, v]`` columns where ``k`` is the groupby key and ``v`` is the
+            number of rows with that key.
+            If groupby key is ``None`` then the key part of return is omitted.
         """
         return self.aggregate(Count())
 
-    def sum(self, on: AggregateOnT = None) -> Dataset[U]:
-        """Compute sum aggregation.
+    def sum(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
+        """Compute grouped sum aggregation.
 
         This is a blocking operation.
 
         Examples:
             >>> ray.data.range(100).groupby(lambda x: x % 3).sum()
             >>> ray.data.from_items([
-            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
-            ...     "A").sum("B")
+            ...     (i % 3, i, i**2)
+            ...     for i in range(100)]) \
+            ...     .groupby(lambda x: x[0] % 3) \
+            ...     .sum(lambda x: x[2])
+            >>> ray.data.range_arrow(100).groupby("value").sum()
+            >>> ray.data.from_items([
+            ...     {"A": i % 3, "B": i, "C": i**2}
+            ...     for i in range(100)]) \
+            ...     .groupby("A") \
+            ...     .sum(["B", "C"])
 
         Args:
-            on: The data to sum on.
-                It can be the column name for Arrow dataset.
+            on: The data subset on which to compute the sum.
+
+                - For a simple dataset: it can be a callable or a list thereof,
+                  and the default is to take a sum of all rows.
+                - For an Arrow dataset: it can be a column name or a list
+                  thereof, and the default is to do a column-wise sum of all
+                  columns.
 
         Returns:
-            A simple dataset of (k, v) pairs or
-            an Arrow dataset of [k, v] columns
-            where k is the groupby key and
-            v is the sum result.
-            If groupby key is None then the key part of return is omitted.
-        """
-        return self.aggregate(Sum(on))
+            The sum result.
 
-    def min(self, on: AggregateOnT = None) -> Dataset[U]:
-        """Compute min aggregation.
+            For a simple dataset, the output is:
+
+            - ``on=None``: a simple dataset of ``(k, sum)`` tuples where ``k``
+              is the groupby key and ``sum`` is sum of all rows in that group.
+            - ``on=[callable_1, ..., callable_n]``: a simple dataset of
+              ``(k, sum_1, ..., sum_n)`` tuples where ``k`` is the groupby key
+              and ``sum_i`` is sum of the outputs of the ith callable called on
+              each row in that group.
+
+            For an Arrow dataset, the output is:
+
+            - ``on=None``: an Arrow dataset containing a groupby key column,
+              ``"k"``, and a column-wise sum column for each original column
+              in the dataset.
+            - ``on=["col_1", ..., "col_n"]``: an Arrow dataset of ``n + 1``
+              columns where the first column is the groupby key and the second
+              through ``n + 1`` columns are the results of the aggregations.
+
+            If groupby key is ``None`` then the key part of return is omitted.
+        """
+        return self._aggregate_on(Sum, on)
+
+    def min(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
+        """Compute grouped min aggregation.
 
         This is a blocking operation.
 
         Examples:
             >>> ray.data.range(100).groupby(lambda x: x % 3).min()
             >>> ray.data.from_items([
-            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
-            ...     "A").min("B")
+            ...     (i % 3, i, i**2)
+            ...     for i in range(100)]) \
+            ...     .groupby(lambda x: x[0] % 3) \
+            ...     .min(lambda x: x[2])
+            >>> ray.data.range_arrow(100).groupby("value").min()
+            >>> ray.data.from_items([
+            ...     {"A": i % 3, "B": i, "C": i**2}
+            ...     for i in range(100)]) \
+            ...     .groupby("A") \
+            ...     .min(["B", "C"])
 
         Args:
-            on: The data to min on.
-                It can be the column name for Arrow dataset.
+            on: The data subset on which to compute the min.
+
+                - For a simple dataset: it can be a callable or a list thereof,
+                  and the default is to take a min of all rows.
+                - For an Arrow dataset: it can be a column name or a list
+                  thereof, and the default is to do a column-wise min of all
+                  columns.
 
         Returns:
-            A simple dataset of (k, v) pairs or
-            an Arrow dataset of [k, v] columns
-            where k is the groupby key and
-            v is the min result.
-            If groupby key is None then the key part of return is omitted.
-        """
-        return self.aggregate(Min(on))
+            The min result.
 
-    def max(self, on: AggregateOnT = None) -> Dataset[U]:
-        """Compute max aggregation.
+            For a simple dataset, the output is:
+
+            - ``on=None``: a simple dataset of ``(k, min)`` tuples where ``k``
+              is the groupby key and min is min of all rows in that group.
+            - ``on=[callable_1, ..., callable_n]``: a simple dataset of
+              ``(k, min_1, ..., min_n)`` tuples where ``k`` is the groupby key
+              and ``min_i`` is min of the outputs of the ith callable called on
+              each row in that group.
+
+            For an Arrow dataset, the output is:
+
+            - ``on=None``: an Arrow dataset containing a groupby key column,
+              ``"k"``, and a column-wise min column for each original column in
+              the dataset.
+            - ``on=["col_1", ..., "col_n"]``: an Arrow dataset of ``n + 1``
+              columns where the first column is the groupby key and the second
+              through ``n + 1`` columns are the results of the aggregations.
+
+            If groupby key is ``None`` then the key part of return is omitted.
+        """
+        return self._aggregate_on(Min, on)
+
+    def max(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
+        """Compute grouped max aggregation.
 
         This is a blocking operation.
 
         Examples:
             >>> ray.data.range(100).groupby(lambda x: x % 3).max()
             >>> ray.data.from_items([
-            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
-            ...     "A").max("B")
+            ...     (i % 3, i, i**2)
+            ...     for i in range(100)]) \
+            ...     .groupby(lambda x: x[0] % 3) \
+            ...     .max(lambda x: x[2])
+            >>> ray.data.range_arrow(100).groupby("value").max()
+            >>> ray.data.from_items([
+            ...     {"A": i % 3, "B": i, "C": i**2}
+            ...     for i in range(100)]) \
+            ...     .groupby("A") \
+            ...     .max(["B", "C"])
 
         Args:
-            on: The data to max on.
-                It can be the column name for Arrow dataset.
+            on: The data subset on which to compute the max.
+
+                - For a simple dataset: it can be a callable or a list thereof,
+                  and the default is to take a max of all rows.
+                - For an Arrow dataset: it can be a column name or a list
+                  thereof, and the default is to do a column-wise max of all
+                  columns.
 
         Returns:
-            A simple dataset of (k, v) pairs or
-            an Arrow dataset of [k, v] columns
-            where k is the groupby key and
-            v is the max result.
-            If groupby key is None then the key part of return is omitted.
-        """
-        return self.aggregate(Max(on))
+            The max result.
 
-    def mean(self, on: AggregateOnT = None) -> Dataset[U]:
-        """Compute mean aggregation.
+            For a simple dataset, the output is:
+
+            - ``on=None``: a simple dataset of ``(k, max)`` tuples where ``k``
+              is the groupby key and ``max`` is max of all rows in that group.
+            - ``on=[callable_1, ..., callable_n]``: a simple dataset of
+              ``(k, max_1, ..., max_n)`` tuples where ``k`` is the groupby key
+              and ``max_i`` is max of the outputs of the ith callable called on
+              each row in that group.
+
+            For an Arrow dataset, the output is:
+
+            - ``on=None``: an Arrow dataset containing a groupby key column,
+              ``"k"``, and a column-wise max column for each original column in
+              the dataset.
+            - ``on=["col_1", ..., "col_n"]``: an Arrow dataset of ``n + 1``
+              columns where the first column is the groupby key and the second
+              through ``n + 1`` columns are the results of the aggregations.
+
+            If groupby key is ``None`` then the key part of return is omitted.
+        """
+        return self._aggregate_on(Max, on)
+
+    def mean(self, on: Optional[AggregateOnTs] = None) -> Dataset[U]:
+        """Compute grouped mean aggregation.
 
         This is a blocking operation.
 
         Examples:
             >>> ray.data.range(100).groupby(lambda x: x % 3).mean()
             >>> ray.data.from_items([
-            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
-            ...     "A").mean("B")
+            ...     (i % 3, i, i**2)
+            ...     for i in range(100)]) \
+            ...     .groupby(lambda x: x[0] % 3) \
+            ...     .mean(lambda x: x[2])
+            >>> ray.data.range_arrow(100).groupby("value").mean()
+            >>> ray.data.from_items([
+            ...     {"A": i % 3, "B": i, "C": i**2}
+            ...     for i in range(100)]) \
+            ...     .groupby("A") \
+            ...     .mean(["B", "C"])
 
         Args:
-            on: The data to mean on.
-                It can be the column name for Arrow dataset.
+            on: The data subset on which to compute the mean.
+
+                - For a simple dataset: it can be a callable or a list thereof,
+                  and the default is to take a mean of all rows.
+                - For an Arrow dataset: it can be a column name or a list
+                  thereof, and the default is to do a column-wise mean of all
+                  columns.
 
         Returns:
-            A simple dataset of (k, v) pairs or
-            an Arrow dataset of [k, v] columns
-            where k is the groupby key and
-            v is the mean result.
-            If groupby key is None then the key part of return is omitted.
-        """
-        return self.aggregate(Mean(on))
+            The mean result.
 
-    def std(self, on: AggregateOnT = None, ddof: int = 1) -> Dataset[U]:
-        """Compute standard deviation aggregation.
+            For a simple dataset, the output is:
+
+            - ``on=None``: a simple dataset of ``(k, mean)`` tuples where ``k``
+              is the groupby key and ``mean`` is mean of all rows in that
+              group.
+            - ``on=[callable_1, ..., callable_n]``: a simple dataset of
+              ``(k, mean_1, ..., mean_n)`` tuples where ``k`` is the groupby
+              key and ``mean_i`` is mean of the outputs of the ith callable
+              called on each row in that group.
+
+            For an Arrow dataset, the output is:
+
+            - ``on=None``: an Arrow dataset containing a groupby key column,
+              ``"k"``, and a column-wise mean column for each original column
+              in the dataset.
+            - ``on=["col_1", ..., "col_n"]``: an Arrow dataset of ``n + 1``
+              columns where the first column is the groupby key and the second
+              through ``n + 1`` columns are the results of the aggregations.
+
+            If groupby key is ``None`` then the key part of return is omitted.
+        """
+        return self._aggregate_on(Mean, on)
+
+    def std(self, on: Optional[AggregateOnTs] = None,
+            ddof: int = 1) -> Dataset[U]:
+        """Compute grouped standard deviation aggregation.
 
         This is a blocking operation.
 
         Examples:
             >>> ray.data.range(100).groupby(lambda x: x % 3).std()
             >>> ray.data.from_items([
-            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
-            ...     "A").std("B")
+            ...     (i % 3, i, i**2)
+            ...     for i in range(100)]) \
+            ...     .groupby(lambda x: x[0] % 3) \
+            ...     .std(lambda x: x[2])
+            >>> ray.data.range_arrow(100).groupby("value").std(ddof=0)
+            >>> ray.data.from_items([
+            ...     {"A": i % 3, "B": i, "C": i**2}
+            ...     for i in range(100)]) \
+            ...     .groupby("A") \
+            ...     .std(["B", "C"])
 
         NOTE: This uses Welford's online method for an accumulator-style
         computation of the standard deviation. This method was chosen due to
@@ -247,19 +388,40 @@ class GroupedDataset(Generic[T]):
         https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
 
         Args:
-            on: The data on which to compute the standard deviation.
-                It can be the column name for Arrow dataset.
+            on: The data subset on which to compute the std.
+
+                - For a simple dataset: it can be a callable or a list thereof,
+                  and the default is to take a std of all rows.
+                - For an Arrow dataset: it can be a column name or a list
+                  thereof, and the default is to do a column-wise std of all
+                  columns.
             ddof: Delta Degrees of Freedom. The divisor used in calculations
-                is N - ddof, where N represents the number of elements.
+                is ``N - ddof``, where ``N`` represents the number of elements.
 
         Returns:
-            A simple dataset of (k, v) pairs or
-            an Arrow dataset of [k, v] columns
-            where k is the groupby key and
-            v is the standard deviation result.
-            If groupby key is None then the key part of return is omitted.
+            The standard deviation result.
+
+            For a simple dataset, the output is:
+
+            - ``on=None``: a simple dataset of ``(k, std)`` tuples where ``k``
+              is the groupby key and ``std`` is std of all rows in that group.
+            - ``on=[callable_1, ..., callable_n]``: a simple dataset of
+              ``(k, std_1, ..., std_n)`` tuples where ``k`` is the groupby key
+              and ``std_i`` is std of the outputs of the ith callable called on
+              each row in that group.
+
+            For an Arrow dataset, the output is:
+
+            - ``on=None``: an Arrow dataset containing a groupby key column,
+              ``"k"``, and a column-wise std column for each original column in
+              the dataset.
+            - ``on=["col_1", ..., "col_n"]``: an Arrow dataset of ``n + 1``
+              columns where the first column is the groupby key and the second
+              through ``n + 1`` columns are the results of the aggregations.
+
+            If groupby key is ``None`` then the key part of return is omitted.
         """
-        return self.aggregate(Std(on, ddof))
+        return self._aggregate_on(Std, on, ddof=ddof)
 
 
 def _partition_and_combine_block(block: Block[T], boundaries: List[KeyType],
