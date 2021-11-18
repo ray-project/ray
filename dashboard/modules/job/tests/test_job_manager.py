@@ -114,16 +114,16 @@ class TestShellScriptExecution:
         run_cmd = f"python {_driver_script_path('script_with_exception.py')}"
         job_id = job_manager.submit_job(entrypoint=run_cmd)
 
-        wait_for_condition(
-            check_job_failed, job_manager=job_manager, job_id=job_id)
-        logs = job_manager.get_job_logs(job_id)
-        last_line = logs.strip().splitlines()[-1]
-        assert last_line == "Exception: Script failed with exception !"
-        assert job_manager._get_actor_for_job(job_id) is None
+        def cleaned_up():
+            status = job_manager.get_job_status(job_id)
+            if status.status != JobStatus.FAILED:
+                return False
+            if "Exception: Script failed with exception !" not in status.message:
+                return False
 
-        status = job_manager.get_job_status(job_id)
-        assert status.status == JobStatus.FAILED
-        assert "Exception: Script failed with exception !" in status.message
+            return job_manager._get_actor_for_job(job_id) is None
+
+        wait_for_condition(cleaned_up)
 
     def test_submit_with_s3_runtime_env(self, job_manager):
         job_id = job_manager.submit_job(
