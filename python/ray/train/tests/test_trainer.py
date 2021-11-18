@@ -1012,12 +1012,13 @@ def test_dataset_pipeline(ray_start_4_cpus):
     dataset = ray.data.range(num_data).repeat()
 
     def get_dataset():
-        pipeline_iterator = train.get_dataset_shard().iter_datasets()
+        pipeline_iterator = train.get_dataset_shard().iter_epochs()
         data_all_epochs = []
         for _ in range(num_epochs):
             dataset_this_epoch = next(pipeline_iterator)
             data_this_epoch = []
-            for batch in dataset_this_epoch.iter_batches():
+            for batch in dataset_this_epoch.iter_batches(
+                    batch_format="native"):
                 data_this_epoch.extend(batch)
             data_all_epochs.append(data_this_epoch)
         return data_all_epochs
@@ -1037,12 +1038,13 @@ def test_dataset_pipeline_shuffle(ray_start_4_cpus):
     dataset = ray.data.range(num_data).repeat().random_shuffle_each_window()
 
     def get_dataset():
-        pipeline_iterator = train.get_dataset_shard().iter_datasets()
+        pipeline_iterator = train.get_dataset_shard().iter_epochs()
         data_all_epochs = []
         for _ in range(2):
             dataset_this_epoch = next(pipeline_iterator)
             data_this_epoch = []
-            for batch in dataset_this_epoch.iter_batches():
+            for batch in dataset_this_epoch.iter_batches(
+                    batch_format="native"):
                 data_this_epoch.extend(batch)
 
             if len(data_all_epochs) > 0:
