@@ -731,12 +731,12 @@ def assert_checkpoint_count(experiment_dir_cp: ExperimentDirCheckpoint,
     # We relaxed the requirements here and also allow
     # skipped checkpoints to count. This could be the case if e.g. the trial
     # already checkpointed but the driver did not process the last result, yet.
+    # We also allow up to one un-collected checkpoint.
+    # Todo: Can we make this stricter?
     for trial, trial_cp in experiment_dir_cp.trial_to_cps.items():
         cps = len(trial_cp.checkpoints)
         num_skipped = trial_cp.num_skipped
         if trial.was_on_driver_node:
-            # On the driver, also allow one additional checkpoint
-            # to account for race conditions
             assert (
                 cps == for_driver_trial
                 or cps + num_skipped == for_driver_trial
@@ -747,7 +747,8 @@ def assert_checkpoint_count(experiment_dir_cp: ExperimentDirCheckpoint,
         else:
             assert (
                 cps == for_worker_trial
-                or cps + num_skipped == for_worker_trial), (
+                or cps + num_skipped == for_worker_trial
+                or cps == for_worker_trial + 1), (
                     f"Trial {trial.trial_id} was not on the driver, "
                     f"but did not observe the expected amount of checkpoints "
                     f"({cps} != {for_worker_trial}).")
