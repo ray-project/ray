@@ -368,7 +368,15 @@ class ParsedRuntimeEnv(dict):
             pb = RuntimeEnv()
             pb.py_modules.extend(self.get("py_modules", []))
             pb.working_dir = self.get("working_dir", "")
-            pb.uris.extend(self.get_uris())
+            if "working_dir" in self:
+                pb.uris.working_dir_uri = self["working_dir"]
+            if "py_modules" in self:
+                for uri in self["py_modules"]:
+                    pb.uris.py_modules_uris.append(uri)
+            if "conda" or "pip" in self:
+                uri = conda.get_uri(self)
+                if uri is not None:
+                    pb.uris.conda_uri = uri
             env_vars = self.get("env_vars", {})
             pb.env_vars.update(env_vars.items())
             if "_ray_release" in self:

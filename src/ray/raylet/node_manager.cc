@@ -1952,7 +1952,6 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
     auto job_config = worker_pool_.GetJobConfig(job_id);
     RAY_CHECK(job_config);
     auto s_runtime_env = task.GetTaskSpecification().SerializedRuntimeEnv();
-    RAY_LOG(INFO) << "s_runtime_env uris len " << s_runtime_env.uris().size();
     runtime_env_manager_.AddURIReference(
         actor_id.Hex(), task.GetTaskSpecification().SerializedRuntimeEnv());
   }

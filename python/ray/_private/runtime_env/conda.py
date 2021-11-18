@@ -18,7 +18,6 @@ from ray.core.generated.common_pb2 import RuntimeEnv
 from ray._private.runtime_env.conda_utils import (
     get_conda_activate_commands, create_conda_env, delete_conda_env)
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.plugin import decode_plugin_uri_from_pb
 from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
                                 get_release_wheel_url, try_to_create_directory)
 from ray._private.runtime_env.packaging import Protocol, parse_uri
@@ -307,8 +306,7 @@ class CondaManager:
             conda_env_name = runtime_env.conda_runtime_env.conda_env_name
         else:
             conda_dict = get_conda_dict(runtime_env, self._resources_dir)
-            protocol, hash = parse_uri(
-                decode_plugin_uri_from_pb(runtime_env, "conda"))
+            protocol, hash = parse_uri(runtime_env.uris.conda_uri)
             conda_env_name = self._get_path_from_hash(hash)
             assert conda_dict is not None
 

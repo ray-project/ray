@@ -11,8 +11,6 @@ from ray._private.runtime_env.validation import (
     parse_and_validate_conda, parse_and_validate_pip,
     parse_and_validate_env_vars, parse_and_validate_py_modules,
     ParsedRuntimeEnv, override_task_or_actor_runtime_env)
-from ray._private.runtime_env.plugin import (encode_plugin_uri,
-                                             decode_plugin_uri)
 
 CONDA_DICT = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
 
@@ -47,16 +45,6 @@ def test_key_with_value_none():
     runtime_env_dict = {"pip": None}
     parsed_runtime_env = ParsedRuntimeEnv(runtime_env_dict)
     assert parsed_runtime_env == {}
-
-
-def test_encode_plugin_uri():
-    assert encode_plugin_uri("plugin", "uri") == "plugin|uri"
-
-
-def test_decode_plugin_uri():
-    with pytest.raises(ValueError):
-        decode_plugin_uri("no_vertical_bar_separator")
-    assert decode_plugin_uri("plugin|uri") == ("plugin", "uri")
 
 
 class TestValidateWorkingDir:

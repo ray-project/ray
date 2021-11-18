@@ -218,6 +218,17 @@ message MavenRuntimeEnv {
   /// TODO(SongGuyang)
 }
 
+message RuntimeEnvUris {
+  /// working dir uri
+  string working_dir_uri = 1;
+  /// python modules uris
+  repeated string py_modules_uris = 2;
+  /// conda uri
+  string conda_uri = 3;
+  /// plugin uris
+  repeated string plugin_uris = 4;
+}
+
 /// The runtime environment describes all the runtime packages needed to
 /// run some task or actor.
 message RuntimeEnv {
@@ -227,8 +238,8 @@ message RuntimeEnv {
   repeated string py_modules = 1;
   /// Specifies the working directory of the worker.
   string working_dir = 2;
-  /// A list of URIs that define the working_dir.
-  repeated string uris = 3;
+  /// Runtime env uris of different types.
+  RuntimeEnvUris uris = 3;
   /// Environment variables to set.
   map<string, string> env_vars = 4;
   /// The extension fields.

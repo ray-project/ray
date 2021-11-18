@@ -1703,11 +1703,28 @@ static rpc::RuntimeEnv OverrideRuntimeEnv(const rpc::RuntimeEnv &child,
   rpc::RuntimeEnv result_runtime_env(*parent);
   // TODO(SongGuyang): avoid dupliacated fields.
   result_runtime_env.MergeFrom(child);
+  if (child.py_modules().size() > 0 && parent->py_modules().size() > 0) {
+    result_runtime_env.clear_py_modules();
+    for (auto &module : child.py_modules()) {
+      result_runtime_env.add_py_modules(module);
+    }
+    result_runtime_env.mutable_uris()->clear_py_modules_uris();
+    result_runtime_env.mutable_uris()->mutable_py_modules_uris()->CopyFrom(
+        child.uris().py_modules_uris());
+  }
+  if (child.has_pip_runtime_env() && parent->has_pip_runtime_env()) {
+    result_runtime_env.clear_pip_runtime_env();
+    result_runtime_env.mutable_pip_runtime_env()->CopyFrom(child.pip_runtime_env());
+  }
   if (!result_env_vars.empty()) {
     result_runtime_env.mutable_env_vars()->insert(result_env_vars.begin(),
                                                   result_env_vars.end());
   }
   return result_runtime_env;
+}
+
+static std::string encode_plugin_uri(std::string plugin, std::string uri) {
+  return plugin + "|" + uri;
 }
 
 static std::vector<std::string> GetUrisFromRuntimeEnv(
@@ -1716,8 +1733,19 @@ static std::vector<std::string> GetUrisFromRuntimeEnv(
   if (runtime_env == nullptr) {
     return result;
   }
-  for (const auto &uri : runtime_env->uris()) {
-    result.emplace_back(uri);
+  if (!runtime_env->uris().working_dir_uri().empty()) {
+    const auto &uri = runtime_env->uris().working_dir_uri();
+    result.emplace_back(encode_plugin_uri("working_dir", uri));
+  }
+  for (const auto &uri : runtime_env->uris().py_modules_uris()) {
+    result.emplace_back(encode_plugin_uri("py_modules", uri));
+  }
+  if (!runtime_env->uris().conda_uri().empty()) {
+    const auto &uri = runtime_env->uris().conda_uri();
+    result.emplace_back(encode_plugin_uri("conda", uri));
+  }
+  for (const auto &uri : runtime_env->uris().plugin_uris()) {
+    result.emplace_back(encode_plugin_uri("plugin", uri));
   }
   return result;
 }

@@ -39,14 +39,6 @@ def decode_plugin_uri(plugin_uri: str) -> Tuple[str, str]:
     return tuple(plugin_uri.split("|", 2))
 
 
-def decode_plugin_uri_from_pb(runtime_env: RuntimeEnv, plugin: str):
-    for uri in runtime_env.uris:
-        key, value = decode_plugin_uri(uri)
-        if key == plugin:
-            return value
-    return None
-
-
 @DeveloperAPI
 class RuntimeEnvPlugin(ABC):
     @abstractstaticmethod

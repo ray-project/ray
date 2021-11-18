@@ -115,8 +115,18 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
 
                 # Add the mapping of URIs -> the serialized environment to be
                 # used for cache invalidation.
-                for plugin_uri in runtime_env.uris:
-                    self._uris_to_envs[plugin_uri].add(serialized_runtime_env)
+                if runtime_env.uris.working_dir_uri:
+                    uri = runtime_env.uris.working_dir_uri
+                    self._uris_to_envs[uri].add(serialized_runtime_env)
+                if runtime_env.uris.py_modules_uris:
+                    for uri in runtime_env.uris.py_modules_uris:
+                        self._uris_to_envs[uri].add(serialized_runtime_env)
+                if runtime_env.uris.conda_uri:
+                    uri = runtime_env.uris.conda_uri
+                    self._uris_to_envs[uri].add(serialized_runtime_env)
+                if runtime_env.uris.plugin_uris:
+                    for uri in runtime_env.uris.plugin_uris:
+                        self._uris_to_envs[uri].add(serialized_runtime_env)
 
                 # Run setup function from all the plugins
                 for plugin in runtime_env.py_plugin_runtime_env.plugins:
@@ -205,12 +215,12 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
         failed_uris = []  # URIs that we failed to delete.
 
         for plugin_uri in request.uris:
+            plugin, uri = decode_plugin_uri(plugin_uri)
             # Invalidate the env cache for any envs that contain this URI.
-            for env in self._uris_to_envs.get(plugin_uri, []):
+            for env in self._uris_to_envs.get(uri, []):
                 if env in self._env_cache:
                     del self._env_cache[env]
 
-            plugin, uri = decode_plugin_uri(plugin_uri)
             if plugin == "working_dir":
                 if not self._working_dir_manager.delete_uri(uri):
                     failed_uris.append(uri)
@@ -225,14 +235,14 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                     "RuntimeEnvAgent received DeleteURI request "
                     f"for unsupported plugin {plugin}. URI: {uri}")
 
-            if failed_uris:
-                return runtime_env_agent_pb2.DeleteURIsReply(
-                    status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
-                    error_message="Local files for URI(s) "
-                    f"{failed_uris} not found.")
-            else:
-                return runtime_env_agent_pb2.DeleteURIsReply(
-                    status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
+        if failed_uris:
+            return runtime_env_agent_pb2.DeleteURIsReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_FAILED,
+                error_message="Local files for URI(s) "
+                f"{failed_uris} not found.")
+        else:
+            return runtime_env_agent_pb2.DeleteURIsReply(
+                status=agent_manager_pb2.AGENT_RPC_STATUS_OK)
 
     async def run(self, server):
         runtime_env_agent_pb2_grpc.add_RuntimeEnvServiceServicer_to_server(
