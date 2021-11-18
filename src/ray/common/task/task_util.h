@@ -183,7 +183,9 @@ class TaskSpecBuilder {
       int max_concurrency = 1, bool is_detached = false, std::string name = "",
       std::string ray_namespace = "", bool is_asyncio = false,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      const std::string &extension_data = "") {
+      const std::string &extension_data = "",
+      rpc::TaskSchedulingPolicy scheduling_policy =
+          rpc::TaskSchedulingPolicy::TASK_SCHEDULING_POLICY_DEFAULT) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
@@ -209,6 +211,7 @@ class TaskSpecBuilder {
         *fd = item->GetMessage();
       }
     }
+    message_->set_scheduling_policy(scheduling_policy);
     return *this;
   }
 

@@ -299,7 +299,7 @@ class ActorClassMetadata:
                  actor_creation_function_descriptor, class_id, max_restarts,
                  max_task_retries, num_cpus, num_gpus, memory,
                  object_store_memory, resources, accelerator_type, runtime_env,
-                 concurrency_groups):
+                 concurrency_groups, scheduling_policy):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \
@@ -317,6 +317,7 @@ class ActorClassMetadata:
         self.accelerator_type = accelerator_type
         self.runtime_env = runtime_env
         self.concurrency_groups = concurrency_groups
+        self.scheduling_policy = scheduling_policy
         self.last_export_session_and_job = None
         self.method_meta = ActorClassMethodMetadata.create(
             modified_class, actor_creation_function_descriptor)
@@ -413,7 +414,8 @@ class ActorClass:
             Language.PYTHON, modified_class,
             actor_creation_function_descriptor, class_id, max_restarts,
             max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
-            resources, accelerator_type, new_runtime_env, concurrency_groups)
+            resources, accelerator_type, new_runtime_env, concurrency_groups,
+            scheduling_policy)
 
         return self
 
@@ -433,7 +435,7 @@ class ActorClass:
             language, None, actor_creation_function_descriptor, None,
             max_restarts, max_task_retries, num_cpus, num_gpus, memory,
             object_store_memory, resources, accelerator_type, new_runtime_env,
-            [])
+            [], None)
 
         return self
 
@@ -469,7 +471,8 @@ class ActorClass:
                 placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                runtime_env=None):
+                runtime_env=None,
+                scheduling_policy=None):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -522,7 +525,8 @@ class ActorClass:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
-                    runtime_env=new_runtime_env)
+                    runtime_env=new_runtime_env,
+                    scheduling_policy=scheduling_policy)
 
         return ActorOptionWrapper()
 
@@ -545,7 +549,8 @@ class ActorClass:
                 placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                runtime_env=None):
+                runtime_env=None,
+                scheduling_policy=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -636,7 +641,8 @@ class ActorClass:
                 placement_group_bundle_index=placement_group_bundle_index,
                 placement_group_capture_child_tasks=(
                     placement_group_capture_child_tasks),
-                runtime_env=runtime_env)
+                runtime_env=runtime_env,
+                scheduling_policy=scheduling_policy)
 
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -797,7 +803,8 @@ class ActorClass:
             extension_data=str(actor_method_cpu),
             serialized_runtime_env=parsed_runtime_env.serialize(),
             runtime_env_uris=parsed_runtime_env.get_uris(),
-            concurrency_groups_dict=concurrency_groups_dict or dict())
+            concurrency_groups_dict=concurrency_groups_dict or dict(),
+            scheduling_policy=scheduling_policy or meta.scheduling_policy)
 
         actor_handle = ActorHandle(
             meta.language,

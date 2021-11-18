@@ -1419,6 +1419,15 @@ cdef class CoreWorker:
         logger.warning("Local object store memory usage:\n{}\n".format(
             message.decode("utf-8")))
 
+    cdef CTaskSchedulingPolicy string_to_c_task_scheduling_policy(
+            self, scheduling_policy):
+        if scheduling_policy is None:
+            return TASK_SCHEDULING_POLICY_DEFAULT
+        elif scheduling_policy == "SPREAD":
+            return TASK_SCHEDULING_POLICY_SPREAD
+        else:
+            raise TypeError(scheduling_policy)
+
     def submit_task(self,
                     Language language,
                     FunctionDescriptor function_descriptor,
@@ -1444,14 +1453,8 @@ cdef class CoreWorker:
                 placement_group_id.native()
             c_vector[c_string] c_runtime_env_uris = runtime_env_uris
             c_vector[CObjectReference] return_refs
-            CTaskSchedulingPolicy c_scheduling_policy
-
-        if scheduling_policy is None:
-            c_scheduling_policy = TASK_SCHEDULING_POLICY_DEFAULT
-        elif scheduling_policy == "SPREAD":
-            c_scheduling_policy = TASK_SCHEDULING_POLICY_SPREAD
-        else:
-            raise TypeError(scheduling_policy)
+            CTaskSchedulingPolicy c_scheduling_policy = \
+                self.string_to_c_task_scheduling_policy(scheduling_policy)
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -1511,6 +1514,8 @@ cdef class CoreWorker:
                 placement_group_id.native()
             c_vector[c_string] c_runtime_env_uris = runtime_env_uris
             c_vector[CConcurrencyGroup] c_concurrency_groups
+            CTaskSchedulingPolicy c_scheduling_policy = \
+                self.string_to_c_task_scheduling_policy(scheduling_policy)
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -1537,7 +1542,8 @@ cdef class CoreWorker:
                         placement_group_capture_child_tasks,
                         serialized_runtime_env,
                         c_runtime_env_uris,
-                        c_concurrency_groups),
+                        c_concurrency_groups,
+                        c_scheduling_policy),
                     extension_data,
                     &c_actor_id))
 

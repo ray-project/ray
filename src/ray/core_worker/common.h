@@ -96,7 +96,9 @@ struct ActorCreationOptions {
       bool placement_group_capture_child_tasks = true,
       const std::string &serialized_runtime_env = "{}",
       const std::vector<std::string> &runtime_env_uris = {},
-      const std::vector<ConcurrencyGroup> &concurrency_groups = {})
+      const std::vector<ConcurrencyGroup> &concurrency_groups = {},
+      const TaskSchedulingPolicy scheduling_policy =
+          TaskSchedulingPolicy::TASK_SCHEDULING_POLICY_DEFAULT)
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -111,7 +113,8 @@ struct ActorCreationOptions {
         placement_group_capture_child_tasks(placement_group_capture_child_tasks),
         serialized_runtime_env(serialized_runtime_env),
         runtime_env_uris(runtime_env_uris),
-        concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()){};
+        concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()),
+        scheduling_policy(scheduling_policy){};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
