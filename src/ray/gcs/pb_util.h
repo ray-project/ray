@@ -133,7 +133,7 @@ inline rpc::ErrorType GenErrorTypeFromDeathCause(
   if (death_cause->context_case() == ContextCase::kCreationTaskFailureContext) {
     return rpc::ErrorType::ACTOR_DIED;
   }
-  if (death_cause->context_case() == ContextCase::kRuntimeEnvSetupFailureContext) {
+  if (death_cause->context_case() == ContextCase::kRuntimeEnvFailedContext) {
     return rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
   }
   return rpc::ErrorType::ACTOR_DIED;
@@ -143,12 +143,19 @@ inline const std::string &GetDeathCauseString(const rpc::ActorDeathCause *death_
   static absl::flat_hash_map<ContextCase, std::string> death_cause_string{
       {ContextCase::CONTEXT_NOT_SET, "CONTEXT_NOT_SET"},
       {ContextCase::kCreationTaskFailureContext, "CreationTaskFailureContext"},
-      {ContextCase::kRuntimeEnvSetupFailureContext, "RuntimeEnvSetupFailureContext"}};
+      {ContextCase::kWorkerDiedContext, "WorkerDiedContext"},
+      {ContextCase::kNodeDiedContext, "NodeDiedContext"},
+      {ContextCase::kOwnerDiedContext, "OwnerDiedContext"},
+      {ContextCase::kKilledByAppContext, "KilledByAppContext"},
+      {ContextCase::kOutOfScopeContext, "OutOfScopeContext"}};
   ContextCase death_cause_case = ContextCase::CONTEXT_NOT_SET;
   if (death_cause != nullptr) {
     death_cause_case = death_cause->context_case();
   }
-  return death_cause_string.at(death_cause_case);
+  auto it = death_cause_string.find(death_cause_case);
+  RAY_CHECK(it != death_cause_string.end())
+      << "Given death cause case " << death_cause_case << " doesn't exist.";
+  return it->second;
 }
 
 }  // namespace gcs
