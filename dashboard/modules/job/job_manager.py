@@ -48,14 +48,14 @@ class JobLogStorageClient:
     """
     JOB_LOGS_PATH = "job-driver-{job_id}.log"
 
-    def get_logs(self, job_id: str):
+    def get_logs(self, job_id: str) -> str:
         try:
             with open(self.get_log_file_path(job_id), "r") as f:
                 return f.read()
         except FileNotFoundError:
             return ""
 
-    def tail_logs(self, job_id: str, n_lines=10):
+    def tail_logs(self, job_id: str, n_lines=10) -> str:
         all_logs = self.get_logs(job_id)
         # TODO(edoakes): optimize this to not read the whole file into memory.
         log_lines = all_logs.split("\n")
@@ -225,7 +225,7 @@ class JobSupervisor:
                                                    JobStatus.SUCCEEDED)
                 else:
                     log_tail = self._log_client.tail_logs(self._job_id)
-                    if log_tail:
+                    if log_tail is not None and log_tail != "":
                         message = ("Job failed due to an application error, "
                                    "last available logs:\n" + log_tail)
                     else:
@@ -286,8 +286,16 @@ class JobManager:
             raise ValueError(
                 "Cannot find the node dictionary for current node.")
 
-    def _handle_supervisor_started(self, job_id: str,
+    def _handle_supervisor_startup(self, job_id: str,
                                    result: Optional[Exception]):
+        """Handle the result of starting a job supervisor actor.
+
+        If started successfully, result should be None. Otherwise it should be
+        an Exception.
+
+        On failure, the job will be marked failed with a relevant error
+        message.
+        """
         if result is None:
             return
         elif isinstance(result, RuntimeEnvSetupError):
@@ -307,7 +315,7 @@ class JobManager:
                     message=f"Error occurred while starting the job: {result}")
             )
         else:
-            assert False
+            assert False, "This should not be reached."
 
     def submit_job(self,
                    *,
@@ -370,11 +378,11 @@ class JobManager:
             actor.run.remote(_start_signal_actor=_start_signal_actor)
 
             def callback(result: Optional[Exception]):
-                return self._handle_supervisor_started(job_id, result)
+                return self._handle_supervisor_startup(job_id, result)
 
             actor.ready.remote()._on_completed(callback)
         except Exception as e:
-            self._handle_supervisor_started(job_id, e)
+            self._handle_supervisor_startup(job_id, e)
 
         return job_id
 
