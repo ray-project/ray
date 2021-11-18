@@ -81,15 +81,7 @@ def train_ray(path,
               xgboost_params=None,
               **kwargs):
     if not isinstance(path, list):
-        path = os.path.expanduser(path)
-        if not os.path.exists(path):
-            raise ValueError(f"Path does not exist: {path}")
-
-        if num_files:
-            files = sorted(glob.glob(f"{path}/**/*.parquet"))
-            while num_files > len(files):
-                files = files + files
-            path = files[0:num_files]
+        path = get_parquet_files(path)
 
     use_device_matrix = False
     if use_gpu:
