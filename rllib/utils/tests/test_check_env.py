@@ -15,7 +15,7 @@ class TestGymCheckEnv():
 
     def test_has_action_space(self):
         env = gym.make("CartPole-v1")
-        del env.observation_space
+        del env.action_space
         with pytest.raises(AttributeError):
             check_gym_environments(env)
 
