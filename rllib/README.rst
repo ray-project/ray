@@ -170,7 +170,7 @@ check out our `documentation <http://docs.ray.io/en/master/rllib/index.html>`_):
 
         .. https://docs.google.com/drawings/d/1i_yoxocyEOgiCxcfRZVKpNh0R_-2tQZOX4syquiytAI/edit?skip_itp2_check=true&pli=1
 
-        .. image:: ../images/rllib/sigils/rllib-sigil-tf-and-torch.svg
+        .. image:: ../doc/source/images/rllib/sigils/rllib-sigil-tf-and-torch.svg
             :width: 100
             :target: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py
 
@@ -186,7 +186,7 @@ check out our `documentation <http://docs.ray.io/en/master/rllib/index.html>`_):
 
         .. https://docs.google.com/drawings/d/1Lbi1Zf5SvczSliGEWuK4mjWeehPIArYY9XKys81EtHU/edit
 
-        .. image:: ../images/rllib/sigils/rllib-sigil-multi-agent.svg
+        .. image:: ../doc/source/images/rllib/sigils/rllib-sigil-multi-agent.svg
             :width: 100
             :target: https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py
 
@@ -209,7 +209,7 @@ check out our `documentation <http://docs.ray.io/en/master/rllib/index.html>`_):
 
         .. https://docs.google.com/drawings/d/1DY2IJUPo007mSRylz6IEs-dz_n1-rFh67RMi9PB2niY/edit
 
-        .. image:: ../images/rllib/sigils/rllib-sigil-external-simulators.svg
+        .. image:: ../doc/source/images/rllib/sigils/rllib-sigil-external-simulators.svg
             :width: 100
             :target: https://github.com/ray-project/ray/tree/master/rllib/examples/serving
 
@@ -232,7 +232,7 @@ check out our `documentation <http://docs.ray.io/en/master/rllib/index.html>`_):
 
         .. https://docs.google.com/drawings/d/1VFuESSI5u9AK9zqe9zKSJIGX8taadijP7Qw1OLv2hSQ/edit
 
-        .. image:: ../images/rllib/sigils/rllib-sigil-offline-rl.svg
+        .. image:: ../doc/source/images/rllib/sigils/rllib-sigil-offline-rl.svg
             :width: 100
             :target: https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl.py
 
