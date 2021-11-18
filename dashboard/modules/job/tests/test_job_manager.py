@@ -132,7 +132,8 @@ class TestShellScriptExecution:
             status = job_manager.get_job_status(job_id)
             if status.status != JobStatus.FAILED:
                 return False
-            if "Exception: Script failed with exception !" not in status.message:
+            if ("Exception: Script failed with exception !" not in
+                    status.message):
                 return False
 
             return job_manager._get_actor_for_job(job_id) is None
