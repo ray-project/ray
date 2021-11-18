@@ -12,15 +12,15 @@ from ray.dashboard.utils import async_loop_forever, rest_response
 logger = logging.getLogger(__name__)
 
 try:
-    from ray.tune import Analysis
+    from ray.tune import ExperimentAnalysis
     from tensorboard import program
 # The `pip install ray` will not install pandas,
-# so `from ray.tune import Analysis` may raises
+# so `from ray.tune import ExperimentAnalysis` may raises
 # `AttributeError: module 'pandas' has no attribute 'core'`
 # if the pandas version is incorrect.
 except (ImportError, AttributeError) as ex:
     logger.warning("tune module is not available: %s", ex)
-    Analysis = None
+    ExperimentAnalysis = None
 
 routes = dashboard_utils.ClassMethodRouteTable
 
@@ -49,7 +49,7 @@ class TuneController(dashboard_utils.DashboardHeadModule):
     @routes.get("/tune/availability")
     async def get_availability(self, req) -> aiohttp.web.Response:
         availability = {
-            "available": Analysis is not None,
+            "available": ExperimentAnalysis is not None,
             "trials_available": self._trials_available
         }
         return rest_response(
@@ -131,11 +131,11 @@ class TuneController(dashboard_utils.DashboardHeadModule):
         """
         self._trial_records = {}
         self._errors = {}
-        if not self._logdir or not Analysis:
+        if not self._logdir or not ExperimentAnalysis:
             return
 
         # search through all the sub_directories in log directory
-        analysis = Analysis(str(self._logdir))
+        analysis = ExperimentAnalysis(str(self._logdir))
         df = analysis.dataframe(metric=None, mode=None)
 
         if len(df) == 0 or "trial_id" not in df.columns:

@@ -13,7 +13,7 @@ except ImportError:
 from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
 from ray.dashboard.modules.job.common import (
-    JobSubmitRequest, JobSubmitResponse, JobStopResponse, JobStatus,
+    JobSubmitRequest, JobSubmitResponse, JobStopResponse, JobStatusInfo,
     JobStatusResponse, JobLogsResponse, uri_to_http_components)
 
 from ray.client_builder import _split_address
@@ -218,11 +218,13 @@ class JobSubmissionClient:
         else:
             self._raise_error(r)
 
-    def get_job_status(self, job_id: str) -> JobStatus:
+    def get_job_status(self, job_id: str) -> JobStatusInfo:
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
         if r.status_code == 200:
-            return JobStatusResponse(**r.json()).status
+            response = JobStatusResponse(**r.json())
+            return JobStatusInfo(
+                status=response.status, message=response.message)
         else:
             self._raise_error(r)
 

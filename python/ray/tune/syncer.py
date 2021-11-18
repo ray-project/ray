@@ -556,8 +556,8 @@ def detect_cluster_syncer(
 
     sync_config = sync_config or SyncConfig()
 
-    if bool(sync_config.upload_dir):
-        # No sync to driver for cloud checkpointing
+    if bool(sync_config.upload_dir) or sync_config.syncer is None:
+        # No sync to driver for cloud checkpointing or if manually disabled
         return False
 
     _syncer = sync_config.syncer

@@ -4,6 +4,7 @@ import glob
 import io
 import logging
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -209,6 +210,7 @@ if setup_spec.type == SetupType.RAY:
             "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
             "prometheus_client >= 0.7.1",
+            "smart_open"
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
@@ -218,6 +220,10 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-exporter-otlp==1.1.0"
         ],
     }
+
+    if sys.version_info >= (3, 7):
+        # Numpy dropped python 3.6 support in 1.20.
+        setup_spec.extras["data"].append("numpy >= 1.20")
 
     # Ray Serve depends on the Ray dashboard components.
     setup_spec.extras["serve"] = list(
@@ -260,8 +266,19 @@ if setup_spec.type == SetupType.RAY:
         "numpy >= 1.19.3; python_version >= '3.9'",
         "protobuf >= 3.15.3",
         "pyyaml",
-        "redis >= 3.5.0",
     ]
+
+if platform.system() == "Darwin" and platform.machine() == "arm64":
+    # TODO (Alex): `hiredis` doesn't have prebuilt M1 mac wheels yet. We can
+    # remove this, either when they add support, we remove redis, or we vendor
+    # redis/hiredis ourselves.
+    setup_spec.install_requires.append("redis >= 3.5.0")
+elif platform.system() == "Windows":
+    # TODO (Alex): Ray is not compatible with redis >= 4.0.0. We ened to either
+    # investigate why, or remove the redis dependency.
+    setup_spec.install_requires.append("redis >= 3.5.0, < 4.0")
+else:
+    setup_spec.install_requires.append("redis[hiredis] >= 3.5.0")
 
 
 def is_native_windows_or_msys():
