@@ -1,20 +1,15 @@
 """Common pre-checks for all RLlib experiments."""
+import gym
 import logging
 import sys
 import traceback
 
-import gym
+from ray.rllib.utils.typing import EnvType
 
 logger = logging.getLogger(__name__)
 
 
-def check_env(env: [
-        "BaseEnv", "gym.Env", "MultiAgentEnv", "RemoteVectorEnv", "VectorEnv"
-]) -> None:
-    from ray.rllib.env import BaseEnv, MultiAgentEnv, RemoteVectorEnv, \
-        VectorEnv
-    supported_env_types = (BaseEnv, gym.Env, MultiAgentEnv, RemoteVectorEnv,
-                           VectorEnv)
+def check_env(env: EnvType) -> None:
     """Run pre-checks on env that uncover common errors in environments.
 
     Args:
@@ -24,8 +19,11 @@ def check_env(env: [
         ValueError: If env is not an instance of SUPPORTED_ENVIRONMENT_TYPES.
         ValueError: See check_gym_env docstring for details.
     """
+    from ray.rllib.env import BaseEnv, MultiAgentEnv, RemoteBaseEnv, \
+        VectorEnv
 
-    if not isinstance(env, supported_env_types):
+    if not isinstance(
+            env, (BaseEnv, gym.Env, MultiAgentEnv, RemoteBaseEnv, VectorEnv)):
         raise ValueError(
             "Env must be one of the supported types: BaseEnv, gym.Env, "
             "MultiAgentEnv, VectorEnv, RemoteVectorEnv")
