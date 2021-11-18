@@ -497,14 +497,14 @@ void PullManager::TryToMakeObjectLocal(const ObjectID &object_id) {
                      << object_id.Hex();
     request.expiration_time_seconds =
         get_time_seconds_() +
-        RayConfig::instance().fetch_warn_timeout_milliseconds() / 1e3;
+        RayConfig::instance().fetch_fail_timeout_milliseconds() / 1e3;
   } else if (request.pending_object_creation) {
     // Object is pending creation, wait for the task that creates the object to
     // finish.
     RAY_LOG(INFO) << "Object pending creation " << object_id.Hex();
     request.expiration_time_seconds =
         get_time_seconds_() +
-        RayConfig::instance().fetch_warn_timeout_milliseconds() / 1e3;
+        RayConfig::instance().fetch_fail_timeout_milliseconds() / 1e3;
   } else if (get_time_seconds_() > request.expiration_time_seconds) {
     // Object has no locations and is not being reconstructed by its owner.
     fail_pull_request_(object_id);
@@ -574,6 +574,7 @@ void PullManager::ResetRetryTimer(const ObjectID &object_id) {
   if (it != object_pull_requests_.end()) {
     it->second.next_pull_time = get_time_seconds_();
     it->second.num_retries = 0;
+    it->second.expiration_time_seconds = 0;
   }
 }
 
@@ -594,6 +595,8 @@ void PullManager::UpdateRetryTimer(ObjectPullRequest &request,
 
   // Bound the retry time at 10 * 1024 seconds.
   request.num_retries = std::min(request.num_retries + 1, 10);
+  // Also reset the fetch expiration timer, since we just tried this pull.
+  request.expiration_time_seconds = 0;
 }
 
 void PullManager::Tick() {

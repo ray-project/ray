@@ -1110,7 +1110,7 @@ TEST_P(PullManagerTest, TestTimeOut) {
   fake_time_ += 10;
   pull_manager_.OnLocationChange(oids[0], {}, "", NodeID::Nil(), false, 0);
   ASSERT_FALSE(timed_out_objects_.count(oids[0]));
-  fake_time_ += 61;
+  fake_time_ += 601;
   pull_manager_.Tick();
   ASSERT_TRUE(timed_out_objects_.count(oids[0]));
   timed_out_objects_.clear();
@@ -1123,12 +1123,54 @@ TEST_P(PullManagerTest, TestTimeOut) {
   fake_time_ += 10;
   pull_manager_.OnLocationChange(oids[0], {}, "", NodeID::Nil(), true, 0);
   ASSERT_FALSE(timed_out_objects_.count(oids[0]));
-  fake_time_ += 61;
+  fake_time_ += 601;
   pull_manager_.Tick();
   ASSERT_FALSE(timed_out_objects_.count(oids[0]));
   // Object has no locations now and is no longer pending execution.
   pull_manager_.OnLocationChange(oids[0], {}, "", NodeID::Nil(), false, 0);
-  fake_time_ += 61;
+  fake_time_ += 601;
+  pull_manager_.Tick();
+  ASSERT_TRUE(timed_out_objects_.count(oids[0]));
+  timed_out_objects_.clear();
+  RAY_UNUSED(pull_manager_.CancelPull(req_id));
+
+  AssertNoLeaks();
+}
+
+TEST_P(PullManagerTest, TestTimeOutAfterFailedPull) {
+  // Check that a successful Pull resets the timer for failed fetches.
+  auto prio = BundlePriority::TASK_ARGS;
+  if (GetParam()) {
+    prio = BundlePriority::GET_REQUEST;
+  }
+  auto refs = CreateObjectRefs(1);
+  auto oids = ObjectRefsToIds(refs);
+  std::vector<rpc::ObjectReference> objects_to_locate;
+  auto req_id = pull_manager_.Pull(refs, prio, &objects_to_locate);
+  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
+  ASSERT_TRUE(pull_manager_.HasPullsQueued());
+
+  std::unordered_set<NodeID> client_ids;
+  client_ids.insert(NodeID::FromRandom());
+  pull_manager_.OnLocationChange(oids[0], client_ids, "", NodeID::Nil(), false, 0);
+  ASSERT_TRUE(pull_manager_.IsObjectActive(oids[0]));
+  ASSERT_EQ(num_send_pull_request_calls_, 1);
+
+  // Object has no locations.
+  fake_time_ += 10;
+  pull_manager_.OnLocationChange(oids[0], {}, "", NodeID::Nil(), false, 0);
+  ASSERT_FALSE(timed_out_objects_.count(oids[0]));
+  // Location added, we send a pull.
+  pull_manager_.OnLocationChange(oids[0], client_ids, "", NodeID::Nil(), false, 0);
+  ASSERT_EQ(num_send_pull_request_calls_, 2);
+  // Object has no locations again. Object is not failed because the pull
+  // reset the timer.
+  fake_time_ += 601;
+  pull_manager_.OnLocationChange(oids[0], {}, "", NodeID::Nil(), false, 0);
+  ASSERT_FALSE(timed_out_objects_.count(oids[0]));
+
+  // Still no locations, now the object is failed.
+  fake_time_ += 601;
   pull_manager_.Tick();
   ASSERT_TRUE(timed_out_objects_.count(oids[0]));
   timed_out_objects_.clear();
