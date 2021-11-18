@@ -138,9 +138,6 @@ PlacementGroup GetPlacementGroupById(const std::string &id);
 /// Get a placement group by name.
 PlacementGroup GetPlacementGroup(const std::string &name);
 
-/// Get a placement group by placement group name from all namespace.
-PlacementGroup GetGlobalPlacementGroup(const std::string &name);
-
 /// Returns true if the current actor was restarted, otherwise false.
 bool WasCurrentActorRestarted();
 
@@ -271,10 +268,6 @@ inline PlacementGroup GetPlacementGroupById(const std::string &id) {
 }
 
 inline PlacementGroup GetPlacementGroup(const std::string &name) {
-  return ray::internal::GetRayRuntime()->GetPlacementGroup(name);
-}
-
-inline PlacementGroup GetGlobalPlacementGroup(const std::string &name) {
   return ray::internal::GetRayRuntime()->GetPlacementGroup(name);
 }
 
