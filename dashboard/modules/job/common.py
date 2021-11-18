@@ -11,9 +11,10 @@ from ray.experimental.internal_kv import (
 )
 from ray._private.runtime_env.packaging import parse_uri
 
-# NOTE(edoakes): constant should be considered a public API because it's
-# exposed in the snapshot API.
+# NOTE(edoakes): these constants should be considered a public API because
+# they're exposed in the snapshot API.
 JOB_ID_METADATA_KEY = "job_submission_id"
+JOB_NAME_METADATA_KEY = "job_name"
 
 
 class JobStatus(str, Enum):
