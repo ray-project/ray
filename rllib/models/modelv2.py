@@ -31,27 +31,27 @@ class ModelV2:
 
     Data flow:
         obs -> forward() -> model_out
-               value_function() -> V(s)
+            \-> value_function() -> V(s)
     """
 
     def __init__(self, obs_space: gym.spaces.Space,
                  action_space: gym.spaces.Space, num_outputs: int,
                  model_config: ModelConfigDict, name: str, framework: str):
-        """Initializes a ModelV2 object.
+        """Initializes a ModelV2 instance.
 
         This method should create any variables used by the model.
 
         Args:
-            obs_space (gym.spaces.Space): Observation space of the target gym
+            obs_space: Observation space of the target gym
                 env. This may have an `original_space` attribute that
                 specifies how to unflatten the tensor into a ragged tensor.
-            action_space (gym.spaces.Space): Action space of the target gym
+            action_space: Action space of the target gym
                 env.
-            num_outputs (int): Number of output units of the model.
-            model_config (ModelConfigDict): Config for the model, documented
+            num_outputs: Number of output units of the model.
+            model_config: Config for the model, documented
                 in ModelCatalog.
-            name (str): Name (scope) for the model.
-            framework (str): Either "tf" or "torch".
+            name: Name (scope) for the model.
+            framework: Either "tf" or "torch".
         """
 
         self.obs_space: gym.spaces.Space = obs_space
@@ -74,8 +74,8 @@ class ModelV2:
         """Get the initial recurrent state values for the model.
 
         Returns:
-            List[np.ndarray]: List of np.array objects containing the initial
-                hidden state of an RNN, if applicable.
+            List of np.array objects containing the initial hidden state
+            of an RNN, if applicable.
 
         Examples:
             >>> def get_initial_state(self):
@@ -104,16 +104,16 @@ class ModelV2:
         Custom models should override this instead of __call__.
 
         Args:
-            input_dict (dict): dictionary of input tensors, including "obs",
+            input_dict: dictionary of input tensors, including "obs",
                 "obs_flat", "prev_action", "prev_reward", "is_training",
                 "eps_id", "agent_id", "infos", and "t".
-            state (list): list of state tensors with sizes matching those
+            state: list of state tensors with sizes matching those
                 returned by get_initial_state + the batch dimension
-            seq_lens (Tensor): 1d tensor holding input sequence lengths
+            seq_lens: 1d tensor holding input sequence lengths
 
         Returns:
-            (outputs, state): The model output tensor of size
-                [BATCH, num_outputs], and the new RNN state.
+            A tuple consisting of the model output tensor of size
+            [BATCH, num_outputs] and the list of new RNN state(s) if any.
 
         Examples:
             >>> def forward(self, input_dict, state, seq_lens):
@@ -132,13 +132,14 @@ class ModelV2:
         cause an extra forward pass through the network.
 
         Returns:
-            value estimate tensor of shape [BATCH].
+            Value estimate tensor of shape [BATCH].
         """
         raise NotImplementedError
 
     @PublicAPI
     def custom_loss(self, policy_loss: TensorType,
-                    loss_inputs: Dict[str, TensorType]) -> TensorType:
+                    loss_inputs: Dict[str, TensorType]) -> \
+            Union[List[TensorType], TensorType]:
         """Override to customize the loss function used to optimize this model.
 
         This can be used to incorporate self-supervised losses (by defining
@@ -149,13 +150,12 @@ class ModelV2:
         You can find an runnable example in examples/custom_loss.py.
 
         Args:
-            policy_loss (Union[List[Tensor],Tensor]): List of or single policy
-                loss(es) from the policy.
-            loss_inputs (dict): map of input placeholders for rollout data.
+            policy_loss: List of or single policy loss(es) from the policy.
+            loss_inputs: map of input placeholders for rollout data.
 
         Returns:
-            Union[List[Tensor],Tensor]: List of or scalar tensor for the
-                customized loss(es) for this model.
+            List of or scalar tensor for the customized loss(es) for this
+            model.
         """
         return policy_loss
 
@@ -167,7 +167,7 @@ class ModelV2:
         info.learner.[policy_id, e.g. "default_policy"].model.key1=metric1
 
         Returns:
-            Dict[str, TensorType]: The custom metrics for this model.
+            The custom metrics for this model.
         """
         return {}
 
@@ -184,17 +184,16 @@ class ModelV2:
         Custom models should override forward() instead of __call__.
 
         Args:
-            input_dict (Union[SampleBatch, ModelInputDict]): Dictionary of
-                input tensors.
-            state (list): list of state tensors with sizes matching those
+            input_dict: Dictionary of input tensors.
+            state: list of state tensors with sizes matching those
                 returned by get_initial_state + the batch dimension
-            seq_lens (Tensor): 1D tensor holding input sequence lengths.
+            seq_lens: 1D tensor holding input sequence lengths.
 
         Returns:
-            (outputs, state): The model output tensor of size
+            A tuple consisting of the model output tensor of size
                 [BATCH, output_spec.size] or a list of tensors corresponding to
                 output_spec.shape_list, and a list of state tensors of
-                [BATCH, state_size_i].
+                [BATCH, state_size_i] if any.
         """
 
         # Original observations will be stored in "obs".
@@ -262,31 +261,11 @@ class ModelV2:
         self._last_output = outputs
         return outputs, state_out if len(state_out) > 0 else (state or [])
 
-    @Deprecated(new="ModelV2.__call__()", error=False)
-    def from_batch(self, train_batch: SampleBatch,
-                   is_training: bool = True) -> (TensorType, List[TensorType]):
-        """Convenience function that calls this model with a tensor batch.
-
-        All this does is unpack the tensor batch to call this model with the
-        right input dict, state, and seq len arguments.
-        """
-
-        input_dict = train_batch.copy()
-        input_dict["is_training"] = is_training
-        states = []
-        i = 0
-        while "state_in_{}".format(i) in input_dict:
-            states.append(input_dict["state_in_{}".format(i)])
-            i += 1
-        ret = self.__call__(input_dict, states,
-                            input_dict.get(SampleBatch.SEQ_LENS))
-        return ret
-
     def import_from_h5(self, h5_file: str) -> None:
         """Imports weights from an h5 file.
 
         Args:
-            h5_file (str): The h5 file name to import weights from.
+            h5_file: The h5 file name to import weights from.
 
         Example:
             >>> trainer = MyTrainer()
@@ -312,12 +291,12 @@ class ModelV2:
         """Returns the list (or a dict) of variables for this model.
 
         Args:
-            as_dict(bool): Whether variables should be returned as dict-values
+            as_dict: Whether variables should be returned as dict-values
                 (using descriptive str keys).
 
         Returns:
-            Union[List[any],Dict[str,any]]: The list (or dict if `as_dict` is
-                True) of all variables of this ModelV2.
+            The list (or dict if `as_dict` is True) of all variables of this
+            ModelV2.
         """
         raise NotImplementedError
 
@@ -328,13 +307,12 @@ class ModelV2:
         """Returns the list of trainable variables for this model.
 
         Args:
-            as_dict(bool): Whether variables should be returned as dict-values
+            as_dict: Whether variables should be returned as dict-values
                 (using descriptive keys).
 
         Returns:
-            Union[List[any],Dict[str,any]]: The list (or dict if `as_dict` is
-                True) of all trainable (tf)/requires_grad (torch) variables
-                of this ModelV2.
+            The list (or dict if `as_dict` is True) of all trainable
+            (tf)/requires_grad (torch) variables of this ModelV2.
         """
         raise NotImplementedError
 
@@ -343,10 +321,30 @@ class ModelV2:
         """If True, data for calling this ModelV2 must be in time-major format.
 
         Returns
-            bool: Whether this ModelV2 requires a time-major (TxBx...) data
-                format.
+            Whether this ModelV2 requires a time-major (TxBx...) data
+            format.
         """
         return self.time_major is True
+
+    @Deprecated(new="ModelV2.__call__()", error=False)
+    def from_batch(self, train_batch: SampleBatch,
+                   is_training: bool = True) -> (TensorType, List[TensorType]):
+        """Convenience function that calls this model with a tensor batch.
+
+        All this does is unpack the tensor batch to call this model with the
+        right input dict, state, and seq len arguments.
+        """
+
+        input_dict = train_batch.copy()
+        input_dict["is_training"] = is_training
+        states = []
+        i = 0
+        while "state_in_{}".format(i) in input_dict:
+            states.append(input_dict["state_in_{}".format(i)])
+            i += 1
+        ret = self.__call__(input_dict, states,
+                            input_dict.get(SampleBatch.SEQ_LENS))
+        return ret
 
 
 @DeveloperAPI
