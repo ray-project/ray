@@ -735,9 +735,12 @@ def assert_checkpoint_count(experiment_dir_cp: ExperimentDirCheckpoint,
         cps = len(trial_cp.checkpoints)
         num_skipped = trial_cp.num_skipped
         if trial.was_on_driver_node:
+            # On the driver, also allow one additional checkpoint
+            # to account for race conditions
             assert (
                 cps == for_driver_trial
-                or cps + num_skipped == for_driver_trial), (
+                or cps + num_skipped == for_driver_trial
+                or cps == for_driver_trial + 1), (
                     f"Trial {trial.trial_id} was on driver, "
                     f"but did not observe the expected amount of checkpoints "
                     f"({cps} != {for_driver_trial}).")
@@ -1155,7 +1158,7 @@ if __name__ == "__main__":
         with open(release_test_out, "wt") as f:
             json.dump(result, f)
 
-    run_time = 180 if "rllib" in args.trainable else 45
+    run_time = 180 if "rllib" in args.trainable else 90
 
     if not uses_ray_client:
         print("This test will *not* use Ray client.")
