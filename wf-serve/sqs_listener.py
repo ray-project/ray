@@ -10,6 +10,7 @@ class SQSEventListener(workflow.EventListener):
     async def poll_for_event(self):
         async with self.session.client('sqs') as sqs:
             while True:
+                print("!!!")
                 ret = await sqs.receive_message(
                     QueueUrl=self.url, WaitTimeSeconds=20)
                 if ret.get("Messages") is not None:

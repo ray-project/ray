@@ -11,11 +11,6 @@ p.unlink(missing_ok=True)
 p.touch()
 
 
-@workflow.step
-def pull_from_queue(task):
-    w = workflow.wait_for_event(SQSEventListener)
-    return pull_from_queue.step(process_event.step(w))
-
 
 @ray.remote
 def record(msg):
