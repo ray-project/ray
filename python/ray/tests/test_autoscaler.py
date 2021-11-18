@@ -2167,7 +2167,7 @@ class AutoscalingTest(unittest.TestCase):
             assert "empty_node" not in event
 
         node_type_counts = defaultdict(int)
-        for node_id in NonTerminatedNodes(self.provider).workers:
+        for node_id in NonTerminatedNodes(self.provider).worker_ids:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
@@ -3163,7 +3163,7 @@ MemAvailable:   33000000 kB
         # Node 1's updater failed, but node 1 won't be terminated until the
         # next autoscaler update.
         assert 0 not in NonTerminatedNodes(
-            self.provider).workers, "Node zero still non-terminated."
+            self.provider).worker_ids, "Node zero still non-terminated."
         assert not self.provider.is_terminated(1),\
             "Node one terminated prematurely."
 
@@ -3193,7 +3193,7 @@ MemAvailable:   33000000 kB
         fill_in_raylet_ids(self.provider, lm)
         autoscaler.update()
         self.waitForNodes(2)
-        assert set(NonTerminatedNodes(self.provider).workers) == {2, 3},\
+        assert set(NonTerminatedNodes(self.provider).worker_ids) == {2, 3},\
             "Unexpected node_ids"
 
         assert mock_metrics.stopped_nodes.inc.call_count == 1
