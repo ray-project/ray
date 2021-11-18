@@ -132,7 +132,8 @@ class CoreWorkerDirectTaskReceiver {
   std::shared_ptr<PoolManager> pool_manager_;
   /// Whether this actor use asyncio for concurrency.
   bool is_asyncio_ = false;
-  /// Whether this actor executes tasks out of order with respect to client submission order.
+  /// Whether this actor executes tasks out of order with respect to client submission
+  /// order.
   bool execute_out_of_order_ = false;
 };
 
