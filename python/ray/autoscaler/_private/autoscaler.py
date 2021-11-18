@@ -61,6 +61,7 @@ UpdateInstructions = namedtuple(
     "UpdateInstructions",
     ["node_id", "setup_commands", "ray_start_commands", "docker_config"])
 
+
 @dataclass
 class AutoscalerSummary:
     active_nodes: Dict[NodeType, int]
@@ -68,8 +69,10 @@ class AutoscalerSummary:
     pending_launches: Dict[NodeType, int]
     failed_nodes: List[Tuple[NodeIP, NodeType]]
 
+
 class NonTerminatedNodes:
     """Class to extract and organize information on non-terminated nodes."""
+
     def __init__(self, provider: NodeProvider):
         # All non-terminated nodes
         self.all_nodes = provider.non_terminated_nodes({})
@@ -89,18 +92,15 @@ class NonTerminatedNodes:
         # Note: For typical use-cases,
         # self.all_nodes == self.workers + self.head
 
-
     def remove_terminating_nodes(self, terminating_nodes: List[NodeID]):
-        #Remove nodes we're in the process of terminating.
+        """Remove nodes we're in the process of terminating."""
+
         def not_terminating(node):
             return node not in terminating_nodes
 
-        self.workers = list(
-            filter(not_terminating, self.workers)
-        )
-        self.all_nodes = list(
-            filter(not_terminating, self.all_nodes)
-        )
+        self.workers = list(filter(not_terminating, self.workers))
+        self.all_nodes = list(filter(not_terminating, self.all_nodes))
+
 
 # Whether a worker should be kept based on the min_workers and
 # max_workers constraints.
@@ -204,7 +204,7 @@ class StandardAutoscaler:
         self.update_interval_s = update_interval_s
 
         # Keeps track of pending and running nodes
-        self.nodes: Optional[Nodes] = None
+        self.nodes: Optional[NonTerminatedNodes] = None
 
         # Tracks nodes scheduled for termination
         self.nodes_to_terminate: List[NodeID] = []
@@ -292,12 +292,10 @@ class StandardAutoscaler:
         self.prom_metrics.running_workers.set(num_workers)
 
         # Remove from LoadMetrics the ips unknown to the NodeProvider.
-        self.load_metrics.prune_active_ips(
-            active_ips = [
-                self.provider.internal_ip(node_id)
-                for node_id in self.nodes.all_nodes
-            ]
-        )
+        self.load_metrics.prune_active_ips(active_ips=[
+            self.provider.internal_ip(node_id)
+            for node_id in self.nodes.all_nodes
+        ])
 
         # Update status strings
         logger.info(self.info_string())
@@ -549,8 +547,7 @@ class StandardAutoscaler:
         # See https://github.com/ray-project/ray/pull/5903 for more info.
         T = []
         for node_id, setup_commands, ray_start_commands, docker_config in (
-                self.should_update(node_id)
-                for node_id in self.nodes.workers):
+                self.should_update(node_id) for node_id in self.nodes.workers):
             if node_id is not None:
                 resources = self._node_resources(node_id)
                 logger.debug(f"{node_id}: Starting new thread runner.")
@@ -1095,8 +1092,7 @@ class StandardAutoscaler:
             initialization_commands=with_head_node_ip(
                 self._get_node_type_specific_fields(
                     node_id, "initialization_commands"), head_node_ip),
-            setup_commands=with_head_node_ip(setup_commands,
-                                             head_node_ip),
+            setup_commands=with_head_node_ip(setup_commands, head_node_ip),
             ray_start_commands=with_head_node_ip(ray_start_commands,
                                                  head_node_ip),
             runtime_hash=self.runtime_hash,

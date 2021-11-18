@@ -3162,7 +3162,8 @@ MemAvailable:   33000000 kB
         # Node 0 was terminated during the last update.
         # Node 1's updater failed, but node 1 won't be terminated until the
         # next autoscaler update.
-        assert 0 not in NonTerminatedNodes(self.provider).workers, "Node zero still non-terminated."
+        assert 0 not in NonTerminatedNodes(
+            self.provider).workers, "Node zero still non-terminated."
         assert not self.provider.is_terminated(1),\
             "Node one terminated prematurely."
 

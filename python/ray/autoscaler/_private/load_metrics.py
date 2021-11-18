@@ -1,4 +1,4 @@
-from collections import namedtuple, Counter
+from collections import Counter
 from dataclasses import dataclass
 from functools import reduce
 import logging
@@ -21,9 +21,10 @@ logger = logging.getLogger(__name__)
 # Refer to freq_of_dicts() below.
 DictCount = Tuple[Dict, Number]
 
+
 @dataclass
 class LoadMetricsSummary:
-    # Map of resource name (e.g. "memory") to pair of (Used, Available) numbers.
+    # Map of resource name (e.g. "memory") to pair of (Used, Available) numbers
     usage: Dict[str, Tuple[Number, Number]]
     # Counts of demand bundles from task/actor demand.
     # e.g. [({"CPU": 1}, 5), ({"GPU":1}, 2)]
