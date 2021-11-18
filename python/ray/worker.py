@@ -60,9 +60,9 @@ from ray._private.ray_logging import setup_logger
 from ray._private.ray_logging import global_worker_stdstream_dispatcher
 from ray._private.utils import check_oversized_function
 from ray.util.inspect import is_cython
-from ray.experimental.internal_kv import _internal_kv_get, \
-    _internal_kv_initialized, _initialize_internal_kv, \
-    _internal_kv_reset
+from ray.experimental.internal_kv import (_internal_kv_initialized,
+                                          _initialize_internal_kv,
+                                          _internal_kv_reset, _internal_kv_get)
 from ray._private.client_mode_hook import client_mode_hook
 
 SCRIPT_MODE = 0
@@ -394,8 +394,10 @@ class Worker:
             # We always run the task locally.
             function({"worker": self})
             # Check if the function has already been put into redis.
-            function_exported = self.redis_client.setnx(b"Lock:" + key, 1)
-            if not function_exported:
+            function_exported = self.gcs_client.internal_kv_put(
+                b"Lock:" + key, b"1", False,
+                ray_constants.KV_NAMESPACE_FUNCTION_TABLE) == 0
+            if function_exported is True:
                 # In this case, the function has already been exported, so
                 # we don't need to export it again.
                 return
@@ -404,13 +406,13 @@ class Worker:
                                      "function", self)
 
             # Run the function on all workers.
-            self.redis_client.hset(
+            self.gcs_client.internal_kv_put(
                 key,
-                mapping={
+                pickle.dumps({
                     "job_id": self.current_job_id.binary(),
                     "function_id": function_to_run_id,
                     "function": pickled_function,
-                })
+                }), True, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
             self.redis_client.rpush("Exports", key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
             # successfully completes the hset and rpush, then the program will
@@ -1550,16 +1552,13 @@ def connect(node,
     worker.cached_functions_to_run = None
 
     # Setup tracing here
-    if _internal_kv_get(
-            "tracing_startup_hook",
-            namespace=ray_constants.KV_NAMESPACE_TRACING):
+    tracing_hook_val = worker.gcs_client.internal_kv_get(
+        b"tracing_startup_hook", ray_constants.KV_NAMESPACE_TRACING)
+    if tracing_hook_val is not None:
         ray.util.tracing.tracing_helper._global_is_tracing_enabled = True
         if not getattr(ray, "__traced__", False):
             _setup_tracing = import_from_string(
-                _internal_kv_get(
-                    "tracing_startup_hook",
-                    namespace=ray_constants.KV_NAMESPACE_TRACING).decode(
-                        "utf-8"))
+                tracing_hook_val.decode("utf-8"))
             _setup_tracing()
             ray.__traced__ = True
 

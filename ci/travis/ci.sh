@@ -141,6 +141,7 @@ test_python() {
       python/ray/tests/...
       -python/ray/serve:conda_env # runtime_env unsupported on Windows
       -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
+      -python/ray/serve:test_cli # cli
       -python/ray/serve:test_router # timeout
       -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
       -python/ray/serve:test_controller_crashes # timeout
@@ -404,7 +405,7 @@ build_wheels() {
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the "${MOUNT_BAZEL_CACHE[@]}" part.
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-        quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
+        quay.io/pypa/manylinux2014_x86_64:2021-11-07-28723f3 /ray/python/build-wheel-manylinux2014.sh
       else
         rm -rf /ray-mount/*
         rm -rf /ray-mount/.whl || true

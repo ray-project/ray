@@ -658,7 +658,7 @@ class Deployment:
             raise TypeError("version must be a string.")
         if not (prev_version is None or isinstance(prev_version, str)):
             raise TypeError("prev_version must be a string.")
-        if not (init_args is None or isinstance(init_args, tuple)):
+        if not (init_args is None or isinstance(init_args, (tuple, list))):
             raise TypeError("init_args must be a tuple.")
         if not (init_kwargs is None or isinstance(init_kwargs, dict)):
             raise TypeError("init_kwargs must be a dict.")

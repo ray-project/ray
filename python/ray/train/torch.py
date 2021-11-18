@@ -14,6 +14,7 @@ from ray.train.utils import get_address_and_port
 
 import torch
 import torch.distributed as dist
+from ray.util import PublicAPI
 from torch.nn.parallel import DistributedDataParallel
 from torch.utils.data import DistributedSampler, DataLoader, \
     IterableDataset, SequentialSampler
@@ -21,6 +22,7 @@ from torch.utils.data import DistributedSampler, DataLoader, \
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="beta")
 @dataclass
 class TorchConfig(BackendConfig):
     """Configuration for torch process group setup.
@@ -202,6 +204,7 @@ def get_device() -> torch.device:
     return device
 
 
+@PublicAPI(stability="beta")
 def prepare_model(
         model: torch.nn.Module,
         move_to_device: bool = True,
@@ -246,6 +249,7 @@ def prepare_model(
     return model
 
 
+@PublicAPI(stability="beta")
 def prepare_data_loader(data_loader: torch.utils.data.DataLoader,
                         add_dist_sampler: bool = True,
                         move_to_device: bool = True) -> \
