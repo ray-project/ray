@@ -20,7 +20,5 @@ class TestGymCheckEnv():
             check_gym_environments(env)
 
 
-
-
 if __name__ == '__main__':
     pytest.main()

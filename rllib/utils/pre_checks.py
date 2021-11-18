@@ -8,12 +8,13 @@ import gym
 logger = logging.getLogger(__name__)
 
 
-def check_env(env: ["BaseEnv", "gym.Env", "MultiAgentEnv", "RemoteVectorEnv",
-              "VectorEnv"]) -> None:
+def check_env(env: [
+        "BaseEnv", "gym.Env", "MultiAgentEnv", "RemoteVectorEnv", "VectorEnv"
+]) -> None:
     from ray.rllib.env import BaseEnv, MultiAgentEnv, RemoteVectorEnv, \
         VectorEnv
-    supported_env_types = (BaseEnv, gym.Env, MultiAgentEnv,
-                           RemoteVectorEnv, VectorEnv)
+    supported_env_types = (BaseEnv, gym.Env, MultiAgentEnv, RemoteVectorEnv,
+                           VectorEnv)
     """Run pre-checks on env that uncover common errors in environments.
 
     Args:
