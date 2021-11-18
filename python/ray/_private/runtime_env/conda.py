@@ -14,7 +14,7 @@ from pathlib import Path
 
 import ray
 
-from ray._private.runtime_env.utils import RuntimeEnv
+from ray._private.runtime_env.utils import RuntimeEnvWrapper
 from ray._private.runtime_env.conda_utils import (
     get_conda_activate_commands, create_conda_env, delete_conda_env)
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -267,7 +267,7 @@ class CondaManager:
         return successful
 
     def setup(self,
-              runtime_env: RuntimeEnv,
+              runtime_env: RuntimeEnvWrapper,
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
         if not runtime_env.has_conda() and not runtime_env.has_pip():

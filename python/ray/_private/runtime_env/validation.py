@@ -9,7 +9,7 @@ import yaml
 import ray
 from ray._private.runtime_env.plugin import (RuntimeEnvPlugin,
                                              encode_plugin_uri)
-from ray._private.runtime_env.utils import RuntimeEnv
+from ray._private.runtime_env.utils import RuntimeEnvWrapper
 from ray._private.utils import import_attr
 from ray._private.runtime_env import conda
 
@@ -354,15 +354,15 @@ class ParsedRuntimeEnv(dict):
         return plugin_uris
 
     def get_proto_runtime_env(self):
-        """Return the protobuf structure of RuntimeEnv."""
+        """Return the protobuf structure of RuntimeEnvWrapper."""
         if self._cached_pb is None:
-            self._cached_pb = RuntimeEnv.from_dict(self, conda.get_uri)
+            self._cached_pb = RuntimeEnvWrapper.from_dict(self, conda.get_uri)
 
         return self._cached_pb
 
     @classmethod
     def deserialize(cls, serialized: str) -> "ParsedRuntimeEnv":
-        runtime_env = RuntimeEnv(serialized_runtime_env=serialized)
+        runtime_env = RuntimeEnvWrapper(serialized_runtime_env=serialized)
         return cls(runtime_env.to_dict(), _validate=False)
 
     def serialize(self) -> str:
