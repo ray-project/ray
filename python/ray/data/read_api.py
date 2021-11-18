@@ -21,8 +21,8 @@ from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource, RangeDatasource, \
     JSONDatasource, CSVDatasource, ParquetDatasource, BinaryDatasource, \
     NumpyDatasource, ReadTask
-from ray.data.impl.arrow_block import ArrowRow, \
-    DelegatingArrowBlockBuilder
+from ray.data.impl.table_block import DelegatingBlockBuilder
+from ray.data.impl.arrow_block import ArrowRow
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList, BlockPartition, \
     BlockPartitionMetadata
@@ -55,7 +55,7 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
     metadata: List[BlockMetadata] = []
     i = 0
     while i < len(items):
-        builder = DelegatingArrowBlockBuilder()
+        builder = DelegatingBlockBuilder()
         for item in items[i:i + block_size]:
             builder.add(item)
         block = builder.build()

@@ -8,7 +8,7 @@ import ray
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.block_list import BlockList
-from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
+from ray.data.impl.table_block import DelegatingBlockBuilder
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.util import _get_spread_resources_iter
 
@@ -122,7 +122,7 @@ def _shuffle_map(block: Block, idx: int, output_num_blocks: int,
 
 
 def _shuffle_reduce(*mapper_outputs: List[Block]) -> (Block, BlockMetadata):
-    builder = DelegatingArrowBlockBuilder()
+    builder = DelegatingBlockBuilder()
     for block in mapper_outputs:
         builder.add_block(block)
     new_block = builder.build()

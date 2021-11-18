@@ -1,7 +1,7 @@
 import collections
 import random
 import heapq
-from typing import Dict, Iterator, List, Union, Tuple, Any, TypeVar, Optional, \
+from typing import Dict, List, Union, Tuple, Any, TypeVar, Optional, \
     TYPE_CHECKING
 
 import numpy as np
@@ -12,11 +12,9 @@ except ImportError:
     pyarrow = None
 
 from ray.data.block import Block, BlockAccessor, BlockMetadata
-from ray.data.impl.block_builder import BlockBuilder
-from ray.data.impl.simple_block import SimpleBlockBuilder
-from ray.data.impl.table_block import TableBlockAccessor, TableRow, TableBlockBuilder
+from ray.data.impl.table_block import TableBlockAccessor, TableRow, \
+    TableBlockBuilder
 from ray.data.aggregate import AggregateFn
-from ray.data.impl.size_estimator import SizeEstimator
 
 if TYPE_CHECKING:
     import pandas
@@ -54,7 +52,7 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
     def __init__(self):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
-        TableBlockBuilder.__init(self, pyarrow.Table)
+        TableBlockBuilder.__init__(self, pyarrow.Table)
 
     def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
         return pyarrow.Table.from_pydict(columns)
@@ -121,7 +119,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def size_bytes(self) -> int:
         return self._table.nbytes
 
-    def _zip(self, acc: ArrowBlockAccessor) -> "Block[T]":
+    def _zip(self, acc: BlockAccessor) -> "Block[T]":
         r = self.to_arrow()
         s = acc.to_arrow()
         for col_name in s.column_names:

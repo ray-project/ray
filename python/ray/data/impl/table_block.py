@@ -1,9 +1,13 @@
-from typing import Callable, Dict, Iterator, List, Union, Tuple, Any, TypeVar, Optional, \
-    TYPE_CHECKING
+import collections
+
+from typing import Dict, Iterator, List, Union, Tuple, Any, TypeVar
 
 from ray.data.block import Block, BlockAccessor
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
+from ray.data.impl.size_estimator import SizeEstimator
+
+T = TypeVar("T")
 
 # The max size of Python tuples to buffer before compacting them into a
 # table in the BlockBuilder.
@@ -182,7 +186,8 @@ class TableBlockAccessor(BlockAccessor):
             def __next__(self):
                 self._cur += 1
                 if self._cur < outer.num_rows():
-                    row = outer._create_table_row(outer.slice(self._cur, 1, copy=False))
+                    row = outer._create_table_row(
+                        outer.slice(self._cur, 1, copy=False))
                     return row
                 raise StopIteration
 

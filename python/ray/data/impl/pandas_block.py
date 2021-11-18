@@ -1,7 +1,4 @@
-import collections
-import random
-import heapq
-from typing import Dict, Iterator, List, Union, Tuple, Any, TypeVar, Optional, \
+from typing import Dict, List, Union, Tuple, Any, TypeVar, Optional, \
     TYPE_CHECKING
 
 import numpy as np
@@ -12,29 +9,28 @@ except ImportError:
     pandas = None
 
 from ray.data.block import Block, BlockAccessor, BlockMetadata
-from ray.data.impl.block_builder import BlockBuilder
-from ray.data.impl.simple_block import SimpleBlockBuilder
-from ray.data.impl.table_block import TableBlockAccessor, TableRow, TableBlockBuilder
+from ray.data.impl.table_block import TableBlockAccessor, TableRow, \
+    TableBlockBuilder
 from ray.data.aggregate import AggregateFn
-from ray.data.impl.size_estimator import SizeEstimator
 
 if TYPE_CHECKING:
+    import pyarrow
     import pandas
 
 T = TypeVar("T")
 
 # TODO
-# # An Arrow block can be sorted by a list of (column, asc/desc) pairs,
-# # e.g. [("column1", "ascending"), ("column2", "descending")]
-# SortKeyT = List[Tuple[str, str]]
-# GroupKeyT = Union[None, str]
+# An Arrow block can be sorted by a list of (column, asc/desc) pairs,
+# e.g. [("column1", "ascending"), ("column2", "descending")]
+SortKeyT = List[Tuple[str, str]]
+GroupKeyT = Union[None, str]
 
 
 class PandasRow(TableRow):
     def as_pydict(self) -> dict:
-        # TODO: If the type of column name is not str, e.g. int. The result keys will stay as int.
-        # Should we enforce `str(k)`?
-        return {k: v[0] for k, v in df.to_dict("list").items()}
+        # TODO: If the type of column name is not str, e.g. int.
+        # The result keys will stay as int. Should we enforce `str(k)`?
+        return {k: v[0] for k, v in self._row.to_dict("list").items()}
 
     def __getitem__(self, key: str) -> Any:
         col = self._row[key]
@@ -43,7 +39,7 @@ class PandasRow(TableRow):
         item = col[0]
         try:
             # Try to interpret this as a numpy-type value.
-            # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.
+            # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
             return item.item()
         except AttributeError:
             # Fallback to the original form.
@@ -57,7 +53,7 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
     def __init__(self):
         if pandas is None:
             raise ImportError("Run `pip install pandas` for pandas support")
-        TableBlockBuilder.__init(self, pandas.DataFrame)
+        TableBlockBuilder.__init__(self, pandas.DataFrame)
 
     def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
         return pandas.DataFrame(columns)
@@ -87,7 +83,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     def random_shuffle(self, random_seed: Optional[int]) -> List[T]:
         return self._table.sample(frac=1, random_state=random_seed)
 
-    def schema(self) -> "???":
+    def schema(self) -> Any:
         # TODO: No native representation in pandas.
         raise NotImplementedError
 
@@ -117,7 +113,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         # TODO: Should we count index?
         return self._table.memory_usage(index=True, deep=True).sum()
 
-    def _zip(self, acc: PandasBlockAccessor) -> "Block[T]":
+    def _zip(self, acc: BlockAccessor) -> "Block[T]":
         r = self.to_pandas().copy(deep=False)
         s = acc.to_pandas()
         for col_name in s.columns:
@@ -159,8 +155,8 @@ class PandasBlockAccessor(TableBlockAccessor):
         raise NotImplementedError
 
     @staticmethod
-    def aggregate_combined_blocks(
-            blocks: List[Block[ArrowRow]], key: GroupKeyT,
-            aggs: Tuple[AggregateFn]) -> Tuple[Block[ArrowRow], BlockMetadata]:
+    def aggregate_combined_blocks(blocks: List[Block[PandasRow]],
+                                  key: GroupKeyT, aggs: Tuple[AggregateFn]
+                                  ) -> Tuple[Block[PandasRow], BlockMetadata]:
         # TODO: to be implemented
         raise NotImplementedError

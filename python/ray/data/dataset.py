@@ -42,7 +42,7 @@ from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
-from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
+from ray.data.impl.table_block import DelegatingBlockBuilder
 
 # An output type of iter_batches() determined by the batch_format parameter.
 BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
@@ -2165,7 +2165,7 @@ class Dataset(Generic[T]):
                 "The dataset has more than the given limit of {} records.".
                 format(limit))
         blocks = self.get_internal_block_refs()
-        output = DelegatingArrowBlockBuilder()
+        output = DelegatingBlockBuilder()
         for block in ray.get(blocks):
             output.add_block(block)
         return output.build().to_pandas()
