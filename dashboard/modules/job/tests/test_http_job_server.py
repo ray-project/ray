@@ -26,20 +26,20 @@ def job_sdk_client():
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    if status == JobStatus.FAILED:
+    if status.status == JobStatus.FAILED:
         logs = client.get_job_logs(job_id)
         raise RuntimeError(f"Job failed\nlogs:\n{logs}")
-    return status == JobStatus.SUCCEEDED
+    return status.status == JobStatus.SUCCEEDED
 
 
 def _check_job_failed(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    return status == JobStatus.FAILED
+    return status.status == JobStatus.FAILED
 
 
 def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    return status == JobStatus.STOPPED
+    return status.status == JobStatus.STOPPED
 
 
 @pytest.fixture(
