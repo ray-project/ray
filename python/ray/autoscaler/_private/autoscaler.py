@@ -90,7 +90,7 @@ class NonTerminatedNodes:
                 self.head = node
 
         # Note: For typical use-cases,
-        # self.all_nodes == self.workers + self.head
+        # self.all_nodes == self.workers + [self.head]
 
     def remove_terminating_nodes(self, terminating_nodes: List[NodeID]):
         """Remove nodes we're in the process of terminating."""
