@@ -290,6 +290,7 @@ def test_travel():
     "parsing_tuple",
     [("gcs://file.zip", Protocol.GCS, "file.zip"),
      ("s3://bucket/file.zip", Protocol.S3, "s3_bucket_file.zip"),
+     ("http://test.com/file.zip", Protocol.HTTP, "https_test_com_file.zip"),
      ("https://test.com/file.zip", Protocol.HTTPS, "https_test_com_file.zip"),
      ("gs://bucket/file.zip", Protocol.GS, "gs_bucket_file.zip")])
 def test_parsing(parsing_tuple):

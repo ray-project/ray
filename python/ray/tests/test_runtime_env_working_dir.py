@@ -3,11 +3,15 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import subprocess
+import random
 
+import requests
 import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
+from ray._private.test_utils import wait_for_condition
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -20,6 +24,32 @@ HTTPS_PACKAGE_URI = ("https://github.com/shrekris-anyscale/"
 S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 REMOTE_URIS = [HTTPS_PACKAGE_URI, S3_PACKAGE_URI]
+
+
+@pytest.fixture
+def http_file_server():
+    dir_path = tempfile.mkdtemp()
+    free_port = random.randint(30000, 45000)
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "http.server",
+            str(free_port),
+        ], cwd=dir_path)
+
+    # sanity check
+    def _check():
+        try:
+            resp = requests.get(f"http://127.0.0.1:{free_port}", timeout=1)
+            resp.raise_for_status()
+            return True
+        except Exception:
+            return False
+
+    wait_for_condition(_check)
+    yield dir_path, free_port
+    proc.kill()
 
 
 @pytest.fixture(scope="function")

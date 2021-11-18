@@ -1,4 +1,5 @@
 from enum import Enum
+import re
 from filelock import FileLock
 import hashlib
 import logging
@@ -40,6 +41,8 @@ class Protocol(Enum):
 
     GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
     CONDA = "conda", "For conda environments installed locally on each node."
+    HTTP = "http", ("Remote http path, "
+                    "assumes everything packed in one zip file.")
     HTTPS = "https", ("Remote https path, "
                       "assumes everything packed in one zip file.")
     S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
@@ -50,7 +53,7 @@ class Protocol(Enum):
     def remote_protocols(cls):
         # Returns a lit of protocols that support remote storage
         # These protocols should only be used with paths that end in ".zip"
-        return [cls.HTTPS, cls.S3, cls.GS]
+        return [cls.HTTP, cls.HTTPS, cls.S3, cls.GS]
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
@@ -132,19 +135,19 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
                 netloc='_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip'
             )
             -> ("gcs", "_ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip")
-    For HTTPS URIs, the netloc will have '.' replaced with '_', and
+    For HTTP(S) URIs, the netloc will have '.' replaced with '_', and
     the path will have '/' replaced with '_'. The package name will be the
-    adjusted path with 'https_' prepended.
+    adjusted path with 'http(s)_' prepended.
         urlparse(
-            "https://github.com/shrekris-anyscale/test_module/archive/HEAD.zip"
+            "http(s)://github.com/my-repo/test_module/archive/HEAD.zip"
         )
             -> ParseResult(
-                scheme='https',
+                scheme='http(s)',
                 netloc='github.com',
-                path='/shrekris-anyscale/test_repo/archive/HEAD.zip'
+                path='/my-repo/test_repo/archive/HEAD.zip'
             )
-            -> ("https",
-            "github_com_shrekris-anyscale_test_repo_archive_HEAD.zip")
+            -> ("http(s)",
+            "github_com_my-repo_test_repo_archive_HEAD.zip")
     For S3 URIs, the bucket and path will have '/' replaced with '_'. The
     package name will be the adjusted path with 's3_' prepended.
         urlparse("s3://bucket/dir/file.zip")
@@ -170,11 +173,9 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
     if protocol == Protocol.S3 or protocol == Protocol.GS:
         return (protocol,
                 f"{protocol.value}_{uri.netloc}{uri.path.replace('/', '_')}")
-    elif protocol == Protocol.HTTPS:
-        return (
-            protocol,
-            f"https_{uri.netloc.replace('.', '_')}{uri.path.replace('/', '_')}"
-        )
+    elif protocol == Protocol.HTTPS or protocol == Protocol.HTTP:
+        cleaned_path_name = re.sub("[:/]", "_", uri.netloc)
+        return (protocol, (f"{protocol.value.lower()}_{cleaned_path_name}"))
     else:
         return (protocol, uri.netloc)
 
