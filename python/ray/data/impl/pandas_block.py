@@ -65,13 +65,19 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
         raise pandas.DataFrame()
 
 
+class PandasBlockSchema:
+    # This is to be compatible with pyarrow.lib.schema
+    def __init__(self, names, types):
+        self.names = names
+        self.types = types
+
 class PandasBlockAccessor(TableBlockAccessor):
     def __init__(self, table: "pandas.DataFrame"):
         if pandas is None:
             raise ImportError("Run `pip install pandas` for pandas support")
         TableBlockAccessor.__init__(self, table)
 
-    def _create_table_row(row: "pandas.DataFrame") -> PandasRow:
+    def _create_table_row(self, row: "pandas.DataFrame") -> PandasRow:
         return PandasRow(row)
 
     def slice(self, start: int, end: int, copy: bool) -> "pandas.DataFrame":
@@ -85,7 +91,8 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def schema(self) -> Any:
         # TODO: No native representation in pandas.
-        raise NotImplementedError
+        dtypes = self._table.dtypes
+        return PandasBlockSchema(names=dtypes.index.tolist(), types=dtypes.values.tolist())
 
     def to_pandas(self) -> "pandas.DataFrame":
         return self._table

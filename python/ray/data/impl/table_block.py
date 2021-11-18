@@ -170,7 +170,7 @@ class TableBlockAccessor(BlockAccessor):
     def __init__(self, table: Any):
         self._table = table
 
-    def _create_table_row(row: Any) -> TableRow:
+    def _create_table_row(self, row: Any) -> TableRow:
         raise NotImplementedError
 
     def iter_rows(self) -> Iterator[TableRow]:
@@ -187,7 +187,7 @@ class TableBlockAccessor(BlockAccessor):
                 self._cur += 1
                 if self._cur < outer.num_rows():
                     row = outer._create_table_row(
-                        outer.slice(self._cur, 1, copy=False))
+                        outer.slice(self._cur, self._cur + 1, copy=False))
                     return row
                 raise StopIteration
 

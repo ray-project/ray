@@ -70,7 +70,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             raise ImportError("Run `pip install pyarrow` for Arrow support")
         TableBlockAccessor.__init__(self, table)
 
-    def _create_table_row(row: "pyarrow.Table") -> ArrowRow:
+    def _create_table_row(self, row: "pyarrow.Table") -> ArrowRow:
         return ArrowRow(row)
 
     @classmethod
