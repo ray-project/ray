@@ -8,13 +8,14 @@ From laptop to production
 
 - **Package**: A collection of files and configurations that defines an application thus allows it to be executed in a different environment remotely (ideally self-contained).
 
-- **Job**: A Ray application that can successfully execute on a user laptop, also can be submitted to a remote entity with specs such that its execution and lifetime is beyond a single ray cluster.
-Open source Ray will have the functionality to run jobs, but not manage them outside of a cluster.
+- **Job**: A Ray application that will be submitted to a Ray cluster for execution. Once a job is submitted, it runs once on the cluster to completion or failure. Retries or different runs with different parameters should be handled by the submitter. Jobs are scoped to the lifetime of a ray cluster.
 
-- **Job Manager**: An entity that manages the lifecycle of a Job and potentially multiple ray clusters, such as scheduling, killing, polling status, getting logs, and persisting inputs / outputs.
-Should be highly available (HA) by default
-Can be any framework with these abilities, such as Airflow.
+- **Job Manager**: An entity that manages the lifecycle of a Job and potentially multiple ray clusters, such as scheduling, killing, polling status, getting logs, and persisting inputs / outputs. Should be highly available (HA) by default. Can be any framework with these abilities, such as Airflow.
 
+Within the context of job submission, the packaging part is equivalent to runtime environment.
+
+Entrypoint:
+Runtime Environment:
 
 **The goal of Ray job submssion is to provide a lightweight mechanism for user to submit their locally developed and tested application to a running local / remote ray cluster, thus enable user to package, deploy, and manage their ray application as jobs, with pluggable job manager of their choice.**
 
