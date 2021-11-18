@@ -215,13 +215,13 @@ StreamingStatus StreamingQueueConsumer::ConsumeItemFromChannel(
 
   STREAMING_LOG(DEBUG) << "GetQueueItem qid: " << channel_info_.channel_id
                        << " seq_id: " << item.SeqId() << " msg_id: " << item.MaxMsgId()
-                       << " data_size: " << data_size;
+                       << " data_size: " << item.DataSize();
   return StreamingStatus::OK;
 }
 
 StreamingStatus StreamingQueueConsumer::NotifyChannelConsumed(uint64_t offset_id) {
   STREAMING_CHECK(queue_ != nullptr);
-  queue_->OnConsumed(offset_id, channel_info_.queue_info.consumed_bundled_id);
+  queue_->OnConsumed(offset_id, channel_info_.queue_info.consumed_bundle_id);
   return StreamingStatus::OK;
 }
 

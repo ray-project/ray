@@ -113,6 +113,7 @@ class NotificationMessage : public Message {
   virtual void ToProtobuf(std::string *output);
 
   inline uint64_t MsgId() { return msg_id_; }
+  inline uint64_t BundleId() { return bundle_id_; }
   inline queue::protobuf::StreamingQueueMessageType Type() { return type_; }
 
  private:

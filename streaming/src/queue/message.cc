@@ -105,7 +105,7 @@ std::shared_ptr<NotificationMessage> NotificationMessage::FromBytes(uint8_t *byt
   ActorID dst_actor_id = ActorID::FromBinary(message.common().dst_actor_id());
   ObjectID queue_id = ObjectID::FromBinary(message.common().queue_id());
   uint64_t seq_id = message.seq_id();
-  uint64_t bundle_id message.bundle_id();
+  uint64_t bundle_id = message.bundle_id();
 
   std::shared_ptr<NotificationMessage> notify_msg = std::make_shared<NotificationMessage>(
       src_actor_id, dst_actor_id, queue_id, seq_id, bundle_id);

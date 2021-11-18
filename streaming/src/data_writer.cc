@@ -445,7 +445,7 @@ bool DataWriter::WriteAllToChannel(ProducerChannelInfo *info) {
 }
 
 bool DataWriter::SendEmptyToChannel(ProducerChannelInfo *channel_info) {
-  if (!flow_controller_->ShouldFlowControl(channel_info)) {
+  if (!flow_controller_->ShouldFlowControl(*channel_info)) {
     WriteEmptyMessage(*channel_info);
   }
   return true;

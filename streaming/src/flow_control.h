@@ -28,7 +28,7 @@ class UnconsumedSeqFlowControl : public FlowControl {
  public:
   UnconsumedSeqFlowControl(
       std::unordered_map<ObjectID, std::shared_ptr<ProducerChannel>> &channel_map,
-      uint32_t step);
+      uint32_t consumed_message_step, uint32_t consumed_bundle_step);
   ~UnconsumedSeqFlowControl() = default;
   bool ShouldFlowControl(ProducerChannelInfo &channel_info);
 
