@@ -70,10 +70,8 @@ class ImportThread:
                 if msg is None:
                     self.threads_stopped.wait(timeout=0.01)
                     continue
-
                 if msg["type"] == "subscribe":
                     continue
-                assert msg["data"] == b"rpush"
                 self._do_importing()
         except (OSError, redis.exceptions.ConnectionError, grpc.RpcError) as e:
             logger.error(f"ImportThread: {e}")
