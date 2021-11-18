@@ -122,12 +122,9 @@ def job_status(address: Optional[str], job_id: str):
     """
     client = _get_sdk_client(address)
     status = client.get_job_status(job_id)
-    logger.info(f"Job status for '{job_id}':")
-    message = str(status.status)
+    logger.info(f"Job status for '{job_id}': {status.status}.")
     if status.message is not None:
-        message += f":\n{status.message}"
-
-    logger.info(message)
+        logger.info(status.message)
 
 
 @job_cli_group.command("stop", help="Attempt to stop a running job.")

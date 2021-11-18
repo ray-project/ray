@@ -232,7 +232,7 @@ class TestRuntimeEnv:
             check_job_failed, job_manager=job_manager, job_id=job_id)
 
         status = job_manager.get_job_status(job_id)
-        assert "runtime_env failed to be set up" in status.message
+        assert "runtime_env setup failed" in status.message
 
     def test_pass_metadata(self, job_manager):
         def dict_to_str(d):

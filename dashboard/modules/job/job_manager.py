@@ -275,9 +275,7 @@ class JobManager:
                 job_id,
                 JobStatusInfo(
                     status=JobStatus.FAILED,
-                    message=(
-                        f"Failed to set up runtime_env for the job: {result}."
-                    )))
+                    message=(f"runtime_env setup failed: {result}")))
         elif isinstance(result, Exception):
             logger.error(
                 f"Failed to start supervisor for job {job_id}: {result}.")
@@ -285,8 +283,8 @@ class JobManager:
                 job_id,
                 JobStatusInfo(
                     status=JobStatus.FAILED,
-                    message=f"Error occurred while starting the job: {result}."
-                ))
+                    message=f"Error occurred while starting the job: {result}")
+            )
         else:
             assert False
 
