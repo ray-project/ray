@@ -14,7 +14,7 @@ except ImportError:
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
-from ray.data.impl.table_block import TableRow, TableBlockBuilder
+from ray.data.impl.table_block import TableBlockAccessor, TableRow, TableBlockBuilder
 from ray.data.aggregate import AggregateFn
 from ray.data.impl.size_estimator import SizeEstimator
 
@@ -66,35 +66,19 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
         raise pyarrow.Table.from_pydict({})
 
 
-class ArrowBlockAccessor(BlockAccessor):
+class ArrowBlockAccessor(TableBlockAccessor):
     def __init__(self, table: "pyarrow.Table"):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
-        self._table = table
+        TableBlockAccessor.__init__(self, table)
+
+    def _create_table_row(row: "pyarrow.Table") -> ArrowRow:
+        return ArrowRow(row)
 
     @classmethod
     def from_bytes(cls, data: bytes):
         reader = pyarrow.ipc.open_stream(data)
         return cls(reader.read_all())
-
-    def iter_rows(self) -> Iterator[ArrowRow]:
-        outer = self
-
-        class Iter:
-            def __init__(self):
-                self._cur = -1
-
-            def __iter__(self):
-                return self
-
-            def __next__(self):
-                self._cur += 1
-                if self._cur < outer._table.num_rows:
-                    row = ArrowRow(outer._table.slice(self._cur, 1))
-                    return row
-                raise StopIteration
-
-        return Iter()
 
     def slice(self, start: int, end: int, copy: bool) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
@@ -137,15 +121,7 @@ class ArrowBlockAccessor(BlockAccessor):
     def size_bytes(self) -> int:
         return self._table.nbytes
 
-    def zip(self, other: "Block[T]") -> "Block[T]":
-        acc = BlockAccessor.for_block(other)
-        if not isinstance(acc, ArrowBlockAccessor):
-            raise ValueError("Cannot zip {} with block of type {}".format(
-                type(self), type(other)))
-        if acc.num_rows() != self.num_rows():
-            raise ValueError(
-                "Cannot zip self (length {}) with block of length {}".format(
-                    self.num_rows(), acc.num_rows()))
+    def _zip(self, acc: ArrowBlockAccessor) -> "Block[T]":
         r = self.to_arrow()
         s = acc.to_arrow()
         for col_name in s.column_names:
