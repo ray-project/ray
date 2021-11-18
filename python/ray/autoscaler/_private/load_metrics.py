@@ -1,8 +1,10 @@
 from collections import namedtuple, Counter
+from dataclasses import dataclass
 from functools import reduce
 import logging
+from numbers import Number
 import time
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import numpy as np
 import ray.ray_constants
@@ -15,9 +17,17 @@ from ray.core.generated.common_pb2 import PlacementStrategy
 
 logger = logging.getLogger(__name__)
 
-LoadMetricsSummary = namedtuple(
-    "LoadMetricsSummary",
-    ["usage", "resource_demand", "pg_demand", "request_demand", "node_types"])
+# A Dict and the count of how many times it occurred.
+# Refer to freq_of_dicts() below.
+DictCount = Tuple[Dict, Number]
+
+@dataclass
+class LoadMetricsSummary:
+    usage: Dict[str, Tuple[Number, Number]]
+    resource_demand: List[DictCount]
+    pg_demand: List[DictCount]
+    request_demand: List[DictCount]
+    node_types: List[DictCount]
 
 
 def add_resources(dict1: Dict[str, float],
@@ -35,7 +45,7 @@ def add_resources(dict1: Dict[str, float],
 
 def freq_of_dicts(dicts: List[Dict],
                   serializer=lambda d: frozenset(d.items()),
-                  deserializer=dict):
+                  deserializer=dict) -> DictCount:
     """Count a list of dictionaries (or unhashable types).
 
     This is somewhat annoying because mutable data structures aren't hashable,
@@ -43,7 +53,7 @@ def freq_of_dicts(dicts: List[Dict],
 
     Args:
         dicts (List[D]): A list of dictionaries to be counted.
-        serializer (D -> S): A custom serailization function. The output type S
+        serializer (D -> S): A custom serialization function. The output type S
             must be hashable. The default serializer converts a dictionary into
             a frozenset of KV pairs.
         deserializer (S -> U): A custom deserialization function. See the
