@@ -109,7 +109,12 @@ You can specify different runtime environments per-actor or per-task using ``.op
    :start-after: __per_task_per_actor_start__
    :end-before: __per_task_per_actor_end__
 
-This allows you to have actors and tasks running in their own environments, independent of the surrounding environment. (The surrounding environment could be the job's runtime environment, or the base environment of the cluster.)
+This allows you to have actors and tasks running in their own environments, independent of the surrounding environment. (The surrounding environment could be the job's runtime environment, or the system environment of the cluster.)
+
+.. warning::
+
+  Ray does not guarantee compatibility between tasks and actors with conflicting runtime environments.
+  For example, if an actor whose runtime environment contains a ``pip`` package tries to communicate with an actor with a different version of that package, it can lead to unexpected behavior such as unpickling errors.
 
 .. _workflow-local-files:
 
