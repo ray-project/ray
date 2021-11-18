@@ -235,7 +235,8 @@ It offers high scalability and unified APIs for a
             "env": SimpleCorridor,
             # Config dict to be passed to our custom env's constructor.
             "env_config": {
-                "corridor_length": 20  # Use corridor with 20 fields (including S and G).
+                # Use corridor with 20 fields (including S and G).
+                "corridor_length": 20
             },
             # Parallelize environment rollouts.
             "num_workers": 3,

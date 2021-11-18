@@ -16,8 +16,8 @@ class ParrotEnv(gym.Env):
 
     def __init__(self, config):
         # Make the space (for actions and observations) configurable.
-        self.action_space = config.get(
-            "parrot_shriek_range", gym.spaces.Box(-1.0, 1.0, shape=(1, )))
+        self.action_space = config.get("parrot_shriek_range",
+                                       gym.spaces.Box(-1.0, 1.0, shape=(1, )))
         # Since actions should repeat observations, their spaces must be the
         # same.
         self.observation_space = self.action_space
@@ -70,7 +70,6 @@ trainer = PPOTrainer(
 for i in range(5):
     results = trainer.train()
     print(f"Iter: {i}; avg. reward={results['episode_reward_mean']}")
-
 
 # Perform inference (action computations) based on given env observations.
 # Note that we are using a slightly simpler env here (-3.0 to 3.0, instead
