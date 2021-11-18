@@ -3,6 +3,7 @@ import threading
 from typing import Any, Dict, List, Union
 
 from ray.core.generated import kuberay_pb2
+from ray.core.generated import kuberay_pb2_grpc
 import grpc
 from ray.autoscaler.node_provider import NodeProvider
 
