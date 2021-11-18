@@ -164,7 +164,8 @@ RLlib Quick Start
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/rllib/rllib-logo.png
 
 `RLlib`_ is an industry-grade library for reinforcement learning (RL), built on top of Ray.
-It offers high scalability and unified APIs for a variety of industry- and research applications.
+It offers high scalability and unified APIs for a
+`variety of industry- and research applications <https://www.anyscale.com/event-category/ray-summit>`_.
 
 .. code-block:: bash
 

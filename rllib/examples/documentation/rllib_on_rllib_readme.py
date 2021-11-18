@@ -37,8 +37,7 @@ class ParrotEnv(gym.Env):
     def step(self, action):
         """Takes a single step in the episode given `action`
 
-        Returns:
-            New observation, reward, done-flag, info-dict (empty).
+        Returns: New observation, reward, done-flag, info-dict (empty).
         """
         # Set `done` flag after 10 steps.
         self.episode_len += 1
@@ -50,7 +49,8 @@ class ParrotEnv(gym.Env):
         return self.cur_obs, reward, done, {}
 
 
-# Create an RLlib Trainer instance.
+# Create an RLlib Trainer instance to learn how to act in the above
+# environment.
 trainer = PPOTrainer(
     config={
         # Env class to use (here: our gym.Env sub-class from above).

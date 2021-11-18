@@ -15,14 +15,22 @@ purely from offline (historic) datasets, or using externally
 connected simulators, RLlib offers a simple solution for each of your decision
 making needs.
 
-You **don't need** to be an **RL expert**, nor do you need to
-learn Ray or any of its other libraries in order to get started with RLlib.
-If you either have your problem defined and coded in python as an
-"`RL environment <https://github.com/openai/gym>`_" or are in possession of pre-recorded
-(historic) data to learn from, you should be up and running with RLlib in a day.
+You **don't need** to be an **RL expert** to use RLlib, nor do you need to learn Ray or any
+other of its libraries! If you either have your problem coded (in python) as an
+`RL environment <https://medium.com/distributed-computing-with-ray/anatomy-of-a-custom-environment-for-rllib-327157f269e5>`_
+or own lots of pre-recorded, historic behavioral data to learn from, you will be
+up and running in only a few days.
 
-RLlib is already used in production by industry leaders in many different verticals,
-such as manufacturing, finance, gaming, car makers, robotics, and others.
+RLlib is already used in production by industry leaders in many different verticals, such as
+`climate control <https://www.anyscale.com/events/2021/06/23/applying-ray-and-rllib-to-real-life-industrial-use-cases>`_,
+`manufacturing and logistics <https://www.anyscale.com/events/2021/06/22/offline-rl-with-rllib>`_,
+`finance <https://www.anyscale.com/events/2021/06/22/a-24x-speedup-for-reinforcement-learning-with-rllib-+-ray>`_,
+`gaming <https://www.anyscale.com/events/2021/06/22/using-reinforcement-learning-to-optimize-iap-offer-recommendations-in-mobile-games>`_,
+`automobile <https://www.anyscale.com/events/2021/06/23/using-rllib-in-an-enterprise-scale-reinforcement-learning-solution>`_,
+`robotics <https://www.anyscale.com/events/2021/06/23/introducing-amazon-sagemaker-kubeflow-reinforcement-learning-pipelines-for>`_,
+`sailing/ship design <https://www.youtube.com/watch?v=cLCK13ryTpw>`_,
+and many others.
+
 
 RLlib in 60 seconds
 -------------------
