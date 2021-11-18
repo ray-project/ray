@@ -26,10 +26,6 @@ from ray.autoscaler.tags import (
     NODE_KIND_WORKER, NODE_TYPE_LEGACY_HEAD, TAG_RAY_NODE_KIND, NODE_KIND_HEAD)
 import ray.ray_constants as ray_constants
 
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from ray.autoscaler._private.autoscaler import NonTerminatedNodes
-
 logger = logging.getLogger(__name__)
 
 # The minimum number of nodes to launch concurrently.
@@ -64,6 +60,20 @@ class ResourceDemandScheduler:
         self.max_workers = max_workers
         self.head_node_type = head_node_type
         self.upscaling_speed = upscaling_speed
+
+    def _get_head_and_workers(
+            self, nodes: List[NodeID]) -> Tuple[NodeID, List[NodeID]]:
+        """Returns the head node's id and the list of all worker node ids,
+        given a list `nodes` of all node ids in the cluster.
+        """
+        head, workers = "", []
+        for node in nodes:
+            tags = self.provider.node_tags(node)
+            if tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD:
+                head = node
+            elif tags[TAG_RAY_NODE_KIND] == NODE_KIND_WORKER:
+                workers.append(node)
+        return head, workers
 
     def reset_config(self,
                      provider: NodeProvider,
@@ -128,7 +138,7 @@ class ResourceDemandScheduler:
 
     def get_nodes_to_launch(
             self,
-            nodes: "NonTerminatedNodes",
+            nodes: List[NodeID],
             launching_nodes: Dict[NodeType, int],
             resource_demands: List[ResourceDict],
             unused_resources_by_ip: Dict[NodeIP, ResourceDict],
@@ -149,7 +159,7 @@ class ResourceDemandScheduler:
                 the bundle requests, subject to max_worker constraints.
 
         Args:
-            nodes: Collection of existing nodes in the cluster.
+            nodes: List of existing nodes in the cluster.
             launching_nodes: Summary of node types currently being launched.
             resource_demands: Vector of resource demands from the scheduler.
             unused_resources_by_ip: Mapping from ip to available resources.
@@ -169,13 +179,12 @@ class ResourceDemandScheduler:
             self._infer_legacy_node_resources_if_needed(
                 nodes, max_resources_by_ip)
 
-        self._update_node_resources_from_runtime(nodes.all_nodes,
-                                                 max_resources_by_ip)
+        self._update_node_resources_from_runtime(nodes, max_resources_by_ip)
 
         node_resources: List[ResourceDict]
         node_type_counts: Dict[NodeType, int]
         node_resources, node_type_counts = self.calculate_node_resources(
-            nodes.all_nodes, launching_nodes, unused_resources_by_ip)
+            nodes, launching_nodes, unused_resources_by_ip)
 
         logger.debug("Cluster resources: {}".format(node_resources))
         logger.debug("Node counts: {}".format(node_type_counts))
@@ -255,7 +264,7 @@ class ResourceDemandScheduler:
 
         # Limit the number of concurrent launches
         total_nodes_to_add = self._get_concurrent_resource_demand_to_launch(
-            total_nodes_to_add, unused_resources_by_ip.keys(), nodes.all_nodes,
+            total_nodes_to_add, unused_resources_by_ip.keys(), nodes,
             launching_nodes, adjusted_min_workers,
             placement_groups_nodes_max_limit)
 
@@ -263,7 +272,7 @@ class ResourceDemandScheduler:
         return total_nodes_to_add, final_unfulfilled
 
     def _legacy_worker_node_to_launch(
-            self, nodes: "NonTerminatedNodes", launching_nodes: Dict[NodeType, int],
+            self, nodes: List[NodeID], launching_nodes: Dict[NodeType, int],
             node_resources: List[ResourceDict],
             resource_demands: List[ResourceDict]) -> Dict[NodeType, int]:
         """Get worker nodes to launch when resources missing in legacy yamls.
@@ -272,9 +281,12 @@ class ResourceDemandScheduler:
         workers, it returns max(1, min_workers) worker nodes from which we
         later calculate the node resources.
         """
+        # Populate worker list.
+        _, worker_nodes = self._get_head_and_workers(nodes)
+
         if self.max_workers == 0:
             return {}
-        elif sum(launching_nodes.values()) + len(nodes.workers) > 0:
+        elif sum(launching_nodes.values()) + len(worker_nodes) > 0:
             # If we are already launching a worker node, wait for its resources
             # to be known.
             # TODO(ameer): Note that if first worker node fails this will never
@@ -292,7 +304,7 @@ class ResourceDemandScheduler:
                 return {}
 
     def _update_node_resources_from_runtime(
-            self, all_nodes: List[NodeIP],
+            self, nodes: List[NodeID],
             max_resources_by_ip: Dict[NodeIP, ResourceDict]):
         """Update static node type resources with runtime resources
 
@@ -304,7 +316,7 @@ class ResourceDemandScheduler:
 
         if not need_update:
             return
-        for node_id in all_nodes:
+        for node_id in nodes:
             tags = self.provider.node_tags(node_id)
 
             if TAG_RAY_USER_NODE_TYPE not in tags:
@@ -337,7 +349,7 @@ class ResourceDemandScheduler:
                     self.node_resource_updated.add(node_type)
 
     def _infer_legacy_node_resources_if_needed(
-            self, nodes: "NonTerminatedNodes",
+            self, nodes: List[NodeIP],
             max_resources_by_ip: Dict[NodeIP, ResourceDict]
     ) -> (bool, Dict[NodeType, int]):
         """Infers node resources for legacy config files.
@@ -345,13 +357,14 @@ class ResourceDemandScheduler:
         Updates the resources of the head and worker node types in
         self.node_types.
         Args:
-            nodes: Collection of all nodes in the cluster
+            nodes: List of all node ids in the cluster
             max_resources_by_ip: Mapping from ip to static node resources.
         """
+        head_node, worker_nodes = self._get_head_and_workers(nodes)
         # We fill the head node resources only once.
         if not self.node_types[NODE_TYPE_LEGACY_HEAD]["resources"]:
             try:
-                head_ip = self.provider.internal_ip(nodes.head)
+                head_ip = self.provider.internal_ip(head_node)
                 self.node_types[NODE_TYPE_LEGACY_HEAD]["resources"] = \
                     copy.deepcopy(max_resources_by_ip[head_ip])
             except (IndexError, KeyError):
@@ -361,8 +374,7 @@ class ResourceDemandScheduler:
             # Set the node_types here in case we already launched a worker node
             # from which we can directly get the node_resources.
             worker_node_ips = [
-                self.provider.internal_ip(node_id)
-                for node_id in nodes.workers
+                self.provider.internal_ip(node_id) for node_id in worker_nodes
             ]
             for ip in worker_node_ips:
                 if ip in max_resources_by_ip:
@@ -456,14 +468,14 @@ class ResourceDemandScheduler:
         return running_nodes, pending_nodes
 
     def calculate_node_resources(
-            self, all_nodes: List[NodeID], pending_nodes: Dict[NodeID, int],
+            self, nodes: List[NodeID], pending_nodes: Dict[NodeID, int],
             unused_resources_by_ip: Dict[str, ResourceDict]
     ) -> (List[ResourceDict], Dict[NodeType, int]):
         """Returns node resource list and node type counts.
 
            Counts the running nodes, pending nodes.
            Args:
-                all_nodes: All existing nodes.
+                nodes: Existing nodes.
                 pending_nodes: Pending nodes.
            Returns:
                 node_resources: a list of running + pending resources.
@@ -498,7 +510,7 @@ class ResourceDemandScheduler:
             node_resources.append(available)
             node_type_counts[node_type] += 1
 
-        for node_id in all_nodes:
+        for node_id in nodes:
             tags = self.provider.node_tags(node_id)
             if TAG_RAY_USER_NODE_TYPE in tags:
                 node_type = tags[TAG_RAY_USER_NODE_TYPE]
