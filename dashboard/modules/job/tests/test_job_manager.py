@@ -1,7 +1,6 @@
 import os
 import psutil
 import tempfile
-import time
 import sys
 from uuid import uuid4
 
@@ -54,6 +53,12 @@ def check_job_stopped(job_manager, job_id):
         JobStatus.PENDING, JobStatus.RUNNING, JobStatus.STOPPED
     }
     return status.status == JobStatus.STOPPED
+
+
+def check_job_running(job_manager, job_id):
+    status = job_manager.get_job_status(job_id)
+    assert status.status in {JobStatus.PENDING, JobStatus.RUNNING}
+    return status.status == JobStatus.RUNNING
 
 
 def check_subprocess_cleaned(pid):
@@ -284,17 +289,18 @@ class TestAsyncAPI:
             entrypoint=wait_for_file_cmd,
             _start_signal_actor=_start_signal_actor)
 
-        for _ in range(10):
-            time.sleep(0.1)
-            status = job_manager.get_job_status(job_id)
-            if _start_signal_actor:
+        status = job_manager.get_job_status(job_id)
+        if _start_signal_actor:
+            for _ in range(10):
                 assert status.status == JobStatus.PENDING
                 logs = job_manager.get_job_logs(job_id)
                 assert logs == ""
-            else:
-                assert status.status == JobStatus.RUNNING
-                logs = job_manager.get_job_logs(job_id)
-                assert "Waiting..." in logs
+        else:
+            wait_for_condition(
+                check_job_running, job_manager=job_manager, job_id=job_id)
+
+            wait_for_condition(
+                lambda: "Waiting..." in job_manager.get_job_logs(job_id))
 
         return pid_file, tmp_file, job_id
 
