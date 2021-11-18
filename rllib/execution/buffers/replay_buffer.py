@@ -374,5 +374,3 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
 # Visible for testing.
 _local_replay_buffer = None
-
-

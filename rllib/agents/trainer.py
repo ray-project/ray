@@ -2189,8 +2189,8 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _create_local_replay_buffer_if_necessary(
-            self,
-            config: PartialTrainerConfigDict) -> Optional[MultiAgentReplayBuffer]:
+            self, config: PartialTrainerConfigDict
+    ) -> Optional[MultiAgentReplayBuffer]:
         """Create a MultiAgentReplayBuffer instance if necessary.
 
         Args:
