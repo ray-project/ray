@@ -26,7 +26,7 @@ if __name__ == "__main__":
         ray.init(address="auto")
 
     from xgboost_ray import RayParams
-    from ray.util.xgboost.release_test_util import train_ray, get_parquet_files
+    from ray.util.xgboost.release_test_util import train_ray
 
     ray_params = RayParams(
         elastic_training=False,
@@ -36,15 +36,24 @@ if __name__ == "__main__":
         gpus_per_actor=1)
 
     @ray.remote
-    def ray_get_parquet_files():
-        return get_parquet_files(
-            path="/data/classification.parquet",
-            num_files=25,
-        )
+    def ray_get_parquet_files(path, num_files):
+        import glob
+        path = os.path.expanduser(path)
+        if not os.path.exists(path):
+            raise ValueError(f"Path does not exist: {path}")
+
+        files = sorted(glob.glob(f"{path}/**/*.parquet"))
+        while num_files > len(files):
+            files = files + files
+        return files[0:num_files]
 
     start = time.time()
     train_ray(
-        path=ray.get(ray_get_parquet_files.remote()),
+        path=ray.get(
+            ray_get_parquet_files.remote(
+                path="/data/classification.parquet",
+                num_files=25,
+            )),
         num_workers=4,
         num_boost_rounds=100,
         regression=False,
