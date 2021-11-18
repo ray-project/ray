@@ -68,7 +68,7 @@ def g():
 
 # Specify a runtime environment in the actor definition.  Future instantiations
 # via `MyClass.remote()` will use this runtime environment unless overridden by
-# using `.options()` a above.`
+# using `.options()` as above.
 @ray.remote(runtime_env=runtime_env)
 class MyClass:
     pass
