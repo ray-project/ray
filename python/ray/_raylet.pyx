@@ -1420,7 +1420,8 @@ cdef class CoreWorker:
             message.decode("utf-8")))
 
     cdef string_to_c_task_scheduling_policy(
-            self, scheduling_policy, CTaskSchedulingPolicy* c_scheduling_policy):
+            self, scheduling_policy,
+            CTaskSchedulingPolicy* c_scheduling_policy):
         if scheduling_policy is None:
             c_scheduling_policy[0] = TASK_SCHEDULING_POLICY_DEFAULT
         elif scheduling_policy == "SPREAD":
@@ -1455,7 +1456,8 @@ cdef class CoreWorker:
             c_vector[CObjectReference] return_refs
             CTaskSchedulingPolicy c_scheduling_policy
 
-        self.string_to_c_task_scheduling_policy(scheduling_policy, &c_scheduling_policy)
+        self.string_to_c_task_scheduling_policy(
+            scheduling_policy, &c_scheduling_policy)
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -1517,7 +1519,8 @@ cdef class CoreWorker:
             c_vector[CConcurrencyGroup] c_concurrency_groups
             CTaskSchedulingPolicy c_scheduling_policy
 
-        self.string_to_c_task_scheduling_policy(scheduling_policy, &c_scheduling_policy)
+        self.string_to_c_task_scheduling_policy(
+            scheduling_policy, &c_scheduling_policy)
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
