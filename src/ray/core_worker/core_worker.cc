@@ -3215,6 +3215,7 @@ void CoreWorker::GetAsync(const ObjectID &object_id, SetResultCallback success_c
       fallback_callback(ray_object, object_id, python_future);
     } else {
       success_callback(ray_object, object_id, python_future);
+      ray_object->SetAccessed();
     }
   });
 }
@@ -3233,7 +3234,9 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
     if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok()) {
       RAY_CHECK(vec.size() > 0)
           << "Failed to get local object but Raylet notified object is local.";
-      return success(vec.front(), object_id, py_future);
+      success(vec.front(), object_id, py_future);
+      vec.front()->SetAccessed();
+      return;
     }
   }
 

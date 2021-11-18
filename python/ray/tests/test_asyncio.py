@@ -316,6 +316,20 @@ async def test_async_obj_unhandled_errors(ray_start_regular_shared):
     await asyncio.sleep(1)
     assert num_exceptions == 1, num_exceptions
 
+    # Test that async get with callback will mark exception handled
+    ref = f.remote()
+    _result = None
+
+    def cb(obj):
+        _result = obj
+
+    fut = ref.future()
+    fut.add_done_callback(cb)
+    wait_for_condition(lambda: isinstance(_result, ray.exceptions.RayError))
+    # This error should be marked handled even though there are not explicit
+    # ray.get
+    assert num_exceptions == 1, num_exceptions
+
 
 # This case tests that the asyncio actor shouldn't create thread
 # pool with max_concurrency threads. Otherwise it will allocate
