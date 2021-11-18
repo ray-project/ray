@@ -1,5 +1,5 @@
 import logging
-from typing import Tuple, Callable, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray.rllib.env.base_env import BaseEnv, _DUMMY_AGENT_ID, ASYNC_RESET_RETURN
@@ -60,9 +60,12 @@ class RemoteBaseEnv(BaseEnv):
 
         # List of ray actor handles (each handle points to one @ray.remote
         # sub-environment).
-        self.actors = None  # lazy init
-        # List of pending
-        self.pending = None  # lazy init
+        self.actors: Optional[List[ray.actor.ActorHandle]] = None
+        # Dict mapping object refs (return values of @ray.remote calls),
+        # whose actual values we are waiting for (via ray.wait in
+        # `self.poll()`) to their corresponding actor handles (the actors
+        # that created these return values).
+        self.pending: Optional[Dict[ray.actor.ActorHandle]] = None
 
     @override(BaseEnv)
     def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
@@ -98,6 +101,8 @@ class RemoteBaseEnv(BaseEnv):
         # Lazy initialization. Call `reset()` on all @ray.remote
         # sub-environment actors at the beginning.
         if self.pending is None:
+            # Initialize our pending object ref -> actor handle mapping
+            # dict.
             self.pending = {a.reset.remote(): a for a in self.actors}
 
         # each keyed by env_id in [0, num_remote_envs)
@@ -114,9 +119,14 @@ class RemoteBaseEnv(BaseEnv):
         # Get and return observations for each of the ready envs
         env_ids = set()
         for obj_ref in ready:
+            # Get the corresponding actor handle from our dict and remove the
+            # object ref (we will call `ray.get()` on it and it will no longer
+            # be "pending").
             actor = self.pending.pop(obj_ref)
             env_id = self.actors.index(actor)
             env_ids.add(env_id)
+            # Get the ready object ref (this may be return value(s) of
+            # `reset()` or `step()`).
             ret = ray.get(obj_ref)
             # Our sub-envs are simple Actor-turned gym.Envs or MultiAgentEnvs.
             if self.make_env_creates_actors:

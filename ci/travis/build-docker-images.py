@@ -211,7 +211,8 @@ def _build_docker_image(image_name: str,
 
         labels = {
             "image-name": image_name,
-            "python-version": PY_MATRIX[py_version]
+            "python-version": PY_MATRIX[py_version],
+            "ray-commit": _get_commit_sha()
         }
         if image_type in CUDA_FULL:
             labels["cuda-version"] = CUDA_FULL[image_type]
