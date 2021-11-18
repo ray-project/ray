@@ -245,9 +245,8 @@ class RayActorError(RayError):
             return ("The actor died because of an error" +
                     " raised in its creation task, " +
                     self.creation_task_error.__str__())
-        return (
-            f"The actor died unexpectedly before finishing this task. Cause: {self.cause}"
-        )
+        return (f"The actor died unexpectedly before finishing "
+                f"this task. Cause: {self.cause}")
 
     @staticmethod
     def from_task_error(task_error):
