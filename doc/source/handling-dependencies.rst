@@ -276,7 +276,7 @@ The runtime environment is inheritable, so it will apply to all tasks/actors wit
 If an actor or task specifies a new ``runtime_env``, it will override the parent’s ``runtime_env`` (i.e., the parent actor/task's ``runtime_env``, or the job's ``runtime_env`` if there is no parent actor or task) as follows:
 
 * The ``runtime_env["env_vars"]`` field will be `merged` with the ``runtime_env["env_vars"]`` field of the parent.
-This allows for environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.
+  This allows for environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.
 * Every other field in the `runtime_env` will be *overridden* by the child, not merged.  For example, if ``runtime_env["py_modules"]`` is specified, it will replace the ``runtime_env["py_modules"]`` field of the parent.
 
 Example:
