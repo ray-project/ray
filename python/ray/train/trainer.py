@@ -50,6 +50,8 @@ BACKEND_NAME_TO_CONFIG_CLS_NAME = {
     "torch": "TorchConfig"
 }
 
+# The environment variables that need to be propagated from the driver to the
+# `BackendExecutor` actor via runtime env.
 BACKEND_ENV_VARS = {
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV, TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
@@ -153,8 +155,8 @@ class Trainer:
 
         runtime_env = {
             "env_vars": {
-                var_name: os.environ.get(var_name, "")
-                for var_name in BACKEND_ENV_VARS
+                var_name: os.environ[var_name]
+                for var_name in BACKEND_ENV_VARS if var_name in os.environ
             }
         }
 
