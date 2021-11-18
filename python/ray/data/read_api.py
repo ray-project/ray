@@ -657,8 +657,7 @@ def from_spark(df: "pyspark.sql.DataFrame",
 
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
-    import pyarrow as pa
-    block = pa.table(df)
+    block = df
     return (block,
             BlockAccessor.for_block(block).get_metadata(input_files=None))
 

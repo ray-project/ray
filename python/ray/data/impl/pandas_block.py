@@ -57,7 +57,7 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
     def __init__(self):
         if pandas is None:
             raise ImportError("Run `pip install pandas` for pandas support")
-        TableBlockBuilder.__init()
+        TableBlockBuilder.__init(self, pandas.DataFrame)
 
     def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
         return pandas.DataFrame(columns)

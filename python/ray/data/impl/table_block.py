@@ -3,19 +3,7 @@ from typing import Callable, Dict, Iterator, List, Union, Tuple, Any, TypeVar, O
 
 from ray.data.block import Block, BlockAccessor
 from ray.data.impl.block_builder import BlockBuilder
-from ray.data.impl.arrow_block import ArrowRow, ArrowBlockBuilder
-from ray.data.impl.pandas_block import PandasRow, PandasBlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
-
-try:
-    import pyarrow
-except ImportError:
-    pyarrow = None
-
-try:
-    import pandas
-except ImportError:
-    pandas = None
 
 # The max size of Python tuples to buffer before compacting them into a
 # table in the BlockBuilder.
@@ -59,6 +47,10 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
         self._builder = None
 
     def add(self, item: Any) -> None:
+        from ray.data.impl.arrow_block import ArrowRow, ArrowBlockBuilder
+        from ray.data.impl.pandas_block import PandasRow, PandasBlockBuilder
+        import pyarrow
+
         if self._builder is None:
             if isinstance(item, dict) or isinstance(item, ArrowRow):
                 try:
@@ -80,9 +72,11 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
         self._builder.add_block(block)
 
     def build(self) -> Block:
+        from ray.data.impl.pandas_block import PandasBlockBuilder
+
         if self._builder is None:
             # TODO: Allow switching to PandasBlockBuilder
-            self._builder = ArrowBlockBuilder()
+            self._builder = PandasBlockBuilder()
         return self._builder.build()
 
     def num_rows(self) -> int:
@@ -95,7 +89,7 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
 
 
 class TableBlockBuilder(BlockBuilder[T]):
-    def __init__(self):
+    def __init__(self, block_type):
         # The set of uncompacted Python values buffered.
         self._columns = collections.defaultdict(list)
         # The set of compacted tables we have built so far.
@@ -105,6 +99,7 @@ class TableBlockBuilder(BlockBuilder[T]):
         self._uncompacted_size = SizeEstimator()
         self._num_rows = 0
         self._num_compactions = 0
+        self._block_type = block_type
 
     def add(self, item: Union[dict, TableRow]) -> None:
         if isinstance(item, TableRow):
@@ -119,8 +114,8 @@ class TableBlockBuilder(BlockBuilder[T]):
         self._compact_if_needed()
         self._uncompacted_size.add(item)
 
-    def add_block(self, block: Union["pyarrow.Table", "pandas.DataFrame"]) -> None:
-        assert isinstance(block, pyarrow.Table) or isinstance(block, pandas.DataFrame), block
+    def add_block(self, block: Any) -> None:
+        assert isinstance(block, self._block_type), block
         accessor = BlockAccessor.for_block(block)
         self._tables.append(block)
         self._tables_size_bytes += accessor.size_bytes()

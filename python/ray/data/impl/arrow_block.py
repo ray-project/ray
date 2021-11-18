@@ -54,7 +54,7 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
     def __init__(self):
         if pyarrow is None:
             raise ImportError("Run `pip install pyarrow` for Arrow support")
-        TableBlockBuilder.__init()
+        TableBlockBuilder.__init(self, pyarrow.Table)
 
     def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
         return pyarrow.Table.from_pydict(columns)
