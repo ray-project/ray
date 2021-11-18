@@ -1728,6 +1728,8 @@ static rpc::RuntimeEnv OverrideRuntimeEnv(const rpc::RuntimeEnv &child,
   return result_runtime_env;
 }
 
+// TODO(SongGuyang): This function exists in both C++ and Python. We should make this
+// logic clearly.
 static std::string encode_plugin_uri(std::string plugin, std::string uri) {
   return plugin + "|" + uri;
 }

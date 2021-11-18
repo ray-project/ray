@@ -5,7 +5,7 @@ from google.protobuf import json_format
 
 
 def _build_proto_pip_runtime_env(runtime_env_dict: dict,
-                                runtime_env: runtime_env_common.RuntimeEnv):
+                                 runtime_env: runtime_env_common.RuntimeEnv):
     """ Construct pip runtime env protobuf from runtime env dict.
     """
     if runtime_env_dict.get("pip"):
@@ -14,7 +14,7 @@ def _build_proto_pip_runtime_env(runtime_env_dict: dict,
 
 
 def _parse_proto_pip_runtime_env(runtime_env: runtime_env_common.RuntimeEnv,
-                                runtime_env_dict: dict):
+                                 runtime_env_dict: dict):
     """ Parse pip runtime env protobuf to runtime env dict.
     """
     if runtime_env.HasField("pip_runtime_env"):
@@ -23,7 +23,7 @@ def _parse_proto_pip_runtime_env(runtime_env: runtime_env_common.RuntimeEnv,
 
 
 def _build_proto_conda_runtime_env(runtime_env_dict: dict,
-                                runtime_env: runtime_env_common.RuntimeEnv):
+                                   runtime_env: runtime_env_common.RuntimeEnv):
     """ Construct conda runtime env protobuf from runtime env dict.
     """
     if runtime_env_dict.get("conda"):
@@ -35,9 +35,8 @@ def _build_proto_conda_runtime_env(runtime_env_dict: dict,
                 runtime_env_dict["conda"], sort_keys=True)
 
 
-
 def _parse_proto_conda_runtime_env(runtime_env: runtime_env_common.RuntimeEnv,
-                                runtime_env_dict: dict):
+                                   runtime_env_dict: dict):
     """ Parse conda runtime env protobuf to runtime env dict.
     """
     if runtime_env.HasField("conda_runtime_env"):
@@ -45,9 +44,8 @@ def _parse_proto_conda_runtime_env(runtime_env: runtime_env_common.RuntimeEnv,
             runtime_env.conda_runtime_env.config)
 
 
-
-def _build_proto_container_runtime_env(runtime_env_dict: dict,
-                                    runtime_env: runtime_env_common.RuntimeEnv):
+def _build_proto_container_runtime_env(
+        runtime_env_dict: dict, runtime_env: runtime_env_common.RuntimeEnv):
     """ Construct container runtime env protobuf from runtime env dict.
     """
     if runtime_env_dict.get("container"):
@@ -59,9 +57,8 @@ def _build_proto_container_runtime_env(runtime_env_dict: dict,
             container.get("run_options", []))
 
 
-
-def _parse_proto_container_runtime_env(runtime_env: runtime_env_common.RuntimeEnv,
-                                    runtime_env_dict: dict):
+def _parse_proto_container_runtime_env(
+        runtime_env: runtime_env_common.RuntimeEnv, runtime_env_dict: dict):
     """ Parse container runtime env protobuf to runtime env dict.
     """
     if runtime_env.HasField("py_container_runtime_env"):
@@ -73,8 +70,8 @@ def _parse_proto_container_runtime_env(runtime_env: runtime_env_common.RuntimeEn
             runtime_env.container_runtime_env.run_options)
 
 
-def _build_proto_plugin_runtime_env(runtime_env_dict: dict,
-                                runtime_env: runtime_env_common.RuntimeEnv):
+def _build_proto_plugin_runtime_env(
+        runtime_env_dict: dict, runtime_env: runtime_env_common.RuntimeEnv):
     """ Construct plugin runtime env protobuf from runtime env dict.
     """
     if runtime_env_dict.get("plugins"):
@@ -85,7 +82,7 @@ def _build_proto_plugin_runtime_env(runtime_env_dict: dict,
 
 
 def _parse_proto_plugin_runtime_env(runtime_env: runtime_env_common.RuntimeEnv,
-                                runtime_env_dict: dict):
+                                    runtime_env_dict: dict):
     """ Parse plugin runtime env protobuf to runtime env dict.
     """
     if runtime_env.HasField("py_plugin_runtime_env"):
@@ -98,31 +95,39 @@ class RuntimeEnv:
     """
     A wrap class of runtime env protobuf.
     """
-    def __init__(self, serialized_runtime_env = None, proto_runtime_env: runtime_env_common.RuntimeEnv = None):
+
+    def __init__(self,
+                 serialized_runtime_env=None,
+                 proto_runtime_env: runtime_env_common.RuntimeEnv = None):
         if serialized_runtime_env:
-            self._proto_runtime_env = json_format.Parse(serialized_runtime_env, runtime_env_common.RuntimeEnv())
+            self._proto_runtime_env = json_format.Parse(
+                serialized_runtime_env, runtime_env_common.RuntimeEnv())
         elif proto_runtime_env:
             self._proto_runtime_env = proto_runtime_env
         else:
             self._proto_runtime_env = runtime_env_common.RuntimeEnv()
 
-
     def to_dict(self) -> Dict:
         initialize_dict: Dict[str, Any] = {}
         if self._proto_runtime_env.py_modules:
-            initialize_dict["py_modules"] = list(self._proto_runtime_env.py_modules)
+            initialize_dict["py_modules"] = list(
+                self._proto_runtime_env.py_modules)
         if self._proto_runtime_env.working_dir:
-            initialize_dict["working_dir"] = self._proto_runtime_env.working_dir
+            initialize_dict[
+                "working_dir"] = self._proto_runtime_env.working_dir
         if self._proto_runtime_env.env_vars:
-            initialize_dict["env_vars"] = dict(self._proto_runtime_env.env_vars)
+            initialize_dict["env_vars"] = dict(
+                self._proto_runtime_env.env_vars)
         if self._proto_runtime_env.extensions:
             initialize_dict.update(dict(self._proto_runtime_env.extensions))
         _parse_proto_pip_runtime_env(self._proto_runtime_env, initialize_dict)
-        _parse_proto_conda_runtime_env(self._proto_runtime_env, initialize_dict)
-        _parse_proto_container_runtime_env(self._proto_runtime_env, initialize_dict)
-        _parse_proto_plugin_runtime_env(self._proto_runtime_env, initialize_dict)
+        _parse_proto_conda_runtime_env(self._proto_runtime_env,
+                                       initialize_dict)
+        _parse_proto_container_runtime_env(self._proto_runtime_env,
+                                           initialize_dict)
+        _parse_proto_plugin_runtime_env(self._proto_runtime_env,
+                                        initialize_dict)
         return initialize_dict
-
 
     def has_uris(self) -> bool:
         uris = self._proto_runtime_env.uris
@@ -144,7 +149,7 @@ class RuntimeEnv:
 
     def plugin_uris(self) -> List[str]:
         return list(self._proto_runtime_env.uris.plugin_uris)
-    
+
     def working_dir(self) -> str:
         return self._proto_runtime_env.working_dir
 
@@ -153,20 +158,21 @@ class RuntimeEnv:
 
     def env_vars(self) -> Dict:
         return dict(self._proto_runtime_env.env_vars)
-    
+
     def plugins(self) -> List[Tuple[str, str]]:
         result = list()
         for plugin in self._proto_runtime_env.py_plugin_runtime_env.plugins:
             result.append(Tuple(plugin.class_path, plugin.config))
         return result
-    
+
     def has_conda(self) -> str:
         return self._proto_runtime_env.HasField("conda_runtime_env")
 
     def conda_env_name(self) -> str:
         if not self.has_conda():
             return None
-        if not self._proto_runtime_env.conda_runtime_env.HasField("conda_env_name"):
+        if not self._proto_runtime_env.conda_runtime_env.HasField(
+                "conda_env_name"):
             return None
         return self._proto_runtime_env.conda_runtime_env.conda_env_name
 
@@ -179,7 +185,7 @@ class RuntimeEnv:
 
     def has_pip(self) -> bool:
         return self._proto_runtime_env.HasField("pip_runtime_env")
-    
+
     def pip_packages(self) -> List:
         if not self.has_pip():
             return []
@@ -188,16 +194,14 @@ class RuntimeEnv:
     def serialize(self) -> str:
         # Sort the keys we can compare the serialized string for equality.
         return json.dumps(
-            json.loads(
-                json_format.MessageToJson(self._proto_runtime_env)),
+            json.loads(json_format.MessageToJson(self._proto_runtime_env)),
             sort_keys=True)
 
     def get_extension(self, key) -> str:
         return self._proto_runtime_env.extensions.get(key)
 
     def has_py_container(self) -> bool:
-        return self._proto_runtime_env.HasField(
-            "py_container_runtime_env")
+        return self._proto_runtime_env.HasField("py_container_runtime_env")
 
     def py_container_image(self) -> str:
         if not self.has_py_container():
@@ -207,16 +211,19 @@ class RuntimeEnv:
     def py_container_run_options(self) -> List:
         if not self.has_py_container():
             return None
-        return list(self._proto_runtime_env.py_container_runtime_env.run_options)
-
+        return list(
+            self._proto_runtime_env.py_container_runtime_env.run_options)
 
     @classmethod
-    def from_dict(cls, runtime_env_dict: Dict[str, Any], conda_get_uri_fn) -> "RuntimeEnv":
+    def from_dict(cls, runtime_env_dict: Dict[str, Any],
+                  conda_get_uri_fn) -> "RuntimeEnv":
         proto_runtime_env = runtime_env_common.RuntimeEnv()
-        proto_runtime_env.py_modules.extend(runtime_env_dict.get("py_modules", []))
+        proto_runtime_env.py_modules.extend(
+            runtime_env_dict.get("py_modules", []))
         proto_runtime_env.working_dir = runtime_env_dict.get("working_dir", "")
         if "working_dir" in runtime_env_dict:
-            proto_runtime_env.uris.working_dir_uri = runtime_env_dict["working_dir"]
+            proto_runtime_env.uris.working_dir_uri = runtime_env_dict[
+                "working_dir"]
         if "py_modules" in runtime_env_dict:
             for uri in runtime_env_dict["py_modules"]:
                 proto_runtime_env.uris.py_modules_uris.append(uri)
@@ -227,9 +234,11 @@ class RuntimeEnv:
         env_vars = runtime_env_dict.get("env_vars", {})
         proto_runtime_env.env_vars.update(env_vars.items())
         if "_ray_release" in runtime_env_dict:
-            proto_runtime_env.extensions["_ray_release"] = str(runtime_env_dict["_ray_release"])
+            proto_runtime_env.extensions["_ray_release"] = str(
+                runtime_env_dict["_ray_release"])
         if "_ray_commit" in runtime_env_dict:
-            proto_runtime_env.extensions["_ray_commit"] = str(runtime_env_dict["_ray_commit"])
+            proto_runtime_env.extensions["_ray_commit"] = str(
+                runtime_env_dict["_ray_commit"])
         if "_inject_current_ray" in runtime_env_dict:
             proto_runtime_env.extensions["_inject_current_ray"] = str(
                 runtime_env_dict["_inject_current_ray"])
@@ -237,5 +246,4 @@ class RuntimeEnv:
         _build_proto_conda_runtime_env(runtime_env_dict, proto_runtime_env)
         _build_proto_container_runtime_env(runtime_env_dict, proto_runtime_env)
         _build_proto_plugin_runtime_env(runtime_env_dict, proto_runtime_env)
-        return cls(proto_runtime_env = proto_runtime_env)
-
+        return cls(proto_runtime_env=proto_runtime_env)

@@ -6,6 +6,8 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.utils import RuntimeEnv
 
 
+# TODO(SongGuyang): This function exists in both C++ and Python.
+# We should make this logic clearly.
 def encode_plugin_uri(plugin: str, uri: str) -> str:
     return plugin + "|" + uri
 
