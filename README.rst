@@ -254,7 +254,7 @@ Here is a minimal example on how to do this. Also
 `check out our more detailed examples here <https://github.com/ray-project/ray/tree/master/rllib/examples/inference_and_serving>`_
 (in particular for `normal models <https://github.com/ray-project/ray/blob/master/rllib/examples/inference_and_serving/policy_inference_after_training.py>`_,
 `LSTMs <https://github.com/ray-project/ray/blob/master/rllib/examples/inference_and_serving/policy_inference_after_training_with_lstm.py>`_,
-and `attention nets <https://github.com/ray-project/ray/blob/master/rllib/examples/inference_and_serving/policy_inference_after_training_with_attention.py>`_) here.
+and `attention nets <https://github.com/ray-project/ray/blob/master/rllib/examples/inference_and_serving/policy_inference_after_training_with_attention.py>`_).
 
 .. code-block:: python
 
