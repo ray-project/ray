@@ -229,6 +229,8 @@ class RayActorError(RayError):
         if function_name and traceback_str and cause:
             self.creation_task_error = RayTaskError(
                 function_name, traceback_str, cause, proctitle, pid, ip)
+        elif cause:
+            self.cause = cause
 
     def has_creation_task_error(self):
         return self.creation_task_error is not None
@@ -243,7 +245,9 @@ class RayActorError(RayError):
             return ("The actor died because of an error" +
                     " raised in its creation task, " +
                     self.creation_task_error.__str__())
-        return ("The actor died unexpectedly before finishing this task.")
+        return (
+            f"The actor died unexpectedly before finishing this task. Cause: {self.cause}"
+        )
 
     @staticmethod
     def from_task_error(task_error):

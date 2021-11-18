@@ -113,45 +113,27 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
   return worker_failure_info_ptr;
 }
 
-/// Get actor creation task exception from ActorDeathCause.
-/// Returns nullptr if actor isn't dead due to creation task failure.
-inline const rpc::RayException *GetCreationTaskExceptionFromDeathCause(
-    const rpc::ActorDeathCause *death_cause) {
-  if (death_cause == nullptr ||
-      death_cause->context_case() != ContextCase::kCreationTaskFailureContext) {
-    return nullptr;
-  }
-  return &(death_cause->creation_task_failure_context().creation_task_exception());
-}
-
 /// Generate object error type from ActorDeathCause.
 inline rpc::ErrorType GenErrorTypeFromDeathCause(
     const rpc::ActorDeathCause *death_cause) {
-  if (death_cause == nullptr) {
-    return rpc::ErrorType::ACTOR_DIED;
-  }
-  if (death_cause->context_case() == ContextCase::kCreationTaskFailureContext) {
-    return rpc::ErrorType::ACTOR_DIED;
-  }
+  RAY_CHECK(death_cause != nullptr);
   if (death_cause->context_case() == ContextCase::kRuntimeEnvFailedContext) {
     return rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
   }
   return rpc::ErrorType::ACTOR_DIED;
 }
 
-inline const std::string &GetDeathCauseString(const rpc::ActorDeathCause *death_cause) {
+inline const std::string &GetDeathCauseString(const rpc::ActorDeathCause &death_cause) {
   static absl::flat_hash_map<ContextCase, std::string> death_cause_string{
       {ContextCase::CONTEXT_NOT_SET, "CONTEXT_NOT_SET"},
       {ContextCase::kCreationTaskFailureContext, "CreationTaskFailureContext"},
+      {ContextCase::kRuntimeEnvFailedContext, "RuntimeEnvFailedContext"},
       {ContextCase::kWorkerDiedContext, "WorkerDiedContext"},
       {ContextCase::kNodeDiedContext, "NodeDiedContext"},
       {ContextCase::kOwnerDiedContext, "OwnerDiedContext"},
       {ContextCase::kKilledByAppContext, "KilledByAppContext"},
       {ContextCase::kOutOfScopeContext, "OutOfScopeContext"}};
   ContextCase death_cause_case = ContextCase::CONTEXT_NOT_SET;
-  if (death_cause != nullptr) {
-    death_cause_case = death_cause->context_case();
-  }
   auto it = death_cause_string.find(death_cause_case);
   RAY_CHECK(it != death_cause_string.end())
       << "Given death cause case " << death_cause_case << " doesn't exist.";
@@ -164,14 +146,33 @@ inline const std::string &GetDeathCauseString(const rpc::ActorDeathCause *death_
 /// information is provided.
 inline std::unique_ptr<rpc::RayErrorInfo> GetErrorInfoFromActorDeathCause(
     const rpc::ActorDeathCause *death_cause) {
-  auto creation_task_exception = GetCreationTaskExceptionFromDeathCause(death_cause);
-  if (creation_task_exception == nullptr) {
-    return nullptr;
-  }
+  RAY_CHECK(death_cause != nullptr);
+
   auto error_info = std::make_unique<rpc::RayErrorInfo>();
-  if (creation_task_exception != nullptr) {
-    // Shouldn't use Swap here because we don't own the pointer.
-    error_info->mutable_actor_init_failure()->CopyFrom(*creation_task_exception);
+  if (death_cause->context_case() == ContextCase::kCreationTaskFailureContext) {
+    error_info->mutable_actor_init_failure()->CopyFrom(
+        death_cause->creation_task_failure_context().creation_task_exception());
+  } else if (death_cause->context_case() == ContextCase::kRuntimeEnvFailedContext) {
+    error_info->mutable_actor_died()->set_error_message(
+        death_cause->runtime_env_failed_context().error_message());
+  } else if (death_cause->context_case() == ContextCase::kWorkerDiedContext) {
+    error_info->mutable_actor_died()->set_error_message(
+        death_cause->worker_died_context().error_message());
+  } else if (death_cause->context_case() == ContextCase::kNodeDiedContext) {
+    error_info->mutable_actor_died()->set_error_message(
+        death_cause->node_died_context().error_message());
+  } else if (death_cause->context_case() == ContextCase::kOwnerDiedContext) {
+    error_info->mutable_actor_died()->set_error_message(
+        death_cause->owner_died_context().error_message());
+  } else if (death_cause->context_case() == ContextCase::kKilledByAppContext) {
+    error_info->mutable_actor_died()->set_error_message(
+        death_cause->killed_by_app_context().error_message());
+  } else if (death_cause->context_case() == ContextCase::kOutOfScopeContext) {
+    error_info->mutable_actor_died()->set_error_message(
+        death_cause->out_of_scope_context().error_message());
+  } else {
+    RAY_CHECK(death_cause->context_case() == ContextCase::CONTEXT_NOT_SET);
+    return nullptr;
   }
   return error_info;
 }

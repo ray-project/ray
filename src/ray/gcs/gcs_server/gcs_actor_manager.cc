@@ -916,7 +916,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
 
   RAY_LOG(INFO) << "Actor " << actor_id << " is failed on worker " << worker_id
                 << " at node " << node_id << ", need_reschedule = " << need_reschedule
-                << ", death context type = " << GetDeathCauseString(&death_cause)
+                << ", death context type = " << GetDeathCauseString(death_cause)
                 << ", remaining_restarts = " << remaining_restarts
                 << ", job id = " << actor_id.JobId();
 
