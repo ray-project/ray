@@ -1421,12 +1421,14 @@ cdef class CoreWorker:
 
     cdef CTaskSchedulingPolicy string_to_c_task_scheduling_policy(
             self, scheduling_policy):
+        ret = TASK_SCHEDULING_POLICY_DEFAULT
         if scheduling_policy is None:
-            return TASK_SCHEDULING_POLICY_DEFAULT
+            ret = TASK_SCHEDULING_POLICY_DEFAULT
         elif scheduling_policy == "SPREAD":
-            return TASK_SCHEDULING_POLICY_SPREAD
+            ret = TASK_SCHEDULING_POLICY_SPREAD
         else:
             raise TypeError(scheduling_policy)
+        return ret
 
     def submit_task(self,
                     Language language,
