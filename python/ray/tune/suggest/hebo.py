@@ -228,8 +228,7 @@ class HEBOSearch(Searcher):
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict, **spec) -> bool:
-        if not self._opt:
-            self._setup_optimizer()
+        if self._opt:
             return False
         if not self._space:
             space = self.convert_search_space(config)
