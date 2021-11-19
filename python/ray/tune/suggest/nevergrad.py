@@ -240,9 +240,9 @@ class NevergradSearch(Searcher):
                     metric=self._metric,
                     mode=self._mode))
 
-        if self.max_concurrent:
-            if len(self._live_trial_mapping) >= self.max_concurrent:
-                return None
+        # if self.max_concurrent:
+        #     if len(self._live_trial_mapping) >= self.max_concurrent:
+        #         return None
 
         suggested_config = self._nevergrad_opt.ask()
 

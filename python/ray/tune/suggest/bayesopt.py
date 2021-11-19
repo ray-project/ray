@@ -245,10 +245,10 @@ class BayesOptSearch(Searcher):
                     mode=self._mode))
 
         # If we have more active trials than the allowed maximum
-        total_live_trials = len(self._live_trial_mapping)
-        if self.max_concurrent and self.max_concurrent <= total_live_trials:
-            # we stop the suggestion and return None.
-            return None
+        # total_live_trials = len(self._live_trial_mapping)
+        # if self.max_concurrent and self.max_concurrent <= total_live_trials:
+        #     # we stop the suggestion and return None.
+        #     return None
 
         if self._points_to_evaluate:
             config = self._points_to_evaluate.pop(0)

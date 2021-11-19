@@ -258,9 +258,9 @@ class AxSearch(Searcher):
                     metric=self._metric,
                     mode=self._mode))
 
-        if self.max_concurrent:
-            if len(self._live_trial_mapping) >= self.max_concurrent:
-                return None
+        # if self.max_concurrent:
+        #     if len(self._live_trial_mapping) >= self.max_concurrent:
+        #         return None
 
         if self._points_to_evaluate:
             config = self._points_to_evaluate.pop(0)
