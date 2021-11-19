@@ -6,6 +6,7 @@ from numbers import Number
 from typing import Any, Dict, List, Optional, Tuple
 
 from ray.util.debug import log_once
+from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
 from ray.tune.utils.util import is_nan_or_inf
@@ -64,7 +65,8 @@ class ExperimentAnalysis:
                  experiment_checkpoint_path: str,
                  trials: Optional[List[Trial]] = None,
                  default_metric: Optional[str] = None,
-                 default_mode: Optional[str] = None):
+                 default_mode: Optional[str] = None,
+                 sync_config: Optional[SyncConfig] = None):
         experiment_checkpoint_path = os.path.expanduser(
             experiment_checkpoint_path)
 
