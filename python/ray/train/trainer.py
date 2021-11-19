@@ -160,6 +160,7 @@ class Trainer:
             }
         }
 
+        import pdb; pdb.set_trace()
         remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
 
         self._backend_executor_actor = remote_executor.options(

@@ -55,15 +55,16 @@ class TestBackend(Backend):
         pass
 
 
-@pytest.mark.parametrize("workers_to_log", [0, None, [0, 1]])
-@pytest.mark.parametrize("detailed", [False, True])
-@pytest.mark.parametrize("filename", [None, "my_own_filename.json"])
+@pytest.mark.parametrize("workers_to_log", [0])
+@pytest.mark.parametrize("detailed", [True, False])
+@pytest.mark.parametrize("filename", [None])
 def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
               filename):
     if detailed:
         os.environ[ENABLE_DETAILED_AUTOFILLED_METRICS_ENV] = "1"
     else:
         os.environ.pop(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
+        assert ENABLE_DETAILED_AUTOFILLED_METRICS_ENV not in os.environ
 
     config = TestConfig()
 
@@ -84,12 +85,10 @@ def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
 
     if filename is None:
         # if None, use default value
-        callback = JsonLoggerCallback(
-            make_temp_dir, workers_to_log=workers_to_log)
+        callback = JsonLoggerCallback(workers_to_log=workers_to_log)
     else:
-        callback = JsonLoggerCallback(
-            make_temp_dir, filename=filename, workers_to_log=workers_to_log)
-    trainer = Trainer(config, num_workers=num_workers)
+        callback = JsonLoggerCallback(filename=filename, workers_to_log=workers_to_log)
+    trainer = Trainer(config, num_workers=num_workers, logdir=make_temp_dir)
     trainer.start()
     trainer.run(train_func, callbacks=[callback])
     if filename is None:
@@ -120,6 +119,8 @@ def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
         assert all(
             all(not any(key in worker for key in DETAILED_AUTOFILLED_KEYS)
                 for worker in element) for element in log)
+
+
 
 
 def _validate_tbx_result(events_dir):

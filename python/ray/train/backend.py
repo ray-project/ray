@@ -361,6 +361,7 @@ class BackendExecutor:
                 training function via ``train.load_checkpoint()``. If this
                 is ``None`` then no checkpoint will be loaded.
         """
+        import pdb; pdb.set_trace()
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
 
