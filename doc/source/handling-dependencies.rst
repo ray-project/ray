@@ -155,7 +155,8 @@ The following simple example explains how to get your local files on the cluster
   print(ray.get(f.remote())) # Hello World!
 
 .. note::
-  The example is written to run on a local machine, but it also works when specifying an Ray cluster/client address (e.g. ``ray.init("ray://123.456.7.89:10001", runtime_env=...)`` to connect to a remote cluster.
+  The example above is written to run on a local machine, but it also works when specifying an Ray cluster 
+  (e.g. ``ray.init("ray://123.456.7.89:10001", runtime_env=...)`` or ``ray.init(address="auto", runtime_env=...)``).
 
 The specified local directory will automatically be pushed to the cluster nodes when ``ray.init()`` is called.
 
