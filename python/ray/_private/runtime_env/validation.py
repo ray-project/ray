@@ -1,4 +1,3 @@
-import copy
 import logging
 import os
 from pathlib import Path
@@ -367,41 +366,3 @@ class ParsedRuntimeEnv(dict):
 
     def serialize(self) -> str:
         return self.get_proto_runtime_env().serialize()
-
-
-def override_task_or_actor_runtime_env(
-        child_runtime_env: ParsedRuntimeEnv,
-        parent_runtime_env: ParsedRuntimeEnv) -> ParsedRuntimeEnv:
-    """Merge the given child runtime env with the parent runtime env.
-
-    If running in a driver, the current runtime env comes from the
-    JobConfig.  Otherwise, we are running in a worker for an actor or
-    task, and the current runtime env comes from the current TaskSpec.
-
-    By default, the child runtime env inherits non-specified options from the
-    parent. There is one exception to this:
-        - The env_vars dictionaries are merged, so environment variables
-          not specified by the child are still inherited from the parent.
-
-    Returns:
-        The resulting merged ParsedRuntimeEnv.
-    """
-    assert child_runtime_env is not None
-    assert parent_runtime_env is not None
-
-    # Override environment variables.
-    result_env_vars = copy.deepcopy(parent_runtime_env.get("env_vars") or {})
-    child_env_vars = child_runtime_env.get("env_vars") or {}
-    result_env_vars.update(child_env_vars)
-
-    # Inherit all other non-specified options from the parent.
-    result = copy.deepcopy(parent_runtime_env)
-    result.update(child_runtime_env)
-    if len(result_env_vars) > 0:
-        result["env_vars"] = result_env_vars
-
-    # NOTE(architkulkarni): This allows worker caching code in C++ to
-    # check if a runtime env is empty without deserializing it.
-    assert all(val is not None for val in result.values())
-
-    return result

@@ -1694,8 +1694,8 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
   return resources;
 }
 
-static rpc::RuntimeEnv OverrideRuntimeEnv(const rpc::RuntimeEnv &child,
-                                          const std::shared_ptr<rpc::RuntimeEnv> parent) {
+rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
+    const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent) {
   // By default, the child runtime env inherits non-specified options from the
   // parent. There is one exception to this:
   //     - The env_vars dictionaries are merged, so environment variables

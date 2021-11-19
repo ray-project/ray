@@ -1056,6 +1056,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
 
  private:
+  static rpc::RuntimeEnv OverrideRuntimeEnv(
+      const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent);
+
+  /// The following tests will use `OverrideRuntimeEnv` function.
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestPyModulesInherit);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestOverridePyModules);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestWorkingDirInherit);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestWorkingDirOverride);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaInherit);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
+
   std::string OverrideTaskOrActorRuntimeEnv(
       const std::string &serialized_runtime_env,
       std::vector<std::string> *runtime_env_uris /* output */);

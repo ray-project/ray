@@ -10,7 +10,7 @@ from ray._private.runtime_env.validation import (
     parse_and_validate_excludes, parse_and_validate_working_dir,
     parse_and_validate_conda, parse_and_validate_pip,
     parse_and_validate_env_vars, parse_and_validate_py_modules,
-    ParsedRuntimeEnv, override_task_or_actor_runtime_env)
+    ParsedRuntimeEnv)
 from ray._private.runtime_env.plugin import (decode_plugin_uri,
                                              encode_plugin_uri)
 
@@ -293,61 +293,6 @@ class TestParsedRuntimeEnv:
         assert not result["_inject_current_ray"]
 
         del os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"]
-
-
-class TestOverrideRuntimeEnvs:
-    def test_override_env_vars(self):
-        # (child, parent, expected)
-        TEST_CASES = [
-            ({}, {}, {}),
-            (None, None, None),
-            ({"a": "b"}, {}, {"a": "b"}),
-            ({"a": "b"}, None, {"a": "b"}),
-            ({}, {"a": "b"}, {"a": "b"}),
-            (None, {"a": "b"}, {"a": "b"}),
-            ({"a": "b"}, {"a": "d"}, {"a": "b"}),
-            ({"a": "b"}, {"c": "d"}, {"a": "b", "c": "d"}),
-            ({"a": "b"}, {"a": "e", "c": "d"}, {"a": "b", "c": "d"})
-        ]  # yapf: disable
-
-        for idx, (child, parent, expected) in enumerate(TEST_CASES):
-            child = {"env_vars": child} if child is not None else {}
-            parent = {"env_vars": parent} if parent is not None else {}
-            expected = {"env_vars": expected} if expected is not None else {}
-            assert override_task_or_actor_runtime_env(
-                child, parent) == expected, f"TEST_INDEX:{idx}"
-
-    def test_working_dir_inherit(self):
-        child_env = {}
-        parent_env = {"working_dir": "uri://abc"}
-        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
-        assert result_env == {"working_dir": "uri://abc"}
-
-        # The dicts passed in should not be mutated.
-        assert child_env == {}
-        assert parent_env == {"working_dir": "uri://abc"}
-
-    def test_working_dir_override(self):
-        child_env = {"working_dir": "uri://abc"}
-        parent_env = {"working_dir": "uri://def"}
-        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
-        assert result_env == {"working_dir": "uri://abc"}
-
-        # The dicts passed in should not be mutated.
-        assert child_env == {"working_dir": "uri://abc"}
-        assert parent_env == {"working_dir": "uri://def"}
-
-    def test_inherit_conda(self):
-        child_env = {"uris": ["a"]}
-        parent_env = {"conda": "my-env-name", "uris": ["a", "b"]}
-        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
-        assert result_env == {"uris": ["a"], "conda": "my-env-name"}
-
-    def test_inherit_pip(self):
-        child_env = {"uris": ["a"]}
-        parent_env = {"pip": ["pkg-name"], "uris": ["a", "b"]}
-        result_env = override_task_or_actor_runtime_env(child_env, parent_env)
-        assert result_env == {"uris": ["a"], "pip": ["pkg-name"]}
 
 
 class TestParseJobConfig:
