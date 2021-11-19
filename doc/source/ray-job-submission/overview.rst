@@ -161,7 +161,7 @@ Now we can have a simple polling loop that checks the job status until it reache
 
 .. tip::
 
-    We can also use other remote uris for runtime env, such as S3 or Git. See "Remote URIs" section of :ref:`Runtime Environments<runtime-environments>` for details.
+    We can also use other remote URIs for runtime env, such as S3 or Git. See "Remote URIs" section of :ref:`Runtime Environments<runtime-environments>` for details.
 
 A submitted Job can be stopped by the user before it finishes executing.
 
