@@ -169,6 +169,8 @@ class TrialCheckpoint:
         # Actually upload
         _upload_to_bucket(cloud_path, local_path)
 
+        return cloud_path
+
     def save(self,
              path: Optional[str] = None,
              overwrite: bool = True,
