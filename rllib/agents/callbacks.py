@@ -178,6 +178,12 @@ class DefaultCallbacks:
         Note: This is called before 0-padding via
         `pad_batch_to_sequences_of_same_size`.
 
+        Also note, SampleBatch.INFOS column will not be available on
+        train_batch within this callback if framework is tf1, due to
+        the fact that tf1 static graph would mistake it as part of the
+        input dict if present.
+        It is available though, for tf2 and torch frameworks.
+
         Args:
             policy: Reference to the current Policy object.
             train_batch: SampleBatch to be trained on. You can
