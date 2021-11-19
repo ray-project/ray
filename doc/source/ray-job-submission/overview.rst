@@ -115,6 +115,7 @@ Then we can submit our application to the Ray cluster via the Job SDK.
     By default Ray Job server will generate a new uuid as return value, but you can also generate your unique job_id first and pass it into :code:`submit_job`. In this case the Job will be executed with your given id, and will throw error if same job_id is submitted more than once for the same Ray cluster. This can facilitate Job id management assuming you have your own Job registry to generate and persist unique Job ids.
 
 Now we can have a simple polling loop that checks the job status until it reaches a terminal state (namely, ``JobStatus.SUCCEEDED``, ``JobStatus.STOPPED``, or ``JobStatus.FAILED``), and gets the logs at the end. We expect to see actor printed numbers as well as the correct version of the :code:`requests` module specified in the ``runtime_env``.
+
 .. code-block:: python
 
     from ray.dashboard.modules.job.common import JobStatus, JobStatusInfo
@@ -182,7 +183,7 @@ Job HTTP API
 
 Under the hood, both the Job Client and the CLI make HTTP calls to the job server running on the ray head node. Therefore the user can also directly send requests to corresponding endpoints via HTTP if needed.
 
-| Submit Job
+| **Submit Job**
 
 .. code-block:: python
 
@@ -199,7 +200,7 @@ Under the hood, both the Job Client and the CLI make HTTP calls to the job serve
     job_id = rst["job_id"]
     print(job_id)
 
-Query and poll for Job status
+**Query and poll for Job status**
 
 .. code-block:: python
 
@@ -218,7 +219,7 @@ Query and poll for Job status
             break
         time.sleep(1)
 
-Query for logs
+**Query for logs**
 
 .. code-block:: python
 
