@@ -662,6 +662,11 @@ class Trainer(Trainable):
         super().__init__(config, logger_creator, remote_checkpoint_dir,
                          sync_function_tpl)
 
+    @ExperimentalAPI
+    @classmethod
+    def get_default_config(cls) -> TrainerConfigDict:
+        return cls._default_config or COMMON_CONFIG
+
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
 
@@ -1742,11 +1747,6 @@ class Trainer(Trainable):
     def _default_config(self) -> TrainerConfigDict:
         """Subclasses should override this to declare their default config."""
         return {}
-
-    @ExperimentalAPI
-    @classmethod
-    def get_default_config(cls) -> TrainerConfigDict:
-        return cls._default_config or COMMON_CONFIG
 
     @classmethod
     @override(Trainable)

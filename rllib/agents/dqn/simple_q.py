@@ -14,8 +14,7 @@ from typing import Optional, Type
 
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
-from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -24,6 +23,7 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import MultiGPUTrainOneStep, TrainOneStep, \
     UpdateTargetNetwork
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
@@ -112,75 +112,55 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    """Policy class picker function. Class is chosen based on DL-framework.
+class SimpleQTrainer(Trainer):
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
 
-    Args:
-        config (TrainerConfigDict): The trainer's configuration dict.
+    @override(Trainer)
+    def get_default_policy_class(
+            self, config: TrainerConfigDict) -> Optional[Type[Policy]]:
+        if config["framework"] == "torch":
+            return SimpleQTorchPolicy
+        else:
+            return SimpleQTFPolicy
 
-    Returns:
-        Optional[Type[Policy]]: The Policy class to use with SimpleQTrainer.
-            If None, use `default_policy` provided in build_trainer().
-    """
-    if config["framework"] == "torch":
-        return SimpleQTorchPolicy
+    @staticmethod
+    @override(Trainer)
+    def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                       **kwargs) -> LocalIterator[dict]:
+        assert "local_replay_buffer" in kwargs, (
+            "SimpleQ execution plan requires a local replay buffer.")
 
+        local_replay_buffer = kwargs["local_replay_buffer"]
 
-def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
-                   **kwargs) -> LocalIterator[dict]:
-    """Execution plan of the Simple Q algorithm. Defines the distributed dataflow.
+        rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
-    Args:
-        trainer (Trainer): The Trainer object creating the execution plan.
-        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
-            of the Trainer.
-        config (TrainerConfigDict): The trainer's configuration dict.
+        # (1) Generate rollouts and store them in our local replay buffer.
+        store_op = rollouts.for_each(
+            StoreToReplayBuffer(local_buffer=local_replay_buffer))
 
-    Returns:
-        LocalIterator[dict]: A local iterator over training metrics.
-    """
-    assert "local_replay_buffer" in kwargs, (
-        "SimpleQ execution plan requires a local replay buffer.")
+        if config["simple_optimizer"]:
+            train_step_op = TrainOneStep(workers)
+        else:
+            train_step_op = MultiGPUTrainOneStep(
+                workers=workers,
+                sgd_minibatch_size=config["train_batch_size"],
+                num_sgd_iter=1,
+                num_gpus=config["num_gpus"],
+                shuffle_sequences=True,
+                _fake_gpus=config["_fake_gpus"],
+                framework=config.get("framework"))
 
-    local_replay_buffer = kwargs["local_replay_buffer"]
+        # (2) Read and train on experiences from the replay buffer.
+        replay_op = Replay(local_buffer=local_replay_buffer) \
+            .for_each(train_step_op) \
+            .for_each(UpdateTargetNetwork(
+                workers, config["target_network_update_freq"]))
 
-    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+        # Alternate deterministically between (1) and (2).
+        train_op = Concurrently(
+            [store_op, replay_op], mode="round_robin", output_indexes=[1])
 
-    # (1) Generate rollouts and store them in our local replay buffer.
-    store_op = rollouts.for_each(
-        StoreToReplayBuffer(local_buffer=local_replay_buffer))
-
-    if config["simple_optimizer"]:
-        train_step_op = TrainOneStep(workers)
-    else:
-        train_step_op = MultiGPUTrainOneStep(
-            workers=workers,
-            sgd_minibatch_size=config["train_batch_size"],
-            num_sgd_iter=1,
-            num_gpus=config["num_gpus"],
-            shuffle_sequences=True,
-            _fake_gpus=config["_fake_gpus"],
-            framework=config.get("framework"))
-
-    # (2) Read and train on experiences from the replay buffer.
-    replay_op = Replay(local_buffer=local_replay_buffer) \
-        .for_each(train_step_op) \
-        .for_each(UpdateTargetNetwork(
-            workers, config["target_network_update_freq"]))
-
-    # Alternate deterministically between (1) and (2).
-    train_op = Concurrently(
-        [store_op, replay_op], mode="round_robin", output_indexes=[1])
-
-    return StandardMetricsReporting(train_op, workers, config)
-
-
-# Build a child class of `Trainer`, which uses the framework specific Policy
-# determined in `get_policy_class()` above.
-SimpleQTrainer = build_trainer(
-    name="SimpleQTrainer",
-    default_policy=SimpleQTFPolicy,
-    get_policy_class=get_policy_class,
-    execution_plan=execution_plan,
-    default_config=DEFAULT_CONFIG,
-)
+        return StandardMetricsReporting(train_op, workers, config)
