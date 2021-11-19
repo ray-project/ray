@@ -26,20 +26,20 @@ def job_sdk_client():
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    if status == JobStatus.FAILED:
+    if status.status == JobStatus.FAILED:
         logs = client.get_job_logs(job_id)
         raise RuntimeError(f"Job failed\nlogs:\n{logs}")
-    return status == JobStatus.SUCCEEDED
+    return status.status == JobStatus.SUCCEEDED
 
 
 def _check_job_failed(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    return status == JobStatus.FAILED
+    return status.status == JobStatus.FAILED
 
 
 def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    return status == JobStatus.STOPPED
+    return status.status == JobStatus.STOPPED
 
 
 @pytest.fixture(
@@ -122,12 +122,26 @@ def test_http_bad_request(job_sdk_client):
     assert r.status_code == 400
     assert "TypeError: __init__() got an unexpected keyword argument" in r.text
 
-    # 500 - HTTPInternalServerError
-    with pytest.raises(
-            RuntimeError, match="Only .zip files supported for remote URIs"):
-        r = client.submit_job(
-            entrypoint="echo hello",
-            runtime_env={"working_dir": "s3://does_not_exist"})
+
+def test_invalid_runtime_env(job_sdk_client):
+    client = job_sdk_client
+    job_id = client.submit_job(
+        entrypoint="echo hello", runtime_env={"working_dir": "s3://not_a_zip"})
+
+    wait_for_condition(_check_job_failed, client=client, job_id=job_id)
+    status = client.get_job_status(job_id)
+    assert "Only .zip files supported for remote URIs" in status.message
+
+
+def test_runtime_env_setup_failure(job_sdk_client):
+    client = job_sdk_client
+    job_id = client.submit_job(
+        entrypoint="echo hello",
+        runtime_env={"working_dir": "s3://does_not_exist.zip"})
+
+    wait_for_condition(_check_job_failed, client=client, job_id=job_id)
+    status = client.get_job_status(job_id)
+    assert "The runtime_env failed to be set up" in status.message
 
 
 def test_submit_job_with_exception_in_driver(job_sdk_client):
@@ -202,6 +216,7 @@ def test_job_metadata(job_sdk_client):
     wait_for_condition(_check_job_succeeded, client=client, job_id=job_id)
 
     assert str({
+        "job_name": job_id,
         "job_submission_id": job_id,
         "key1": "val1",
         "key2": "val2"
