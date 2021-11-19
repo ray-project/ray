@@ -8,7 +8,6 @@ import ray
 from ray import ObjectRef
 from ray._private import signature
 
-from ray.workflow import events
 from ray.workflow import workflow_context
 from ray.workflow import recovery
 from ray.workflow.workflow_context import get_step_status_info
@@ -29,8 +28,7 @@ from ray.workflow.common import (
 )
 
 if TYPE_CHECKING:
-    from ray.workflow.common import (WorkflowRef, WorkflowInputs,
-                                     WorkflowStepRuntimeOptions)
+    from ray.workflow.common import (WorkflowRef, WorkflowStepRuntimeOptions)
     from ray.workflow.workflow_context import WorkflowStepContext
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
@@ -98,71 +96,75 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
     return workflow_ref_mapping
 
 
-def _resolve_step_inputs(
-        step_inputs: "_BakedWorkflowInputs") -> Tuple[List, Dict]:
-    """
-    This function resolves the inputs for the code inside
-    a workflow step (works on the callee side). For outputs from other
-    workflows, we resolve them into object instances inplace.
-
-    For each ObjectRef argument, the function returns both the ObjectRef
-    and the object instance. If the ObjectRef is a chain of nested
-    ObjectRefs, then we resolve it recursively until we get the
-    object instance, and we return the *direct* ObjectRef of the
-    instance. This function does not resolve ObjectRef
-    inside another object (e.g. list of ObjectRefs) to give users some
-    flexibility.
-
-    Args:
-        step_inputs: Workflow step inputs.
-    Returns:
-        Instances of arguments.
-    """
-
-    objects_mapping = []
-    for obj_ref in step_inputs.workflow_outputs:
-        obj, ref = _resolve_object_ref(obj_ref)
-        objects_mapping.append(obj)
-
-    workflow_ref_mapping = _resolve_dynamic_workflow_refs(
-        step_inputs.workflow_refs)
-
-    with serialization_context.workflow_args_resolving_context(
-            objects_mapping, workflow_ref_mapping):
-        # reconstruct input arguments under correct serialization context
-        flattened_args: List[Any] = ray.get(step_inputs.args)
-
-    # dereference arguments like Ray remote functions
-    flattened_args = [
-        ray.get(a) if isinstance(a, ObjectRef) else a for a in flattened_args
-    ]
-    return signature.recover_args(flattened_args)
-
-
 def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     """Execute workflow.
+
+    Args:
+        workflow: The workflow to be executed.
 
     Returns:
         An object ref that represent the result.
     """
     if workflow.executed:
         return workflow.result
-    workflow_data = workflow.data
-    baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
-        workflow_data.inputs)
-    step_options = workflow_data.step_options
-    persisted_output, volatile_output = _workflow_step_executor.options(
-        **step_options.ray_options).remote(
-            workflow_data.func_body,
-            workflow_context.get_workflow_step_context(), workflow.step_id,
-            baked_inputs, workflow_data.step_options)
 
+    # Stage 1: prepare inputs
+    workflow_data = workflow.data
+    inputs = workflow_data.inputs
+    waiting_for_event = False
+    workflow_outputs = []
+    with workflow_context.fork_workflow_step_context(
+            outer_most_step_id=None, last_step_of_workflow=False):
+        for w in inputs.workflows:
+            try:
+                workflow_outputs.append(execute_workflow(w).persisted_output)
+            except WaitingForEvent:
+                waiting_for_event = True
+
+    if waiting_for_event:
+        raise WaitingForEvent()
+    baked_inputs = _BakedWorkflowInputs(
+        args=workflow_data.inputs.args,
+        workflow_outputs=workflow_outputs,
+        workflow_refs=inputs.workflow_refs)
+
+    # Stage 2: match executors
+    step_options = workflow_data.step_options
+    if step_options.allow_inplace:
+        # TODO(suquark): For inplace execution, it is impossible
+        # to get the ObjectRef of the output before execution.
+        # Here we use a dummy ObjectRef, because _record_step_status does not
+        # even use it (?!).
+        _record_step_status(workflow.step_id, WorkflowStatus.RUNNING,
+                            [ray.put(None)])
+        # Note: we need to be careful about workflow context when
+        # calling the executor directly.
+        # TODO(suquark): We still have recursive Python calls.
+        # This would cause stack overflow if we have a really
+        # deep recursive call. We should fix it later.
+        executor = _workflow_step_executor
+    else:
+        executor = _workflow_step_executor_remote.options(
+            **step_options.ray_options).remote
+
+    # Stage 3: execution
+    persisted_output, volatile_output = executor(
+        workflow_data.func_body, workflow_context.get_workflow_step_context(),
+        workflow.step_id, baked_inputs, workflow_data.step_options)
+
+    # Stage 4: post processing outputs
     if not isinstance(persisted_output, WorkflowOutputType):
-        raise TypeError("Unexpected return type of the workflow.")
+        persisted_output = ray.put(persisted_output)
+    if not isinstance(persisted_output, WorkflowOutputType):
+        volatile_output = ray.put(volatile_output)
 
     if step_options.step_type != StepType.READONLY_ACTOR_METHOD:
-        _record_step_status(workflow.step_id, WorkflowStatus.RUNNING,
-                            [volatile_output])
+        if not step_options.allow_inplace:
+            # TODO: [Possible flaky bug] Here the RUNNING state may
+            # be recorded earlier than SUCCESSFUL. This caused some
+            # confusion during development.
+            _record_step_status(workflow.step_id, WorkflowStatus.RUNNING,
+                                [volatile_output])
 
     result = WorkflowExecutionResult(persisted_output, volatile_output)
     workflow._result = result
@@ -315,11 +317,10 @@ def _wrap_run(func: Callable, runtime_options: "WorkflowStepRuntimeOptions",
     return persisted_output, volatile_output
 
 
-@ray.remote(num_returns=2)
 def _workflow_step_executor(
         func: Callable, context: "WorkflowStepContext", step_id: "StepID",
         baked_inputs: "_BakedWorkflowInputs",
-        runtime_options: "WorkflowStepRuntimeOptions") -> Any:
+        runtime_options: "WorkflowStepRuntimeOptions") -> Tuple[Any, Any]:
     """Executor function for workflow step.
 
     Args:
@@ -338,7 +339,7 @@ def _workflow_step_executor(
     step_type = runtime_options.step_type
 
     # Part 2: resolve inputs
-    args, kwargs = _resolve_step_inputs(baked_inputs)
+    args, kwargs = baked_inputs.resolve()
 
     # Part 3: execute the step
     store = workflow_storage.get_workflow_storage()
@@ -366,8 +367,8 @@ def _workflow_step_executor(
     else:
         store = workflow_storage.get_workflow_storage()
         commit_step(store, step_id, persisted_output, exception=None)
-        outer_most_step_id = context.outer_most_step_id
         if isinstance(persisted_output, Workflow):
+            outer_most_step_id = context.outer_most_step_id
             if step_type == StepType.FUNCTION:
                 # Passing down outer most step so inner nested steps would
                 # access the same outer most step.
@@ -400,6 +401,16 @@ def _workflow_step_executor(
     return persisted_output, volatile_output
 
 
+@ray.remote(num_returns=2)
+def _workflow_step_executor_remote(
+        func: Callable, context: "WorkflowStepContext", step_id: "StepID",
+        baked_inputs: "_BakedWorkflowInputs",
+        runtime_options: "WorkflowStepRuntimeOptions") -> Any:
+    """The remote version of '_workflow_step_executor'."""
+    return _workflow_step_executor(func, context, step_id, baked_inputs,
+                                   runtime_options)
+
+
 @dataclass
 class _BakedWorkflowInputs:
     """This class stores pre-processed inputs for workflow step execution.
@@ -409,25 +420,42 @@ class _BakedWorkflowInputs:
     workflow_outputs: "List[ObjectRef]"
     workflow_refs: "List[WorkflowRef]"
 
-    @classmethod
-    def from_workflow_inputs(cls, inputs: "WorkflowInputs"):
-        with workflow_context.fork_workflow_step_context(
-                outer_most_step_id=None, last_step_of_workflow=False):
-            workflow_outputs = []
-            waiting_for_event = False
-            # Even if one of the workfow arguments is an event, we should make
-            # sure we still execute all the other workflow arguments.
-            for w in inputs.workflows:
-                try:
-                    result = execute_workflow(w)
-                    workflow_outputs.append(result.persisted_output)
-                except events.WaitingForEvent:
-                    waiting_for_event = True
+    def resolve(self) -> Tuple[List, Dict]:
+        """
+        This function resolves the inputs for the code inside
+        a workflow step (works on the callee side). For outputs from other
+        workflows, we resolve them into object instances inplace.
 
-            if waiting_for_event:
-                raise WaitingForEvent()
+        For each ObjectRef argument, the function returns both the ObjectRef
+        and the object instance. If the ObjectRef is a chain of nested
+        ObjectRefs, then we resolve it recursively until we get the
+        object instance, and we return the *direct* ObjectRef of the
+        instance. This function does not resolve ObjectRef
+        inside another object (e.g. list of ObjectRefs) to give users some
+        flexibility.
 
-        return cls(inputs.args, workflow_outputs, inputs.workflow_refs)
+        Returns:
+            Instances of arguments.
+        """
+        objects_mapping = []
+        for obj_ref in self.workflow_outputs:
+            obj, ref = _resolve_object_ref(obj_ref)
+            objects_mapping.append(obj)
+
+        workflow_ref_mapping = _resolve_dynamic_workflow_refs(
+            self.workflow_refs)
+
+        with serialization_context.workflow_args_resolving_context(
+                objects_mapping, workflow_ref_mapping):
+            # reconstruct input arguments under correct serialization context
+            flattened_args: List[Any] = ray.get(self.args)
+
+        # dereference arguments like Ray remote functions
+        flattened_args = [
+            ray.get(a) if isinstance(a, ObjectRef) else a
+            for a in flattened_args
+        ]
+        return signature.recover_args(flattened_args)
 
     def __reduce__(self):
         return _BakedWorkflowInputs, (self.args, self.workflow_outputs,

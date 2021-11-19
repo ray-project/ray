@@ -17,12 +17,35 @@
 namespace ray {
 namespace gcs {
 
+void InternalPubSubHandler::HandleGcsPublish(const rpc::GcsPublishRequest &request,
+                                             rpc::GcsPublishReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
+  if (gcs_publisher_ == nullptr) {
+    send_reply_callback(
+        Status::NotImplemented("GCS pubsub is not yet enabled. Please enable it with "
+                               "system config `gcs_grpc_based_pubsub=True`"),
+        nullptr, nullptr);
+    return;
+  }
+  for (const auto &msg : request.pub_messages()) {
+    gcs_publisher_->GetPublisher()->Publish(msg);
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 // Needs to use rpc::GcsSubscriberPollRequest and rpc::GcsSubscriberPollReply here,
 // and convert the reply to rpc::PubsubLongPollingReply because GCS RPC services are
 // required to have the `status` field in replies.
 void InternalPubSubHandler::HandleGcsSubscriberPoll(
     const rpc::GcsSubscriberPollRequest &request, rpc::GcsSubscriberPollReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  if (gcs_publisher_ == nullptr) {
+    send_reply_callback(
+        Status::NotImplemented("GCS pubsub is not yet enabled. Please enable it with "
+                               "system config `gcs_grpc_based_pubsub=True`"),
+        nullptr, nullptr);
+    return;
+  }
   const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
   auto pubsub_reply = std::make_shared<rpc::PubsubLongPollingReply>();
   auto pubsub_reply_ptr = pubsub_reply.get();
@@ -44,6 +67,13 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
     const rpc::GcsSubscriberCommandBatchRequest &request,
     rpc::GcsSubscriberCommandBatchReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  if (gcs_publisher_ == nullptr) {
+    send_reply_callback(
+        Status::NotImplemented("GCS pubsub is not yet enabled. Please enable it with "
+                               "system config `gcs_grpc_based_pubsub=True`"),
+        nullptr, nullptr);
+    return;
+  }
   const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
   for (const auto &command : request.commands()) {
     if (command.has_unsubscribe_message()) {

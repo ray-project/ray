@@ -15,10 +15,12 @@
 #pragma once
 
 #include <ctype.h>
+
 #include <functional>
 #include <memory>
 #include <tuple>
 #include <unordered_map>
+
 #include "gtest/gtest_prod.h"
 #include "opencensus/stats/stats.h"
 #include "opencensus/stats/stats_exporter.h"
@@ -260,7 +262,9 @@ void RegisterView(const std::string &name, const std::string &description,
 template <typename T = void>
 void RegisterViewWithTagList(const std::string &name, const std::string &description,
                              const std::vector<opencensus::tags::TagKey> &tag_keys,
-                             const std::vector<double> &buckets) {}
+                             const std::vector<double> &buckets) {
+  static_assert(std::is_same_v<T, void>);
+}
 
 template <StatsType T, StatsType... Ts>
 void RegisterViewWithTagList(const std::string &name, const std::string &description,

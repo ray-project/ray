@@ -255,6 +255,8 @@ Use ``validate_save_restore`` to catch ``save_checkpoint``/``load_checkpoint`` e
     validate_save_restore(MyTrainableClass)
     validate_save_restore(MyTrainableClass, use_object_store=True)
 
+
+
 Advanced: Reusing Actors
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -349,8 +351,6 @@ Utilities
 
 .. autofunction:: ray.tune.utils.validate_save_restore
 
-.. autofunction:: ray.tune.utils.force_on_current_node
-
 
 .. _tune-ddp-doc:
 
@@ -380,24 +380,6 @@ Ray also offers lightweight integrations to distribute your TensorFlow training 
 .. autofunction:: ray.tune.integration.tensorflow.DistributedTrainableCreator
    :noindex:
 
-.. _tune-durable-trainable:
-
-tune.DurableTrainable
----------------------
-
-
-Tune provides a :func:`ray.tune.durable` wrapper that can be used to convert any kind of trainable
-to a ``DurableTrainable``, including pre-registered RLLib trainers and :ref:`function trainables <tune-function-api>`.
-
-
-The :class:`DurableTrainable <ray.tune.DurableTrainable>` syncs trial logs and checkpoints to cloud storage (via the `upload_dir`). This is especially
-useful when training a large number of distributed trials, as logs and checkpoints are otherwise synchronized
-via SSH, which quickly can become a performance bottleneck. The :class:`DurableTrainable <ray.tune.DurableTrainable>` class inherits from
-:class:`Trainable <ray.tune.Trainable>` and thus can be extended like the base class. 
-
-.. autoclass:: ray.tune.DurableTrainable
-
-.. autofunction:: ray.tune.durable
 
 .. _tune-with-parameters:
 
