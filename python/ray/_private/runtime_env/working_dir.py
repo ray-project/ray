@@ -2,7 +2,7 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
-from ray._private.runtime_env.utils import RuntimeEnvWrapper
+from ray._private.runtime_env.utils import RuntimeEnv
 from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
@@ -72,7 +72,7 @@ class WorkingDirManager:
         return deleted
 
     def setup(self,
-              runtime_env: RuntimeEnvWrapper,
+              runtime_env: RuntimeEnv,
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
         if not runtime_env.working_dir():

@@ -5,7 +5,7 @@ import logging
 from typing import Optional
 
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.utils import RuntimeEnvWrapper
+from ray._private.runtime_env.utils import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ class ContainerManager:
         self._ray_tmp_dir = tmp_dir
 
     def setup(self,
-              runtime_env: RuntimeEnvWrapper,
+              runtime_env: RuntimeEnv,
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
         if not runtime_env.has_py_container(

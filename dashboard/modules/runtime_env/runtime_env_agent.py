@@ -23,7 +23,7 @@ from ray._private.runtime_env.py_modules import PyModulesManager
 from ray._private.runtime_env.working_dir import WorkingDirManager
 from ray._private.runtime_env.container import ContainerManager
 from ray._private.runtime_env.plugin import decode_plugin_uri
-from ray._private.runtime_env.utils import RuntimeEnvWrapper
+from ray._private.runtime_env.utils import RuntimeEnv
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                                      serialized_allocated_resource_instances):
             # This function will be ran inside a thread
             def run_setup_with_logger():
-                runtime_env = RuntimeEnvWrapper(
+                runtime_env = RuntimeEnv(
                     serialized_runtime_env=serialized_runtime_env)
                 allocated_resource: dict = json.loads(
                     serialized_allocated_resource_instances or "{}")

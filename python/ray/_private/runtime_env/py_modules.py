@@ -8,7 +8,7 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package, delete_package, get_uri_for_directory,
     parse_uri, Protocol, upload_package_if_needed)
-from ray._private.runtime_env.utils import RuntimeEnvWrapper
+from ray._private.runtime_env.utils import RuntimeEnv
 
 default_logger = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ class PyModulesManager:
         return deleted
 
     def setup(self,
-              runtime_env: RuntimeEnvWrapper,
+              runtime_env: RuntimeEnv,
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
         if not runtime_env.py_modules():
