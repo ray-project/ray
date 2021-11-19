@@ -32,6 +32,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/transport/actor_submit_queue.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
+#include "ray/core_worker/transport/out_of_order_actor_submit_queue.h"
 #include "ray/core_worker/transport/sequential_actor_submit_queue.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
@@ -44,7 +45,8 @@ namespace core {
 // Interface for testing.
 class CoreWorkerDirectActorTaskSubmitterInterface {
  public:
-  virtual void AddActorQueueIfNotExists(const ActorID &actor_id) = 0;
+  virtual void AddActorQueueIfNotExists(const ActorID &actor_id,
+                                        bool execute_out_of_order = false) = 0;
   virtual void ConnectActor(const ActorID &actor_id, const rpc::Address &address,
                             int64_t num_restarts) = 0;
   virtual void DisconnectActor(const ActorID &actor_id, int64_t num_restarts, bool dead,
@@ -78,7 +80,8 @@ class CoreWorkerDirectActorTaskSubmitter
   /// not receive another reference to the same actor.
   ///
   /// \param[in] actor_id The actor for whom to add a queue.
-  void AddActorQueueIfNotExists(const ActorID &actor_id);
+  void AddActorQueueIfNotExists(const ActorID &actor_id,
+                                bool execute_out_of_order = false);
 
   /// Submit a task to an actor for execution.
   ///
@@ -125,8 +128,13 @@ class CoreWorkerDirectActorTaskSubmitter
 
  private:
   struct ClientQueue {
-    ClientQueue(ActorID actor_id)
-        : actor_submit_queue(std::make_unique<SequentialActorSubmitQueue>(actor_id)) {}
+    ClientQueue(ActorID actor_id, bool execute_out_of_order) {
+      if (execute_out_of_order) {
+        actor_submit_queue = std::make_unique<OutofOrderActorSubmitQueue>(actor_id);
+      } else {
+        actor_submit_queue = std::make_unique<SequentialActorSubmitQueue>(actor_id);
+      }
+    }
 
     /// The current state of the actor. If this is ALIVE, then we should have
     /// an RPC client to the actor. If this is DEAD, then all tasks in the
