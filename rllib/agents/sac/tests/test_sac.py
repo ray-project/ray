@@ -15,7 +15,8 @@ from ray.rllib.examples.models.batch_norm_model import KerasBatchNormModel, \
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.tf_action_dist import Dirichlet
 from ray.rllib.models.torch.torch_action_dist import TorchDirichlet
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
+    MultiAgentReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, relu
@@ -399,7 +400,7 @@ class TestSAC(unittest.TestCase):
                     tf_inputs.append(in_)
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = LocalReplayBuffer.get_instance_for_testing()
+                    buf = MultiAgentReplayBuffer.get_instance_for_testing()
                     buf._fake_batch = in_
                     trainer.train()
                     updated_weights = policy.get_weights()
@@ -418,7 +419,7 @@ class TestSAC(unittest.TestCase):
                     in_ = tf_inputs[update_iteration]
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = LocalReplayBuffer.get_instance_for_testing()
+                    buf = MultiAgentReplayBuffer.get_instance_for_testing()
                     buf._fake_batch = in_
                     trainer.train()
                     # Compare updated model.

@@ -507,13 +507,6 @@ Here is a list of different use cases and corresponding URLs:
     runtime_env = {"working_dir": ("https://github.com"
                                    "/[username]/[repository]/archive/[commit hash].zip")}
 
-- Example: Retrieve package from a private GitHub repository using username and password
-
-.. code-block:: python
-
-    runtime_env = {"working_dir": ("https://[username]:[password]@github.com"
-                                   "/[username]/[private repository]/archive/[commit hash].zip")}
-
 - Example: Retrieve package from a private GitHub repository using a Personal Access Token
 
 .. code-block:: python
