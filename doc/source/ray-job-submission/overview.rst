@@ -26,7 +26,7 @@ Within the context of Job submission, the packaging part is handled by :ref:`Run
 Example - Setup
 ---------------
 
-Let's start with a sample Ray script as example for Job submission. Once executed locally, this script will use Ray APIs to print counter value of a remote actor from 1 to 5, and print the version of 'requests' module it's using.
+Let's start with a sample Ray script as example for job submission. Once executed locally, this script will use Ray APIs to print counter value of a remote actor from 1 to 5, and print the version of 'requests' module it's using.
 
 We can put this file in a local directory of your choice, with filename "script.py", so your working directory will look like:
 
