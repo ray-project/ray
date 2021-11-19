@@ -336,7 +336,7 @@ py_test(
 
 py_test(
     name = "test_runtime_env_ray_minimal",
-    size = "small",
+    size = "medium",
     srcs = SRCS + ["test_runtime_env_ray_minimal.py"],
     tags = ["exclusive", "team:serve"],
     deps = ["//:ray_lib"],

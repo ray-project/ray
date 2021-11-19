@@ -25,7 +25,8 @@ from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
+    MultiAgentReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
 from ray.rllib.models import MODEL_DEFAULTS
@@ -1163,8 +1164,8 @@ class Trainer(Trainable):
 
         Returns:
             The computed action if full_fetch=False, or a tuple of a) the
-                full output of policy.compute_actions() if full_fetch=True
-                or we have an RNN-based Policy.
+            full output of policy.compute_actions() if full_fetch=True
+            or we have an RNN-based Policy.
 
         Raises:
             KeyError: If the `policy_id` cannot be found in this Trainer's
@@ -1304,8 +1305,8 @@ class Trainer(Trainable):
             kwargs: forward compatibility placeholder
 
         Returns:
-            any: The computed action if full_fetch=False, or
-            tuple: The full output of policy.compute_actions() if
+            The computed action if full_fetch=False, or a tuple consisting of
+            the full output of policy.compute_actions_from_input_dict() if
             full_fetch=True or we have an RNN-based Policy.
         """
         if normalize_actions is not None:
@@ -1448,8 +1449,8 @@ class Trainer(Trainable):
                 to the evaluation WorkerSet.
 
         Returns:
-            Policy: The newly added policy (the copy that got added to the
-                local worker).
+            The newly added policy (the copy that got added to the local
+            worker).
         """
 
         def fn(worker: RolloutWorker):
@@ -2199,15 +2200,15 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _create_local_replay_buffer_if_necessary(
-            self,
-            config: PartialTrainerConfigDict) -> Optional[LocalReplayBuffer]:
-        """Create a LocalReplayBuffer instance if necessary.
+            self, config: PartialTrainerConfigDict
+    ) -> Optional[MultiAgentReplayBuffer]:
+        """Create a MultiAgentReplayBuffer instance if necessary.
 
         Args:
             config: Algorithm-specific configuration data.
 
         Returns:
-            LocalReplayBuffer instance based on trainer config.
+            MultiAgentReplayBuffer instance based on trainer config.
             None, if local replay buffer is not needed.
         """
         # These are the agents that utilizes a local replay buffer.
@@ -2218,7 +2219,7 @@ class Trainer(Trainable):
 
         replay_buffer_config = config["replay_buffer_config"]
         if ("type" not in replay_buffer_config
-                or replay_buffer_config["type"] != "LocalReplayBuffer"):
+                or replay_buffer_config["type"] != "MultiAgentReplayBuffer"):
             # DistributedReplayBuffer coming soon.
             return None
 
@@ -2242,7 +2243,7 @@ class Trainer(Trainable):
         else:
             prio_args = {}
 
-        return LocalReplayBuffer(
+        return MultiAgentReplayBuffer(
             num_shards=1,
             learning_starts=config["learning_starts"],
             capacity=capacity,
