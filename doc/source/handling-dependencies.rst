@@ -147,7 +147,7 @@ The following simple example explains how to get your local files on the cluster
 
   import ray
 
-  # Specify a runtime environment for the entire Ray "Job"
+  # Specify a runtime environment for the entire Ray job
   ray.init(runtime_env={"working_dir": "/path/to/files"})
 
   # Create a Ray task, which inherits the above runtime env.
