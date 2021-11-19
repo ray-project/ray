@@ -111,7 +111,7 @@ Ray Job SDK
 
 Ray Job SDK is the recommended way to submit Jobs programmatically.
 
-We can import and intialize the Job submission client by providing an valid Ray cluster head node address where the port is same as the port used by Ray dashboard. We're using your local Ray cluster as an example but it works the same for remote Ray cluster addresses.
+We can import and initialize the Job submission client by providing a valid Ray cluster head node address where the port is same as the port used by Ray dashboard. We're using your local Ray cluster as an example but it works the same for remote Ray cluster addresses.
 
 .. code-block:: python
 
