@@ -65,7 +65,7 @@ def _upload_to_bucket(bucket: str, local_path: str):
 
 
 @PublicAPI(stability="beta")
-class TrialCheckpoint:
+class TrialCheckpoint(os.PathLike):
     def __init__(self,
                  local_path: Optional[str] = None,
                  cloud_path: Optional[str] = None):
@@ -74,6 +74,9 @@ class TrialCheckpoint:
 
     def __str__(self):
         return self.local_path or self.cloud_path
+
+    def __fspath__(self):
+        return self.local_path
 
     def __repr__(self):
         return (f"<TrialCheckpoint "
