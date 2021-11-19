@@ -171,7 +171,6 @@ class HEBOSearch(Searcher):
         self._live_trial_mapping = {}
 
         self._max_concurrent = max_concurrent
-        self._setup_optimizer_again = False
         self._suggestions_cache = []
         self._batch_filled = False
 
