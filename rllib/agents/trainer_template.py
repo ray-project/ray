@@ -139,11 +139,7 @@ def build_trainer(
                 policy_class=self._policy_class,
                 config=config,
                 num_workers=self.config["num_workers"])
-            # If execution plan is not provided (None), the Trainer will use
-            # it's already existing default `execution_plan()` static method
-            # instead.
-            if execution_plan is not None:
-                self.execution_plan = execution_plan
+
             self.train_exec_impl = self.execution_plan(
                 self.workers, config, **self._kwargs_for_execution_plan())
 
@@ -157,6 +153,19 @@ def build_trainer(
             # Then call user defined one, if any.
             if validate_config is not None:
                 validate_config(config)
+
+        @staticmethod
+        @override(Trainer)
+        def execution_plan(workers, config, **kwargs):
+            # `execution_plan` is provided, use it inside
+            # `self.execution_plan()`.
+            if execution_plan is not None:
+                return execution_plan(workers, config, **kwargs)
+            # If `execution_plan` is not provided (None), the Trainer will use
+            # it's already existing default `execution_plan()` static method
+            # instead.
+            else:
+                return Trainer.execution_plan(workers, config, **kwargs)
 
         @override(Trainer)
         def _before_evaluate(self):

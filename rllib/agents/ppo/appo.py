@@ -18,6 +18,7 @@ from ray.rllib.agents import impala
 from ray.rllib.policy.policy import Policy
 from ray.rllib.execution.common import STEPS_SAMPLED_COUNTER, \
     LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES, _get_shared_metrics
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import PartialTrainerConfigDict, TrainerConfigDict
 
 # yapf: disable
@@ -106,16 +107,6 @@ class UpdateTargetAndKL:
                 self.update_kl(fetches)
 
 
-def initialize_target(trainer: Trainer) -> None:
-    """Updates target network on startup by synching it with the policy net.
-
-    Args:
-        trainer (Trainer): The Trainer object.
-    """
-    trainer.workers.local_worker().foreach_trainable_policy(
-        lambda p, _: p.update_target())
-
-
 class APPOTrainer(impala.ImpalaTrainer):
     def __init__(self, config, *args, **kwargs):
         # Before init: Add the update target and kl hook.
@@ -131,12 +122,15 @@ class APPOTrainer(impala.ImpalaTrainer):
 
     # TODO: Remove this once ImpalaTrainer directly inherits from Trainer
     #  (instead of being created by `build_trainer()` utility).
+    @override(impala.ImpalaTrainer)
     def _init(self, *args, **kwargs):
         raise NotImplementedError
 
+    @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
 
+    @override(Trainer)
     def get_default_policy_class(self, config: PartialTrainerConfigDict) -> \
             Optional[Type[Policy]]:
         if config["framework"] == "torch":
