@@ -157,18 +157,18 @@ In addition to job SDK, we can also submit ray application via CLI.
 
 .. code-block:: python
 
-❯ ray job submit --address="127.0.0.1:8265" -- "python -c 'print(123); import time; time.sleep(5)'"
-2021-11-18 16:14:47,602	INFO cli.py:103 -- Job submitted successfully: raysubmit_GsQYzyvZpgNicU8F.
-2021-11-18 16:14:47,602	INFO cli.py:104 -- Query the status of the job using: `ray job status raysubmit_GsQYzyvZpgNicU8F`.
+    ❯ ray job submit --address="127.0.0.1:8265" -- "python -c 'print(123); import time; time.sleep(5)'"
+    2021-11-18 16:14:47,602	INFO cli.py:103 -- Job submitted successfully: raysubmit_GsQYzyvZpgNicU8F.
+    2021-11-18 16:14:47,602	INFO cli.py:104 -- Query the status of the job using: `ray job status raysubmit_GsQYzyvZpgNicU8F`.
 
 
-❯ ray job status raysubmit_GsQYzyvZpgNicU8F
-2021-11-18 16:15:07,727	INFO cli.py:125 -- Job status for 'raysubmit_GsQYzyvZpgNicU8F': SUCCEEDED.
-2021-11-18 16:15:07,727	INFO cli.py:127 -- Job finished successfully.
+    ❯ ray job status raysubmit_GsQYzyvZpgNicU8F
+    2021-11-18 16:15:07,727	INFO cli.py:125 -- Job status for 'raysubmit_GsQYzyvZpgNicU8F': SUCCEEDED.
+    2021-11-18 16:15:07,727	INFO cli.py:127 -- Job finished successfully.
 
 
-❯ ray job logs raysubmit_GsQYzyvZpgNicU8F
-123
+    ❯ ray job logs raysubmit_GsQYzyvZpgNicU8F
+    123
 
 
 Job HTTP API
