@@ -158,8 +158,8 @@ The following simple example explains how to get your local files on the cluster
   # Create a Ray task, which inherits the above runtime env.
   @ray.remote
   def f():
-      # The function will have its working_dir changed to /path/to/files
-
+      # The function will have its working directory changed to its node's
+      # local copy of /path/to/files.
       return open("hello.txt").read()
 
   print(ray.get(f.remote())) # Hello World!
@@ -170,7 +170,7 @@ The following simple example explains how to get your local files on the cluster
 
 The specified local directory will automatically be pushed to the cluster nodes when ``ray.init()`` is called.
 
-You can also specify files via a URI to a remote cloud storage; see :ref:`remote-uris` for details.
+You can also specify files via a remote cloud storage URI; see :ref:`remote-uris` for details.
 
 Library Development
 """""""""""""""""""
@@ -201,9 +201,9 @@ To ensure your local changes show up across all Ray workers and can be imported 
 Using ``conda`` or ``pip`` packages
 """""""""""""""""""""""""""""""""""
 
-Your Ray application might depend on Python packages such as ``pendulum`` or ``requests`` via ``import`` statements.
+Your Ray application might depend on Python packages (for example, ``pendulum`` or ``requests``) via ``import`` statements.
 
-Ray ordinarily expects all imported packages to be installed on every node of the cluster; in particular, these packages are not automatically shipped from your local machine to the cluster or downloaded from any repository.
+Ray ordinarily expects all imported packages to be preinstalled on every node of the cluster; in particular, these packages are not automatically shipped from your local machine to the cluster or downloaded from any repository.
 
 However, using runtime environments you can dynamically specify packages to be automatically downloaded and installed in an isolated virtual environment for your Ray job, or for specific Ray tasks or actors.
 
@@ -222,19 +222,22 @@ However, using runtime environments you can dynamically specify packages to be a
     
   print(ray.get(reqs.remote())) # <Response [200]>
 
-Ray will automatically be installed in the isolated environment.  However, if you are using any Ray libraries (for example, Ray Serve), then you will need to specify the library in the runtime environment (e.g. ``runtime_env = {"pip": ["requests", "ray[serve]"}]}``.)
 
-You may also specify your ``pip`` dependencies via a ``requirements.txt`` file.
+You may also specify your ``pip`` dependencies either via a Python list or a ``requirements.txt`` file.
 Alternatively, you can specify a ``conda`` environment, either as a Python dictionary or via a ``environment.yml`` file.  This conda environment can include ``pip`` packages.
 For details, head to the :ref:`API Reference<runtime-environments-api-ref>`.
 
 .. tip::
 
-  To run multiple tasks or actors with different (possibly conflicting) sets of dependencies, all on the same Ray cluster, you may specify the runtime environment per-task or per-actor (:ref:<rte-per-task-actor>).
+  To run multiple tasks or actors with different (possibly conflicting) sets of dependencies, all on the same Ray cluster, you may specify the runtime environment :ref:`per-task or per-actor <rte-per-task-actor>`.
+
+.. note::
+
+  The ``ray[default]`` package itself will automatically be installed in the isolated environment.  However, if you are using any Ray libraries (for example, Ray Serve), then you will need to specify the library in the runtime environment (e.g. ``runtime_env = {"pip": ["requests", "ray[serve]"}]}``.)
 
 .. warning::
 
-  Since the packages in the `runtime_env` are installed at runtime, be cautious when specifying ``conda`` or ``pip`` packages that build from source, as this may be slow.
+  Since the packages in the ``runtime_env`` are installed at runtime, be cautious when specifying ``conda`` or ``pip`` packages whose installations involve building from source, as this can be slow.
 
 .. _runtime-environments-api-ref:
 
