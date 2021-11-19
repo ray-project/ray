@@ -1,6 +1,7 @@
 import time
 import asyncio
 from dataclasses import dataclass
+import functools
 import logging
 from typing import (List, Tuple, Any, Dict, Callable, Optional, TYPE_CHECKING,
                     Union)
@@ -95,8 +96,8 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
     return workflow_ref_mapping
 
 
-def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
-    """Execute workflow.
+def _execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
+    """Internal function of workflow execution.
 
     Args:
         workflow: The workflow to be executed.
@@ -131,10 +132,9 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
                             [ray.put(None)])
         # Note: we need to be careful about workflow context when
         # calling the executor directly.
-        # TODO(suquark): We still have recursive Python calls.
-        # This would cause stack overflow if we have a really
-        # deep recursive call. We should fix it later.
-        executor = _workflow_step_executor
+        # Tell the executor that we are running inplace. This enables
+        # tail-recursion optimization.
+        executor = functools.partial(_workflow_step_executor, inplace=True)
     else:
         executor = _workflow_step_executor_remote.options(
             **step_options.ray_options).remote
@@ -145,11 +145,6 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
         workflow.step_id, baked_inputs, workflow_data.step_options)
 
     # Stage 4: post processing outputs
-    if not isinstance(persisted_output, WorkflowOutputType):
-        persisted_output = ray.put(persisted_output)
-    if not isinstance(persisted_output, WorkflowOutputType):
-        volatile_output = ray.put(volatile_output)
-
     if step_options.step_type != StepType.READONLY_ACTOR_METHOD:
         if not step_options.allow_inplace:
             # TODO: [Possible flaky bug] Here the RUNNING state may
@@ -161,6 +156,69 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     result = WorkflowExecutionResult(persisted_output, volatile_output)
     workflow._result = result
     workflow._executed = True
+    return result
+
+
+@dataclass
+class InplaceReturnedWorkflow:
+    """Hold information about a workflow returned from an inplace step."""
+    # The returned workflow.
+    workflow: Workflow
+    # The dict that contains the context of the inplace returned workflow.
+    context: Dict
+
+
+class _WorkflowHolder:
+    def __init__(self, x):
+        self.x = x
+
+    def extract(self):
+        if not hasattr(self, "x"):
+            raise ValueError("Stored value has been extracted.")
+        x = self.x
+        del self.x
+        return x
+
+
+def execute_workflow(workflow: Union[Workflow, _WorkflowHolder]
+                     ) -> "WorkflowExecutionResult":
+    """Execute workflow.
+
+    This function also performs tail-recursion optimization for inplace
+    workflow steps.
+
+    Args:
+        workflow: The workflow to be executed.
+
+    Returns:
+        An object ref that represent the result.
+    """
+
+    if isinstance(workflow, _WorkflowHolder):
+        workflow = workflow.extract()
+
+    # Tail recursion optimization.
+    context = {}
+    while True:
+        with workflow_context.fork_workflow_step_context(**context):
+            # Move the reference so we won't hold the reference
+            # of workflow in the current scope. Otherwise objects
+            # in workflow inputs may affect execution of the workflow.
+            # For example, actor handles in the workflow blocks creation
+            # of actors.
+            result = _execute_workflow(workflow)
+        if not isinstance(result.persisted_output, InplaceReturnedWorkflow):
+            break
+        workflow = result.persisted_output.workflow
+        context = result.persisted_output.context
+        # prevent leaking of workflow refcount
+        del result
+
+    # Convert the outputs into ObjectRefs.
+    if not isinstance(result.persisted_output, WorkflowOutputType):
+        result.persisted_output = ray.put(result.persisted_output)
+    if not isinstance(result.persisted_output, WorkflowOutputType):
+        result.volatile_output = ray.put(result.volatile_output)
     return result
 
 
@@ -305,10 +363,12 @@ def _wrap_run(func: Callable, runtime_options: "WorkflowStepRuntimeOptions",
     return persisted_output, volatile_output
 
 
-def _workflow_step_executor(
-        func: Callable, context: "WorkflowStepContext", step_id: "StepID",
-        baked_inputs: "_BakedWorkflowInputs",
-        runtime_options: "WorkflowStepRuntimeOptions") -> Tuple[Any, Any]:
+def _workflow_step_executor(func: Callable,
+                            context: "WorkflowStepContext",
+                            step_id: "StepID",
+                            baked_inputs: "_BakedWorkflowInputs",
+                            runtime_options: "WorkflowStepRuntimeOptions",
+                            inplace=False) -> Tuple[Any, Any]:
     """Executor function for workflow step.
 
     Args:
@@ -364,10 +424,21 @@ def _workflow_step_executor(
                     # workflow steps.
                     outer_most_step_id = workflow_context.get_current_step_id()
             assert volatile_output is None
+            if inplace:
+                return InplaceReturnedWorkflow(
+                    persisted_output,
+                    {"outer_most_step_id": outer_most_step_id}), None
             # Execute sub-workflow. Pass down "outer_most_step_id".
             with workflow_context.fork_workflow_step_context(
                     outer_most_step_id=outer_most_step_id):
-                result = execute_workflow(persisted_output)
+                # Move the reference so we won't hold the reference
+                # of workflow in the current scope. Otherwise objects
+                # in workflow inputs may affect execution of the workflow.
+                # For example, actor handles in the workflow blocks creation
+                # of actors.
+                t = _WorkflowHolder(persisted_output)
+                del persisted_output
+                result = execute_workflow(t)
             # When virtual actor returns a workflow in the method,
             # the volatile_output and persisted_output will be put together
             persisted_output = result.persisted_output
