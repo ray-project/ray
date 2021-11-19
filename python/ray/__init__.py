@@ -1,6 +1,7 @@
 import logging
 import os
 import requests
+import smart_open
 
 logger = logging.getLogger(__name__)
 
