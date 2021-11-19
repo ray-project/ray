@@ -179,7 +179,7 @@ A submitted Job can be stopped by the user before it finishes executing.
     print(logs)
 
 
-Job HTTP API
+REST API
 ------------
 
 Under the hood, both the Job Client and the CLI make HTTP calls to the job server running on the ray head node. Therefore the user can also directly send requests to corresponding endpoints via HTTP if needed.
