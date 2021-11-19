@@ -83,6 +83,29 @@ We provide three APIs for Job submission: SDK, CLI and HTTP. Both SDK and CLI us
     - :code:`working_dir` as local directory: It will be automatically zipped and uploaded to the target Ray cluster, then unpacked to where your submitted application runs.
     - :code:`working_dir` as remote URIs, such as S3, Git or others: It will be downloaded and unpacked to where your submitted application runs. For details, see :ref:`Runtime Environments<runtime-environments>`.
 
+Job CLI API
+-----------
+
+The easiest way to get started is to use Job submission CLI.
+
+If we have :code:`RAY_ADDRESS` environment variable set with a local Ray cluster:
+
+.. code-block:: python
+
+    ❯ ray job submit -- "python -c 'print(123); import time; time.sleep(5)'"
+    2021-11-18 16:14:47,602	INFO cli.py:103 -- Job submitted successfully: raysubmit_GsQYzyvZpgNicU8F.
+    2021-11-18 16:14:47,602	INFO cli.py:104 -- Query the status of the job using: `ray job status raysubmit_GsQYzyvZpgNicU8F`.
+
+
+    ❯ ray job status raysubmit_GsQYzyvZpgNicU8F
+    2021-11-18 16:15:07,727	INFO cli.py:125 -- Job status for 'raysubmit_GsQYzyvZpgNicU8F': SUCCEEDED.
+    2021-11-18 16:15:07,727	INFO cli.py:127 -- Job finished successfully.
+
+
+    ❯ ray job logs raysubmit_GsQYzyvZpgNicU8F
+    123
+
+
 Ray Job SDK
 ------------
 
@@ -155,28 +178,6 @@ A submitted Job can be stopped by the user before it finishes executing.
     logs = client.get_job_logs(job_id)
     print(logs)
 
-
-Job CLI API
------------
-
-In addition to the Job SDK, we can also submit our Ray application via CLI.
-
-.. code-block:: python
-
-    ❯ ray job submit --address="127.0.0.1:8265" -- "python -c 'print(123); import time; time.sleep(5)'"
-    2021-11-18 16:14:47,602	INFO cli.py:103 -- Job submitted successfully: raysubmit_GsQYzyvZpgNicU8F.
-    2021-11-18 16:14:47,602	INFO cli.py:104 -- Query the status of the job using: `ray job status raysubmit_GsQYzyvZpgNicU8F`.
-
-
-    ❯ ray job status raysubmit_GsQYzyvZpgNicU8F
-    2021-11-18 16:15:07,727	INFO cli.py:125 -- Job status for 'raysubmit_GsQYzyvZpgNicU8F': SUCCEEDED.
-    2021-11-18 16:15:07,727	INFO cli.py:127 -- Job finished successfully.
-
-
-    ❯ ray job logs raysubmit_GsQYzyvZpgNicU8F
-    123
-
-Alternatively, we can also set :code:`RAY_ADDRESS` environment variable and skip passing in address from CLI.
 
 Job HTTP API
 ------------
