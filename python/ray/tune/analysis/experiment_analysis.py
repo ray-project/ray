@@ -427,9 +427,7 @@ class ExperimentAnalysis:
 
         best_path, best_metric = best_path_metrics[0]
         return TrialCheckpoint(
-            local_path=best_path,
-            cloud_path=self._parse_cloud_path(best_path),
-            metrics={metric: best_metric})
+            local_path=best_path, cloud_path=self._parse_cloud_path(best_path))
 
     def get_all_configs(self, prefix: bool = False) -> Dict[str, Dict]:
         """Returns a list of all configurations.

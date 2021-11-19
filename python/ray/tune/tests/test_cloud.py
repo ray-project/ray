@@ -19,6 +19,10 @@ class TrialCheckpointApiTest(unittest.TestCase):
     def tearDown(self) -> None:
         shutil.rmtree(self.local_dir)
 
+    def ensureCheckpointFile(self):
+        with open(os.path.join(self.local_dir, "checkpoint.txt"), "wt") as f:
+            f.write("checkpoint\n")
+
     def testDownloadNoDefaults(self):
         state = {}
 
@@ -362,7 +366,7 @@ class TrialCheckpointApiTest(unittest.TestCase):
         checkpoint = TrialCheckpoint(cloud_path=self.cloud_dir)
 
         with patch("subprocess.check_call", check_call):
-            path = checkpoint.save(self.local_dir)
+            path = checkpoint.save(self.local_dir, force_download=True)
 
         self.assertEquals(self.local_dir, path)
         self.assertEquals(state["cmd"][0], "aws")
@@ -371,6 +375,7 @@ class TrialCheckpointApiTest(unittest.TestCase):
 
         # Case: Default local dir, pass local dir
         checkpoint = TrialCheckpoint(local_path=self.local_dir)
+        self.ensureCheckpointFile()
 
         with patch("shutil.copytree", copytree):
             path = checkpoint.save(other_local_dir)

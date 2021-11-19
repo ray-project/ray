@@ -2,8 +2,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from numbers import Number
-from typing import Optional, Dict
+from typing import Optional
 
 from ray import logger
 from ray.tune.sync_client import (S3_PREFIX, GS_PREFIX, HDFS_PREFIX,
@@ -69,12 +68,9 @@ def _upload_to_bucket(bucket: str, local_path: str):
 class TrialCheckpoint:
     def __init__(self,
                  local_path: Optional[str] = None,
-                 cloud_path: Optional[str] = None,
-                 metrics: Optional[Dict[str, Number]] = None):
+                 cloud_path: Optional[str] = None):
         self.local_path = local_path
         self.cloud_path = cloud_path
-
-        self.metrics = metrics or {}
 
     def __str__(self):
         return self.local_path or self.cloud_path
@@ -103,7 +99,7 @@ class TrialCheckpoint:
                 Defaults to ``self.cloud_path``.
             local_path (Optional[str]): Local path to save checkpoint at.
                 Defaults to ``self.local_path``.
-            overwrite (bool): If True, overwrites potential existing
+            overwrite (bool): If True, overwrites potential existing local
                 checkpoint. If False, exits if ``self.local_dir`` already
                 exists and has files in it.
             update_local_path (Optional[bool]): If True,
@@ -294,7 +290,7 @@ class TrialCheckpoint:
 
             return cloud_path
 
-        local_path_exists = os.path.exists(
+        local_path_exists = self.local_path and os.path.exists(
             self.local_path) and len(os.listdir(self.local_path)) > 0
 
         # Else: path is a local target
@@ -313,4 +309,10 @@ class TrialCheckpoint:
             return path
 
         # Else: Download
-        return self.download(local_path=path, overwrite=force_download)
+        try:
+            return self.download(local_path=path, overwrite=force_download)
+        except Exception as e:
+            raise RuntimeError(
+                "Cannot save trial checkpoint to local target as downloading "
+                "from cloud failed. Did you pass the correct `SyncConfig`?"
+            ) from e
