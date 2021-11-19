@@ -79,7 +79,8 @@ public class ObjectSerializer {
 
     if (meta != null && meta.length > 0) {
       // If meta is not null, deserialize the object from meta.
-      if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_RAW) == 0) {
+      if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_RAW) == 0 ||
+          Bytes.indexOf(meta, OBJECT_METADATA_TYPE_ARROW) == 0) {
         if (objectType == ByteBuffer.class) {
           return ByteBuffer.wrap(data);
         }
@@ -119,6 +120,30 @@ public class ObjectSerializer {
     } else {
       // If data is not null, deserialize the Java object.
       return Serializer.decode(data, objectType);
+    }
+  }
+
+  public static NativeRayObject serializeArrow(Object object) {
+    if (object instanceof NativeRayObject) {
+      return (NativeRayObject) object;
+    } else if (object instanceof byte[]) {
+      // Use a special metadata to indicate it's arrow data.
+      // So that this object can also be read by Python.
+      return new NativeRayObject((byte[]) object, OBJECT_METADATA_TYPE_ARROW);
+    } else if (object instanceof ByteBuffer) {
+      // Serialize ByteBuffer to raw bytes.
+      ByteBuffer buffer = (ByteBuffer) object;
+      byte[] bytes;
+      if (buffer.hasArray()) {
+        bytes = buffer.array();
+      } else {
+        bytes = new byte[buffer.remaining()];
+        buffer.get(bytes);
+      }
+      return new NativeRayObject(bytes, OBJECT_METADATA_TYPE_ARROW);
+    } else {
+      throw new IllegalArgumentException(
+        "Arrow data should be serialized to a byte array or ByteBuffer before put.");
     }
   }
 

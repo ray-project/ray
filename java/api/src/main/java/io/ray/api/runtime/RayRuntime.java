@@ -33,9 +33,11 @@ public interface RayRuntime {
    * Store an object in the object store.
    *
    * @param obj The Java object to be stored.
+   * @param isArrowData A boolean indicates if the object is arrow data, which needs special
+   *     serialization.
    * @return A ObjectRef instance that represents the in-store object.
    */
-  <T> ObjectRef<T> put(T obj);
+  <T> ObjectRef<T> put(T obj, Boolean isArrowData);
 
   /**
    * Store an object in the object store, and assign its ownership to owner. This function is
@@ -46,9 +48,11 @@ public interface RayRuntime {
    *     decoupled from that of the creating process. Note that the owner actor must be passed a
    *     reference to the object prior to the object creator exiting, otherwise the reference will
    *     still be lost.
+   * @param isArrowData A boolean indicates if the object is arrow data, which needs special
+   *     serialization.
    * @return A ObjectRef instance that represents the in-store object.
    */
-  <T> ObjectRef<T> put(T obj, BaseActorHandle owner);
+  <T> ObjectRef<T> put(T obj, BaseActorHandle owner, Boolean isArrowData);
 
   /**
    * Get an object from the object store.
