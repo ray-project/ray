@@ -19,7 +19,7 @@ Concepts
 
 - **Job**: A Ray application that will be submitted to a Ray cluster for execution. Once a Job is submitted, it runs once on the cluster to completion or failure. Retries or different runs with different parameters should be handled by the submitter. Jobs are scoped to the lifetime of a Ray cluster, so if your Ray cluster goes down, any running Jobs will be terminated.
 
-- **Job Manager**: An entity that manages the lifecycle of a Job and potentially multiple Ray clusters, such as scheduling, killing, polling status, getting logs, and persisting inputs / outputs. Should be highly available (HA) by default. Can be any framework with these abilities, such as Airflow.
+- **Job Manager**: An entity external to the Ray cluster that manages the lifecycle of a Job and potentially also Ray clusters, such as scheduling, killing, polling status, getting logs, and persisting inputs / outputs. Can be any existing framework with these abilities, such as Airflow.
 
 Within the context of Job submission, the packaging part is handled by :ref:`Runtime Environments<runtime-environments>`, where we can dynamically configure your desired Ray cluster environment, actor or task level runtime environment for your submitted Job.
 
