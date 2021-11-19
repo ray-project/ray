@@ -228,7 +228,6 @@ Papers
    ray-overview/index.rst
    ray-libraries.rst
    installation.rst
-   Ray Job Submission <ray-job-submission/overview.rst>
 
 .. toctree::
    :hidden:
@@ -237,6 +236,7 @@ Papers
 
    walkthrough.rst
    using-ray.rst
+   Ray Job Submission <ray-job-submission/overview.rst>
    configure.rst
    ray-dashboard.rst
    Tutorial and Examples <auto_examples/overview.rst>

@@ -1,39 +1,40 @@
 
 
 =========================
-From laptop to production
+Ray Job Submission: Going from your laptop from production
 =========================
 
 .. warning::
 
     Ray Job Submission is at Alpha phase with APIs mostly stable but subject to change in the future.
 
+.. note::
+
+  The goal of Ray Job submission is to provide a lightweight mechanism for user to submit their locally developed and tested application to a running local / remote Ray cluster, thus enabling the user to package, deploy, and manage their Ray application as Jobs. These Jobs can be submitted by a Job manager of their choice.
+
 Concepts
 --------
 
 - **Package**: A collection of files and configurations that defines an application, thus allowing it to be executed in a different environment remotely (ideally self-contained).
 
-- **Job**: A Ray application that will be submitted to a Ray cluster for execution. Once a job is submitted, it runs once on the cluster to completion or failure. Retries or different runs with different parameters should be handled by the submitter. Jobs are scoped to the lifetime of a ray cluster.
+- **Job**: A Ray application that will be submitted to a Ray cluster for execution. Once a Job is submitted, it runs once on the cluster to completion or failure. Retries or different runs with different parameters should be handled by the submitter. Jobs are scoped to the lifetime of a Ray cluster, so if your Ray cluster goes down, any running Jobs will be terminated.
 
-- **Job Manager**: An entity that manages the lifecycle of a Job and potentially multiple ray clusters, such as scheduling, killing, polling status, getting logs, and persisting inputs / outputs. Should be highly available (HA) by default. Can be any framework with these abilities, such as Airflow.
+- **Job Manager**: An entity that manages the lifecycle of a Job and potentially multiple Ray clusters, such as scheduling, killing, polling status, getting logs, and persisting inputs / outputs. Should be highly available (HA) by default. Can be any framework with these abilities, such as Airflow.
 
-Within the context of job submission, the packaging part is equivalent to :ref:`Runtime Environments<runtime-environments>`, where we can dynamically configure your desirable ray cluster, actor or task level runtime environment for your submitted job.
+Within the context of Job submission, the packaging part is handled by :ref:`Runtime Environments<runtime-environments>`, where we can dynamically configure your desired Ray cluster environment, actor or task level runtime environment for your submitted Job.
 
-**Key inputs for job submission**
+**Key inputs for Job submission**
 
 - **Entrypoint**: Shell command to execute once your code is unpackaged with runtime environment configured
     - Typically :code:`python your_script.py`, can also be any shell script such as :code:`echo hello`.
 - **Runtime Environment**:
-    - :code:`working_dir` as local directory: It will be automatically zipped and uploaded to target ray cluster, then unpacked to where your submitted application runs.
-    - :code:`working_dir` as remote URIs, such as s3, git or others, it will be downloaded and unpacked to where your submitted application runs. For details, see :ref:`Runtime Environments<runtime-environments>` for details.
-
-.. note::
-  **The goal of Ray job submssion is to provide a lightweight mechanism for user to submit their locally developed and tested application to a running local / remote ray cluster, thus enabling the user to package, deploy, and manage their ray application as jobs. These jobs can be submitted by a job manager of their choice.**
+    - :code:`working_dir` as local directory: It will be automatically zipped and uploaded to the target Ray cluster, then unpacked to where your submitted application runs.
+    - :code:`working_dir` as remote URIs, such as S3, GIT or others: It will be downloaded and unpacked to where your submitted application runs. For details, see :ref:`Runtime Environments<runtime-environments>`.
 
 Example - Setup
 ---------------
 
-Let's start with a sample ray script as example for job submission. Once executed locally, this script will use ray APIs to print counter value of a remote actor from 1 to 5, and print the version of 'requests' module it's using.
+Let's start with a sample Ray script as example for Job submission. Once executed locally, this script will use Ray APIs to print counter value of a remote actor from 1 to 5, and print the version of 'requests' module it's using.
 
 We can put this file in a local directory of your choice, with filename "script.py", so your working directory will look like:
 
@@ -68,18 +69,26 @@ We can put this file in a local directory of your choice, with filename "script.
 
     print(requests.__version__)
 
-Ray Job SDK
-------------
 
-Ray job sdk is the recommended way to submit jobs programmatically.
-
-| Start a local ray cluster headnode
+| Ensure we have a local Ray cluster with running head node. The address and port shown in terminal should be where we submit Job requests to.
 
 .. code-block:: bash
 
-    ray start --head
+   ❯ ray start --head
+    Local node IP: 127.0.0.1
+    INFO services.py:1360 -- View the Ray dashboard at http://127.0.0.1:8265
 
-We can import and intialize job submission client by providing an valid ray cluster headnode address where port is same as ray dashboard. We're using your local ray cluster as example but it works the same for remote ray cluster addresses.
+Ray Job APIs
+------------
+
+We provide three APIs for Job submission: SDK, CLI and HTTP. Both SDK and CLI uses the same HTTP endpoints under the hood, where SDK provides programmatic submission and CLI facilitates command line development.
+
+Ray Job SDK
+------------
+
+Ray Job SDK is the recommended way to submit Jobs programmatically.
+
+We can import and intialize the Job submission client by providing an valid Ray cluster head node address where the port is same as the port used by Ray dashboard. We're using your local Ray cluster as an example but it works the same for remote Ray cluster addresses.
 
 .. code-block:: python
 
@@ -87,12 +96,12 @@ We can import and intialize job submission client by providing an valid ray clus
 
     client = JobSubmissionClient("http://127.0.0.1:8265")
 
-Then we can submit our application to ray cluster via job SDK.
+Then we can submit our application to the Ray cluster via the Job SDK.
 
 .. code-block:: python
 
     job_id = client.submit_job(
-        # Entry point to execute
+        # Entrypoint shell command to execute
         entrypoint="python script.py",
         # Working dir
         runtime_env={
@@ -103,9 +112,9 @@ Then we can submit our application to ray cluster via job SDK.
 
 .. tip::
 
-    By default ray job server will generate a new uuid as return value, but you can also generate your unique job_id first and pass it into :code:`submit_job`. In this case the job will be executed with your given id, and will throw error if same job_id is submitted more than once for the same ray cluster. This can facilitate job id management assuming you have your own job registry to generate and persist unique job ids.
+    By default Ray Job server will generate a new uuid as return value, but you can also generate your unique job_id first and pass it into :code:`submit_job`. In this case the Job will be executed with your given id, and will throw error if same job_id is submitted more than once for the same Ray cluster. This can facilitate Job id management assuming you have your own Job registry to generate and persist unique Job ids.
 
-Now we can have a simple polling loop that checks job status until it reaches terminal state, and get logs at the end. We are expected to see actor printed numbers as well as correct version of :code:`requests` module used via runtime_env.
+Now we can have a simple polling loop that checks Job status until it reaches terminal state, and get logs at the end. We are expected to see actor printed numbers as well as correct version of :code:`requests` module used via runtime_env.
 
 .. code-block:: python
 
@@ -131,12 +140,12 @@ Now we can have a simple polling loop that checks job status until it reaches te
 
     We can also use other remote uris for runtime env, such as S3 or GIT. See "Remote URIs" section of :ref:`Runtime Environments<runtime-environments>` for details.
 
-Submitted job can be stopped by user before finish executing.
+Submitted Job can be stopped by user before finish executing.
 
 .. code-block:: python
 
     job_id = client.submit_job(
-        # Entry point to execute
+        # Entrypoint shell command to execute
         entrypoint="python -c 'import time; time.sleep(60)'",
         runtime_env={}
     )
@@ -150,14 +159,7 @@ Submitted job can be stopped by user before finish executing.
 Job CLI API
 -----------
 
-In addition to job SDK, we can also submit ray application via CLI.
-
-
-| Ensure we have a local ray cluster with running headnode.
-
-.. code-block:: bash
-
-   ray start --head
+In addition to Job SDK, we can also submit Ray application via CLI.
 
 .. code-block:: python
 
@@ -178,9 +180,9 @@ In addition to job SDK, we can also submit ray application via CLI.
 Job HTTP API
 ------------
 
-Under the hood, both Job Client and CLI make HTTP calls to the job server running on ray head node. Therefore user can also directly send requests to corresponding endpoints via HTTP if needed.
+Under the hood, both Job Client and CLI make HTTP calls to the Job server running on ray head node. Therefore user can also directly send requests to corresponding endpoints via HTTP if needed.
 
-Submit job
+Submit Job
 
 .. code-block:: python
 
@@ -197,7 +199,7 @@ Submit job
     job_id = rst["job_id"]
     print(job_id)
 
-Query and poll for job status
+Query and poll for Job status
 
 .. code-block:: python
 
@@ -234,6 +236,6 @@ Query for logs
 Job Submission Architecture
 ----------------------------
 
-The following diagram shows the underlying structure and steps for each job submission.
+The following diagram shows the underlying structure and steps for each Job submission.
 
 .. image:: https://raw.githubusercontent.com/ray-project/images/master/docs/job/job_subimssion_arch.png
