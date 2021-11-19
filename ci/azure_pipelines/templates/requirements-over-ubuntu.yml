@@ -13,7 +13,7 @@ steps:
     export DEBIAN_FRONTEND=noninteractive
 
     # Reset open-ssh server configurations to default settings
-    sudo service ssh stop
+    sudo service ssh stop || echo "ssh service not loaded"
     # sudo apt-get purge openssh-server
     sudo dpkg -P walinuxagent
     sudo dpkg -P openssh-server
@@ -163,7 +163,7 @@ steps:
     fi
 
     # Install docker-compose
-    URL=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | jq -r '.assets[].browser_download_url | select(contains("docker-compose-Linux-x86_64"))' | head -1)
+    URL=$(curl -s https://api.github.com/repos/docker/compose/releases/latest | jq -r '.assets[].browser_download_url | select(contains("docker-compose-linux-x86_64"))' | head -1)
 
     # Install latest docker-compose from releases
     sudo curl -L $URL -o /usr/local/bin/docker-compose

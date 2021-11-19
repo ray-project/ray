@@ -375,7 +375,7 @@ stages:
               versionSpec: '10.x'
               checkLatest: true
             displayName: 'Install latest Node.js'
-            condition: and(succeeded(), ne('$(Agent.OS)', 'Darwin'))
+            condition: succeeded()
           # Template containing the installation of steps of python
           - template: templates/python.yml
           # Template containing the installation of steps of bazel

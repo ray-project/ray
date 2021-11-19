@@ -38,9 +38,15 @@ class RayOutOfMemoryError(Exception):
         pids = psutil.pids()
         proc_stats = []
         for pid in pids:
-            proc = psutil.Process(pid)
-            proc_stats.append((get_rss(proc.memory_info()), pid,
-                               proc.cmdline()))
+            try:
+                proc = psutil.Process(pid)
+                proc_stats.append((get_rss(proc.memory_info()), pid,
+                                    proc.cmdline()))
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as psex:
+                msg = getattr(psex, 'message', repr(psex))
+                # respect 100 character limit
+                msg = msg[:100]
+                proc_stats.append(0, pid, msg)
         proc_str = "PID\tMEM\tCOMMAND"
         for rss, pid, cmdline in sorted(proc_stats, reverse=True)[:10]:
             proc_str += "\n{}\t{}GiB\t{}".format(

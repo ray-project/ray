@@ -121,9 +121,9 @@ install_requires = [
     # TODO(alex) Pin the version once this PR is
     # included in the stable release.
     # https://github.com/aio-libs/aiohttp/pull/4556#issuecomment-679228562
-    "aiohttp",
+    "aiohttp == 3.7.4",
     "aiohttp_cors",
-    "aioredis < 2",
+    "aioredis == 1.3.1",
     "click >= 7.0",
     "colorama",
     "dataclasses; python_version < '3.7'",

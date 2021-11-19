@@ -266,7 +266,7 @@ install_node() {
       else
         echo "node not installed, installing..."
 
-        nvm install node
+        sudo nvm install node
         nvm use --silent node
       fi
       npm config set loglevel warn  # make NPM quieter
