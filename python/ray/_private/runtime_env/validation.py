@@ -77,16 +77,11 @@ def parse_and_validate_working_dir(working_dir: str) -> str:
 
 def parse_and_validate_ray_libraries(ray_libraries: List[str]) -> List[str]:
     """Parses and validates a user-provided 'ray_libraries' option.
-    This should be a list of URIs.
+    This should be a list of ray libraries e.g ["rllib", "tune"].
     """
-    if not isinstance(ray_libraries, dict):
-        raise TypeError("`ray_libraries` must be a Dict[str, str], got "
+    if not isinstance(ray_libraries, list):
+        raise TypeError("`ray_libraries` must be a list of strings, got "
                         f"{type(ray_libraries)}.")
-
-    for path, uri in ray_libraries.items():
-        if not isinstance(path, str):
-            raise "Keys in `ray_libraries` must be strings."
-        validate_uri(uri)
 
     return ray_libraries
 
