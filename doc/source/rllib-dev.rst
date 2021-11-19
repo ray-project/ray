@@ -1,3 +1,5 @@
+.. include:: rllib/we_are_hiring.rst
+
 Contributing to RLlib
 =====================
 
@@ -46,7 +48,7 @@ Both integrated and contributed algorithms ship with the ``ray`` PyPI package, a
 
 How to add an algorithm to ``contrib``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-It takes just two changes to add an algorithm to `contrib <https://github.com/ray-project/ray/tree/master/rllib/contrib>`__. A minimal example can be found `here <https://github.com/ray-project/ray/tree/master/rllib/contrib/random_agent/random_agent.py>`__. First, subclass `Trainer <https://github.com/ray-project/ray/tree/master/rllib/agents/agent.py>`__ and implement the ``_init`` and ``step`` methods:
+It takes just two changes to add an algorithm to `contrib <https://github.com/ray-project/ray/tree/master/rllib/contrib>`__. A minimal example can be found `here <https://github.com/ray-project/ray/tree/master/rllib/contrib/random_agent/random_agent.py>`__. First, subclass `Trainer <https://github.com/ray-project/ray/commits/master/rllib/agents/trainer.py>`__ and implement the ``_init`` and ``step`` methods:
 
 .. literalinclude:: ../../rllib/contrib/random_agent/random_agent.py
    :language: python

@@ -65,5 +65,35 @@ def ExperimentalAPI(obj):
     return obj
 
 
+def OverrideToImplementCustomLogic(obj):
+    """Users should override this in their sub-classes to implement custom logic.
+
+    Used in Trainer and Policy to tag methods that need overriding, e.g.
+    `Policy.loss()`.
+    """
+    return obj
+
+
+def OverrideToImplementCustomLogic_CallToSuperRecommended(obj):
+    """Users should override this in their sub-classes to implement custom logic.
+
+    Thereby, it is recommended (but not required) to call the super-class'
+    corresponding method.
+
+    Used in Trainer and Policy to tag methods that need overriding, but the
+    super class' method should still be called, e.g.
+    `Trainer.setup()`.
+
+    Examples:
+    >>> @overrides(Trainable)
+    ... @OverrideToImplementCustomLogic_CallToSuperRecommended
+    ... def setup(self, config):
+    ...     # implement custom setup logic here ...
+    ...     super().setup(config)
+    ...     # ... or here (after having called super()'s setup method.
+    """
+    return obj
+
+
 # Backward compatibility.
 Deprecated = Deprecated

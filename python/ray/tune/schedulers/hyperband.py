@@ -57,7 +57,7 @@ class HyperBandScheduler(FIFOScheduler):
     Note that Tune's stopping criteria will be applied in conjunction with
     HyperBand's early stopping mechanisms.
 
-    See also: https://people.eecs.berkeley.edu/~kjamieson/hyperband.html
+    See also: https://homes.cs.washington.edu/~jamieson/hyperband.html
 
     Args:
         time_attr (str): The training result attr to use for comparing time.
@@ -304,8 +304,8 @@ class HyperBandScheduler(FIFOScheduler):
             for bracket in sorted(
                     scrubbed, key=lambda b: b.completion_percentage()):
                 for trial in bracket.current_trials():
-                    if (trial.status == Trial.PENDING
-                            and trial_runner.has_resources_for_trial(trial)):
+                    if (trial.status == Trial.PENDING and trial_runner.
+                            trial_executor.has_resources_for_trial(trial)):
                         return trial
         return None
 

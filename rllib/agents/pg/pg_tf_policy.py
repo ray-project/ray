@@ -72,7 +72,7 @@ def pg_loss_stats(policy: Policy,
 # - PG loss function
 PGTFPolicy = build_tf_policy(
     name="PGTFPolicy",
-    get_default_config=lambda: ray.rllib.agents.pg.pg.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.pg.DEFAULT_CONFIG,
     postprocess_fn=post_process_advantages,
     stats_fn=pg_loss_stats,
     loss_fn=pg_tf_loss)

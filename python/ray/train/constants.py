@@ -49,3 +49,12 @@ TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
 # Backend.share_cuda_visible_devices. 1 for True, 0 for False.
 ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV =\
     "TRAIN_ENABLE_SHARE_CUDA_VISIBLE_DEVICES"
+
+# Integer value which indicates the number of seconds to wait when creating
+# the worker placement group before timing out.
+TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV = "TRAIN_PLACEMENT_GROUP_TIMEOUT_S"
+
+# Integer value which if set will change the placement group strategy from
+# PACK to SPREAD. 1 for True, 0 for False.
+TRAIN_ENABLE_WORKER_SPREAD_ENV =\
+    "TRAIN_ENABLE_WORKER_SPREAD"

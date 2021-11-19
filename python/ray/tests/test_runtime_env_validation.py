@@ -10,7 +10,8 @@ from ray._private.runtime_env.validation import (
     parse_and_validate_excludes, parse_and_validate_working_dir,
     parse_and_validate_conda, parse_and_validate_pip,
     parse_and_validate_env_vars, parse_and_validate_py_modules,
-    ParsedRuntimeEnv, override_task_or_actor_runtime_env)
+    ParsedRuntimeEnv, override_task_or_actor_runtime_env, _decode_plugin_uri,
+    _encode_plugin_uri)
 
 CONDA_DICT = {"dependencies": ["pip", {"pip": ["pip-install-test==0.5"]}]}
 
@@ -47,6 +48,16 @@ def test_key_with_value_none():
     assert parsed_runtime_env == {}
 
 
+def test_encode_plugin_uri():
+    assert _encode_plugin_uri("plugin", "uri") == "plugin|uri"
+
+
+def test_decode_plugin_uri():
+    with pytest.raises(ValueError):
+        _decode_plugin_uri("no_vertical_bar_separator")
+    assert _decode_plugin_uri("plugin|uri") == ("plugin", "uri")
+
+
 class TestValidateWorkingDir:
     def test_validate_bad_uri(self):
         with pytest.raises(ValueError, match="a valid URI"):
@@ -56,14 +67,23 @@ class TestValidateWorkingDir:
         with pytest.raises(TypeError):
             parse_and_validate_working_dir(1)
 
-    def test_validate_s3_invalid_extension(self):
-        with pytest.raises(
-                ValueError, match="Only .zip files supported for S3 URIs."):
-            parse_and_validate_working_dir("s3://bucket/file")
+    def test_validate_remote_invalid_extensions(self):
+        for uri in [
+                "https://some_domain.com/path/file", "s3://bucket/file",
+                "gs://bucket/file"
+        ]:
+            with pytest.raises(
+                    ValueError,
+                    match="Only .zip files supported for remote URIs."):
+                parse_and_validate_working_dir(uri)
 
-    def test_validate_s3_valid_input(self):
-        working_dir = parse_and_validate_working_dir("s3://bucket/file.zip")
-        assert working_dir == "s3://bucket/file.zip"
+    def test_validate_remote_valid_input(self):
+        for uri in [
+                "https://some_domain.com/path/file.zip",
+                "s3://bucket/file.zip", "gs://bucket/file.zip"
+        ]:
+            working_dir = parse_and_validate_working_dir(uri)
+            assert working_dir == uri
 
 
 class TestValidatePyModules:
@@ -79,14 +99,23 @@ class TestValidatePyModules:
         with pytest.raises(TypeError):
             parse_and_validate_py_modules([1])
 
-    def test_validate_s3_invalid_extension(self):
+    def test_validate_remote_invalid_extension(self):
+        uris = [
+            "https://some_domain.com/path/file", "s3://bucket/file",
+            "gs://bucket/file"
+        ]
         with pytest.raises(
-                ValueError, match="Only .zip files supported for S3 URIs."):
-            parse_and_validate_py_modules(["s3://bucket/file"])
+                ValueError,
+                match="Only .zip files supported for remote URIs."):
+            parse_and_validate_py_modules(uris)
 
-    def test_validate_s3_valid_input(self):
-        py_modules = parse_and_validate_py_modules(["s3://bucket/file.zip"])
-        assert py_modules == ["s3://bucket/file.zip"]
+    def test_validate_remote_valid_input(self):
+        uris = [
+            "https://some_domain.com/path/file.zip", "s3://bucket/file.zip",
+            "gs://bucket/file.zip"
+        ]
+        py_modules = parse_and_validate_py_modules(uris)
+        assert py_modules == uris
 
 
 class TestValidateExcludes:

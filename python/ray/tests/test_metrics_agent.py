@@ -54,12 +54,17 @@ _METRICS = [
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
     "ray_pending_actors",
-    "ray_pending_placement_groups",
     "ray_outbound_heartbeat_size_kb_sum",
     "ray_operation_count",
     "ray_operation_run_time_ms",
     "ray_operation_queue_time_ms",
     "ray_operation_active_count",
+    "ray_placement_group_creation_latency_ms_sum",
+    "ray_placement_group_scheduling_latency_ms_sum",
+    "ray_pending_placement_group",
+    "ray_registered_placement_group",
+    "ray_infeasible_placement_group",
+    "ray_placement_group_resource_persist_latency_ms_sum"
 ]
 
 # This list of metrics should be kept in sync with
@@ -73,7 +78,8 @@ _AUTOSCALER_METRICS = [
     "autoscaler_worker_update_time", "autoscaler_updating_nodes",
     "autoscaler_successful_updates", "autoscaler_failed_updates",
     "autoscaler_failed_create_nodes", "autoscaler_recovering_nodes",
-    "autoscaler_successful_recoveries", "autoscaler_failed_recoveries"
+    "autoscaler_successful_recoveries", "autoscaler_failed_recoveries",
+    "autoscaler_drain_node_exceptions"
 ]
 
 
@@ -103,6 +109,12 @@ def _setup_cluster_for_test(ray_start_cluster):
         counter.inc()
         counter.inc(2)
         ray.get(worker_should_exit.wait.remote())
+
+    # Generate some metrics for the placement group.
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+    ray.get(pg.ready())
+    print(ray.util.placement_group_table())
+    ray.util.remove_placement_group(pg)
 
     @ray.remote
     class A:

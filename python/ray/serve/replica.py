@@ -22,7 +22,7 @@ from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.serve.router import Query, RequestMetadata
 from ray.serve.constants import (
-    BACKEND_RECONFIGURE_METHOD,
+    RECONFIGURE_METHOD,
     DEFAULT_LATENCY_BUCKET_MS,
 )
 from ray.serve.version import DeploymentVersion
@@ -45,21 +45,21 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
                            init_kwargs, deployment_config_proto_bytes: bytes,
                            version: DeploymentVersion, controller_name: str,
                            detached: bool):
-            backend = cloudpickle.loads(serialized_deployment_def)
+            deployment_def = cloudpickle.loads(serialized_deployment_def)
             deployment_config = DeploymentConfig.from_proto_bytes(
                 deployment_config_proto_bytes)
 
-            if inspect.isfunction(backend):
+            if inspect.isfunction(deployment_def):
                 is_function = True
-            elif inspect.isclass(backend):
+            elif inspect.isclass(deployment_def):
                 is_function = False
             else:
                 assert False, ("deployment_def must be function, class, or "
                                "corresponding import path.")
 
             # Set the controller name so that serve.connect() in the user's
-            # backend code will connect to the instance that this backend is
-            # running in.
+            # code will connect to the instance that this deployment is running
+            # in.
             ray.serve.api._set_internal_replica_context(
                 deployment_name,
                 replica_tag,
@@ -81,13 +81,13 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
             # for allocation of this replica by using the `is_allocated`
             # method. After that, it calls `reconfigure` to trigger
             # user code initialization.
-            async def initialize_backend():
+            async def initialize_replica():
                 if is_function:
-                    _callable = backend
+                    _callable = deployment_def
                 else:
-                    # This allows backends to define an async __init__ method
-                    # (required for FastAPI backend definition).
-                    _callable = backend.__new__(backend)
+                    # This allows deployments to define an async __init__
+                    # method (required for FastAPI).
+                    _callable = deployment_def.__new__(deployment_def)
                     await sync_to_async(_callable.__init__)(*init_args,
                                                             **init_kwargs)
                 # Setting the context again to update the servable_object.
@@ -97,16 +97,16 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
                     controller_name,
                     servable_object=_callable)
 
-                self.backend = RayServeReplica(
+                self.replica = RayServeReplica(
                     _callable, deployment_name, replica_tag, deployment_config,
                     deployment_config.user_config, version, is_function,
                     controller_handle)
 
-            # Is it fine that backend is None here?
-            # Should we add a check in all methods that use self.backend
-            # or, alternatively, create an async get_backend() method?
-            self.backend = None
-            self._initialize_backend = initialize_backend
+            # Is it fine that replica is None here?
+            # Should we add a check in all methods that use self.replica
+            # or, alternatively, create an async get_replica() method?
+            self.replica = None
+            self._initialize_replica = initialize_replica
 
             # asyncio.Event used to signal that the replica is shutting down.
             self.shutdown_event = asyncio.Event()
@@ -124,7 +124,7 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
 
             # Directly receive input because it might contain an ObjectRef.
             query = Query(request_args, request_kwargs, request_metadata)
-            return await self.backend.handle_request(query)
+            return await self.replica.handle_request(query)
 
         async def is_allocated(self):
             """poke the replica to check whether it's alive.
@@ -139,19 +139,20 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
 
         async def reconfigure(self, user_config: Optional[Any] = None
                               ) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            if self.backend is None:
-                await self._initialize_backend()
+            if self.replica is None:
+                await self._initialize_replica()
             if user_config is not None:
-                await self.backend.reconfigure(user_config)
+                await self.replica.reconfigure(user_config)
 
             return self.get_metadata()
 
         def get_metadata(self) -> Tuple[DeploymentConfig, DeploymentVersion]:
-            return self.backend.deployment_config, self.backend.version
+            return self.replica.deployment_config, self.replica.version
 
         async def prepare_for_shutdown(self):
             self.shutdown_event.set()
-            return await self.backend.prepare_for_shutdown()
+            if self.replica is not None:
+                return await self.replica.prepare_for_shutdown()
 
         async def run_forever(self):
             await self.shutdown_event.wait()
@@ -352,12 +353,12 @@ class RayServeReplica:
         if self.is_function:
             raise ValueError(
                 "deployment_def must be a class to use user_config")
-        elif not hasattr(self.callable, BACKEND_RECONFIGURE_METHOD):
-            raise RayServeException("user_config specified but backend " +
+        elif not hasattr(self.callable, RECONFIGURE_METHOD):
+            raise RayServeException("user_config specified but deployment " +
                                     self.deployment_name + " missing " +
-                                    BACKEND_RECONFIGURE_METHOD + " method")
+                                    RECONFIGURE_METHOD + " method")
         reconfigure_method = sync_to_async(
-            getattr(self.callable, BACKEND_RECONFIGURE_METHOD))
+            getattr(self.callable, RECONFIGURE_METHOD))
         await reconfigure_method(user_config)
 
     async def handle_request(self, request: Query) -> asyncio.Future:

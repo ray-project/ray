@@ -74,15 +74,10 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       RayTask task = work->task;
       RAY_LOG(DEBUG) << "Scheduling pending task "
                      << task.GetTaskSpecification().TaskId();
-      auto placement_resources =
-          task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
-      // This argument is used to set violation, which is an unsupported feature now.
-      int64_t _unused;
-      std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-          placement_resources,
-          /*requires_object_store_memory=*/false,
-          task.GetTaskSpecification().IsActorCreationTask(),
-          /*force_spillback=*/false, &_unused, &is_infeasible);
+      std::string node_id_string =
+          GetBestSchedulableNode(*work,
+                                 /*requires_object_store_memory=*/false,
+                                 /*force_spillback=*/false, &is_infeasible);
 
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
@@ -406,13 +401,10 @@ void ClusterTaskManager::DispatchScheduledTasksToWorkers(
 
 bool ClusterTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
                                       bool &is_infeasible) {
-  const auto &spec = work->task.GetTaskSpecification();
-  int64_t _unused;
-  auto placement_resources = spec.GetRequiredPlacementResources().GetResourceMap();
-  std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-      placement_resources,
-      /*requires_object_store_memory=*/false, spec.IsActorCreationTask(),
-      /*force_spillback=*/false, &_unused, &is_infeasible);
+  std::string node_id_string =
+      GetBestSchedulableNode(*work,
+                             /*requires_object_store_memory=*/false,
+                             /*force_spillback=*/false, &is_infeasible);
 
   if (is_infeasible || node_id_string == self_node_id_.Binary() ||
       node_id_string.empty()) {
@@ -425,14 +417,14 @@ bool ClusterTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &wor
 }
 
 void ClusterTaskManager::QueueAndScheduleTask(
-    const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
+    const RayTask &task, bool grant_or_reject, rpc::RequestWorkerLeaseReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
   metric_tasks_queued_++;
-  auto work = std::make_shared<internal::Work>(task, reply, [send_reply_callback] {
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  });
+  auto work = std::make_shared<internal::Work>(
+      task, grant_or_reject, reply,
+      [send_reply_callback] { send_reply_callback(Status::OK(), nullptr, nullptr); });
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
@@ -713,60 +705,20 @@ void ClusterTaskManager::FillResourceUsage(
       data.mutable_resource_load_by_shape()->mutable_resource_demands();
 
   int num_reported = 0;
-
-  // 1-CPU optimization
-  static const ResourceSet one_cpu_resource_set(
-      absl::flat_hash_map<std::string, double>({{kCPU_ResourceLabel, 1}}));
-  static const SchedulingClass one_cpu_scheduling_cls(
-      TaskSpecification::GetSchedulingClass(one_cpu_resource_set));
-  {
-    num_reported++;
-    int ready_count = 0;
-    auto it = tasks_to_schedule_.find(one_cpu_scheduling_cls);
-    if (it != tasks_to_schedule_.end()) {
-      ready_count += it->second.size();
-    }
-    it = tasks_to_dispatch_.find(one_cpu_scheduling_cls);
-    if (it != tasks_to_dispatch_.end()) {
-      ready_count += it->second.size();
-    }
-    int infeasible_count = 0;
-    it = infeasible_tasks_.find(one_cpu_scheduling_cls);
-    if (it != infeasible_tasks_.end()) {
-      infeasible_count += it->second.size();
-    }
-    const int total_count = ready_count + infeasible_count;
-    if (total_count > 0) {
-      auto by_shape_entry = resource_load_by_shape->Add();
-
-      for (const auto &[label, quantity] : one_cpu_resource_set.GetResourceMap()) {
-        // Add to `resource_loads`.
-        (*resource_loads)[label] += quantity * total_count;
-
-        // Add to `resource_load_by_shape`.
-        (*by_shape_entry->mutable_shape())[label] = quantity;
-      }
-
-      by_shape_entry->set_num_ready_requests_queued(ready_count);
-      by_shape_entry->set_num_infeasible_requests_queued(infeasible_count);
-      by_shape_entry->set_backlog_size(TotalBacklogSize(one_cpu_scheduling_cls));
-    }
-  }
+  int64_t skipped_requests = 0;
 
   for (const auto &pair : tasks_to_schedule_) {
     const auto &scheduling_class = pair.first;
-    if (scheduling_class == one_cpu_scheduling_cls) {
-      continue;
-    }
     if (num_reported++ >= max_resource_shapes_per_load_report_ &&
         max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
       // the same resources.
+      skipped_requests++;
       break;
     }
     const auto &resources =
         TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
-            .GetResourceMap();
+            .resource_set.GetResourceMap();
     const auto &queue = pair.second;
     const auto &count = queue.size();
 
@@ -792,18 +744,16 @@ void ClusterTaskManager::FillResourceUsage(
 
   for (const auto &pair : tasks_to_dispatch_) {
     const auto &scheduling_class = pair.first;
-    if (scheduling_class == one_cpu_scheduling_cls) {
-      continue;
-    }
     if (num_reported++ >= max_resource_shapes_per_load_report_ &&
         max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
       // the same resources.
+      skipped_requests++;
       break;
     }
     const auto &resources =
         TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
-            .GetResourceMap();
+            .resource_set.GetResourceMap();
     const auto &queue = pair.second;
     const auto &count = queue.size();
 
@@ -825,18 +775,16 @@ void ClusterTaskManager::FillResourceUsage(
 
   for (const auto &pair : infeasible_tasks_) {
     const auto &scheduling_class = pair.first;
-    if (scheduling_class == one_cpu_scheduling_cls) {
-      continue;
-    }
     if (num_reported++ >= max_resource_shapes_per_load_report_ &&
         max_resource_shapes_per_load_report_ >= 0) {
       // TODO (Alex): It's possible that we skip a different scheduling key which contains
       // the same resources.
+      skipped_requests++;
       break;
     }
     const auto &resources =
         TaskSpecification::GetSchedulingClassDescriptor(scheduling_class)
-            .GetResourceMap();
+            .resource_set.GetResourceMap();
     const auto &queue = pair.second;
     const auto &count = queue.size();
 
@@ -857,6 +805,12 @@ void ClusterTaskManager::FillResourceUsage(
     int num_infeasible = by_shape_entry->num_infeasible_requests_queued();
     by_shape_entry->set_num_infeasible_requests_queued(num_infeasible + count);
     by_shape_entry->set_backlog_size(TotalBacklogSize(scheduling_class));
+  }
+
+  if (skipped_requests > 0) {
+    RAY_LOG(INFO) << "More than " << max_resource_shapes_per_load_report_
+                  << " scheduling classes. Some resource loads may not be reported to "
+                     "the autoscaler.";
   }
 
   if (RayConfig::instance().enable_light_weight_resource_report()) {
@@ -1055,6 +1009,7 @@ void ClusterTaskManager::RecordMetrics() {
   stats::NumReceivedTasks.Record(metric_tasks_queued_);
   stats::NumDispatchedTasks.Record(metric_tasks_dispatched_);
   stats::NumSpilledTasks.Record(metric_tasks_spilled_);
+  stats::NumInfeasibleSchedulingClasses.Record(infeasible_tasks_.size());
 
   metric_tasks_queued_ = 0;
   metric_tasks_dispatched_ = 0;
@@ -1079,16 +1034,11 @@ void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
     RayTask task = work->task;
     RAY_LOG(DEBUG) << "Check if the infeasible task is schedulable in any node. task_id:"
                    << task.GetTaskSpecification().TaskId();
-    auto placement_resources =
-        task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
-    // This argument is used to set violation, which is an unsupported feature now.
-    int64_t _unused;
     bool is_infeasible;
-    std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources,
-        /*requires_object_store_memory=*/false,
-        task.GetTaskSpecification().IsActorCreationTask(),
-        /*force_spillback=*/false, &_unused, &is_infeasible);
+    std::string node_id_string =
+        GetBestSchedulableNode(*work,
+                               /*requires_object_store_memory=*/false,
+                               /*force_spillback=*/false, &is_infeasible);
 
     // There is no node that has available resources to run the request.
     // Move on to the next shape.
@@ -1187,6 +1137,14 @@ void ClusterTaskManager::Dispatch(
 
 void ClusterTaskManager::Spillback(const NodeID &spillback_to,
                                    const std::shared_ptr<internal::Work> &work) {
+  auto send_reply_callback = work->callback;
+
+  if (work->grant_or_reject) {
+    work->reply->set_rejected(true);
+    send_reply_callback();
+    return;
+  }
+
   metric_tasks_spilled_++;
   const auto &task = work->task;
   const auto &task_spec = task.GetTaskSpecification();
@@ -1208,11 +1166,6 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
   reply->mutable_retry_at_raylet_address()->set_port(node_info_ptr->node_manager_port());
   reply->mutable_retry_at_raylet_address()->set_raylet_id(spillback_to.Binary());
 
-  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    reply->set_rejected(true);
-  }
-
-  auto send_reply_callback = work->callback;
   send_reply_callback();
 }
 
@@ -1358,18 +1311,14 @@ void ClusterTaskManager::SpillWaitingTasks() {
     bool force_spillback = task_dependency_manager_.TaskDependenciesBlocked(task_id);
     RAY_LOG(DEBUG) << "Attempting to spill back waiting task " << task_id
                    << " to remote node. Force spillback? " << force_spillback;
-    auto placement_resources =
-        task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap();
-    int64_t _unused;
     bool is_infeasible;
     // TODO(swang): The policy currently does not account for the amount of
     // object store memory availability. Ideally, we should pick the node with
     // the most memory availability.
-    std::string node_id_string = cluster_resource_scheduler_->GetBestSchedulableNode(
-        placement_resources,
-        /*requires_object_store_memory=*/true,
-        task.GetTaskSpecification().IsActorCreationTask(),
-        /*force_spillback=*/force_spillback, &_unused, &is_infeasible);
+    std::string node_id_string =
+        GetBestSchedulableNode(*(*it),
+                               /*requires_object_store_memory=*/true,
+                               /*force_spillback=*/force_spillback, &is_infeasible);
     if (!node_id_string.empty() && node_id_string != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(node_id_string);
       Spillback(node_id, *it);
@@ -1434,6 +1383,26 @@ ResourceSet ClusterTaskManager::CalcNormalTaskResources() const {
     }
   }
   return ResourceSet(total_normal_task_resources);
+}
+
+std::string ClusterTaskManager::GetBestSchedulableNode(const internal::Work &work,
+                                                       bool requires_object_store_memory,
+                                                       bool force_spillback,
+                                                       bool *is_infeasible) {
+  // If the local node is available, we should directly return it instead of
+  // going through the full hybrid policy since we don't want spillback.
+  if (work.grant_or_reject && !force_spillback && IsLocallySchedulable(work.task)) {
+    *is_infeasible = false;
+    return self_node_id_.Binary();
+  }
+
+  // This argument is used to set violation, which is an unsupported feature now.
+  int64_t _unused;
+  return cluster_resource_scheduler_->GetBestSchedulableNode(
+      work.task.GetTaskSpecification().GetRequiredPlacementResources().GetResourceMap(),
+      requires_object_store_memory,
+      work.task.GetTaskSpecification().IsActorCreationTask(), force_spillback, &_unused,
+      is_infeasible);
 }
 
 }  // namespace raylet

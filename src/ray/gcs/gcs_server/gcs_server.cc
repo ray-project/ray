@@ -71,7 +71,9 @@ void GcsServer::Start() {
             rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
                               rpc::ChannelType::GCS_JOB_CHANNEL,
                               rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-                              rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL},
+                              rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
+                              rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
+                              rpc::ChannelType::RAY_ERROR_INFO_CHANNEL},
         /*periodical_runner=*/&pubsub_periodical_runner_,
         /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
         /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
@@ -248,12 +250,13 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_node_manager_);
   std::unique_ptr<GcsActorSchedulerInterface> scheduler;
   auto schedule_failure_handler = [this](std::shared_ptr<GcsActor> actor,
-                                         bool destroy_actor) {
+                                         bool runtime_env_setup_failed) {
     // When there are no available nodes to schedule the actor the
     // gcs_actor_scheduler will treat it as failed and invoke this handler. In
     // this case, the actor manager should schedule the actor once an
     // eligible node is registered.
-    gcs_actor_manager_->OnActorCreationFailed(std::move(actor), destroy_actor);
+    gcs_actor_manager_->OnActorSchedulingFailed(std::move(actor),
+                                                runtime_env_setup_failed);
   };
   auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor,
                                          const rpc::PushTaskReply &reply) {
@@ -400,19 +403,27 @@ void GcsServer::InitPubSubHandler() {
 }
 
 void GcsServer::InitRuntimeEnvManager() {
-  runtime_env_manager_ =
-      std::make_unique<RuntimeEnvManager>([this](const std::string &uri, auto cb) {
-        std::string sep = "://";
-        auto pos = uri.find(sep);
-        if (pos == std::string::npos || pos + sep.size() == uri.size()) {
-          RAY_LOG(ERROR) << "Invalid uri: " << uri;
+  runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
+      /*deleter=*/[this](const std::string &plugin_uri, auto cb) {
+        // A valid runtime env URI is of the form "plugin|protocol://hash".
+        std::string plugin_sep = "|";
+        std::string protocol_sep = "://";
+        auto plugin_end_pos = plugin_uri.find(plugin_sep);
+        auto protocol_end_pos = plugin_uri.find(protocol_sep);
+        if (protocol_end_pos == std::string::npos ||
+            plugin_end_pos == std::string::npos) {
+          RAY_LOG(ERROR) << "Plugin URI must be of form "
+                         << "<plugin>|<protocol>://<hash>, got " << plugin_uri;
           cb(false);
         } else {
-          auto scheme = uri.substr(0, pos);
-          if (scheme != "gcs") {
-            // Skip other uri
+          auto protocol_pos = plugin_end_pos + plugin_sep.size();
+          int protocol_len = protocol_end_pos - protocol_pos;
+          auto protocol = plugin_uri.substr(protocol_pos, protocol_len);
+          if (protocol != "gcs") {
+            // Some URIs do not correspond to files in the GCS.  Skip deletion for these.
             cb(true);
           } else {
+            auto uri = plugin_uri.substr(protocol_pos);
             this->kv_manager_->InternalKVDelAsync(uri, [cb](int deleted_num) {
               if (deleted_num == 0) {
                 cb(false);
@@ -469,10 +480,9 @@ void GcsServer::InstallEventListeners() {
         auto &worker_address = worker_failure_data->worker_address();
         auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
         auto node_id = NodeID::FromBinary(worker_address.raylet_id());
-        std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
+        const rpc::RayException *creation_task_exception = nullptr;
         if (worker_failure_data->has_creation_task_exception()) {
-          creation_task_exception = std::make_shared<rpc::RayException>(
-              worker_failure_data->creation_task_exception());
+          creation_task_exception = &worker_failure_data->creation_task_exception();
         }
         gcs_actor_manager_->OnWorkerDead(node_id, worker_id,
                                          worker_failure_data->exit_type(),

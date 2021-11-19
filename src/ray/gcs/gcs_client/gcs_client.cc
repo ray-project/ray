@@ -156,7 +156,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
         std::vector<rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
                                       rpc::ChannelType::GCS_JOB_CHANNEL,
                                       rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-                                      rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL},
+                                      rpc::ChannelType::GCS_NODE_RESOURCE_CHANNEL,
+                                      rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
         /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
         /*get_client=*/
         [this](const rpc::Address &) {
@@ -202,6 +203,7 @@ void GcsClient::Disconnect() {
   gcs_subscriber_.reset();
   redis_client_->Disconnect();
   redis_client_.reset();
+  disconnected_ = true;
   RAY_LOG(DEBUG) << "GcsClient Disconnected.";
 }
 
@@ -286,6 +288,9 @@ void GcsClient::ReconnectGcsServer() {
   std::pair<std::string, int> address;
   int index = 0;
   for (; index < RayConfig::instance().ping_gcs_rpc_server_max_retries(); ++index) {
+    if (disconnected_) {
+      return;
+    }
     if (get_server_address_func_(&address)) {
       // After GCS is restarted, the gcs client will reestablish the connection. At
       // present, every failed RPC request will trigger `ReconnectGcsServer`. In order to

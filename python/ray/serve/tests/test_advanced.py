@@ -48,7 +48,7 @@ def test_serve_graceful_shutdown(serve_instance):
     def do_blocking_delete():
         Wait.delete()
 
-    # Now delete the backend. This should trigger the shutdown sequence.
+    # Now delete the deployment. This should trigger the shutdown sequence.
     delete_ref = do_blocking_delete.remote()
 
     # The queries should be enqueued but not executed becuase they are blocked
@@ -66,7 +66,7 @@ def test_serve_graceful_shutdown(serve_instance):
 
 def test_parallel_start(serve_instance):
     # Test the ability to start multiple replicas in parallel.
-    # In the past, when Serve scale up a backend, it does so one by one and
+    # In the past, when Serve scale up a deployment, it does so one by one and
     # wait for each replica to initialize. This test avoid this by preventing
     # the first replica to finish initialization unless the second replica is
     # also started.
