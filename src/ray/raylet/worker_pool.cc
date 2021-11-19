@@ -29,6 +29,10 @@
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
+DEFINE_stats(worker_register_time_ms,
+             "end to end latency of register a worker process.", (),
+             ({1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
+
 namespace {
 
 // A helper function to get a worker from a list.
@@ -619,7 +623,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
       end - starting_process_info.start_time);
-  stats::WorkerRegisterTimeMs.Record(duration.count());
+  STATS_worker_register_time_ms.Record(duration.count());
   RAY_LOG(DEBUG) << "Registering worker " << worker->WorkerId() << " with pid " << pid
                  << ", port: " << port << ", register cost: " << duration.count()
                  << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
