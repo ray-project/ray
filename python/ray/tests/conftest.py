@@ -11,10 +11,10 @@ import time
 import ray
 from ray.cluster_utils import Cluster, AutoscalingCluster
 from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
-from ray._private.test_utils import (init_error_pubsub, setup_tls,
-                                     teardown_tls, get_and_run_node_killer)
+from ray._private.test_utils import (init_error_pubsub, init_log_pubsub,
+                                     setup_tls, teardown_tls,
+                                     get_and_run_node_killer)
 import ray.util.client.server.server as ray_client_server
-import ray._private.gcs_utils as gcs_utils
 
 
 @pytest.fixture
@@ -309,10 +309,7 @@ def error_pubsub():
 
 @pytest.fixture()
 def log_pubsub():
-    p = ray.worker.global_worker.redis_client.pubsub(
-        ignore_subscribe_messages=True)
-    log_channel = gcs_utils.LOG_FILE_CHANNEL
-    p.psubscribe(log_channel)
+    p = init_log_pubsub()
     yield p
     p.close()
 
