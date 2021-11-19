@@ -9,6 +9,7 @@ from ray.rllib.utils import add_mixins
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.typing import EnvConfigDict, EnvType, \
     PartialTrainerConfigDict, ResultDict, TrainerConfigDict
+from ray.tune.logger import Logger
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +93,14 @@ def build_trainer(
         _default_config = default_config or COMMON_CONFIG
         _policy_class = default_policy
 
-        def __init__(self, config=None, env=None, logger_creator=None):
-            Trainer.__init__(self, config, env, logger_creator)
+        def __init__(self,
+                     config: TrainerConfigDict = None,
+                     env: Union[str, EnvType, None] = None,
+                     logger_creator: Callable[[], Logger] = None,
+                     remote_checkpoint_dir: Optional[str] = None,
+                     sync_function_tpl: Optional[str] = None):
+            Trainer.__init__(self, config, env, logger_creator,
+                             remote_checkpoint_dir, sync_function_tpl)
 
         @override(base)
         def setup(self, config: PartialTrainerConfigDict):
@@ -103,7 +110,7 @@ def build_trainer(
             if override_all_subkeys_if_type_changes is not None:
                 self._override_all_subkeys_if_type_changes += \
                     override_all_subkeys_if_type_changes
-            super().setup(config)
+            Trainer.setup(self, config)
 
         def _init(self, config: TrainerConfigDict,
                   env_creator: Callable[[EnvConfigDict], EnvType]):
@@ -132,11 +139,7 @@ def build_trainer(
                 policy_class=self._policy_class,
                 config=config,
                 num_workers=self.config["num_workers"])
-            # If execution plan is not provided (None), the Trainer will use
-            # it's already existing default `execution_plan()` static method
-            # instead.
-            if execution_plan is not None:
-                self.execution_plan = execution_plan
+
             self.train_exec_impl = self.execution_plan(
                 self.workers, config, **self._kwargs_for_execution_plan())
 
@@ -150,6 +153,19 @@ def build_trainer(
             # Then call user defined one, if any.
             if validate_config is not None:
                 validate_config(config)
+
+        @staticmethod
+        @override(Trainer)
+        def execution_plan(workers, config, **kwargs):
+            # `execution_plan` is provided, use it inside
+            # `self.execution_plan()`.
+            if execution_plan is not None:
+                return execution_plan(workers, config, **kwargs)
+            # If `execution_plan` is not provided (None), the Trainer will use
+            # it's already existing default `execution_plan()` static method
+            # instead.
+            else:
+                return Trainer.execution_plan(workers, config, **kwargs)
 
         @override(Trainer)
         def _before_evaluate(self):
@@ -170,11 +186,15 @@ def build_trainer(
                     and `overrides`.
 
             Examples:
-                >>> MyClass = SomeOtherClass.with_updates({"name": "Mine"})
-                >>> issubclass(MyClass, SomeOtherClass)
-                ... False
-                >>> issubclass(MyClass, Trainer)
-                ... True
+                >>> from ray.rllib.agents.ppo import PPOTrainer
+                >>> MyPPOClass = PPOTrainer.with_updates({"name": "MyPPO"})
+                >>> issubclass(MyPPOClass, PPOTrainer)
+                False
+                >>> issubclass(MyPPOClass, Trainer)
+                True
+                >>> trainer = MyPPOClass()
+                >>> print(trainer)
+                MyPPO
             """
             return build_trainer(**dict(original_kwargs, **overrides))
 

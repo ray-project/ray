@@ -266,6 +266,7 @@ Papers
    serve/http-servehandle.rst
    serve/deployment.rst
    serve/ml-models.rst
+   serve/pipeline.rst
    serve/performance.rst
    serve/architecture.rst
    serve/tutorials/index.rst
@@ -331,7 +332,7 @@ Papers
    rllib-offline.rst
    rllib-concepts.rst
    rllib-examples.rst
-   rllib-package-ref.rst
+   rllib/package_ref/index.rst
    rllib-dev.rst
 
 .. toctree::

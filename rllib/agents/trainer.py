@@ -25,7 +25,8 @@ from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
+    MultiAgentReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
 from ray.rllib.models import MODEL_DEFAULTS
@@ -38,7 +39,7 @@ from ray.rllib.utils.debug import update_global_seed_if_necessary
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning, \
     DEPRECATED_VALUE
 from ray.rllib.utils.error import EnvError, ERR_MSG_INVALID_ENV_DESCRIPTOR
-from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
@@ -669,6 +670,9 @@ class Trainer(Trainable):
         self.config = self.merge_trainer_configs(
             self.get_default_config(), config, self._allow_unknown_configs)
 
+        # Validate the framework settings in config.
+        self.validate_framework(self.config)
+
         # Setup the "env creator" callable.
         env = self._env_id
         if env:
@@ -697,34 +701,6 @@ class Trainer(Trainable):
         # No env -> Env creator always returns None.
         else:
             self.env_creator = lambda env_config: None
-
-        # Check and resolve DL framework settings.
-        # Tf-eager (tf2|tfe), possibly with tracing set to True. Recommend
-        # setting tracing to True for speedups.
-        if tf1 and self.config["framework"] in ["tf2", "tfe"]:
-            if self.config["framework"] == "tf2" and tfv < 2:
-                raise ValueError(
-                    "You configured `framework`=tf2, but your installed pip "
-                    "tf-version is < 2.0! Make sure your TensorFlow version "
-                    "is >= 2.x.")
-            if not tf1.executing_eagerly():
-                tf1.enable_eager_execution()
-            logger.info(
-                f"Executing eagerly (framework='{self.config['framework']}'),"
-                f" with eager_tracing={self.config['eager_tracing']}. For "
-                "production workloads, make sure to set `eager_tracing=True` "
-                "in order to match the speed of tf-static-graph "
-                "(framework='tf'). For debugging purposes, "
-                "`eager_tracing=False` is the best choice.")
-        # Tf-static-graph (framework=tf): Recommend upgrading to tf2 and
-        # enabling eager tracing for similar speed.
-        elif tf1 and self.config["framework"] == "tf":
-            logger.info(
-                "Your framework setting is 'tf', meaning you are using static"
-                "-graph mode. Set framework='tf2' to enable eager execution "
-                "with tf2.x. You may also want to then set "
-                "`eager_tracing=True` in order to reach similar execution "
-                "speed as with static-graph mode.")
 
         # Set Trainer's seed after we have - if necessary - enabled
         # tf eager-execution.
@@ -1188,8 +1164,8 @@ class Trainer(Trainable):
 
         Returns:
             The computed action if full_fetch=False, or a tuple of a) the
-                full output of policy.compute_actions() if full_fetch=True
-                or we have an RNN-based Policy.
+            full output of policy.compute_actions() if full_fetch=True
+            or we have an RNN-based Policy.
 
         Raises:
             KeyError: If the `policy_id` cannot be found in this Trainer's
@@ -1329,8 +1305,8 @@ class Trainer(Trainable):
             kwargs: forward compatibility placeholder
 
         Returns:
-            any: The computed action if full_fetch=False, or
-            tuple: The full output of policy.compute_actions() if
+            The computed action if full_fetch=False, or a tuple consisting of
+            the full output of policy.compute_actions_from_input_dict() if
             full_fetch=True or we have an RNN-based Policy.
         """
         if normalize_actions is not None:
@@ -1473,8 +1449,8 @@ class Trainer(Trainable):
                 to the evaluation WorkerSet.
 
         Returns:
-            Policy: The newly added policy (the copy that got added to the
-                local worker).
+            The newly added policy (the copy that got added to the local
+            worker).
         """
 
         def fn(worker: RolloutWorker):
@@ -1801,6 +1777,75 @@ class Trainer(Trainable):
         return deep_update(config1, config2, _allow_unknown_configs,
                            cls._allow_unknown_subkeys,
                            cls._override_all_subkeys_if_type_changes)
+
+    @staticmethod
+    def validate_framework(config: PartialTrainerConfigDict) -> None:
+        """Validates the config dictionary wrt the framework settings.
+
+        Args:
+            config: The config dictionary to be validated.
+
+        """
+        _tf1, _tf, _tfv = None, None, None
+        _torch = None
+        framework = config["framework"]
+        tf_valid_frameworks = {"tf", "tf2", "tfe"}
+        if framework not in tf_valid_frameworks and framework != "torch":
+            return
+        elif framework in tf_valid_frameworks:
+            _tf1, _tf, _tfv = try_import_tf()
+        else:
+            _torch, _ = try_import_torch()
+
+        def check_if_correct_nn_framework_installed():
+            """Check if tf/torch experiment is running and tf/torch installed.
+            """
+            if framework in tf_valid_frameworks:
+                if not (_tf1 or _tf):
+                    raise ImportError((
+                        "TensorFlow was specified as the 'framework' "
+                        "inside of your config dictionary. However, there was "
+                        "no installation found. You can install TensorFlow "
+                        "via `pip install tensorflow`"))
+            elif framework == "torch":
+                if not _torch:
+                    raise ImportError(
+                        ("PyTorch was specified as the 'framework' inside "
+                         "of your config dictionary. However, there was no "
+                         "installation found. You can install PyTorch via "
+                         "`pip install torch`"))
+
+        def resolve_tf_settings():
+            """Check and resolve tf settings."""
+
+            if _tf1 and config["framework"] in ["tf2", "tfe"]:
+                if config["framework"] == "tf2" and _tfv < 2:
+                    raise ValueError(
+                        "You configured `framework`=tf2, but your installed "
+                        "pip tf-version is < 2.0! Make sure your TensorFlow "
+                        "version is >= 2.x.")
+                if not _tf1.executing_eagerly():
+                    _tf1.enable_eager_execution()
+                # Recommend setting tracing to True for speedups.
+                logger.info(
+                    f"Executing eagerly (framework='{config['framework']}'),"
+                    f" with eager_tracing={config['eager_tracing']}. For "
+                    "production workloads, make sure to set eager_tracing=True"
+                    "  in order to match the speed of tf-static-graph "
+                    "(framework='tf'). For debugging purposes, "
+                    "`eager_tracing=False` is the best choice.")
+            # Tf-static-graph (framework=tf): Recommend upgrading to tf2 and
+            # enabling eager tracing for similar speed.
+            elif _tf1 and config["framework"] == "tf":
+                logger.info(
+                    "Your framework setting is 'tf', meaning you are using "
+                    "static-graph mode. Set framework='tf2' to enable eager "
+                    "execution with tf2.x. You may also then want to set "
+                    "eager_tracing=True in order to reach similar execution "
+                    "speed as with static-graph mode.")
+
+        check_if_correct_nn_framework_installed()
+        resolve_tf_settings()
 
     @ExperimentalAPI
     def validate_config(self, config: PartialTrainerConfigDict) -> None:
@@ -2155,15 +2200,15 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _create_local_replay_buffer_if_necessary(
-            self,
-            config: PartialTrainerConfigDict) -> Optional[LocalReplayBuffer]:
-        """Create a LocalReplayBuffer instance if necessary.
+            self, config: PartialTrainerConfigDict
+    ) -> Optional[MultiAgentReplayBuffer]:
+        """Create a MultiAgentReplayBuffer instance if necessary.
 
         Args:
             config: Algorithm-specific configuration data.
 
         Returns:
-            LocalReplayBuffer instance based on trainer config.
+            MultiAgentReplayBuffer instance based on trainer config.
             None, if local replay buffer is not needed.
         """
         # These are the agents that utilizes a local replay buffer.
@@ -2174,7 +2219,7 @@ class Trainer(Trainable):
 
         replay_buffer_config = config["replay_buffer_config"]
         if ("type" not in replay_buffer_config
-                or replay_buffer_config["type"] != "LocalReplayBuffer"):
+                or replay_buffer_config["type"] != "MultiAgentReplayBuffer"):
             # DistributedReplayBuffer coming soon.
             return None
 
@@ -2198,7 +2243,7 @@ class Trainer(Trainable):
         else:
             prio_args = {}
 
-        return LocalReplayBuffer(
+        return MultiAgentReplayBuffer(
             num_shards=1,
             learning_starts=config["learning_starts"],
             capacity=capacity,

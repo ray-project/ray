@@ -1065,6 +1065,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "variant", choices=["no_sync_down", "ssh_sync", "durable_upload"])
+    parser.add_argument("--trainable", type=str, default="function")
     parser.add_argument("--bucket", type=str, default=None)
     parser.add_argument(
         "--cpus-per-trial", required=False, default=2, type=int)
@@ -1092,6 +1093,7 @@ if __name__ == "__main__":
                                       "/tmp/release_test_out.json")
 
     def _run_test(variant: str,
+                  trainable: str = "function",
                   bucket: str = "",
                   cpus_per_trial: int = 2,
                   overwrite_tune_script: Optional[str] = None):
@@ -1100,6 +1102,7 @@ if __name__ == "__main__":
               f"node {ray.util.get_node_ip_address()} with "
               f"{cpus_per_trial} CPUs per trial.")
 
+        os.environ["TUNE_TRAINABLE"] = str(trainable)
         os.environ["TUNE_NUM_CPUS_PER_TRIAL"] = str(cpus_per_trial)
 
         if overwrite_tune_script:
@@ -1123,7 +1126,8 @@ if __name__ == "__main__":
 
     if not uses_ray_client:
         print("This test will *not* use Ray client.")
-        _run_test(args.variant, args.bucket, args.cpus_per_trial)
+        _run_test(args.variant, args.trainable, args.bucket,
+                  args.cpus_per_trial)
     else:
         print("This test will run using Ray client.")
 
@@ -1146,7 +1150,7 @@ if __name__ == "__main__":
         _run_test_remote = ray.remote(
             resources={f"node:{ip}": 0.01}, num_cpus=0)(_run_test)
         ray.get(
-            _run_test_remote.remote(args.variant, args.bucket,
+            _run_test_remote.remote(args.variant, args.trainable, args.bucket,
                                     args.cpus_per_trial, remote_tune_script))
 
         print(f"Fetching remote release test result file: {release_test_out}")

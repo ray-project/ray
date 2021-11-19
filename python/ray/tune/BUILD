@@ -72,7 +72,7 @@ py_test(
 
 py_test(
     name = "test_commands",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_commands.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_C"],
@@ -665,6 +665,15 @@ py_test(
     name = "optuna_example",
     size = "small",
     srcs = ["examples/optuna_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "optuna_multiobjective_example",
+    size = "small",
+    srcs = ["examples/optuna_multiobjective_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
