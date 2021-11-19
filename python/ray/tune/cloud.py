@@ -117,8 +117,8 @@ class TrialCheckpoint:
         if update_local_path:
             self.local_path = local_path
 
-        if not overwrite and (os.path.exists(local_path)
-                              and len(os.listdir(local_path)) > 0):
+        if (not overwrite and os.path.exists(local_path)
+                and len(os.listdir(local_path)) > 0):
             # Local path already exists and we should not overwrite,
             # so return.
             return local_path
@@ -171,34 +171,35 @@ class TrialCheckpoint:
 
         return cloud_path
 
-    def save(self,
-             path: Optional[str] = None,
-             overwrite: bool = True,
-             force_download: bool = False):
-        """Save trial checkpoint to directory or cloud storage.
-
-        If this trial has a local path, store to the
-        """
+    def save(self, path: Optional[str] = None, force_download: bool = False):
+        """Save trial checkpoint to directory or cloud storage."""
         temp_dirs = set()
         # Per default, save cloud checkpoint
         if not path:
             if self.cloud_path and self.local_path:
                 path = self.local_path
+            elif not self.cloud_path:
+                raise RuntimeError(
+                    "Cannot save trial checkpoint: No cloud path "
+                    "found. If the checkpoint is already on the node, "
+                    "you can pass a `path` argument to save it at another "
+                    "location.")
             else:
+                # No self.local_path
                 raise RuntimeError(
                     "Cannot save trial checkpoint: No target path "
                     "specified and no default local directory available. "
                     "Please pass a `path` argument to `save()`.")
+        elif not self.local_path and not self.cloud_path:
+            raise RuntimeError(
+                f"Cannot save trial checkpoint to cloud target "
+                f"`{path}`: No existing local or cloud path was "
+                f"found. This indicates an error when loading "
+                f"the checkpoints. Please report this issue.")
 
         if is_cloud_target(path):
             # Storing on cloud
-            if not self.local_path and not self.cloud_path:
-                raise RuntimeError(
-                    f"Cannot save trial checkpoint to cloud target "
-                    f"`{path}`: No existing local or cloud path was "
-                    f"found. This indicates an error when loading "
-                    f"the checkpoints. Please report this issue.")
-            elif not self.local_path:
+            if not self.local_path:
                 # No local copy, yet. Download to temp dir
                 local_path = tempfile.mkdtemp(prefix="tune_checkpoint_")
                 temp_dirs.add(local_path)
@@ -242,6 +243,9 @@ class TrialCheckpoint:
                 return self.local_path
 
             # Both local, just copy tree
+            if os.path.exists(path):
+                shutil.rmtree(path)
+
             shutil.copytree(self.local_path, path)
             return path
 
