@@ -5,7 +5,8 @@ from ray.actor import ActorHandle
 from ray.util.iter import from_actors, LocalIterator, _NextValueNotReady
 from ray.util.iter_metrics import SharedMetrics
 from ray.rllib.execution.buffers.replay_buffer import warn_replay_capacity
-from ray.rllib.execution.buffers.multi_agent_replay_buffer import MultiAgentReplayBuffer
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
+    MultiAgentReplayBuffer
 from ray.rllib.execution.common import \
     STEPS_SAMPLED_COUNTER, _get_shared_metrics
 from ray.rllib.utils.typing import SampleBatchType
@@ -37,10 +38,9 @@ class StoreToReplayBuffer:
     ):
         """
         Args:
-            local_buffer (MultiAgentReplayBuffer): The local replay buffer to store
-                the data into.
-            actors (Optional[List[ActorHandle]]): An optional list of replay
-                actors to use instead of `local_buffer`.
+            local_buffer: The local replay buffer to store the data into.
+            actors: An optional list of replay actors to use instead of
+                `local_buffer`.
         """
         if bool(local_buffer) == bool(actors):
             raise ValueError(
@@ -73,12 +73,12 @@ def Replay(*,
     Concurrently() operator.
 
     Args:
-        local_buffer (MultiAgentReplayBuffer): Local buffer to use. Only one of this
-            and replay_actors can be specified.
-        actors (list): List of replay actors. Only one of this and
-            local_buffer can be specified.
-        num_async (int): In async mode, the max number of async
-            requests in flight per actor.
+        local_buffer: Local buffer to use. Only one of this and replay_actors
+            can be specified.
+        actors: List of replay actors. Only one of this and local_buffer
+            can be specified.
+        num_async: In async mode, the max number of async requests in flight
+            per actor.
 
     Examples:
         >>> actors = [ReplayActor.remote() for _ in range(4)]

@@ -55,7 +55,7 @@ class ReplayBuffer:
         """Initializes a Replaybuffer instance.
 
         Args:
-            capacity (int): Max number of timesteps to store in the FIFO
+            capacity: Max number of timesteps to store in the FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
         """
@@ -88,12 +88,13 @@ class ReplayBuffer:
 
     @DeveloperAPI
     def add(self, item: SampleBatchType, weight: float) -> None:
-        """Add a natcj of experioences.
+        """Add a batch of experiences.
 
         Args:
-            item (SampleBatchType): SampleBatch to add to this buffer's storage.
-            weight (float): The weight of the added sample used in subsequent sampling steps.
-                Only relevant if this ReplayBuffer is a PrioritizedReplayBuffer.
+            item: SampleBatch to add to this buffer's storage.
+            weight: The weight of the added sample used in subsequent
+                sampling steps. Only relevant if this ReplayBuffer is
+                a PrioritizedReplayBuffer.
         """
         assert item.count > 0, item
         warn_replay_capacity(item=item, num_items=self.capacity / item.count)
@@ -129,10 +130,10 @@ class ReplayBuffer:
         """Sample a batch of experiences.
 
         Args:
-            num_items (int): Number of items to sample from this buffer.
+            num_items: Number of items to sample from this buffer.
 
         Returns:
-            SampleBatchType: Concatenated batch of items.
+            Concatenated batch of items.
         """
         idxes = [
             random.randint(0,
@@ -146,10 +147,11 @@ class ReplayBuffer:
         """Returns the stats of this buffer.
 
         Args:
-            debug (bool): If true, adds sample eviction statistics to the returned stats dict.
+            debug: If true, adds sample eviction statistics to the returned
+                stats dict.
 
         Returns:
-            dict: A dictionary of stats about this buffer.
+            A dictionary of stats about this buffer.
         """
         data = {
             "added_count": self._num_timesteps_added,
@@ -168,7 +170,7 @@ class ReplayBuffer:
         """Returns all local state.
 
         Returns:
-            Dict[str, Any]: The serializable local state.
+            The serializable local state.
         """
         state = {"_storage": self._storage, "_next_idx": self._next_idx}
         state.update(self.stats(debug=False))
@@ -179,7 +181,7 @@ class ReplayBuffer:
         """Restores all local state to the provided `state`.
 
         Args:
-            state (Dict[str, Any]): The new state to set this buffer. Can be
+            state: The new state to set this buffer. Can be
                 obtained by calling `self.get_state()`.
         """
         # The actual storage.
@@ -203,10 +205,10 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """Initializes a PrioritizedReplayBuffer instance.
 
         Args:
-            capacity (int): Max number of timesteps to store in the FIFO
+            capacity: Max number of timesteps to store in the FIFO
                 buffer. After reaching this number, older samples will be
                 dropped to make space for new ones.
-            alpha (float): How much prioritization is used
+            alpha: How much prioritization is used
                 (0.0=no prioritization, 1.0=full prioritization).
         """
         super(PrioritizedReplayBuffer, self).__init__(capacity, size)
@@ -225,11 +227,12 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     @DeveloperAPI
     @override(ReplayBuffer)
     def add(self, item: SampleBatchType, weight: float) -> None:
-        """Add a natcj of experioences.
+        """Add a batch of experiences.
 
         Args:
-            item (SampleBatchType): SampleBatch to add to this buffer's storage.
-            weight (float): The weight of the added sample used in subsequent sampling steps.
+            item: SampleBatch to add to this buffer's storage.
+            weight: The weight of the added sample used in subsequent sampling
+                steps.
         """
         idx = self._next_idx
         super(PrioritizedReplayBuffer, self).add(item, weight)
@@ -253,14 +256,14 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """Sample a batch of experiences and return priority weights, indices.
 
         Args:
-            num_items (int): Number of items to sample from this buffer.
-            beta (float): To what degree to use importance weights
+            num_items: Number of items to sample from this buffer.
+            beta: To what degree to use importance weights
                 (0 - no corrections, 1 - full correction).
 
         Returns:
-            SampleBatchType: Concatenated batch of items including "weights"
-                and "batch_indexes" fields denoting IS of each sampled
-                transition and original idxes in buffer of sampled experiences.
+            Concatenated batch of items including "weights" and
+            "batch_indexes" fields denoting IS of each sampled
+            transition and original idxes in buffer of sampled experiences.
         """
         assert beta >= 0.0
 
@@ -303,8 +306,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         to priorities[i].
 
         Args:
-            idxes (int): List of idxes of sampled transitions
-            priorities (float): List of updated priorities corresponding to
+            idxes: List of indices of sampled transitions
+            priorities: List of updated priorities corresponding to
                 transitions at the sampled idxes denoted by
                 variable `idxes`.
         """
@@ -329,10 +332,11 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """Returns the stats of this buffer.
 
         Args:
-            debug (bool): If true, adds sample eviction statistics to the returned stats dict.
+            debug: If true, adds sample eviction statistics to the
+                returned stats dict.
 
         Returns:
-            dict: A dictionary of stats about this buffer.
+            A dictionary of stats about this buffer.
         """
         parent = ReplayBuffer.stats(self, debug)
         if debug:
@@ -345,7 +349,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """Returns all local state.
 
         Returns:
-            Dict[str, Any]: The serializable local state.
+            The serializable local state.
         """
         # Get parent state.
         state = super().get_state()
@@ -363,8 +367,8 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """Restores all local state to the provided `state`.
 
         Args:
-            state (Dict[str, Any]): The new state to set this buffer. Can be
-                obtained by calling `self.get_state()`.
+            state: The new state to set this buffer. Can be obtained by
+                calling `self.get_state()`.
         """
         super().set_state(state)
         self._it_sum.set_state(state["sum_segment_tree"])

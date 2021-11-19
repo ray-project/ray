@@ -7,7 +7,8 @@ import ray
 from ray.rllib import SampleBatch
 from ray.rllib.execution import PrioritizedReplayBuffer
 from ray.rllib.execution.buffers.replay_buffer import logger, _ALL_POLICIES
-from ray.rllib.policy.rnn_sequencing import timeslice_along_seq_lens_with_overlap
+from ray.rllib.policy.rnn_sequencing import \
+    timeslice_along_seq_lens_with_overlap
 from ray.rllib.policy.sample_batch import MultiAgentBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils import deprecation_warning
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -139,9 +140,9 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
 
     def get_host(self) -> str:
         """Returns the computer's network name.
-        
+
         Returns:
-            The computer's networks name or an empty string, if the network 
+            The computer's networks name or an empty string, if the network
             name could not be determined.
         """
         return platform.node()
@@ -151,7 +152,7 @@ class MultiAgentReplayBuffer(ParallelIteratorWorker):
 
         Turns the batch into a MultiAgentBatch of the DEFAULT_POLICY_ID if
         it is not a MultiAgentBatch. Subsequently adds the batch to
-        
+
         Args:
             batch (SampleBatchType): The batch to be added.
         """
