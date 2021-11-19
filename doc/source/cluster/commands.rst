@@ -155,6 +155,7 @@ run ``ray attach --help``.
     # Attach to tmux session on cluster (creates a new one if none available)
     $ ray attach cluster.yaml --tmux
 
+.. _ray-rsync:
 
 Synchronizing files from the cluster (``ray rsync-up/down``)
 ------------------------------------------------------------
