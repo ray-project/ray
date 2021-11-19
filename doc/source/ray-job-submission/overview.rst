@@ -11,7 +11,7 @@ From laptop to production
 Concepts
 --------
 
-- **Package**: A collection of files and configurations that defines an application thus allows it to be executed in a different environment remotely (ideally self-contained).
+- **Package**: A collection of files and configurations that defines an application, thus allowing it to be executed in a different environment remotely (ideally self-contained).
 
 - **Job**: A Ray application that will be submitted to a Ray cluster for execution. Once a job is submitted, it runs once on the cluster to completion or failure. Retries or different runs with different parameters should be handled by the submitter. Jobs are scoped to the lifetime of a ray cluster.
 
