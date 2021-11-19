@@ -90,7 +90,7 @@ The easiest way to get started is to use Job submission CLI.
 
 If we have :code:`RAY_ADDRESS` environment variable set with a local Ray cluster:
 
-.. code-block:: python
+.. code-block::
 
     ❯ ray job submit -- "python -c 'print(123); import time; time.sleep(5)'"
     2021-11-18 16:14:47,602	INFO cli.py:103 -- Job submitted successfully: raysubmit_GsQYzyvZpgNicU8F.
