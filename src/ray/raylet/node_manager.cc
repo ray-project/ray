@@ -546,7 +546,7 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
   // increment the ref count multiple times. This is fine because
   // `HandleJobFinisehd` will also decrement the ref count multiple times.
   runtime_env_manager_.AddURIReference(job_id.Hex(),
-                                       job_data.config().serialized_runtime_env());
+                                       job_data.config().runtime_env_info());
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
   // reschedule these tasks.
@@ -1941,9 +1941,8 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
     auto job_id = task.GetTaskSpecification().JobId();
     auto job_config = worker_pool_.GetJobConfig(job_id);
     RAY_CHECK(job_config);
-    auto s_runtime_env = task.GetTaskSpecification().SerializedRuntimeEnv();
-    runtime_env_manager_.AddURIReference(
-        actor_id.Hex(), task.GetTaskSpecification().SerializedRuntimeEnv());
+    runtime_env_manager_.AddURIReference(actor_id.Hex(),
+                                         task.GetTaskSpecification().RuntimeEnvInfo());
   }
 }
 

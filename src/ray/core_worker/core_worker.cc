@@ -464,11 +464,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   job_config_.reset(new rpc::JobConfig());
   job_config_->ParseFromString(serialized_job_config);
   auto job_serialized_runtime_env =
-      job_config_->serialized_runtime_env().serialized_runtime_env();
+      job_config_->runtime_env_info().serialized_runtime_env();
   if (!job_serialized_runtime_env.empty()) {
     job_runtime_env_.reset(new rpc::RuntimeEnv());
     RAY_CHECK(google::protobuf::util::JsonStringToMessage(
-                  job_config_->serialized_runtime_env().serialized_runtime_env(),
+                  job_config_->runtime_env_info().serialized_runtime_env(),
                   job_runtime_env_.get())
                   .ok());
   }
@@ -1777,7 +1777,7 @@ std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
   if (options_.worker_type == WorkerType::DRIVER) {
     if (serialized_runtime_env == "") {
       *runtime_env_uris = GetUrisFromRuntimeEnv(job_runtime_env_.get());
-      return job_config_->serialized_runtime_env().serialized_runtime_env();
+      return job_config_->runtime_env_info().serialized_runtime_env();
     }
     parent = job_runtime_env_;
   } else {

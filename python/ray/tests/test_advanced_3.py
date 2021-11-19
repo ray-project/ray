@@ -739,7 +739,7 @@ def test_sync_job_config(shutdown_only):
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)
     job_runtime_env = RuntimeEnv(serialized_runtime_env=job_config.
-                                 serialized_runtime_env.serialized_runtime_env)
+                                 runtime_env_info.serialized_runtime_env)
     assert job_runtime_env.env_vars() == runtime_env["env_vars"]
 
     @ray.remote
@@ -753,7 +753,7 @@ def test_sync_job_config(shutdown_only):
     assert (job_config.num_java_workers_per_process ==
             num_java_workers_per_process)
     job_runtime_env = RuntimeEnv(serialized_runtime_env=job_config.
-                                 serialized_runtime_env.serialized_runtime_env)
+                                 runtime_env_info.serialized_runtime_env)
     assert job_runtime_env.env_vars() == runtime_env["env_vars"]
 
 

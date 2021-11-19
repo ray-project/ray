@@ -105,8 +105,8 @@ class WorkerContext {
   bool placement_group_capture_child_tasks_ GUARDED_BY(mutex_);
   // The runtime env for the current actor or task.
   std::shared_ptr<rpc::RuntimeEnv> runtime_env_ GUARDED_BY(mutex_);
-  // The serialized runtime env.
-  rpc::SerializedRuntimeEnv serialized_runtime_env_ GUARDED_BY(mutex_);
+  // The runtime env info.
+  rpc::RuntimeEnvInfo runtime_env_info_ GUARDED_BY(mutex_);
   /// The id of the (main) thread that constructed this worker context.
   const boost::thread::id main_thread_id_;
   // To protect access to mutable members;

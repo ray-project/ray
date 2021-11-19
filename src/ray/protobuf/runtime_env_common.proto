@@ -29,10 +29,8 @@ message PipRuntimeEnv {
   oneof pip_runtime_env {
     /// The pip packages config.
     Config config = 1;
-    /// The path to a pip requirements.txt file.
-    string config_file_path = 2;
     /// The name of a local virtual env.
-    string virtual_env_name = 3;
+    string virtual_env_name = 2;
   }
 }
 
@@ -41,10 +39,8 @@ message CondaRuntimeEnv {
   oneof conda_runtime_env {
     /// The conda YAML config.
     string config = 1;
-    /// The path to a conda environment.yaml file.
-    string config_file_path = 2;
     /// The name of a local conda env.
-    string conda_env_name = 3;
+    string conda_env_name = 2;
   }
 }
 
@@ -130,8 +126,8 @@ message RuntimeEnv {
   }
 }
 
-/// The serialized runtime env which is transfered between ray core processes.
-message SerializedRuntimeEnv {
+/// The runtime env information which is transfered between ray core processes.
+message RuntimeEnvInfo {
   /// The serialized runtime env passed from the user.
   string serialized_runtime_env = 1;
   /// URIs used in this runtime env. These will be used for reference counting.

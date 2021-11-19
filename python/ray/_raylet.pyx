@@ -1996,7 +1996,7 @@ cdef class CoreWorker:
         if self.current_runtime_env is None:
             if self.is_driver:
                 job_config = self.get_job_config()
-                serialized_env = job_config.serialized_runtime_env \
+                serialized_env = job_config.runtime_env_info \
                                            .serialized_runtime_env
             else:
                 serialized_env = CCoreWorkerProcess.GetCoreWorker() \

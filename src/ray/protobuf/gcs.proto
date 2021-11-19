@@ -307,7 +307,7 @@ message JobConfig {
   // in Python. In C++, libraries under these paths will be loaded by 'dlopen'.
   repeated string code_search_path = 3;
   // Runtime environment to run the code
-  SerializedRuntimeEnv serialized_runtime_env = 4;
+  RuntimeEnvInfo runtime_env_info = 4;
   // The job's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
   string ray_namespace = 5;
   // An opaque kv store for job related metadata.

@@ -127,7 +127,7 @@ class RuntimeEnvAgent(dashboard_utils.DashboardAgentModule,
                 # Run setup function from all the plugins
                 for plugin_class_path, config in runtime_env.plugins():
                     logger.debug(
-                        f"Run setup function of plugin {plugin_class_path}")
+                        f"Setting up runtime env plugin {plugin_class_path}")
                     plugin_class = import_attr(plugin_class_path)
                     # TODO(simon): implement uri support
                     plugin_class.create("uri not implemented",

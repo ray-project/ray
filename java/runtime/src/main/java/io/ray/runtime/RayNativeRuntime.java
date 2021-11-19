@@ -18,7 +18,7 @@ import io.ray.runtime.generated.Common.WorkerType;
 import io.ray.runtime.generated.Gcs.GcsNodeInfo;
 import io.ray.runtime.generated.Gcs.JobConfig;
 import io.ray.runtime.generated.RuntimeEnvCommon.RuntimeEnv;
-import io.ray.runtime.generated.RuntimeEnvCommon.SerializedRuntimeEnv;
+import io.ray.runtime.generated.RuntimeEnvCommon.RuntimeEnvInfo;
 import io.ray.runtime.object.NativeObjectStore;
 import io.ray.runtime.runner.RunManager;
 import io.ray.runtime.task.NativeTaskExecutor;
@@ -110,8 +110,7 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
                 .addAllJvmOptions(rayConfig.jvmOptionsForJavaWorker)
                 .addAllCodeSearchPath(rayConfig.codeSearchPath)
                 .setRayNamespace(rayConfig.namespace);
-        SerializedRuntimeEnv.Builder serializedRuntimeEnvBuilder =
-            SerializedRuntimeEnv.newBuilder();
+        RuntimeEnvInfo.Builder runtimeEnvInfoBuilder = RuntimeEnvInfo.newBuilder();
         if (!rayConfig.workerEnv.isEmpty()) {
           // TODO(SongGuyang): Suppport complete runtime env interface for users.
           // Set worker env to the serialized runtime env json.
@@ -119,14 +118,14 @@ public final class RayNativeRuntime extends AbstractRayRuntime {
           runtimeEnvBuilder.putAllEnvVars(rayConfig.workerEnv);
           Printer printer = JsonFormat.printer();
           try {
-            serializedRuntimeEnvBuilder.setSerializedRuntimeEnv(printer.print(runtimeEnvBuilder));
+            runtimeEnvInfoBuilder.setSerializedRuntimeEnv(printer.print(runtimeEnvBuilder));
           } catch (InvalidProtocolBufferException e) {
             throw new RuntimeException(e);
           }
         } else {
-          serializedRuntimeEnvBuilder.setSerializedRuntimeEnv("{}");
+          runtimeEnvInfoBuilder.setSerializedRuntimeEnv("{}");
         }
-        jobConfigBuilder.setSerializedRuntimeEnv(serializedRuntimeEnvBuilder.build());
+        jobConfigBuilder.setRuntimeEnvInfo(runtimeEnvInfoBuilder.build());
         serializedJobConfig = jobConfigBuilder.build().toByteArray();
       }
 

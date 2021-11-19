@@ -86,7 +86,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 "namespace": job_table_entry.config.ray_namespace,
                 "metadata": metadata,
                 "runtime_env": ParsedRuntimeEnv.deserialize(
-                    job_table_entry.config.serialized_runtime_env.
+                    job_table_entry.config.runtime_env_info.
                     serialized_runtime_env),
             }
             status = self._get_job_status(metadata)

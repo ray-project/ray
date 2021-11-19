@@ -36,9 +36,9 @@ class RuntimeEnvManager {
   /// Increase the reference of URI by job_id and runtime_env.
   ///
   /// \param[in] hex_id The id of the runtime env. It can be an actor or job id.
-  /// \param[in] serialized_runtime_env The runtime env used by the id.
+  /// \param[in] runtime_env_info The runtime env used by the id.
   void AddURIReference(const std::string &hex_id,
-                       const rpc::SerializedRuntimeEnv &serialized_runtime_env);
+                       const rpc::RuntimeEnvInfo &runtime_env_info);
 
   /// Get the reference of URIs by id.
   ///
