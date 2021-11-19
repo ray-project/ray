@@ -23,7 +23,7 @@ runtime_env = {
 # __runtime_env_conda_def_end__
 
 # __ray_init_start__
-# Running on the Ray cluster
+# Starting a single-node local Ray cluster
 ray.init(runtime_env=runtime_env)
 # __ray_init_end__
 

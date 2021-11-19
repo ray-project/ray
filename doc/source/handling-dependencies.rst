@@ -109,7 +109,7 @@ You can specify a runtime environment for your whole job, whether running a scri
 
 .. code-block:: python
 
-    # Running on a local machine, connecting to remote cluster using Ray Client
+    # Connecting to remote cluster using Ray Client
     ray.init("ray://123.456.7.89:10001", runtime_env=runtime_env)
 
 This will install the dependencies to the remote cluster.  Any tasks and actors used in the job will use this runtime environment unless otherwise specified.  
