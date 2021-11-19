@@ -14,9 +14,9 @@ for RL.
     :align: left
 
     **A typical RLlib Trainer object:** The components sitting inside a Trainer are
-    normally: N ``WorkerSets`` (consisting of 1 local ``RolloutWorker`` and 0 or
+    normally: N ``WorkerSets`` (each consisting of one local ``RolloutWorker`` and zero or
     more @ray.remote ``RolloutWorkers``),
-    one set of ``Policy/ies`` and their models per worker, and a (vectorized)
+    a set of ``Policy/ies`` and their NN models per worker, and a (already vectorized)
     RLlib ``BaseEnv`` per worker.
 
 

@@ -5,7 +5,7 @@
 RLlib API Reference
 ===================
 
-.. tip:: We'd love to hear your feedback on using RLlib - `ask your questions or give feedback at <https://discuss.ray.io>`_!
+.. tip:: We'd love to hear your feedback on using RLlib - `sign up to our forum and start asking questions <https://discuss.ray.io>`_!
 
 This section contains an overview of RLlib's package- and API reference.
 If you think there is anything missing, please open an issue on `Github`_.
