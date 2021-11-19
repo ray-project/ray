@@ -326,7 +326,18 @@ def build_eager_tf_policy(
             self._re_trace_counter = 0
 
             self._loss_initialized = False
-            self._loss = loss_fn
+            # To ensure backward compatibility:
+            # Old way: If `loss` provided here, use as-is (as a function).
+            if loss_fn is not None:
+                self._loss = loss_fn
+            # New way: Convert the overridden `self.loss` into a plain
+            # function, so it can be called the same way as `loss` would
+            # be, ensuring backward compatibility.
+            elif self.loss.__func__.__qualname__ != "Policy.loss":
+                self._loss = self.loss.__func__
+            # `loss` not provided nor overridden from Policy -> Set to None.
+            else:
+                self._loss = None
 
             self.batch_divisibility_req = get_batch_divisibility_req(self) if \
                 callable(get_batch_divisibility_req) else \
@@ -828,7 +839,7 @@ def build_eager_tf_policy(
             # Calculate the loss(es) inside a tf GradientTape.
             with tf.GradientTape(persistent=compute_gradients_fn is not None) \
                     as tape:
-                losses = loss_fn(self, self.model, self.dist_class, samples)
+                losses = self._loss(self, self.model, self.dist_class, samples)
             losses = force_list(losses)
 
             # User provided a compute_gradients_fn.

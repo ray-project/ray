@@ -18,7 +18,7 @@ The main features are:
 
 .. note::
 
-  This API is in its Alpha release (as of Ray 1.7) and may be revised in
+  This API is in its Beta release (as of Ray 1.9) and may be revised in
   future Ray releases. If you encounter any bugs, please file an
   `issue on GitHub`_.
   If you are looking for the previous API documentation, see :ref:`sgd-index`.
