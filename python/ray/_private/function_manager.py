@@ -38,7 +38,8 @@ logger = logging.getLogger(__name__)
 
 
 def make_export_key(pos):
-    return b"Exports:" + int(pos).to_bytes(8, "big")
+    # big-endian for ordering in binary
+    return b"Exports:" + pos.to_bytes(8, "big")
 
 
 class FunctionActorManager:
@@ -133,14 +134,21 @@ class FunctionActorManager:
 
     def export_key(self, key):
         """Export a key so it can be imported by other workers"""
+
+        # It's going to check all the keys until if reserve one key not
+        # existing in the cluster.
+        # One optimization is that we can use importer counter since
+        # it's sure keys before this counter has been allocated
         pos = self._worker.import_thread.num_imported
         while True:
             pos += 1
             holder = make_export_key(pos)
+            # This step is atomic since internal kv is a single thread atomic
+            # db.
             if self._worker.gcs_client.internal_kv_put(
                     holder, key, False, KV_NAMESPACE_FUNCTION_TABLE) > 0:
                 break
-        # Use gcs pubsub
+        # TODO(yic) Use gcs pubsub
         self._worker.redis_client.lpush("Exports", "a")
 
     def export(self, remote_function):
