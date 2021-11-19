@@ -800,6 +800,8 @@ cdef CRayStatus task_execution_handler(
                 return CRayStatus.IntentionalSystemExit()
             else:
                 msg = "SystemExit was raised from the worker."
+                # In K8s, SIGTERM likely means we hit memory limits, so print
+                # a more informative message there.
                 if "KUBERNETES_SERVICE_HOST" in os.environ:
                     msg += (
                         " The worker may have exceeded K8s pod memory limits.")
