@@ -1,6 +1,7 @@
 """Autoscaler monitoring loop daemon."""
 
 import argparse
+from dataclasses import asdict
 import logging.handlers
 import os
 import sys
@@ -314,7 +315,7 @@ class Monitor:
             self.update_resource_requests()
             self.update_event_summary()
             status = {
-                "load_metrics_report": self.load_metrics.summary()._asdict(),
+                "load_metrics_report": asdict(self.load_metrics.summary()),
                 "time": time.time(),
                 "monitor_pid": os.getpid()
             }
@@ -323,8 +324,7 @@ class Monitor:
             if self.autoscaler:
                 # Only used to update the load metrics for the autoscaler.
                 self.autoscaler.update()
-                status[
-                    "autoscaler_report"] = self.autoscaler.summary()._asdict()
+                status["autoscaler_report"] = asdict(self.autoscaler.summary())
 
                 for msg in self.event_summarizer.summary():
                     logger.info("{}{}".format(

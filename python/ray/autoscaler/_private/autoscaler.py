@@ -1213,7 +1213,8 @@ class StandardAutoscaler:
                 pending_launches[node_type] = count
 
         return AutoscalerSummary(
-            active_nodes=active_nodes,
+            # Convert active_nodes from counter to dict for later serialization
+            active_nodes=dict(active_nodes),
             pending_nodes=pending_nodes,
             pending_launches=pending_launches,
             failed_nodes=failed_nodes)

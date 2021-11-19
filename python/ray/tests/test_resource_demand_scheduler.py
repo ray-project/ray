@@ -1,5 +1,7 @@
 import pytest
 from datetime import datetime
+from dataclasses import asdict
+import json
 import time
 import yaml
 import tempfile
@@ -1375,6 +1377,38 @@ class LoadMetricsTest(unittest.TestCase):
         # should ever have the same set of resources.
         assert len(summary.node_types) == 3, summary.node_types
 
+        # Ensure correct dict-conversion
+        summary_dict = asdict(summary)
+        assert summary_dict["usage"]["CPU"] == (190, 194)
+        assert summary_dict["usage"]["GPU"] == (15, 16)
+        assert summary_dict["usage"]["memory"] == (500 * 2**20, 1000 * 2**20)
+        assert summary_dict["usage"]["object_store_memory"] == \
+            (1000 * 2**20, 2000 * 2**20)
+        assert summary_dict["usage"]["accelerator_type:V100"][1] == 2, \
+            "Not comparing the usage value due to floating point error."
+
+        assert ({"GPU": 2}, 11) in summary_dict["resource_demand"]
+        assert ({"CPU": 16}, 1) in summary_dict["resource_demand"]
+        assert ({"CPU": 16, "GPU": 2}, 1) in summary_dict["resource_demand"]
+        assert len(summary_dict["resource_demand"]) == 3
+
+        assert ({
+            "bundles": [({
+                "GPU": 2
+            }, 2)],
+            "strategy": "PACK"
+        }, 2) in summary_dict["pg_demand"]
+        assert len(summary_dict["pg_demand"]) == 1
+
+        assert ({"GPU": 8}, 2) in summary_dict["request_demand"]
+        assert ({"CPU": 64}, 1) in summary_dict["request_demand"]
+        assert len(summary_dict["request_demand"]) == 2
+
+        assert len(summary_dict["node_types"]) == 3, summary_dict["node_types"]
+
+        # Ensure summary_dict is json-serializable
+        json.dumps(summary_dict)
+
 
 class AutoscalingTest(unittest.TestCase):
     def setUp(self):
@@ -1552,6 +1586,22 @@ class AutoscalingTest(unittest.TestCase):
         assert summary.pending_launches == {"m4.16xlarge": 2}
 
         assert summary.failed_nodes == [("172.0.0.4", "m4.4xlarge")]
+
+        # Check dict conversion
+        summary_dict = asdict(summary)
+        assert summary_dict["active_nodes"]["m4.large"] == 2
+        assert summary_dict["active_nodes"]["empty_node"] == 1
+        assert len(
+            summary_dict["active_nodes"]) == 2, summary_dict["active_nodes"]
+
+        assert summary_dict["pending_nodes"] == [("172.0.0.3", "p2.xlarge",
+                                                  STATUS_WAITING_FOR_SSH)]
+        assert summary_dict["pending_launches"] == {"m4.16xlarge": 2}
+
+        assert summary_dict["failed_nodes"] == [("172.0.0.4", "m4.4xlarge")]
+
+        # Ensure summary is json-serializable
+        json.dumps(summary_dict)
 
         # Make sure we return something (and don't throw exceptions). Let's not
         # get bogged down with a full cli test here.
