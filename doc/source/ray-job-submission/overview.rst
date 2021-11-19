@@ -135,7 +135,7 @@ Then we can submit our application to the Ray cluster via the Job SDK.
 
 .. tip::
 
-    By default Ray Job server will generate a new uuid as return value, but you can also generate your unique job_id first and pass it into :code:`submit_job`. In this case the Job will be executed with your given id, and will throw error if same job_id is submitted more than once for the same Ray cluster. This can facilitate Job id management assuming you have your own Job registry to generate and persist unique Job ids.
+    By default Ray Job server will generate a new ID as return value, but you can also generate your unique job_id first and pass it into :code:`submit_job`. In this case the Job will be executed with your given id, and will throw error if same job_id is submitted more than once for the same Ray cluster.
 
 Now we can have a simple polling loop that checks the job status until it reaches a terminal state (namely, ``JobStatus.SUCCEEDED``, ``JobStatus.STOPPED``, or ``JobStatus.FAILED``), and gets the logs at the end. We expect to see actor printed numbers as well as the correct version of the :code:`requests` module specified in the ``runtime_env``.
 
