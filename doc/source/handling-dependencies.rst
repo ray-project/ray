@@ -34,11 +34,11 @@ Concepts
 
 - **Dependencies**, or **Environment**.  Anything outside of the Ray script that your application needs to run, including files, packages, and environment variables.
 
-- **Files**: Code files, data files or other files that your Ray application needs to run.  For a development workflow, these might live on your local machine, but when it comes time to run things at scale, you will need to get them to your remote cluster.  For how to do this, see :ref:`Workflow: Local Files<workflow-local-files>` below.
+- **Files**: Code files, data files or other files that your Ray application needs to run.
 
 - **Packages**: External libraries or executables required by your Ray application, often installed via ``pip`` or ``conda``.
 
-- **Local machine** and **Cluster**.  The recommended way to connect to a remote Ray cluster is to use :ref:`Ray Client<ray-client>`, and we will call the machine running Ray Client your *local machine*.  Note: you can also start a single-node Ray cluster on your local machine---in this case your Ray cluster is not really “remote”, but any comments in this documentation referring to a “remote cluster” will also apply to this setup.
+- **Local machine** and **Cluster**.  The recommended way to connect to a remote Ray cluster is to use :ref:`Ray Client<ray-client>`, and we will call the machine running Ray Client your *local machine*.  
 
 - **Job**.  A period of execution between connecting to a cluster with ``ray.init()`` and disconnecting by calling ``ray.shutdown()`` or exiting the Ray script.
 
@@ -152,7 +152,8 @@ This section describes some common use cases for runtime environments. These use
 Using Local Files
 """""""""""""""""
 
-Your Ray application might depend on source files or data files.
+Your Ray application might depend on source files or data files.  For a development workflow, these might live on your local machine, but when it comes time to run things at scale, you will need to get them to your remote cluster.
+
 The following simple example explains how to get your local files on the cluster.
 
 .. code-block:: python
