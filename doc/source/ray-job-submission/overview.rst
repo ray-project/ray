@@ -77,7 +77,7 @@ We provide three APIs for Job submission: SDK, CLI and HTTP. Both the SDK and CL
 
 **Key inputs to Job submission**
 
-- **Entrypoint**: Shell command to execute once your code is unpackaged with runtime environment configured
+- **Entrypoint**: Shell command to run the job.
     - Typically :code:`python your_script.py`, can also be any shell script such as :code:`echo hello`.
 - **Runtime Environment**:
     - :code:`working_dir` as local directory: It will be automatically zipped and uploaded to the target Ray cluster, then unpacked to where your submitted application runs.
