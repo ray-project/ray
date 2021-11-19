@@ -5,38 +5,43 @@ Handling Dependencies
 
 This page might be useful for you if you're trying to:
 
-* Run your distributed Ray library or application.
-* Run your distributed Ray script, which imports some local files.
+* Run a distributed Ray library or application.
+* Run a distributed Ray script which imports some local files.
 * Quickly iterate on a project with changing dependencies and files while running on a Ray cluster.
 
 
 What problem does this page solve?
 ----------------------------------
 
-Your Ray application may have a couple "dependencies" that exist outside of your Ray script. For example:
+Your Ray application may have dependencies that exist outside of your Ray script. For example:
 
 * Your Ray script may import/depend on some Python packages.
 * Your Ray script may be looking for some specific environment variables to be available.
 * Your Ray script may import some files outside of the script (i.e., via relative imports)
 
 
-One frequent problem when running on a cluster is that Ray expects these "dependencies" to exist on each Ray node. If these are not present, you may run into issues such as ``ModuleNotFoundError`` or ``FileNotFoundError``.
+One frequent problem when running on a cluster is that Ray expects these "dependencies" to exist on each Ray node. If these are not present, you may run into issues such as ``ModuleNotFoundError``, ``FileNotFoundError`` and so on.
 
 
 
-To address this problem, you can use Ray's **Runtime environments**.
+To address this problem, you can use Ray's **runtime environments**.
 
 
 Concepts
 --------
 
-- **Ray Application**
+- **Ray Application**.  A program including a Ray script that calls ``ray.init()`` and uses Ray tasks or actors.
+
+- **Dependencies**, or **Environment**.  Anything outside of the Ray script that your application needs to run, including files, packages, and environment variables.
+
+- **Files**: Code files, data files or other files that your Ray application needs to run.  For a development workflow, these might live on your local machine, but when it comes time to run things at scale, you will need to get them to your remote cluster.  For how to do this, see :ref:`Workflow: Local Files<workflow-local-files>` below.
+
+- **Packages**: External libraries or executables required by your Ray application, often installed via ``pip`` or ``conda``.
 
 - **Local machine** and **Cluster**.  The recommended way to connect to a remote Ray cluster is to use :ref:`Ray Client<ray-client>`, and we will call the machine running Ray Client your *local machine*.  Note: you can also start a single-node Ray cluster on your local machine---in this case your Ray cluster is not really “remote”, but any comments in this documentation referring to a “remote cluster” will also apply to this setup.
 
-- **Files**: These are the files that your Ray application needs to run.  These can include code files or data files.  For a development workflow, these might live on your local machine, but when it comes time to run things at scale, you will need to get them to your remote cluster.  For how to do this, see :ref:`Workflow: Local Files<workflow-local-files>` below.
+- **Job**.  A period of execution between connecting to a cluster with ``ray.init()`` and disconnecting by calling ``ray.shutdown()`` or exiting the Ray script.  Not a formal Ray concept, but useful for this page.
 
-- **Packages**: These are external libraries or executables required by your Ray application, often installed via ``pip`` or ``conda``.
 
 .. Alternatively, you can prepare your Ray cluster's environment when your cluster nodes start up, and modify it later from the command line.
 .. Packages can be installed using ``setup_commands`` in the Ray Cluster configuration file (:ref:`docs<cluster-configuration-setup-commands>`) and files can be pushed to the cluster using ``ray rsync_up`` (:ref:`docs<ray-rsync>`).
@@ -176,8 +181,6 @@ To ensure your local changes show up across all Ray workers and can be imported 
 
 .. code-block:: python
 
-  # TODO: add comment about module.
-
   import ray
   import my_module
 
@@ -276,9 +279,9 @@ The runtime environment is inheritable, so it will apply to all tasks/actors wit
 
 If an actor or task specifies a new ``runtime_env``, it will override the parent’s ``runtime_env`` (i.e., the parent actor/task's ``runtime_env``, or the job's ``runtime_env`` if there is no parent actor or task) as follows:
 
-* The ``runtime_env["env_vars"]`` field will be `merged` with the ``runtime_env["env_vars"]`` field of the parent.
+* The ``runtime_env["env_vars"]`` field will be merged with the ``runtime_env["env_vars"]`` field of the parent.
   This allows for environment variables set in the parent's runtime environment to be automatically propagated to the child, even if new environment variables are set in the child's runtime environment.
-* Every other field in the `runtime_env` will be *overridden* by the child, not merged.  For example, if ``runtime_env["py_modules"]`` is specified, it will replace the ``runtime_env["py_modules"]`` field of the parent.
+* Every other field in the ``runtime_env`` will be *overridden* by the child, not merged.  For example, if ``runtime_env["py_modules"]`` is specified, it will replace the ``runtime_env["py_modules"]`` field of the parent.
 
 Example:
 
