@@ -1,9 +1,7 @@
 """Common pre-checks for all RLlib experiments."""
-import gym
 import logging
-import sys
-import traceback
 
+import gym
 from ray.rllib.utils.typing import EnvType
 
 logger = logging.getLogger(__name__)
@@ -89,16 +87,19 @@ def check_gym_environments(env: gym.Env) -> None:
     def contains_error(action_or_observation, sample, space):
         string_type = "observation" if not action_or_observation else \
             "action"
-        sample_type = sample.dtype or type(sample)
+        sample_type = get_type(sample)
         _space_type = space.dtype
-        ret = (f"A sampled  {string_type} from your env wasn't contained "
+        ret = (f"A sampled {string_type} from your env wasn't contained "
                f"within your env's {string_type} space. Its possible that "
-               f"There was a type mismatch, or that one of the "
-               f"sub-{string_type} was out of bounds: \n\n sampled_obs: "
-               f"{sample}\n\n env.{string_type}_space: {space}"
-               f"\n\n sampled_obs's dtype: {sample_type}"
-               f"\n\n env.{sample_type}'s dtype: {_space_type}")
+               f"there was a type mismatch, or that one of the "
+               f"sub-{string_type} was out of bounds:\n\nsampled_obs: "
+               f"{sample}\nenv.{string_type}_space: {space}"
+               f"\nsampled_obs's dtype: {sample_type}"
+               f"\nenv.{sample_type}'s dtype: {_space_type}")
         return ret
+
+    def get_type(var):
+        return var.dtype if hasattr(var, "dtype") else type(var)
 
     sampled_action = env.action_space.sample()
     sampled_observation = env.observation_space.sample()
@@ -111,14 +112,9 @@ def check_gym_environments(env: gym.Env) -> None:
 
     # check if observation generated from stepping the environment is
     # contained within the observation space
-    try:
-        reset_obs = env.reset()
-    except Exception:
-        traceback.print_exception(*sys.exc_info())
-        raise ValueError("env.reset() raised an exception. Make sure it "
-                         "returns a valid observation when called.")
+    reset_obs = env.reset()
     if not env.observation_space.contains(reset_obs):
-        reset_obs_type = reset_obs.dtype or type(reset_obs)
+        reset_obs_type = get_type(reset_obs)
         space_type = env.observation_space.dtype
         error = (
             f"The observation collected from env.reset() was not  "
@@ -133,16 +129,9 @@ def check_gym_environments(env: gym.Env) -> None:
     # check if env.step can run, and generates observations rewards, done
     # signals and infos that are within their respective spaces and are of
     # the correct dtypes
-    try:
-        next_obs, reward, done, info = env.step(sampled_action)
-    except Exception:
-        traceback.print_exception(*sys.exc_info())
-        raise ValueError(
-            "env.step(sampled_action) raised an exception. Please review "
-            "your step function to make sure that it can be called without"
-            "errors.")
+    next_obs, reward, done, info = env.step(sampled_action)
     if not env.observation_space.contains(next_obs):
-        next_obs_type = next_obs.dtype or type(next_obs)
+        next_obs_type = get_type(next_obs)
         space_type = env.observation_space.dtype
         error = (
             f"The observation collected from env.step(sampled_action) was "
@@ -153,9 +142,8 @@ def check_gym_environments(env: gym.Env) -> None:
             f"\n\n next_obs's dtype: {next_obs_type}"
             f"\n\n env.observation_space's dtype: {space_type}")
         raise ValueError(error)
-    assert isinstance(reward, [
-        float, int
-    ]), "Your step function must return a reward that is integer or float."
+    assert isinstance(reward, (float, int)), \
+        "Your step function must return a reward that is integer or float."
     assert isinstance(
         done, bool), "Your step function must return a done that is a boolean."
     assert isinstance(
