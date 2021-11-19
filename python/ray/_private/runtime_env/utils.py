@@ -162,7 +162,7 @@ class RuntimeEnvWrapper:
     def plugins(self) -> List[Tuple[str, str]]:
         result = list()
         for plugin in self._proto_runtime_env.py_plugin_runtime_env.plugins:
-            result.append(tuple([plugin.class_path, plugin.config]))
+            result.append((plugin.class_path, plugin.config))
         return result
 
     def has_conda(self) -> str:
