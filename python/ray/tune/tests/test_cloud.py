@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -6,10 +7,11 @@ import shutil
 import sys
 from unittest.mock import patch
 
+from ray import tune
 from ray.tune.cloud import TrialCheckpoint
 
 
-class TrialCheckpointTest(unittest.TestCase):
+class TrialCheckpointApiTest(unittest.TestCase):
     def setUp(self) -> None:
         self.local_dir = tempfile.mkdtemp()
         self.cloud_dir = "s3://invalid"
@@ -456,6 +458,108 @@ class TrialCheckpointTest(unittest.TestCase):
         self.assertEquals(other_cloud_dir, path)
         self.assertIn(other_cloud_dir, state["cmd"])
         self.assertIn(self.local_dir, state["cmd"])
+
+
+def train(config, checkpoint_dir=None):
+    for i in range(10):
+        with tune.checkpoint_dir(step=0) as cd:
+            with open(os.path.join(cd, "checkpoint.json"), "wt") as f:
+                json.dump({"score": i, "train_id": config["train_id"]}, f)
+        tune.report(score=i)
+
+
+class TrialCheckpointEndToEndTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.local_experiment_dir = tempfile.mkdtemp()
+        self.fake_cloud_dir = tempfile.mkdtemp()
+
+        self.cloud_target = "s3://invalid/sub/path"
+
+    def _clear_bucket(self, bucket: str):
+        cloud_local_dir = bucket.replace(self.cloud_target,
+                                         self.fake_cloud_dir)
+        shutil.rmtree(cloud_local_dir)
+
+    def _fake_download_from_bucket(self, bucket: str, local_path: str):
+        cloud_local_dir = bucket.replace(self.cloud_target,
+                                         self.fake_cloud_dir)
+        shutil.rmtree(local_path, ignore_errors=True)
+        shutil.copytree(cloud_local_dir, local_path)
+
+    def _fake_upload_to_bucket(self, bucket: str, local_path: str):
+        cloud_local_dir = bucket.replace(self.cloud_target,
+                                         self.fake_cloud_dir)
+        shutil.rmtree(cloud_local_dir, ignore_errors=True)
+        shutil.copytree(local_path, cloud_local_dir)
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.local_experiment_dir)
+        shutil.rmtree(self.fake_cloud_dir)
+
+    def testCheckpointDownload(self):
+        analysis = tune.run(
+            train,
+            config={"train_id": tune.grid_search([0, 1, 2, 3])},
+            local_dir=self.local_experiment_dir,
+        )
+
+        # Inject the sync config
+        analysis._sync_config = tune.SyncConfig(upload_dir=self.cloud_target)
+
+        # Pretend we have all checkpoints on cloud storage (durable)
+        shutil.rmtree(self.fake_cloud_dir, ignore_errors=True)
+        shutil.copytree(self.local_experiment_dir, self.fake_cloud_dir)
+
+        # Pretend we don't have two trials on local storage
+        shutil.rmtree(analysis.trials[2].logdir)
+        shutil.rmtree(analysis.trials[3].logdir)
+
+        cp0 = analysis.get_best_checkpoint(analysis.trials[0], "score", "max")
+        cp1 = analysis.get_best_checkpoint(analysis.trials[1], "score", "max")
+        cp2 = analysis.get_best_checkpoint(analysis.trials[2], "score", "max")
+        cp3 = analysis.get_best_checkpoint(analysis.trials[3], "score", "max")
+
+        def _load_cp(cd):
+            with open(os.path.join(cd, "checkpoint.json"), "rt") as f:
+                return json.load(f)
+
+        with patch("ray.tune.cloud._clear_bucket", self._clear_bucket), \
+            patch("ray.tune.cloud._download_from_bucket",
+                  self._fake_download_from_bucket), \
+            patch("ray.tune.cloud._upload_to_bucket",
+                  self._fake_upload_to_bucket):
+            #######
+            # Case: Checkpoint does not exist on local dir, download from cloud
+            # store in experiment dir.
+
+            # Directory is empty / does not exist before
+            self.assertFalse(os.path.exists(cp2.local_path))
+
+            # Save!
+            cp2.save()
+
+            # Directory is not empty anymore
+            self.assertTrue(os.listdir(cp2.local_path))
+            cp_content = _load_cp(cp2.local_path)
+            self.assertEquals(cp_content["train_id"], 2)
+            self.assertEquals(cp_content["score"], 9)
+
+            #######
+            # Case: Checkpoint does not exist on local dir, download from cloud
+            # store into other local dir.
+
+            # Directory is empty / does not exist before
+            self.assertFalse(os.path.exists(cp3.local_path))
+
+            other_local_dir = tempfile.mkdtemp()
+            # Save!
+            cp3.save(other_local_dir)
+
+            # Directory is still empty
+            # self.assertFalse(os.path.exists(cp3.local_path))
+            cp_content = _load_cp(other_local_dir)
+            self.assertEquals(cp_content["train_id"], 3)
+            self.assertEquals(cp_content["score"], 9)
 
 
 if __name__ == "__main__":

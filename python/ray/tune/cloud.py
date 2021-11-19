@@ -2,7 +2,8 @@ import os
 import shutil
 import subprocess
 import tempfile
-from typing import Optional
+from numbers import Number
+from typing import Optional, Dict
 
 from ray import logger
 from ray.tune.sync_client import (S3_PREFIX, GS_PREFIX, HDFS_PREFIX,
@@ -68,31 +69,47 @@ def _upload_to_bucket(bucket: str, local_path: str):
 class TrialCheckpoint:
     def __init__(self,
                  local_path: Optional[str] = None,
-                 cloud_path: Optional[str] = None):
+                 cloud_path: Optional[str] = None,
+                 metrics: Optional[Dict[str, Number]] = None):
         self.local_path = local_path
         self.cloud_path = cloud_path
+
+        self.metrics = metrics or {}
+
+    def __str__(self):
+        return self.local_path or self.cloud_path
+
+    def __repr__(self):
+        return (f"<TrialCheckpoint "
+                f"local_path={self.local_path}, "
+                f"cloud_path={self.cloud_path}"
+                f">")
 
     def download(self,
                  cloud_path: Optional[str] = None,
                  local_path: Optional[str] = None,
                  overwrite: bool = False,
-                 update_local_path: bool = True) -> str:
+                 update_local_path: Optional[bool] = None) -> str:
         """Download checkpoint from cloud.
+
+        This will fetch the checkpoint directory from cloud storage
+        and save it to ``local_path``.
 
         If a ``local_path`` argument is provided and ``update_local_path=True``
         the ``self.local_path`` will be overwritten.
 
-        This will then fetch the checkpoint directory from cloud storage
-        and save it to ``self.local_path``.
-
         Args:
+            cloud_path (Optional[str]): Cloud path to load checkpoint from.
+                Defaults to ``self.cloud_path``.
             local_path (Optional[str]): Local path to save checkpoint at.
+                Defaults to ``self.local_path``.
             overwrite (bool): If True, overwrites potential existing
                 checkpoint. If False, exits if ``self.local_dir`` already
                 exists and has files in it.
-            update_local_path (bool): If True, the ``self.local_path``
-                attribute will be updated by tehe ``local_path`` argument,
-                if provided.
+            update_local_path (Optional[bool]): If True,
+                the ``self.local_path`` attribute will be updated by the
+                ``local_path`` argument, if provided. If ``None``, will be
+                updated if previously unset.
 
         """
         cloud_path = cloud_path or self.cloud_path
@@ -113,6 +130,9 @@ class TrialCheckpoint:
                 "path is set. Fix this by either passing a "
                 "`local_path` to your call to `download()` or by "
                 "passing a `local_path` into the constructor.")
+
+        if update_local_path is None:
+            update_local_path = bool(self.local_path)
 
         if update_local_path:
             self.local_path = local_path
@@ -141,6 +161,27 @@ class TrialCheckpoint:
                local_path: Optional[str] = None,
                clean_before: bool = False,
                update_cloud_path: bool = True):
+        """Upload checkpoint to cloud.
+
+        This will push the checkpoint directory from local storage
+        to ``cloud_path``.
+
+        If a ``cloud_path`` argument is provided and ``update_cloud_path=True``
+        the ``self.cloud_path`` will be overwritten.
+
+        Args:
+            cloud_path (Optional[str]): Cloud path to load checkpoint from.
+                Defaults to ``self.cloud_path``.
+            local_path (Optional[str]): Local path to save checkpoint at.
+                Defaults to ``self.local_path``.
+            clean_before (bool): If True, deletes potentially existing
+                cloud bucket before storing new data.
+            update_cloud_path (Optional[bool]): If True, the
+                ``self.cloud_path`` attribute will be updated by the
+                ``cloud_path`` argument, if provided. If ``None``, will be
+                updated if previously unset.
+
+        """
         local_path = local_path or self.local_path
         if not local_path:
             raise RuntimeError("Could not upload trial checkpoint: No local "
@@ -158,6 +199,9 @@ class TrialCheckpoint:
                 "should automatically be done if you pass the correct "
                 "`tune.SyncConfig`.")
 
+        if update_cloud_path is None:
+            update_cloud_path = bool(self.cloud_path)
+
         if update_cloud_path:
             self.cloud_path = cloud_path
 
@@ -172,7 +216,23 @@ class TrialCheckpoint:
         return cloud_path
 
     def save(self, path: Optional[str] = None, force_download: bool = False):
-        """Save trial checkpoint to directory or cloud storage."""
+        """Save trial checkpoint to directory or cloud storage.
+
+        If the ``path`` is a local target and the checkpoint already exists
+        on local storage, the local directory is copied. Else, the checkpoint
+        is downloaded from cloud storage.
+
+        If the ``path`` is a cloud target and the checkpoint does not already
+        exist on local storage, it is downloaded from cloud storage before.
+        That way checkpoints can be transferred across cloud storage providers.
+
+        Args:
+            path (Optional[str]): Path to save checkpoint at. If empty,
+                the default cloud storage path is saved to the default
+                local directory.
+            force_download (bool): If ``True``, forces (re-)download of
+                the checkpoint. Defaults to ``False``.
+        """
         temp_dirs = set()
         # Per default, save cloud checkpoint
         if not path:
@@ -234,8 +294,11 @@ class TrialCheckpoint:
 
             return cloud_path
 
+        local_path_exists = os.path.exists(
+            self.local_path) and len(os.listdir(self.local_path)) > 0
+
         # Else: path is a local target
-        if self.local_path and not force_download:
+        if self.local_path and local_path_exists and not force_download:
             # If we have a local copy, use it
 
             if path == self.local_path:
