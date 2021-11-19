@@ -23,14 +23,6 @@ Concepts
 
 Within the context of Job submission, the packaging part is handled by :ref:`Runtime Environments<runtime-environments>`, where we can dynamically configure your desired Ray cluster environment, actor or task level runtime environment for your submitted Job.
 
-**Key inputs for Job submission**
-
-- **Entrypoint**: Shell command to execute once your code is unpackaged with runtime environment configured
-    - Typically :code:`python your_script.py`, can also be any shell script such as :code:`echo hello`.
-- **Runtime Environment**:
-    - :code:`working_dir` as local directory: It will be automatically zipped and uploaded to the target Ray cluster, then unpacked to where your submitted application runs.
-    - :code:`working_dir` as remote URIs, such as S3, GIT or others: It will be downloaded and unpacked to where your submitted application runs. For details, see :ref:`Runtime Environments<runtime-environments>`.
-
 Example - Setup
 ---------------
 
@@ -70,7 +62,7 @@ We can put this file in a local directory of your choice, with filename "script.
     print(requests.__version__)
 
 
-| Ensure we have a local Ray cluster with running head node. The address and port shown in terminal should be where we submit Job requests to.
+| Ensure we have a local Ray cluster with a running head node. The address and port shown in terminal should be where we submit Job requests to.
 
 .. code-block:: bash
 
@@ -82,6 +74,14 @@ Ray Job APIs
 ------------
 
 We provide three APIs for Job submission: SDK, CLI and HTTP. Both SDK and CLI uses the same HTTP endpoints under the hood, where SDK provides programmatic submission and CLI facilitates command line development.
+
+**Key inputs to Job submission**
+
+- **Entrypoint**: Shell command to execute once your code is unpackaged with runtime environment configured
+    - Typically :code:`python your_script.py`, can also be any shell script such as :code:`echo hello`.
+- **Runtime Environment**:
+    - :code:`working_dir` as local directory: It will be automatically zipped and uploaded to the target Ray cluster, then unpacked to where your submitted application runs.
+    - :code:`working_dir` as remote URIs, such as S3, Git or others: It will be downloaded and unpacked to where your submitted application runs. For details, see :ref:`Runtime Environments<runtime-environments>`.
 
 Ray Job SDK
 ------------
@@ -114,8 +114,7 @@ Then we can submit our application to the Ray cluster via the Job SDK.
 
     By default Ray Job server will generate a new uuid as return value, but you can also generate your unique job_id first and pass it into :code:`submit_job`. In this case the Job will be executed with your given id, and will throw error if same job_id is submitted more than once for the same Ray cluster. This can facilitate Job id management assuming you have your own Job registry to generate and persist unique Job ids.
 
-Now we can have a simple polling loop that checks Job status until it reaches terminal state, and get logs at the end. We are expected to see actor printed numbers as well as correct version of :code:`requests` module used via runtime_env.
-
+Now we can have a simple polling loop that checks the job status until it reaches a terminal state (namely, ``JobStatus.SUCCEEDED``, ``JobStatus.STOPPED``, or ``JobStatus.FAILED``), and gets the logs at the end. We expect to see actor printed numbers as well as the correct version of the :code:`requests` module specified in the ``runtime_env``.
 .. code-block:: python
 
     from ray.dashboard.modules.job.common import JobStatus, JobStatusInfo
@@ -138,9 +137,9 @@ Now we can have a simple polling loop that checks Job status until it reaches te
 
 .. tip::
 
-    We can also use other remote uris for runtime env, such as S3 or GIT. See "Remote URIs" section of :ref:`Runtime Environments<runtime-environments>` for details.
+    We can also use other remote uris for runtime env, such as S3 or Git. See "Remote URIs" section of :ref:`Runtime Environments<runtime-environments>` for details.
 
-Submitted Job can be stopped by user before finish executing.
+A submitted Job can be stopped by the user before it finishes executing.
 
 .. code-block:: python
 
@@ -159,7 +158,7 @@ Submitted Job can be stopped by user before finish executing.
 Job CLI API
 -----------
 
-In addition to Job SDK, we can also submit Ray application via CLI.
+In addition to the Job SDK, we can also submit our Ray application via CLI.
 
 .. code-block:: python
 
@@ -176,13 +175,14 @@ In addition to Job SDK, we can also submit Ray application via CLI.
     ❯ ray job logs raysubmit_GsQYzyvZpgNicU8F
     123
 
+Alternatively, we can also set :code:`RAY_ADDRESS` environment variable and skip passing in address from CLI.
 
 Job HTTP API
 ------------
 
-Under the hood, both Job Client and CLI make HTTP calls to the Job server running on ray head node. Therefore user can also directly send requests to corresponding endpoints via HTTP if needed.
+Under the hood, both the Job Client and the CLI make HTTP calls to the job server running on the ray head node. Therefore the user can also directly send requests to corresponding endpoints via HTTP if needed.
 
-Submit Job
+| Submit Job
 
 .. code-block:: python
 
