@@ -17,7 +17,6 @@ from ray.util.annotations import PublicAPI
 # Alias types
 Event = Any
 StepID = str
-WorkflowOutputType = ObjectRef
 
 MANAGEMENT_ACTOR_NAMESPACE = "workflow"
 MANAGEMENT_ACTOR_NAME = "WorkflowManagementActor"
@@ -40,18 +39,78 @@ def ensure_ray_initialized():
 
 @dataclass
 class WorkflowRef:
-    """This class represents a dynamic reference of a workflow output.
+    """This class represents a reference of a workflow output.
 
-    See 'step_executor._resolve_dynamic_workflow_refs' for how we handle
-    workflow refs."""
+    The workflow reference could be a **dynamic reference**,
+    **static reference** depending on its content.
+
+    When a reference only contains the step ID, it is a **dynamic reference**.
+    Dynamic reference is used to refer a workflow whose status is unknown.
+    This means the workflow could:
+
+    1. have not executed yet
+    2. have been running
+    3. have failed
+    4. have finished
+
+    Dynamic reference is mostly used for virtual actors in the codebase.
+
+    If we also have the object ref in workflow reference, it is a
+    **unresolved static reference**.Unresolved static reference could be
+    used when you want to return a running workflow from a workflow step.
+    For example, the remaining workflows returned by 'workflow.wait' contain
+    static refs to these pending workflows.
+
+    If we have the output object instance in the workflow reference,
+    it is a **resolved static reference**. Resolved reference represents
+    workflow outputs that are both ready and local. Currently it is used for
+    holding outputs of inplace workflows or to cache outputs loaded from
+    storage during recovery.
+
+    See 'workflow_ref.resolve_workflow_refs' for how we resolve workflow refs.
+    """
     # The ID of the step that produces the output of the workflow.
     step_id: StepID
+    # The object ref that points to the live output of the workflow.
+    output_ref: Optional[ObjectRef] = None
+    # True if we have the output of the workflow.
+    has_output: bool = False
+    # The output of the workflow.
+    output: Optional[Any] = None
+
+    @classmethod
+    def from_workflow_output(cls, step_id: StepID, output) -> "WorkflowRef":
+        """A helper function to convert a workflow and it output
+        to a workflow
+
+        Args:
+            step_id: The ID of the workflow.
+            output: The workflow that produces the output.
+
+        Returns:
+            A reference to workflow output.
+        """
+        if isinstance(output, ray.ObjectRef):
+            return WorkflowRef(step_id=step_id, output_ref=output)
+        return WorkflowRef(step_id=step_id, has_output=True, output=output)
+
+    @property
+    def is_resolved(self):
+        return self.has_output
+
+    @property
+    def is_dynamic(self):
+        return not self.is_resolved and self.output_ref is None
 
     def __reduce__(self):
-        return WorkflowRef, (self.step_id, )
+        return WorkflowRef, (self.step_id, self.output_ref, self.has_output,
+                             self.output)
 
     def __hash__(self):
-        return hash(self.step_id)
+        s = self.step_id
+        if self.output_ref is not None:
+            s += "," + self.output_ref.hex()
+        return hash(s) + hash(self.output)
 
 
 @PublicAPI(stability="beta")
@@ -83,11 +142,8 @@ class StepType(str, Enum):
 class WorkflowInputs:
     # The object ref of the input arguments.
     args: ObjectRef
-    # TODO(suquark): maybe later we can replace it with WorkflowData.
     # The workflows in the arguments.
     workflows: "List[Workflow]"
-    # The dynamic refs of workflows in the arguments.
-    workflow_refs: List[WorkflowRef]
 
 
 @ray.remote
@@ -197,7 +253,6 @@ class WorkflowData:
         metadata = {
             "name": get_module(f) + "." + get_qualname(f),
             "workflows": [w.step_id for w in self.inputs.workflows],
-            "workflow_refs": [wr.step_id for wr in self.inputs.workflow_refs],
             "step_options": self.step_options.to_dict(),
             "user_metadata": self.user_metadata,
         }
@@ -208,9 +263,31 @@ class WorkflowData:
 class WorkflowExecutionResult:
     """Dataclass for holding workflow execution result."""
     # Part of result to persist in a storage and pass to the next step.
-    persisted_output: "ObjectRef"
+    persisted_output: WorkflowRef
     # Part of result to return to the user but does not require persistence.
-    volatile_output: "ObjectRef"
+    volatile_output: WorkflowRef
+
+    @classmethod
+    def from_workflow_outputs(cls, step_id: StepID, persisted_output,
+                              volatile_output) -> "WorkflowExecutionResult":
+        """Convert workflow outputs to WorkflowExecutionResult."""
+        return cls(
+            WorkflowRef.from_workflow_output(step_id, persisted_output),
+            WorkflowRef.from_workflow_output(step_id, volatile_output))
+
+    def to_workflow_outputs(self):
+        """Convert WorkflowExecutionResult to workflow outputs."""
+
+        def _helper(x: WorkflowRef):
+            if x.has_output:
+                return x.output
+            if x.output_ref is not None:
+                return x.output_ref
+            raise ValueError(
+                "The workflow ref is dynamic, so we cannot return "
+                "a object ref or a value.")
+
+        return _helper(self.persisted_output), _helper(self.volatile_output)
 
     def __reduce__(self):
         return WorkflowExecutionResult, (self.persisted_output,
@@ -244,6 +321,12 @@ T = TypeVar("T")
 
 
 class Workflow(Generic[T]):
+    """This class represents a workflow.
+
+    It would either be a workflow that is not executed, or it is a reference
+    to a running workflow when 'workflow.ref' is not None.
+    """
+
     def __init__(self,
                  workflow_data: WorkflowData,
                  prepare_inputs: Optional[Callable] = None):
@@ -257,6 +340,7 @@ class Workflow(Generic[T]):
         self._result: Optional[WorkflowExecutionResult] = None
         # step id will be generated during runtime
         self._step_id: StepID = None
+        self._ref: Optional[WorkflowRef] = None
 
     @property
     def _workflow_id(self):
@@ -266,12 +350,17 @@ class Workflow(Generic[T]):
 
     @property
     def executed(self) -> bool:
-        return self._executed
+        return self._executed or (self.ref is not None
+                                  and not self.ref.is_dynamic)
 
     @property
     def result(self) -> WorkflowExecutionResult:
-        if not self._executed:
+        if not self.executed:
             raise Exception("The workflow has not been executed.")
+        if self.ref is not None and not self.ref.is_dynamic:
+            null_ref = WorkflowRef(
+                step_id=self.ref.step_id, has_output=True, output=None)
+            return WorkflowExecutionResult(self.ref, null_ref)
         return self._result
 
     @property
@@ -287,6 +376,8 @@ class Workflow(Generic[T]):
     def step_id(self) -> StepID:
         if self._step_id is not None:
             return self._step_id
+        if self._ref is not None:
+            return self._ref.step_id
 
         from ray.workflow.workflow_access import \
             get_or_create_management_actor
@@ -294,6 +385,26 @@ class Workflow(Generic[T]):
         self._step_id = ray.get(
             mgr.gen_step_id.remote(self._workflow_id, self._name))
         return self._step_id
+
+    @property
+    def ref(self) -> Optional[WorkflowRef]:
+        """Return the workflow ref contained in the workflow."""
+        return self._ref
+
+    @classmethod
+    def from_ref(cls, workflow_ref: WorkflowRef) -> "Workflow":
+        """Construct a workflow from the workflow ref."""
+        inputs = WorkflowInputs(args=None, workflows=[])
+        data = WorkflowData(
+            func_body=None,
+            inputs=inputs,
+            name=None,
+            step_options=WorkflowStepRuntimeOptions.make(
+                step_type=StepType.FUNCTION),
+            user_metadata={})
+        wf = Workflow(data)
+        wf._ref = workflow_ref
+        return wf
 
     def _iter_workflows_in_dag(self) -> Iterator["Workflow"]:
         """Collect all workflows in the DAG linked to the workflow
@@ -319,10 +430,20 @@ class Workflow(Generic[T]):
         return self._data
 
     def __reduce__(self):
-        raise ValueError(
-            "Workflow[T] objects are not serializable. "
-            "This means they cannot be passed or returned from Ray "
-            "remote, or stored in Ray objects.")
+        """Serialization helper for workflow.
+
+        By default Workflow[T] objects are not serializable, except
+        it is a reference to a workflow (when workflow.ref is not 'None').
+        The reference can be passed around, but the workflow must
+        be processed locally so we can capture it in the DAG and
+        checkpoint its inputs properly.
+        """
+        if self._ref is None:
+            raise ValueError(
+                "Workflow[T] objects are not serializable. "
+                "This means they cannot be passed or returned from Ray "
+                "remote, or stored in Ray objects.")
+        return Workflow.from_ref, (self._ref, )
 
     @PublicAPI(stability="beta")
     def run(self,

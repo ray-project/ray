@@ -155,13 +155,12 @@ def deep_nested(x):
     return deep_nested.remote(x + 1)
 
 
-def _resolve_workflow_output(workflow_id: str, output: ray.ObjectRef):
-    while isinstance(output, ray.ObjectRef):
-        output = ray.get(output)
-    return output
-
-
 def test_workflow_output_resolving(workflow_start_regular_shared):
+    from ray.workflow.workflow_ref import _resolve_object_ref as _resol
+
+    def _resolve_workflow_output(workflow_id, ref):
+        return _resol(ref)
+
     # deep nested workflow
     nested_ref = deep_nested.remote(30)
     original_func = workflow_access._resolve_workflow_output

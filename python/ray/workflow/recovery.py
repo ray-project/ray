@@ -1,4 +1,4 @@
-from typing import List, Any, Union, Dict, Callable, Tuple, Optional
+from typing import List, Any, Dict, Callable, Tuple, Optional
 
 import ray
 from ray.workflow import workflow_context
@@ -28,18 +28,12 @@ class WorkflowNotResumableError(Exception):
 
 
 @WorkflowStepFunction
-def _recover_workflow_step(args: List[Any], kwargs: Dict[str, Any],
-                           input_workflows: List[Any],
-                           input_workflow_refs: List[WorkflowRef]):
+def _recover_workflow_step(args: List[Any], kwargs: Dict[str, Any]):
     """A workflow step that recovers the output of an unfinished step.
 
     Args:
         args: The positional arguments for the step function.
         kwargs: The keyword args for the step function.
-        input_workflows: The workflows in the argument of the (original) step.
-            They are resolved into physical objects (i.e. the output of the
-            workflows) here. They come from other recover workflows we
-            construct recursively.
 
     Returns:
         The output of the recovered step.
@@ -52,10 +46,10 @@ def _recover_workflow_step(args: List[Any], kwargs: Dict[str, Any],
 
 def _construct_resume_workflow_from_step(
         reader: workflow_storage.WorkflowStorage, step_id: StepID,
-        input_map: Dict[StepID, Any]) -> Union[Workflow, StepID]:
+        input_map: Dict[StepID, Any]) -> Workflow:
     """Try to construct a workflow (step) that recovers the workflow step.
     If the workflow step already has an output checkpointing file, we return
-    the workflow step id instead.
+    a workflow step id instead.
 
     Args:
         reader: The storage reader for inspecting the step.
@@ -70,7 +64,14 @@ def _construct_resume_workflow_from_step(
     result: workflow_storage.StepInspectResult = reader.inspect_step(step_id)
     if result.output_object_valid:
         # we already have the output
-        return step_id
+        # TODO(suquark): Maybe it is ok to just use a dynamic reference, which
+        # would eventually load the checkpoint from storage (at the cost of
+        # one more workflow management actor access)?
+        ref = WorkflowRef(
+            step_id=step_id,
+            has_output=True,
+            output=reader.load_step_output(step_id))
+        return Workflow.from_ref(ref)
     if isinstance(result.output_step_id, str):
         return _construct_resume_workflow_from_step(
             reader, result.output_step_id, input_map)
@@ -89,19 +90,11 @@ def _construct_resume_workflow_from_step(
                 r = _construct_resume_workflow_from_step(
                     reader, _step_id, input_map)
                 input_map[_step_id] = r
-            if isinstance(r, Workflow):
-                input_workflows.append(r)
-            else:
-                assert isinstance(r, StepID)
-                # TODO (Alex): We should consider caching these outputs too.
-                input_workflows.append(reader.load_step_output(r))
-        workflow_refs = list(map(WorkflowRef, result.workflow_refs))
+            input_workflows.append(r)
 
-        args, kwargs = reader.load_step_args(step_id, input_workflows,
-                                             workflow_refs)
+        args, kwargs = reader.load_step_args(step_id, input_workflows)
         step_options = result.step_options
-        recovery_workflow: Workflow = _recover_workflow_step.step(
-            args, kwargs, input_workflows, workflow_refs)
+        recovery_workflow: Workflow = _recover_workflow_step.step(args, kwargs)
         recovery_workflow._step_id = step_id
         # override step_options
         recovery_workflow.data.step_options = step_options
@@ -109,10 +102,9 @@ def _construct_resume_workflow_from_step(
 
 
 @ray.remote(num_returns=2)
-def _resume_workflow_step_executor(workflow_id: str, step_id: "StepID",
-                                   store_url: str, current_output: [
-                                       ray.ObjectRef
-                                   ]) -> Tuple[ray.ObjectRef, ray.ObjectRef]:
+def _resume_workflow_step_executor(
+        workflow_id: str, step_id: "StepID", store_url: str,
+        current_output: [ray.ObjectRef]) -> Tuple[Any, Any]:
     # TODO (yic): We need better dependency management for virtual actor
     # The current output will always be empty for normal workflow
     # For virtual actor, if it's not empty, it means the previous job is
@@ -130,14 +122,19 @@ def _resume_workflow_step_executor(workflow_id: str, step_id: "StepID",
     except Exception as e:
         raise WorkflowNotResumableError(workflow_id) from e
 
-    if isinstance(r, Workflow):
-        with workflow_context.workflow_step_context(
-                workflow_id, store.storage_url, last_step_of_workflow=True):
-            from ray.workflow.step_executor import execute_workflow
-            result = execute_workflow(r)
-            return result.persisted_output, result.volatile_output
-    assert isinstance(r, StepID)
-    return wf_store.load_step_output(r), None
+    if r.ref is not None:
+        # we should not have dynamic reference as entrypoint when recovering
+        # the workflow
+        assert not r.ref.is_dynamic
+        if r.ref.is_resolved:
+            return r.ref.output, None
+        return r.ref.output_ref, None
+
+    with workflow_context.workflow_step_context(
+            workflow_id, store.storage_url, last_step_of_workflow=True):
+        from ray.workflow.step_executor import execute_workflow
+        result = execute_workflow(r)
+        return result.to_workflow_outputs()
 
 
 def resume_workflow_step(
@@ -164,7 +161,8 @@ def resume_workflow_step(
 
     persisted_output, volatile_output = _resume_workflow_step_executor.remote(
         workflow_id, step_id, store_url, current_output)
-    return WorkflowExecutionResult(persisted_output, volatile_output)
+    return WorkflowExecutionResult.from_workflow_outputs(
+        step_id, persisted_output, volatile_output)
 
 
 def get_latest_output(workflow_id: str, store: storage.Storage) -> Any:

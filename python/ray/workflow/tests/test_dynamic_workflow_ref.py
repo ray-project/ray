@@ -2,7 +2,7 @@ from ray.tests.conftest import *  # noqa
 
 import pytest
 from ray import workflow
-from ray.workflow.common import WorkflowRef
+from ray.workflow.common import WorkflowRef, Workflow
 
 
 @workflow.step
@@ -14,7 +14,8 @@ def test_dynamic_workflow_ref(workflow_start_regular_shared):
     # This test also shows different "style" of running workflows.
     first_step = incr.step(0)
     assert first_step.run("test_dynamic_workflow_ref") == 1
-    second_step = incr.step(WorkflowRef(first_step.step_id))
+    ref = Workflow.from_ref(WorkflowRef(first_step.step_id))
+    second_step = incr.step(ref)
     # Without rerun, it'll just return the previous result
     assert second_step.run("test_dynamic_workflow_ref") == 1
     # TODO (yic) We need re-run to make this test work

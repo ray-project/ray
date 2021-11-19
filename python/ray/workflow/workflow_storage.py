@@ -12,9 +12,9 @@ import ray
 from ray import cloudpickle
 from ray._private import signature
 from ray.workflow import storage
-from ray.workflow.common import (
-    Workflow, StepID, WorkflowMetaData, WorkflowStatus, WorkflowRef,
-    WorkflowNotFoundError, WorkflowStepRuntimeOptions)
+from ray.workflow.common import (Workflow, StepID, WorkflowMetaData,
+                                 WorkflowStatus, WorkflowNotFoundError,
+                                 WorkflowStepRuntimeOptions)
 from ray.workflow import workflow_context
 from ray.workflow import serialization
 from ray.workflow import serialization_context
@@ -70,8 +70,6 @@ class StepInspectResult:
     func_body_valid: bool = False
     # The workflows in the inputs of the workflow.
     workflows: Optional[List[str]] = None
-    # The dynamically referenced workflows in the input of the workflow.
-    workflow_refs: Optional[List[str]] = None
     # The options of the workflow step.
     step_options: Optional[WorkflowStepRuntimeOptions] = None
     # step throw exception
@@ -192,9 +190,8 @@ class WorkflowStorage:
 
         return asyncio_run(_gen_step_id())
 
-    def load_step_args(
-            self, step_id: StepID, workflows: List[Any],
-            workflow_refs: List[WorkflowRef]) -> Tuple[List, Dict[str, Any]]:
+    def load_step_args(self, step_id: StepID,
+                       workflows: List[Any]) -> Tuple[List, Dict[str, Any]]:
         """Load the input arguments of the workflow step. This must be
         done under a serialization context, otherwise the arguments would
         not be reconstructed successfully.
@@ -203,13 +200,11 @@ class WorkflowStorage:
             step_id: ID of the workflow step.
             workflows: The workflows in the original arguments,
                 replaced by the actual workflow outputs.
-            object_refs: The object refs in the original arguments.
 
         Returns:
             Args and kwargs.
         """
-        with serialization_context.workflow_args_resolving_context(
-                workflows, workflow_refs):
+        with serialization_context.workflow_args_resolving_context(workflows):
             flattened_args = asyncio_run(
                 self._get(self._key_step_args(step_id)))
             # dereference arguments like Ray remote functions
@@ -336,7 +331,6 @@ class WorkflowStorage:
                 args_valid=(STEP_ARGS in keys),
                 func_body_valid=(STEP_FUNC_BODY in keys),
                 workflows=metadata["workflows"],
-                workflow_refs=metadata["workflow_refs"],
                 step_options=WorkflowStepRuntimeOptions.from_dict(
                     metadata["step_options"]),
                 step_raised_exception=(STEP_EXCEPTION in keys),

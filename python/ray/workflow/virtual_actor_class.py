@@ -220,7 +220,8 @@ class _VirtualActorMethodHelper:
                 state_ref = None
             else:
                 ws = WorkflowStorage(actor_id, get_global_storage())
-                state_ref = WorkflowRef(ws.get_entrypoint_step_id())
+                state_ref = Workflow.from_ref(
+                    WorkflowRef(ws.get_entrypoint_step_id()))
             # This is a hack to insert a positional argument.
             flattened_args = [signature.DUMMY_TYPE, state_ref] + flattened_args
         workflow_inputs = serialization_context.make_workflow_inputs(
@@ -529,7 +530,7 @@ class VirtualActor:
                                                     self._storage.storage_url):
             wf = method_helper.step(*args, **kwargs)
             if method_helper.readonly:
-                return execute_workflow(wf).volatile_output
+                return execute_workflow(wf).volatile_output.output_ref
             else:
                 return wf.run_async(self._actor_id)
 

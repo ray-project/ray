@@ -9,17 +9,15 @@ from ray import ObjectRef
 from ray._private import signature
 
 from ray.workflow import workflow_context
-from ray.workflow import recovery
 from ray.workflow.workflow_context import get_step_status_info
 from ray.workflow import serialization
 from ray.workflow import serialization_context
 from ray.workflow import workflow_storage
-from ray.workflow.workflow_access import (get_or_create_management_actor,
-                                          get_management_actor)
+from ray.workflow.workflow_access import get_management_actor
+from ray.workflow.workflow_ref import resolve_workflow_refs
 from ray.workflow.common import (
     Workflow,
     WorkflowStatus,
-    WorkflowOutputType,
     WorkflowExecutionResult,
     StepType,
     StepID,
@@ -35,66 +33,6 @@ StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 logger = logging.getLogger(__name__)
 
 
-def _resolve_object_ref(ref: ObjectRef) -> Tuple[Any, ObjectRef]:
-    """
-    Resolves the ObjectRef into the object instance.
-
-    Returns:
-        The object instance and the direct ObjectRef to the instance.
-    """
-    last_ref = ref
-    while True:
-        if isinstance(ref, ObjectRef):
-            last_ref = ref
-        else:
-            break
-        ref = ray.get(last_ref)
-    return ref, last_ref
-
-
-def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
-    """Get the output of a workflow step with the step ID at runtime.
-
-    We lookup the output by the following order:
-    1. Query cached step output in the workflow manager. Fetch the physical
-       output object.
-    2. If failed to fetch the physical output object, look into the storage
-       to see whether the output is checkpointed. Load the checkpoint.
-    3. If failed to load the checkpoint, resume the step and get the output.
-    """
-    workflow_manager = get_or_create_management_actor()
-    context = workflow_context.get_workflow_step_context()
-    workflow_id = context.workflow_id
-    storage_url = context.storage_url
-    workflow_ref_mapping = []
-    for workflow_ref in workflow_refs:
-        step_ref = ray.get(
-            workflow_manager.get_cached_step_output.remote(
-                workflow_id, workflow_ref.step_id))
-        get_cached_step = False
-        if step_ref is not None:
-            try:
-                output, _ = _resolve_object_ref(step_ref)
-                get_cached_step = True
-            except Exception:
-                get_cached_step = False
-        if not get_cached_step:
-            wf_store = workflow_storage.get_workflow_storage()
-            try:
-                output = wf_store.load_step_output(workflow_ref.step_id)
-            except Exception:
-                current_step_id = workflow_context.get_current_step_id()
-                logger.warning("Failed to get the output of step "
-                               f"{workflow_ref.step_id}. Trying to resume it. "
-                               f"Current step: '{current_step_id}'")
-                step_ref = recovery.resume_workflow_step(
-                    workflow_id, workflow_ref.step_id, storage_url,
-                    None).persisted_output
-                output, _ = _resolve_object_ref(step_ref)
-        workflow_ref_mapping.append(output)
-    return workflow_ref_mapping
-
-
 def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     """Execute workflow.
 
@@ -106,19 +44,20 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     """
     if workflow.executed:
         return workflow.result
+    if workflow.ref is not None and workflow.ref.is_dynamic:
+        raise ValueError("Cannot execute a dynamic reference of workflow.")
 
     # Stage 1: prepare inputs
     workflow_data = workflow.data
     inputs = workflow_data.inputs
+    workflow_outputs = []
     with workflow_context.fork_workflow_step_context(
             outer_most_step_id=None, last_step_of_workflow=False):
-        workflow_outputs = [
-            execute_workflow(w).persisted_output for w in inputs.workflows
-        ]
+        for w in inputs.workflows:
+            output = execute_workflow(w).persisted_output
+            workflow_outputs.append(output)
     baked_inputs = _BakedWorkflowInputs(
-        args=workflow_data.inputs.args,
-        workflow_outputs=workflow_outputs,
-        workflow_refs=inputs.workflow_refs)
+        args=inputs.args, workflow_outputs=workflow_outputs)
 
     # Stage 2: match executors
     step_options = workflow_data.step_options
@@ -145,11 +84,6 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
         workflow.step_id, baked_inputs, workflow_data.step_options)
 
     # Stage 4: post processing outputs
-    if not isinstance(persisted_output, WorkflowOutputType):
-        persisted_output = ray.put(persisted_output)
-    if not isinstance(persisted_output, WorkflowOutputType):
-        volatile_output = ray.put(volatile_output)
-
     if step_options.step_type != StepType.READONLY_ACTOR_METHOD:
         if not step_options.allow_inplace:
             # TODO: [Possible flaky bug] Here the RUNNING state may
@@ -158,7 +92,8 @@ def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
             _record_step_status(workflow.step_id, WorkflowStatus.RUNNING,
                                 [volatile_output])
 
-    result = WorkflowExecutionResult(persisted_output, volatile_output)
+    result = WorkflowExecutionResult.from_workflow_outputs(
+        workflow.step_id, persisted_output, volatile_output)
     workflow._result = result
     workflow._executed = True
     return result
@@ -402,8 +337,7 @@ class _BakedWorkflowInputs:
     Especially, all input workflows to the workflow step will be scheduled,
     and their outputs (ObjectRefs) replace the original workflows."""
     args: "ObjectRef"
-    workflow_outputs: "List[ObjectRef]"
-    workflow_refs: "List[WorkflowRef]"
+    workflow_outputs: "List[WorkflowRef]"
 
     def resolve(self) -> Tuple[List, Dict]:
         """
@@ -422,16 +356,10 @@ class _BakedWorkflowInputs:
         Returns:
             Instances of arguments.
         """
-        objects_mapping = []
-        for obj_ref in self.workflow_outputs:
-            obj, ref = _resolve_object_ref(obj_ref)
-            objects_mapping.append(obj)
-
-        workflow_ref_mapping = _resolve_dynamic_workflow_refs(
-            self.workflow_refs)
+        objects_mapping = resolve_workflow_refs(self.workflow_outputs)
 
         with serialization_context.workflow_args_resolving_context(
-                objects_mapping, workflow_ref_mapping):
+                objects_mapping):
             # reconstruct input arguments under correct serialization context
             flattened_args: List[Any] = ray.get(self.args)
 
@@ -443,8 +371,7 @@ class _BakedWorkflowInputs:
         return signature.recover_args(flattened_args)
 
     def __reduce__(self):
-        return _BakedWorkflowInputs, (self.args, self.workflow_outputs,
-                                      self.workflow_refs)
+        return _BakedWorkflowInputs, (self.args, self.workflow_outputs)
 
 
 def _record_step_status(step_id: "StepID",

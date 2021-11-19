@@ -27,7 +27,8 @@ class WorkflowExecutionError(Exception):
 class _SelfDereferenceObject:
     """A object that dereferences itself during deserialization"""
 
-    def __init__(self, workflow_id: Optional[str], nested_ref: ray.ObjectRef):
+    def __init__(self, workflow_id: Optional[str],
+                 nested_ref: common.WorkflowRef):
         self.workflow_id = workflow_id
         self.nested_ref = nested_ref
 
@@ -35,13 +36,14 @@ class _SelfDereferenceObject:
         return _resolve_workflow_output, (self.workflow_id, self.nested_ref)
 
 
-def flatten_workflow_output(workflow_id: str,
-                            workflow_output: ray.ObjectRef) -> ray.ObjectRef:
+def flatten_workflow_output(
+        workflow_id: str,
+        workflow_output: common.WorkflowRef) -> ray.ObjectRef:
     """Converts the nested ref to a direct ref of an object.
 
     Args:
         workflow_id: The ID of a workflow.
-        workflow_output: A (nested) object ref of the workflow output.
+        workflow_output: A reference of the workflow output.
 
     Returns:
         A direct ref of an object.
@@ -50,13 +52,13 @@ def flatten_workflow_output(workflow_id: str,
 
 
 def _resolve_workflow_output(workflow_id: Optional[str],
-                             output: ray.ObjectRef) -> Any:
+                             output: common.WorkflowRef) -> Any:
     """Resolve the output of a workflow.
 
     Args:
         workflow_id: The ID of the workflow. If it's set to be None,
             it won't report to workflow manager
-        output: The output object ref of a workflow.
+        output: The output reference of a workflow.
 
     Raises:
         WorkflowExecutionError: When the workflow fails.
@@ -72,8 +74,18 @@ def _resolve_workflow_output(workflow_id: Optional[str],
                 "Failed to connect to the workflow management actor.") from e
 
     try:
-        while isinstance(output, ray.ObjectRef):
-            output = ray.get(output)
+        # TODO(suquark): Why it sometimes could be ray.ObjectRef?
+        while isinstance(output, (common.WorkflowRef, ray.ObjectRef)):
+            if isinstance(output, ray.ObjectRef):
+                output = ray.get(output)
+                continue
+            if output.is_dynamic:
+                raise ValueError(
+                    "Cannot process dynamic workflow output reference")
+            if output.is_resolved:
+                output = output.output
+            else:
+                output = ray.get(output.output_ref)
     except Exception as e:
         if workflow_id is not None:
             # re-raise the exception so we know it is a workflow failure.
@@ -182,8 +194,8 @@ class WorkflowManagementActor:
         latest_output = LatestWorkflowOutput(result.persisted_output,
                                              workflow_id, step_id)
         self._workflow_outputs[workflow_id] = latest_output
-        logger.info(f"run_or_resume: {workflow_id}, {step_id},"
-                    f"{result.persisted_output}")
+        logger.info(f"run_or_resume: {workflow_id}, {step_id}, "
+                    f"{result.persisted_output.output_ref}")
         self._step_output_cache[(workflow_id, step_id)] = latest_output
 
         wf_store.save_workflow_meta(

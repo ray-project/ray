@@ -139,7 +139,6 @@ def test_workflow_storage(workflow_start_regular):
     input_metadata = {
         "name": "test_basic_workflows.append1",
         "workflows": ["def"],
-        "workflow_refs": ["some_ref"],
         "step_options": step_options.to_dict(),
     }
     output_metadata = {
@@ -180,7 +179,7 @@ def test_workflow_storage(workflow_start_regular):
     asyncio_run(wf_storage._put(wf_storage._key_step_output(step_id), output))
 
     assert wf_storage.load_step_output(step_id) == output
-    assert wf_storage.load_step_args(step_id, [], []) == args
+    assert wf_storage.load_step_args(step_id, []) == args
     assert wf_storage.load_step_func_body(step_id)(33) == 34
     assert ray.get(wf_storage.load_object_ref(
         obj_ref.hex())) == object_resolved
@@ -232,7 +231,6 @@ def test_workflow_storage(workflow_start_regular):
         args_valid=True,
         func_body_valid=True,
         workflows=input_metadata["workflows"],
-        workflow_refs=input_metadata["workflow_refs"],
         step_options=step_options)
     assert inspect_result.is_recoverable()
 
@@ -248,7 +246,6 @@ def test_workflow_storage(workflow_start_regular):
     assert inspect_result == workflow_storage.StepInspectResult(
         func_body_valid=True,
         workflows=input_metadata["workflows"],
-        workflow_refs=input_metadata["workflow_refs"],
         step_options=step_options)
     assert not inspect_result.is_recoverable()
 
@@ -259,9 +256,7 @@ def test_workflow_storage(workflow_start_regular):
             True))
     inspect_result = wf_storage.inspect_step(step_id)
     assert inspect_result == workflow_storage.StepInspectResult(
-        workflows=input_metadata["workflows"],
-        workflow_refs=input_metadata["workflow_refs"],
-        step_options=step_options)
+        workflows=input_metadata["workflows"], step_options=step_options)
     assert not inspect_result.is_recoverable()
 
     step_id = "some_step6"
