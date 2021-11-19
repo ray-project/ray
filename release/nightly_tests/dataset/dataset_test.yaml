@@ -53,7 +53,7 @@
     prepare: python wait_cluster.py 21 2400
     script: python pipelined_training.py --epochs 2 --num-windows 15  --num-files 915 --debug
 
-- name: ray_sgd_500gb
+- name: datasets_ingest_train_infer
   owner:
     mail: "core@anyscale.com"
     slack: "@Chen Shen"
@@ -63,7 +63,7 @@
     compute_template: ray_sgd_training_compute.yaml
 
   run:
-    timeout: 7200
+    timeout: 14400
     prepare: python wait_cluster.py 66 2400
     script: python ray_sgd_training.py --address auto --use-s3 --num-workers 16 --use-gpu --large-dataset
 

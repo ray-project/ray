@@ -554,10 +554,7 @@ if __name__ == "__main__":
         # reported by ``train.report()`` will be logged to these 2 places.
         # TODO: TBXLoggerCallback should create nonexistent logdir
         #       and should also create 1 directory per file.
-        callbacks = [
-            TBXLoggerCallback(logdir="/tmp"),
-            MLflowCallback(config)
-        ]
+        callbacks = [TBXLoggerCallback(logdir="/tmp"), MLflowCallback(config)]
 
         trainer = Trainer(
             backend="torch",
