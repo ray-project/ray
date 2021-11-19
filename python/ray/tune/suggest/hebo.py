@@ -83,7 +83,7 @@ class HEBOSearch(Searcher):
         max_concurrent (int, 8): Number of maximum concurrent trials.
             If this Searcher is used in a ``ConcurrencyLimiter``, the
             ``max_concurrent`` value passed to it will override the
-             value passed here.
+            value passed here.
         **kwargs: The keyword arguments will be passed to `HEBO()``.
 
     Tune automatically converts search spaces to HEBO's format:
@@ -171,13 +171,17 @@ class HEBOSearch(Searcher):
         self._live_trial_mapping = {}
 
         self._max_concurrent = max_concurrent
+        self._setup_optimizer_again = False
         self._suggestions_cache = []
         self._batch_filled = False
 
         self._opt = None
+        if space:
+            self._setup_optimizer()
 
     def set_max_concurrency(self, max_concurrent: int) -> bool:
         self._max_concurrent = max_concurrent
+        self._opt = None
         return True
 
     def _setup_optimizer(self):
@@ -224,14 +228,15 @@ class HEBOSearch(Searcher):
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict, **spec) -> bool:
-        if self._space:
+        if not self._opt:
             self._setup_optimizer()
             return False
-        space = self.convert_search_space(config)
-        self._space = space
-        if metric:
+        if not self._space:
+            space = self.convert_search_space(config)
+            self._space = space
+        if not self._metric:
             self._metric = metric
-        if mode:
+        if not self._mode:
             self._mode = mode
 
         self._setup_optimizer()

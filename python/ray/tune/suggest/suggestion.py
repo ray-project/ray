@@ -403,8 +403,16 @@ class ConcurrencyLimiter(Searcher):
                 f"objects (got {type(searcher)}). Please try to pass "
                 f"`max_concurrent` to the search generator directly.")
 
+        self._set_searcher_max_concurrency()
+
         super(ConcurrencyLimiter, self).__init__(
             metric=self.searcher.metric, mode=self.searcher.mode)
+
+    def _set_searcher_max_concurrency(self):
+        # If the searcher has special logic for handling max concurrency,
+        # we do not do anything inside the ConcurrencyLimiter
+        self._limit_concurrency = not self.searcher.set_max_concurrency(
+            self.max_concurrent)
 
     def set_max_concurrency(self, max_concurrent: int) -> bool:
         # Determine if this behavior is acceptable, or if it should
@@ -414,10 +422,7 @@ class ConcurrencyLimiter(Searcher):
 
     def set_search_properties(self, metric: Optional[str], mode: Optional[str],
                               config: Dict, **spec) -> bool:
-        # If the searcher has special logic for handling max concurrency,
-        # we do not do anything inside the ConcurrencyLimiter
-        self._limit_concurrency = not self.searcher.set_max_concurrency(
-            self.max_concurrent)
+        self._set_searcher_max_concurrency()
         return set_search_properties_backwards_compatible(
             self.searcher.set_search_properties, metric, mode, config, **spec)
 

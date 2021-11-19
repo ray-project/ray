@@ -161,19 +161,12 @@ class SigOptSearch(Searcher):
 
         self._points_to_evaluate = points_to_evaluate
 
+        self.experiment = None
+
         super(SigOptSearch, self).__init__(metric=metric, mode=mode, **kwargs)
+        self._setup_optimizer()
 
-    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
-                              config: Dict, **spec) -> bool:
-        if config:
-            # no automatic conversion of search space just yet
-            return False
-
-        if metric and not self._metric:
-            self._metric = metric
-        if mode and not self._mode:
-            self._mode = mode
-
+    def _setup_optimizer(self):
         if self._metric is None and self._mode:
             # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
@@ -211,20 +204,34 @@ class SigOptSearch(Searcher):
             if self._project is not None:
                 sigopt_params["project"] = self._project
 
-            if len(metric) > 1 and self._observation_budget is None:
+            if len(self._metric) > 1 and self._observation_budget is None:
                 raise ValueError(
                     "observation_budget is required for an"
                     "experiment with more than one optimized metric")
-            sigopt_params["metrics"] = self.serialize_metric(metric, mode)
+            sigopt_params["metrics"] = self.serialize_metric(
+                self._metric, self._mode)
 
             self.experiment = self.conn.experiments().create(**sigopt_params)
         else:
             self.experiment = self.conn.experiments(
                 self._experiment_id).fetch()
+
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict, **spec) -> bool:
+        if config or self.experiment:
+            # no automatic conversion of search space just yet
+            return False
+
+        if metric and not self._metric:
+            self._metric = metric
+        if mode and not self._mode:
+            self._mode = mode
+        self._setup_optimizer()
         return True
 
     def set_max_concurrency(self, max_concurrent: int) -> bool:
         self._max_concurrent = max_concurrent
+        self.experiment = None
         return True
 
     def suggest(self, trial_id: str):
