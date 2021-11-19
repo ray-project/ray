@@ -799,7 +799,11 @@ cdef CRayStatus task_execution_handler(
                 # https://docs.python.org/3/library/sys.html#sys.exit
                 return CRayStatus.IntentionalSystemExit()
             else:
-                logger.exception("SystemExit was raised from the worker")
+                msg = "SystemExit was raised from the worker."
+                if "KUBERNETES_SERVICE_HOST" in os.environ:
+                    msg += (
+                        " The worker may have exceeded K8s pod memory limits.")
+                logger.exception(msg)
                 return CRayStatus.UnexpectedSystemExit()
 
     return CRayStatus.OK()
