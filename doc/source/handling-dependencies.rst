@@ -152,7 +152,8 @@ This section describes some common use cases for runtime environments. These use
 Using Local Files
 """""""""""""""""
 
-Your Ray application might depend on source files or data files.  For a development workflow, these might live on your local machine, but when it comes time to run things at scale, you will need to get them to your remote cluster.
+Your Ray application might depend on source files or data files.  
+For a development workflow, these might live on your local machine, but when it comes time to run things at scale, you will need to get them to your remote cluster.
 
 The following simple example explains how to get your local files on the cluster.
 
