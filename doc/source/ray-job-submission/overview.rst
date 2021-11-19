@@ -73,7 +73,7 @@ We can put this file in a local directory of your choice, with filename "script.
 Ray Job APIs
 ------------
 
-We provide three APIs for Job submission: SDK, CLI and HTTP. Both SDK and CLI uses the same HTTP endpoints under the hood, where SDK provides programmatic submission and CLI facilitates command line development.
+We provide three APIs for Job submission: SDK, CLI and HTTP. Both the SDK and CLI use the same HTTP endpoints under the hood. The CLI is easy to use manually on the command line, and the SDK allows you to programmatically interact with jobs.
 
 **Key inputs to Job submission**
 
