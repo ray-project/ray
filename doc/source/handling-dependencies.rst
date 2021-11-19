@@ -17,7 +17,7 @@ Your Ray application may have dependencies that exist outside of your Ray script
 
 * Your Ray script may import/depend on some Python packages.
 * Your Ray script may be looking for some specific environment variables to be available.
-* Your Ray script may import some files outside of the script (i.e., via relative imports)
+* Your Ray script may import some files outside of the script.
 
 
 One frequent problem when running on a cluster is that Ray expects these "dependencies" to exist on each Ray node. If these are not present, you may run into issues such as ``ModuleNotFoundError``, ``FileNotFoundError`` and so on.
@@ -40,7 +40,7 @@ Concepts
 
 - **Local machine** and **Cluster**.  The recommended way to connect to a remote Ray cluster is to use :ref:`Ray Client<ray-client>`, and we will call the machine running Ray Client your *local machine*.  Note: you can also start a single-node Ray cluster on your local machine---in this case your Ray cluster is not really “remote”, but any comments in this documentation referring to a “remote cluster” will also apply to this setup.
 
-- **Job**.  A period of execution between connecting to a cluster with ``ray.init()`` and disconnecting by calling ``ray.shutdown()`` or exiting the Ray script.  Not a formal Ray concept, but useful for this page.
+- **Job**.  A period of execution between connecting to a cluster with ``ray.init()`` and disconnecting by calling ``ray.shutdown()`` or exiting the Ray script.
 
 
 .. Alternatively, you can prepare your Ray cluster's environment when your cluster nodes start up, and modify it later from the command line.
@@ -58,7 +58,7 @@ Runtime Environments
 
 A **runtime environment** describes the dependencies your Ray application needs to run, including :ref:`files, packages, environment variables, and more <runtime-environments-api-ref>`.
 
-Runtime environment enable the transition of running of your Ray application on your local machine to a remote cluster, without any code changes or manual setup.
+Runtime environments let you transition your Ray application from running on your local machine to running on a remote cluster, without any manual environment setup.
 
 ..
   TODO(architkulkarni): run working_dir doc example in CI
@@ -77,11 +77,12 @@ Runtime environment enable the transition of running of your Ray application on 
 Jump to the :ref:`API Reference<runtime-environments-api-ref>`.
 
 
-There are two primary ways of using runtime environments:
+There are two primary scopes for which you can specify a runtime environment:
 
-* Per Ray Job (TODO: define job) <link down>
-* Per Ray Task/Actor, within a job <link down>
+* :ref:`Per-Job <rte-per-job>`, and
+* :ref:`Per-Task/Actor, within a job <rte-per-task-actor>`.
 
+.. _rte-per-job:
 
 Specifying a Runtime Environment Per-Job
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -112,6 +113,8 @@ This will install the dependencies to the remote cluster.  Any tasks and actors 
 
   The default is option 1. To change the behavior to option 2, add ``"eager_install": False`` to the ``runtime_env``.
 
+.. _rte-per-task-actor:
+
 Specifying a Runtime Environment Per-Task or Per-Actor
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -131,6 +134,8 @@ This allows you to have actors and tasks running in their own environments, inde
 
 Common Workflows
 ^^^^^^^^^^^^^^^^
+
+This section describes some common use cases for runtime environments. These use cases are not mutually exclusive; all of the options described below can be combined in a single runtime environment.
 
 .. _workflow-local-files:
 
@@ -160,8 +165,8 @@ The following simple example explains how to get your local files on the cluster
   print(ray.get(f.remote())) # Hello World!
 
 .. note::
-  The example above is written to run on a local machine, but it also works when specifying an Ray cluster 
-  (e.g. ``ray.init("ray://123.456.7.89:10001", runtime_env=...)`` or ``ray.init(address="auto", runtime_env=...)``).
+  The example above is written to run on a local machine, but as for all of these examples, it also works when specifying a Ray cluster to connect to
+  (e.g., using ``ray.init("ray://123.456.7.89:10001", runtime_env=...)`` or ``ray.init(address="auto", runtime_env=...)``).
 
 The specified local directory will automatically be pushed to the cluster nodes when ``ray.init()`` is called.
 
@@ -192,6 +197,44 @@ To ensure your local changes show up across all Ray workers and can be imported 
       my_module.test()
 
   ray.get(f.remote())
+
+Using ``conda`` or ``pip`` packages
+"""""""""""""""""""""""""""""""""""
+
+Your Ray application might depend on Python packages such as ``pendulum`` or ``requests`` via ``import`` statements.
+
+Ray ordinarily expects all imported packages to be installed on every node of the cluster; in particular, these packages are not automatically shipped from your local machine to the cluster or downloaded from any repository.
+
+However, using runtime environments you can dynamically specify packages to be automatically downloaded and installed in an isolated virtual environment for your Ray job, or for specific Ray tasks or actors.
+
+.. code-block:: python
+
+  import ray
+  import requests
+
+  # Written to be runnable on a local machine, but you can also do
+  # ray.init(address=..., runtime_env=...) to connect to a cluster.
+  ray.init(runtime_env={"pip": ["requests"]})
+
+  @ray.remote
+  def reqs():
+      return requests.get("https://www.ray.io/")
+    
+  print(ray.get(reqs.remote())) # <Response [200]>
+
+Ray will automatically be installed in the isolated environment.  However, if you are using any Ray libraries (for example, Ray Serve), then you will need to specify the library in the runtime environment (e.g. ``runtime_env = {"pip": ["requests", "ray[serve]"}]}``.)
+
+You may also specify your ``pip`` dependencies via a ``requirements.txt`` file.
+Alternatively, you can specify a ``conda`` environment, either as a Python dictionary or via a ``environment.yml`` file.  This conda environment can include ``pip`` packages.
+For details, head to the :ref:`API Reference<runtime-environments-api-ref>`.
+
+.. tip::
+
+  To run multiple tasks or actors with different (possibly conflicting) sets of dependencies, all on the same Ray cluster, you may specify the runtime environment per-task or per-actor (:ref:<rte-per-task-actor>).
+
+.. warning::
+
+  Since the packages in the `runtime_env` are installed at runtime, be cautious when specifying ``conda`` or ``pip`` packages that build from source, as this may be slow.
 
 .. _runtime-environments-api-ref:
 
