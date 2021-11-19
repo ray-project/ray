@@ -114,8 +114,8 @@ class CollectMetrics:
         res.update({
             "num_healthy_workers": len(self.workers.remote_workers()),
             "timesteps_total": (metrics.counters[STEPS_TRAINED_COUNTER]
-                                if self.by_steps_trained
-                                else metrics.counters[STEPS_SAMPLED_COUNTER]),
+                                if self.by_steps_trained else
+                                metrics.counters[STEPS_SAMPLED_COUNTER]),
             # tune.Trainable uses timesteps_this_iter for tracking
             # total timesteps.
             "timesteps_this_iter": metrics.counters[
