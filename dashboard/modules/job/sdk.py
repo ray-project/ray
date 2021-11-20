@@ -97,7 +97,7 @@ class JobSubmissionClient:
             raise ConnectionError(
                 f"Failed to connect to Ray at address: {self._address}.")
 
-    def _raise_error(self, r: requests.Response):
+    def _raise_error(self, r: "requests.Response"):
         raise RuntimeError(
             f"Request failed with status code {r.status_code}: {r.text}.")
 

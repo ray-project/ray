@@ -2,7 +2,7 @@ from collections import Counter
 import numpy as np
 import unittest
 
-from ray.rllib.execution.replay_buffer import PrioritizedReplayBuffer
+from ray.rllib.execution.buffers.replay_buffer import PrioritizedReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
 
