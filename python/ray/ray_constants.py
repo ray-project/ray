@@ -62,14 +62,12 @@ REDIS_KEY_DASHBOARD = "dashboard"
 PROMETHEUS_SERVICE_DISCOVERY_FILE = "prom_metrics_service_discovery.json"
 # Default resource requirements for actors when no resource requirements are
 # specified.
-DEFAULT_ACTOR_METHOD_CPU_SIMPLE = 0 if gcs_actor_scheduling_enabled() else 1
-DEFAULT_ACTOR_CREATION_CPU_SIMPLE = 0.01 if gcs_actor_scheduling_enabled(
-) else 0
+DEFAULT_ACTOR_METHOD_CPU_SIMPLE = 1
+DEFAULT_ACTOR_CREATION_CPU_SIMPLE = 0
 # Default resource requirements for actors when some resource requirements are
 # specified in .
 DEFAULT_ACTOR_METHOD_CPU_SPECIFIED = 0
-DEFAULT_ACTOR_CREATION_CPU_SPECIFIED = 0.01 if gcs_actor_scheduling_enabled(
-) else 1
+DEFAULT_ACTOR_CREATION_CPU_SPECIFIED = 1
 # Default number of return values for each actor method.
 DEFAULT_ACTOR_METHOD_NUM_RETURN_VALS = 1
 

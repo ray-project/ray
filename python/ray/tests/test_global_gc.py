@@ -183,7 +183,7 @@ def test_global_gc_when_full(shutdown_only):
 
 def test_global_gc_actors(shutdown_only):
     ray.init(
-        num_cpus=3, _system_config={"debug_dump_period_milliseconds": 500})
+        num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
 
     try:
         gc.disable()
