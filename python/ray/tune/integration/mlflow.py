@@ -7,6 +7,7 @@ from ray.tune.trainable import Trainable
 from ray.tune.logger import Logger, LoggerCallback
 from ray.tune.result import TRAINING_ITERATION, TIMESTEPS_TOTAL
 from ray.tune.trial import Trial
+from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,9 @@ class MLflowLoggerCallback(LoggerCallback):
         self.registry_uri = registry_uri
         self.experiment_name = experiment_name
         self.tags = tags
-        self.save_artifact = save_artifact
+        self.should_save_artifact = save_artifact
+
+        self.mlflow_util = MLflowLoggerUtil()
 
         if ray.util.client.ray.is_connected():
             logger.warning("When using MLflowLoggerCallback with Ray Client, "
@@ -87,53 +90,16 @@ class MLflowLoggerCallback(LoggerCallback):
                            "side.")
 
     def setup(self):
-        mlflow = _import_mlflow()
-        if mlflow is None:
-            raise RuntimeError("MLflow has not been installed. Please `pip "
-                               "install mlflow` to use the MLflowLogger.")
 
-        from mlflow.tracking import MlflowClient
-
-        self.client = MlflowClient(
-            tracking_uri=self.tracking_uri, registry_uri=self.registry_uri)
-
-        if self.experiment_name is None:
-            # If no name is passed in, then check env vars.
-            # First check if experiment_name env var is set.
-            self.experiment_name = os.environ.get("MLFLOW_EXPERIMENT_NAME")
-
-        if self.experiment_name is not None:
-            # First check if experiment with name exists.
-            experiment = self.client.get_experiment_by_name(
-                self.experiment_name)
-            if experiment is not None:
-                # If it already exists then get the id.
-                experiment_id = experiment.experiment_id
-            else:
-                # If it does not exist, create the experiment.
-                experiment_id = self.client.create_experiment(
-                    name=self.experiment_name)
-        else:
-            # No experiment_name is passed in and name env var is not set.
-            # Now check the experiment id env var.
-            experiment_id = os.environ.get("MLFLOW_EXPERIMENT_ID")
-            # Confirm that an experiment with this id exists.
-            if experiment_id is None or self.client.get_experiment(
-                    experiment_id) is None:
-                raise ValueError("No experiment_name passed, "
-                                 "MLFLOW_EXPERIMENT_NAME env var is not "
-                                 "set, and MLFLOW_EXPERIMENT_ID either "
-                                 "is not set or does not exist. Please "
-                                 "set one of these to use the "
-                                 "MLflowLoggerCallback.")
+        # Setup self.client, self.experiment_name, self.experiment_id.
+        self.mlflow_util.setup_mlflow(
+            tracking_uri=self.tracking_uri,
+            registry_uri=self.registry_uri,
+            experiment_name=self.experiment_name)
 
         if self.tags is None:
             # Create empty dictionary for tags if not given explicitly
             self.tags = {}
-
-        # At this point, experiment_id should be set.
-        self.experiment_id = experiment_id
-        self.save_artifact = self.save_artifact
 
         self._trial_runs = {}
 
@@ -145,42 +111,31 @@ class MLflowLoggerCallback(LoggerCallback):
             tags = self.tags.copy()
             tags["trial_name"] = str(trial)
 
-            run = self.client.create_run(
-                experiment_id=self.experiment_id, tags=tags)
+            run = self.mlflow_util.start_run(tags=tags)
             self._trial_runs[trial] = run.info.run_id
 
         run_id = self._trial_runs[trial]
 
         # Log the config parameters.
         config = trial.config
-
-        for key, value in config.items():
-            self.client.log_param(run_id=run_id, key=key, value=value)
+        self.mlflow_util.log_params(run_id=run_id, params_to_log=config)
 
     def log_trial_result(self, iteration: int, trial: "Trial", result: Dict):
         step = result.get(TIMESTEPS_TOTAL) or result[TRAINING_ITERATION]
         run_id = self._trial_runs[trial]
-        for key, value in result.items():
-            try:
-                value = float(value)
-            except (ValueError, TypeError):
-                logger.debug("Cannot log key {} with value {} since the "
-                             "value cannot be converted to float.".format(
-                                 key, value))
-                continue
-            self.client.log_metric(
-                run_id=run_id, key=key, value=value, step=step)
+        self.mlflow_util.log_metrics(
+            run_id=run_id, metrics_to_log=result, step=step)
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         run_id = self._trial_runs[trial]
 
         # Log the artifact if set_artifact is set to True.
-        if self.save_artifact:
-            self.client.log_artifacts(run_id, local_dir=trial.logdir)
+        if self.should_save_artifact:
+            self.mlflow_util.save_artifacts(run_id=run_id, dir=trial.logdir)
 
         # Stop the run once trial finishes.
         status = "FINISHED" if not failed else "FAILED"
-        self.client.set_terminated(run_id=run_id, status=status)
+        self.mlflow_utilterminate_run(run_id=run_id, status=status)
 
 
 class MLflowLogger(Logger):
@@ -193,24 +148,17 @@ class MLflowLogger(Logger):
     _experiment_logger_cls = MLflowLoggerCallback
 
     def _init(self):
-        mlflow = _import_mlflow()
         logger_config = self.config.pop("logger_config", {})
         tracking_uri = logger_config.get("mlflow_tracking_uri")
         registry_uri = logger_config.get("mlflow_registry_uri")
 
         experiment_id = logger_config.get("mlflow_experiment_id")
-        if experiment_id is None or not mlflow.get_experiment(experiment_id):
-            raise ValueError(
-                "You must provide a valid `mlflow_experiment_id` "
-                "in your `logger_config` dict in the `config` "
-                "dict passed to `tune.run`. "
-                "Are you sure you passed in a `experiment_id` and "
-                "the experiment exists?")
-        else:
-            experiment_name = mlflow.get_experiment(experiment_id).name
+        # Set the experiment id as an environment variable
+        if experiment_id is not None:
+            os.environ["MLFLOW_EXPERIMENT_ID"] = str(experiment_id)
 
         self._trial_experiment_logger = self._experiment_logger_cls(
-            tracking_uri, registry_uri, experiment_name)
+            tracking_uri, registry_uri)
 
         self._trial_experiment_logger.setup()
 
@@ -322,9 +270,9 @@ def mlflow_mixin(func: Callable):
                 }
             })
     """
-    if _import_mlflow() is None:
-        raise RuntimeError("MLflow has not been installed. Please `pip "
-                           "install mlflow` to use the mlflow_mixin.")
+    # if _import_mlflow() is None:
+    #     raise RuntimeError("MLflow has not been installed. Please `pip "
+    #                        "install mlflow` to use the mlflow_mixin.")
     if ray.util.client.ray.is_connected():
         logger.warning("When using mlflow_mixin with Ray Client, "
                        "it is recommended to use a remote tracking "
@@ -341,11 +289,7 @@ def mlflow_mixin(func: Callable):
 
 class MLflowTrainableMixin:
     def __init__(self, config: Dict, *args, **kwargs):
-        self._mlflow = _import_mlflow()
-
-        if self._mlflow is None:
-            raise RuntimeError("MLflow has not been installed. Please `pip "
-                               "install mlflow` to use the mlflow_mixin.")
+        self.mlflow_util = MLflowLoggerUtil()
 
         if not isinstance(self, Trainable):
             raise ValueError(
@@ -411,8 +355,7 @@ class MLflowTrainableMixin:
 
         run_name = self.trial_name + "_" + self.trial_id
         run_name = run_name.replace("/", "_")
-        self._mlflow.start_run(
-            experiment_id=self.experiment_id, run_name=run_name)
+        self.mlflow_util.start_active_run(run_name=run_name)
 
     def stop(self):
-        self._mlflow.end_run()
+        self.mlflow_util.end_active_run()

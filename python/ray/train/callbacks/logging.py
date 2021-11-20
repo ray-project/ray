@@ -239,5 +239,3 @@ class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
 
     def finish_training(self, error: bool = False, **info):
         self._file_writer.close()
-
-
