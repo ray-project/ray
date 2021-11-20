@@ -182,10 +182,13 @@ class GcsSubscriber(_SubscriberBase):
 
     Usage example:
         subscriber = GcsSubscriber()
+        # Subscribe to one or more channels.
         subscriber.subscribe_error()
+        ...
         while running:
             error_id, error_data = subscriber.poll_error()
             ......
+        # Unsubscribe from all channels.
         subscriber.close()
     """
 
