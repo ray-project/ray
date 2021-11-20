@@ -138,7 +138,7 @@ def test_zero_cpu_scheduling(shutdown_only):
     block_driver_ref = block_driver.acquire.remote()
 
     # Both tasks should be running, so the driver should be unblocked.
-    ready, not_ready = ray.wait([block_driver_ref], timeout=1)
+    ready, not_ready = ray.wait([block_driver_ref], timeout=5)
     assert len(not_ready) == 0
 
 
