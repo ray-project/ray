@@ -146,7 +146,7 @@ class FunctionActorManager:
             self._num_exported, self._worker.import_thread.num_imported)
         while True:
             self._num_exported += 1
-            holder = make_export_key(pos)
+            holder = make_export_key(self._num_exported)
             # This step is atomic since internal kv is a single thread atomic
             # db.
             if self._worker.gcs_client.internal_kv_put(
