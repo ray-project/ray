@@ -4,14 +4,26 @@ import logging
 import os
 from pathlib import Path
 import sys
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, Dict, List, Optional, Set, Union, Tuple
 import yaml
 
 import ray
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.utils import import_attr
+from ray._private.runtime_env import conda
 
 logger = logging.getLogger(__name__)
+
+
+def _encode_plugin_uri(plugin: str, uri: str) -> str:
+    return plugin + "|" + uri
+
+
+def _decode_plugin_uri(plugin_uri: str) -> Tuple[str, str]:
+    if "|" not in plugin_uri:
+        raise ValueError(
+            f"Plugin URI must be of the form 'plugin|uri', not {plugin_uri}")
+    return tuple(plugin_uri.split("|", 2))
 
 
 def validate_uri(uri: str):
@@ -28,12 +40,12 @@ def validate_uri(uri: str):
             "be dynamically uploaded is only supported at the job level "
             "(i.e., passed to `ray.init`).")
 
-    if protocol == Protocol.S3 and not path.endswith(".zip"):
-        raise ValueError("Only .zip files supported for S3 URIs.")
+    if protocol in Protocol.remote_protocols() and not path.endswith(".zip"):
+        raise ValueError("Only .zip files supported for remote URIs.")
 
 
 def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
-    """Parses and validates a user-provided 'py_modules' option.
+    """Parses and validates a 'py_modules' option.
 
     This should be a list of URIs.
     """
@@ -48,7 +60,7 @@ def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
 
 
 def parse_and_validate_working_dir(working_dir: str) -> str:
-    """Parses and validates a user-provided 'working_dir' option.
+    """Parses and validates a 'working_dir' option.
 
     This should be a URI.
     """
@@ -68,7 +80,7 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
 
     Conda can be one of three cases:
         1) A dictionary describing the env. This is passed through directly.
-        2) A string referring to a preinstalled conda env.
+        2) A string referring to the name of a preinstalled conda env.
         3) A string pointing to a local conda YAML file. This is detected
            by looking for a '.yaml' or '.yml' suffix. In this case, the file
            will be read as YAML and passed through as a dictionary.
@@ -334,8 +346,21 @@ class ParsedRuntimeEnv(dict):
             self.clear()
 
     def get_uris(self) -> List[str]:
-        # TODO(edoakes): this should be extended with other resource URIs.
-        return [self["working_dir"]] if "working_dir" in self else []
+        # TODO(architkulkarni): this should programmatically be extended with
+        # URIs from all plugins.
+        plugin_uris = []
+        if "working_dir" in self:
+            plugin_uris.append(
+                _encode_plugin_uri("working_dir", self["working_dir"]))
+        if "py_modules" in self:
+            for uri in self["py_modules"]:
+                plugin_uris.append(_encode_plugin_uri("py_modules", uri))
+        if "conda" or "pip" in self:
+            uri = conda.get_uri(self)
+            if uri is not None:
+                plugin_uris.append(_encode_plugin_uri("conda", uri))
+
+        return plugin_uris
 
     @classmethod
     def deserialize(cls, serialized: str) -> "ParsedRuntimeEnv":

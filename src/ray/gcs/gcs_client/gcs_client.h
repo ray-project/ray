@@ -115,13 +115,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     return *job_accessor_;
   }
 
-  /// Get the sub-interface for accessing object information in GCS.
-  /// This function is thread safe.
-  ObjectInfoAccessor &Objects() {
-    RAY_CHECK(object_accessor_ != nullptr);
-    return *object_accessor_;
-  }
-
   /// Get the sub-interface for accessing node information in GCS.
   /// This function is thread safe.
   NodeInfoAccessor &Nodes() {
@@ -187,7 +180,6 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   std::unique_ptr<ActorInfoAccessor> actor_accessor_;
   std::unique_ptr<JobInfoAccessor> job_accessor_;
-  std::unique_ptr<ObjectInfoAccessor> object_accessor_;
   std::unique_ptr<NodeInfoAccessor> node_accessor_;
   std::unique_ptr<NodeResourceInfoAccessor> node_resource_accessor_;
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
@@ -230,6 +222,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   // Gcs rpc client
   std::shared_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+  std::atomic<bool> disconnected_ = false;
 
   // The runner to run function periodically.
   std::unique_ptr<PeriodicalRunner> periodical_runner_;

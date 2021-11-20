@@ -1,3 +1,4 @@
+import math
 import os
 import random
 import requests
@@ -5,7 +6,6 @@ import shutil
 import time
 
 from unittest.mock import patch
-import math
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -17,12 +17,12 @@ from pytest_lazyfixture import lazy_fixture
 import ray
 
 from ray.tests.conftest import *  # noqa
-from ray.data.dataset import Dataset
+from ray.data.dataset import Dataset, _sliding_window
 from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
 from ray.data.impl.block_list import BlockList
-from ray.data.aggregate import AggregateFn
+from ray.data.aggregate import AggregateFn, Count, Sum, Min, Max, Mean, Std
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.datasource.parquet_datasource import (
     PARALLELIZE_META_FETCH_THRESHOLD)
@@ -1025,67 +1025,75 @@ def test_repartition_shuffle(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.sum() == 190
-    assert ds._block_sizes() == [2] * 10
+    assert ds._block_num_rows() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=True)
     assert ds2.num_blocks() == 5
     assert ds2.sum() == 190
-    assert ds2._block_sizes() == [10, 10, 0, 0, 0]
+    assert ds2._block_num_rows() == [10, 10, 0, 0, 0]
 
     ds3 = ds2.repartition(20, shuffle=True)
     assert ds3.num_blocks() == 20
     assert ds3.sum() == 190
-    assert ds3._block_sizes() == [2] * 10 + [0] * 10
+    assert ds3._block_num_rows() == [2] * 10 + [0] * 10
 
     large = ray.data.range(10000, parallelism=10)
     large = large.repartition(20, shuffle=True)
-    assert large._block_sizes() == [500] * 20
+    assert large._block_num_rows() == [500] * 20
 
 
 def test_repartition_noshuffle(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.sum() == 190
-    assert ds._block_sizes() == [2] * 10
+    assert ds._block_num_rows() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=False)
     assert ds2.num_blocks() == 5
     assert ds2.sum() == 190
-    assert ds2._block_sizes() == [4, 4, 4, 4, 4]
+    assert ds2._block_num_rows() == [4, 4, 4, 4, 4]
 
     ds3 = ds2.repartition(20, shuffle=False)
     assert ds3.num_blocks() == 20
     assert ds3.sum() == 190
-    assert ds3._block_sizes() == [1] * 20
+    assert ds3._block_num_rows() == [1] * 20
 
-    ds4 = ray.data.range(22).repartition(4)
-    assert ds4.num_blocks() == 4
-    assert ds4._block_sizes() == [5, 6, 5, 6]
+    # Test num_partitions > num_rows
+    ds4 = ds.repartition(40, shuffle=False)
+    assert ds4.num_blocks() == 40
+    blocks = ray.get(ds4.get_internal_block_refs())
+    assert all(isinstance(block, list) for block in blocks), blocks
+    assert ds4.sum() == 190
+    assert ds4._block_num_rows() == ([1] * 20) + ([0] * 20)
+
+    ds5 = ray.data.range(22).repartition(4)
+    assert ds5.num_blocks() == 4
+    assert ds5._block_num_rows() == [5, 6, 5, 6]
 
     large = ray.data.range(10000, parallelism=10)
     large = large.repartition(20)
-    assert large._block_sizes() == [500] * 20
+    assert large._block_num_rows() == [500] * 20
 
 
 def test_repartition_shuffle_arrow(ray_start_regular_shared):
     ds = ray.data.range_arrow(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.count() == 20
-    assert ds._block_sizes() == [2] * 10
+    assert ds._block_num_rows() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=True)
     assert ds2.num_blocks() == 5
     assert ds2.count() == 20
-    assert ds2._block_sizes() == [10, 10, 0, 0, 0]
+    assert ds2._block_num_rows() == [10, 10, 0, 0, 0]
 
     ds3 = ds2.repartition(20, shuffle=True)
     assert ds3.num_blocks() == 20
     assert ds3.count() == 20
-    assert ds3._block_sizes() == [2] * 10 + [0] * 10
+    assert ds3._block_num_rows() == [2] * 10 + [0] * 10
 
     large = ray.data.range_arrow(10000, parallelism=10)
     large = large.repartition(20, shuffle=True)
-    assert large._block_sizes() == [500] * 20
+    assert large._block_num_rows() == [500] * 20
 
 
 def test_from_pandas(ray_start_regular_shared):
@@ -1119,14 +1127,12 @@ def test_from_pandas_refs(ray_start_regular_shared):
 
 
 def test_from_numpy(ray_start_regular_shared):
-    arr1 = np.expand_dims(np.arange(0, 4), 1)
-    arr2 = np.expand_dims(np.arange(4, 8), 1)
+    arr1 = np.expand_dims(np.arange(0, 4), axis=1)
+    arr2 = np.expand_dims(np.arange(4, 8), axis=1)
     ds = ray.data.from_numpy([ray.put(arr1), ray.put(arr2)])
     values = np.array(ds.take(8))
-    for i in range(4):
-        assert values[i]["value"] == arr1[i]
-    for i in range(4, 8):
-        assert values[i]["value"] == arr2[i - 4]
+    np.testing.assert_array_equal(
+        values, np.expand_dims(np.concatenate((arr1, arr2)), axis=1))
 
 
 def test_from_arrow(ray_start_regular_shared):
@@ -1210,26 +1216,6 @@ def test_to_numpy(ray_start_regular_shared):
     ds = ray.data.range(10)
     arr = np.concatenate(ray.get(ds.to_numpy_refs()))
     np.testing.assert_equal(arr, np.arange(0, 10))
-
-
-def test_to_arrow(ray_start_regular_shared):
-    n = 5
-
-    # Zero-copy.
-    df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_arrow(n)
-    dfds = pd.concat(
-        [t.to_pandas() for t in ray.get(ds.to_arrow_refs())],
-        ignore_index=True)
-    assert df.equals(dfds)
-
-    # Conversion.
-    df = pd.DataFrame({0: list(range(n))})
-    ds = ray.data.range(n)
-    dfds = pd.concat(
-        [t.to_pandas() for t in ray.get(ds.to_arrow_refs())],
-        ignore_index=True)
-    assert df.equals(dfds)
 
 
 def test_to_arrow_refs(ray_start_regular_shared):
@@ -1776,6 +1762,25 @@ def test_read_binary_files_s3(ray_start_regular_shared):
     assert item == expected
 
 
+def test_sliding_window():
+    arr = list(range(10))
+
+    # Test all windows over this iterable.
+    window_sizes = list(range(1, len(arr) + 1))
+    for window_size in window_sizes:
+        windows = list(_sliding_window(arr, window_size))
+        assert len(windows) == len(arr) - window_size + 1
+        assert all(len(window) == window_size for window in windows)
+        assert all(
+            list(window) == arr[i:i + window_size]
+            for i, window in enumerate(windows))
+
+    # Test window size larger than iterable length.
+    windows = list(_sliding_window(arr, 15))
+    assert len(windows) == 1
+    assert list(windows[0]) == arr
+
+
 def test_iter_batches_basic(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": [5, 6, 7]})
@@ -1844,8 +1849,9 @@ def test_iter_batches_basic(ray_start_regular_shared):
         batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
 
     # Prefetch.
-    for batch, df in zip(
-            ds.iter_batches(prefetch_blocks=1, batch_format="pandas"), dfs):
+    batches = list(ds.iter_batches(prefetch_blocks=1, batch_format="pandas"))
+    assert len(batches) == len(dfs)
+    for batch, df in zip(batches, dfs):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
 
@@ -1858,6 +1864,14 @@ def test_iter_batches_basic(ray_start_regular_shared):
         (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
     assert pd.concat(
         batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
+
+    # Prefetch more than number of blocks.
+    batches = list(
+        ds.iter_batches(prefetch_blocks=len(dfs), batch_format="pandas"))
+    assert len(batches) == len(dfs)
+    for batch, df in zip(batches, dfs):
+        assert isinstance(batch, pd.DataFrame)
+        assert batch.equals(df)
 
 
 def test_iter_batches_grid(ray_start_regular_shared):
@@ -2058,7 +2072,7 @@ def test_split(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.sum() == 190
-    assert ds._block_sizes() == [2] * 10
+    assert ds._block_num_rows() == [2] * 10
 
     datasets = ds.split(5)
     assert [2] * 5 == [
@@ -2883,85 +2897,318 @@ def test_groupby_arrow(ray_start_regular_shared):
         lambda r: r["value"] > 10).groupby("value").count()
     assert agg_ds.count() == 0
 
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
+    # Test aggregation name conflict.
+    xs = list(range(100))
+    grouped_ds = ray.data.from_items([{
+        "A": (x % 3),
+        "B": x
+    } for x in xs]).repartition(num_parts).groupby("A")
+    agg_ds = grouped_ds.aggregate(
+        AggregateFn(
+            init=lambda k: [0, 0],
+            accumulate=lambda a, r: [a[0] + r["B"], a[1] + 1],
+            merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
+            finalize=lambda a: a[0] / a[1],
+            name="foo"),
+        AggregateFn(
+            init=lambda k: [0, 0],
+            accumulate=lambda a, r: [a[0] + r["B"], a[1] + 1],
+            merge=lambda a1, a2: [a1[0] + a2[0], a1[1] + a2[1]],
+            finalize=lambda a: a[0] / a[1],
+            name="foo"))
+    assert agg_ds.count() == 3
+    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
+        [{"A": 0, "foo": 49.5, "foo_2": 49.5},
+         {"A": 1, "foo": 49.0, "foo_2": 49.0},
+         {"A": 2, "foo": 50.0, "foo_2": 50.0}]
+
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_arrow_count(ray_start_regular_shared, num_parts):
     # Test built-in count aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_count with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
     agg_ds = ray.data.from_items([{
         "A": (x % 3),
         "B": x
-    } for x in xs]).groupby("A").count()
+    } for x in xs]).repartition(num_parts).groupby("A").count()
     assert agg_ds.count() == 3
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
         [{"A": 0, "count()": 34}, {"A": 1, "count()": 33},
          {"A": 2, "count()": 33}]
 
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_arrow_sum(ray_start_regular_shared, num_parts):
     # Test built-in sum aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_sum with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
     agg_ds = ray.data.from_items([{
         "A": (x % 3),
         "B": x
-    } for x in xs]).groupby("A").sum("B")
+    } for x in xs]).repartition(num_parts).groupby("A").sum("B")
     assert agg_ds.count() == 3
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
         [{"A": 0, "sum(B)": 1683}, {"A": 1, "sum(B)": 1617},
          {"A": 2, "sum(B)": 1650}]
     # Test built-in global sum aggregation
-    assert ray.data.from_items([{"A": x} for x in xs]).sum("A") == 4950
+    assert ray.data.from_items([{
+        "A": x
+    } for x in xs]).repartition(num_parts).sum("A") == 4950
     assert ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).sum(
         "value") == 0
 
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_arrow_min(ray_start_regular_shared, num_parts):
     # Test built-in min aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_min with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
     agg_ds = ray.data.from_items([{
         "A": (x % 3),
         "B": x
-    } for x in xs]).groupby("A").min("B")
+    } for x in xs]).repartition(num_parts).groupby("A").min("B")
     assert agg_ds.count() == 3
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
         [{"A": 0, "min(B)": 0}, {"A": 1, "min(B)": 1},
          {"A": 2, "min(B)": 2}]
     # Test built-in global min aggregation
-    assert ray.data.from_items([{"A": x} for x in xs]).min("A") == 0
+    assert ray.data.from_items([{
+        "A": x
+    } for x in xs]).repartition(num_parts).min("A") == 0
     with pytest.raises(ValueError):
         ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).min("value")
 
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_arrow_max(ray_start_regular_shared, num_parts):
     # Test built-in max aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_max with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
     agg_ds = ray.data.from_items([{
         "A": (x % 3),
         "B": x
-    } for x in xs]).groupby("A").max("B")
+    } for x in xs]).repartition(num_parts).groupby("A").max("B")
     assert agg_ds.count() == 3
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
         [{"A": 0, "max(B)": 99}, {"A": 1, "max(B)": 97},
          {"A": 2, "max(B)": 98}]
     # Test built-in global max aggregation
-    assert ray.data.from_items([{"A": x} for x in xs]).max("A") == 99
+    assert ray.data.from_items([{
+        "A": x
+    } for x in xs]).repartition(num_parts).max("A") == 99
     with pytest.raises(ValueError):
         ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).max("value")
 
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_arrow_mean(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_mean with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
     agg_ds = ray.data.from_items([{
         "A": (x % 3),
         "B": x
-    } for x in xs]).groupby("A").mean("B")
+    } for x in xs]).repartition(num_parts).groupby("A").mean("B")
     assert agg_ds.count() == 3
     assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
         [{"A": 0, "mean(B)": 49.5}, {"A": 1, "mean(B)": 49.0},
          {"A": 2, "mean(B)": 50.0}]
     # Test built-in global mean aggregation
-    assert ray.data.from_items([{"A": x} for x in xs]).mean("A") == 49.5
+    assert ray.data.from_items([{
+        "A": x
+    } for x in xs]).repartition(num_parts).mean("A") == 49.5
     with pytest.raises(ValueError):
         ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).mean(
             "value")
 
 
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
+    # Test built-in std aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_std with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+    df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
+    agg_ds = ray.data.from_pandas(df).repartition(num_parts).groupby("A").std(
+        "B")
+    assert agg_ds.count() == 3
+    result = agg_ds.to_pandas()["std(B)"].to_numpy()
+    expected = df.groupby("A")["B"].std().to_numpy()
+    np.testing.assert_array_almost_equal(result, expected)
+    # ddof of 0
+    agg_ds = ray.data.from_pandas(df).repartition(num_parts).groupby("A").std(
+        "B", ddof=0)
+    assert agg_ds.count() == 3
+    result = agg_ds.to_pandas()["std(B)"].to_numpy()
+    expected = df.groupby("A")["B"].std(ddof=0).to_numpy()
+    np.testing.assert_array_almost_equal(result, expected)
+    # Test built-in global std aggregation
+    df = pd.DataFrame({"A": xs})
+    assert math.isclose(
+        ray.data.from_pandas(df).repartition(num_parts).std("A"),
+        df["A"].std())
+    # ddof of 0
+    assert math.isclose(
+        ray.data.from_pandas(df).repartition(num_parts).std("A", ddof=0),
+        df["A"].std(ddof=0))
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(pd.DataFrame({"A": []})).std("A")
+    # Test edge cases
+    assert ray.data.from_pandas(pd.DataFrame({"A": [3]})).std("A") == 0
+
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_arrow_multicolumn(ray_start_regular_shared, num_parts):
+    # Test built-in mean aggregation on multiple columns
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_multicolumn with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+    df = pd.DataFrame({
+        "A": [x % 3 for x in xs],
+        "B": xs,
+        "C": [2 * x for x in xs]
+    })
+    agg_ds = ray.data.from_pandas(df).repartition(num_parts).groupby("A").mean(
+        ["B", "C"])
+    assert agg_ds.count() == 3
+    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
+        [{"A": 0, "mean(B)": 49.5, "mean(C)": 99.0},
+         {"A": 1, "mean(B)": 49.0, "mean(C)": 98.0},
+         {"A": 2, "mean(B)": 50.0, "mean(C)": 100.0}]
+    # Test that unspecified agg column ==> agg on all columns except for
+    # groupby keys.
+    agg_ds = ray.data.from_pandas(df).repartition(num_parts).groupby(
+        "A").mean()
+    assert agg_ds.count() == 3
+    assert [row.as_pydict() for row in agg_ds.sort("A").iter_rows()] == \
+        [{"A": 0, "mean(B)": 49.5, "mean(C)": 99.0},
+         {"A": 1, "mean(B)": 49.0, "mean(C)": 98.0},
+         {"A": 2, "mean(B)": 50.0, "mean(C)": 100.0}]
+    # Test built-in global mean aggregation
+    df = pd.DataFrame({"A": xs, "B": [2 * x for x in xs]})
+    result_row = ray.data.from_pandas(df).repartition(num_parts).mean(
+        ["A", "B"])
+    assert result_row["mean(A)"] == df["A"].mean()
+    assert result_row["mean(B)"] == df["B"].mean()
+
+
+def test_groupby_agg_bad_on(ray_start_regular_shared):
+    # Test bad on for groupby aggregation
+    xs = list(range(100))
+    df = pd.DataFrame({
+        "A": [x % 3 for x in xs],
+        "B": xs,
+        "C": [2 * x for x in xs]
+    })
+    # Wrong type.
+    with pytest.raises(TypeError):
+        ray.data.from_pandas(df).groupby("A").mean(5)
+    with pytest.raises(TypeError):
+        ray.data.from_pandas(df).groupby("A").mean([5])
+    # Empty list.
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(df).groupby("A").mean([])
+    # Nonexistent column.
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(df).groupby("A").mean("D")
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(df).groupby("A").mean(["B", "D"])
+    # Columns for simple Dataset.
+    with pytest.raises(ValueError):
+        ray.data.from_items(xs).groupby(lambda x: x % 3 == 0).mean("A")
+
+    # Test bad on for global aggregation
+    # Wrong type.
+    with pytest.raises(TypeError):
+        ray.data.from_pandas(df).mean(5)
+    with pytest.raises(TypeError):
+        ray.data.from_pandas(df).mean([5])
+    # Empty list.
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(df).mean([])
+    # Nonexistent column.
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(df).mean("D")
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(df).mean(["B", "D"])
+    # Columns for simple Dataset.
+    with pytest.raises(ValueError):
+        ray.data.from_items(xs).mean("A")
+
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_multi_agg with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+    df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
+    agg_ds = ray.data.from_pandas(df).repartition(num_parts).groupby(
+        "A").aggregate(
+            Count(),
+            Sum("B"),
+            Min("B"),
+            Max("B"),
+            Mean("B"),
+            Std("B"),
+        )
+    assert agg_ds.count() == 3
+    agg_df = agg_ds.to_pandas()
+    expected_grouped = df.groupby("A")["B"]
+    np.testing.assert_array_equal(agg_df["count()"].to_numpy(), [34, 33, 33])
+    for agg in ["sum", "min", "max", "mean", "std"]:
+        result = agg_df[f"{agg}(B)"].to_numpy()
+        expected = getattr(expected_grouped, agg)().to_numpy()
+        if agg == "std":
+            np.testing.assert_array_almost_equal(result, expected)
+        else:
+            np.testing.assert_array_equal(result, expected)
+    # Test built-in global std aggregation
+    df = pd.DataFrame({"A": xs})
+    result_row = ray.data.from_pandas(df).repartition(num_parts).aggregate(
+        Sum("A"),
+        Min("A"),
+        Max("A"),
+        Mean("A"),
+        Std("A"),
+    )
+    for agg in ["sum", "min", "max", "mean", "std"]:
+        result = result_row[f"{agg}(A)"]
+        expected = getattr(df["A"], agg)()
+        if agg == "std":
+            assert math.isclose(result, expected)
+        else:
+            assert result == expected
+
+
 def test_groupby_simple(ray_start_regular_shared):
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple with: {seed}")
+    random.seed(seed)
     parallelism = 3
     xs = [("A", 2), ("A", 4), ("A", 9), ("B", 10), ("B", 20), ("C", 3),
           ("C", 5), ("C", 8), ("C", 12)]
@@ -3007,58 +3254,221 @@ def test_groupby_simple(ray_start_regular_shared):
         lambda r: r).count()
     assert agg_ds.count() == 0
 
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_simple_count(ray_start_regular_shared, num_parts):
     # Test built-in count aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_count with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
-    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).count()
+    agg_ds = ray.data.from_items(xs).repartition(num_parts).groupby(
+        lambda x: x % 3).count()
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 34), (1, 33), (2,
                                                                           33)]
+
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     # Test built-in sum aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_sum with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
-    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).sum()
+    agg_ds = ray.data.from_items(xs).repartition(num_parts).groupby(
+        lambda x: x % 3).sum()
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 1683), (1, 1617),
                                                        (2, 1650)]
     # Test built-in global sum aggregation
-    assert ray.data.from_items(xs).sum() == 4950
+    assert ray.data.from_items(xs).repartition(num_parts).sum() == 4950
     assert ray.data.range(10).filter(lambda r: r > 10).sum() == 0
 
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_simple_min(ray_start_regular_shared, num_parts):
     # Test built-in min aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_min with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
-    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).min()
+    agg_ds = ray.data.from_items(xs).repartition(num_parts).groupby(
+        lambda x: x % 3).min()
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 0), (1, 1), (2, 2)]
     # Test built-in global min aggregation
-    assert ray.data.from_items(xs).min() == 0
+    assert ray.data.from_items(xs).repartition(num_parts).min() == 0
     with pytest.raises(ValueError):
         ray.data.range(10).filter(lambda r: r > 10).min()
 
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_simple_max(ray_start_regular_shared, num_parts):
     # Test built-in max aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_max with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
-    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).max()
+    agg_ds = ray.data.from_items(xs).repartition(num_parts).groupby(
+        lambda x: x % 3).max()
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 99), (1, 97), (2,
                                                                           98)]
     # Test built-in global max aggregation
-    assert ray.data.from_items(xs).max() == 99
+    assert ray.data.from_items(xs).repartition(num_parts).max() == 99
     with pytest.raises(ValueError):
         ray.data.range(10).filter(lambda r: r > 10).max()
 
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_mean with: {seed}")
+    random.seed(seed)
     xs = list(range(100))
     random.shuffle(xs)
-    agg_ds = ray.data.from_items(xs).groupby(lambda x: x % 3).mean()
+    agg_ds = ray.data.from_items(xs).repartition(num_parts).groupby(
+        lambda x: x % 3).mean()
     assert agg_ds.count() == 3
     assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 49.5), (1, 49.0),
                                                        (2, 50.0)]
     # Test built-in global mean aggregation
-    assert ray.data.from_items(xs).mean() == 49.5
+    assert ray.data.from_items(xs).repartition(num_parts).mean() == 49.5
     with pytest.raises(ValueError):
         ray.data.range(10).filter(lambda r: r > 10).mean()
+
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_simple_std(ray_start_regular_shared, num_parts):
+    # Test built-in std aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_std with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items(xs).repartition(num_parts).groupby(
+        lambda x: x % 3).std()
+    assert agg_ds.count() == 3
+    df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
+    expected = df.groupby("A")["B"].std()
+    result = agg_ds.sort(key=lambda r: r[0]).take(3)
+    groups, stds = zip(*result)
+    result_df = pd.DataFrame({"A": list(groups), "B": list(stds)})
+    result_df = result_df.set_index("A")
+    pd.testing.assert_series_equal(result_df["B"], expected)
+    # ddof of 0
+    agg_ds = ray.data.from_items(xs).repartition(num_parts).groupby(
+        lambda x: x % 3).std(ddof=0)
+    assert agg_ds.count() == 3
+    df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
+    expected = df.groupby("A")["B"].std(ddof=0)
+    result = agg_ds.sort(key=lambda r: r[0]).take(3)
+    groups, stds = zip(*result)
+    result_df = pd.DataFrame({"A": list(groups), "B": list(stds)})
+    result_df = result_df.set_index("A")
+    pd.testing.assert_series_equal(result_df["B"], expected)
+    # Test built-in global std aggregation
+    assert math.isclose(
+        ray.data.from_items(xs).repartition(num_parts).std(),
+        pd.Series(xs).std())
+    # ddof of 0
+    assert math.isclose(
+        ray.data.from_items(xs).repartition(num_parts).std(ddof=0),
+        pd.Series(xs).std(ddof=0))
+    with pytest.raises(ValueError):
+        ray.data.from_items([]).std()
+    # Test edge cases
+    assert ray.data.from_items([3]).std() == 0
+
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_simple_multilambda(ray_start_regular_shared, num_parts):
+    # Test built-in mean aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_multilambda with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+    agg_ds = ray.data.from_items([[x, 2*x] for x in xs]) \
+        .repartition(num_parts) \
+        .groupby(lambda x: x[0] % 3) \
+        .mean([lambda x: x[0], lambda x: x[1]])
+    assert agg_ds.count() == 3
+    assert agg_ds.sort(key=lambda r: r[0]).take(3) == [(0, 49.5,
+                                                        99.0), (1, 49.0, 98.0),
+                                                       (2, 50.0, 100.0)]
+    # Test built-in global mean aggregation
+    assert ray.data.from_items(
+        [[x, 2 * x] for x in xs]).repartition(num_parts).mean(
+            [lambda x: x[0], lambda x: x[1]]) == (49.5, 99.0)
+    with pytest.raises(ValueError):
+        ray.data.from_items([[x, 2*x] for x in range(10)]) \
+            .filter(lambda r: r[0] > 10) \
+            .mean([lambda x: x[0], lambda x: x[1]])
+
+
+@pytest.mark.parametrize("num_parts", [1, 10, 100])
+def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_simple_multi_agg with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+    df = pd.DataFrame({"A": [x % 3 for x in xs], "B": xs})
+    agg_ds = ray.data.from_items(xs).repartition(num_parts).groupby(
+        lambda x: x % 3).aggregate(
+            Count(),
+            Sum(),
+            Min(),
+            Max(),
+            Mean(),
+            Std(),
+        )
+    assert agg_ds.count() == 3
+    result = agg_ds.sort(key=lambda r: r[0]).take(3)
+    groups, counts, sums, mins, maxs, means, stds = zip(*result)
+    agg_df = pd.DataFrame({
+        "groups": list(groups),
+        "count": list(counts),
+        "sum": list(sums),
+        "min": list(mins),
+        "max": list(maxs),
+        "mean": list(means),
+        "std": list(stds),
+    })
+    agg_df = agg_df.set_index("groups")
+    df = pd.DataFrame({"groups": [x % 3 for x in xs], "B": xs})
+    expected_grouped = df.groupby("groups")["B"]
+    np.testing.assert_array_equal(agg_df["count"].to_numpy(), [34, 33, 33])
+    for agg in ["sum", "min", "max", "mean", "std"]:
+        result = agg_df[agg].to_numpy()
+        expected = getattr(expected_grouped, agg)().to_numpy()
+        if agg == "std":
+            np.testing.assert_array_almost_equal(result, expected)
+        else:
+            np.testing.assert_array_equal(result, expected)
+    # Test built-in global multi-aggregation
+    result_row = ray.data.from_items(xs).repartition(num_parts).aggregate(
+        Sum(),
+        Min(),
+        Max(),
+        Mean(),
+        Std(),
+    )
+    series = pd.Series(xs)
+    for idx, agg in enumerate(["sum", "min", "max", "mean", "std"]):
+        result = result_row[idx]
+        expected = getattr(series, agg)()
+        if agg == "std":
+            assert math.isclose(result, expected)
+        else:
+            assert result == expected
 
 
 def test_sort_simple(ray_start_regular_shared):
@@ -3288,12 +3698,14 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
         def __init__(self):
             self.counter = Counter.remote()
 
-        def _read_file(self, f: "pa.NativeFile", path: str, **reader_args):
+        def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
             count = self.counter.increment.remote()
             if ray.get(count) == 1:
                 raise ValueError("oops")
             else:
-                return CSVDatasource._read_file(self, f, path, **reader_args)
+                for block in CSVDatasource._read_stream(
+                        self, f, path, **reader_args):
+                    yield block
 
         def _write_block(self, f: "pa.NativeFile", block: BlockAccessor,
                          **writer_args):

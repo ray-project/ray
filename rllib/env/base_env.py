@@ -20,12 +20,12 @@ class BaseEnv:
     """The lowest-level env interface used by RLlib for sampling.
 
     BaseEnv models multiple agents executing asynchronously in multiple
-    environments. A call to poll() returns observations from ready agents
-    keyed by their environment and agent ids, and actions for those agents
-    can be sent back via send_actions().
+    vectorized sub-environments. A call to `poll()` returns observations from
+    ready agents keyed by their sub-environment ID and agent IDs, and
+    actions for those agents can be sent back via `send_actions()`.
 
-    All other env types can be adapted to BaseEnv. RLlib handles these
-    conversions internally in RolloutWorker, for example:
+    All other RLlib supported env types can be converted to BaseEnv.
+    RLlib handles these conversions internally in RolloutWorker, for example:
 
     gym.Env => rllib.VectorEnv => rllib.BaseEnv
     rllib.MultiAgentEnv (is-a gym.Env) => rllib.VectorEnv => rllib.BaseEnv
@@ -55,13 +55,12 @@ class BaseEnv:
                 "car_3": [1.2, 0.1],
             },
         }
-        >>> env.send_actions(
-            actions={
-                "env_0": {
-                    "car_0": 0,
-                    "car_1": 1,
-                }, ...
-            })
+        >>> env.send_actions({
+        ...   "env_0": {
+        ...     "car_0": 0,
+        ...     "car_1": 1,
+        ...   }, ...
+        ... })
         >>> obs, rewards, dones, infos, off_policy_actions = env.poll()
         >>> print(obs)
         {
@@ -91,20 +90,20 @@ class BaseEnv:
     ) -> "BaseEnv":
         """Converts an RLlib-supported env into a BaseEnv object.
 
-        Supported types for the given `env` arg are gym.Env, BaseEnv,
-        VectorEnv, MultiAgentEnv, or ExternalEnv.
+        Supported types for the `env` arg are gym.Env, BaseEnv,
+        VectorEnv, MultiAgentEnv, ExternalEnv, or ExternalMultiAgentEnv.
 
         The resulting BaseEnv is always vectorized (contains n
-        sub-environments) for batched forward passes, where n may also be 1.
-        BaseEnv also supports async execution via the `poll` and `send_actions`
-        methods and thus supports external simulators.
+        sub-environments) to support batched forward passes, where n may also
+        be 1. BaseEnv also supports async execution via the `poll` and
+        `send_actions` methods and thus supports external simulators.
 
         TODO: Support gym3 environments, which are already vectorized.
 
         Args:
             env: An already existing environment of any supported env type
                 to convert/wrap into a BaseEnv. Supported types are gym.Env,
-                BaseEnv, VectorEnv, MultiAgentEnv, ExternalEnv, or
+                BaseEnv, VectorEnv, MultiAgentEnv, ExternalEnv, and
                 ExternalMultiAgentEnv.
             make_env: A callable taking an int as input (which indicates the
                 number of individual sub-environments within the final
@@ -125,7 +124,7 @@ class BaseEnv:
             The resulting BaseEnv object.
         """
 
-        from ray.rllib.env.remote_vector_env import RemoteVectorEnv
+        from ray.rllib.env.remote_vector_env import RemoteBaseEnv
         if remote_envs and num_envs == 1:
             raise ValueError(
                 "Remote envs only make sense to use if num_envs > 1 "
@@ -141,7 +140,7 @@ class BaseEnv:
         if isinstance(env, MultiAgentEnv):
             # Sub-environments are ray.remote actors:
             if remote_envs:
-                env = RemoteVectorEnv(
+                env = RemoteBaseEnv(
                     make_env,
                     num_envs,
                     multiagent=True,
@@ -173,7 +172,7 @@ class BaseEnv:
                 # be a ray.actor) is multi-agent or not.
                 multiagent = ray.get(env._is_multi_agent.remote()) if \
                     hasattr(env, "_is_multi_agent") else False
-                env = RemoteVectorEnv(
+                env = RemoteBaseEnv(
                     make_env,
                     num_envs,
                     multiagent=multiagent,
@@ -182,6 +181,7 @@ class BaseEnv:
                 )
             # Sub-environments are not ray.remote actors.
             else:
+                # Convert gym.Env to VectorEnv ...
                 env = VectorEnv.vectorize_gym_envs(
                     make_env=make_env,
                     existing_envs=[env],
@@ -189,6 +189,7 @@ class BaseEnv:
                     action_space=env.action_space,
                     observation_space=env.observation_space,
                 )
+                # ... then the resulting VectorEnv to a BaseEnv.
                 env = _VectorEnvToBaseEnv(env)
 
         # Make sure conversion went well.
@@ -201,8 +202,9 @@ class BaseEnv:
                             MultiEnvDict, MultiEnvDict]:
         """Returns observations from ready agents.
 
-        All returns are two-level dicts mapping from env_id to dicts of
-        agent_ids to values. The number of agents and envs can vary over time.
+        All return values are two-level dicts mapping from EnvID to dicts
+        mapping from AgentIDs to (observation/reward/etc..) values.
+        The number of agents and sub-environments may vary over time.
 
         Returns:
             Tuple consisting of
@@ -260,10 +262,10 @@ class BaseEnv:
 
     @PublicAPI
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
-        """Tries to render the environment.
+        """Tries to render the sub-environment with the given id or all.
 
         Args:
-            env_id (Optional[int]): The sub-environment's ID if applicable.
+            env_id: The sub-environment's ID, if applicable.
                 If None, renders the entire Env (i.e. all sub-environments).
         """
 

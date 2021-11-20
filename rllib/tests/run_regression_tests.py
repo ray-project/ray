@@ -88,6 +88,9 @@ if __name__ == "__main__":
             deprecation_warning(old="--torch", new="--framework=torch")
             exp["config"]["framework"] = "torch"
             args.framework = "torch"
+        # Always run with eager-tracing when framework=tf2.
+        if args.framework in ["tf2", "tfe"]:
+            exp["config"]["eager_tracing"] = True
 
         # Print out the actual config.
         print("== Test config ==")

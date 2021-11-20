@@ -29,6 +29,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler_interface.h"
 #include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
+#include "ray/raylet/scheduling/scheduling_policy.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -41,7 +42,7 @@ using rpc::HeartbeatTableData;
 /// resources at those nodes.
 class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
  public:
-  ClusterResourceScheduler(void);
+  ClusterResourceScheduler() {}
   /// Constructor initializing the resources associated with the local node.
   ///
   /// \param local_node_id: ID of local node,
@@ -84,15 +85,6 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   bool RemoveNode(int64_t node_id);
   bool RemoveNode(const std::string &node_id_string) override;
 
-  /// Check whether a resource request is feasible on a given node. A node is
-  /// feasible if it has the total resources needed to eventually execute the
-  /// task, even if those resources are currently allocated.
-  ///
-  /// \param resource_request Resource request to be scheduled.
-  /// \param resources Node's resources.
-  bool IsFeasible(const ResourceRequest &resource_request,
-                  const NodeResources &resources) const;
-
   /// Check whether a resource request can be scheduled given a node.
   ///
   ///  \param resource_request: Resource request to be scheduled.
@@ -103,20 +95,16 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   ///     are available when we call this function, and this way we avoid
   ///     a map find call which could be expensive.)
   ///
-  ///  \return: -1, if the request cannot be scheduled. This happens when at
-  ///           least a hard constraints is violated.
-  ///           >= 0, the number soft constraint violations. If 0, no
-  ///           constraint is violated.
-  int64_t IsSchedulable(const ResourceRequest &resource_request, int64_t node_id,
-                        const NodeResources &resources) const;
+  ///  \return: Whether the request can be scheduled.
+  bool IsSchedulable(const ResourceRequest &resource_request, int64_t node_id,
+                     const NodeResources &resources) const;
 
   ///  Find a node in the cluster on which we can schedule a given resource request.
   ///  In hybrid mode, see `scheduling_policy.h` for a description of the policy.
-  ///  In legacy mode, see `GetBestSchedulableNodeLegacy` for a description of the policy.
   ///
   ///  \param resource_request: Task to be scheduled.
   ///  \param actor_creation: True if this is an actor creation task.
-  ///  \param force_spillback For non-actor creation requests, pick a remote
+  ///  \param force_spillback: For non-actor creation requests, pick a remote
   ///  feasible node. If this is false, then the task may be scheduled to the
   ///  local node.
   ///  \param violations: The number of soft constraint violations associated
@@ -132,8 +120,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
                                  int64_t *violations, bool *is_infeasible);
 
   /// Similar to
-  ///    int64_t GetBestSchedulableNode(const ResourceRequest &resource_request, int64_t
-  ///    *violations)
+  ///    int64_t GetBestSchedulableNode(...)
   /// but the return value is different:
   /// \return "", if no node can schedule the current request; otherwise,
   ///          return the ID in string format of a node that can schedule the
@@ -399,6 +386,9 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   /// Return human-readable string for this scheduler state.
   std::string DebugString() const;
 
+  /// Get the number of cpus on this node.
+  uint64_t GetNumCpus() const;
+
   /// Check whether a task request is schedulable on a the local node. A node is
   /// schedulable if it has the available resources needed to execute the task.
   ///
@@ -421,13 +411,13 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   bool SubtractRemoteNodeAvailableResources(int64_t node_id,
                                             const ResourceRequest &resource_request);
 
-  /// The threshold at which to switch from packing to spreading.
-  const float spread_threshold_;
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   absl::flat_hash_map<int64_t, Node> nodes_;
   /// Identifier of local node.
   int64_t local_node_id_;
+  /// The scheduling policy to use.
+  std::unique_ptr<raylet_scheduling_policy::SchedulingPolicy> scheduling_policy_;
   /// Internally maintained random number generator.
   std::mt19937_64 gen_;
   /// Resources of local node.
@@ -451,6 +441,7 @@ class ClusterResourceScheduler : public ClusterResourceSchedulerInterface {
   // Specify custom resources that consists of unit-size instances.
   std::unordered_set<int64_t> custom_unit_instance_resources_{};
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingResourceRequestTest);
+  FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
 };
 
 }  // end namespace ray

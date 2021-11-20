@@ -514,7 +514,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
                            TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
                            function.GetLanguage(), function.GetFunctionDescriptor(), "",
-                           0);
+                           0, "", "");
 
   // Manually create `num_tasks` task specs, and for each of them create a
   // `PushTaskRequest`, this is to batch performance of TaskSpec
@@ -531,7 +531,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
     builder.SetCommonTaskSpec(RandomTaskId(), options.name, function.GetLanguage(),
                               function.GetFunctionDescriptor(), job_id, RandomTaskId(), 0,
                               RandomTaskId(), address, num_returns, resources, resources,
-                              std::make_pair(PlacementGroupID::Nil(), -1), true, "");
+                              std::make_pair(PlacementGroupID::Nil(), -1), true, "", 0);
     // Set task arguments.
     for (const auto &arg : args) {
       builder.AddArg(*arg);
@@ -631,10 +631,10 @@ TEST_F(ZeroNodeTest, TestWorkerContext) {
 TEST_F(ZeroNodeTest, TestActorHandle) {
   // Test actor handle serialization and deserialization round trip.
   JobID job_id = NextJobId();
-  ActorHandle original(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0),
-                       TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-                       Language::PYTHON,
-                       FunctionDescriptorBuilder::BuildPython("", "", "", ""), "", 0);
+  ActorHandle original(
+      ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0), TaskID::Nil(),
+      rpc::Address(), job_id, ObjectID::FromRandom(), Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython("", "", "", ""), "", 0, "", "");
   std::string output;
   original.Serialize(&output);
   ActorHandle deserialized(output);

@@ -13,7 +13,7 @@ from ray.train.constants import (TRAINING_ITERATION, DETAILED_AUTOFILLED_KEYS,
                                  BASIC_AUTOFILLED_KEYS,
                                  ENABLE_DETAILED_AUTOFILLED_METRICS_ENV)
 from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
-from ray.train.backends.backend import BackendConfig, BackendInterface
+from ray.train.backend import BackendConfig, Backend
 from ray.train.worker_group import WorkerGroup
 
 try:
@@ -46,7 +46,7 @@ class TestConfig(BackendConfig):
         return TestBackend
 
 
-class TestBackend(BackendInterface):
+class TestBackend(Backend):
     def on_start(self, worker_group: WorkerGroup, backend_config: TestConfig):
         pass
 
@@ -55,15 +55,21 @@ class TestBackend(BackendInterface):
         pass
 
 
+# The ordering of these parametrize decorators matters.
+# `detailed` has to be the last one, and False has to come before True.
+# This is because of the bug with runtime envs:
+# https://github.com/ray-project/ray/issues/20587.
+# TODO(amogkam): Remove the above comment once the above issue is closed.
 @pytest.mark.parametrize("workers_to_log", [0, None, [0, 1]])
-@pytest.mark.parametrize("detailed", [False, True])
 @pytest.mark.parametrize("filename", [None, "my_own_filename.json"])
+@pytest.mark.parametrize("detailed", [False, True])
 def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
               filename):
     if detailed:
         os.environ[ENABLE_DETAILED_AUTOFILLED_METRICS_ENV] = "1"
     else:
         os.environ.pop(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
+        assert ENABLE_DETAILED_AUTOFILLED_METRICS_ENV not in os.environ
 
     config = TestConfig()
 
@@ -84,12 +90,11 @@ def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
 
     if filename is None:
         # if None, use default value
-        callback = JsonLoggerCallback(
-            make_temp_dir, workers_to_log=workers_to_log)
+        callback = JsonLoggerCallback(workers_to_log=workers_to_log)
     else:
         callback = JsonLoggerCallback(
-            make_temp_dir, filename=filename, workers_to_log=workers_to_log)
-    trainer = Trainer(config, num_workers=num_workers)
+            filename=filename, workers_to_log=workers_to_log)
+    trainer = Trainer(config, num_workers=num_workers, logdir=make_temp_dir)
     trainer.start()
     trainer.run(train_func, callbacks=[callback])
     if filename is None:
@@ -128,7 +133,7 @@ def _validate_tbx_result(events_dir):
     for event in summary_iterator(events_file):
         for v in event.summary.value:
             assert v.tag.startswith("ray/train")
-            results[v.tag[8:]].append(v.simple_value)
+            results[v.tag[10:]].append(v.simple_value)
 
     assert len(results["episode_reward_mean"]) == 3
     assert [int(res) for res in results["episode_reward_mean"]] == [4, 5, 6]
@@ -157,3 +162,10 @@ def test_TBX(ray_start_4_cpus, make_temp_dir):
     trainer.run(train_func, callbacks=[callback])
 
     _validate_tbx_result(temp_dir)
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

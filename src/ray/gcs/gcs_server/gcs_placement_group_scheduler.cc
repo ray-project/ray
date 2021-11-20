@@ -51,7 +51,7 @@ ScheduleResult GcsScheduleStrategy::GenerateScheduleResult(
     const std::vector<std::shared_ptr<const ray::BundleSpecification>> &bundles,
     const std::vector<NodeID> &selected_nodes, const SchedulingResultStatus &status) {
   ScheduleMap schedule_map;
-  if (status == SUCCESS && !selected_nodes.empty()) {
+  if (status == SchedulingResultStatus::SUCCESS && !selected_nodes.empty()) {
     RAY_CHECK(bundles.size() == selected_nodes.size());
     int index = 0;
     for (const auto &bundle : bundles) {
@@ -135,7 +135,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                   << ", id: " << placement_group->GetPlacementGroupID() << ", because "
                   << nodes_of_releasing_unused_bundles_.size()
                   << " nodes have not released unused bundles.";
-    failure_callback(placement_group, true);
+    failure_callback(placement_group, /*is_feasible*/ true);
     return;
   }
 
@@ -152,12 +152,14 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   auto result_status = scheduling_result.first;
   auto selected_nodes = scheduling_result.second;
 
-  if (result_status != SUCCESS) {
+  if (result_status != SchedulingResultStatus::SUCCESS) {
     RAY_LOG(DEBUG) << "Failed to schedule placement group " << placement_group->GetName()
                    << ", id: " << placement_group->GetPlacementGroupID()
-                   << ", because current reource can't satisfied this required resource.";
-    const bool &retryable = (result_status == FAILED) ? true : false;
-    failure_callback(placement_group, retryable);
+                   << ", because current reource can't satisfy the required resource.";
+    bool infeasible = result_status == SchedulingResultStatus::INFEASIBLE;
+    // If the placement group creation has failed,
+    // but if it is not infeasible, it is retryable to create.
+    failure_callback(placement_group, /*is_feasible*/ !infeasible);
     return;
   }
 
@@ -356,7 +358,7 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
     RAY_CHECK(it != placement_group_leasing_in_progress_.end());
     placement_group_leasing_in_progress_.erase(it);
     ReturnBundleResources(lease_status_tracker->GetBundleLocations());
-    schedule_failure_handler(placement_group, true);
+    schedule_failure_handler(placement_group, /*is_feasible*/ true);
     return;
   }
 
@@ -411,7 +413,7 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
   if (lease_status_tracker->GetLeasingState() == LeasingState::CANCELLED) {
     DestroyPlacementGroupCommittedBundleResources(placement_group_id);
     ReturnBundleResources(lease_status_tracker->GetBundleLocations());
-    schedule_failure_handler(placement_group, true);
+    schedule_failure_handler(placement_group, /*is_feasible*/ true);
     return;
   }
 
@@ -430,7 +432,7 @@ void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
     }
     placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
     ReturnBundleResources(uncommitted_bundle_locations);
-    schedule_failure_handler(placement_group, true);
+    schedule_failure_handler(placement_group, /*is_feasible*/ true);
   } else {
     schedule_success_handler(placement_group);
   }

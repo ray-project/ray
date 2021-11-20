@@ -70,22 +70,6 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllProfileInfo() LOCKS_EXCLUDED(mutex_);
 
-  /// Get information of all objects from GCS Service.
-  ///
-  /// \return All object info. To support multi-language, we serialize each
-  /// ObjectTableData and return the serialized string. Where used, it needs to be
-  /// deserialized with protobuf function.
-  std::vector<std::string> GetAllObjectInfo() LOCKS_EXCLUDED(mutex_);
-
-  /// Get information of an object from GCS Service.
-  ///
-  /// \param object_id The ID of object to look up in the GCS Service.
-  /// \return Object info. To support multi-language, we serialize each ObjectTableData
-  /// and return the serialized string. Where used, it needs to be deserialized with
-  /// protobuf function.
-  std::unique_ptr<std::string> GetObjectInfo(const ObjectID &object_id)
-      LOCKS_EXCLUDED(mutex_);
-
   /// Get information of a node resource from GCS Service.
   ///
   /// \param node_id The ID of node to look up in the GCS Service.

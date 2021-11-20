@@ -6,7 +6,7 @@ from unittest import mock
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.autoscaling_policy import (BasicAutoscalingPolicy,
                                           calculate_desired_num_replicas)
-from ray.serve.backend_state import ReplicaState
+from ray.serve.deployment_state import ReplicaState
 from ray.serve.config import AutoscalingConfig
 from ray.serve.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve.controller import ServeController
@@ -100,8 +100,8 @@ def get_deployment_start_time(controller: ServeController,
                               deployment: Deployment):
     """ Return start time for given deployment """
     deployments = ray.get(controller.list_deployments.remote())
-    backend_info, _route_prefix = deployments[deployment.name]
-    return backend_info.start_time_ms
+    deployment_info, _route_prefix = deployments[deployment.name]
+    return deployment_info.start_time_ms
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")

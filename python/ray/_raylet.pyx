@@ -635,9 +635,12 @@ cdef execute_task(
                             # task. In that case we just exit the debugger.
                             ray.experimental.internal_kv._internal_kv_put(
                                 "RAY_PDB_{}".format(next_breakpoint),
-                                "{\"exit_debugger\": true}")
+                                "{\"exit_debugger\": true}",
+                                namespace=ray_constants.KV_NAMESPACE_PDB
+                            )
                             ray.experimental.internal_kv._internal_kv_del(
-                                "RAY_PDB_CONTINUE_{}".format(next_breakpoint)
+                                "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
+                                namespace=ray_constants.KV_NAMESPACE_PDB
                             )
                             ray.worker.global_worker.debugger_breakpoint = b""
                     task_exception = False
@@ -729,7 +732,6 @@ cdef execute_task(
             exit.is_ray_terminate = True
             raise exit
 
-# return a protobuf-serialized ray_exception
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
     return make_shared[LocalMemoryBuffer](
@@ -797,7 +799,13 @@ cdef CRayStatus task_execution_handler(
                 # https://docs.python.org/3/library/sys.html#sys.exit
                 return CRayStatus.IntentionalSystemExit()
             else:
-                logger.exception("SystemExit was raised from the worker")
+                msg = "SystemExit was raised from the worker."
+                # In K8s, SIGTERM likely means we hit memory limits, so print
+                # a more informative message there.
+                if "KUBERNETES_SERVICE_HOST" in os.environ:
+                    msg += (
+                        " The worker may have exceeded K8s pod memory limits.")
+                logger.exception(msg)
                 return CRayStatus.UnexpectedSystemExit()
 
     return CRayStatus.OK()
@@ -1521,7 +1529,10 @@ cdef class CoreWorker:
                         placement_group_capture_child_tasks,
                         serialized_runtime_env,
                         c_runtime_env_uris,
-                        c_concurrency_groups),
+                        c_concurrency_groups,
+                        # execute out of order for
+                        # async or threaded actors.
+                        is_asyncio or max_concurrency > 1),
                     extension_data,
                     &c_actor_id))
 

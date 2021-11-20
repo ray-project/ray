@@ -28,6 +28,26 @@
     prepare: python wait_cluster.py 4 600
     script: python workloads/run_cloud_test.py durable_upload --bucket s3://data-test-ilr/durable_upload
 
+- name: aws_durable_upload_rllib_str
+  cluster:
+    app_config: app_config_ml.yaml
+    compute_template: tpl_aws_4x2.yaml
+
+  run:
+    timeout: 600
+    prepare: python wait_cluster.py 4 600
+    script: python workloads/run_cloud_test.py durable_upload --trainable rllib_str --bucket s3://data-test-ilr/durable_upload_rllib_str
+
+- name: aws_durable_upload_rllib_trainer
+  cluster:
+    app_config: app_config_ml.yaml
+    compute_template: tpl_aws_4x2.yaml
+
+  run:
+    timeout: 600
+    prepare: python wait_cluster.py 4 600
+    script: python workloads/run_cloud_test.py durable_upload --trainable rllib_trainer --bucket s3://data-test-ilr/durable_upload_rllib_trainer
+
 - name: aws_no_durable_upload
   cluster:
     app_config: app_config.yaml

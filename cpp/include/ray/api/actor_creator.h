@@ -34,14 +34,7 @@ class ActorCreator {
   template <typename... Args>
   ray::ActorHandle<GetActorType<F>> Remote(Args &&...args);
 
-  ActorCreator &SetGlobalName(std::string name) {
-    create_options_.global = true;
-    create_options_.name = std::move(name);
-    return *this;
-  }
-
   ActorCreator &SetName(std::string name) {
-    create_options_.global = false;
     create_options_.name = std::move(name);
     return *this;
   }

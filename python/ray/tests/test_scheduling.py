@@ -14,6 +14,7 @@ import ray
 from ray.internal.internal_api import memory_summary
 import ray.util.accelerators
 import ray.cluster_utils
+from ray._private.test_utils import fetch_prometheus
 
 from ray._private.test_utils import (wait_for_condition, new_scheduler_enabled,
                                      Semaphore, object_memory_usage,
@@ -33,7 +34,7 @@ def attempt_to_load_balance(remote_function,
         locations = ray.get(
             [remote_function.remote(*args) for _ in range(total_tasks)])
         counts = collections.Counter(locations)
-        logger.info(f"Counts are {counts}")
+        print(f"Counts are {counts}")
         if (len(counts) == num_nodes
                 and counts.most_common()[-1][1] >= minimum_count):
             break
@@ -54,7 +55,7 @@ def test_load_balancing(ray_start_cluster):
 
     @ray.remote
     def f():
-        time.sleep(0.01)
+        time.sleep(0.10)
         return ray.worker.global_worker.node.unique_id
 
     attempt_to_load_balance(f, [], 100, num_nodes, 10)
@@ -220,52 +221,6 @@ def test_load_balancing_with_dependencies(ray_start_cluster, fast):
     x = ray.put(np.zeros(1000000))
 
     attempt_to_load_balance(f, [x], 100, num_nodes, 25)
-
-
-@pytest.mark.skipif(
-    platform.system() == "Windows", reason="Failing on Windows. Multi node.")
-def test_load_balancing_under_constrained_memory(ray_start_cluster):
-    # This test ensures that tasks are being assigned to all raylets in a
-    # roughly equal manner even when the tasks have dependencies.
-    cluster = ray_start_cluster
-    num_nodes = 3
-    num_cpus = 4
-    object_size = 4e7
-    num_tasks = 100
-    for _ in range(num_nodes):
-        cluster.add_node(
-            num_cpus=num_cpus,
-            memory=(num_cpus - 2) * object_size,
-            object_store_memory=(num_cpus - 2) * object_size)
-    cluster.add_node(
-        num_cpus=0,
-        resources={"custom": 1},
-        memory=(num_tasks + 1) * object_size,
-        object_store_memory=(num_tasks + 1) * object_size)
-    ray.init(address=cluster.address)
-
-    @ray.remote(num_cpus=0, resources={"custom": 1})
-    def create_object():
-        return np.zeros(int(object_size), dtype=np.uint8)
-
-    @ray.remote
-    def f(i, x):
-        print(i, ray.worker.global_worker.node.unique_id)
-        time.sleep(0.1)
-        return ray.worker.global_worker.node.unique_id
-
-    deps = [create_object.remote() for _ in range(num_tasks)]
-    for i, dep in enumerate(deps):
-        print(i, dep)
-
-    # TODO(swang): Actually test load balancing. Load balancing is currently
-    # flaky on Travis, probably due to the scheduling policy ping-ponging
-    # waiting tasks.
-    deps = [create_object.remote() for _ in range(num_tasks)]
-    tasks = [f.remote(i, dep) for i, dep in enumerate(deps)]
-    for i, dep in enumerate(deps):
-        print(i, dep)
-    ray.get(tasks)
 
 
 @pytest.mark.skipif(
@@ -672,6 +627,56 @@ def test_gpu_scheduling_liveness(ray_start_cluster):
     ray.get(
         [workers[i].work.remote() for i in range(NUM_CPU_BUNDLES)], timeout=30)
     ray.get(trainer.train.remote(), timeout=30)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "_system_config": {
+            "metrics_report_interval_ms": 1000,
+        }
+    }],
+    indirect=True)
+def test_scheduling_class_depth(ray_start_regular):
+
+    node_info = ray.nodes()[0]
+    metrics_export_port = node_info["MetricsExportPort"]
+    addr = node_info["NodeManagerAddress"]
+    prom_addr = f"{addr}:{metrics_export_port}"
+
+    @ray.remote(num_cpus=1000)
+    def infeasible():
+        pass
+
+    @ray.remote(num_cpus=0)
+    def start_infeasible(n):
+        if n == 1:
+            ray.get(infeasible.remote())
+        ray.get(start_infeasible.remote(n - 1))
+
+    start_infeasible.remote(1)
+    infeasible.remote()
+
+    # We expect the 2 calls to `infeasible` to be separate scheduling classes
+    # because one has depth=1, and the other has depth=2.
+
+    metric_name = "ray_internal_num_infeasible_scheduling_classes"
+
+    def make_condition(n):
+        def condition():
+            _, metric_names, metric_samples = fetch_prometheus([prom_addr])
+            if metric_name in metric_names:
+                for sample in metric_samples:
+                    if sample.name == metric_name and sample.value == n:
+                        return True
+            return False
+
+        return condition
+
+    wait_for_condition(make_condition(2))
+    start_infeasible.remote(2)
+    wait_for_condition(make_condition(3))
+    start_infeasible.remote(4)
+    wait_for_condition(make_condition(4))
 
 
 if __name__ == "__main__":

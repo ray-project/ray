@@ -27,7 +27,8 @@ from ray.workflow.common import (
 )
 
 if TYPE_CHECKING:
-    from ray.workflow.common import (WorkflowRef, WorkflowInputs)
+    from ray.workflow.common import (WorkflowRef, WorkflowStepRuntimeOptions)
+    from ray.workflow.workflow_context import WorkflowStepContext
 
 StepInputTupleToResolve = Tuple[ObjectRef, List[ObjectRef], List[ObjectRef]]
 
@@ -94,71 +95,68 @@ def _resolve_dynamic_workflow_refs(workflow_refs: "List[WorkflowRef]"):
     return workflow_ref_mapping
 
 
-def _resolve_step_inputs(
-        step_inputs: "_BakedWorkflowInputs") -> Tuple[List, Dict]:
-    """
-    This function resolves the inputs for the code inside
-    a workflow step (works on the callee side). For outputs from other
-    workflows, we resolve them into object instances inplace.
-
-    For each ObjectRef argument, the function returns both the ObjectRef
-    and the object instance. If the ObjectRef is a chain of nested
-    ObjectRefs, then we resolve it recursively until we get the
-    object instance, and we return the *direct* ObjectRef of the
-    instance. This function does not resolve ObjectRef
-    inside another object (e.g. list of ObjectRefs) to give users some
-    flexibility.
-
-    Args:
-        step_inputs: Workflow step inputs.
-    Returns:
-        Instances of arguments.
-    """
-
-    objects_mapping = []
-    for obj_ref in step_inputs.workflow_outputs:
-        obj, ref = _resolve_object_ref(obj_ref)
-        objects_mapping.append(obj)
-
-    workflow_ref_mapping = _resolve_dynamic_workflow_refs(
-        step_inputs.workflow_refs)
-
-    with serialization_context.workflow_args_resolving_context(
-            objects_mapping, workflow_ref_mapping):
-        # reconstruct input arguments under correct serialization context
-        flattened_args: List[Any] = ray.get(step_inputs.args)
-
-    # dereference arguments like Ray remote functions
-    flattened_args = [
-        ray.get(a) if isinstance(a, ObjectRef) else a for a in flattened_args
-    ]
-    return signature.recover_args(flattened_args)
-
-
 def execute_workflow(workflow: "Workflow") -> "WorkflowExecutionResult":
     """Execute workflow.
+
+    Args:
+        workflow: The workflow to be executed.
 
     Returns:
         An object ref that represent the result.
     """
     if workflow.executed:
         return workflow.result
+
+    # Stage 1: prepare inputs
     workflow_data = workflow.data
-    baked_inputs = _BakedWorkflowInputs.from_workflow_inputs(
-        workflow_data.inputs)
-    persisted_output, volatile_output = _workflow_step_executor.options(
-        **workflow_data.ray_options).remote(
-            workflow_data.step_type, workflow_data.func_body,
-            workflow_context.get_workflow_step_context(), workflow.step_id,
-            baked_inputs, workflow_data.catch_exceptions,
-            workflow_data.max_retries)
+    inputs = workflow_data.inputs
+    with workflow_context.fork_workflow_step_context(
+            outer_most_step_id=None, last_step_of_workflow=False):
+        workflow_outputs = [
+            execute_workflow(w).persisted_output for w in inputs.workflows
+        ]
+    baked_inputs = _BakedWorkflowInputs(
+        args=workflow_data.inputs.args,
+        workflow_outputs=workflow_outputs,
+        workflow_refs=inputs.workflow_refs)
 
-    if not isinstance(persisted_output, WorkflowOutputType):
-        raise TypeError("Unexpected return type of the workflow.")
-
-    if workflow_data.step_type != StepType.READONLY_ACTOR_METHOD:
+    # Stage 2: match executors
+    step_options = workflow_data.step_options
+    if step_options.allow_inplace:
+        # TODO(suquark): For inplace execution, it is impossible
+        # to get the ObjectRef of the output before execution.
+        # Here we use a dummy ObjectRef, because _record_step_status does not
+        # even use it (?!).
         _record_step_status(workflow.step_id, WorkflowStatus.RUNNING,
-                            [volatile_output])
+                            [ray.put(None)])
+        # Note: we need to be careful about workflow context when
+        # calling the executor directly.
+        # TODO(suquark): We still have recursive Python calls.
+        # This would cause stack overflow if we have a really
+        # deep recursive call. We should fix it later.
+        executor = _workflow_step_executor
+    else:
+        executor = _workflow_step_executor_remote.options(
+            **step_options.ray_options).remote
+
+    # Stage 3: execution
+    persisted_output, volatile_output = executor(
+        workflow_data.func_body, workflow_context.get_workflow_step_context(),
+        workflow.step_id, baked_inputs, workflow_data.step_options)
+
+    # Stage 4: post processing outputs
+    if not isinstance(persisted_output, WorkflowOutputType):
+        persisted_output = ray.put(persisted_output)
+    if not isinstance(persisted_output, WorkflowOutputType):
+        volatile_output = ray.put(volatile_output)
+
+    if step_options.step_type != StepType.READONLY_ACTOR_METHOD:
+        if not step_options.allow_inplace:
+            # TODO: [Possible flaky bug] Here the RUNNING state may
+            # be recorded earlier than SUCCESSFUL. This caused some
+            # confusion during development.
+            _record_step_status(workflow.step_id, WorkflowStatus.RUNNING,
+                                [volatile_output])
 
     result = WorkflowExecutionResult(persisted_output, volatile_output)
     workflow._result = result
@@ -193,12 +191,14 @@ async def _write_step_inputs(wf_storage: workflow_storage.WorkflowStorage,
 
 
 def commit_step(store: workflow_storage.WorkflowStorage, step_id: "StepID",
-                ret: Union["Workflow", Any], exception: Optional[Exception]):
+                ret: Union["Workflow", Any], *,
+                exception: Optional[Exception]):
     """Checkpoint the step output.
     Args:
         store: The storage the current workflow is using.
         step_id: The ID of the step.
         ret: The returned object of the workflow step.
+        exception: The exception caught by the step.
     """
     from ray.workflow.common import Workflow
     if isinstance(ret, Workflow):
@@ -217,9 +217,8 @@ def commit_step(store: workflow_storage.WorkflowStorage, step_id: "StepID",
         outer_most_step_id=context.outer_most_step_id)
 
 
-def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
-              catch_exceptions: bool, max_retries: int, *args,
-              **kwargs) -> Tuple[Any, Any]:
+def _wrap_run(func: Callable, runtime_options: "WorkflowStepRuntimeOptions",
+              *args, **kwargs) -> Tuple[Any, Any]:
     """Wrap the function and execute it.
 
     It returns two parts, persisted_output (p-out) and volatile_output (v-out).
@@ -240,9 +239,8 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
     +-----------------------------+-------+--------+----------------------+
 
     Args:
-        step_type: The type of the step producing the result.
-        catch_exceptions: True if we would like to catch the exception.
-        max_retries: Max retry times for failure.
+        func: The function body.
+        runtime_options: Step execution params.
 
     Returns:
         State and output.
@@ -251,15 +249,15 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
     result = None
     # max_retries are for application level failure.
     # For ray failure, we should use max_retries.
-    for i in range(max_retries):
+    for i in range(runtime_options.max_retries):
         logger.info(f"{get_step_status_info(WorkflowStatus.RUNNING)}"
-                    f"\t[{i+1}/{max_retries}]")
+                    f"\t[{i + 1}/{runtime_options.max_retries}]")
         try:
             result = func(*args, **kwargs)
             exception = None
             break
         except BaseException as e:
-            if i + 1 == max_retries:
+            if i + 1 == runtime_options.max_retries:
                 retry_msg = "Maximum retry reached, stop retry."
             else:
                 retry_msg = "The step will be retried."
@@ -268,13 +266,14 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
                 f" {e}. {retry_msg}")
             exception = e
 
-    if catch_exceptions:
+    step_type = runtime_options.step_type
+    if runtime_options.catch_exceptions:
         if step_type == StepType.FUNCTION:
             if isinstance(result, Workflow):
                 # When it returns a nested workflow, catch_exception
                 # should be passed recursively.
                 assert exception is None
-                result.data.catch_exceptions = True
+                result.data.step_options.catch_exceptions = True
                 persisted_output, volatile_output = result, None
             else:
                 persisted_output, volatile_output = (result, exception), None
@@ -282,7 +281,7 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
             # virtual actors do not persist exception
             persisted_output, volatile_output = result[0], (result[1],
                                                             exception)
-        elif step_type == StepType.READONLY_ACTOR_METHOD:
+        elif runtime_options.step_type == StepType.READONLY_ACTOR_METHOD:
             persisted_output, volatile_output = None, (result, exception)
         else:
             raise ValueError(f"Unknown StepType '{step_type}'")
@@ -290,7 +289,8 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
         if exception is not None:
             if step_type != StepType.READONLY_ACTOR_METHOD:
                 status = WorkflowStatus.FAILED
-                _record_step_status(step_id, status)
+                _record_step_status(workflow_context.get_current_step_id(),
+                                    status)
                 logger.info(get_step_status_info(status))
             raise exception
         if step_type == StepType.FUNCTION:
@@ -305,41 +305,44 @@ def _wrap_run(func: Callable, step_type: StepType, step_id: "StepID",
     return persisted_output, volatile_output
 
 
-@ray.remote(num_returns=2)
-def _workflow_step_executor(step_type: StepType, func: Callable,
-                            context: workflow_context.WorkflowStepContext,
-                            step_id: "StepID",
-                            baked_inputs: "_BakedWorkflowInputs",
-                            catch_exceptions: bool, max_retries: int) -> Any:
+def _workflow_step_executor(
+        func: Callable, context: "WorkflowStepContext", step_id: "StepID",
+        baked_inputs: "_BakedWorkflowInputs",
+        runtime_options: "WorkflowStepRuntimeOptions") -> Tuple[Any, Any]:
     """Executor function for workflow step.
 
     Args:
-        step_type: The type of workflow step.
+        step_id: ID of the step.
         func: The workflow step function.
-        context: Workflow step context. Used to access correct storage etc.
-        step_id: The ID of the step.
         baked_inputs: The processed inputs for the step.
-        catch_exceptions: If set to be true, return
-            (Optional[Result], Optional[Error]) instead of Result.
-        max_retries: Max number of retries encounter of a failure.
+        context: Workflow step context. Used to access correct storage etc.
+        runtime_options: Parameters for workflow step execution.
 
     Returns:
         Workflow step output.
     """
+    # Part 1: update the context for the step
     workflow_context.update_workflow_step_context(context, step_id)
-    args, kwargs = _resolve_step_inputs(baked_inputs)
+    context = workflow_context.get_workflow_step_context()
+    step_type = runtime_options.step_type
+
+    # Part 2: resolve inputs
+    args, kwargs = baked_inputs.resolve()
+
+    # Part 3: execute the step
     store = workflow_storage.get_workflow_storage()
     try:
         step_prerun_metadata = {"start_time": time.time()}
         store.save_step_prerun_metadata(step_id, step_prerun_metadata)
-        persisted_output, volatile_output = _wrap_run(
-            func, step_type, step_id, catch_exceptions, max_retries, *args,
-            **kwargs)
+        persisted_output, volatile_output = _wrap_run(func, runtime_options,
+                                                      *args, **kwargs)
         step_postrun_metadata = {"end_time": time.time()}
         store.save_step_postrun_metadata(step_id, step_postrun_metadata)
     except Exception as e:
-        commit_step(store, step_id, None, e)
+        commit_step(store, step_id, None, exception=e)
         raise e
+
+    # Part 4: save outputs
     if step_type == StepType.READONLY_ACTOR_METHOD:
         if isinstance(volatile_output, Workflow):
             raise TypeError(
@@ -348,9 +351,9 @@ def _workflow_step_executor(step_type: StepType, func: Callable,
         assert not isinstance(persisted_output, Workflow)
     else:
         store = workflow_storage.get_workflow_storage()
-        commit_step(store, step_id, persisted_output, None)
-        outer_most_step_id = context.outer_most_step_id
+        commit_step(store, step_id, persisted_output, exception=None)
         if isinstance(persisted_output, Workflow):
+            outer_most_step_id = context.outer_most_step_id
             if step_type == StepType.FUNCTION:
                 # Passing down outer most step so inner nested steps would
                 # access the same outer most step.
@@ -383,6 +386,16 @@ def _workflow_step_executor(step_type: StepType, func: Callable,
     return persisted_output, volatile_output
 
 
+@ray.remote(num_returns=2)
+def _workflow_step_executor_remote(
+        func: Callable, context: "WorkflowStepContext", step_id: "StepID",
+        baked_inputs: "_BakedWorkflowInputs",
+        runtime_options: "WorkflowStepRuntimeOptions") -> Any:
+    """The remote version of '_workflow_step_executor'."""
+    return _workflow_step_executor(func, context, step_id, baked_inputs,
+                                   runtime_options)
+
+
 @dataclass
 class _BakedWorkflowInputs:
     """This class stores pre-processed inputs for workflow step execution.
@@ -392,14 +405,42 @@ class _BakedWorkflowInputs:
     workflow_outputs: "List[ObjectRef]"
     workflow_refs: "List[WorkflowRef]"
 
-    @classmethod
-    def from_workflow_inputs(cls, inputs: "WorkflowInputs"):
-        with workflow_context.fork_workflow_step_context(
-                outer_most_step_id=None, last_step_of_workflow=False):
-            workflow_outputs = [
-                execute_workflow(w).persisted_output for w in inputs.workflows
-            ]
-        return cls(inputs.args, workflow_outputs, inputs.workflow_refs)
+    def resolve(self) -> Tuple[List, Dict]:
+        """
+        This function resolves the inputs for the code inside
+        a workflow step (works on the callee side). For outputs from other
+        workflows, we resolve them into object instances inplace.
+
+        For each ObjectRef argument, the function returns both the ObjectRef
+        and the object instance. If the ObjectRef is a chain of nested
+        ObjectRefs, then we resolve it recursively until we get the
+        object instance, and we return the *direct* ObjectRef of the
+        instance. This function does not resolve ObjectRef
+        inside another object (e.g. list of ObjectRefs) to give users some
+        flexibility.
+
+        Returns:
+            Instances of arguments.
+        """
+        objects_mapping = []
+        for obj_ref in self.workflow_outputs:
+            obj, ref = _resolve_object_ref(obj_ref)
+            objects_mapping.append(obj)
+
+        workflow_ref_mapping = _resolve_dynamic_workflow_refs(
+            self.workflow_refs)
+
+        with serialization_context.workflow_args_resolving_context(
+                objects_mapping, workflow_ref_mapping):
+            # reconstruct input arguments under correct serialization context
+            flattened_args: List[Any] = ray.get(self.args)
+
+        # dereference arguments like Ray remote functions
+        flattened_args = [
+            ray.get(a) if isinstance(a, ObjectRef) else a
+            for a in flattened_args
+        ]
+        return signature.recover_args(flattened_args)
 
     def __reduce__(self):
         return _BakedWorkflowInputs, (self.args, self.workflow_outputs,

@@ -10,7 +10,7 @@ import uuid
 import ray._private.utils
 
 from ray.rllib.agents.mock import _MockTrainer
-from ray.tune import DurableTrainable, Trainable
+from ray.tune import Trainable
 from ray.tune.sync_client import get_sync_client
 from ray.tune.syncer import NodeSyncer
 from ray.tune.callback import Callback
@@ -51,6 +51,11 @@ class MockRemoteTrainer(_MockTrainer):
     """Mock Trainable that saves at tmp for simulated clusters."""
 
     def __init__(self, *args, **kwargs):
+        # Tests in test_cluster.py supply a remote checkpoint dir
+        # We should ignore this here as this is specifically a
+        # non-durable trainer
+        kwargs.pop("remote_checkpoint_dir", None)
+
         super(MockRemoteTrainer, self).__init__(*args, **kwargs)
         if self._logdir.startswith("/"):
             self._logdir = self._logdir[1:]
@@ -59,16 +64,17 @@ class MockRemoteTrainer(_MockTrainer):
             os.makedirs(self._logdir)
 
 
-class MockDurableTrainer(DurableTrainable, _MockTrainer):
+class MockDurableTrainer(_MockTrainer):
     """Mock DurableTrainable that saves at tmp for simulated clusters."""
 
-    # TODO(ujvl): This class uses multiple inheritance; it should be cleaned
-    #  up once the durable training API converges.
-
-    def __init__(self, remote_checkpoint_dir, sync_function_tpl, *args,
+    def __init__(self,
+                 remote_checkpoint_dir=None,
+                 sync_function_tpl=None,
+                 *args,
                  **kwargs):
         _MockTrainer.__init__(self, *args, **kwargs)
-        DurableTrainable.__init__(self, remote_checkpoint_dir, *args, **kwargs)
+        kwargs["remote_checkpoint_dir"] = remote_checkpoint_dir
+        Trainable.__init__(self, *args, **kwargs)
 
     def _create_storage_client(self):
         return mock_storage_client()

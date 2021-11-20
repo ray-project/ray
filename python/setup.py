@@ -4,6 +4,7 @@ import glob
 import io
 import logging
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -69,6 +70,7 @@ class BuildType(Enum):
     DEFAULT = 1
     DEBUG = 2
     ASAN = 3
+    TSAN = 4
 
 
 class SetupSpec:
@@ -82,6 +84,8 @@ class SetupSpec:
             self.version: str = f"{version}+dbg"
         elif build_type == BuildType.ASAN:
             self.version: str = f"{version}+asan"
+        elif build_type == BuildType.TSAN:
+            self.version: str = f"{version}+tsan"
         else:
             self.version = version
         self.description: str = description
@@ -102,6 +106,8 @@ if build_type == "debug":
     BUILD_TYPE = BuildType.DEBUG
 elif build_type == "asan":
     BUILD_TYPE = BuildType.ASAN
+elif build_type == "tsan":
+    BUILD_TYPE = BuildType.TSAN
 else:
     BUILD_TYPE = BuildType.DEFAULT
 
@@ -162,6 +168,8 @@ ray_files.append("ray/nightly-wheels.yaml")
 # Autoscaler files.
 ray_files += [
     "ray/autoscaler/aws/defaults.yaml",
+    "ray/autoscaler/aws/cloudwatch/prometheus.yml",
+    "ray/autoscaler/aws/cloudwatch/ray_prometheus_waiter.sh",
     "ray/autoscaler/azure/defaults.yaml",
     "ray/autoscaler/_private/_azure/azure-vm-template.json",
     "ray/autoscaler/_private/_azure/azure-config-template.json",
@@ -191,15 +199,18 @@ if setup_spec.type == SetupType.RAY:
             "fsspec",
         ],
         "default": [
-            "aiohttp == 3.7",
+            "aiohttp >= 3.7",
+            "aiosignal",
             "aiohttp_cors",
             "aioredis < 2",
             "colorful",
+            "frozenlist",
             "py-spy >= 0.2.0",
             "requests",
             "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
             "prometheus_client >= 0.7.1",
+            "smart_open"
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
@@ -209,6 +220,12 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-exporter-otlp==1.1.0"
         ],
     }
+
+    if sys.version_info >= (3, 7):
+        # Numpy dropped python 3.6 support in 1.20.
+        setup_spec.extras["data"].append("numpy >= 1.20")
+    else:
+        setup_spec.extras["data"].append("numpy >= 1.19")
 
     # Ray Serve depends on the Ray dashboard components.
     setup_spec.extras["serve"] = list(
@@ -251,8 +268,19 @@ if setup_spec.type == SetupType.RAY:
         "numpy >= 1.19.3; python_version >= '3.9'",
         "protobuf >= 3.15.3",
         "pyyaml",
-        "redis >= 3.5.0",
     ]
+
+if platform.system() == "Darwin" and platform.machine() == "arm64":
+    # TODO (Alex): `hiredis` doesn't have prebuilt M1 mac wheels yet. We can
+    # remove this, either when they add support, we remove redis, or we vendor
+    # redis/hiredis ourselves.
+    setup_spec.install_requires.append("redis >= 3.5.0")
+elif platform.system() == "Windows":
+    # TODO (Alex): Ray is not compatible with redis >= 4.0.0. We ened to either
+    # investigate why, or remove the redis dependency.
+    setup_spec.install_requires.append("redis >= 3.5.0, < 4.0")
+else:
+    setup_spec.install_requires.append("redis[hiredis] >= 3.5.0")
 
 
 def is_native_windows_or_msys():
@@ -509,6 +537,8 @@ def build(build_python, build_java, build_cpp):
         bazel_flags.extend(["--config", "debug"])
     if setup_spec.build_type == BuildType.ASAN:
         bazel_flags.extend(["--config=asan-build"])
+    if setup_spec.build_type == BuildType.TSAN:
+        bazel_flags.extend(["--config=tsan"])
 
     return bazel_invoke(
         subprocess.check_call,
