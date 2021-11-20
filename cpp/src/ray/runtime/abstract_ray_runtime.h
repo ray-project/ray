@@ -74,7 +74,7 @@ class AbstractRayRuntime : public RayRuntime {
 
   void RemoveLocalReference(const std::string &id);
 
-  std::string GetActorId(bool global, const std::string &actor_name);
+  std::string GetActorId(const std::string &actor_name);
 
   void KillActor(const std::string &str_actor_id, bool no_restart);
 
@@ -104,7 +104,7 @@ class AbstractRayRuntime : public RayRuntime {
 
   virtual std::vector<PlacementGroup> GetAllPlacementGroups();
   virtual PlacementGroup GetPlacementGroupById(const std::string &id);
-  virtual PlacementGroup GetPlacementGroup(const std::string &name, bool global);
+  virtual PlacementGroup GetPlacementGroup(const std::string &name);
 
  protected:
   std::unique_ptr<WorkerContext> worker_;

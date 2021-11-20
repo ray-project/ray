@@ -18,14 +18,14 @@
 
 namespace ray {
 namespace core {
-
+namespace {
 rpc::ActorHandle CreateInnerActorHandle(
     const class ActorID &actor_id, const TaskID &owner_id,
     const rpc::Address &owner_address, const class JobID &job_id,
     const ObjectID &initial_cursor, const Language actor_language,
     const FunctionDescriptor &actor_creation_task_function_descriptor,
     const std::string &extension_data, int64_t max_task_retries, const std::string &name,
-    const std::string &ray_namespace) {
+    const std::string &ray_namespace, bool execute_out_of_order) {
   rpc::ActorHandle inner;
   inner.set_actor_id(actor_id.Data(), actor_id.Size());
   inner.set_owner_id(owner_id.Binary());
@@ -39,6 +39,7 @@ rpc::ActorHandle CreateInnerActorHandle(
   inner.set_max_task_retries(max_task_retries);
   inner.set_name(name);
   inner.set_ray_namespace(ray_namespace);
+  inner.set_execute_out_of_order(execute_out_of_order);
   return inner;
 }
 
@@ -67,8 +68,11 @@ rpc::ActorHandle CreateInnerActorHandleFromActorTableData(
   inner.set_name(actor_table_data.task_spec().actor_creation_task_spec().name());
   inner.set_ray_namespace(
       actor_table_data.task_spec().actor_creation_task_spec().ray_namespace());
+  inner.set_execute_out_of_order(
+      actor_table_data.task_spec().actor_creation_task_spec().execute_out_of_order());
   return inner;
 }
+}  // namespace
 
 ActorHandle::ActorHandle(
     const class ActorID &actor_id, const TaskID &owner_id,
@@ -76,11 +80,11 @@ ActorHandle::ActorHandle(
     const ObjectID &initial_cursor, const Language actor_language,
     const FunctionDescriptor &actor_creation_task_function_descriptor,
     const std::string &extension_data, int64_t max_task_retries, const std::string &name,
-    const std::string &ray_namespace)
+    const std::string &ray_namespace, bool execute_out_of_order)
     : ActorHandle(CreateInnerActorHandle(
           actor_id, owner_id, owner_address, job_id, initial_cursor, actor_language,
           actor_creation_task_function_descriptor, extension_data, max_task_retries, name,
-          ray_namespace)) {}
+          ray_namespace, execute_out_of_order)) {}
 
 ActorHandle::ActorHandle(const std::string &serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
