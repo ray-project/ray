@@ -1928,7 +1928,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_id, GetCallerId(), rpc_address_, job_id,
       /*actor_cursor=*/ObjectID::FromIndex(actor_creation_task_id, 1),
       function.GetLanguage(), function.GetFunctionDescriptor(), extension_data,
-      actor_creation_options.max_task_retries, actor_name, ray_namespace);
+      actor_creation_options.max_task_retries, actor_name, ray_namespace,
+      actor_creation_options.execute_out_of_order);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   builder.SetActorCreationTaskSpec(
@@ -1937,7 +1938,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.dynamic_worker_options,
       actor_creation_options.max_concurrency, actor_creation_options.is_detached,
       actor_name, ray_namespace, actor_creation_options.is_asyncio,
-      actor_creation_options.concurrency_groups, extension_data);
+      actor_creation_options.concurrency_groups, extension_data,
+      actor_creation_options.execute_out_of_order);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.

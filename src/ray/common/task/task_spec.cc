@@ -91,14 +91,11 @@ void TaskSpecification::ComputeResources() {
   }
 
   if (!IsActorTask()) {
-    bool complex_scheduling_class = RayConfig::instance().complex_scheduling_class();
     // There is no need to compute `SchedulingClass` for actor tasks since
     // the actor tasks need not be scheduled.
     const auto &resource_set = GetRequiredResources();
-    const auto &function_descriptor = complex_scheduling_class
-                                          ? FunctionDescriptor()
-                                          : FunctionDescriptorBuilder::Empty();
-    auto depth = complex_scheduling_class ? GetDepth() : 0;
+    const auto &function_descriptor = FunctionDescriptor();
+    auto depth = GetDepth();
     auto sched_cls_desc =
         SchedulingClassDescriptor(resource_set, function_descriptor, depth);
     // Map the scheduling class descriptor to an integer for performance.
@@ -338,6 +335,11 @@ int TaskSpecification::MaxActorConcurrency() const {
 std::string TaskSpecification::ConcurrencyGroupName() const {
   RAY_CHECK(IsActorTask());
   return message_->concurrency_group_name();
+}
+
+bool TaskSpecification::ExecuteOutOfOrder() const {
+  return IsActorCreationTask() &&
+         message_->actor_creation_task_spec().execute_out_of_order();
 }
 
 bool TaskSpecification::IsAsyncioActor() const {

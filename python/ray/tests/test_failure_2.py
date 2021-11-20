@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 import signal
@@ -17,7 +16,8 @@ from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
 from ray.cluster_utils import Cluster
 from ray._private.test_utils import (init_error_pubsub, get_error_message,
-                                     Semaphore, wait_for_condition)
+                                     get_log_batch, Semaphore,
+                                     wait_for_condition)
 
 
 def test_warning_for_infeasible_tasks(ray_start_regular, error_pubsub):
@@ -131,18 +131,18 @@ def test_warning_for_too_many_nested_tasks(shutdown_only):
         nested_wait.locked.remote(),
     ])
 
-    @ray.remote
+    @ray.remote(num_cpus=0.25)
     def f():
         time.sleep(1000)
         return 1
 
-    @ray.remote
+    @ray.remote(num_cpus=0.25)
     def h(nested_waits):
         nested_wait.release.remote()
         ray.get(nested_waits)
         ray.get(f.remote())
 
-    @ray.remote
+    @ray.remote(num_cpus=0.25)
     def g(remote_waits, nested_waits):
         # Sleep so that the f tasks all get submitted to the scheduler after
         # the g tasks.
@@ -467,24 +467,16 @@ def test_fate_sharing(ray_start_cluster, use_actors, node_failure):
     }],
     indirect=True)
 def test_gcs_server_failiure_report(ray_start_regular, log_pubsub):
-    p = log_pubsub
     # Get gcs server pid to send a signal.
     all_processes = ray.worker._global_node.all_processes
     gcs_server_process = all_processes["gcs_server"][0].process
     gcs_server_pid = gcs_server_process.pid
 
     os.kill(gcs_server_pid, signal.SIGBUS)
-    msg = None
-    cnt = 0
-    # wait for max 30 seconds.
-    while cnt < 3000 and not msg:
-        msg = p.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            cnt += 1
-            continue
-        data = json.loads(ray._private.utils.decode(msg["data"]))
-        assert data["pid"] == "gcs_server"
+    # wait for 30 seconds, for the 1st batch of logs.
+    batches = get_log_batch(log_pubsub, 1, timeout=30)
+    assert len(batches) == 1
+    assert batches[0]["pid"] == "gcs_server", batches
 
 
 def test_raylet_node_manager_server_failure(ray_start_cluster_head,
@@ -494,21 +486,15 @@ def test_raylet_node_manager_server_failure(ray_start_cluster_head,
     # Reuse redis port to make node manager grpc server fail to start.
     with pytest.raises(Exception):
         cluster.add_node(wait=False, node_manager_port=redis_port)
-    p = log_pubsub
-    cnt = 0
+
     # wait for max 10 seconds.
-    found = False
-    while cnt < 1000 and not found:
-        msg = p.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            cnt += 1
-            continue
-        data = json.loads(ray._private.utils.decode(msg["data"]))
-        if data["pid"] == "raylet":
-            found = any("Failed to start the grpc server." in line
-                        for line in data["lines"])
-    assert found
+    def matcher(log_batch):
+        return log_batch["pid"] == "raylet" and any(
+            "Failed to start the grpc server." in line
+            for line in log_batch["lines"])
+
+    match = get_log_batch(log_pubsub, 1, timeout=10, matcher=matcher)
+    assert len(match) > 0
 
 
 if __name__ == "__main__":

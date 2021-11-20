@@ -434,9 +434,8 @@ class Worker:
     def print_logs(self):
         """Prints log messages from workers on all nodes in the same job.
         """
-        pubsub_client = self.redis_client.pubsub(
-            ignore_subscribe_messages=True)
-        pubsub_client.subscribe(gcs_utils.LOG_FILE_CHANNEL)
+        subscriber = self.redis_client.pubsub(ignore_subscribe_messages=True)
+        subscriber.subscribe(gcs_utils.LOG_FILE_CHANNEL)
         localhost = services.get_node_ip_address()
         try:
             # Keep track of the number of consecutive log messages that have
@@ -444,14 +443,13 @@ class Worker:
             # continually, then the worker is probably not able to process the
             # log messages as rapidly as they are coming in.
             num_consecutive_messages_received = 0
-            job_id_binary = ray._private.utils.binary_to_hex(
-                self.current_job_id.binary())
+            job_id_hex = self.current_job_id.hex()
             while True:
                 # Exit if we received a signal that we should stop.
                 if self.threads_stopped.is_set():
                     return
 
-                msg = pubsub_client.get_message()
+                msg = subscriber.get_message()
                 if msg is None:
                     num_consecutive_messages_received = 0
                     self.threads_stopped.wait(timeout=0.01)
@@ -469,7 +467,7 @@ class Worker:
 
                 # Don't show logs from other drivers.
                 if (self.filter_logs_by_job and data["job"]
-                        and job_id_binary != data["job"]):
+                        and job_id_hex != data["job"]):
                     continue
                 data["localhost"] = localhost
                 global_worker_stdstream_dispatcher.emit(data)
@@ -478,7 +476,7 @@ class Worker:
             logger.error(f"print_logs: {e}")
         finally:
             # Close the pubsub client to avoid leaking file descriptors.
-            pubsub_client.close()
+            subscriber.close()
 
 
 @PublicAPI
@@ -1261,7 +1259,6 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
         threads_stopped (threading.Event): A threading event used to signal to
             the thread that it should exit.
     """
-    worker.gcs_subscriber = GcsSubscriber(channel=worker.gcs_channel.channel())
     # Exports that are published after the call to
     # gcs_subscriber.subscribe_error() and before the call to
     # gcs_subscriber.poll_error() will still be processed in the loop.
@@ -1371,6 +1368,8 @@ def connect(node,
     worker.gcs_publisher = None
     if worker.gcs_pubsub_enabled:
         worker.gcs_publisher = GcsPublisher(
+            channel=worker.gcs_channel.channel())
+        worker.gcs_subscriber = GcsSubscriber(
             channel=worker.gcs_channel.channel())
 
     # Initialize some fields.
@@ -1574,11 +1573,11 @@ def disconnect(exiting_interpreter=False):
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
         worker.threads_stopped.set()
+        if hasattr(worker, "gcs_subscriber"):
+            worker.gcs_subscriber.close()
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
-            if hasattr(worker, "gcs_subscriber"):
-                worker.gcs_subscriber.close()
             worker.listener_thread.join()
         if hasattr(worker, "logger_thread"):
             worker.logger_thread.join()

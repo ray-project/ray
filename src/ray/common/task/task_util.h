@@ -182,7 +182,7 @@ class TaskSpecBuilder {
       int max_concurrency = 1, bool is_detached = false, std::string name = "",
       std::string ray_namespace = "", bool is_asyncio = false,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      const std::string &extension_data = "") {
+      const std::string &extension_data = "", bool execute_out_of_order = false) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
@@ -208,6 +208,7 @@ class TaskSpecBuilder {
         *fd = item->GetMessage();
       }
     }
+    actor_creation_spec->set_execute_out_of_order(execute_out_of_order);
     return *this;
   }
 
