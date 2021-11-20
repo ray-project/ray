@@ -13,6 +13,8 @@ from typing import Optional, List, Dict, Any, Set
 from pathlib import Path
 
 import ray
+
+from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.runtime_env.conda_utils import (
     get_conda_activate_commands, create_conda_env, delete_conda_env)
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -77,13 +79,13 @@ def get_conda_dict(runtime_env, resources_dir) -> Optional[Dict[Any, Any]]:
         pip dependencies.  If conda is already given as a dict, this function
         is the identity function.
     """
-    if runtime_env.get("conda"):
-        if isinstance(runtime_env["conda"], dict):
-            return runtime_env["conda"]
+    if runtime_env.has_conda():
+        if runtime_env.conda_config():
+            return json.loads(runtime_env.conda_config())
         else:
             return None
-    if runtime_env.get("pip"):
-        requirements_txt = "\n".join(runtime_env["pip"]) + "\n"
+    if runtime_env.has_pip():
+        requirements_txt = "\n".join(runtime_env.pip_packages()) + "\n"
         pip_hash = hashlib.sha1(requirements_txt.encode("utf-8")).hexdigest()
         pip_hash_str = f"pip-generated-{pip_hash}"
 
@@ -265,26 +267,27 @@ class CondaManager:
         return successful
 
     def setup(self,
-              runtime_env: Dict,
+              runtime_env: RuntimeEnv,
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
-        if not runtime_env.get("conda") and not runtime_env.get("pip"):
+        if not runtime_env.has_conda() and not runtime_env.has_pip():
             return
 
-        logger.debug(f"Setting up conda or pip for runtime_env: {runtime_env}")
+        logger.debug("Setting up conda or pip for runtime_env: "
+                     f"{runtime_env.serialize()}")
 
-        if isinstance(runtime_env.get("conda"), str):
-            conda_env_name = runtime_env["conda"]
+        if runtime_env.conda_env_name():
+            conda_env_name = runtime_env.conda_env_name()
         else:
             conda_dict = get_conda_dict(runtime_env, self._resources_dir)
-            protocol, hash = parse_uri(get_uri(runtime_env))
+            protocol, hash = parse_uri(runtime_env.conda_uri())
             conda_env_name = self._get_path_from_hash(hash)
             assert conda_dict is not None
 
             ray_pip = current_ray_pip_specifier(logger=logger)
             if ray_pip:
                 extra_pip_dependencies = [ray_pip, "ray[default]"]
-            elif runtime_env.get("_inject_current_ray"):
+            elif runtime_env.get_extension("_inject_current_ray") == "True":
                 extra_pip_dependencies = (
                     _resolve_install_from_source_ray_dependencies())
             else:
@@ -292,7 +295,6 @@ class CondaManager:
             conda_dict = inject_dependencies(conda_dict, _current_py_version(),
                                              extra_pip_dependencies)
 
-            logger.info(f"Setting up conda environment with {runtime_env}")
             # It is not safe for multiple processes to install conda envs
             # concurrently, even if the envs are different, so use a global
             # lock for all conda installs.
@@ -317,7 +319,7 @@ class CondaManager:
                 finally:
                     os.remove(conda_yaml_file)
 
-                if runtime_env.get("_inject_current_ray"):
+                if runtime_env.get_extension("_inject_current_ray"):
                     _inject_ray_to_conda_site(
                         conda_path=conda_env_name, logger=logger)
 
