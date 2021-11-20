@@ -142,8 +142,8 @@ class FunctionActorManager:
         # existing in the cluster.
         # One optimization is that we can use importer counter since
         # it's sure keys before this counter has been allocated.
-        self._num_exported = max(
-            self._num_exported, self._worker.import_thread.num_imported)
+        self._num_exported = max(self._num_exported,
+                                 self._worker.import_thread.num_imported)
         while True:
             self._num_exported += 1
             holder = make_export_key(self._num_exported)
