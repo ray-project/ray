@@ -30,6 +30,7 @@
 *ray*gcs*
 *ray*CoreWorker*
 *ray*PeriodicalRunner*;
+*PyInit*
 *init_raylet*
 *Java*
 *JNI_*
