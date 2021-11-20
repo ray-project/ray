@@ -15,13 +15,11 @@ Ray Job Submission: Going from your laptop from production
 Concepts
 --------
 
-- **Package**: A collection of files and configurations that defines an application, thus allowing it to be executed in a different environment remotely (ideally self-contained).
+- **Package**: A collection of files and configurations that defines an application, thus allowing it to be executed in a different environment remotely (ideally self-contained). Within the context of Job submission, the packaging part is handled by :ref:`Runtime Environments<runtime-environments>`, where we can dynamically configure your desired Ray cluster environment, actor or task level runtime environment for your submitted Job.
 
 - **Job**: A Ray application that will be submitted to a Ray cluster for execution. Once a Job is submitted, it runs once on the cluster to completion or failure. Retries or different runs with different parameters should be handled by the submitter. Jobs are scoped to the lifetime of a Ray cluster, so if your Ray cluster goes down, any running Jobs will be terminated.
 
 - **Job Manager**: An entity external to the Ray cluster that manages the lifecycle of a Job and potentially also Ray clusters, such as scheduling, killing, polling status, getting logs, and persisting inputs / outputs. Can be any existing framework with these abilities, such as Airflow.
-
-Within the context of Job submission, the packaging part is handled by :ref:`Runtime Environments<runtime-environments>`, where we can dynamically configure your desired Ray cluster environment, actor or task level runtime environment for your submitted Job.
 
 Example - Setup
 ---------------
@@ -157,7 +155,22 @@ Now we can have a simple polling loop that checks the job status until it reache
 
     wait_until_finish(job_id)
     logs = client.get_job_logs(job_id)
-    print(logs)
+
+Expected output should be:
+
+.. code-block:: bash
+
+    status: JobStatus.PENDING
+    status: JobStatus.RUNNING
+    status: JobStatus.SUCCEEDED
+
+    1
+    2
+    3
+    4
+    5
+
+    2.26.0
 
 .. tip::
 
@@ -176,7 +189,6 @@ A submitted Job can be stopped by the user before it finishes executing.
     client.stop_job(job_id)
     wait_until_finish(job_id)
     logs = client.get_job_logs(job_id)
-    print(logs)
 
 
 REST API
@@ -199,7 +211,6 @@ Under the hood, both the Job Client and the CLI make HTTP calls to the job serve
     )
     rst = json.loads(resp.text)
     job_id = rst["job_id"]
-    print(job_id)
 
 **Query and poll for Job status**
 
@@ -232,7 +243,6 @@ Under the hood, both the Job Client and the CLI make HTTP calls to the job serve
     )
     rst = json.loads(resp.text)
     logs = rst["logs"]
-    print(logs)
 
 
 Job Submission Architecture
