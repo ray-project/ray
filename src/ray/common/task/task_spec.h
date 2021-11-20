@@ -304,6 +304,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::string ConcurrencyGroupName() const;
 
+  bool ExecuteOutOfOrder() const;
+
  private:
   void ComputeResources();
 
