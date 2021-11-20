@@ -82,6 +82,9 @@ class FunctionActorManager:
         self.lock = threading.RLock()
         self.cv = threading.Condition(lock=self.lock)
         self.execution_infos = {}
+        # This is the counter to keep track of how many keys have already
+        # been exported so that we can find next key quicker.
+        self._num_exported = 0
 
     def increase_task_counter(self, function_descriptor):
         function_id = function_descriptor.function_id
@@ -138,10 +141,11 @@ class FunctionActorManager:
         # It's going to check all the keys until if reserve one key not
         # existing in the cluster.
         # One optimization is that we can use importer counter since
-        # it's sure keys before this counter has been allocated
-        pos = self._worker.import_thread.num_imported
+        # it's sure keys before this counter has been allocated.
+        self._num_exported = max(
+            self._num_exported, self._worker.import_thread.num_imported)
         while True:
-            pos += 1
+            self._num_exported += 1
             holder = make_export_key(pos)
             # This step is atomic since internal kv is a single thread atomic
             # db.
