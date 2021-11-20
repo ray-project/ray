@@ -15,6 +15,22 @@ from ray._private.test_utils import (get_other_nodes, wait_for_condition,
 from ray._raylet import PlacementGroupID
 from ray.util.placement_group import PlacementGroup
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
+from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+
+MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH = "ray.tests.test_placement_group.MockWorkerStartupSlowlyPlugin"
+
+class MockWorkerStartupSlowlyPlugin(RuntimeEnvPlugin):
+
+    def validate(runtime_env_dict: dict) -> str:
+        return "success"
+
+    @staticmethod
+    def create(uri: str, runtime_env_dict: dict,
+               ctx: RuntimeEnvContext) -> float:
+        import time
+        time.sleep(15)
+        return 0
 
 
 @pytest.mark.parametrize("connect_to_client", [True, False])
@@ -504,6 +520,52 @@ def test_remove_placement_group(ray_start_cluster, connect_to_client):
             ray.get(a.f.remote(), timeout=3.0)
         with pytest.raises(ray.exceptions.WorkerCrashedError):
             ray.get(task_ref)
+
+
+def test_remove_placement_group_worker_startup_slowly(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+    ray.init(address=cluster.address)
+
+    placement_group = ray.util.placement_group([{"CPU": 2}, {"CPU": 2}])
+    assert placement_group.wait(10)
+
+    @ray.remote(num_cpus=2)
+    class A:
+        def f(self):
+            return 3
+
+    @ray.remote(num_cpus=2, max_retries=0)
+    def long_running_task():
+        print(os.getpid())
+        import time
+        time.sleep(60)
+
+    # Schedule a long-running task that uses runtime env to mock worker start up slowly.
+    task_ref = long_running_task.options(
+        placement_group=placement_group,
+        runtime_env={
+                "plugins": {
+                    MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH: {}
+                }
+            }).remote()
+    a = A.options(placement_group=placement_group).remote()
+    assert ray.get(a.f.remote()) == 3
+
+    ray.util.remove_placement_group(placement_group)
+
+    #Make sure the actor has been killed because of the removal of the pg.
+    with pytest.raises(ray.exceptions.RayActorError, match="actor died"):
+        ray.get(a.f.remote(), timeout=3.0)
+    
+    # The long-running task should still be in the state
+    # of leasing-worker bacause of the worker startup delay.
+    # TODO(@clay4444) A `TaskCancelledError` should be 
+    # raised here at this time, however, it will hang forever
+    # if we use `ray.get(task_ref)` directly here! 
+    # will fix it later.
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(task_ref, timeout=5)
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
