@@ -523,16 +523,11 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
     msgs = []
     while time.time() < deadline and len(msgs) < num:
         if isinstance(subscriber, GcsSubscriber):
-            try:
-                _, error_data = subscriber.poll_error(timeout=deadline -
-                                                      time.time())
-            except grpc.RpcError as e:
-                # Failed to match error message before timeout.
-                if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
-                    logging.warning("get_error_message() timed out")
-                    return []
-                # Otherwise, the error is unexpected.
-                raise
+            _, error_data = subscriber.poll_error(timeout=deadline -
+                                                  time.time())
+            if not error_data:
+                # Timed out before any data is received.
+                break
         else:
             msg = subscriber.get_message()
             if msg is None:

@@ -38,6 +38,21 @@ python_grpc_compile(
 )
 
 proto_library(
+    name = "logging_proto",
+    srcs = ["logging.proto"],
+)
+
+cc_proto_library(
+    name = "loggings_cc_proto",
+    deps = [":logging_proto"],
+)
+
+python_grpc_compile(
+    name = "logging_py_proto",
+    deps = [":logging_proto"],
+)
+
+proto_library(
     name = "node_manager_proto",
     srcs = ["node_manager.proto"],
     deps = [
@@ -218,6 +233,7 @@ proto_library(
     deps = [
         ":common_proto",
         ":gcs_proto",
+        ":logging_proto",
     ],
 )
 
