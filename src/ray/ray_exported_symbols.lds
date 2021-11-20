@@ -24,7 +24,6 @@
 *ray*ObjectReference*
 # Others
 *ray*metrics*
-*opencensus*
 *ray*stats*
 *ray*rpc*
 *ray*gcs*
