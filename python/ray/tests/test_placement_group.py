@@ -18,10 +18,11 @@ from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
-MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH = "ray.tests.test_placement_group.MockWorkerStartupSlowlyPlugin"
+MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH = """
+ray.tests.test_placement_group.MockWorkerStartupSlowlyPlugin"""
+
 
 class MockWorkerStartupSlowlyPlugin(RuntimeEnvPlugin):
-
     def validate(runtime_env_dict: dict) -> str:
         return "success"
 
@@ -541,28 +542,30 @@ def test_remove_placement_group_worker_startup_slowly(ray_start_cluster):
         import time
         time.sleep(60)
 
-    # Schedule a long-running task that uses runtime env to mock worker start up slowly.
+    # Schedule a long-running task that uses
+    # runtime env to mock worker start up slowly.
     task_ref = long_running_task.options(
         placement_group=placement_group,
         runtime_env={
-                "plugins": {
-                    MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH: {}
-                }
-            }).remote()
+            "plugins": {
+                MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH: {}
+            }
+        }).remote()
     a = A.options(placement_group=placement_group).remote()
     assert ray.get(a.f.remote()) == 3
 
     ray.util.remove_placement_group(placement_group)
 
-    #Make sure the actor has been killed because of the removal of the pg.
+    # Make sure the actor has been killed
+    # because of the removal of the pg.
     with pytest.raises(ray.exceptions.RayActorError, match="actor died"):
         ray.get(a.f.remote(), timeout=3.0)
-    
+
     # The long-running task should still be in the state
     # of leasing-worker bacause of the worker startup delay.
-    # TODO(@clay4444) A `TaskCancelledError` should be 
+    # TODO(@clay4444) A `TaskCancelledError` should be
     # raised here at this time, however, it will hang forever
-    # if we use `ray.get(task_ref)` directly here! 
+    # if we use `ray.get(task_ref)` directly here!
     # will fix it later.
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(task_ref, timeout=5)
