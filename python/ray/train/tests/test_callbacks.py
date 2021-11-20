@@ -55,11 +55,6 @@ class TestBackend(Backend):
         pass
 
 
-# The ordering of these parametrize decorators matters.
-# `detailed` has to be the last one, and False has to come before True.
-# This is because of the bug with runtime envs:
-# https://github.com/ray-project/ray/issues/20587.
-# TODO(amogkam): Remove the above comment once the above issue is closed.
 @pytest.mark.parametrize("workers_to_log", [0, None, [0, 1]])
 @pytest.mark.parametrize("filename", [None, "my_own_filename.json"])
 @pytest.mark.parametrize("detailed", [False, True])
@@ -67,9 +62,6 @@ def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
               filename):
     if detailed:
         os.environ[ENABLE_DETAILED_AUTOFILLED_METRICS_ENV] = "1"
-    else:
-        os.environ.pop(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
-        assert ENABLE_DETAILED_AUTOFILLED_METRICS_ENV not in os.environ
 
     config = TestConfig()
 
@@ -125,6 +117,9 @@ def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
         assert all(
             all(not any(key in worker for key in DETAILED_AUTOFILLED_KEYS)
                 for worker in element) for element in log)
+
+    os.environ.pop(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
+    assert ENABLE_DETAILED_AUTOFILLED_METRICS_ENV not in os.environ
 
 
 def _validate_tbx_result(events_dir):
