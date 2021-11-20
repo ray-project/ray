@@ -71,18 +71,9 @@ class LocalObjectManager {
   /// \param objects Pointers to the objects to be pinned. The pointer should
   /// be kept in scope until the object can be released.
   /// \param owner_address The owner of the objects to be pinned.
-  void PinObjects(const std::vector<ObjectID> &object_ids,
+  void PinObjectsAndWaitForFree(const std::vector<ObjectID> &object_ids,
                   std::vector<std::unique_ptr<RayObject>> &&objects,
                   const rpc::Address &owner_address);
-
-  /// Wait for the objects' owner to free the object.  The objects will be
-  /// released when the owner at the given address fails or replies that the
-  /// object can be evicted.
-  ///
-  /// \param owner_address The address of the owner of the objects.
-  /// \param object_ids The objects to be freed.
-  void WaitForObjectFree(const rpc::Address &owner_address,
-                         const std::vector<ObjectID> &object_ids);
 
   /// Spill objects as much as possible as fast as possible up to the max throughput.
   ///
@@ -210,6 +201,8 @@ class LocalObjectManager {
   // Objects that are pinned on this node.
   absl::flat_hash_map<ObjectID, std::pair<std::unique_ptr<RayObject>, rpc::Address>>
       pinned_objects_;
+
+  absl::flat_hash_set<ObjectID> objects_waiting_for_free_;
 
   // Total size of objects pinned on this node.
   size_t pinned_objects_size_ = 0;

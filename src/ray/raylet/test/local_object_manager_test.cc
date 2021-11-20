@@ -366,8 +366,7 @@ TEST_F(LocalObjectManagerTest, TestPin) {
                                               std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
-  manager.WaitForObjectFree(owner_address, object_ids);
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
@@ -393,7 +392,7 @@ TEST_F(LocalObjectManagerTest, TestRestoreSpilledObject) {
                                               std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
 
   manager.SpillObjects(object_ids,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
@@ -449,7 +448,7 @@ TEST_F(LocalObjectManagerTest, TestExplicitSpill) {
                                               std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
 
   int num_times_fired = 0;
   manager.SpillObjects(object_ids, [&](const Status &status) mutable {
@@ -494,8 +493,7 @@ TEST_F(LocalObjectManagerTest, TestDuplicateSpill) {
                                               std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
-  manager.WaitForObjectFree(owner_address, object_ids);
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
 
   int num_times_fired = 0;
   manager.SpillObjects(object_ids, [&](const Status &status) mutable {
@@ -548,7 +546,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectsOfSize) {
                                               std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
   ASSERT_TRUE(manager.SpillObjectsOfSize(total_size / 2));
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
@@ -615,7 +613,7 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxFuseCount) {
                                               std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
   ASSERT_TRUE(manager.SpillObjectsOfSize(total_size));
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
@@ -661,7 +659,7 @@ TEST_F(LocalObjectManagerTest, TestSpillObjectNotEvictable) {
                                             std::vector<rpc::ObjectReference>());
   objects.push_back(std::move(object));
 
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
   ASSERT_FALSE(manager.SpillObjectsOfSize(1000));
   for (const auto &id : object_ids) {
     ASSERT_EQ((*unpins)[id], 0);
@@ -690,7 +688,7 @@ TEST_F(LocalObjectManagerTest, TestSpillUptoMaxThroughput) {
                                               std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
 
   // This will spill until 2 workers are occupied.
   manager.SpillObjectUptoMaxThroughput();
@@ -757,7 +755,7 @@ TEST_F(LocalObjectManagerTest, TestSpillError) {
 
   std::vector<std::unique_ptr<RayObject>> objects;
   objects.push_back(std::move(object));
-  manager.PinObjects({object_id}, std::move(objects), owner_address);
+  manager.PinObjectsAndWaitForFree({object_id}, std::move(objects), owner_address);
 
   int num_times_fired = 0;
   manager.SpillObjects({object_id}, [&](const Status &status) mutable {
@@ -802,7 +800,7 @@ TEST_F(LocalObjectManagerTest, TestPartialSpillError) {
                                               std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
   manager.SpillObjects(object_ids,
                        [&](const Status &status) mutable { ASSERT_TRUE(status.ok()); });
 
@@ -838,8 +836,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteNoSpilledObjects) {
                                               std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
-  manager.WaitForObjectFree(owner_address, object_ids);
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
 
   for (size_t i = 0; i < free_objects_batch_size; i++) {
     ASSERT_TRUE(freed.empty());
@@ -867,8 +864,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
                                               std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
-  manager.WaitForObjectFree(owner_address, object_ids);
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
 
   // 2 Objects are spilled out of 3.
   std::vector<ObjectID> object_ids_to_spill;
@@ -916,8 +912,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
                                               std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
-  manager.WaitForObjectFree(owner_address, object_ids);
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
 
   // Every object is spilled.
   std::vector<ObjectID> object_ids_to_spill;
@@ -977,8 +972,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
                                               std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
-  manager.WaitForObjectFree(owner_address, object_ids);
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
 
   // Objects are spilled.
   std::vector<ObjectID> spill_set_1;
@@ -1051,8 +1045,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
                                               std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
-  manager.WaitForObjectFree(owner_address, object_ids);
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
 
   std::vector<ObjectID> object_ids_to_spill;
   int spilled_urls_size = free_objects_batch_size;
@@ -1103,8 +1096,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
                                               std::vector<rpc::ObjectReference>());
     objects.push_back(std::move(object));
   }
-  manager.PinObjects(object_ids, std::move(objects), owner_address);
-  manager.WaitForObjectFree(owner_address, object_ids);
+  manager.PinObjectsAndWaitForFree(object_ids, std::move(objects), owner_address);
 
   // Every object is spilled.
   std::vector<ObjectID> object_ids_to_spill;

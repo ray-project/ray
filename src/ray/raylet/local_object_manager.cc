@@ -22,11 +22,16 @@ namespace ray {
 
 namespace raylet {
 
-void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
+void LocalObjectManager::PinObjectsAndWaitForFree(const std::vector<ObjectID> &object_ids,
                                     std::vector<std::unique_ptr<RayObject>> &&objects,
                                     const rpc::Address &owner_address) {
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
+    if (objects_waiting_for_free_.count(object_id)) {
+      continue;
+    }
+    objects_waiting_for_free_.insert(object_id);
+
     auto &object = objects[i];
     if (object == nullptr) {
       RAY_LOG(ERROR) << "Plasma object " << object_id
@@ -36,12 +41,7 @@ void LocalObjectManager::PinObjects(const std::vector<ObjectID> &object_ids,
     RAY_LOG(DEBUG) << "Pinning object " << object_id;
     pinned_objects_size_ += object->GetSize();
     pinned_objects_.emplace(object_id, std::make_pair(std::move(object), owner_address));
-  }
-}
 
-void LocalObjectManager::WaitForObjectFree(const rpc::Address &owner_address,
-                                           const std::vector<ObjectID> &object_ids) {
-  for (const auto &object_id : object_ids) {
     // Create a object eviction subscription message.
     auto wait_request = std::make_unique<rpc::WorkerObjectEvictionSubMessage>();
     wait_request->set_object_id(object_id.Binary());
@@ -84,6 +84,7 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
   RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
             (spilled_objects_url_.count(object_id) > 0) ||
             (objects_pending_spill_.count(object_id) > 0));
+  RAY_CHECK(objects_waiting_for_free_.erase(object_id));
   spilled_object_pending_delete_.push(object_id);
   if (pinned_objects_.count(object_id)) {
     pinned_objects_size_ -= pinned_objects_[object_id].first->GetSize();

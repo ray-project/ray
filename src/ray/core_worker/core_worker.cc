@@ -2179,6 +2179,8 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
     auto contained_refs = GetObjectRefs(contained_object_ids);
     *return_object =
         std::make_shared<RayObject>(data_buffer, metadata, std::move(contained_refs));
+  } else {
+    RAY_LOG(DEBUG) << "Return object already exists " << object_id;
   }
 
   return Status::OK();

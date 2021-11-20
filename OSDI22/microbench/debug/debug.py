@@ -48,9 +48,13 @@ def test_ray_pipeline():
             refs[stage].append(consumer.remote(r))
 
     for r in refs[NUM_STAGES-1]:
-        refs[NUM_STAGES].append(last_consumer.remote(r))
+        ref = last_consumer.remote(r)
+        print("REF", ref, "depends on", r)
+        refs[NUM_STAGES].append(ref)
 
-    ray.get(refs[-1])
+    for ref in refs[-1]:
+        print("GET", ref)
+        ray.get(ref)
 
     ray_pipeline_end = perf_counter()
 
