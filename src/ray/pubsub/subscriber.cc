@@ -362,13 +362,13 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
     }
     // Empty the command queue because we cannot send commands anymore.
     commands_.erase(publisher_id);
-  } else if (processed_seq < reply.seq() || reply.reset_seq()) {
+  } else if (processed_seq < reply.seq() || reply.type() == rpc::PubsubLongPollingReply::RESET) {
     if (processed_seq + 1 < reply.seq()) {
       RAY_LOG(WARNING) << "Missing sequence numbers for subscriber "
                        << subscriber_id_.Hex()
                        << ", local processed_seq=" << processed_seq
                        << ", remote reply seq=" << reply.seq();
-    } else if (reply.reset_seq()) {
+    } else if (reply.type() == rpc::PubsubLongPollingReply::RESET) {
       RAY_LOG(WARNING) << "Publisher resets sequence number for subscriber "
                        << subscriber_id_.Hex()
                        << ", local processed_seq=" << processed_seq

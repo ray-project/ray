@@ -59,7 +59,7 @@ void InternalPubSubHandler::HandleGcsSubscriberPoll(
                                                std::function<void()> failure_cb) {
         reply->mutable_pub_messages()->Swap(pubsub_reply->mutable_pub_messages());
         reply->set_seq(pubsub_reply->seq());
-        reply->set_reset_seq(pubsub_reply->reset_seq());
+        reply->set_type(pubsub_reply->type());
         reply_cb(std::move(status), std::move(success_cb), std::move(failure_cb));
       });
 }

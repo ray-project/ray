@@ -187,13 +187,26 @@ message PubsubLongPollingRequest {
 }
 
 message PubsubLongPollingReply {
-  /// The messages that are published.
+  // The messages that are published.
   repeated PubMessage pub_messages = 1;
-  /// Sequence number of this polling reply.
+
+  // Sequence number of this polling reply.
   int64 seq = 2;
-  /// Whether the subscriber should reset its sequence number based on this reply,
-  /// e.g. when the subscriber makes an initial connection, or is likely re-connecting.
-  bool reset_seq = 3;
+
+  // Type of this polling reply.
+  enum Type {
+    // Default message type. Subscriber expects to receive a message with seq number one more than the current
+    // processed seq number. Otherwise the message is dropped, or subscriber warns about inconsistent state.
+    DEFAULT = 0;
+
+    // This reply is a no-op. It is only sent for flushing / gc of inactive polls.
+    NO_OP = 1;
+
+    // The subscriber should reset its sequence number based on this reply,
+    // e.g. subscriber making an initial connection, or re-connecting after publisher gc'ed the subscriber's state.
+    RESET = 2;
+  }
+  Type type = 3;
 }
 
 message PubsubCommandBatchRequest {

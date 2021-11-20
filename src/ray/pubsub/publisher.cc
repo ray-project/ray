@@ -249,7 +249,7 @@ void Publisher::ConnectToSubscriber(const rpc::PubsubLongPollingRequest &request
              .first;
     // Subscription is created along with this poll request. So this is either a new
     // subscription or a reconnection. Ask the subscriber to reset their sequence number.
-    reply->set_reset_seq(true);
+    reply->set_type(rpc::PubsubLongPollingReply::RESET);
   }
   auto &subscriber = it->second;
 

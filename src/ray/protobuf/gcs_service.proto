@@ -585,9 +585,8 @@ message GcsSubscriberPollReply {
   repeated PubMessage pub_messages = 1;
   /// Sequence number of this polling reply.
   int64 seq = 2;
-  /// Whether the subscriber should reset its sequence number based on this reply,
-  /// e.g. when the subscriber makes an initial connection, or is reconnecting.
-  bool reset_seq = 3;
+  /// Type of this reply. See PubsubLongPollingReply.Type for details.
+  PubsubLongPollingReply.Type type = 3;
   // Not populated.
   GcsStatus status = 100;
 }

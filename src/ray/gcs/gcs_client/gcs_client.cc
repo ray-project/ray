@@ -60,7 +60,7 @@ void GcsSubscriberClient::PubsubLongPolling(
         rpc::PubsubLongPollingReply reply;
         *reply.mutable_pub_messages() = poll_reply.pub_messages();
         reply.set_seq(poll_reply.seq());
-        reply.set_reset_seq(poll_reply.reset_seq());
+        reply.set_type(poll_reply.type());
         callback(status, reply);
       });
 }
