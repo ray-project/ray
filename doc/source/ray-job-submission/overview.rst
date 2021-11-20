@@ -10,7 +10,7 @@ Ray Job Submission: Going from your laptop from production
 
 .. note::
 
-  The goal of Ray Job submission is to provide a lightweight mechanism for user to submit their locally developed and tested application to a running local / remote Ray cluster, thus enabling the user to package, deploy, and manage their Ray application as Jobs. These Jobs can be submitted by a Job manager of their choice.
+  The goal of Ray Job submission is to provide a lightweight mechanism for user to submit their locally developed and tested application to a running remote Ray cluster, thus enabling the user to package, deploy, and manage their Ray application as Jobs. These Jobs can be submitted by a Job manager of their choice.
 
 Concepts
 --------
@@ -81,12 +81,21 @@ We provide three APIs for Job submission: SDK, CLI and HTTP. Both the SDK and CL
     - :code:`working_dir` as local directory: It will be automatically zipped and uploaded to the target Ray cluster, then unpacked to where your submitted application runs.
     - :code:`working_dir` as remote URIs, such as S3, Git or others: It will be downloaded and unpacked to where your submitted application runs. For details, see :ref:`Runtime Environments<runtime-environments>`.
 
+.. warning::
+
+    We currently don't support passing in :code:`requirements.txt` in :code:`pip` yet in job submission so user still need to pass in a list of packages, it will be supported in later releases.
+
+
 Job CLI API
 -----------
 
 The easiest way to get started is to use Job submission CLI.
 
-If we have :code:`RAY_ADDRESS` environment variable set with a local Ray cluster:
+If we have :code:`RAY_ADDRESS` environment variable set with a local Ray cluster, or just manually set it first:
+
+.. code-block:: bash
+
+    export RAY_ADDRESS="http://127.0.0.1:8265"
 
 .. code-block::
 
