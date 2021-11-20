@@ -81,10 +81,13 @@ class FunctionActorManager:
         # So, the lock should be a reentrant lock.
         self.lock = threading.RLock()
         self.cv = threading.Condition(lock=self.lock)
+
         self.execution_infos = {}
         # This is the counter to keep track of how many keys have already
         # been exported so that we can find next key quicker.
         self._num_exported = 0
+        # This is to protect self._num_exported when doing exporting
+        self._export_lock = threading.Lock()
 
     def increase_task_counter(self, function_descriptor):
         function_id = function_descriptor.function_id
@@ -142,16 +145,17 @@ class FunctionActorManager:
         # existing in the cluster.
         # One optimization is that we can use importer counter since
         # it's sure keys before this counter has been allocated.
-        self._num_exported = max(self._num_exported,
-                                 self._worker.import_thread.num_imported)
-        while True:
-            self._num_exported += 1
-            holder = make_export_key(self._num_exported)
-            # This step is atomic since internal kv is a single thread atomic
-            # db.
-            if self._worker.gcs_client.internal_kv_put(
-                    holder, key, False, KV_NAMESPACE_FUNCTION_TABLE) > 0:
-                break
+        with self._export_lock:
+            self._num_exported = max(self._num_exported,
+                                     self._worker.import_thread.num_imported)
+            while True:
+                self._num_exported += 1
+                holder = make_export_key(self._num_exported)
+                # This step is atomic since internal kv is a single thread
+                # atomic db.
+                if self._worker.gcs_client.internal_kv_put(
+                        holder, key, False, KV_NAMESPACE_FUNCTION_TABLE) > 0:
+                    break
         # TODO(yic) Use gcs pubsub
         self._worker.redis_client.lpush("Exports", "a")
 
