@@ -146,6 +146,10 @@ enum ErrorType {
   // The object is reconstructable, but its lineage was evicted due to memory
   // pressure.
   OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED = 13;
+  // We use this error for object fetches that have timed out. This error will
+  // get thrown if an object appears to be created, but the requestor is not
+  // able to fetch it after the configured timeout.
+  OBJECT_FETCH_TIMED_OUT = 14;
 }
 
 /// The task exception encapsulates all information about task
