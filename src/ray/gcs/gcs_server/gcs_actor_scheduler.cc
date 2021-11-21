@@ -26,7 +26,8 @@ namespace gcs {
 GcsActorScheduler::GcsActorScheduler(
     instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
     const GcsNodeManager &gcs_node_manager,
-    std::function<void(std::shared_ptr<GcsActor>, ActorSchedulingFailedType)> schedule_failure_handler,
+    std::function<void(std::shared_ptr<GcsActor>, ActorSchedulingFailedType)>
+        schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
         schedule_success_handler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
@@ -311,25 +312,26 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
   }
 }
 
-void GcsActorScheduler::HandleRequestWorkerLeaseCanceled(std::shared_ptr<GcsActor> actor,
-                                                 const NodeID &node_id, rpc::RequestWorkerLeaseReply::CancelType cancel_type) {
+void GcsActorScheduler::HandleRequestWorkerLeaseCanceled(
+    std::shared_ptr<GcsActor> actor, const NodeID &node_id,
+    rpc::RequestWorkerLeaseReply::CancelType cancel_type) {
   RAY_LOG(ERROR)
       << "The lease worker request from node " << node_id << " for actor "
       << actor->GetActorID() << "("
       << actor->GetCreationTaskSpecification().FunctionDescriptor()->CallString() << ")"
-      << " has been canceled, job id = "
-      << actor->GetActorID().JobId() << ", cancel type: " << rpc::RequestWorkerLeaseReply::CancelType_Name(cancel_type);
-  
+      << " has been canceled, job id = " << actor->GetActorID().JobId()
+      << ", cancel type: " << rpc::RequestWorkerLeaseReply::CancelType_Name(cancel_type);
+
   switch (cancel_type) {
-    case rpc::RequestWorkerLeaseReply::PLACEMENT_GROUP_REMOVED:
-      schedule_failure_handler_(actor, ActorSchedulingFailedType::PLACEMENT_GROUP_REMOVED);
-      break;
-    case rpc::RequestWorkerLeaseReply::RUNTIME_ENV_SETUP_FAILED:
-      schedule_failure_handler_(actor, ActorSchedulingFailedType::RUNTIME_ENV_SETUP_FAILED);
-      break;
-    default:
-      schedule_failure_handler_(actor, ActorSchedulingFailedType::RESOURCE_LACK);
-      break;
+  case rpc::RequestWorkerLeaseReply::PLACEMENT_GROUP_REMOVED:
+    schedule_failure_handler_(actor, ActorSchedulingFailedType::PLACEMENT_GROUP_REMOVED);
+    break;
+  case rpc::RequestWorkerLeaseReply::RUNTIME_ENV_SETUP_FAILED:
+    schedule_failure_handler_(actor, ActorSchedulingFailedType::RUNTIME_ENV_SETUP_FAILED);
+    break;
+  default:
+    schedule_failure_handler_(actor, ActorSchedulingFailedType::RESOURCE_LACK);
+    break;
   }
 }
 

@@ -189,7 +189,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  bool CancelTask(const TaskID &task_id, rpc::RequestWorkerLeaseReply::CancelType cancel_type = rpc::RequestWorkerLeaseReply::TASK_CANCELLED) override;
+  bool CancelTask(const TaskID &task_id,
+                  rpc::RequestWorkerLeaseReply::CancelType cancel_type =
+                      rpc::RequestWorkerLeaseReply::TASK_CANCELLED) override;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///

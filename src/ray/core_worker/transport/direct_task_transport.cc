@@ -546,8 +546,13 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
         if (status.ok()) {
           if (reply.canceled()) {
-            RAY_LOG(DEBUG) << "Lease canceled for task: " << task_id << ", cancel type: " << rpc::RequestWorkerLeaseReply::CancelType_Name(reply.cancel_type());
-            if (reply.cancel_type() == rpc::RequestWorkerLeaseReply::RUNTIME_ENV_SETUP_FAILED || reply.cancel_type() == rpc::RequestWorkerLeaseReply::PLACEMENT_GROUP_REMOVED) {
+            RAY_LOG(DEBUG) << "Lease canceled for task: " << task_id << ", cancel type: "
+                           << rpc::RequestWorkerLeaseReply::CancelType_Name(
+                                  reply.cancel_type());
+            if (reply.cancel_type() ==
+                    rpc::RequestWorkerLeaseReply::RUNTIME_ENV_SETUP_FAILED ||
+                reply.cancel_type() ==
+                    rpc::RequestWorkerLeaseReply::PLACEMENT_GROUP_REMOVED) {
               // If the runtime_env failed to be set up, we fail all of the pending
               // tasks in the queue. This makes an implicit assumption that runtime_env
               // failures are not transient -- we may consider adding some retries
@@ -555,12 +560,13 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
               auto &task_queue = scheduling_key_entry.task_queue;
               while (!task_queue.empty()) {
                 auto &task_spec = task_queue.front();
-                if (reply.cancel_type() == rpc::RequestWorkerLeaseReply::RUNTIME_ENV_SETUP_FAILED) {
+                if (reply.cancel_type() ==
+                    rpc::RequestWorkerLeaseReply::RUNTIME_ENV_SETUP_FAILED) {
                   RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
-                    task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED, nullptr));
+                      task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED, nullptr));
                 } else {
                   RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
-                    task_spec, rpc::ErrorType::TASK_CANCELLED, nullptr)); 
+                      task_spec, rpc::ErrorType::TASK_CANCELLED, nullptr));
                 }
                 task_queue.pop_front();
               }
@@ -568,7 +574,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                 scheduling_key_entries_.erase(scheduling_key);
               }
             } else {
-              RequestNewWorkerIfNeeded(scheduling_key); 
+              RequestNewWorkerIfNeeded(scheduling_key);
             }
           } else if (reply.rejected()) {
             RAY_LOG(DEBUG) << "Lease rejected " << task_id;

@@ -586,7 +586,8 @@ void ClusterTaskManager::ReleaseTaskArgs(const TaskID &task_id) {
   }
 }
 
-void ReplyCancelled(std::shared_ptr<internal::Work> &work, rpc::RequestWorkerLeaseReply::CancelType cancel_type) {
+void ReplyCancelled(std::shared_ptr<internal::Work> &work,
+                    rpc::RequestWorkerLeaseReply::CancelType cancel_type) {
   auto reply = work->reply;
   auto callback = work->callback;
   reply->set_canceled(true);
@@ -594,7 +595,8 @@ void ReplyCancelled(std::shared_ptr<internal::Work> &work, rpc::RequestWorkerLea
   callback();
 }
 
-bool ClusterTaskManager::CancelTask(const TaskID &task_id, rpc::RequestWorkerLeaseReply::CancelType cancel_type) {
+bool ClusterTaskManager::CancelTask(
+    const TaskID &task_id, rpc::RequestWorkerLeaseReply::CancelType cancel_type) {
   // TODO(sang): There are lots of repetitive code around task backlogs. We should
   // refactor them.
   for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();

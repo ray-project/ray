@@ -255,8 +255,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
     // gcs_actor_scheduler will treat it as failed and invoke this handler. In
     // this case, the actor manager should schedule the actor once an
     // eligible node is registered.
-    gcs_actor_manager_->OnActorSchedulingFailed(std::move(actor),
-                                                failed_type);
+    gcs_actor_manager_->OnActorSchedulingFailed(std::move(actor), failed_type);
   };
   auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor,
                                          const rpc::PushTaskReply &reply) {

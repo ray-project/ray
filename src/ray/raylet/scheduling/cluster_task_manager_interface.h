@@ -85,7 +85,9 @@ class ClusterTaskManagerInterface {
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  virtual bool CancelTask(const TaskID &task_id, rpc::RequestWorkerLeaseReply::CancelType cancel_type = rpc::RequestWorkerLeaseReply::TASK_CANCELLED) = 0;
+  virtual bool CancelTask(const TaskID &task_id,
+                          rpc::RequestWorkerLeaseReply::CancelType cancel_type =
+                              rpc::RequestWorkerLeaseReply::TASK_CANCELLED) = 0;
 
   /// Set the worker backlog size for a particular scheduling class.
   ///
