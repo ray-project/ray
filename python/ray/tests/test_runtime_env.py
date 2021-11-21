@@ -13,7 +13,7 @@ from ray._private.utils import (get_wheel_filename, get_master_wheel_url,
 
 
 def test_get_wheel_filename():
-    ray_version = "1.9.0rc2"
+    ray_version = "2.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
             filename = get_wheel_filename(sys_platform, ray_version,
@@ -24,7 +24,7 @@ def test_get_wheel_filename():
 
 
 def test_get_master_wheel_url():
-    ray_version = "1.9.0rc2"
+    ray_version = "2.0.0.dev0"
     test_commit = "58a73821fbfefbf53a19b6c7ffd71e70ccf258c7"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ["36", "37", "38", "39"]:
