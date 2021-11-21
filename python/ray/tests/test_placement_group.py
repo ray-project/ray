@@ -18,8 +18,7 @@ from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 
-MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH = """
-ray.tests.test_placement_group.MockWorkerStartupSlowlyPlugin"""
+MOCK_WORKER_STARTUP_SLOWLY_PLUGIN_CLASS_PATH = "ray.tests.test_placement_group.MockWorkerStartupSlowlyPlugin"  # noqa
 
 
 class MockWorkerStartupSlowlyPlugin(RuntimeEnvPlugin):
