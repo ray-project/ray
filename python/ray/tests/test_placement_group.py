@@ -562,12 +562,8 @@ def test_remove_placement_group_worker_startup_slowly(ray_start_cluster):
 
     # The long-running task should still be in the state
     # of leasing-worker bacause of the worker startup delay.
-    # TODO(@clay4444) A `TaskCancelledError` should be
-    # raised here at this time, however, it will hang forever
-    # if we use `ray.get(task_ref)` directly here!
-    # will fix it later.
-    with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(task_ref, timeout=5)
+    with pytest.raises(ray.exceptions.TaskCancelledError):
+        ray.get(task_ref)
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])

@@ -562,7 +562,21 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             }
           } else if (reply.canceled()) {
             RAY_LOG(DEBUG) << "Lease canceled " << task_id;
-            RequestNewWorkerIfNeeded(scheduling_key);
+            if (reply.placement_group_removed()) {
+              RAY_LOG(INFO) << "The placement group was removed when leasing a worker, will fail the task.";
+              auto &task_queue = scheduling_key_entry.task_queue;
+              while (!task_queue.empty()) {
+                auto &task_spec = task_queue.front();
+                RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
+                    task_spec, rpc::ErrorType::TASK_CANCELLED, nullptr));
+                task_queue.pop_front();
+              }
+              if (scheduling_key_entry.CanDelete()) {
+                scheduling_key_entries_.erase(scheduling_key);
+              } 
+            } else {
+              RequestNewWorkerIfNeeded(scheduling_key);
+            }
           } else if (reply.rejected()) {
             RAY_LOG(DEBUG) << "Lease rejected " << task_id;
             // It might happen when the first raylet has a stale view

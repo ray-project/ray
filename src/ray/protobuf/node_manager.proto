@@ -64,12 +64,15 @@ message RequestWorkerLeaseReply {
   // Whether creating the runtime environment for this lease request failed.
   // If this is true, the corresponding task should be failed by the client.
   bool runtime_env_setup_failed = 5;
+  // Whether the placement group corresponding to this task was removed or not.
+  // If this is true, the corresponding task should be failed by the client.
+  bool placement_group_removed = 6;
   // PID of the worker process.
-  uint32 worker_pid = 6;
+  uint32 worker_pid = 7;
   // Whether the request was rejected because of insufficient resources.
-  bool rejected = 7;
+  bool rejected = 8;
   // The (normal task) resources data to be carried by the Reply.
-  ResourcesData resources_data = 8;
+  ResourcesData resources_data = 9;
 }
 
 message PrepareBundleResourcesRequest {

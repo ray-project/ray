@@ -83,11 +83,13 @@ class ClusterTaskManagerInterface {
   /// \param task_id: The id of the task to remove.
   /// \param runtime_env_setup_failed: If this is being cancelled because the env setup
   /// failed.
+  /// \param placement_group_removed: If this is being canceled because of the removal
+  /// of the corresponding placement group.
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
   virtual bool CancelTask(const TaskID &task_id,
-                          bool runtime_env_setup_failed = false) = 0;
+                          bool runtime_env_setup_failed = false, bool placement_group_removed = false) = 0;
 
   /// Set the worker backlog size for a particular scheduling class.
   ///
