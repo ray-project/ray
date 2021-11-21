@@ -106,15 +106,14 @@ class TrialCheckpoint(os.PathLike):
     def download(self,
                  cloud_path: Optional[str] = None,
                  local_path: Optional[str] = None,
-                 overwrite: bool = False,
-                 update_local_path: Optional[bool] = None) -> str:
+                 overwrite: bool = False) -> str:
         """Download checkpoint from cloud.
 
         This will fetch the checkpoint directory from cloud storage
         and save it to ``local_path``.
 
-        If a ``local_path`` argument is provided and ``update_local_path=True``
-        the ``self.local_path`` will be overwritten.
+        If a ``local_path`` argument is provided and ``self.local_path``
+        is unset, it will be set to ``local_path``.
 
         Args:
             cloud_path (Optional[str]): Cloud path to load checkpoint from.
@@ -124,10 +123,6 @@ class TrialCheckpoint(os.PathLike):
             overwrite (bool): If True, overwrites potential existing local
                 checkpoint. If False, exits if ``self.local_dir`` already
                 exists and has files in it.
-            update_local_path (Optional[bool]): If True,
-                the ``self.local_path`` attribute will be updated by the
-                ``local_path`` argument, if provided. If ``None``, will be
-                updated if previously unset.
 
         """
         cloud_path = cloud_path or self.cloud_path
@@ -149,10 +144,8 @@ class TrialCheckpoint(os.PathLike):
                 "`local_path` to your call to `download()` or by "
                 "passing a `local_path` into the constructor.")
 
-        if update_local_path is None:
-            update_local_path = bool(self.local_path)
-
-        if update_local_path:
+        # Only update local path if unset
+        if not self.local_path:
             self.local_path = local_path
 
         if (not overwrite and os.path.exists(local_path)
@@ -177,15 +170,14 @@ class TrialCheckpoint(os.PathLike):
     def upload(self,
                cloud_path: Optional[str] = None,
                local_path: Optional[str] = None,
-               clean_before: bool = False,
-               update_cloud_path: bool = True):
+               clean_before: bool = False):
         """Upload checkpoint to cloud.
 
         This will push the checkpoint directory from local storage
         to ``cloud_path``.
 
-        If a ``cloud_path`` argument is provided and ``update_cloud_path=True``
-        the ``self.cloud_path`` will be overwritten.
+        If a ``cloud_path`` argument is provided and ``self.cloud_path``
+        is unset, it will be set to ``cloud_path``.
 
         Args:
             cloud_path (Optional[str]): Cloud path to load checkpoint from.
@@ -194,10 +186,6 @@ class TrialCheckpoint(os.PathLike):
                 Defaults to ``self.local_path``.
             clean_before (bool): If True, deletes potentially existing
                 cloud bucket before storing new data.
-            update_cloud_path (Optional[bool]): If True, the
-                ``self.cloud_path`` attribute will be updated by the
-                ``cloud_path`` argument, if provided. If ``None``, will be
-                updated if previously unset.
 
         """
         local_path = local_path or self.local_path
@@ -217,10 +205,7 @@ class TrialCheckpoint(os.PathLike):
                 "should automatically be done if you pass the correct "
                 "`tune.SyncConfig`.")
 
-        if update_cloud_path is None:
-            update_cloud_path = bool(self.cloud_path)
-
-        if update_cloud_path:
+        if not self.cloud_path:
             self.cloud_path = cloud_path
 
         if clean_before:
@@ -287,9 +272,11 @@ class TrialCheckpoint(os.PathLike):
             if self.cloud_path:
                 # Do not update local path as it might be a temp file
                 local_path = self.download(
-                    local_path=local_path,
-                    overwrite=force_download,
-                    update_local_path=False)
+                    local_path=local_path, overwrite=force_download)
+
+                # Remove pointer to a temporary directory
+                if self.local_path in temp_dirs:
+                    self.local_path = None
 
             # We should now have a checkpoint available locally
             if not os.path.exists(local_path) or len(
@@ -301,10 +288,7 @@ class TrialCheckpoint(os.PathLike):
 
             # Only update cloud path if it wasn't set before
             cloud_path = self.upload(
-                cloud_path=path,
-                local_path=local_path,
-                clean_before=True,
-                update_cloud_path=not self.cloud_path)
+                cloud_path=path, local_path=local_path, clean_before=True)
 
             # Clean up temporary directories
             for temp_dir in temp_dirs:

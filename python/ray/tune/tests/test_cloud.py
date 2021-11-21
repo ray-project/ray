@@ -590,13 +590,11 @@ class TrialCheckpointEndToEndTest(unittest.TestCase):
             # Save!
             cp2.save(other_local_dir)
 
-            # Directory now exists
-            self.assertTrue(os.path.exists(cp2.local_path))
+            # Directory still does not exist (as we save to other dir)
+            self.assertFalse(os.path.exists(cp2.local_path))
             cp_content = _load_cp(other_local_dir)
             self.assertEquals(cp_content["train_id"], 2)
             self.assertEquals(cp_content["score"], 9)
-            cp_content_2 = _load_cp(cp2.local_path)
-            self.assertEquals(cp_content, cp_content_2)
 
             # Clean up
             shutil.rmtree(other_local_dir)
