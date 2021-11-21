@@ -562,7 +562,7 @@ def test_remove_placement_group_worker_startup_slowly(ray_start_cluster):
 
     # The long-running task should still be in the state
     # of leasing-worker bacause of the worker startup delay.
-    with pytest.raises(ray.exceptions.TaskCancelledError):
+    with pytest.raises(ray.exceptions.PlacementGroupRemovedError):
         ray.get(task_ref)
 
 

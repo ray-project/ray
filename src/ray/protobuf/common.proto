@@ -144,6 +144,8 @@ enum ErrorType {
   // The object is reconstructable, but its lineage was evicted due to memory
   // pressure.
   OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED = 13;
+  // Indicates that the corresponding placement group has been removed.
+  CORRESPONDING_PLACEMENT_GROUP_REMOVED = 14;
 }
 
 /// The task exception encapsulates all information about task

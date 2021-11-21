@@ -13,7 +13,8 @@ from ray.exceptions import (RayError, PlasmaObjectNotAvailable, RayTaskError,
                             ObjectReconstructionFailedError,
                             ObjectReconstructionFailedMaxAttemptsExceededError,
                             ObjectReconstructionFailedLineageEvictedError,
-                            RaySystemError, RuntimeEnvSetupError)
+                            RaySystemError, RuntimeEnvSetupError,
+                            PlacementGroupRemovedError)
 from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
@@ -254,6 +255,8 @@ class SerializationContext:
                     object_ref.call_site())
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):
                 return RuntimeEnvSetupError()
+            elif error_type == ErrorType.Value("CORRESPONDING_PLACEMENT_GROUP_REMOVED"):
+                return PlacementGroupRemovedError()
             else:
                 return RaySystemError("Unrecognized error type " +
                                       str(error_type))
