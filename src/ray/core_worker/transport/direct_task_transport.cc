@@ -566,7 +566,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                       task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED, nullptr));
                 } else {
                   RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
-                      task_spec, rpc::ErrorType::CORRESPONDING_PLACEMENT_GROUP_REMOVED, nullptr));
+                      task_spec, rpc::ErrorType::CORRESPONDING_PLACEMENT_GROUP_REMOVED,
+                      nullptr));
                 }
                 task_queue.pop_front();
               }

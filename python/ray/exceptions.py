@@ -439,9 +439,8 @@ class PlacementGroupRemovedError(RayError):
     """Raised when the corresponding placement group was removed."""
 
     def __str__(self):
-        return (
-            "The placement group corresponding to this task or actor "
-            "has been removed.")
+        return ("The placement group corresponding to this task or actor "
+                "has been removed.")
 
 
 RAY_EXCEPTION_TYPES = [
