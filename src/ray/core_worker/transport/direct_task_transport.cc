@@ -546,7 +546,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
         if (status.ok()) {
           if (reply.canceled()) {
-            RAY_LOG(DEBUG) << "Lease canceled " << task_id;
+            RAY_LOG(DEBUG) << "Lease canceled for task: " << task_id << ", cancel type: " << rpc::RequestWorkerLeaseReply::CancelType_Name(reply.cancel_type());
             if (reply.cancel_type() == rpc::RequestWorkerLeaseReply::RUNTIME_ENV_SETUP_FAILED || reply.cancel_type() == rpc::RequestWorkerLeaseReply::PLACEMENT_GROUP_REMOVED) {
               // If the runtime_env failed to be set up, we fail all of the pending
               // tasks in the queue. This makes an implicit assumption that runtime_env

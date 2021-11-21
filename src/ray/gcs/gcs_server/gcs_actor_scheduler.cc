@@ -318,7 +318,7 @@ void GcsActorScheduler::HandleRequestWorkerLeaseCanceled(std::shared_ptr<GcsActo
       << actor->GetActorID() << "("
       << actor->GetCreationTaskSpecification().FunctionDescriptor()->CallString() << ")"
       << " has been canceled, job id = "
-      << actor->GetActorID().JobId();
+      << actor->GetActorID().JobId() << ", cancel type: " << rpc::RequestWorkerLeaseReply::CancelType_Name(cancel_type);
   
   switch (cancel_type) {
     case rpc::RequestWorkerLeaseReply::PLACEMENT_GROUP_REMOVED:
