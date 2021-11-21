@@ -72,11 +72,30 @@ class TrialCheckpoint(os.PathLike):
         self.local_path = local_path
         self.cloud_path = cloud_path
 
+    # The following magic methods are implemented to keep backwards
+    # compatibility with the old path-based return values.
     def __str__(self):
         return self.local_path or self.cloud_path
 
     def __fspath__(self):
         return self.local_path
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.local_path == other
+        elif isinstance(other, TrialCheckpoint):
+            return (self.local_path == other.local_path
+                    and self.cloud_path == other.cloud_path)
+
+    def __add__(self, other):
+        if isinstance(other, str):
+            return self.local_path + other
+        raise NotImplementedError
+
+    def __radd__(self, other):
+        if isinstance(other, str):
+            return other + self.local_path
+        raise NotImplementedError
 
     def __repr__(self):
         return (f"<TrialCheckpoint "
