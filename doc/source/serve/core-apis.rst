@@ -288,7 +288,7 @@ is set.  In particular, it's also called when new replicas are created in the
 future if scale up your deployment later.  The `reconfigure` method is also  called
 each time `user_config` is updated.
 
-Dependency Management
+Handling Dependencies
 =====================
 
 Ray Serve supports serving deployments with different (possibly conflicting)
