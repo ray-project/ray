@@ -185,15 +185,11 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Attempt to cancel an already queued task.
   ///
   /// \param task_id: The id of the task to remove.
-  /// \param runtime_env_setup_failed: If this is being canceled because the env setup
-  /// failed.
-  /// \param placement_group_removed: If this is being canceled because of the removal
-  /// of the corresponding placement group.
+  /// \param cancel_type: The cancel type.
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  bool CancelTask(const TaskID &task_id, bool runtime_env_setup_failed = false,
-                  bool placement_group_removed = false) override;
+  bool CancelTask(const TaskID &task_id, rpc::RequestWorkerLeaseReply::CancelType cancel_type = rpc::RequestWorkerLeaseReply::TASK_CANCELLED) override;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///

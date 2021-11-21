@@ -926,20 +926,31 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
 }
 
 void GcsActorManager::OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
-                                              bool runtime_env_setup_failed) {
-  if (!runtime_env_setup_failed) {
+                                              const ActorSchedulingFailedType failed_type) {
+  if(failed_type == ActorSchedulingFailedType::RESOURCE_LACK) {
     // We will attempt to schedule this actor once an eligible node is
     // registered.
     pending_actors_.emplace_back(std::move(actor));
     return;
   }
 
+  std::string error_msg;
+  switch (failed_type) {
+    case ActorSchedulingFailedType::PLACEMENT_GROUP_REMOVED:
+      error_msg = "Cannot create an actor because the corresponding placement group was removed."; 
+      break;
+    case ActorSchedulingFailedType::RUNTIME_ENV_SETUP_FAILED:
+      error_msg = "Cannot create an actor because the associated runtime env couldn't be created.";
+      break;
+    default:
+      error_msg = "Unknown error."; 
+      break;
+  }
+
   auto death_cause = std::make_unique<rpc::ActorDeathCause>();
   // TODO(sang, lixin) 1. Make this message more friendly 2. Show this message in
   // object.get()'s error.
-  death_cause->mutable_runtime_env_setup_failure_context()->set_error_message(
-      "Cannot create an actor because the associated runtime env couldn't be created.");
-  // If there is runtime env failure, mark this actor as dead immediately.
+  death_cause->mutable_runtime_env_setup_failure_context()->set_error_message(error_msg);
   DestroyActor(actor->GetActorID(), death_cause.get());
 }
 

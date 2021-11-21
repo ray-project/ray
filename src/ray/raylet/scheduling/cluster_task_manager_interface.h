@@ -81,15 +81,11 @@ class ClusterTaskManagerInterface {
   /// Attempt to cancel an already queued task.
   ///
   /// \param task_id: The id of the task to remove.
-  /// \param runtime_env_setup_failed: If this is being cancelled because the env setup
-  /// failed.
-  /// \param placement_group_removed: If this is being canceled because of the removal
-  /// of the corresponding placement group.
+  /// \param cancel_type: The cancel type.
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  virtual bool CancelTask(const TaskID &task_id, bool runtime_env_setup_failed = false,
-                          bool placement_group_removed = false) = 0;
+  virtual bool CancelTask(const TaskID &task_id, rpc::RequestWorkerLeaseReply::CancelType cancel_type = rpc::RequestWorkerLeaseReply::TASK_CANCELLED) = 0;
 
   /// Set the worker backlog size for a particular scheduling class.
   ///

@@ -51,6 +51,16 @@ message RequestWorkerLeaseRequest {
 }
 
 message RequestWorkerLeaseReply {
+  // Request lease worker cancel type.
+  enum CancelType {
+    // Canceled because of the removal of the corresponding placement group.
+    PLACEMENT_GROUP_REMOVED = 0;
+    // Canceled because of the failure of the runtime env setup.
+    RUNTIME_ENV_SETUP_FAILED = 1;
+    // Task canceled.
+    TASK_CANCELLED = 2;
+  }
+
   // Address of the leased worker. If this is empty, then the request should be
   // retried at the provided raylet address.
   Address worker_address = 1;
@@ -61,18 +71,14 @@ message RequestWorkerLeaseReply {
   // Whether this lease request was canceled. In this case, the
   // client should try again if the resources are still required.
   bool canceled = 4;
-  // Whether creating the runtime environment for this lease request failed.
-  // If this is true, the corresponding task should be failed by the client.
-  bool runtime_env_setup_failed = 5;
-  // Whether the placement group corresponding to this task was removed or not.
-  // If this is true, the corresponding task should be failed by the client.
-  bool placement_group_removed = 6;
   // PID of the worker process.
-  uint32 worker_pid = 7;
+  uint32 worker_pid = 5;
   // Whether the request was rejected because of insufficient resources.
-  bool rejected = 8;
+  bool rejected = 6;
   // The (normal task) resources data to be carried by the Reply.
-  ResourcesData resources_data = 9;
+  ResourcesData resources_data = 7;
+  // Cancel type.
+  CancelType cancel_type = 8;
 }
 
 message PrepareBundleResourcesRequest {

@@ -179,7 +179,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
                        << task.GetTaskSpecification().PlacementGroupBundleId().first
                        << " was removed when poping workers for task: " << task_id
                        << ", will cancel the task.";
-        CancelTask(task_id, false, true);
+        CancelTask(task_id, rpc::RequestWorkerLeaseReply::PLACEMENT_GROUP_REMOVED);
         canceled = true;
       }
     }
@@ -238,7 +238,7 @@ bool ClusterTaskManager::PoppedWorkerHandler(
         // directly and raise a `RuntimeEnvSetupError` exception to user
         // eventually. The task will be removed from dispatch queue in
         // `CancelTask`.
-        CancelTask(task_id, true);
+        CancelTask(task_id, rpc::RequestWorkerLeaseReply::RUNTIME_ENV_SETUP_FAILED);
       } else {
         // In other cases, set the work status `WAITING` to make this task
         // could be re-dispatched.
@@ -586,18 +586,15 @@ void ClusterTaskManager::ReleaseTaskArgs(const TaskID &task_id) {
   }
 }
 
-void ReplyCancelled(std::shared_ptr<internal::Work> &work, bool runtime_env_setup_failed,
-                    bool placement_group_removed) {
+void ReplyCancelled(std::shared_ptr<internal::Work> &work, rpc::RequestWorkerLeaseReply::CancelType cancel_type) {
   auto reply = work->reply;
   auto callback = work->callback;
   reply->set_canceled(true);
-  reply->set_runtime_env_setup_failed(runtime_env_setup_failed);
-  reply->set_placement_group_removed(placement_group_removed);
+  reply->set_cancel_type(cancel_type);
   callback();
 }
 
-bool ClusterTaskManager::CancelTask(const TaskID &task_id, bool runtime_env_setup_failed,
-                                    bool placement_group_removed) {
+bool ClusterTaskManager::CancelTask(const TaskID &task_id, rpc::RequestWorkerLeaseReply::CancelType cancel_type) {
   // TODO(sang): There are lots of repetitive code around task backlogs. We should
   // refactor them.
   for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
@@ -607,7 +604,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id, bool runtime_env_setu
       const auto &task = (*work_it)->task;
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RAY_LOG(DEBUG) << "Canceling task " << task_id << " from schedule queue.";
-        ReplyCancelled(*work_it, runtime_env_setup_failed, placement_group_removed);
+        ReplyCancelled(*work_it, cancel_type);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           tasks_to_schedule_.erase(shapes_it);
@@ -623,7 +620,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id, bool runtime_env_setu
       const auto &task = (*work_it)->task;
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RAY_LOG(DEBUG) << "Canceling task " << task_id << " from dispatch queue.";
-        ReplyCancelled(*work_it, runtime_env_setup_failed, placement_group_removed);
+        ReplyCancelled(*work_it, cancel_type);
         if ((*work_it)->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
           // We've already acquired resources so we need to release them.
           cluster_resource_scheduler_->ReleaseWorkerResources(
@@ -652,7 +649,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id, bool runtime_env_setu
       const auto &task = (*work_it)->task;
       if (task.GetTaskSpecification().TaskId() == task_id) {
         RAY_LOG(DEBUG) << "Canceling task " << task_id << " from infeasible queue.";
-        ReplyCancelled(*work_it, runtime_env_setup_failed, placement_group_removed);
+        ReplyCancelled(*work_it, cancel_type);
         work_queue.erase(work_it);
         if (work_queue.empty()) {
           infeasible_tasks_.erase(shapes_it);
@@ -665,7 +662,7 @@ bool ClusterTaskManager::CancelTask(const TaskID &task_id, bool runtime_env_setu
   auto iter = waiting_tasks_index_.find(task_id);
   if (iter != waiting_tasks_index_.end()) {
     const auto &task = (*iter->second)->task;
-    ReplyCancelled(*iter->second, runtime_env_setup_failed, placement_group_removed);
+    ReplyCancelled(*iter->second, cancel_type);
     if (!task.GetTaskSpecification().GetDependencies().empty()) {
       task_dependency_manager_.RemoveTaskDependencies(
           task.GetTaskSpecification().TaskId());
