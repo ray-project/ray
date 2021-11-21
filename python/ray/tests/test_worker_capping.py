@@ -1,5 +1,6 @@
 import asyncio
 import os
+import platform
 import sys
 import tempfile
 import time
@@ -119,6 +120,10 @@ def test_limit_concurrency(shutdown_only):
     assert len(not_ready) == 1
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="Times out on windows"
+)
 def test_zero_cpu_scheduling(shutdown_only):
     ray.init(num_cpus=1)
 
