@@ -46,8 +46,8 @@ class _DistributeResources:
         min_cpu = base_trial_resource.required_resources.get("CPU", 0)
         min_gpu = base_trial_resource.required_resources.get("GPU", 0)
 
-        min_cpu_bundle = base_trial_resource._bundles[0].get("CPU", 0)
-        min_gpu_bundle = base_trial_resource._bundles[0].get("GPU", 0)
+        min_cpu_bundle = base_trial_resource.bundles[0].get("CPU", 0)
+        min_gpu_bundle = base_trial_resource.bundles[0].get("GPU", 0)
 
         # Get the number of CPUs and GPUs avaialble in total (not just free)
         total_available_cpus = (
@@ -220,7 +220,7 @@ class ResourceChangingScheduler(TrialScheduler):
     If the functional API is used, the current trial resources can be obtained
     by calling `tune.get_trial_resources()` inside the training function.
     The function should be able to
-    :ref:`load and save checkpoints <tune-checkpoint>`
+    :ref:`load and save checkpoints <tune-checkpoint-syncing>`
     (the latter preferably every iteration).
 
     If the Trainable (class) API is used, when the resources of a

@@ -261,17 +261,17 @@ class LogMonitor:
             nonlocal lines_to_publish
             nonlocal anything_published
             if len(lines_to_publish) > 0:
-                self.redis_client.publish(
-                    gcs_utils.LOG_FILE_CHANNEL,
-                    json.dumps({
-                        "ip": self.ip,
-                        "pid": file_info.worker_pid,
-                        "job": file_info.job_id,
-                        "is_err": file_info.is_err_file,
-                        "lines": lines_to_publish,
-                        "actor_name": file_info.actor_name,
-                        "task_name": file_info.task_name,
-                    }))
+                data = {
+                    "ip": self.ip,
+                    "pid": file_info.worker_pid,
+                    "job": file_info.job_id,
+                    "is_err": file_info.is_err_file,
+                    "lines": lines_to_publish,
+                    "actor_name": file_info.actor_name,
+                    "task_name": file_info.task_name,
+                }
+                self.redis_client.publish(gcs_utils.LOG_FILE_CHANNEL,
+                                          json.dumps(data))
                 anything_published = True
                 lines_to_publish = []
 

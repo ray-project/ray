@@ -129,5 +129,5 @@ EXPR_PROGRESS_FILE = "progress.csv"
 # File that stores results of the trial.
 EXPR_RESULT_FILE = "result.json"
 
-# Config prefix when using Analysis.
+# Config prefix when using ExperimentAnalysis.
 CONFIG_PREFIX = "config/"

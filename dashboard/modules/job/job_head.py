@@ -14,7 +14,7 @@ from ray._private.runtime_env.packaging import (package_exists,
                                                 upload_package_to_gcs)
 from ray.dashboard.modules.job.common import (
     http_uri_components_to_uri,
-    JobStatus,
+    JobStatusInfo,
     JobSubmitRequest,
     JobSubmitResponse,
     JobStopResponse,
@@ -66,8 +66,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPBadRequest.status_code)
 
     def job_exists(self, job_id: str) -> bool:
-        status: JobStatus = self._job_manager.get_job_status(job_id)
-        return status != JobStatus.DOES_NOT_EXIST
+        status = self._job_manager.get_job_status(job_id)
+        return status is not None
 
     @routes.get("/api/packages/{protocol}/{package_name}")
     @_init_ray_and_catch_exceptions
@@ -162,8 +162,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 text=f"Job {job_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code)
 
-        status: JobStatus = self._job_manager.get_job_status(job_id)
-        resp = JobStatusResponse(status=status)
+        status: JobStatusInfo = self._job_manager.get_job_status(job_id)
+        resp = JobStatusResponse(status=status.status, message=status.message)
         return Response(
             text=json.dumps(dataclasses.asdict(resp)),
             content_type="application/json")

@@ -88,7 +88,7 @@ class GcsActor {
     }
 
     actor_table_data_.set_serialized_runtime_env(
-        task_spec.runtime_env().serialized_runtime_env());
+        task_spec.runtime_env_info().serialized_runtime_env());
   }
 
   /// Get the node id on which this actor is created.
@@ -300,10 +300,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param exit_type exit reason of the dead worker.
   /// \param creation_task_exception if this arg is set, this worker is died because of an
   /// exception thrown in actor's creation task.
-  void OnWorkerDead(
-      const NodeID &node_id, const WorkerID &worker_id,
-      const rpc::WorkerExitType disconnect_type,
-      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
+  void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id,
+                    const rpc::WorkerExitType disconnect_type,
+                    const rpc::RayException *creation_task_exception = nullptr);
 
   void OnWorkerDead(const NodeID &node_id, const WorkerID &worker_id);
 
@@ -313,11 +312,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// failed).
   ///
   /// \param actor The actor whose creation task is infeasible.
-  /// \param destroy_actor Whether or not we should destroy an actor.
-  /// If false is given, the actor will be rescheduled. Otherwise, all
+  /// \param runtime_env_setup_failed Whether creation is failed due to runtime env setup
+  /// failure. If false is given, the actor will be rescheduled. Otherwise, all
   /// the interest party (driver that has actor handles) will notify
   /// that the actor is dead.
-  void OnActorCreationFailed(std::shared_ptr<GcsActor> actor, bool destroy_actor = false);
+  void OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
+                               bool runtime_env_setup_failed = false);
 
   /// Handle actor creation task success. This should be called when the actor
   /// creation task has been scheduled successfully.
@@ -381,7 +381,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// scope or the owner has died.
   /// NOTE: This method can be called multiple times in out-of-order and should be
   /// idempotent.
-  void DestroyActor(const ActorID &actor_id);
+  void DestroyActor(const ActorID &actor_id,
+                    const rpc::ActorDeathCause *death_cause = nullptr);
 
   /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerNode(
@@ -397,12 +398,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param need_reschedule Whether to reschedule the actor creation task, sometimes
   /// users want to kill an actor intentionally and don't want it to be reconstructed
   /// again.
-  /// \param creation_task_exception Only applies when need_reschedule=false, decribing
-  /// why this actor failed. If this arg is set, it means this actor died because of an
-  /// exception thrown in creation task.
-  void ReconstructActor(
-      const ActorID &actor_id, bool need_reschedule,
-      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr);
+  /// \param death_cause Context about why this actor is dead. Should only be set when
+  /// need_reschedule=false.
+  void ReconstructActor(const ActorID &actor_id, bool need_reschedule,
+                        const rpc::ActorDeathCause *death_cause = nullptr);
 
   /// Reconstruct the specified actor and reschedule it.
   void ReconstructActor(const ActorID &actor_id);
@@ -442,8 +441,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       const rpc::ActorTableData &actor) {
     auto actor_delta = std::make_shared<rpc::ActorTableData>();
     actor_delta->set_state(actor.state());
-    actor_delta->set_allocated_creation_task_exception(
-        new rpc::RayException(actor.creation_task_exception()));
+    actor_delta->mutable_death_cause()->CopyFrom(actor.death_cause());
     actor_delta->mutable_address()->CopyFrom(actor.address());
     actor_delta->set_num_restarts(actor.num_restarts());
     actor_delta->set_timestamp(actor.timestamp());
