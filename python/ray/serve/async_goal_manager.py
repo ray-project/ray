@@ -1,6 +1,7 @@
 import asyncio
 from dataclasses import dataclass
 import time
+import tblib.pickling_support
 from typing import Any, Coroutine, Dict, Optional
 from uuid import uuid4
 
@@ -123,6 +124,10 @@ class AsyncGoalManager:
         async_goal = self._pending_goals.pop(goal_id, None)
         if async_goal:
             if exception:
+                # Add pickle support to the exception.
+                # This ensures that traceback information is preserved
+                # when sending the exception across the cluster.
+                tblib.pickling_support.install(exception)
                 async_goal.set_exception(exception)
             else:
                 async_goal.set_result(goal_id)

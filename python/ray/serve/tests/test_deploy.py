@@ -2,6 +2,7 @@ from collections import defaultdict
 import os
 import sys
 import time
+from pathlib import Path
 
 from pydantic.error_wrappers import ValidationError
 import pytest
@@ -1107,6 +1108,40 @@ def test_deploy_empty_bundle(serve_instance):
 
     # This should succesfully terminate within the provided time-frame.
     D.deploy()
+
+
+def test_deployment_error_handling(serve_instance):
+    @serve.deployment
+    def f():
+        pass
+
+    with pytest.raises(Exception) as exception_info:
+        # This is an invalid configuration since dynamic upload of working
+        # directories is not supported. The error this causes in the controller
+        # code should be caught and reported back to the `deploy` caller.
+
+        f.options(ray_actor_options={
+            "runtime_env": {
+                "working_dir": "."
+            }
+        }).deploy()
+
+    ray_package_dir = Path(__file__).parents[2]
+
+    # extract (relative_file_path, name) frames from the traceback
+    tb = exception_info.tb
+    frames = []
+    while tb.tb_next:
+        file_path = Path(tb.tb_frame.f_code.co_filename)
+        rel_path = file_path.relative_to(ray_package_dir)
+        name = tb.tb_frame.f_code.co_name
+        frames.append((str(rel_path), name))
+        tb = tb.tb_next
+
+    # This is the method where deployment exceptions should
+    # be caught. If this frame is not present in the stacktrace,
+    # the stacktrace is incomplete.
+    assert ("serve/deployment_state.py", "update") in frames
 
 
 if __name__ == "__main__":
