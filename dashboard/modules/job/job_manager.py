@@ -4,16 +4,19 @@ import os
 import json
 import logging
 import traceback
+import random
 import subprocess
+import string
 
 from typing import Any, Dict, Tuple, Optional
-from uuid import uuid4
 
 import ray
+from ray.exceptions import RuntimeEnvSetupError
 import ray.ray_constants as ray_constants
 from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
-    JobStatus, JobStatusStorageClient, JOB_ID_METADATA_KEY)
+    JobStatus, JobStatusInfo, JobStatusStorageClient, JOB_ID_METADATA_KEY,
+    JOB_NAME_METADATA_KEY)
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 
 logger = logging.getLogger(__name__)
@@ -25,18 +28,39 @@ except AttributeError:
     create_task = asyncio.ensure_future
 
 
+def generate_job_id() -> str:
+    """Returns a job_id of the form 'raysubmit_XYZ'.
+
+    Prefixed with 'raysubmit' to avoid confusion with Ray JobID (driver ID).
+    """
+    rand = random.SystemRandom()
+    possible_characters = list(
+        set(string.ascii_letters + string.digits) -
+        {"I", "l", "o", "O", "0"}  # No confusing characters
+    )
+    id_part = "".join(rand.choices(possible_characters, k=16))
+    return f"raysubmit_{id_part}"
+
+
 class JobLogStorageClient:
     """
     Disk storage for stdout / stderr of driver script logs.
     """
     JOB_LOGS_PATH = "job-driver-{job_id}.log"
 
-    def get_logs(self, job_id: str):
+    def get_logs(self, job_id: str) -> str:
         try:
             with open(self.get_log_file_path(job_id), "r") as f:
                 return f.read()
         except FileNotFoundError:
             return ""
+
+    def tail_logs(self, job_id: str, n_lines=10) -> str:
+        all_logs = self.get_logs(job_id)
+        # TODO(edoakes): optimize this to not read the whole file into memory.
+        log_lines = all_logs.split("\n")
+        start = max(0, len(log_lines) - n_lines)
+        return "\n".join(log_lines[start:])
 
     def get_log_file_path(self, job_id: str) -> Tuple[str, str]:
         """
@@ -60,37 +84,41 @@ class JobSupervisor:
 
     SUBPROCESS_POLL_PERIOD_S = 0.1
 
-    def __init__(self, job_id: str, metadata: Dict[str, str]):
+    def __init__(self, job_id: str, entrypoint: str,
+                 user_metadata: Dict[str, str]):
         self._job_id = job_id
         self._status_client = JobStatusStorageClient()
         self._log_client = JobLogStorageClient()
         self._runtime_env = ray.get_runtime_context().runtime_env
+        self._entrypoint = entrypoint
 
-        self._metadata = metadata
-        self._metadata[JOB_ID_METADATA_KEY] = job_id
+        # Default metadata if not passed by the user.
+        self._metadata = {
+            JOB_ID_METADATA_KEY: job_id,
+            JOB_NAME_METADATA_KEY: job_id
+        }
+        self._metadata.update(user_metadata)
 
         # fire and forget call from outer job manager to this actor
         self._stop_event = asyncio.Event()
 
-    async def ready(self):
+    def ready(self):
         """Dummy object ref. Return of this function represents job supervisor
         actor stated successfully with runtime_env configured, and is ready to
         move on to running state.
         """
         pass
 
-    async def _exec_entrypoint_cmd(self, entrypoint_cmd: str,
-                                   logs_path: str) -> subprocess.Popen:
+    def _exec_entrypoint(self, logs_path: str) -> subprocess.Popen:
         """
-        Runs a command as a child process, streaming stderr & stdout to given
-        log files.
+        Runs the entrypoint command as a child process, streaming stderr &
+        stdout to given log files.
 
         Meanwhile we start a demon process and group driver
         subprocess in same pgid, such that if job actor dies, entire process
         group also fate share with it.
 
         Args:
-            entrypoint_cmd: Driver command to execute in subprocess.
             logs_path: File path on head node's local disk to store driver
                 command's stdout & stderr.
         Returns:
@@ -99,7 +127,7 @@ class JobSupervisor:
         """
         with open(logs_path, "w") as logs_file:
             child_process = subprocess.Popen(
-                entrypoint_cmd,
+                self._entrypoint,
                 shell=True,
                 start_new_session=True,
                 stdout=logs_file,
@@ -139,7 +167,6 @@ class JobSupervisor:
 
     async def run(
             self,
-            entrypoint_cmd: str,
             # Signal actor used in testing to capture PENDING -> RUNNING cases
             _start_signal_actor: Optional[ActorHandle] = None):
         """
@@ -152,14 +179,15 @@ class JobSupervisor:
         3) Handle concurrent events of driver execution and
         """
         cur_status = self._get_status()
-        assert cur_status == JobStatus.PENDING, (
+        assert cur_status.status == JobStatus.PENDING, (
             "Run should only be called once.")
 
         if _start_signal_actor:
             # Block in PENDING state until start signal received.
             await _start_signal_actor.wait.remote()
 
-        self._status_client.put_status(self._job_id, JobStatus.RUNNING)
+        self._status_client.put_status(self._job_id,
+                                       JobStatusInfo(JobStatus.RUNNING))
 
         try:
             # Set JobConfig for the child process (runtime_env, metadata).
@@ -173,8 +201,7 @@ class JobSupervisor:
                        RAY_ADDRESS_ENVIRONMENT_VARIABLE] = ray_redis_address
 
             log_path = self._log_client.get_log_file_path(self._job_id)
-            child_process = await self._exec_entrypoint_cmd(
-                entrypoint_cmd, log_path)
+            child_process = self._exec_entrypoint(log_path)
 
             polling_task = create_task(self._polling(child_process))
             finished, _ = await asyncio.wait(
@@ -197,8 +224,16 @@ class JobSupervisor:
                     self._status_client.put_status(self._job_id,
                                                    JobStatus.SUCCEEDED)
                 else:
-                    self._status_client.put_status(self._job_id,
-                                                   JobStatus.FAILED)
+                    log_tail = self._log_client.tail_logs(self._job_id)
+                    if log_tail is not None and log_tail != "":
+                        message = ("Job failed due to an application error, "
+                                   "last available logs:\n" + log_tail)
+                    else:
+                        message = None
+                    self._status_client.put_status(
+                        self._job_id,
+                        JobStatusInfo(
+                            status=JobStatus.FAILED, message=message))
         except Exception:
             logger.error(
                 "Got unexpected exception while trying to execute driver "
@@ -207,7 +242,7 @@ class JobSupervisor:
             # clean up actor after tasks are finished
             ray.actor.exit_actor()
 
-    def _get_status(self) -> Optional[JobStatus]:
+    def _get_status(self) -> Optional[JobStatusInfo]:
         return self._status_client.get_status(self._job_id)
 
     def stop(self):
@@ -217,10 +252,10 @@ class JobSupervisor:
 
 
 class JobManager:
-    """
-    Provide python APIs for job submission and management. It does not provide
-    job id generation or persistence, where all runtime data should be expected
-    as lost once the ray cluster running job manager instance is down.
+    """Provide python APIs for job submission and management.
+
+    It does not provide persistence, all info will be lost if the cluster
+    goes down.
     """
     JOB_ACTOR_NAME = "_ray_internal_job_actor_{job_id}"
 
@@ -249,7 +284,38 @@ class JobManager:
                         return key
         else:
             raise ValueError(
-                "Cannot found the node dictionary for current node.")
+                "Cannot find the node dictionary for current node.")
+
+    def _handle_supervisor_startup(self, job_id: str,
+                                   result: Optional[Exception]):
+        """Handle the result of starting a job supervisor actor.
+
+        If started successfully, result should be None. Otherwise it should be
+        an Exception.
+
+        On failure, the job will be marked failed with a relevant error
+        message.
+        """
+        if result is None:
+            return
+        elif isinstance(result, RuntimeEnvSetupError):
+            logger.info(f"Failed to set up runtime_env for job {job_id}.")
+            self._status_client.put_status(
+                job_id,
+                JobStatusInfo(
+                    status=JobStatus.FAILED,
+                    message=(f"runtime_env setup failed: {result}")))
+        elif isinstance(result, Exception):
+            logger.error(
+                f"Failed to start supervisor for job {job_id}: {result}.")
+            self._status_client.put_status(
+                job_id,
+                JobStatusInfo(
+                    status=JobStatus.FAILED,
+                    message=f"Error occurred while starting the job: {result}")
+            )
+        else:
+            assert False, "This should not be reached."
 
     def submit_job(self,
                    *,
@@ -263,7 +329,7 @@ class JobManager:
 
         1) Generate a new unique id for this job submission, each call of this
             method assumes they're independent submission with its own new
-            uuid, job supervisor actor and child process.
+            ID, job supervisor actor, and child process.
         2) Create new detached actor with same runtime_env as job spec
 
         Actual setting up runtime_env, subprocess group, driver command
@@ -275,9 +341,7 @@ class JobManager:
                 Represents the entrypoint to start user application.
             runtime_env: Runtime environment used to execute driver command,
                 which could contain its own ray.init() to configure runtime
-                env at ray cluster, task and actor level. For now, we
-                assume same runtime_env used for job supervisor actor and
-                driver command.
+                env at ray cluster, task and actor level.
             metadata: Support passing arbitrary data to driver command in
                 case needed.
             _start_signal_actor: Used in testing only to capture state
@@ -289,17 +353,18 @@ class JobManager:
                 within the same ray cluster.
         """
         if job_id is None:
-            job_id = str(uuid4())
+            job_id = generate_job_id()
         elif self._status_client.get_status(job_id) is not None:
             raise RuntimeError(f"Job {job_id} already exists.")
 
+        logger.info(f"Starting job with job_id: {job_id}")
         self._status_client.put_status(job_id, JobStatus.PENDING)
 
-        supervisor = None
+        # Wait for the actor to start up asynchronously so this call always
+        # returns immediately and we can catch errors with the actor starting
+        # up. We may want to put this in an actor instead in the future.
         try:
-            logger.debug(
-                f"Submitting job with generated internal job_id: {job_id}")
-            supervisor = self._supervisor_actor_cls.options(
+            actor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=self.JOB_ACTOR_NAME.format(job_id=job_id),
                 num_cpus=0,
@@ -308,21 +373,16 @@ class JobManager:
                 resources={
                     self._get_current_node_resource_key(): 0.001,
                 },
-                # For now we assume supervisor actor and driver script have
-                # same runtime_env.
-                runtime_env=runtime_env).remote(job_id, metadata or {})
-            ray.get(supervisor.ready.remote())
-        except Exception as e:
-            if supervisor:
-                ray.kill(supervisor, no_restart=True)
-            self._status_client.put_status(job_id, JobStatus.FAILED)
-            raise RuntimeError(
-                f"Failed to start actor for job {job_id}. This could be "
-                "runtime_env configuration failure or invalid runtime_env."
-                f"Exception message: {str(e)}")
+                runtime_env=runtime_env).remote(job_id, entrypoint, metadata
+                                                or {})
+            actor.run.remote(_start_signal_actor=_start_signal_actor)
 
-        # Kick off the job to run in the background.
-        supervisor.run.remote(entrypoint, _start_signal_actor)
+            def callback(result: Optional[Exception]):
+                return self._handle_supervisor_startup(job_id, result)
+
+            actor.ready.remote()._on_completed(callback)
+        except Exception as e:
+            self._handle_supervisor_startup(job_id, e)
 
         return job_id
 
@@ -330,8 +390,7 @@ class JobManager:
         """Request job to exit, fire and forget.
 
         Args:
-            job_id: Generated uuid from submit_job. Only valid in same ray
-                cluster.
+            job_id: ID of the job.
         Returns:
             stopped:
                 True if there's running job
@@ -346,7 +405,7 @@ class JobManager:
         else:
             return False
 
-    def get_job_status(self, job_id: str) -> JobStatus:
+    def get_job_status(self, job_id: str) -> JobStatusInfo:
         """Get latest status of a job. If job supervisor actor is no longer
         alive, it will also attempt to make adjustments needed to bring job
         to correct terminiation state.
@@ -354,8 +413,7 @@ class JobManager:
         All job status is stored and read only from GCS.
 
         Args:
-            job_id: Generated uuid from submit_job. Only valid in same ray
-                cluster.
+            job_id: ID of the job.
         Returns:
             job_status: Latest known job status
         """
@@ -365,7 +423,9 @@ class JobManager:
             # left job in non-terminal status in case actor failed without
             # updating GCS with latest status.
             last_status = self._status_client.get_status(job_id)
-            if last_status in {JobStatus.PENDING, JobStatus.RUNNING}:
+            if last_status and last_status.status in {
+                    JobStatus.PENDING, JobStatus.RUNNING
+            }:
                 self._status_client.put_status(job_id, JobStatus.FAILED)
 
         return self._status_client.get_status(job_id)

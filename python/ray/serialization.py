@@ -9,7 +9,7 @@ from ray._private.gcs_utils import ErrorType
 from ray.exceptions import (
     RayError, PlasmaObjectNotAvailable, RayTaskError, RayActorError,
     TaskCancelledError, WorkerCrashedError, ObjectLostError,
-    ReferenceCountingAssertionError, OwnerDiedError,
+    ObjectFetchTimedOutError, ReferenceCountingAssertionError, OwnerDiedError,
     ObjectReconstructionFailedError,
     ObjectReconstructionFailedMaxAttemptsExceededError,
     ObjectReconstructionFailedLineageEvictedError, RaySystemError,
@@ -230,6 +230,10 @@ class SerializationContext:
                 return ObjectLostError(object_ref.hex(),
                                        object_ref.owner_address(),
                                        object_ref.call_site())
+            elif error_type == ErrorType.Value("OBJECT_FETCH_TIMED_OUT"):
+                return ObjectFetchTimedOutError(object_ref.hex(),
+                                                object_ref.owner_address(),
+                                                object_ref.call_site())
             elif error_type == ErrorType.Value("OBJECT_DELETED"):
                 return ReferenceCountingAssertionError(
                     object_ref.hex(), object_ref.owner_address(),

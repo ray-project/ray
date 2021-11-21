@@ -318,6 +318,20 @@ class ObjectLostError(RayError):
             "more information about the failure.")
 
 
+class ObjectFetchTimedOutError(ObjectLostError):
+    """Indicates that an object fetch timed out.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return self._base_str() + "\n\n" + (
+            f"Fetch for object {self.object_ref_hex} timed out because no "
+            "locations were found for the object. This may indicate a "
+            "system-level bug.")
+
+
 class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
     """Indicates that an object has been deleted while there was still a
     reference to it.
@@ -429,10 +443,7 @@ class RuntimeEnvSetupError(RayError):
     """Raised when a runtime environment fails to be set up."""
 
     def __str__(self):
-        return (
-            "The runtime environment for this task or actor failed to be "
-            "installed. Corresponding error logs should have been streamed "
-            "to the driver's STDOUT.")
+        return "The runtime_env failed to be set up."
 
 
 class PlacementGroupRemovedError(RayError):
@@ -451,6 +462,7 @@ RAY_EXCEPTION_TYPES = [
     RayActorError,
     ObjectStoreFullError,
     ObjectLostError,
+    ObjectFetchTimedOutError,
     ReferenceCountingAssertionError,
     ObjectReconstructionFailedError,
     ObjectReconstructionFailedMaxAttemptsExceededError,
