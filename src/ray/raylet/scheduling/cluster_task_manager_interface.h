@@ -88,8 +88,8 @@ class ClusterTaskManagerInterface {
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  virtual bool CancelTask(const TaskID &task_id,
-                          bool runtime_env_setup_failed = false, bool placement_group_removed = false) = 0;
+  virtual bool CancelTask(const TaskID &task_id, bool runtime_env_setup_failed = false,
+                          bool placement_group_removed = false) = 0;
 
   /// Set the worker backlog size for a particular scheduling class.
   ///

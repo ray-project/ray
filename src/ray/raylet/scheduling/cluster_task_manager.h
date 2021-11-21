@@ -192,7 +192,8 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   ///
   /// \return True if task was successfully removed. This function will return
   /// false if the task is already running.
-  bool CancelTask(const TaskID &task_id, bool runtime_env_setup_failed = false, bool placement_group_removed = false) override;
+  bool CancelTask(const TaskID &task_id, bool runtime_env_setup_failed = false,
+                  bool placement_group_removed = false) override;
 
   /// Populate the list of pending or infeasible actor tasks for node stats.
   ///

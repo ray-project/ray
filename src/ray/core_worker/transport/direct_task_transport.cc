@@ -563,7 +563,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           } else if (reply.canceled()) {
             RAY_LOG(DEBUG) << "Lease canceled " << task_id;
             if (reply.placement_group_removed()) {
-              RAY_LOG(INFO) << "The placement group was removed when leasing a worker, will fail the task.";
+              RAY_LOG(INFO) << "The placement group was removed when leasing a worker, "
+                               "will fail the task.";
               auto &task_queue = scheduling_key_entry.task_queue;
               while (!task_queue.empty()) {
                 auto &task_spec = task_queue.front();
@@ -573,7 +574,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
               }
               if (scheduling_key_entry.CanDelete()) {
                 scheduling_key_entries_.erase(scheduling_key);
-              } 
+              }
             } else {
               RequestNewWorkerIfNeeded(scheduling_key);
             }

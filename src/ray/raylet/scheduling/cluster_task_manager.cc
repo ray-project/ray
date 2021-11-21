@@ -586,8 +586,8 @@ void ClusterTaskManager::ReleaseTaskArgs(const TaskID &task_id) {
   }
 }
 
-void ReplyCancelled(std::shared_ptr<internal::Work> &work,
-                    bool runtime_env_setup_failed, bool placement_group_removed) {
+void ReplyCancelled(std::shared_ptr<internal::Work> &work, bool runtime_env_setup_failed,
+                    bool placement_group_removed) {
   auto reply = work->reply;
   auto callback = work->callback;
   reply->set_canceled(true);
@@ -596,8 +596,8 @@ void ReplyCancelled(std::shared_ptr<internal::Work> &work,
   callback();
 }
 
-bool ClusterTaskManager::CancelTask(const TaskID &task_id,
-                                    bool runtime_env_setup_failed, bool placement_group_removed) {
+bool ClusterTaskManager::CancelTask(const TaskID &task_id, bool runtime_env_setup_failed,
+                                    bool placement_group_removed) {
   // TODO(sang): There are lots of repetitive code around task backlogs. We should
   // refactor them.
   for (auto shapes_it = tasks_to_schedule_.begin(); shapes_it != tasks_to_schedule_.end();
