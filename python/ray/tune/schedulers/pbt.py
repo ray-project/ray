@@ -616,25 +616,11 @@ class PopulationBasedTraining(FIFOScheduler):
             trial.on_checkpoint(new_state.last_checkpoint)
             exploit_result = _ExploitResult.SYNC_TRANSFERRED
         else:
-            # If trial is running, we first try to reset it.
-            # If that is unsuccessful, then we have to stop it and start it
-            # again with a new checkpoint.
-            reset_successful = trial_executor.reset_trial(
-                trial, new_config, new_tag)
-            # TODO(ujvl): Refactor Scheduler abstraction to abstract
-            #  mechanism for trial restart away. We block on restore
-            #  and suppress train on start as a stop-gap fix to
-            #  https://github.com/ray-project/ray/issues/7258.
-            if reset_successful:
-                trial_executor.restore(
-                    trial, new_state.last_checkpoint, block=True)
-                exploit_result = _ExploitResult.ASYNC_TRANSFERRED_THROUGH_RESET
-            else:
-                trial_executor.pause_trial(trial)
-                trial.set_experiment_tag(new_tag)
-                trial.set_config(new_config)
-                trial.on_checkpoint(new_state.last_checkpoint)
-                exploit_result = _ExploitResult.ASYNC_TRANSFERRED_AND_PAUSED
+            trial_executor.pause_trial(trial)
+            trial.set_experiment_tag(new_tag)
+            trial.set_config(new_config)
+            trial.on_checkpoint(new_state.last_checkpoint)
+            exploit_result = _ExploitResult.ASYNC_TRANSFERRED_AND_PAUSED
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
