@@ -168,7 +168,7 @@ Status CreateRequestQueue::ProcessRequests() {
       if(RayConfig::instance().enable_BlockTasks() && block_tasks_required){
         RAY_LOG(DEBUG) << "[JAE_DEBUG] calling object_creation_blocked_callback priority "
 		    << queue_it->first.first.score;
-	    on_object_creation_blocked_callback_(queue_it->first.first);
+	    on_object_creation_blocked_callback_(queue_it->first.first, true, false);
       }
 	  if(RayConfig::instance().enable_EvictTasks() && evict_tasks_required){
 	    on_object_evict_callback_(queue_it->first.first);
@@ -196,31 +196,22 @@ Status CreateRequestQueue::ProcessRequests() {
         oom_start_time_ns_ = now;
       }
 
-	  if(RayConfig::instance().enable_BlockandEvictTasks()){
-		on_object_creation_blocked_callback_(queue_it->first.first);
-		on_object_evict_callback_(queue_it->first.first);
-        if (!should_spill_) {
-          RAY_LOG(INFO) << "Object creation of priority " << queue_it->first.first << " blocked";
-          return Status::TransientObjectStoreFull("Waiting for higher priority tasks to finish");
-        }
-		RAY_LOG(INFO) << "[JAE_DEBUG] should_spill set";
-			    SetShouldSpill(false);
-	  }else{
-        if(RayConfig::instance().enable_BlockTasks()){
-          RAY_LOG(DEBUG) << "[JAE_DEBUG] calling object_creation_blocked_callback priority "
-		  << queue_it->first.first.score;
-	      on_object_creation_blocked_callback_(queue_it->first.first);
-        }
-	    if(RayConfig::instance().enable_EvictTasks()){
-	  	  on_object_evict_callback_(queue_it->first.first);
-          if (!should_spill_) {
-            RAY_LOG(INFO) << "Object creation of priority " << queue_it->first.first << " blocked";
-            return Status::TransientObjectStoreFull("Waiting for higher priority tasks to finish");
-          }
-		  RAY_LOG(INFO) << "[JAE_DEBUG] should_spill set";
-			      SetShouldSpill(false);
-	    }
+      if(RayConfig::instance().enable_BlockTasks()){
+        RAY_LOG(DEBUG) << "[JAE_DEBUG] calling object_creation_blocked_callback priority "
+	    << queue_it->first.first.score;
+	    on_object_creation_blocked_callback_(queue_it->first.first , true, false);
+      }
+
+	  if(RayConfig::instance().enable_EvictTasks()){
+        RAY_LOG(DEBUG) << "[JAE_DEBUG] calling object_evict_callback on priority "
+	    << queue_it->first.first.score;
+	    on_object_creation_blocked_callback_(queue_it->first.first , false, true);
 	  }
+
+      if (!should_spill_) {
+        RAY_LOG(INFO) << "Object creation of priority " << queue_it->first.first << " blocked";
+        return Status::TransientObjectStoreFull("Waiting for higher priority tasks to finish");
+      }
 
       auto grace_period_ns = oom_grace_period_ns_;
       auto spill_pending = spill_objects_callback_();
@@ -257,7 +248,8 @@ Status CreateRequestQueue::ProcessRequests() {
   // If we make it here, then there is nothing left in the queue. It's safe to
   // run new tasks again.
   if(!RayConfig::instance().enable_BlockandEvictTasks() || RayConfig::instance().enable_BlockTasks()){
-    RAY_UNUSED(on_object_creation_blocked_callback_(ray::Priority()));
+    RAY_LOG(DEBUG) << "[JAE_DEBUG] resetting object_creation_blocked_callback priority";
+    RAY_UNUSED(on_object_creation_blocked_callback_(ray::Priority(), true, false));
   }
 
   return Status::OK();
