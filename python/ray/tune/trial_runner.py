@@ -789,7 +789,9 @@ class TrialRunner:
         if trial.status != Trial.TERMINATED:
             self._live_trials.add(trial)
         with warn_if_slow("scheduler.on_trial_add"):
-            self._scheduler_alg.on_trial_add(self, trial)
+            self._scheduler_alg.on_trial_add(
+                TrialRunnerWrapper(self, runner_whitelist_attr={"search_alg"}),
+                trial)
         self.trial_executor.try_checkpoint_metadata(trial)
 
     def debug_string(self, delim="\n"):
@@ -1287,7 +1289,9 @@ class TrialRunner:
         self._live_trials.add(trial)
 
         with warn_if_slow("scheduler.on_trial_add"):
-            self._scheduler_alg.on_trial_add(self, trial)
+            self._scheduler_alg.on_trial_add(
+                TrialRunnerWrapper(self, runner_whitelist_attr={"search_alg"}),
+                trial)
 
     def _update_trial_queue(self, blocking: bool = False,
                             timeout: int = 600) -> bool:
@@ -1425,3 +1429,62 @@ class TrialRunner:
 
         if launch_web_server:
             self._server = TuneServer(self, self._server_port)
+
+
+class TrialExecutorWrapper(RayTrialExecutor):
+    """Wraps around TrialExecutor class, intercepts API calls and warns users
+    of restricted API access.
+
+    This is meant to facilitate restricting
+    the current API exposure of TrialExecutor by TrialScheduler.
+    """
+
+    def __init__(self,
+                 trial_executor: RayTrialExecutor,
+                 whitelist_attr: Optional[set] = None):
+        self._trial_executor = trial_executor
+        self._whitelist_attr = whitelist_attr or set()
+
+    def __getattr__(self, attr):
+        if attr not in self._whitelist_attr:
+            logger.warning(f"You are trying to access {attr} interface of "
+                           f"TrialExecutor in TrialScheduler, which is being "
+                           f"restricted. If you believe it is reasonable for "
+                           f"your scheduler to access this TrialExecutor API, "
+                           f"please reach out to Ray team on GitHub. A more "
+                           f"strict API access pattern would be enforced "
+                           f"starting 1.12.0")
+        return getattr(self._trial_executor, attr)
+
+
+class TrialRunnerWrapper(TrialRunner):
+    """Wraps around TrialRunner class, intercepts API calls and warns users
+    of restricted API access.
+
+    This is meant to facilitate restricting
+    the current API exposure of TrialRunner by TrialScheduler.
+    """
+
+    _EXECUTOR_ATTR = "trial_executor"
+
+    def __init__(self,
+                 trial_runner: TrialRunner,
+                 runner_whitelist_attr: Optional[set] = None,
+                 executor_whitelist_attr: Optional[set] = None):
+        self._trial_runner = trial_runner
+        self._trial_executor = TrialExecutorWrapper(
+            trial_runner.trial_executor, executor_whitelist_attr)
+        self._runner_whitelist_attr = runner_whitelist_attr or set()
+
+    def __getattr__(self, attr):
+        if attr == self._EXECUTOR_ATTR:
+            return self._trial_executor
+        if attr not in self._runner_whitelist_attr:
+            logger.warning(f"You are trying to access {attr} interface of "
+                           f"TrialRunner in TrialScheduler, which is being "
+                           f"restricted. If you believe it is reasonable for "
+                           f"your scheduler to access this TrialRunner API, "
+                           f"please reach out to Ray team on GitHub. A more "
+                           f"strict API access pattern would be enforced "
+                           f"starting 1.12s.0")
+        return getattr(self._trial_runner, attr)
