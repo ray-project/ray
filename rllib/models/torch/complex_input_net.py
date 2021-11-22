@@ -94,7 +94,9 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
         post_fc_stack_config = {
             "fcnet_hiddens": model_config.get("post_fcnet_hiddens", []),
             "fcnet_activation": model_config.get("post_fcnet_activation",
-                                                 "relu")
+                                                 "relu"),
+            "dropout_rate": model_config.get("dropout_rate"),
+            "vib_regularizer": model_config.get("vib_regularizer")
         }
         self.post_fc_stack = ModelCatalog.get_model_v2(
             Box(float("-inf"),

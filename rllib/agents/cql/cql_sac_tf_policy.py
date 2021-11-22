@@ -201,8 +201,10 @@ def cql_loss(policy: Policy, model: ModelV2, dist_class: Type[TFActionDistributi
         min_qf2_loss = min_qf2_loss - tf.reduce_mean(policy.twin_q_t_selected) * min_q_weight
 
     if use_lagrange:
+        alpha_upper_bound = policy.config["alpha_upper_bound"]
+        alpha_lower_bound = policy.config["alpha_lower_bound"]
         alpha_prime = tf.clip_by_value(
-            tf.exp(model.log_alpha_prime), clip_value_min=0.0, clip_value_max=1000000.0)
+            tf.exp(model.log_alpha_prime), clip_value_min=alpha_lower_bound, clip_value_max=alpha_upper_bound)
         min_qf1_loss = alpha_prime * (min_qf1_loss - target_action_gap)
         if twin_q:
             min_qf2_loss = alpha_prime * (min_qf2_loss - target_action_gap)

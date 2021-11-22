@@ -20,6 +20,7 @@ from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
 from ray.rllib.evaluation.episode import MultiAgentEpisode
 from ray.rllib.models import ModelCatalog, MODEL_DEFAULTS
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.models.tf import FullyConnectedNetwork
 from ray.rllib.models.tf.tf_action_dist import Beta, Categorical, \
     DiagGaussian, Dirichlet, SquashedGaussian, TFActionDistribution
 from ray.rllib.policy.policy import Policy
@@ -32,6 +33,8 @@ from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.tf_ops import huber_loss
 from ray.rllib.utils.typing import AgentID, LocalOptimizer, ModelGradients, \
     TensorType, TrainerConfigDict
+from ray.rllib.models.loss_functions import compute_l2_loss, compute_vib_loss
+from ray.rllib.models.tf.complex_input_net import ComplexInputNetwork
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -473,9 +476,29 @@ def sac_actor_critic_loss(
     if policy.config["twin_q"]:
         policy.twin_q_t_selected = twin_q_t_selected
 
+    l2_regularizer = policy.config["l2_regularizer"]
+    l2_gamma = policy.config["l2_gamma"]
+    l2_loss = 0.0
+    if l2_regularizer:
+        q_model_weights = policy.model.q_variables()
+        l2_loss = compute_l2_loss(q_model_weights)
+        l2_loss = l2_gamma * l2_loss
+
+    info_loss = 0.0
+    vib_regularizer = policy.config["Q_model"].get("vib_regularizer")
+    if vib_regularizer is not None and vib_regularizer["enable_regularizer"]:
+        q_net = model.q_net
+        if isinstance(q_net, ComplexInputNetwork):
+            info_loss = compute_vib_loss(q_net.post_fc_stack.decoder._encoding, q_net.post_fc_stack.decoder._mu_size)
+        elif isinstance(q_net, FullyConnectedNetwork):
+            info_loss = compute_vib_loss(q_net.decoder._encoding, q_net.decoder._mu_size)
+        else:
+            logger.error(f"VIB not yet supported for {type(q_net)} model.")
+        info_loss *= vib_regularizer['beta']
+        
     # In a custom apply op we handle the losses separately, but return them
     # combined in one loss here.
-    return actor_loss + tf.math.add_n(critic_loss) + alpha_loss
+    return actor_loss + tf.math.add_n(critic_loss) + alpha_loss + l2_loss + info_loss
 
 
 def compute_and_clip_gradients(policy: Policy, optimizer: LocalOptimizer,

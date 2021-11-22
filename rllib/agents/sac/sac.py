@@ -60,6 +60,13 @@ DEFAULT_CONFIG = with_common_config({
         "post_fcnet_activation": None,
         "custom_model": None,  # Use this to define custom Q-model(s).
         "custom_model_config": {},
+        "dropout_rate": 0.0,
+        # VIB regularization parameters
+        "vib_regularizer": {
+            "enable_regularizer": False,
+            "decoder_layers": [256],
+            "beta": 1
+        },
     },
     # Model options for the policy function (see `Q_model` above for details).
     # The difference to `Q_model` above is that no action concat'ing is
@@ -164,6 +171,10 @@ DEFAULT_CONFIG = with_common_config({
     # Use a Beta-distribution instead of a SquashedGaussian for bounded,
     # continuous action spaces (not recommended, for debugging only).
     "_use_beta_distribution": False,
+    # Enable L2 regularization in the Q-function
+    "l2_regularizer": False,
+    # Scaling factor gamma for L2 regularization
+    "l2_gamma": 100,
 })
 # __sphinx_doc_end__
 # yapf: enable

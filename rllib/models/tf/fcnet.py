@@ -22,6 +22,13 @@ class FullyConnectedNetwork(TFModelV2):
         hiddens = model_config.get("fcnet_hiddens", []) + \
             model_config.get("post_fcnet_hiddens", [])
         activation = model_config.get("fcnet_activation")
+        dropout_rate = model_config.get("dropout_rate", 0)
+        enable_vib_regularizer = False
+        self.decoder = None
+        vib_regularizer = model_config.get("vib_regularizer")
+        if vib_regularizer is not None:
+            enable_vib_regularizer = vib_regularizer.get("enable_regularizer")
+            decoder_layers = vib_regularizer.get("decoder_layers")
         if not model_config.get("fcnet_hiddens", []):
             activation = model_config.get("post_fcnet_activation")
         if activation is None or isinstance(activation, str):
@@ -62,6 +69,8 @@ class FullyConnectedNetwork(TFModelV2):
                 name="fc_{}".format(i),
                 activation=act,
                 kernel_initializer=normc_initializer(1.0))(last_layer)
+            if dropout_rate>0:
+                last_layer = tf.keras.layers.Dropout(dropout_rate)(last_layer)
             i += 1
 
         # The last layer is adjusted to be of size num_outputs, but it's a
@@ -81,6 +90,12 @@ class FullyConnectedNetwork(TFModelV2):
                     name="fc_{}".format(i),
                     activation=activations[-1],
                     kernel_initializer=normc_initializer(1.0))(last_layer)
+                if dropout_rate > 0:
+                    last_layer = tf.keras.layers.Dropout(dropout_rate)(last_layer)
+                if enable_vib_regularizer:
+                    from ray.rllib.models.vib_regularizer import VIB_Decoder
+                    self.decoder = VIB_Decoder(decoder_layers=decoder_layers, dropout_rate=dropout_rate)
+                    last_layer = self.decoder(last_layer)
             if num_outputs:
                 logits_out = tf.keras.layers.Dense(
                     num_outputs,

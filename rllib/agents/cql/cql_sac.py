@@ -39,6 +39,10 @@ CQLSAC_DEFAULT_CONFIG = merge_dicts(
         # Replay Buffer should be size of offline dataset for fastest
         # training
         "buffer_size": 1000000,
+        # Upper bound for alpha value during the lagrangian constraint
+        "alpha_upper_bound": 1.0,
+        # Lower bound for alpha value during the lagrangian constraint
+        "alpha_lower_bound": 0.0,
     })
 # __sphinx_doc_end__
 # yapf: enable

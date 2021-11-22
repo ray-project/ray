@@ -335,6 +335,142 @@ test_convergence_params: List[Tuple[Algorithm, dict, str, Framework, int, float]
             frameworks=[Framework.TensorFlow],
         ),
         TestAgentParams.for_moab_move_to_center(
+            algorithm=ContinuousActionSpaceAlgorithm.CQL_SAC,
+            config_updates={
+                # Common Configs
+                "num_workers": 0,
+                "input": "tests/data/moab/*.json",
+                "train_batch_size": 256,  # 10
+                "learning_starts": 0,
+                "clip_actions": False,
+                "normalize_actions": True,
+                "input_evaluation": [],
+                "evaluation_config": {
+                    "input": "sampler",
+                    "explore": False,
+                },
+                "evaluation_interval": 1,
+                "evaluation_num_episodes": 10,
+                "evaluation_num_workers": 1,
+                "log_level": logging.WARNING,
+                # SAC Configs
+                "twin_q": True,
+                "prioritized_replay": False,
+                # CQL Configs
+                "bc_iters": 100,  # 5,
+                "temperature": 1.0,
+                "num_actions": 10,
+                "lagrangian": True,  # False
+                "lagrangian_thresh": 5.0,
+                "min_q_weight": 5.0,
+                "initial_alpha_prime": 1.0,
+                "l2_regularizer": True,
+            },
+            n_iter=25, #3000, #500, #100, #25,  # 250,
+            threshold=150.0,
+            frameworks=[Framework.TensorFlow],
+        ),
+        TestAgentParams.for_moab_move_to_center(
+            algorithm=ContinuousActionSpaceAlgorithm.CQL_SAC,
+            config_updates={
+                # Common Configs
+                "num_workers": 0,
+                "input": "tests/data/moab/*.json",
+                "train_batch_size": 256,  # 10
+                "learning_starts": 0,
+                "clip_actions": False,
+                "normalize_actions": True,
+                "input_evaluation": [],
+                "evaluation_config": {
+                    "input": "sampler",
+                    "explore": False,
+                },
+                "evaluation_interval": 1,
+                "evaluation_num_episodes": 10,
+                "evaluation_num_workers": 1,
+                "log_level": logging.WARNING,
+                # SAC Configs
+                "twin_q": True,
+                "prioritized_replay": False,
+                # CQL Configs
+                "bc_iters": 100,  # 5,
+                "temperature": 1.0,
+                "num_actions": 10,
+                "lagrangian": True,  # False
+                "lagrangian_thresh": 5.0,
+                "min_q_weight": 5.0,
+                "initial_alpha_prime": 1.0,
+                "Q_model": {
+                    "fcnet_hiddens": [256, 256],
+                    "fcnet_activation": "relu",
+                    "post_fcnet_hiddens": [],
+                    "post_fcnet_activation": None,
+                    "custom_model": None,  # Use this to define custom Q-model(s).
+                    "custom_model_config": {},
+                    "dropout_rate": 0.5,
+                    # VIB regularization parameters
+                    "vib_regularizer": {
+                        "enable_regularizer": False,
+                        "decoder_layers": [256],
+                        "beta": 1
+                    },
+                },
+            },
+            n_iter=25, #3000, #500, #100, #25,  # 250,
+            threshold=150.0,
+            frameworks=[Framework.TensorFlow],
+        ),
+        TestAgentParams.for_moab_move_to_center(
+            algorithm=ContinuousActionSpaceAlgorithm.CQL_SAC,
+            config_updates={
+                # Common Configs
+                "num_workers": 0,
+                "input": "tests/data/moab/*.json",
+                "train_batch_size": 256,  # 10
+                "learning_starts": 0,
+                "clip_actions": False,
+                "normalize_actions": True,
+                "input_evaluation": [],
+                "evaluation_config": {
+                    "input": "sampler",
+                    "explore": False,
+                },
+                "evaluation_interval": 1,
+                "evaluation_num_episodes": 10,
+                "evaluation_num_workers": 1,
+                "log_level": logging.WARNING,
+                # SAC Configs
+                "twin_q": True,
+                "prioritized_replay": False,
+                # CQL Configs
+                "bc_iters": 100,  # 5,
+                "temperature": 1.0,
+                "num_actions": 10,
+                "lagrangian": True,  # False
+                "lagrangian_thresh": 5.0,
+                "min_q_weight": 5.0,
+                "initial_alpha_prime": 1.0,
+                "Q_model": {
+                    "fcnet_hiddens": [256, 256],
+                    "fcnet_activation": "relu",
+                    "post_fcnet_hiddens": [],
+                    "post_fcnet_activation": None,
+                    "custom_model": None,  # Use this to define custom Q-model(s).
+                    "custom_model_config": {},
+                    "dropout_rate": 0.0,
+                    # VIB regularization parameters
+                    "vib_regularizer": {
+                        "enable_regularizer": True,
+                        "decoder_layers": [256],
+                        "beta": 1
+                    },
+                },
+            },
+            n_iter=25, #3000, #500, #100, #25,  # 250,
+            threshold=150.0,
+            frameworks=[Framework.TensorFlow],
+        ),
+        TestAgentParams.for_moab_move_to_center(
             algorithm=ContinuousActionSpaceAlgorithm.CQL_APEX_SAC,
             config_updates={
                 "num_workers": 8,
