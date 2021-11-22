@@ -544,15 +544,6 @@ def _load_config(local_dir: str, config_file: Optional[str]) -> Optional[Dict]:
     return yaml.safe_load(content)
 
 
-def _wrap_app_config_pip_installs(app_config: Dict[Any, Any]):
-    """Wrap pip package install in quotation marks"""
-    if app_config.get("python", {}).get("pip_packages"):
-        new_pip_packages = []
-        for pip_package in app_config["python"]["pip_packages"]:
-            new_pip_packages.append(f"\"{pip_package}\"")
-        app_config["python"]["pip_packages"] = new_pip_packages
-
-
 def has_errored(result: Dict[Any, Any]) -> bool:
     return result.get("status", "invalid") != "finished"
 
@@ -1378,9 +1369,6 @@ def run_test_config(
     elif "autosuspend_mins" in test_config["run"]:
         raise ValueError(
             "'autosuspend_mins' is only supported if 'use_connect' is True.")
-
-    # Only wrap pip packages after we installed the app config packages
-    _wrap_app_config_pip_installs(app_config)
 
     # Add information to results dict
     def _update_results(results: Dict):
