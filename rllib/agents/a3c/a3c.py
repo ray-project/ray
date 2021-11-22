@@ -62,7 +62,8 @@ class A3CTrainer(Trainer):
             raise ValueError("`num_workers` for A3C must be >= 1!")
 
     @override(Trainer)
-    def get_policy_class(self, config: TrainerConfigDict) -> Type[Policy]:
+    def get_default_policy_class(self,
+                                 config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
             from ray.rllib.agents.a3c.a3c_torch_policy import \
                 A3CTorchPolicy
