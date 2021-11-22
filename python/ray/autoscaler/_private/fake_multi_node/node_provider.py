@@ -2,7 +2,6 @@ import copy
 import json
 import logging
 import os
-import json
 from threading import RLock
 import subprocess
 import time
@@ -358,7 +357,7 @@ class FakeMultiNodeProvider(NodeProvider):
 
         overwrite_tags = {
             TAG_RAY_NODE_KIND: (NODE_KIND_WORKER
-              if not is_head else NODE_KIND_HEAD),
+                                if not is_head else NODE_KIND_HEAD),
             TAG_RAY_USER_NODE_TYPE: node_type,
             TAG_RAY_NODE_NAME: next_id,
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
