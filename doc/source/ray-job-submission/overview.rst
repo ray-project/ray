@@ -1,12 +1,12 @@
 
 
 ===========================================================
-Ray Job Submission: Going from your laptop from production
+Ray Job Submission: Going from your laptop to production
 ===========================================================
 
 .. warning::
 
-    Ray Job Submission is at Alpha phase with APIs mostly stable but subject to change in the future.
+    Ray Job Submission is at an Alpha phase with APIs mostly stable but subject to change in the future.
 
 .. note::
 
@@ -17,14 +17,14 @@ Concepts
 
 - **Package**: A collection of files and configurations that defines an application, thus allowing it to be executed in a different environment remotely (ideally self-contained). Within the context of Job submission, the packaging part is handled by :ref:`Runtime Environments<runtime-environments>`, where we can dynamically configure your desired Ray cluster environment, actor or task level runtime environment for your submitted Job.
 
-- **Job**: A Ray application that will be submitted to a Ray cluster for execution. Once a Job is submitted, it runs once on the cluster to completion or failure. Retries or different runs with different parameters should be handled by the submitter. Jobs are scoped to the lifetime of a Ray cluster, so if your Ray cluster goes down, any running Jobs will be terminated.
+- **Job**: A Ray application submitted to a Ray cluster for execution. Once a Job is submitted, it runs once on the cluster to completion or failure. Retries or different runs with different parameters should be handled by the submitter. Jobs are bound to the lifetime of a Ray cluster, so if your Ray cluster goes down, any running Jobs on that cluster will be terminated.
 
 - **Job Manager**: An entity external to the Ray cluster that manages the lifecycle of a Job and potentially also Ray clusters, such as scheduling, killing, polling status, getting logs, and persisting inputs / outputs. Can be any existing framework with these abilities, such as Airflow.
 
 Example - Setup
 ---------------
 
-Let's start with a sample Ray script as example for job submission. Once executed locally, this script will use Ray APIs to print counter value of a remote actor from 1 to 5, and print the version of 'requests' module it's using.
+Let's start with a sample Ray script as an example for job submission. Once executed locally, this script will use Ray APIs to print counter value of a remote actor from 1 to 5, and print the version of 'requests' module it's using.
 
 We can put this file in a local directory of your choice, with filename "script.py", so your working directory will look like:
 
@@ -83,7 +83,7 @@ We provide three APIs for Job submission: SDK, CLI and HTTP. Both the SDK and CL
 
 .. warning::
 
-    We currently don't support passing in :code:`requirements.txt` in :code:`pip` yet in job submission so user still need to pass in a list of packages, it will be supported in later releases.
+    We currently don't support passing in :code:`requirements.txt` in :code:`pip` yet in job submission so user still need to pass in a list of packages. It will be supported in later releases.
 
 
 Job CLI API
@@ -142,7 +142,7 @@ Then we can submit our application to the Ray cluster via the Job SDK.
 
 .. tip::
 
-    By default Ray Job server will generate a new ID as return value, but you can also generate your unique job_id first and pass it into :code:`submit_job`. In this case the Job will be executed with your given id, and will throw error if same job_id is submitted more than once for the same Ray cluster.
+    By default Ray Job server will generate a new ID as return value, but you can also generate your unique job_id first and pass it into :code:`submit_job`. In this case, the Job will be executed with your given id, and will throw error if same job_id is submitted more than once for the same Ray cluster.
 
 Now we can have a simple polling loop that checks the job status until it reaches a terminal state (namely, ``JobStatus.SUCCEEDED``, ``JobStatus.STOPPED``, or ``JobStatus.FAILED``), and gets the logs at the end. We expect to see actor printed numbers as well as the correct version of the :code:`requests` module specified in the ``runtime_env``.
 
