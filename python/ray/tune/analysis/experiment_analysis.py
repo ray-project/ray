@@ -200,6 +200,9 @@ class ExperimentAnalysis:
 
         If you didn't pass these parameters, use
         `get_best_checkpoint(trial, metric, mode)` instead.
+
+        Returns:
+            :class:`TrialCheckpoint <ray.tune.cloud.TrialCheckpoint>` object.
         """
         if not self.default_metric or not self.default_mode:
             raise ValueError(
