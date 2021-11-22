@@ -2021,7 +2021,7 @@ def make_decorator(num_returns=None,
                    worker=None,
                    retry_exceptions=None,
                    concurrency_groups=None,
-                   scheduling_policy=None):
+                   scheduling_strategy=None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
@@ -2051,7 +2051,7 @@ def make_decorator(num_returns=None,
                 Language.PYTHON, function_or_class, None, num_cpus, num_gpus,
                 memory, object_store_memory, resources, accelerator_type,
                 num_returns, max_calls, max_retries, retry_exceptions,
-                runtime_env, placement_group, scheduling_policy)
+                runtime_env, placement_group, scheduling_strategy)
 
         if inspect.isclass(function_or_class):
             if num_returns is not None:
@@ -2076,11 +2076,11 @@ def make_decorator(num_returns=None,
                 raise ValueError(
                     "The keyword 'max_task_retries' only accepts -1, 0 or a"
                     " positive integer")
-            return ray.actor.make_actor(function_or_class, num_cpus, num_gpus,
-                                        memory, object_store_memory, resources,
-                                        accelerator_type, max_restarts,
-                                        max_task_retries, runtime_env,
-                                        concurrency_groups, scheduling_policy)
+            return ray.actor.make_actor(
+                function_or_class, num_cpus, num_gpus, memory,
+                object_store_memory, resources, accelerator_type, max_restarts,
+                max_task_retries, runtime_env, concurrency_groups,
+                scheduling_strategy)
 
         raise TypeError("The @ray.remote decorator must be applied to "
                         "either a function or to a class.")
@@ -2190,8 +2190,11 @@ def remote(*args, **kwargs):
         retry_exceptions (bool): Only for *remote functions*. This specifies
             whether application-level errors should be retried
             up to max_retries times.
-        scheduling_policy (str): Policy about how to schedule
-            a remote function or actor.
+        scheduling_strategy (str): Strategy about how to schedule
+            a remote function or actor. Possible values are
+            None for default scheduling strategy,
+            `"SPREAD"` for spread scheduling the task or actor
+            on a best effort basis.
     """
     worker = global_worker
 
@@ -2216,7 +2219,7 @@ def remote(*args, **kwargs):
         "retry_exceptions",
         "placement_group",
         "concurrency_groups",
-        "scheduling_policy",
+        "scheduling_strategy",
     ]
     error_string = ("The @ray.remote decorator must be applied either "
                     "with no arguments and no parentheses, for example "
@@ -2252,7 +2255,7 @@ def remote(*args, **kwargs):
     placement_group = kwargs.get("placement_group", "default")
     retry_exceptions = kwargs.get("retry_exceptions")
     concurrency_groups = kwargs.get("concurrency_groups")
-    scheduling_policy = kwargs.get("scheduling_policy")
+    scheduling_strategy = kwargs.get("scheduling_strategy")
 
     return make_decorator(
         num_returns=num_returns,
@@ -2271,4 +2274,4 @@ def remote(*args, **kwargs):
         worker=worker,
         retry_exceptions=retry_exceptions,
         concurrency_groups=concurrency_groups or [],
-        scheduling_policy=scheduling_policy)
+        scheduling_strategy=scheduling_strategy)

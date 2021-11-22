@@ -18,7 +18,7 @@ from ray.includes.common cimport (
     CRayObject,
     CAddress,
     CConcurrencyGroup,
-    CTaskSchedulingPolicy,
+    CTaskSchedulingStrategy,
 )
 from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
@@ -141,8 +141,9 @@ cdef class CoreWorker:
         self, const c_vector[CFunctionDescriptor] &c_function_descriptors)
     cdef initialize_eventloops_for_actor_concurrency_group(
         self, const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups)
-    cdef string_to_c_task_scheduling_policy(
-        self, scheduling_policy, CTaskSchedulingPolicy *c_scheduling_policy)
+    cdef string_to_c_task_scheduling_strategy(
+        self, scheduling_strategy_str,
+        CTaskSchedulingStrategy *c_scheduling_strategy)
 
 cdef class FunctionDescriptor:
     cdef:

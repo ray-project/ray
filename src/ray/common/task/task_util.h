@@ -138,10 +138,10 @@ class TaskSpecBuilder {
   }
 
   TaskSpecBuilder &SetNormalTaskSpec(int max_retries, bool retry_exceptions,
-                                     rpc::TaskSchedulingPolicy scheduling_policy) {
+                                     rpc::TaskSchedulingStrategy scheduling_strategy) {
     message_->set_max_retries(max_retries);
     message_->set_retry_exceptions(retry_exceptions);
-    message_->set_scheduling_policy(scheduling_policy);
+    message_->set_scheduling_strategy(scheduling_strategy);
     return *this;
   }
 
@@ -184,8 +184,8 @@ class TaskSpecBuilder {
       std::string ray_namespace = "", bool is_asyncio = false,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       const std::string &extension_data = "",
-      rpc::TaskSchedulingPolicy scheduling_policy =
-          rpc::TaskSchedulingPolicy::TASK_SCHEDULING_POLICY_DEFAULT) {
+      rpc::TaskSchedulingStrategy scheduling_strategy =
+          rpc::TaskSchedulingStrategy::TASK_SCHEDULING_STRATEGY_DEFAULT) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
@@ -211,7 +211,7 @@ class TaskSpecBuilder {
         *fd = item->GetMessage();
       }
     }
-    message_->set_scheduling_policy(scheduling_policy);
+    message_->set_scheduling_strategy(scheduling_strategy);
     return *this;
   }
 

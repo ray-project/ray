@@ -23,7 +23,7 @@ namespace internal {
 
 using ray::core::CoreWorkerProcess;
 using ray::core::TaskOptions;
-using ray::core::TaskSchedulingPolicy;
+using ray::core::TaskSchedulingStrategy;
 
 RayFunction BuildRayFunction(InvocationSpec &invocation) {
   auto function_descriptor = FunctionDescriptorBuilder::BuildCpp(
@@ -53,10 +53,10 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
         invocation.actor_id, BuildRayFunction(invocation), invocation.args, options);
   } else {
     BundleID bundle_id = GetBundleID(call_options);
-    return_refs =
-        core_worker.SubmitTask(BuildRayFunction(invocation), invocation.args, options, 1,
-                               false, std::move(bundle_id), true,
-                               TaskSchedulingPolicy::TASK_SCHEDULING_POLICY_DEFAULT, "");
+    return_refs = core_worker.SubmitTask(
+        BuildRayFunction(invocation), invocation.args, options, 1, false,
+        std::move(bundle_id), true,
+        TaskSchedulingStrategy::TASK_SCHEDULING_STRATEGY_DEFAULT, "");
   }
   std::vector<ObjectID> return_ids;
   for (const auto &ref : return_refs) {

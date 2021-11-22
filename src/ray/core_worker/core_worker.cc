@@ -1719,7 +1719,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
     const TaskOptions &task_options, int max_retries, bool retry_exceptions,
     BundleID placement_options, bool placement_group_capture_child_tasks,
-    TaskSchedulingPolicy scheduling_policy, const std::string &debugger_breakpoint) {
+    TaskSchedulingStrategy scheduling_strategy, const std::string &debugger_breakpoint) {
   TaskSpecBuilder builder;
   const auto next_task_index = worker_context_.GetNextTaskIndex();
   const auto task_id =
@@ -1740,7 +1740,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       constrained_resources, required_resources, placement_options,
                       placement_group_capture_child_tasks, debugger_breakpoint, depth,
                       task_options.serialized_runtime_env, task_options.runtime_env_uris);
-  builder.SetNormalTaskSpec(max_retries, retry_exceptions, scheduling_policy);
+  builder.SetNormalTaskSpec(max_retries, retry_exceptions, scheduling_strategy);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
@@ -1817,7 +1817,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       actor_creation_options.max_concurrency, actor_creation_options.is_detached,
       actor_name, ray_namespace, actor_creation_options.is_asyncio,
       actor_creation_options.concurrency_groups, extension_data,
-      actor_creation_options.scheduling_policy);
+      actor_creation_options.scheduling_strategy);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.

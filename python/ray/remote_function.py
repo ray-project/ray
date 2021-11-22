@@ -70,14 +70,15 @@ class RemoteFunction:
             export the remote function again. It is imperfect in the sense that
             the actor class definition could be exported multiple times by
             different workers.
-        _scheduling_policy: Policy about how to schedule this remote function.
+        _scheduling_strategy: Strategy about how to schedule
+            this remote function.
     """
 
     def __init__(self, language, function, function_descriptor, num_cpus,
                  num_gpus, memory, object_store_memory, resources,
                  accelerator_type, num_returns, max_calls, max_retries,
                  retry_exceptions, runtime_env, placement_group,
-                 scheduling_policy):
+                 scheduling_strategy):
         if inspect.iscoroutinefunction(function):
             raise ValueError("'async def' should not be used for remote "
                              "tasks. You can wrap the async function with "
@@ -116,7 +117,7 @@ class RemoteFunction:
                                   None)
         self._function_signature = ray._private.signature.extract_signature(
             self._function)
-        self._scheduling_policy = scheduling_policy
+        self._scheduling_strategy = scheduling_strategy
 
         self._last_export_session_and_job = None
         self._uuid = uuid.uuid4()
@@ -150,7 +151,7 @@ class RemoteFunction:
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
                 name="",
-                scheduling_policy=None):
+                scheduling_strategy=None):
         """Configures and overrides the task invocation parameters.
 
         The arguments are the same as those that can be passed to
@@ -200,7 +201,7 @@ class RemoteFunction:
                         placement_group_capture_child_tasks),
                     runtime_env=new_runtime_env,
                     name=name,
-                    scheduling_policy=scheduling_policy)
+                    scheduling_strategy=scheduling_strategy)
 
         return FuncWrapper()
 
@@ -222,7 +223,7 @@ class RemoteFunction:
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
                 name="",
-                scheduling_policy=None):
+                scheduling_strategy=None):
         """Submit the remote function for execution."""
 
         if client_mode_should_convert(auto_init=True):
@@ -245,7 +246,7 @@ class RemoteFunction:
                     placement_group_capture_child_tasks),
                 runtime_env=runtime_env,
                 name=name,
-                scheduling_policy=scheduling_policy)
+                scheduling_strategy=scheduling_strategy)
 
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -288,8 +289,8 @@ class RemoteFunction:
             max_retries = self._max_retries
         if retry_exceptions is None:
             retry_exceptions = self._retry_exceptions
-        if scheduling_policy is None:
-            scheduling_policy = self._scheduling_policy
+        if scheduling_strategy is None:
+            scheduling_strategy = self._scheduling_strategy
 
         resources = ray._private.utils.resources_from_resource_arguments(
             self._num_cpus, self._num_gpus, self._memory,
@@ -338,7 +339,7 @@ class RemoteFunction:
                 self._language, self._function_descriptor, list_args, name,
                 num_returns, resources, max_retries, retry_exceptions,
                 placement_group.id, placement_group_bundle_index,
-                placement_group_capture_child_tasks, scheduling_policy,
+                placement_group_capture_child_tasks, scheduling_strategy,
                 worker.debugger_breakpoint, parsed_runtime_env.serialize(),
                 parsed_runtime_env.get_uris())
             # Reset worker's debug context from the last "remote" command

@@ -286,6 +286,7 @@ class ActorClassMetadata:
         accelerator_type: The specified type of accelerator required for the
             node on which this actor runs.
         runtime_env: The runtime environment for this actor.
+        scheduling_strategy: Strategy about how to schedule this actor.
         last_export_session_and_job: A pair of the last exported session
             and job to help us to know whether this function was exported.
             This is an imperfect mechanism used to determine if we need to
@@ -299,7 +300,7 @@ class ActorClassMetadata:
                  actor_creation_function_descriptor, class_id, max_restarts,
                  max_task_retries, num_cpus, num_gpus, memory,
                  object_store_memory, resources, accelerator_type, runtime_env,
-                 concurrency_groups, scheduling_policy):
+                 concurrency_groups, scheduling_strategy):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \
@@ -317,7 +318,7 @@ class ActorClassMetadata:
         self.accelerator_type = accelerator_type
         self.runtime_env = runtime_env
         self.concurrency_groups = concurrency_groups
-        self.scheduling_policy = scheduling_policy
+        self.scheduling_strategy = scheduling_strategy
         self.last_export_session_and_job = None
         self.method_meta = ActorClassMethodMetadata.create(
             modified_class, actor_creation_function_descriptor)
@@ -377,7 +378,7 @@ class ActorClass:
                                  max_task_retries, num_cpus, num_gpus, memory,
                                  object_store_memory, resources,
                                  accelerator_type, runtime_env,
-                                 concurrency_groups, scheduling_policy):
+                                 concurrency_groups, scheduling_strategy):
         for attribute in [
                 "remote",
                 "_remote",
@@ -415,7 +416,7 @@ class ActorClass:
             actor_creation_function_descriptor, class_id, max_restarts,
             max_task_retries, num_cpus, num_gpus, memory, object_store_memory,
             resources, accelerator_type, new_runtime_env, concurrency_groups,
-            scheduling_policy)
+            scheduling_strategy)
 
         return self
 
@@ -472,7 +473,7 @@ class ActorClass:
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
-                scheduling_policy=None):
+                scheduling_strategy=None):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -526,7 +527,7 @@ class ActorClass:
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
                     runtime_env=new_runtime_env,
-                    scheduling_policy=scheduling_policy)
+                    scheduling_strategy=scheduling_strategy)
 
         return ActorOptionWrapper()
 
@@ -550,7 +551,7 @@ class ActorClass:
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
-                scheduling_policy=None):
+                scheduling_strategy=None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -642,7 +643,7 @@ class ActorClass:
                 placement_group_capture_child_tasks=(
                     placement_group_capture_child_tasks),
                 runtime_env=runtime_env,
-                scheduling_policy=scheduling_policy)
+                scheduling_strategy=scheduling_strategy)
 
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -804,7 +805,8 @@ class ActorClass:
             serialized_runtime_env=parsed_runtime_env.serialize(),
             runtime_env_uris=parsed_runtime_env.get_uris(),
             concurrency_groups_dict=concurrency_groups_dict or dict(),
-            scheduling_policy=scheduling_policy or meta.scheduling_policy)
+            scheduling_strategy=scheduling_strategy
+            or meta.scheduling_strategy)
 
         actor_handle = ActorHandle(
             meta.language,
@@ -1106,7 +1108,7 @@ def modify_class(cls):
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
                accelerator_type, max_restarts, max_task_retries, runtime_env,
-               concurrency_groups, scheduling_policy):
+               concurrency_groups, scheduling_strategy):
     Class = modify_class(cls)
     _inject_tracing_into_class(Class)
 
@@ -1134,7 +1136,7 @@ def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
     return ActorClass._ray_from_modified_class(
         Class, ActorClassID.from_random(), max_restarts, max_task_retries,
         num_cpus, num_gpus, memory, object_store_memory, resources,
-        accelerator_type, runtime_env, concurrency_groups, scheduling_policy)
+        accelerator_type, runtime_env, concurrency_groups, scheduling_strategy)
 
 
 def exit_actor():

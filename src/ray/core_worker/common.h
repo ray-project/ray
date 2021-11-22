@@ -26,7 +26,7 @@ namespace ray {
 namespace core {
 
 using WorkerType = rpc::WorkerType;
-using TaskSchedulingPolicy = rpc::TaskSchedulingPolicy;
+using TaskSchedulingStrategy = rpc::TaskSchedulingStrategy;
 
 // Return a string representation of the worker type.
 std::string WorkerTypeString(WorkerType type);
@@ -97,8 +97,8 @@ struct ActorCreationOptions {
       const std::string &serialized_runtime_env = "{}",
       const std::vector<std::string> &runtime_env_uris = {},
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      const TaskSchedulingPolicy scheduling_policy =
-          TaskSchedulingPolicy::TASK_SCHEDULING_POLICY_DEFAULT)
+      const TaskSchedulingStrategy scheduling_strategy =
+          TaskSchedulingStrategy::TASK_SCHEDULING_STRATEGY_DEFAULT)
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -114,7 +114,7 @@ struct ActorCreationOptions {
         serialized_runtime_env(serialized_runtime_env),
         runtime_env_uris(runtime_env_uris),
         concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()),
-        scheduling_policy(scheduling_policy){};
+        scheduling_strategy(scheduling_strategy){};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
@@ -160,7 +160,8 @@ struct ActorCreationOptions {
   /// The actor concurrency groups to indicate how this actor perform its
   /// methods concurrently.
   const std::vector<ConcurrencyGroup> concurrency_groups;
-  TaskSchedulingPolicy scheduling_policy;
+  // The strategy about how to schedule this actor.
+  TaskSchedulingStrategy scheduling_strategy;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

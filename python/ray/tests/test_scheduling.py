@@ -117,6 +117,73 @@ def test_hybrid_policy(ray_start_cluster):
         assert counter[node_id] == 10, counter
 
 
+def test_spread_scheduling_strategy(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Create a head node
+    cluster.add_node(
+        num_cpus=0, _system_config={
+            "scheduler_spread_threshold": 1,
+        })
+    for i in range(2):
+        cluster.add_node(num_cpus=8, resources={f"foo:{i}": 1})
+    cluster.wait_for_nodes()
+
+    ray.init(address=cluster.address)
+
+    @ray.remote
+    def get_node_id():
+        return ray.worker.global_worker.current_node_id
+
+    worker_node_ids = {
+        ray.get(get_node_id.options(resources={
+            f"foo:{i}": 1
+        }).remote())
+        for i in range(2)
+    }
+    # Wait for updating driver raylet's resource view.
+    time.sleep(5)
+
+    @ray.remote(scheduling_strategy="SPREAD")
+    def task1():
+        return ray.worker.global_worker.current_node_id
+
+    @ray.remote
+    def task2():
+        return ray.worker.global_worker.current_node_id
+
+    locations = {
+        ray.get(task1.remote()),
+        ray.get(task2.options(scheduling_strategy="SPREAD").remote())
+    }
+    assert locations == worker_node_ids
+
+    # Wait for updating driver raylet's resource view.
+    time.sleep(5)
+
+    @ray.remote(scheduling_strategy="SPREAD")
+    class Actor1():
+        def get_node_id(self):
+            return ray.worker.global_worker.current_node_id
+
+    @ray.remote
+    class Actor2():
+        def get_node_id(self):
+            return ray.worker.global_worker.current_node_id
+
+    actor1 = Actor1.remote()
+    actor2 = Actor2.options(scheduling_strategy="SPREAD").remote()
+    locations = {
+        ray.get(actor1.get_node_id.remote()),
+        ray.get(actor2.get_node_id.remote())
+    }
+    assert locations == worker_node_ids
+
+    with pytest.raises(TypeError):
+        ray.get(task1.options(scheduling_strategy="XXXX").remote())
+    with pytest.raises(TypeError):
+        ray.get(Actor2.options(scheduling_strategy="XXXX").remote())
+
+
 def test_legacy_spillback_distribution(ray_start_cluster):
     cluster = ray_start_cluster
     # Create a head node and wait until it is up.
