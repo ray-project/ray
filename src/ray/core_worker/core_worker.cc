@@ -1864,6 +1864,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       task_options.serialized_runtime_env);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions);
   TaskSpecification task_spec = builder.Build();
+  RAY_LOG(DEBUG) << "Submit normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
     returned_refs = ExecuteTaskLocalMode(task_spec);
@@ -1948,6 +1949,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
+  RAY_LOG(DEBUG) << "Submit actor creation task " << task_spec.DebugString();
   if (options_.is_local_mode) {
     // TODO(suquark): Should we consider namespace in local mode? Currently
     // it looks like two actors with two different namespaces become the
@@ -2125,6 +2127,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
 
   // Submit task.
   TaskSpecification task_spec = builder.Build();
+  RAY_LOG(DEBUG) << "Submit actor task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
     returned_refs = ExecuteTaskLocalMode(task_spec, actor_id);

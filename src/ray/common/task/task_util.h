@@ -17,7 +17,6 @@
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/util/logging.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace ray {
@@ -88,11 +87,7 @@ class TaskSpecBuilder {
   TaskSpecBuilder() : message_(std::make_shared<rpc::TaskSpec>()) {}
 
   /// Build the `TaskSpecification` object.
-  TaskSpecification Build() {
-    auto task_spec = TaskSpecification(message_);
-    RAY_LOG(DEBUG) << "Build task " << task_spec.DebugString();
-    return task_spec;
-  }
+  TaskSpecification Build() { return TaskSpecification(message_); }
 
   /// Get a reference to the internal protobuf message object.
   const rpc::TaskSpec &GetMessage() const { return *message_; }
