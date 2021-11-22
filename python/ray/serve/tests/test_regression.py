@@ -4,7 +4,6 @@ import numpy as np
 import requests
 import pytest
 from fastapi import FastAPI
-
 import ray
 from ray.exceptions import GetTimeoutError
 from ray import serve
@@ -163,6 +162,51 @@ def test_handle_cache_out_of_scope(serve_instance):
     [sender_where_handle_goes_out_of_scope() for _ in range(30)]
     assert len(handle_cache) == initial_num_cached + 1
 
+def test_out_of_order_chaining(serve_instance):
+    # https://discuss.ray.io/t/concurrent-queries-blocking-following-queries/3949
+
+    @ray.remote(num_cpus=0)
+    class Collector:
+        def __init__(self):
+            self.lst = []
+        def append(self, msg):
+            self.lst.append(msg)
+        def get(self):
+            return self.lst
+    collector = Collector.remote()
+
+    @serve.deployment
+    async def composed_model(_id: int):
+        first_func_h = first_func.get_handle()
+        second_func_h = second_func.get_handle()
+        first_res_h = first_func_h.remote(_id=_id)
+        second_func_h.remote(_id=first_res_h)
+
+    @serve.deployment
+    async def first_func(_id):
+        if _id == 0:
+            await asyncio.sleep(1000)
+        print(f'First output: {_id}')
+        collector.append.remote(f"first-{_id}")
+        return _id
+
+    @serve.deployment
+    async def second_func(_id):
+        print(f'Second output: {_id}')
+        collector.append.remote(f"second-{_id}")
+        return _id
+
+    client = serve.start(detached=True)
+
+    composed_model.deploy()
+    first_func.deploy()
+    second_func.deploy()
+
+    main_p = composed_model.get_handle()
+    main_p.remote(_id=0)
+    ray.get(main_p.remote(_id=1))
+
+    assert ray.get(collector.get.remote()) == ["first-1", "second-1"]
 
 if __name__ == "__main__":
     import sys
