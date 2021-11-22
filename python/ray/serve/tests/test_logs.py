@@ -78,3 +78,7 @@ def test_deployment_init_error_logging(serve_instance, capsys):
 
     assert "Exception in deployment 'D'" in captured.err
     assert "ZeroDivisionError" in captured.err
+
+if __name__ == "__main__":
+    import sys
+    sys.exit(pytest.main(["-v", "-s", __file__]))
