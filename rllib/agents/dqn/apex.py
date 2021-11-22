@@ -19,7 +19,7 @@ from typing import Tuple
 import ray
 from ray.actor import ActorHandle
 from ray.rllib.agents.dqn.dqn import calculate_rr_weights, \
-    DEFAULT_CONFIG as DQN_CONFIG, DQNTrainer
+    DEFAULT_CONFIG as DQN_DEFAULT_CONFIG, DQNTrainer
 from ray.rllib.agents.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (STEPS_TRAINED_COUNTER,
@@ -43,10 +43,11 @@ from ray.util.iter import LocalIterator
 # yapf: disable
 # __sphinx_doc_begin__
 APEX_DEFAULT_CONFIG = merge_dicts(
-    DQN_CONFIG,  # see also the options in dqn.py, which are also supported
+    # See also the options in dqn.py, which are also supported.
+    DQN_DEFAULT_CONFIG,
     {
         "optimizer": merge_dicts(
-            DQN_CONFIG["optimizer"], {
+            DQN_DEFAULT_CONFIG["optimizer"], {
                 "max_weight_sync_delay": 400,
                 "num_replay_buffer_shards": 4,
                 "debug": False

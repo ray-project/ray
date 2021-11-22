@@ -15,8 +15,9 @@ from typing import List, Optional, Type
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.dqn.simple_q import SimpleQTrainer, \
-    DEFAULT_CONFIG as SIMPLEQ_DEFAULT_CONFIG
+    DEFAULT_CONFIG as SIMPLEQ_DEFAULT_CONFIG, execution_plan, validate_config
 from ray.rllib.agents.trainer import Trainer
+from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -137,61 +138,12 @@ class DQNTrainer(SimpleQTrainer):
         else:
             return DQNTFPolicy
 
-    @override(Trainer)
-    def validate_config(self, config: TrainerConfigDict) -> None:
-        """Checks and updates the config based on settings.
-
-        Rewrites rollout_fragment_length to take into account n_step
-        truncation.
-        """
-        # Call spuer's validation method first.
-        super().validate_config(config)
-
-        if config["exploration_config"]["type"] == "ParameterNoise":
-            if config["batch_mode"] != "complete_episodes":
-                logger.warning(
-                    "ParameterNoise Exploration requires `batch_mode` to be "
-                    "'complete_episodes'. Setting batch_mode="
-                    "complete_episodes.")
-                config["batch_mode"] = "complete_episodes"
-            if config.get("noisy", False):
-                raise ValueError(
-                    "ParameterNoise Exploration and `noisy` network cannot be"
-                    " used at the same time!")
-
-        # Update effective batch size to include n-step
-        adjusted_batch_size = max(config["rollout_fragment_length"],
-                                  config.get("n_step", 1))
-        config["rollout_fragment_length"] = adjusted_batch_size
-
-        if config.get("prioritized_replay"):
-            if config["multiagent"]["replay_mode"] == "lockstep":
-                raise ValueError("Prioritized replay is not supported when "
-                                 "replay_mode=lockstep.")
-            elif config["replay_sequence_length"] > 1:
-                raise ValueError("Prioritized replay is not supported when "
-                                 "replay_sequence_length > 1.")
-        else:
-            if config.get("worker_side_prioritization"):
-                raise ValueError(
-                    "Worker side prioritization is not supported when "
-                    "prioritized_replay=False.")
-
-        # Multi-agent mode and multi-GPU optimizer.
-        if config["multiagent"]["policies"] and \
-                not config["simple_optimizer"]:
-            logger.info(
-                "In multi-agent mode, policies will be optimized sequentially"
-                " by the multi-GPU optimizer. Consider setting "
-                "simple_optimizer=True if this doesn't work for you.")
-
     @staticmethod
     @override(SimpleQTrainer)
     def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
                        **kwargs) -> LocalIterator[dict]:
         assert "local_replay_buffer" in kwargs, (
-            "GenericOffPolicyTrainer execution plan requires a "
-            "local replay buffer.")
+            "DQN's execution plan requires a local replay buffer.")
 
         # Assign to Trainer, so we can store the MultiAgentReplayBuffer's
         # data when we save checkpoints.
@@ -266,3 +218,18 @@ class DQNTrainer(SimpleQTrainer):
             round_robin_weights=calculate_rr_weights(config))
 
         return StandardMetricsReporting(train_op, workers, config)
+
+
+# TODO: Deprecate this in favor of using SimpleQ as base off-policy trainer.
+# Build a generic off-policy trainer. Other trainers (such as DDPGTrainer)
+# may build on top of it.
+GenericOffPolicyTrainer = build_trainer(
+    name="GenericOffPolicyTrainer",
+    # No Policy preference.
+    default_policy=None,
+    get_policy_class=None,
+    # Use SimpleQ's config and exec. plan as base for
+    # all other OffPolicy algos.
+    default_config=DEFAULT_CONFIG,
+    validate_config=validate_config,
+    execution_plan=execution_plan)
