@@ -13,6 +13,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.train import Trainer, CheckpointStrategy
 from ray.train.backend import BackendConfig, Backend, \
     BackendExecutor
+from ray.train.constants import TRAIN_ENABLE_WORKER_SPREAD_ENV
 from ray.train.torch import TorchConfig
 from ray.train.tensorflow import TensorflowConfig
 from ray.train.horovod import HorovodConfig
@@ -149,6 +150,28 @@ def test_start_shutdown(ray_start_2_cpus, num_workers):
     trainer.shutdown()
     time.sleep(1)
     assert ray.available_resources()["CPU"] == 2
+
+
+def test_env_var(ray_start_2_cpus):
+    """Tests if Train env vars are propagated to the BackendExecutor."""
+    config = TestConfig()
+
+    os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV] = "1"
+
+    class EnvBackendExecutor(BackendExecutor):
+        def __init__(self, *args, **kwargs):
+            assert TRAIN_ENABLE_WORKER_SPREAD_ENV in os.environ and \
+                   os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV] == "1"
+            super().__init__(*args, **kwargs)
+
+    with patch.object(ray.train.trainer, "BackendExecutor",
+                      EnvBackendExecutor):
+        trainer = Trainer(config, num_workers=1)
+        trainer.start()
+        trainer.run(lambda: 1)
+        trainer.shutdown()
+
+    del os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV]
 
 
 def test_run(ray_start_2_cpus):
