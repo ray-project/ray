@@ -8,6 +8,8 @@ from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_STATUS,
                                  TAG_RAY_NODE_KIND, TAG_RAY_NODE_NAME,
                                  TAG_RAY_USER_NODE_TYPE, STATUS_UNINITIALIZED,
                                  NODE_KIND_WORKER)
+from ray.autoscaler._private.fake_multi_node.node_provider import \
+    FakeMultiNodeProvider
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.util import hash_launch_conf
 
@@ -64,8 +66,13 @@ class NodeLauncher(threading.Thread):
             node_tags[TAG_RAY_USER_NODE_TYPE] = node_type
             node_config.update(launch_config)
         launch_start_time = time.time()
-        self.provider.create_node_with_resources(node_config, node_tags, count,
-                                                 resources)
+        # TODO (Dmitri) Not the best style, but avoids unexpected behavior in
+        # existing NodeProvider implementations.
+        if isinstance(self.provider, FakeMultiNodeProvider):
+            self.provider.create_node_with_resources(node_config, node_tags,
+                                                     count, resources)
+        else:
+            self.provider.create_node(node_config, node_tags, count)
         launch_time = time.time() - launch_start_time
         for _ in range(count):
             # Note: when launching multiple nodes we observe the time it
