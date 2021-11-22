@@ -73,6 +73,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/api/version")
     async def get_version(self, req: Request) -> Response:
+        # NOTE(edoakes): CURRENT_VERSION should be bumped and checked on the
+        # client when we have backwards-incompatible changes.
         resp = VersionResponse(
             version=CURRENT_VERSION,
             ray_version=ray.__version__,
