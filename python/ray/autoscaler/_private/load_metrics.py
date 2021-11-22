@@ -1,12 +1,13 @@
-from collections import namedtuple, Counter
+from collections import Counter
+from dataclasses import dataclass
 from functools import reduce
 import logging
+from numbers import Number
 import time
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import numpy as np
 import ray.ray_constants
-import ray._private.services as services
 from ray.autoscaler._private.constants import MEMORY_RESOURCE_UNIT_BYTES,\
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
 from ray._private.gcs_utils import PlacementGroupTableData
@@ -16,10 +17,23 @@ from ray.core.generated.common_pb2 import PlacementStrategy
 
 logger = logging.getLogger(__name__)
 
-LoadMetricsSummary = namedtuple("LoadMetricsSummary", [
-    "head_ip", "usage", "resource_demand", "pg_demand", "request_demand",
-    "node_types"
-])
+# A Dict and the count of how many times it occurred.
+# Refer to freq_of_dicts() below.
+DictCount = Tuple[Dict, Number]
+
+
+@dataclass
+class LoadMetricsSummary:
+    # Map of resource name (e.g. "memory") to pair of (Used, Available) numbers
+    usage: Dict[str, Tuple[Number, Number]]
+    # Counts of demand bundles from task/actor demand.
+    # e.g. [({"CPU": 1}, 5), ({"GPU":1}, 2)]
+    resource_demand: List[DictCount]
+    # Counts of pending placement groups
+    pg_demand: List[DictCount]
+    # Counts of demand bundles requested by autoscaler.sdk.request_resources
+    request_demand: List[DictCount]
+    node_types: List[DictCount]
 
 
 def add_resources(dict1: Dict[str, float],
@@ -37,7 +51,7 @@ def add_resources(dict1: Dict[str, float],
 
 def freq_of_dicts(dicts: List[Dict],
                   serializer=lambda d: frozenset(d.items()),
-                  deserializer=dict):
+                  deserializer=dict) -> DictCount:
     """Count a list of dictionaries (or unhashable types).
 
     This is somewhat annoying because mutable data structures aren't hashable,
@@ -45,7 +59,7 @@ def freq_of_dicts(dicts: List[Dict],
 
     Args:
         dicts (List[D]): A list of dictionaries to be counted.
-        serializer (D -> S): A custom serailization function. The output type S
+        serializer (D -> S): A custom serialization function. The output type S
             must be hashable. The default serializer converts a dictionary into
             a frozenset of KV pairs.
         deserializer (S -> U): A custom deserialization function. See the
@@ -71,15 +85,13 @@ class LoadMetrics:
     can be removed.
     """
 
-    def __init__(self, local_ip=None):
+    def __init__(self):
         self.last_used_time_by_ip = {}
         self.last_heartbeat_time_by_ip = {}
         self.static_resources_by_ip = {}
         self.dynamic_resources_by_ip = {}
         self.raylet_id_by_ip = {}
         self.resource_load_by_ip = {}
-        self.local_ip = services.get_node_ip_address(
-        ) if local_ip is None else local_ip
         self.waiting_bundles = []
         self.infeasible_bundles = []
         self.pending_placement_groups = []
@@ -149,7 +161,6 @@ class LoadMetrics:
             active_ips (List[str]): The node ips known to the autoscaler.
         """
         active_ips = set(active_ips)
-        active_ips.add(self.local_ip)
 
         def prune(mapping, should_log):
             unwanted_ips = set(mapping) - active_ips
@@ -307,7 +318,6 @@ class LoadMetrics:
         nodes_summary = freq_of_dicts(self.static_resources_by_ip.values())
 
         return LoadMetricsSummary(
-            head_ip=self.local_ip,
             usage=usage_dict,
             resource_demand=summarized_demand_vector,
             pg_demand=summarized_placement_groups,
