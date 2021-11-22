@@ -186,6 +186,9 @@ class PPOTrainer(Trainer):
         Raises:
             ValueError: In case something is wrong with the config.
         """
+        # Call super's validation method.
+        super().validate_config(config)
+
         if isinstance(config["entropy_coeff"], int):
             config["entropy_coeff"] = float(config["entropy_coeff"])
 
