@@ -34,6 +34,8 @@ class LoadMetricsSummary:
     # Counts of demand bundles requested by autoscaler.sdk.request_resources
     request_demand: List[DictCount]
     node_types: List[DictCount]
+    # IP of the head node.
+    head_ip: Optional[NodeIP] = None
 
 
 def add_resources(dict1: Dict[str, float],
