@@ -400,7 +400,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   } else {
     // If it's a detached actor, we need to register the runtime env it used to GC.
     runtime_env_manager_.AddURIReference(actor->GetActorID().Hex(),
-                                         request.task_spec().runtime_env_info());
+                                         request.task_spec().runtime_env());
   }
 
   // The backend storage is supposed to be reliable, so the status must be ok.

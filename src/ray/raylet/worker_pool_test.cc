@@ -85,7 +85,6 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
       reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
     } else {
       reply.set_status(rpc::AGENT_RPC_STATUS_OK);
-      reply.set_serialized_runtime_env_context("{\"dummy\":\"dummy\"}");
     }
     callback(Status::OK(), reply);
   };
@@ -468,7 +467,7 @@ static inline TaskSpecification ExampleTaskSpec(
   } else {
     message.set_type(TaskType::NORMAL_TASK);
   }
-  message.mutable_runtime_env_info()->set_serialized_runtime_env(serialized_runtime_env);
+  message.mutable_runtime_env()->set_serialized_runtime_env(serialized_runtime_env);
   return TaskSpecification(std::move(message));
 }
 

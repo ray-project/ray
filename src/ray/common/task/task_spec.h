@@ -155,7 +155,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ray::FunctionDescriptor FunctionDescriptor() const;
 
-  [[nodiscard]] rpc::RuntimeEnvInfo RuntimeEnvInfo() const;
+  [[nodiscard]] rpc::RuntimeEnv RuntimeEnv() const;
 
   std::string SerializedRuntimeEnv() const;
 
