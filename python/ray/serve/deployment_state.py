@@ -274,6 +274,8 @@ class ActorReplicaWrapper:
                 self._graceful_shutdown_timeout_s = (
                     deployment_config.graceful_shutdown_timeout_s)
             except Exception:
+                logger.exception(
+                    f"Exception in deployment '{self._deployment_name}'")
                 return ReplicaStartupStatus.FAILED, None
 
         return ReplicaStartupStatus.SUCCEEDED, version
