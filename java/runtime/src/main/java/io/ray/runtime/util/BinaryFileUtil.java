@@ -1,6 +1,7 @@
 package io.ray.runtime.util;
 
 import com.google.common.base.Preconditions;
+import io.ray.api.id.UniqueId;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -44,7 +45,8 @@ public class BinaryFileUtil {
         throw new UnsupportedOperationException("Unsupported os " + SystemUtils.OS_NAME);
       }
       /// File doesn't exist. Create a temp file and then rename it.
-      final String tempFilePath = String.format("%s/%s.tmp", destDir, fileName);
+      final String tempFilePath =
+          String.format("%s/%s.%s.tmp", destDir, fileName, UniqueId.randomId().toString());
       // Adding a temporary file here is used to fix the issue that when
       // a java worker crashes during extracting dynamic library file, next
       // java worker will use an incomplete file. The issue link is:
