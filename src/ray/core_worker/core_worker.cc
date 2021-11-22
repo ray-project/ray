@@ -1864,7 +1864,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       task_options.serialized_runtime_env);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions);
   TaskSpecification task_spec = builder.Build();
-  RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
     returned_refs = ExecuteTaskLocalMode(task_spec);
