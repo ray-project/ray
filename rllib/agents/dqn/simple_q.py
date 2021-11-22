@@ -164,3 +164,17 @@ class SimpleQTrainer(Trainer):
             [store_op, replay_op], mode="round_robin", output_indexes=[1])
 
         return StandardMetricsReporting(train_op, workers, config)
+
+
+# Build a generic off-policy trainer. Other trainers (such as DDPGTrainer)
+# may build on top of it.
+GenericOffPolicyTrainer = build_trainer(
+    name="GenericOffPolicyTrainer",
+    # No Policy preference.
+    default_policy=None,
+    get_policy_class=None,
+    # Use DQN's config and exec. plan as base for
+    # all other OffPolicy algos.
+    default_config=DEFAULT_CONFIG,
+    validate_config=validate_config,
+    execution_plan=execution_plan)
