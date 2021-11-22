@@ -75,7 +75,7 @@ cdef class BaseID:
     # here `cdef size_t` is required.
     cdef size_t hash(self)
 
-cdef class ObjectRef(BaseID):
+cdef class ObjectRef:
     cdef:
         CObjectID data
         c_string owner_addr
