@@ -207,8 +207,8 @@ def ray_deps_setup():
     # This is how diamond dependencies are prevented.
     auto_http_archive(
         name = "com_google_absl",
-        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20210324.2.tar.gz",
-        sha256 = "59b862f50e710277f8ede96f083a5bb8d7c9595376146838b9580be90374ee1f",
+        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20211102.0.tar.gz",
+        sha256 = "dcf71b9cba8dc0ca9940c4b316a0c796be8fab42b070bb6b7cab62b48f0e66c4",
     )
 
     # OpenCensus depends on jupp0r/prometheus-cpp

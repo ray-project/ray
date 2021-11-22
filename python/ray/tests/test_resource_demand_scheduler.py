@@ -1,5 +1,7 @@
 import pytest
 from datetime import datetime
+from dataclasses import asdict
+import json
 import time
 import yaml
 import tempfile
@@ -13,11 +15,10 @@ import ray.ray_constants
 from ray.autoscaler._private.util import prepare_config, format_info_string
 from ray.tests.test_autoscaler import SMALL_CLUSTER, MOCK_DEFAULT_CONFIG, \
     MULTI_WORKER_CLUSTER, TYPES_A, MockProvider, MockProcessRunner, \
-    MockNodeInfoStub, mock_raylet_id, fill_in_raylet_ids
+    MockNodeInfoStub, mock_raylet_id, fill_in_raylet_ids, MockAutoscaler
 from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
                                                _clear_provider_cache)
-from ray.autoscaler._private.autoscaler import StandardAutoscaler, \
-    AutoscalerSummary
+from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.load_metrics import LoadMetrics, \
     LoadMetricsSummary
 from ray.autoscaler._private.commands import get_or_create_head_node
@@ -1282,7 +1283,7 @@ class LoadMetricsTest(unittest.TestCase):
         assert lm.get_pending_placement_groups() == pending_placement_groups
 
     def testSummary(self):
-        lm = LoadMetrics(local_ip="1.1.1.1")
+        lm = LoadMetrics()
         assert lm.summary() is not None
         pending_placement_groups = [
             PlacementGroupTableData(
@@ -1346,8 +1347,6 @@ class LoadMetricsTest(unittest.TestCase):
 
         summary = lm.summary()
 
-        assert summary.head_ip == "1.1.1.1"
-
         assert summary.usage["CPU"] == (190, 194)
         assert summary.usage["GPU"] == (15, 16)
         assert summary.usage["memory"] == (500 * 2**20, 1000 * 2**20)
@@ -1377,6 +1376,38 @@ class LoadMetricsTest(unittest.TestCase):
         # because the node:xxx.xxx.xxx.xxx resources means that no 2 nodes
         # should ever have the same set of resources.
         assert len(summary.node_types) == 3, summary.node_types
+
+        # Ensure correct dict-conversion
+        summary_dict = asdict(summary)
+        assert summary_dict["usage"]["CPU"] == (190, 194)
+        assert summary_dict["usage"]["GPU"] == (15, 16)
+        assert summary_dict["usage"]["memory"] == (500 * 2**20, 1000 * 2**20)
+        assert summary_dict["usage"]["object_store_memory"] == \
+            (1000 * 2**20, 2000 * 2**20)
+        assert summary_dict["usage"]["accelerator_type:V100"][1] == 2, \
+            "Not comparing the usage value due to floating point error."
+
+        assert ({"GPU": 2}, 11) in summary_dict["resource_demand"]
+        assert ({"CPU": 16}, 1) in summary_dict["resource_demand"]
+        assert ({"CPU": 16, "GPU": 2}, 1) in summary_dict["resource_demand"]
+        assert len(summary_dict["resource_demand"]) == 3
+
+        assert ({
+            "bundles": [({
+                "GPU": 2
+            }, 2)],
+            "strategy": "PACK"
+        }, 2) in summary_dict["pg_demand"]
+        assert len(summary_dict["pg_demand"]) == 1
+
+        assert ({"GPU": 8}, 2) in summary_dict["request_demand"]
+        assert ({"CPU": 64}, 1) in summary_dict["request_demand"]
+        assert len(summary_dict["request_demand"]) == 2
+
+        assert len(summary_dict["node_types"]) == 3, summary_dict["node_types"]
+
+        # Ensure summary_dict is json-serializable
+        json.dumps(summary_dict)
 
 
 class AutoscalingTest(unittest.TestCase):
@@ -1493,8 +1524,8 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
         }, 1)
         head_ip = self.provider.non_terminated_node_ips({})[0]
-        lm = LoadMetrics(local_ip=head_ip)
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1556,6 +1587,22 @@ class AutoscalingTest(unittest.TestCase):
 
         assert summary.failed_nodes == [("172.0.0.4", "m4.4xlarge")]
 
+        # Check dict conversion
+        summary_dict = asdict(summary)
+        assert summary_dict["active_nodes"]["m4.large"] == 2
+        assert summary_dict["active_nodes"]["empty_node"] == 1
+        assert len(
+            summary_dict["active_nodes"]) == 2, summary_dict["active_nodes"]
+
+        assert summary_dict["pending_nodes"] == [("172.0.0.3", "p2.xlarge",
+                                                  STATUS_WAITING_FOR_SSH)]
+        assert summary_dict["pending_launches"] == {"m4.16xlarge": 2}
+
+        assert summary_dict["failed_nodes"] == [("172.0.0.4", "m4.4xlarge")]
+
+        # Ensure summary is json-serializable
+        json.dumps(summary_dict)
+
         # Make sure we return something (and don't throw exceptions). Let's not
         # get bogged down with a full cli test here.
         assert len(autoscaler.info_string()) > 1
@@ -1572,9 +1619,9 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
-            LoadMetrics("172.0.0.0"),
+            LoadMetrics(),
             MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
@@ -1599,9 +1646,9 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
-            LoadMetrics("172.0.0.0"),
+            LoadMetrics(),
             MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
@@ -1628,8 +1675,8 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_USER_NODE_TYPE: "m4.4xlarge"
         }, 1)
         head_ip = self.provider.non_terminated_node_ips({})[0]
-        lm = LoadMetrics(head_ip)
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1698,8 +1745,8 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        lm = LoadMetrics("172.0.0.0")
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1763,8 +1810,8 @@ class AutoscalingTest(unittest.TestCase):
         head_ip = self.provider.non_terminated_node_ips({})[0]
         self.provider.finish_starting_nodes()
         runner = MockProcessRunner()
-        lm = LoadMetrics(local_ip=head_ip)
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1803,7 +1850,7 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
         }, 1)
         runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
             MockNodeInfoStub(),
@@ -1842,9 +1889,9 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
-            LoadMetrics("172.0.0.0"),
+            LoadMetrics(),
             MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
@@ -1880,9 +1927,9 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
-            LoadMetrics("172.0.0.0"),
+            LoadMetrics(),
             MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
@@ -1926,8 +1973,8 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        lm = LoadMetrics("172.0.0.0")
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -1974,9 +2021,9 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        lm = LoadMetrics("172.0.0.0")
+        lm = LoadMetrics()
         lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 0}, {"CPU": 0}, {})
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2037,9 +2084,9 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
-            LoadMetrics("172.0.0.0"),
+            LoadMetrics(),
             MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
@@ -2118,8 +2165,8 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        lm = LoadMetrics("172.0.0.0")
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2150,9 +2197,9 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
-            LoadMetrics("172.0.0.0"),
+            LoadMetrics(),
             MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
@@ -2199,9 +2246,9 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        lm = LoadMetrics("172.0.0.0")
+        lm = LoadMetrics()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2322,8 +2369,8 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        lm = LoadMetrics("172.0.0.0")
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2438,8 +2485,8 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        lm = LoadMetrics("172.0.0.0")
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2493,7 +2540,7 @@ class AutoscalingTest(unittest.TestCase):
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
             MockNodeInfoStub(),
@@ -2543,7 +2590,6 @@ def format_pg(pg):
 
 def test_info_string():
     lm_summary = LoadMetricsSummary(
-        head_ip="0.0.0.0",
         usage={
             "CPU": (530.0, 544.0),
             "GPU": (2, 2),
@@ -2612,7 +2658,6 @@ Demands:
 
 def test_info_string_failed_node_cap():
     lm_summary = LoadMetricsSummary(
-        head_ip="0.0.0.0",
         usage={
             "CPU": (530.0, 544.0),
             "GPU": (2, 2),
