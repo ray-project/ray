@@ -13,8 +13,8 @@ except ImportError:
     from grpc.experimental import aio as aiogrpc
 
 import ray._private.gcs_utils as gcs_utils
+import ray._private.logging_utils as logging_utils
 from ray.core.generated.gcs_pb2 import ErrorTableData
-from ray.core.generated.logging_pb2 import LogBatch
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import pubsub_pb2
@@ -50,23 +50,14 @@ def construct_error_message(job_id, error_type, message, timestamp):
 
 
 class _PublisherBase:
-    def _create_log_request(self, log_batch: dict):
-        job_id = log_batch["job"]
+    def _create_log_request(self, log_json: dict):
+        job_id = log_json.get("job")
         return gcs_service_pb2.GcsPublishRequest(pub_messages=[
             pubsub_pb2.PubMessage(
                 channel_type=pubsub_pb2.RAY_LOG_CHANNEL,
                 key_id=job_id.encode() if job_id else None,
-                log_batch_message=LogBatch(
-                    ip=str(log_batch["ip"]),
-                    # Cast to support string pid like "gcs".
-                    pid=str(log_batch["pid"]),
-                    # Job ID as a hex string.
-                    job_id=job_id,
-                    is_error=bool(log_batch["is_err"]),
-                    lines=log_batch["lines"],
-                    actor_name=log_batch["actor_name"],
-                    task_name=log_batch["task_name"],
-                ))
+                log_batch_message=logging_utils.log_batch_dict_to_proto(
+                    log_json))
         ])
 
 
@@ -138,15 +129,7 @@ class _SubscriberBase:
         if len(logs) == 0:
             return None
         msg = logs.popleft()
-        return {
-            "ip": msg.log_batch_message.ip,
-            "pid": msg.log_batch_message.pid,
-            "job": msg.log_batch_message.job_id,
-            "is_err": msg.log_batch_message.is_error,
-            "lines": msg.log_batch_message.lines,
-            "actor_name": msg.log_batch_message.actor_name,
-            "task_name": msg.log_batch_message.task_name,
-        }
+        return logging_utils.log_batch_proto_to_dict(msg.log_batch_message)
 
 
 class GcsPublisher(_PublisherBase):
