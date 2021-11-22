@@ -637,7 +637,8 @@ def run(
         runner.checkpoint_file,
         trials=trials,
         default_metric=metric,
-        default_mode=mode)
+        default_mode=mode,
+        sync_config=sync_config)
 
 
 @PublicAPI
