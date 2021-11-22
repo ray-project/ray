@@ -4,7 +4,7 @@ from functools import reduce
 import logging
 from numbers import Number
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import ray.ray_constants
@@ -34,7 +34,7 @@ class LoadMetricsSummary:
     # Counts of demand bundles requested by autoscaler.sdk.request_resources
     request_demand: List[DictCount]
     node_types: List[DictCount]
-    # IP of the head node.
+    # Optionally included for backwards compatibility: IP of the head node.
     head_ip: Optional[NodeIP] = None
 
 
