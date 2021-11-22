@@ -161,7 +161,7 @@ public class ConcurrencyGroupTest extends BaseTest {
     Assert.assertTrue(ret8.get());
   }
 
-  class ConcurrencyActor2 {
+  private static class ConcurrencyActor2 {
 
     public String f1() throws InterruptedException {
       TimeUnit.MINUTES.sleep(100);
