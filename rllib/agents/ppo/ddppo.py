@@ -23,6 +23,7 @@ import time
 import ray
 from ray.rllib.agents.ppo.ppo import DEFAULT_CONFIG as PPO_DEFAULT_CONFIG, \
     PPOTrainer
+from ray.rllib.agents.trainer import Trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -43,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 # Adds the following updates to the `PPOTrainer` config in
 # rllib/agents/ppo/ppo.py.
-DEFAULT_CONFIG = PPOTrainer.merge_trainer_configs(
+DEFAULT_CONFIG = Trainer.merge_trainer_configs(
     PPO_DEFAULT_CONFIG,
     {
         # During the sampling phase, each rollout worker will collect a batch
