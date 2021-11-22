@@ -14,6 +14,7 @@ from ray.train.session import TrainingResult
 from ray.train.session import init_session, get_session, shutdown_session
 from ray.train.utils import RayDataset, check_for_failure, Singleton
 from ray.train.worker_group import WorkerGroup
+from ray.util.annotations import DeveloperAPI
 from ray.util.placement_group import get_current_placement_group, \
     remove_placement_group
 
@@ -24,6 +25,7 @@ EncodedData = TypeVar("EncodedData")
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 class BackendConfig:
     """Parent class for configurations of training backend."""
 
@@ -32,6 +34,7 @@ class BackendConfig:
         raise NotImplementedError
 
 
+@DeveloperAPI
 class Backend(metaclass=Singleton):
     """Singleton for distributed communication backend.
 

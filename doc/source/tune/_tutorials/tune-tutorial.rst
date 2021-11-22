@@ -62,7 +62,7 @@ Let's run 1 trial by calling :ref:`tune.run <tune-run-ref>` and :ref:`randomly s
    :start-after: __eval_func_begin__
    :end-before: __eval_func_end__
 
-``tune.run`` returns an :ref:`Analysis object <tune-analysis-docs>`. You can use this to plot the performance of this trial.
+``tune.run`` returns an :ref:`ExperimentAnalysis object <tune-analysis-docs>`. You can use this to plot the performance of this trial.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python
@@ -123,7 +123,7 @@ Note that each library has a specific way of defining the search space.
 Evaluate your model
 ~~~~~~~~~~~~~~~~~~~
 
-You can evaluate best trained model using the :ref:`Analysis object <tune-analysis-docs>` to retrieve the best model:
+You can evaluate best trained model using the :ref:`ExperimentAnalysis object <tune-analysis-docs>` to retrieve the best model:
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
    :language: python

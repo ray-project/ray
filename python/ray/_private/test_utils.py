@@ -513,8 +513,12 @@ def init_error_pubsub():
     return s
 
 
-def get_error_message(subscriber, num, error_type=None, timeout=20):
-    """Get errors through subscriber."""
+def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
+    """Gets errors from GCS / Redis subscriber.
+
+    Returns maximum `num` error strings within `timeout`.
+    Only returns errors of `error_type` if specified.
+    """
     deadline = time.time() + timeout
     msgs = []
     while time.time() < deadline and len(msgs) < num:
@@ -553,40 +557,65 @@ def init_log_pubsub():
     return p
 
 
-def get_log_message(pub_sub,
-                    num: int,
+def get_log_message(subscriber,
+                    num: int = 1e6,
                     timeout: float = 20,
-                    job_id: Optional[str] = None) -> List[str]:
-    """Get errors through pub/sub."""
-    start_time = time.time()
+                    job_id: Optional[str] = None,
+                    matcher=None) -> List[str]:
+    """Gets log lines through GCS / Redis subscriber.
+
+    Returns maximum `num` lines of log messages, within `timeout`.
+
+    If `job_id` or `match` is specified, only returns log lines from `job_id`
+    or when `matcher` is true.
+    """
+    deadline = time.time() + timeout
     msgs = []
-    while time.time() - start_time < timeout and len(msgs) < num:
-        msg = pub_sub.get_message()
+    while time.time() < deadline and len(msgs) < num:
+        msg = subscriber.get_message()
         if msg is None:
             time.sleep(0.01)
             continue
-        structured = json.loads(ray._private.utils.decode(msg["data"]))
-        if job_id and job_id != structured["job"]:
+        logs_data = json.loads(ray._private.utils.decode(msg["data"]))
+
+        if job_id and job_id != logs_data["job"]:
             continue
-        log_lines = structured["lines"]
-        msgs = log_lines
+        if matcher and all(not matcher(line) for line in logs_data["lines"]):
+            continue
+        msgs.extend(logs_data["lines"])
 
     return msgs
 
 
-def get_all_log_message(pub_sub, num, timeout=20):
-    """Get errors through pub/sub."""
-    start_time = time.time()
-    msgs = []
-    while time.time() - start_time < timeout and len(msgs) < num:
-        msg = pub_sub.get_message()
+def get_log_batch(subscriber,
+                  num: int,
+                  timeout: float = 20,
+                  job_id: Optional[str] = None,
+                  matcher=None) -> List[str]:
+    """Gets log batches through GCS / Redis subscriber.
+
+    Returns maximum `num` batches of logs. Each batch is a dict that includes
+    metadata such as `pid`, `job_id`, and `lines` of log messages.
+
+    If `job_id` or `match` is specified, only returns log batches from `job_id`
+    or when `matcher` is true.
+    """
+    deadline = time.time() + timeout
+    batches = []
+    while time.time() < deadline and len(batches) < num:
+        msg = subscriber.get_message()
         if msg is None:
             time.sleep(0.01)
             continue
-        log_lines = json.loads(ray._private.utils.decode(msg["data"]))["lines"]
-        msgs.extend(log_lines)
+        logs_data = json.loads(ray._private.utils.decode(msg["data"]))
 
-    return msgs
+        if job_id and job_id != logs_data["job"]:
+            continue
+        if matcher and not matcher(logs_data):
+            continue
+        batches.append(logs_data)
+
+    return batches
 
 
 def format_web_url(url):

@@ -36,6 +36,7 @@ from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
 from ray.data.impl.compute import get_compute, cache_wrapper, \
     CallableClass
+from ray.data.impl.output_buffer import BlockOutputBuffer
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
@@ -125,13 +126,18 @@ class Dataset(Generic[T]):
         fn = cache_wrapper(fn)
         context = DatasetContext.get_current()
 
-        def transform(block: Block) -> Block:
+        def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
-            builder = DelegatingArrowBlockBuilder()
+            output_buffer = BlockOutputBuffer(None,
+                                              context.target_max_block_size)
             for row in block.iter_rows():
-                builder.add(fn(row))
-            return builder.build()
+                output_buffer.add(fn(row))
+                if output_buffer.has_next():
+                    yield output_buffer.next()
+            output_buffer.finalize()
+            if output_buffer.has_next():
+                yield output_buffer.next()
 
         compute = get_compute(compute)
 
@@ -142,7 +148,7 @@ class Dataset(Generic[T]):
     def map_batches(self,
                     fn: Union[CallableClass, Callable[[BatchType], BatchType]],
                     *,
-                    batch_size: int = None,
+                    batch_size: Optional[int] = 4096,
                     compute: Optional[str] = None,
                     batch_format: str = "native",
                     **ray_remote_args) -> "Dataset[Any]":
@@ -174,8 +180,8 @@ class Dataset(Generic[T]):
         Args:
             fn: The function to apply to each record batch, or a class type
                 that can be instantiated to create such a callable.
-            batch_size: Request a specific batch size, or leave unspecified
-                to use entire blocks as batches.
+            batch_size: Request a specific batch size, or None to use entire
+                blocks as batches. Defaults to a system-chosen batch size.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, or "actors" to use an autoscaling Ray actor pool.
             batch_format: Specify "native" to use the native block format,
@@ -192,20 +198,22 @@ class Dataset(Generic[T]):
         fn = cache_wrapper(fn)
         context = DatasetContext.get_current()
 
-        def transform(block: Block) -> Block:
+        def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
+            output_buffer = BlockOutputBuffer(None,
+                                              context.target_max_block_size)
             block = BlockAccessor.for_block(block)
             total_rows = block.num_rows()
             max_batch_size = batch_size
             if max_batch_size is None:
                 max_batch_size = max(total_rows, 1)
 
-            builder = DelegatingArrowBlockBuilder()
-
             for start in range(0, total_rows, max_batch_size):
                 # Build a block for each batch.
                 end = min(total_rows, start + max_batch_size)
-                view = block.slice(start, end, copy=False)
+                # Make sure to copy if slicing to avoid the Arrow serialization
+                # bug where we include the entire base view on serialization.
+                view = block.slice(start, end, copy=batch_size is not None)
                 if batch_format == "native":
                     pass
                 elif batch_format == "pandas":
@@ -227,9 +235,13 @@ class Dataset(Generic[T]):
                                      f"{applied}, which is not allowed. "
                                      "The return type must be either list, "
                                      "pandas.DataFrame, or pyarrow.Table")
-                builder.add_block(applied)
+                output_buffer.add_block(applied)
+                if output_buffer.has_next():
+                    yield output_buffer.next()
 
-            return builder.build()
+            output_buffer.finalize()
+            if output_buffer.has_next():
+                yield output_buffer.next()
 
         compute = get_compute(compute)
 
@@ -264,14 +276,19 @@ class Dataset(Generic[T]):
         fn = cache_wrapper(fn)
         context = DatasetContext.get_current()
 
-        def transform(block: Block) -> Block:
+        def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
+            output_buffer = BlockOutputBuffer(None,
+                                              context.target_max_block_size)
             block = BlockAccessor.for_block(block)
-            builder = DelegatingArrowBlockBuilder()
             for row in block.iter_rows():
                 for r2 in fn(row):
-                    builder.add(r2)
-            return builder.build()
+                    output_buffer.add(r2)
+                    if output_buffer.has_next():
+                        yield output_buffer.next()
+            output_buffer.finalize()
+            if output_buffer.has_next():
+                yield output_buffer.next()
 
         compute = get_compute(compute)
 
@@ -306,14 +323,14 @@ class Dataset(Generic[T]):
         fn = cache_wrapper(fn)
         context = DatasetContext.get_current()
 
-        def transform(block: Block) -> Block:
+        def transform(block: Block) -> Iterable[Block]:
             DatasetContext._set_current(context)
             block = BlockAccessor.for_block(block)
             builder = block.builder()
             for row in block.iter_rows():
                 if fn(row):
                     builder.add(row)
-            return builder.build()
+            return [builder.build()]
 
         compute = get_compute(compute)
 
@@ -1815,26 +1832,6 @@ class Dataset(Generic[T]):
             A list of iterators over record batches.
         """
 
-        def sliding_window(iterable: Iterable, n: int):
-            """Creates an iterator consisting of n-width sliding windows over
-            iterable. The sliding windows are constructed lazily such that an
-            element on the base iterator (iterable) isn't consumed until the
-            first sliding window containing that element is reached.
-
-            Args:
-                iterable: The iterable on which the sliding window will be
-                    created.
-                n: The width of the sliding window.
-
-            Returns:
-                An iterator of n-width windows over iterable.
-            """
-            iters = itertools.tee(iter(iterable), n)
-            for i in range(1, n):
-                for it in iters[i:]:
-                    next(it, None)
-            return zip(*iters)
-
         def format_batch(batch: Block, format: str) -> BatchType:
             if batch_format == "native":
                 return batch
@@ -1858,8 +1855,8 @@ class Dataset(Generic[T]):
                 yield format_batch(batcher.next_batch(), batch_format)
 
         block_window = []  # Handle empty sliding window gracefully.
-        for block_window in sliding_window(self._blocks.iter_blocks(),
-                                           prefetch_blocks + 1):
+        for block_window in _sliding_window(self._blocks.iter_blocks(),
+                                            prefetch_blocks + 1):
             block_window = list(block_window)
             ray.wait(block_window, num_returns=1, fetch_local=True)
             yield from batch_block(block_window[0])
@@ -2439,10 +2436,15 @@ class Dataset(Generic[T]):
     def __str__(self) -> str:
         return repr(self)
 
-    def _block_sizes(self) -> List[int]:
+    def _block_num_rows(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)
         return ray.get(
             [get_num_rows.remote(b) for b in self._blocks.iter_blocks()])
+
+    def _block_size_bytes(self) -> List[int]:
+        get_size_bytes = cached_remote_fn(_get_size_bytes)
+        return ray.get(
+            [get_size_bytes.remote(b) for b in self._blocks.iter_blocks()])
 
     def _meta_count(self) -> Optional[int]:
         metadata = self._blocks.get_metadata()
@@ -2469,6 +2471,11 @@ def _get_num_rows(block: Block) -> int:
     return block.num_rows()
 
 
+def _get_size_bytes(block: Block) -> int:
+    block = BlockAccessor.for_block(block)
+    return block.size_bytes()
+
+
 def _block_to_df(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_pandas()
@@ -2482,6 +2489,34 @@ def _block_to_ndarray(block: Block, column: Optional[str]):
 def _block_to_arrow(block: Block):
     block = BlockAccessor.for_block(block)
     return block.to_arrow()
+
+
+def _sliding_window(iterable: Iterable, n: int):
+    """Creates an iterator consisting of n-width sliding windows over
+    iterable. The sliding windows are constructed lazily such that an
+    element on the base iterator (iterable) isn't consumed until the
+    first sliding window containing that element is reached.
+
+    If n > len(iterable), then a single len(iterable) window is
+    returned.
+
+    Args:
+        iterable: The iterable on which the sliding window will be
+            created.
+        n: The width of the sliding window.
+
+    Returns:
+        An iterator of n-width windows over iterable.
+        If n > len(iterable), then a single len(iterable) window is
+        returned.
+    """
+    it = iter(iterable)
+    window = collections.deque(itertools.islice(it, n), maxlen=n)
+    if len(window) > 0:
+        yield tuple(window)
+    for elem in it:
+        window.append(elem)
+        yield tuple(window)
 
 
 def _split_block(

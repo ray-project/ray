@@ -113,6 +113,9 @@ extern jclass java_ray_intentional_system_exit_exception_class;
 /// RayActorCreationTaskException class
 extern jclass java_ray_actor_exception_class;
 
+/// RayTimeoutException class
+extern jclass java_ray_timeout_exception_class;
+
 /// toBytes method of RayException
 extern jmethodID java_ray_exception_to_bytes;
 
@@ -256,12 +259,16 @@ extern jmethodID java_resource_value_init;
 extern JavaVM *jvm;
 
 /// Throws a Java RayException if the status is not OK.
-#define THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, ret)               \
-  {                                                                          \
-    if (!(status).ok()) {                                                    \
-      (env)->ThrowNew(java_ray_exception_class, (status).message().c_str()); \
-      return (ret);                                                          \
-    }                                                                        \
+#define THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, ret)                         \
+  {                                                                                    \
+    if (!(status).ok()) {                                                              \
+      if (status.IsTimedOut()) {                                                       \
+        (env)->ThrowNew(java_ray_timeout_exception_class, (status).message().c_str()); \
+      } else {                                                                         \
+        (env)->ThrowNew(java_ray_exception_class, (status).message().c_str());         \
+      }                                                                                \
+      return (ret);                                                                    \
+    }                                                                                  \
   }
 
 #define RAY_CHECK_JAVA_EXCEPTION(env)                                                 \

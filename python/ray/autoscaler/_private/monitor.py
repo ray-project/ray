@@ -1,6 +1,7 @@
 """Autoscaler monitoring loop daemon."""
 
 import argparse
+from dataclasses import asdict
 import logging.handlers
 import os
 import sys
@@ -26,8 +27,6 @@ from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.constants import \
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE
-from ray.autoscaler._private.fake_multi_node.node_provider import \
-    FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_STATUS, \
     DEBUG_AUTOSCALING_ERROR, format_readonly_node_type
 
@@ -168,10 +167,7 @@ class Monitor:
         head_node_ip = redis_address.split(":")[0]
         self.redis_address = redis_address
         self.redis_password = redis_password
-        if os.environ.get("RAY_FAKE_CLUSTER"):
-            self.load_metrics = LoadMetrics(local_ip=FAKE_HEAD_NODE_ID)
-        else:
-            self.load_metrics = LoadMetrics(local_ip=head_node_ip)
+        self.load_metrics = LoadMetrics()
         self.last_avail_resources = None
         self.event_summarizer = EventSummarizer()
         self.prefix_cluster_info = prefix_cluster_info
@@ -319,7 +315,7 @@ class Monitor:
             self.update_resource_requests()
             self.update_event_summary()
             status = {
-                "load_metrics_report": self.load_metrics.summary()._asdict(),
+                "load_metrics_report": asdict(self.load_metrics.summary()),
                 "time": time.time(),
                 "monitor_pid": os.getpid()
             }
@@ -328,8 +324,7 @@ class Monitor:
             if self.autoscaler:
                 # Only used to update the load metrics for the autoscaler.
                 self.autoscaler.update()
-                status[
-                    "autoscaler_report"] = self.autoscaler.summary()._asdict()
+                status["autoscaler_report"] = asdict(self.autoscaler.summary())
 
                 for msg in self.event_summarizer.summary():
                     logger.info("{}{}".format(

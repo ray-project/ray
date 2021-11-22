@@ -444,6 +444,9 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Returns the current time in milliseconds.
   std::function<int64_t()> get_time_ms_;
 
+  /// Whether or not to enable the worker process cap.
+  const bool sched_cls_cap_enabled_;
+
   /// The initial interval before the cap on the number of worker processes is increased.
   const int64_t sched_cls_cap_interval_ms_;
 

@@ -38,7 +38,7 @@ class ActorHandle {
               const FunctionDescriptor &actor_creation_task_function_descriptor,
               const std::string &extension_data, int64_t max_task_retries,
               const std::string &name, const std::string &ray_namespace,
-              int32_t max_pending_calls);
+              int32_t max_pending_calls, bool execute_out_of_order = false);
 
   /// Constructs an ActorHandle from a serialized string.
   explicit ActorHandle(const std::string &serialized);
@@ -90,6 +90,8 @@ class ActorHandle {
   std::string GetNamespace() const;
 
   int32_t MaxPendingCalls() const { return inner_.max_pending_calls(); }
+
+  bool ExecuteOutOfOrder() const { return inner_.execute_out_of_order(); }
 
  private:
   // Protobuf-defined persistent state of the actor handle.

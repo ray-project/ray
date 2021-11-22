@@ -26,13 +26,14 @@ namespace ray {
 namespace core {
 
 void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
-    const ActorID &actor_id, int32_t max_pending_calls) {
+    const ActorID &actor_id, int32_t max_pending_calls, bool execute_out_of_order) {
   absl::MutexLock lock(&mu_);
   // No need to check whether the insert was successful, since it is possible
   // for this worker to have multiple references to the same actor.
   RAY_LOG(INFO) << "Set max pending calls to " << max_pending_calls << " for actor "
                 << actor_id;
-  client_queues_.emplace(actor_id, ClientQueue(actor_id, max_pending_calls));
+  client_queues_.emplace(actor_id,
+                         ClientQueue(actor_id, execute_out_of_order, max_pending_calls));
 }
 
 void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,

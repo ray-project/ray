@@ -161,7 +161,7 @@ def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
         "GenericOffPolicyTrainer execution plan requires a "
         "local replay buffer.")
 
-    # Assign to Trainer, so we can store the LocalReplayBuffer's
+    # Assign to Trainer, so we can store the MultiAgentReplayBuffer's
     # data when we save checkpoints.
     local_replay_buffer = kwargs["local_replay_buffer"]
 

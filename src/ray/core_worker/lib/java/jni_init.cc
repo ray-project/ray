@@ -59,6 +59,7 @@ jmethodID java_system_gc;
 
 jclass java_ray_exception_class;
 jclass java_ray_intentional_system_exit_exception_class;
+jclass java_ray_timeout_exception_class;
 
 jclass java_ray_back_pressure_exception_class;
 
@@ -213,6 +214,9 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_ray_exception_class = LoadClass(env, "io/ray/runtime/exception/RayException");
   java_ray_intentional_system_exit_exception_class =
       LoadClass(env, "io/ray/runtime/exception/RayIntentionalSystemExitException");
+
+  java_ray_timeout_exception_class =
+      LoadClass(env, "io/ray/runtime/exception/RayTimeoutException");
 
   java_ray_actor_exception_class =
       LoadClass(env, "io/ray/runtime/exception/RayActorException");
@@ -371,6 +375,7 @@ void JNI_OnUnload(JavaVM *vm, void *reserved) {
   env->DeleteGlobalRef(java_system_class);
   env->DeleteGlobalRef(java_ray_exception_class);
   env->DeleteGlobalRef(java_ray_intentional_system_exit_exception_class);
+  env->DeleteGlobalRef(java_ray_timeout_exception_class);
   env->DeleteGlobalRef(java_ray_actor_exception_class);
   env->DeleteGlobalRef(java_jni_exception_util_class);
   env->DeleteGlobalRef(java_base_id_class);
