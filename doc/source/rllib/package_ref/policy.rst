@@ -16,7 +16,7 @@ The ``Policy`` class contains functionality to compute actions for decision maki
 in an environment, as well as computing loss(es) and gradients, updating a neural
 network model as well as postprocessing a collected environment trajectory.
 One or more ``Policy`` objects sit inside a
-`RolloutWorker's <https://github.com/ray-project/ray/blob/master/rllib/evaluation/rollout_worker.py>`_
+`RolloutWorker's <https://docs.ray.io/en/master/rllib-package-ref.html#module-ray.rllib.evaluation>`_
 `policy_map <https://github.com/ray-project/ray/blob/master/rllib/policy/policy_map.py>`_ and
 are - if more than one - are selected based on a multi-agent ``policy_mapping_fn``,
 which maps agent IDs to a policy ID.
