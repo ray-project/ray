@@ -76,7 +76,7 @@ class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterf
                                 bool execute_out_of_order = false) override {
     AddActorQueueIfNotExists_(actor_id, max_pending_calls, execute_out_of_order);
   }
-  MOCK_METHOD2(AddActorQueueIfNotExists_,
+  MOCK_METHOD3(AddActorQueueIfNotExists_,
                void(const ActorID &actor_id, int32_t max_pending_calls,
                     bool execute_out_of_order));
   MOCK_METHOD3(ConnectActor, void(const ActorID &actor_id, const rpc::Address &address,
