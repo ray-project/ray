@@ -1,5 +1,6 @@
 # coding: utf-8
 import copy
+import inspect
 from collections import deque
 from functools import partial
 import logging
@@ -384,6 +385,24 @@ class RayTrialExecutor(TrialExecutor):
             kwargs["remote_checkpoint_dir"] = trial.remote_checkpoint_dir
             kwargs["sync_function_tpl"] = trial.sync_function_tpl
 
+            # Throw a meaningful error if trainable does not use the
+            # new API
+            sig = inspect.signature(trial.get_trainable_cls())
+            try:
+                sig.bind_partial(**kwargs)
+            except Exception as e:
+                raise RuntimeError(
+                    "Your trainable class does not accept a "
+                    "`remote_checkpoint_dir` or `sync_function_tpl` argument "
+                    "in its constructor, but you've passed a "
+                    "`upload_dir` to your SyncConfig. Without accepting "
+                    "these parameters and passing them to the base trainable "
+                    "constructor in the init call, cloud checkpointing is "
+                    "effectively disabled. To resolve this issue, add the "
+                    "parameters to your trainable class constructor or "
+                    "disable cloud checkpointing by setting `upload_dir=None`."
+                ) from e
+
         with self._change_working_directory(trial):
             return full_actor_class.remote(**kwargs)
 
@@ -447,8 +466,7 @@ class RayTrialExecutor(TrialExecutor):
         trial_item = self._find_item(self._running, trial)
         assert len(trial_item) < 2, trial_item
 
-    def _start_trial(self, trial, checkpoint=None, runner=None,
-                     train=True) -> bool:
+    def _start_trial(self, trial, checkpoint=None, train=True) -> bool:
         """Starts trial and restores last result if trial was paused.
 
         Args:
@@ -456,8 +474,6 @@ class RayTrialExecutor(TrialExecutor):
             checkpoint (Optional[Checkpoint]): The checkpoint to restore from.
                 If None, and no trial checkpoint exists, the trial is started
                 from the beginning.
-            runner (Trainable): The remote runner to use. This can be the
-                cached actor. If None, a new runner is created.
             train (bool): Whether or not to start training.
 
         Returns:
@@ -467,10 +483,9 @@ class RayTrialExecutor(TrialExecutor):
         """
         prior_status = trial.status
         self.set_status(trial, Trial.PENDING)
-        if runner is None:
-            runner = self._setup_remote_runner(trial)
-            if not runner:
-                return False
+        runner = self._setup_remote_runner(trial)
+        if not runner:
+            return False
         trial.set_runner(runner)
         self._notify_trainable_of_new_resources_if_needed(trial)
         self.restore(trial, checkpoint)

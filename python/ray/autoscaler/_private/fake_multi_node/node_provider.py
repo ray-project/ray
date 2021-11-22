@@ -2,6 +2,8 @@ import copy
 import json
 import logging
 import os
+import json
+from threading import RLock
 import subprocess
 import time
 from types import ModuleType
@@ -102,7 +104,7 @@ class FakeMultiNodeProvider(NodeProvider):
 
     def __init__(self, provider_config, cluster_name):
         NodeProvider.__init__(self, provider_config, cluster_name)
-
+        self.lock = RLock()
         if "RAY_FAKE_CLUSTER" not in os.environ:
             raise RuntimeError(
                 "FakeMultiNodeProvider requires ray to be started with "
@@ -271,25 +273,29 @@ class FakeMultiNodeProvider(NodeProvider):
         return FakeDockerCommandRunner(docker_config, **common_args)
 
     def non_terminated_nodes(self, tag_filters):
-        nodes = []
-        for node_id in self._nodes:
-            tags = self.node_tags(node_id)
-            ok = True
-            for k, v in tag_filters.items():
-                if tags.get(k) != v:
-                    ok = False
-            if ok:
-                nodes.append(node_id)
-        return nodes
+        with self.lock:
+            nodes = []
+            for node_id in self._nodes:
+                tags = self.node_tags(node_id)
+                ok = True
+                for k, v in tag_filters.items():
+                    if tags.get(k) != v:
+                        ok = False
+                if ok:
+                    nodes.append(node_id)
+            return nodes
 
     def is_running(self, node_id):
-        return node_id in self._nodes
+        with self.lock:
+            return node_id in self._nodes
 
     def is_terminated(self, node_id):
-        return node_id not in self._nodes
+        with self.lock:
+            return node_id not in self._nodes
 
     def node_tags(self, node_id):
-        return self._nodes[node_id]["tags"]
+        with self.lock:
+            return self._nodes[node_id]["tags"]
 
     def external_ip(self, node_id):
         return node_id
@@ -302,12 +308,13 @@ class FakeMultiNodeProvider(NodeProvider):
         self._nodes[node_id]["tags"] = tags
 
     def create_node_with_resources(self, node_config, tags, count, resources):
-        if not self.uses_docker:
-            return self._create_node_with_resources_core(
-                node_config, tags, count, resources)
-        else:
-            return self._create_node_with_resources_docker(
-                node_config, tags, count, resources)
+        with self.lock:
+            if not self.uses_docker:
+                return self._create_node_with_resources_core(
+                    node_config, tags, count, resources)
+            else:
+                return self._create_node_with_resources_docker(
+                    node_config, tags, count, resources)
 
     def _create_node_with_resources_core(self, node_config, tags, count,
                                          resources):
@@ -365,16 +372,17 @@ class FakeMultiNodeProvider(NodeProvider):
         self._update_docker_compose_config()
 
     def terminate_node(self, node_id):
-        try:
-            node = self._nodes.pop(node_id)
-        except Exception as e:
-            print("EXCEPTION", str(e), "NODES", self._nodes)
-            raise e
+        with self.lock:
+            try:
+                node = self._nodes.pop(node_id)
+            except Exception as e:
+                print("EXCEPTION", str(e), "NODES", self._nodes)
+                raise e
 
-        if not self.uses_docker:
-            self._kill_ray_processes(node["node"])
-        else:
-            self._update_docker_compose_config()
+            if not self.uses_docker:
+                self._kill_ray_processes(node["node"])
+            else:
+                self._update_docker_compose_config()
 
     def _kill_ray_processes(self, node):
         node.kill_all_processes(check_alive=False, allow_graceful=True)

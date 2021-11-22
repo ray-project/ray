@@ -81,6 +81,7 @@ CORE_NIGHTLY_TESTS = {
         "dask_on_ray_1tb_sort",
         SmokeTest("threaded_actors_stress_test"),
         "placement_group_performance_test",
+        "pg_long_running_performance_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",
@@ -94,6 +95,7 @@ CORE_NIGHTLY_TESTS = {
         "shuffle_data_loader",
         "pipelined_training_50_gb",
         "pipelined_ingestion_1500_gb_15_windows",
+        SmokeTest("datasets_ingest_train_infer"),
     ],
     "~/ray/release/nightly_tests/chaos_test.yaml": [
         "chaos_many_actors",
@@ -158,6 +160,8 @@ NIGHTLY_TESTS = {
         "aws_no_sync_down",
         "aws_ssh_sync",
         "aws_durable_upload",
+        # "aws_durable_upload_rllib_str",
+        # "aws_durable_upload_rllib_trainer",
         "gcp_k8s_durable_upload",
     ],
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [

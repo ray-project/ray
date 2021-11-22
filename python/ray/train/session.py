@@ -14,6 +14,7 @@ from ray.train.constants import (
     DETAILED_AUTOFILLED_KEYS, TIME_THIS_ITER_S, PID, TIMESTAMP, TIME_TOTAL_S,
     NODE_IP, TRAINING_ITERATION, HOSTNAME, DATE, RESULT_FETCH_TIMEOUT)
 from ray.train.utils import PropagatingThread, RayDataset
+from ray.util import PublicAPI
 
 
 class TrainingResultType(Enum):
@@ -37,6 +38,7 @@ class Session:
                  world_size: int,
                  dataset_shard: Optional[RayDataset] = None,
                  checkpoint: Optional[Dict] = None,
+                 encode_data_fn: Callable = None,
                  detailed_autofilled_metrics: bool = False):
 
         self.dataset_shard = dataset_shard
@@ -48,6 +50,15 @@ class Session:
         self.local_rank = local_rank
         self.world_size = world_size
         self.loaded_checkpoint = checkpoint
+
+        # Function to encode checkpoint dict before sending to the driver.
+        if not encode_data_fn:
+
+            def noop(x):
+                return x
+
+            encode_data_fn = noop
+        self._encode_data_fn = encode_data_fn
 
         # This lock is used to control the execution of the training thread.
         self.continue_lock = threading.Semaphore(0)
@@ -161,9 +172,9 @@ class Session:
         if self.ignore_report:
             return
 
-        kwargs = self._auto_fill_metrics(kwargs)
+        kwargs = self._encode_data_fn(self._auto_fill_metrics(kwargs))
 
-        result = TrainingResult(TrainingResultType.REPORT, kwargs.copy())
+        result = TrainingResult(TrainingResultType.REPORT, kwargs)
 
         # Add result to a thread-safe queue.
         self.result_queue.put(result, block=True)
@@ -196,7 +207,8 @@ class Session:
         if self.world_rank != 0:
             kwargs = {}
         else:
-            kwargs = self._auto_fill_checkpoint_metrics(kwargs)
+            kwargs = self._encode_data_fn(
+                self._auto_fill_checkpoint_metrics(kwargs))
 
         result = TrainingResult(TrainingResultType.CHECKPOINT, kwargs)
         # Add result to a thread-safe queue.
@@ -234,6 +246,7 @@ def shutdown_session():
     _session = None
 
 
+@PublicAPI(stability="beta")
 def get_dataset_shard(
         dataset_name: Optional[str] = None) -> Optional[RayDataset]:
     """Returns the Ray Dataset or DatasetPipeline shard for this worker.
@@ -288,6 +301,7 @@ def get_dataset_shard(
     return shard
 
 
+@PublicAPI(stability="beta")
 def report(**kwargs) -> None:
     """Reports all keyword arguments to Train as intermediate results.
 
@@ -315,6 +329,7 @@ def report(**kwargs) -> None:
     session.report(**kwargs)
 
 
+@PublicAPI(stability="beta")
 def world_rank() -> int:
     """Get the world rank of this worker.
 
@@ -339,6 +354,7 @@ def world_rank() -> int:
     return session.world_rank
 
 
+@PublicAPI(stability="beta")
 def local_rank() -> int:
     """Get the local rank of this worker (rank of the worker on its node).
 
@@ -362,6 +378,7 @@ def local_rank() -> int:
     return session.local_rank
 
 
+@PublicAPI(stability="beta")
 def load_checkpoint() -> Optional[Dict]:
     """Loads checkpoint data onto the worker.
 
@@ -392,6 +409,7 @@ def load_checkpoint() -> Optional[Dict]:
     return session.loaded_checkpoint
 
 
+@PublicAPI(stability="beta")
 def save_checkpoint(**kwargs) -> None:
     """Checkpoints all keyword arguments to Train as restorable state.
 
@@ -417,6 +435,7 @@ def save_checkpoint(**kwargs) -> None:
     session.checkpoint(**kwargs)
 
 
+@PublicAPI(stability="beta")
 def world_size() -> int:
     """Get the current world size (i.e. total number of workers) for this run.
 

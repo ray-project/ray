@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import horovod.torch as hvd_torch
 import pytest
+import torch
 
 import ray
 import ray.train as train
@@ -12,6 +13,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.train import Trainer, CheckpointStrategy
 from ray.train.backend import BackendConfig, Backend, \
     BackendExecutor
+from ray.train.constants import TRAIN_ENABLE_WORKER_SPREAD_ENV
 from ray.train.torch import TorchConfig
 from ray.train.tensorflow import TensorflowConfig
 from ray.train.horovod import HorovodConfig
@@ -148,6 +150,28 @@ def test_start_shutdown(ray_start_2_cpus, num_workers):
     trainer.shutdown()
     time.sleep(1)
     assert ray.available_resources()["CPU"] == 2
+
+
+def test_env_var(ray_start_2_cpus):
+    """Tests if Train env vars are propagated to the BackendExecutor."""
+    config = TestConfig()
+
+    os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV] = "1"
+
+    class EnvBackendExecutor(BackendExecutor):
+        def __init__(self, *args, **kwargs):
+            assert TRAIN_ENABLE_WORKER_SPREAD_ENV in os.environ and \
+                   os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV] == "1"
+            super().__init__(*args, **kwargs)
+
+    with patch.object(ray.train.trainer, "BackendExecutor",
+                      EnvBackendExecutor):
+        trainer = Trainer(config, num_workers=1)
+        trainer.start()
+        trainer.run(lambda: 1)
+        trainer.shutdown()
+
+    del os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV]
 
 
 def test_run(ray_start_2_cpus):
@@ -562,6 +586,43 @@ def test_world_rank(ray_start_2_cpus):
     assert set(results) == {0, 1}
 
 
+def test_torch_auto_unwrap(ray_start_2_cpus):
+    """Tests if underlying model from DDP is extracted when saving ckpt."""
+
+    def train_fn():
+        model = torch.nn.Linear(1, 1)
+
+        # Wrap in DDP.
+        model = train.torch.prepare_model(model)
+
+        # Save DDP wrapped model.
+        train.save_checkpoint(model=model)
+
+        # Report DDP wrapped model.
+        train.report(model=model)
+
+    num_workers = 2
+    trainer = Trainer("torch", num_workers)
+    trainer.start()
+
+    class ValidateEncodedCallback(TrainingCallback):
+        def handle_result(self, results, **info):
+            for result in results:
+                model = result["model"]
+                assert isinstance(model, torch.nn.Module) and not \
+                    isinstance(model,
+                               torch.nn.parallel.DistributedDataParallel)
+
+    trainer.run(train_fn, callbacks=[ValidateEncodedCallback()])
+
+    last_checkpoint = trainer.latest_checkpoint
+    model = last_checkpoint["model"]
+    assert isinstance(model, torch.nn.Module) and not \
+        isinstance(model, torch.nn.parallel.DistributedDataParallel)
+
+    trainer.shutdown()
+
+
 def test_horovod_simple(ray_start_2_cpus):
     def simple_fn():
         hvd_torch.init()
@@ -974,12 +1035,13 @@ def test_dataset_pipeline(ray_start_4_cpus):
     dataset = ray.data.range(num_data).repeat()
 
     def get_dataset():
-        pipeline_iterator = train.get_dataset_shard().iter_datasets()
+        pipeline_iterator = train.get_dataset_shard().iter_epochs()
         data_all_epochs = []
         for _ in range(num_epochs):
             dataset_this_epoch = next(pipeline_iterator)
             data_this_epoch = []
-            for batch in dataset_this_epoch.iter_batches():
+            for batch in dataset_this_epoch.iter_batches(
+                    batch_format="native"):
                 data_this_epoch.extend(batch)
             data_all_epochs.append(data_this_epoch)
         return data_all_epochs
@@ -999,12 +1061,13 @@ def test_dataset_pipeline_shuffle(ray_start_4_cpus):
     dataset = ray.data.range(num_data).repeat().random_shuffle_each_window()
 
     def get_dataset():
-        pipeline_iterator = train.get_dataset_shard().iter_datasets()
+        pipeline_iterator = train.get_dataset_shard().iter_epochs()
         data_all_epochs = []
         for _ in range(2):
             dataset_this_epoch = next(pipeline_iterator)
             data_this_epoch = []
-            for batch in dataset_this_epoch.iter_batches():
+            for batch in dataset_this_epoch.iter_batches(
+                    batch_format="native"):
                 data_this_epoch.extend(batch)
 
             if len(data_all_epochs) > 0:

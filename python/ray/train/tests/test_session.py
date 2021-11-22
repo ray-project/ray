@@ -154,6 +154,37 @@ def test_checkpoint():
         save_checkpoint(epoch=2)
 
 
+def test_encode_data():
+    def train_func():
+        save_checkpoint(epoch=0)
+        report(epoch=1)
+
+    def encode_checkpoint(checkpoint):
+        checkpoint.update({"encoded": True})
+        return checkpoint
+
+    def validate_encoded(result_type: TrainingResultType):
+        next = session.get_next()
+        assert next.type is result_type
+        assert next.data["encoded"] is True
+
+    init_session(
+        training_func=train_func,
+        world_rank=0,
+        local_rank=0,
+        world_size=1,
+        encode_data_fn=encode_checkpoint)
+
+    session = get_session()
+    session.start()
+    # Validate checkpoint is encoded.
+    validate_encoded(TrainingResultType.CHECKPOINT)
+    # Validate report is encoded.
+    validate_encoded(TrainingResultType.REPORT)
+    session.finish()
+    shutdown_session()
+
+
 def test_load_checkpoint_after_save():
     def train_func():
         for i in range(2):

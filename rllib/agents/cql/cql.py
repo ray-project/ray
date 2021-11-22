@@ -49,7 +49,7 @@ CQL_DEFAULT_CONFIG = merge_dicts(
         # dataset.
         "buffer_size": DEPRECATED_VALUE,
         "replay_buffer_config": {
-            "type": "LocalReplayBuffer",
+            "type": "MultiAgentReplayBuffer",
             "capacity": int(1e6),
         },
     })
