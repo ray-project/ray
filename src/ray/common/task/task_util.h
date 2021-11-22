@@ -129,10 +129,9 @@ class TaskSpecBuilder {
         placement_group_capture_child_tasks);
     message_->set_debugger_breakpoint(debugger_breakpoint);
     message_->set_depth(depth);
-    message_->mutable_runtime_env_info()->set_serialized_runtime_env(
-        serialized_runtime_env);
+    message_->mutable_runtime_env()->set_serialized_runtime_env(serialized_runtime_env);
     for (const std::string &uri : runtime_env_uris) {
-      message_->mutable_runtime_env_info()->add_uris(uri);
+      message_->mutable_runtime_env()->add_uris(uri);
     }
     message_->set_concurrency_group_name(concurrency_group_name);
     return *this;

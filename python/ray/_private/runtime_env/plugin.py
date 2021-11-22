@@ -1,22 +1,7 @@
 from abc import ABC, abstractstaticmethod
 
-from typing import Tuple
 from ray.util.annotations import DeveloperAPI
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.utils import RuntimeEnv
-
-
-# TODO(SongGuyang): This function exists in both C++ and Python.
-# We should make this logic clearly.
-def encode_plugin_uri(plugin: str, uri: str) -> str:
-    return plugin + "|" + uri
-
-
-def decode_plugin_uri(plugin_uri: str) -> Tuple[str, str]:
-    if "|" not in plugin_uri:
-        raise ValueError(
-            f"Plugin URI must be of the form 'plugin|uri', not {plugin_uri}")
-    return tuple(plugin_uri.split("|", 2))
 
 
 @DeveloperAPI
@@ -39,7 +24,7 @@ class RuntimeEnvPlugin(ABC):
         """
         raise NotImplementedError()
 
-    def create(uri: str, runtime_env: RuntimeEnv,
+    def create(uri: str, runtime_env_dict: dict,
                ctx: RuntimeEnvContext) -> float:
         """Create and install the runtime environment.
 
@@ -48,7 +33,7 @@ class RuntimeEnvPlugin(ABC):
 
         Args:
             uri(str): a URI uniquely describing this resource.
-            runtime_env(RuntimeEnv): the runtime env protobuf.
+            runtime_env_dict(dict): the entire dictionary passed in by user.
             ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
 
         Returns:
@@ -58,7 +43,7 @@ class RuntimeEnvPlugin(ABC):
         """
         return 0
 
-    def modify_context(uri: str, runtime_env: RuntimeEnv,
+    def modify_context(uri: str, runtime_env_dict: dict,
                        ctx: RuntimeEnvContext) -> None:
         """Modify context to change worker startup behavior.
 
@@ -67,7 +52,7 @@ class RuntimeEnvPlugin(ABC):
 
         Args:
             uri(str): a URI uniquely describing this resource.
-            runtime_env(RuntimeEnv): the runtime env protobuf.
+            runtime_env_dict(dict): the entire dictionary passed in by user.
             ctx(RuntimeEnvContext): auxiliary information supplied by Ray.
         """
         return
