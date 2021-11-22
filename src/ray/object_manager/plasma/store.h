@@ -62,8 +62,7 @@ class PlasmaStore {
               std::function<void()> object_store_full_callback,
               ray::AddObjectCallback add_object_callback,
               ray::DeleteObjectCallback delete_object_callback,
-              ray::ObjectCreationBlockedCallback on_object_creation_blocked_callback,
-			  ray::ObjectEvictCallback on_object_evict_callback);
+              ray::ObjectCreationBlockedCallback on_object_creation_blocked_callback);
 
   ~PlasmaStore();
 

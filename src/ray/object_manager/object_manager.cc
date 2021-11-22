@@ -27,7 +27,6 @@ namespace ray {
 ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
                                      SpillObjectsCallback spill_objects_callback,
                                      ObjectCreationBlockedCallback on_object_creation_blocked_callback,
-									 ObjectEvictCallback on_object_evict_callback,
                                      std::function<void()> object_store_full_callback,
                                      AddObjectCallback add_object_callback,
                                      DeleteObjectCallback delete_object_callback) {
@@ -39,7 +38,6 @@ ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
       std::thread(&plasma::PlasmaStoreRunner::Start, plasma::plasma_store_runner.get(),
                   spill_objects_callback,
                   on_object_creation_blocked_callback,
-				  on_object_evict_callback,
                   object_store_full_callback, add_object_callback,
                   delete_object_callback);
   // Sleep for sometime until the store is working. This can suppress some
@@ -60,7 +58,6 @@ ObjectManager::ObjectManager(
     std::function<std::string(const ObjectID &)> get_spilled_object_url,
     SpillObjectsCallback spill_objects_callback,
     ObjectCreationBlockedCallback on_object_creation_blocked_callback,
-	ObjectEvictCallback on_object_evict_callback,
     std::function<void()> object_store_full_callback,
     AddObjectCallback add_object_callback, DeleteObjectCallback delete_object_callback,
     std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object)
@@ -71,7 +68,6 @@ ObjectManager::ObjectManager(
       object_store_internal_(
           config, spill_objects_callback,
           on_object_creation_blocked_callback,
-		  on_object_evict_callback,
           object_store_full_callback,
           /*add_object_callback=*/
           [this, add_object_callback =

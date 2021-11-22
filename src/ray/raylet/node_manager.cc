@@ -238,13 +238,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
               },"");
 			}
 		  },
-          /*on_object_evict_callback=*/
-          [this](const Priority &base_priority) {
-            bool should_spill = cluster_task_manager_->EvictTasks(base_priority);
-            io_service_.post([this, should_spill](){
-              object_manager_.SetShouldSpill(should_spill);
-              },"");
-          },
           /*object_store_full_callback=*/
           [this]() {
             // Post on the node manager's event loop since this
