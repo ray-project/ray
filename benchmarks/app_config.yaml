@@ -1,4 +1,4 @@
-base_image: "anyscale/ray-ml:pinned-nightly-py37"
+base_image: "anyscale/ray-ml:nightly-py38"
 env_vars: {}
 
 python:
