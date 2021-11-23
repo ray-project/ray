@@ -59,12 +59,14 @@ struct TaskOptions {
   TaskOptions(std::string name, int num_returns,
               std::unordered_map<std::string, double> &resources,
               const std::string &concurrency_group_name = "",
-              const std::string &serialized_runtime_env = "{}")
+              const std::string &serialized_runtime_env = "{}",
+              const std::vector<std::string> &runtime_env_uris = {})
       : name(name),
         num_returns(num_returns),
         resources(resources),
         concurrency_group_name(concurrency_group_name),
-        serialized_runtime_env(serialized_runtime_env) {}
+        serialized_runtime_env(serialized_runtime_env),
+        runtime_env_uris(runtime_env_uris) {}
 
   /// The name of this task.
   std::string name;
@@ -76,6 +78,8 @@ struct TaskOptions {
   std::string concurrency_group_name;
   // Runtime Env used by this task. Propagated to child actors and tasks.
   std::string serialized_runtime_env;
+  // URIs contained in the runtime_env.
+  std::vector<std::string> runtime_env_uris;
 };
 
 /// Options for actor creation tasks.
@@ -90,6 +94,7 @@ struct ActorCreationOptions {
       BundleID placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
       bool placement_group_capture_child_tasks = true,
       const std::string &serialized_runtime_env = "{}",
+      const std::vector<std::string> &runtime_env_uris = {},
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       bool execute_out_of_order = false)
       : max_restarts(max_restarts),
@@ -105,6 +110,7 @@ struct ActorCreationOptions {
         placement_options(placement_options),
         placement_group_capture_child_tasks(placement_group_capture_child_tasks),
         serialized_runtime_env(serialized_runtime_env),
+        runtime_env_uris(runtime_env_uris),
         concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()),
         execute_out_of_order(execute_out_of_order){};
 
@@ -147,6 +153,8 @@ struct ActorCreationOptions {
   bool placement_group_capture_child_tasks = true;
   // Runtime Env used by this actor.  Propagated to child actors and tasks.
   std::string serialized_runtime_env;
+  // URIs contained in the runtime_env.
+  std::vector<std::string> runtime_env_uris;
   /// The actor concurrency groups to indicate how this actor perform its
   /// methods concurrently.
   const std::vector<ConcurrencyGroup> concurrency_groups;
