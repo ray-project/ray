@@ -65,8 +65,7 @@ int main(int argc, char *argv[]) {
     auto redis_client = std::make_shared<ray::gcs::RedisClient>(redis_client_options);
     auto status = redis_client->Connect(service);
     RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
-    auto redis_storage = std::make_shared<ray::gcs::RedisStoreClient>(
-        redis_client);
+    auto redis_storage = std::make_shared<ray::gcs::RedisStoreClient>(redis_client);
 
     // Init storage.
     auto storage = std::make_shared<ray::gcs::GcsTableStorage>(std::move(redis_storage));

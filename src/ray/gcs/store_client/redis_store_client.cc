@@ -277,9 +277,7 @@ RedisStoreClient::GenCommandsByShards(const std::shared_ptr<RedisClient> &redis_
 
 std::string RedisStoreClient::GenRedisKey(const std::string &table_name,
                                           const std::string &key) {
-
-
-  if(table_name.empty()) {
+  if (table_name.empty()) {
     return key;
   }
   return absl::StrCat(table_name, table_separator_, key);
@@ -288,19 +286,15 @@ std::string RedisStoreClient::GenRedisKey(const std::string &table_name,
 std::string RedisStoreClient::GenRedisKey(const std::string &table_name,
                                           const std::string &key,
                                           const std::string &index_key) {
-  if(table_name.empty()) {
+  if (table_name.empty()) {
     return absl::StrCat(index_key, index_table_separator_, key);
   }
-  return absl::StrCat(
-      table_name,
-      index_table_separator_,
-      index_key,
-      index_table_separator_,
-      key);
+  return absl::StrCat(table_name, index_table_separator_, index_key,
+                      index_table_separator_, key);
 }
 
 std::string RedisStoreClient::GenRedisMatchPattern(const std::string &table_name) {
-  if(table_name.empty()) {
+  if (table_name.empty()) {
     return "*";
   }
   return absl::StrCat(table_name, table_separator_, "*");
@@ -308,16 +302,16 @@ std::string RedisStoreClient::GenRedisMatchPattern(const std::string &table_name
 
 std::string RedisStoreClient::GenRedisMatchPattern(const std::string &table_name,
                                                    const std::string &index_key) {
-  if(table_name.empty()) {
+  if (table_name.empty()) {
     return absl::StrCat(index_key, index_table_separator_, "*");
   }
-  return absl::StrCat(
-      table_name, table_separator_, index_key, index_table_separator_, "*");
+  return absl::StrCat(table_name, table_separator_, index_key, index_table_separator_,
+                      "*");
 }
 
 std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
                                                  const std::string &table_name) {
-  if(table_name.empty()) {
+  if (table_name.empty()) {
     return redis_key;
   }
   auto pos = table_name.size() + table_separator_.size();
@@ -328,7 +322,7 @@ std::string RedisStoreClient::GetKeyFromRedisKey(const std::string &redis_key,
                                                  const std::string &table_name,
                                                  const std::string &index_key) {
   auto pos = index_table_separator_.size() + index_key.size();
-  if(!table_name.empty()) {
+  if (!table_name.empty()) {
     pos += table_name.size() + table_separator_.size();
   }
   return redis_key.substr(pos, redis_key.size() - pos);

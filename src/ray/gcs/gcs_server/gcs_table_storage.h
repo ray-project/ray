@@ -18,8 +18,8 @@
 #include <utility>
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "src/ray/protobuf/gcs.pb.h"
 #include "ray/gcs/store_client/store_client.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace gcs {
