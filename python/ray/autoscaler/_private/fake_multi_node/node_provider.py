@@ -3,7 +3,6 @@ import json
 import logging
 import os
 from threading import RLock
-import subprocess
 import time
 from types import ModuleType
 from typing import Any, Dict, Optional
@@ -39,12 +38,19 @@ DOCKER_NODE_SKELETON = {
     "networks": ["ray_local"],
     "mem_limit": "3000m",
     "mem_reservation": "3000m",
-    "shm_size": "1200m"
+    "shm_size": "1200m",
+    "volumes": [
+        "/Users/kai/coding/ray/python/ray/autoscaler:"
+        "/home/ray/anaconda3/lib/python3.7/site-packages/ray/autoscaler:ro"
+    ]
 }
 
 DOCKER_HEAD_CMD = (
-    "bash -c \"sleep 1 && ray start --head --port=6379 "
+    "bash -c \"sleep 1 "
+    "&& sudo chmod 777 {volume_dir} "
+    "&& RAY_FAKE_CLUSTER=1 ray start --head --port=6379 "
     "--object-manager-port=8076 --dashboard-host 0.0.0.0 "
+    "--autoscaling-config={autoscaling_config} "
     "--num-cpus {num_cpus} "
     "--num-gpus {num_gpus} "
     # "--resources='{resources}' "
@@ -67,31 +73,44 @@ def create_node_spec(head: bool,
                      num_cpus: int = 2,
                      num_gpus: int = 0,
                      resources: Optional[Dict] = None,
-                     env_vars: Optional[Dict] = None):
+                     env_vars: Optional[Dict] = None,
+                     volume_dir: Optional[str] = None,
+                     status_path: Optional[str] = None,
+                     docker_compose_path: Optional[str] = None,
+                     bootstrap_config_path: Optional[str] = None):
     node_spec = copy.deepcopy(DOCKER_NODE_SKELETON)
     node_spec["image"] = docker_image
+
+    bootstrap_path_on_container = "/home/ray/ray_bootstrap_config.yaml"
 
     resources = resources or {}
 
     resources_kwargs = dict(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
-        resources=json.dumps(resources, indent=None))
+        resources=json.dumps(resources, indent=None),
+        volume_dir=volume_dir,
+        autoscaling_config=bootstrap_path_on_container)
 
     if head:
         node_spec["command"] = DOCKER_HEAD_CMD.format(**resources_kwargs)
         node_spec["ports"] = [6379, 8265, 10001]
+        node_spec["volumes"] += [
+            f"{status_path}:{status_path}",
+            f"{docker_compose_path}:{docker_compose_path}",
+            f"{bootstrap_config_path}:{bootstrap_path_on_container}"
+        ]
     else:
         node_spec["command"] = DOCKER_WORKER_CMD.format(**resources_kwargs)
         node_spec["depends_on"] = [FAKE_HEAD_NODE_ID]
 
-    node_spec["volumes"] = [
+    node_spec["volumes"] += [
         f"{mounted_cluster_dir}:/cluster/shared",
         f"{mounted_node_dir}:/cluster/node",
     ]
 
     env_vars = env_vars or {}
-    node_spec["environment"] = [f"{k}='{v}'" for k, v in env_vars.items()]
+    node_spec["environment"] = [f"{k}={v}" for k, v in env_vars.items()]
 
     return node_spec
 
@@ -138,15 +157,23 @@ class FakeMultiNodeProvider(NodeProvider):
 
             resources = copy.deepcopy(provider_config.get("head_resources"))
 
-            self._nodes[FAKE_HEAD_NODE_ID][
-                "node_spec"] = self._create_node_spec_with_resources(
-                    head=True, node_id=FAKE_HEAD_NODE_ID, resources=resources)
+            self._boostrap_config_path = os.path.join(self._volume_dir,
+                                                      "bootstrap_config.yaml")
 
             self._docker_compose_config_path = os.path.join(
                 self._volume_dir, "docker-compose.yaml")
             self._docker_compose_config = None
 
+            self._status_path = os.path.join(self._volume_dir, "status.json")
+
+            self._nodes[FAKE_HEAD_NODE_ID][
+                "node_spec"] = self._create_node_spec_with_resources(
+                    head=True, node_id=FAKE_HEAD_NODE_ID, resources=resources)
+
+            self._docker_status = {}
+
             self._update_docker_compose_config()
+            self._update_docker_status()
 
     def _next_hex_node_id(self):
         self._next_node_id += 1
@@ -178,7 +205,11 @@ class FakeMultiNodeProvider(NodeProvider):
             env_vars={
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": node_id,
                 # "RAY_OVERRIDE_RESOURCES": json.dumps(resources, indent=None),
-            })
+            },
+            volume_dir=self._volume_dir,
+            status_path=self._status_path,
+            docker_compose_path=self._docker_compose_config_path,
+            bootstrap_config_path=self._boostrap_config_path)
 
     def _update_docker_compose_config(self):
         config = copy.deepcopy(DOCKER_COMPOSE_SKELETON)
@@ -189,57 +220,14 @@ class FakeMultiNodeProvider(NodeProvider):
         with open(self._docker_compose_config_path, "wt") as f:
             yaml.safe_dump(config, f)
 
-        self._update_docker_status()
-
     def _update_docker_status(self):
-        if self._has_head_node():
-            try:
-
-                update = subprocess.check_call([
-                    "docker-compose",
-                    "-f",
-                    self._docker_compose_config_path,
-                    "-p",
-                    self._project_name,
-                    "up",
-                    "-d",
-                    "--remove-orphans",
-                ])
-            except Exception as e:
-                print(f"Ran into error when updating docker-compose: {e}")
-                # Ignore error
-            else:
-                print(f"Updated docker-compose: {update}")
-        else:
-            print("Waiting to update docker-compose until head node "
-                  "is defined.")
+        if not os.path.exists(self._status_path):
+            return
+        with open(self._status_path, "rt") as f:
+            self._docker_status = json.load(f)
 
     def _container_name(self, node_id):
         return f"{self._project_name}_{node_id}_1"
-
-    def _get_ip(self,
-                node_id,
-                override_network: Optional[str] = None,
-                retry_times: int = 3) -> str:
-        if not self.uses_docker:
-            return node_id
-
-        network = override_network or f"{self._project_name}_ray_local"
-
-        cmd = [
-            "docker", "inspect", "-f", "\"{{ .NetworkSettings.Networks"
-            f".{network}.IPAddress"
-            " }}\"",
-            self._container_name(node_id)
-        ]
-        for i in range(retry_times):
-            try:
-                ip_address = subprocess.check_output(cmd, encoding="utf-8")
-            except Exception:
-                time.sleep(1)
-            else:
-                return ip_address
-        return None
 
     def get_command_runner(self,
                            log_prefix: str,
@@ -284,22 +272,49 @@ class FakeMultiNodeProvider(NodeProvider):
                     nodes.append(node_id)
             return nodes
 
+    def _is_docker_running(self, node_id):
+        if not self.uses_docker:
+            return True
+        self._update_docker_status()
+
+        return self._docker_status.get(node_id, {}).get("status",
+                                                        None) == "running"
+
     def is_running(self, node_id):
         with self.lock:
-            return node_id in self._nodes
+            return node_id in self._nodes and self._is_docker_running(node_id)
 
     def is_terminated(self, node_id):
         with self.lock:
-            return node_id not in self._nodes
+            return node_id not in self._nodes and not self._is_docker_running(
+                node_id)
 
     def node_tags(self, node_id):
         with self.lock:
             return self._nodes[node_id]["tags"]
 
+    def _get_ip(self, node_id: str) -> Optional[str]:
+        if not self.uses_docker:
+            return node_id
+
+        for i in range(3):
+            self._update_docker_status()
+            ip = self._docker_status.get(node_id, {}).get("IP", None)
+            if ip:
+                print("FOUND IP", ip)
+                return ip
+            time.sleep(3)
+        print("FOUND NO IP", self._docker_status)
+        return None
+
     def external_ip(self, node_id):
+        if self.uses_docker:
+            return self._get_ip(node_id)
         return node_id
 
     def internal_ip(self, node_id):
+        if self.uses_docker:
+            return self._get_ip(node_id)
         return node_id
 
     def set_node_tags(self, node_id, tags):
