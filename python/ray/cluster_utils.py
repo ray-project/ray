@@ -21,7 +21,8 @@ class AutoscalingCluster:
     See test_autoscaler_fake_multinode.py for an end-to-end example.
     """
 
-    def __init__(self, head_resources: dict, worker_node_types: dict):
+    def __init__(self, head_resources: dict, worker_node_types: dict,
+                 **config_kwargs):
         """Create the cluster.
 
         Args:
@@ -29,10 +30,12 @@ class AutoscalingCluster:
             worker_node_types: autoscaler node types config for worker nodes.
         """
         self._head_resources = head_resources
-        self._config = self._generate_config(head_resources, worker_node_types)
+        self._config = self._generate_config(head_resources, worker_node_types,
+                                             **config_kwargs)
         self._process = None
 
-    def _generate_config(self, head_resources, worker_node_types):
+    def _generate_config(self, head_resources, worker_node_types,
+                         **config_kwargs):
         base_config = yaml.safe_load(
             open(
                 os.path.join(
@@ -45,6 +48,7 @@ class AutoscalingCluster:
             "node_config": {},
             "max_workers": 0,
         }
+        custom_config.update(config_kwargs)
         return custom_config
 
     def start(self):

@@ -418,27 +418,40 @@ def slow_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
 
 
-@pytest.fixture
-def ray_start_chaos_cluster(request):
-    """Returns the cluster and chaos thread.
-    """
+def _ray_start_chaos_cluster(request):
     os.environ["RAY_num_heartbeats_timeout"] = "5"
     os.environ["RAY_raylet_heartbeat_period_milliseconds"] = "100"
     param = getattr(request, "param", {})
-    kill_interval = param.get("kill_interval", 2)
+    kill_interval = param.pop("kill_interval", None)
     # Config of workers that are re-started.
-    head_resources = param["head_resources"]
-    worker_node_types = param["worker_node_types"]
+    head_resources = param.pop("head_resources")
+    worker_node_types = param.pop("worker_node_types")
 
-    cluster = AutoscalingCluster(head_resources, worker_node_types)
+    cluster = AutoscalingCluster(head_resources, worker_node_types, **param)
     cluster.start()
     ray.init("auto")
     nodes = ray.nodes()
     assert len(nodes) == 1
-    node_killer = get_and_run_node_killer(kill_interval)
-    yield node_killer
-    assert ray.get(node_killer.get_total_killed_nodes.remote()) > 0
+
+    if kill_interval is not None:
+        node_killer = get_and_run_node_killer(kill_interval)
+
+    yield cluster
+
+    if kill_interval is not None:
+        num_killed = ray.get(node_killer.get_total_killed_nodes.remote())
+        assert num_killed > 0
+        num_died = len([node for node in ray.nodes() if not node["Alive"]])
+        assert num_killed == num_died, "Raylets that we did not kill crashed"
+
     ray.shutdown()
     cluster.shutdown()
     del os.environ["RAY_num_heartbeats_timeout"]
     del os.environ["RAY_raylet_heartbeat_period_milliseconds"]
+
+
+@pytest.fixture
+def ray_start_chaos_cluster(request):
+    """Returns the cluster and chaos thread.
+    """
+    return _ray_start_cluster(request)

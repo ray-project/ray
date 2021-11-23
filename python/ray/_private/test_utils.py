@@ -965,10 +965,13 @@ def get_and_run_node_killer(node_kill_interval_s):
                         break
 
                 if node_to_kill_port is not None:
-                    self._kill_raylet(
-                        node_to_kill_ip, node_to_kill_port, graceful=False)
+                    try:
+                        self._kill_raylet(
+                            node_to_kill_ip, node_to_kill_port, graceful=False)
+                    except Exception:
+                        pass
                     logging.info(
-                        "Killing a node of address: "
+                        f"Killed node {node_id} at address: "
                         f"{node_to_kill_ip}, port: {node_to_kill_port}")
                     self.killed_nodes.add(node_id)
                 await asyncio.sleep(self.node_kill_interval_s)

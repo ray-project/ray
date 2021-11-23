@@ -8,8 +8,11 @@ import numpy as np
 import pytest
 import time
 
+from ray.experimental import shuffle
+from ray.tests.conftest import _ray_start_chaos_cluster
 from ray.data.impl.progress_bar import ProgressBar
 from ray._private.test_utils import get_log_message
+from ray.exceptions import RayTaskError, ObjectLostError
 
 
 def assert_no_system_failure(p, timeout):
@@ -121,6 +124,56 @@ def test_chaos_actor_retry(ray_start_chaos_cluster):
     # TODO(sang): Currently, there are lots of SIGBART with
     # plasma client failures. Fix it.
     # assert_no_system_failure(p, 10)
+
+
+@pytest.fixture
+def set_kill_interval(request):
+    kill_interval = request.param
+    request.param = {
+        "kill_interval": kill_interval,
+        "head_resources": {
+            "CPU": 1
+        },
+        "worker_node_types": {
+            "cpu_node": {
+                "resources": {
+                    "CPU": 2,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 4,
+            },
+        },
+        # We just want the autoscaler to restart nodes, not take them down.
+        "idle_timeout_minutes": 10,
+    }
+    cluster = _ray_start_chaos_cluster(request)
+    while True:
+        try:
+            yield (kill_interval, next(cluster))
+        except StopIteration:
+            break
+
+
+@pytest.mark.parametrize("set_kill_interval", [None, 30], indirect=True)
+def test_shuffle(set_kill_interval):
+    kill_interval, _ = set_kill_interval
+    try:
+        # Create our own tracker so that it gets scheduled onto the head node.
+        tracker = shuffle._StatusTracker.remote()
+        ray.get(tracker.get_progress.remote())
+        assert len(ray.nodes()) == 1, (
+            "Tracker actor may have been scheduled to remote node "
+            "and may get killed during the test")
+
+        shuffle.run(
+            ray_address="auto",
+            no_streaming=True,
+            num_partitions=200,
+            partition_size=15e6,
+            tracker=tracker)
+    except (RayTaskError, ObjectLostError):
+        assert kill_interval is not None
 
 
 if __name__ == "__main__":
