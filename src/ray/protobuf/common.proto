@@ -17,8 +17,6 @@ option cc_enable_arenas = true;
 
 package ray.rpc;
 
-import "src/ray/protobuf/runtime_env_common.proto";
-
 option java_package = "io.ray.runtime.generated";
 
 // Language of a task or worker.
@@ -163,6 +161,17 @@ message RayException {
   string formatted_exception_string = 3;
 }
 
+/// The runtime environment describes all the runtime packages needed to
+/// run some task or actor.
+message RuntimeEnv {
+  /// The serialized runtime env passed from the user.
+  string serialized_runtime_env = 1;
+  /// URIs used in this runtime env. These will be used for reference counting.
+  repeated string uris = 2;
+  /// Indicates whether to install runtime env eagerly before the workers are leased.
+  bool runtime_env_eager_install = 3;
+}
+
 /// The task specification encapsulates all immutable information about the
 /// task. These fields are determined at submission time, converse to the
 /// `TaskExecutionSpec` may change at execution time.
@@ -219,7 +228,7 @@ message TaskSpec {
   // and "" if the task should not drop into the debugger.
   bytes debugger_breakpoint = 22;
   // Runtime environment for this task.
-  RuntimeEnvInfo runtime_env_info = 23;
+  RuntimeEnv runtime_env = 23;
   // The concurrency group name in which this task will be performed.
   string concurrency_group_name = 24;
   // Whether application-level errors (exceptions) should be retried.

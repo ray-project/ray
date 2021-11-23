@@ -99,7 +99,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     blocked.poll()
     assert blocked.returncode is None
 
-    kill_process_by_name("raylet")
+    kill_process_by_name("raylet", SIGKILL=True)
     wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)
     blocked.wait()
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"
