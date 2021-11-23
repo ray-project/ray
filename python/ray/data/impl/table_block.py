@@ -205,4 +205,4 @@ class TableBlockAccessor(BlockAccessor):
             raise ValueError(
                 "Cannot zip self (length {}) with block of length {}".format(
                     self.num_rows(), acc.num_rows()))
-        return self._zip(self, acc)
+        return self._zip(acc)

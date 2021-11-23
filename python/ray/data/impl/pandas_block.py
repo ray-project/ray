@@ -106,9 +106,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             raise ValueError(
                 "Cannot find column {}, available columns: {}".format(
                     column, self._table.columns.tolist()))
-        array = self._table[column].values
-        assert isinstance(array, np.ndarray)
-        return array
+        return self._table[column].to_numpy()
 
     def to_arrow(self) -> "pyarrow.Table":
         return pyarrow.table(self._table)
