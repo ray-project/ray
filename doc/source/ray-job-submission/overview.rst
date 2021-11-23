@@ -60,7 +60,7 @@ We can put this file in a local directory of your choice, with filename "script.
     print(requests.__version__)
 
 
-| Ensure we have a local Ray cluster with a running head node. The address and port shown in terminal should be where we submit Job requests to.
+| Ensure we have a local Ray cluster with a running head node and the dashboard installed with :code:`pip install "ray[default]"`. The address and port shown in terminal should be where we submit Job requests to.
 
 .. code-block:: bash
 
