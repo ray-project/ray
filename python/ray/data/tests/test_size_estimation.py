@@ -147,6 +147,12 @@ def test_split_read_csv(ray_start_regular_shared, tmp_path):
     for x in nrow[:-1]:
         assert 80 < x < 120, (x, nrow)
 
+    # Disabled.
+    ctx.target_max_block_size = 1_000_000
+    ctx.block_splitting_enabled = False
+    ds4 = gen("out4")
+    assert ds4._block_num_rows() == [1000]
+
 
 def test_split_read_parquet(ray_start_regular_shared, tmp_path):
     ctx = ray.data.context.DatasetContext.get_current()
@@ -200,6 +206,13 @@ def test_split_map(ray_start_regular_shared):
     ctx.target_max_block_size = 2_000_000
     nblocks = len(ds2.map(lambda x: x).get_internal_block_refs())
     assert 4 < nblocks < 7, nblocks
+
+    # Disabled.
+    ctx.target_max_block_size = 1_000_000
+    ctx.block_splitting_enabled = False
+    ds3 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE)
+    nblocks = len(ds3.map(lambda x: x).get_internal_block_refs())
+    assert nblocks == 1, nblocks
 
 
 def test_split_flat_map(ray_start_regular_shared):
