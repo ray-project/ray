@@ -34,7 +34,7 @@ def _set_future_helper(
         py_future.set_result(result)
 
 
-cdef class ObjectRef(BaseID):
+cdef class ObjectRef:
 
     def __init__(
             self, id, owner_addr="", call_site_data="",

@@ -87,6 +87,10 @@ cdef class ObjectRef:
 
     cdef CObjectID native(self)
 
+    # To avoid the error of "Python int too large to convert to C ssize_t",
+    # here `cdef size_t` is required.
+    cdef size_t hash(self)
+
 cdef class ClientObjectRef(ObjectRef):
     cdef object _mutex
     cdef object _id_future
