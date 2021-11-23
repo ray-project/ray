@@ -219,6 +219,8 @@ class GcsServer {
   /// The gcs table storage.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
+  /// StoreClient which is used to store all the metadata
+  std::shared_ptr<StoreClient> store_client_;
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;

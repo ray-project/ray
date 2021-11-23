@@ -1627,10 +1627,9 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":gcs",
-        ":gcs_in_memory_store_client",
         ":pubsub_lib",
         ":ray_common",
-        ":redis_store_client",
+        ":store_client",
     ],
 )
 
@@ -1642,7 +1641,7 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
-        "redis_store_client",
+        "store_client",
     ],
 )
 
@@ -1765,7 +1764,7 @@ cc_library(
         ":gcs_pub_sub_lib",
         ":gcs_service_rpc",
         ":pubsub_lib",
-        ":redis_store_client",
+        ":store_client",
     ],
 )
 
@@ -2020,30 +2019,16 @@ cc_library(
 )
 
 cc_library(
-    name = "redis_store_client",
+    name = "store_client",
     srcs = [
         "src/ray/gcs/store_client/redis_store_client.cc",
-    ],
-    hdrs = [
-        "src/ray/gcs/callback.h",
-        "src/ray/gcs/store_client/redis_store_client.h",
-        "src/ray/gcs/store_client/store_client.h",
-    ],
-    copts = COPTS,
-    strip_include_prefix = "src",
-    deps = [
-        "redis_client",
-    ],
-)
-
-cc_library(
-    name = "gcs_in_memory_store_client",
-    srcs = [
         "src/ray/gcs/store_client/in_memory_store_client.cc",
     ],
     hdrs = [
         "src/ray/gcs/callback.h",
+        "src/ray/gcs/store_client/redis_store_client.h",
         "src/ray/gcs/store_client/in_memory_store_client.h",
+        "src/ray/gcs/store_client/store_client_factory.h",
         "src/ray/gcs/store_client/store_client.h",
     ],
     copts = COPTS,
@@ -2051,6 +2036,8 @@ cc_library(
     deps = [
         ":ray_common",
         ":ray_util",
+        "redis_client",
+        "@com_google_absl//absl/strings:strings",
     ],
 )
 
@@ -2062,7 +2049,7 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
-        "redis_store_client",
+        "store_client",
     ],
 )
 
@@ -2081,7 +2068,7 @@ cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        ":redis_store_client",
+        ":store_client",
         ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -2094,7 +2081,7 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
-        ":gcs_in_memory_store_client",
+        ":store_client",
         ":store_client_test_lib",
         "@com_google_googletest//:gtest_main",
     ],

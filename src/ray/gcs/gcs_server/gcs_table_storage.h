@@ -18,9 +18,8 @@
 #include <utility>
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/gcs/store_client/in_memory_store_client.h"
-#include "ray/gcs/store_client/redis_store_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "ray/gcs/store_client/store_client.h"
 
 namespace ray {
 namespace gcs {
@@ -155,7 +154,7 @@ class GcsJobTable : public GcsTable<JobID, JobTableData> {
  public:
   explicit GcsJobTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::JOB);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::JOB);
   }
 };
 
@@ -163,7 +162,7 @@ class GcsActorTable : public GcsTableWithJobId<ActorID, ActorTableData> {
  public:
   explicit GcsActorTable(std::shared_ptr<StoreClient> store_client)
       : GcsTableWithJobId(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::ACTOR);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::ACTOR);
   }
 
  private:
@@ -175,7 +174,7 @@ class GcsPlacementGroupTable
  public:
   explicit GcsPlacementGroupTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::PLACEMENT_GROUP);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::PLACEMENT_GROUP);
   }
 };
 
@@ -183,7 +182,7 @@ class GcsTaskTable : public GcsTableWithJobId<TaskID, TaskTableData> {
  public:
   explicit GcsTaskTable(std::shared_ptr<StoreClient> store_client)
       : GcsTableWithJobId(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::TASK);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::TASK);
   }
 
  private:
@@ -194,7 +193,7 @@ class GcsTaskLeaseTable : public GcsTableWithJobId<TaskID, TaskLeaseData> {
  public:
   explicit GcsTaskLeaseTable(std::shared_ptr<StoreClient> store_client)
       : GcsTableWithJobId(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::TASK_LEASE);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::TASK_LEASE);
   }
 
  private:
@@ -206,7 +205,7 @@ class GcsTaskReconstructionTable
  public:
   explicit GcsTaskReconstructionTable(std::shared_ptr<StoreClient> store_client)
       : GcsTableWithJobId(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::TASK_RECONSTRUCTION);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::TASK_RECONSTRUCTION);
   }
 
  private:
@@ -217,7 +216,7 @@ class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
  public:
   explicit GcsNodeTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::NODE);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::NODE);
   }
 };
 
@@ -225,7 +224,7 @@ class GcsNodeResourceTable : public GcsTable<NodeID, ResourceMap> {
  public:
   explicit GcsNodeResourceTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::NODE_RESOURCE);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::NODE_RESOURCE);
   }
 };
 
@@ -233,7 +232,7 @@ class GcsPlacementGroupScheduleTable : public GcsTable<PlacementGroupID, Schedul
  public:
   explicit GcsPlacementGroupScheduleTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::PLACEMENT_GROUP_SCHEDULE);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::PLACEMENT_GROUP_SCHEDULE);
   }
 };
 
@@ -241,7 +240,7 @@ class GcsResourceUsageBatchTable : public GcsTable<NodeID, ResourceUsageBatchDat
  public:
   explicit GcsResourceUsageBatchTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::RESOURCE_USAGE_BATCH);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::RESOURCE_USAGE_BATCH);
   }
 };
 
@@ -249,7 +248,7 @@ class GcsProfileTable : public GcsTable<UniqueID, ProfileTableData> {
  public:
   explicit GcsProfileTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::PROFILE);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::PROFILE);
   }
 };
 
@@ -257,7 +256,7 @@ class GcsWorkerTable : public GcsTable<WorkerID, WorkerTableData> {
  public:
   explicit GcsWorkerTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::WORKERS);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::WORKERS);
   }
 };
 
@@ -265,7 +264,7 @@ class GcsInternalConfigTable : public GcsTable<UniqueID, StoredConfig> {
  public:
   explicit GcsInternalConfigTable(std::shared_ptr<StoreClient> store_client)
       : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::INTERNAL_CONFIG);
+    table_name_ = rpc::TablePrefix_Name(rpc::TablePrefix::INTERNAL_CONFIG);
   }
 };
 
@@ -380,24 +379,6 @@ class GcsTableStorage {
   std::unique_ptr<GcsProfileTable> profile_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;
   std::unique_ptr<GcsInternalConfigTable> system_config_table_;
-};
-
-/// \class RedisGcsTableStorage
-/// RedisGcsTableStorage is an implementation of `GcsTableStorage`
-/// that uses redis as storage.
-class RedisGcsTableStorage : public GcsTableStorage {
- public:
-  explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client)
-      : GcsTableStorage(std::make_shared<RedisStoreClient>(std::move(redis_client))) {}
-};
-
-/// \class InMemoryGcsTableStorage
-/// InMemoryGcsTableStorage is an implementation of `GcsTableStorage`
-/// that uses memory as storage.
-class InMemoryGcsTableStorage : public GcsTableStorage {
- public:
-  explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service)
-      : GcsTableStorage(std::make_shared<InMemoryStoreClient>(main_io_service)) {}
 };
 
 }  // namespace gcs

@@ -65,9 +65,11 @@ int main(int argc, char *argv[]) {
     auto redis_client = std::make_shared<ray::gcs::RedisClient>(redis_client_options);
     auto status = redis_client->Connect(service);
     RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
+    auto redis_storage = std::make_shared<ray::gcs::RedisStoreClient>(
+        redis_client);
 
     // Init storage.
-    auto storage = std::make_shared<ray::gcs::RedisGcsTableStorage>(redis_client);
+    auto storage = std::make_shared<ray::gcs::GcsTableStorage>(std::move(redis_storage));
 
     // The internal_config is only set on the gcs--other nodes get it from GCS.
     auto on_done = [promise, &service](const ray::Status &status) {

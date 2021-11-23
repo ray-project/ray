@@ -18,6 +18,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/gcs/store_client/store_client_factory.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
@@ -61,6 +62,9 @@ void GcsServer::Start() {
       main_service_, redis_client_->GetPrimaryContext(), [this]() { Stop(); });
   gcs_redis_failure_detector_->Start();
 
+  // Init store client
+  store_client_ = MakeStoreClient(redis_client_, main_service_);
+
   // Init GCS publisher instance.
   std::unique_ptr<pubsub::Publisher> inner_publisher;
   if (config_.grpc_pubsub_enabled) {
@@ -83,7 +87,7 @@ void GcsServer::Start() {
       std::make_shared<GcsPublisher>(redis_client_, std::move(inner_publisher));
 
   // Init gcs table storage.
-  gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
+  gcs_table_storage_ = std::make_shared<GcsTableStorage>(store_client_);
 
   // Load gcs tables data asynchronously.
   auto gcs_init_data = std::make_shared<GcsInitData>(gcs_table_storage_);
