@@ -14,6 +14,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.filter import get_filter
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import unbatch
+from ray.rllib.utils.tf_utils import get_placeholder
 
 tf1, tf, tfv = try_import_tf()
 
@@ -22,10 +23,15 @@ class ARSTFPolicy(Policy):
     def __init__(self, obs_space, action_space, config):
         super().__init__(obs_space, action_space, config)
         self.action_noise_std = self.config["action_noise_std"]
-        self.preprocessor = ModelCatalog.get_preprocessor_for_space(
-            self.observation_space)
-        self.observation_filter = get_filter(self.config["observation_filter"],
-                                             self.preprocessor.shape)
+        self.preprocessor = None
+        if not self.config["_disable_preprocessor_api"]:
+            self.preprocessor = ModelCatalog.get_preprocessor_for_space(
+                self.observation_space)
+            self.observation_filter = get_filter(self.config["observation_filter"],
+                                                 self.preprocessor.shape)
+        else:
+            self.observation_filter = get_filter(self.config["observation_filter"],
+                                                 self.observation_space.shape)
 
         self.single_threaded = self.config.get("single_threaded", False)
         if self.config["framework"] == "tf":
@@ -36,8 +42,16 @@ class ARSTFPolicy(Policy):
                 with self.sess.as_default():
                     tf1.set_random_seed(config["seed"])
 
-            self.inputs = tf1.placeholder(
-                tf.float32, [None] + list(self.preprocessor.shape))
+            if self.preprocessor:
+                self.inputs = tf1.placeholder(
+                    tf.float32, [None] + list(self.preprocessor.shape))
+
+            else:
+                self.inputs = get_placeholder(
+                    space=self.observation_space,
+                    name="obs",
+                    flatten=False,
+                )
         else:
             if not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
@@ -55,14 +69,14 @@ class ARSTFPolicy(Policy):
             self.action_space, self.config["model"], dist_type="deterministic")
 
         self.model = ModelCatalog.get_model_v2(
-            obs_space=self.preprocessor.observation_space,
+            obs_space=self.observation_space,
             action_space=self.action_space,
             num_outputs=dist_dim,
             model_config=self.config["model"])
 
         self.sampler = None
         if self.sess:
-            dist_inputs, _ = self.model({SampleBatch.CUR_OBS: self.inputs})
+            dist_inputs, _ = self.model({SampleBatch.OBS: self.inputs})
             dist = self.dist_class(dist_inputs, self.model)
             self.sampler = dist.sample()
             self.variables = ray.experimental.tf_utils.TensorFlowVariables(
@@ -83,9 +97,9 @@ class ARSTFPolicy(Policy):
                         **kwargs):
         # Squeeze batch dimension (we always calculate actions for only a
         # single obs).
-        observation = observation[0]
-        observation = self.preprocessor.transform(observation)
-        observation = self.observation_filter(observation[None], update=update)
+        #observation = observation[0]
+        #observation = self.preprocessor.transform(observation)
+        observation = self.observation_filter(observation, update=update)
 
         # `actions` is a list of (component) batches.
         # Eager mode.
