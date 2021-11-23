@@ -50,12 +50,15 @@ DEFAULT_CONFIG = with_common_config({
 
 
 class A3CTrainer(Trainer):
+    @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
 
     @override(Trainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
+        super().validate_config(config)
+
         if config["entropy_coeff"] < 0:
             raise ValueError("`entropy_coeff` must be >= 0.0!")
         if config["num_workers"] <= 0 and config["sample_async"]:

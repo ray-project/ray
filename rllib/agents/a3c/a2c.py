@@ -30,6 +30,7 @@ A2C_DEFAULT_CONFIG = merge_dicts(
 
 
 class A2CTrainer(A3CTrainer):
+    @classmethod
     @override(A3CTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return A2C_DEFAULT_CONFIG
