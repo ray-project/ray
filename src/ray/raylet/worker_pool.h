@@ -402,16 +402,16 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param status The output status of work process starting.
   /// \param dynamic_options The dynamic options that we should add for worker command.
   /// \param runtime_env_hash The hash of runtime env.
-  /// \param serialized_runtime_env_context The context of runtime env.
+  /// \param serialized_runtime_env The runtime environment for the started worker
   /// \param allocated_instances_serialized_json The allocated resource instances
   //  json string.
-  /// \return The id of the process that we started if it's positive, otherwise it means
-  /// we didn't start a process.
+  /// process. \return The id of the process that we started if it's positive, otherwise
+  /// it means we didn't start a process.
   Process StartWorkerProcess(
       const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
       PopWorkerStatus *status /*output*/,
       const std::vector<std::string> &dynamic_options = {},
-      const int runtime_env_hash = 0,
+      const int runtime_env_hash = 0, const std::string &serialized_runtime_env = "{}",
       const std::string &serialized_runtime_env_context = "{}",
       const std::string &allocated_instances_serialized_json = "{}");
 
