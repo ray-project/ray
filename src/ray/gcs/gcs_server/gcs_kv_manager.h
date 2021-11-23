@@ -14,6 +14,7 @@
 
 #pragma once
 #include <memory>
+
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
@@ -48,9 +49,7 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
                             rpc::InternalKVKeysReply *reply,
                             rpc::SendReplyCallback send_reply_callback);
 
-  instrumented_io_context& GetEventLoop() {
-    return io_service_;
-  }
+  instrumented_io_context &GetEventLoop() { return io_service_; }
 
   void Stop();
 
