@@ -15,7 +15,7 @@ class TrialScheduler:
     # into Executor directly without going through TrialRunner.
     # TODO(xwjiang): Deprecate this after we control the interaction
     #  between schedulers and executor.
-    NONE = "NONE"
+    NOOP = "NOOP"
 
     _metric = None
 

@@ -1,5 +1,4 @@
 import copy
-from enum import Enum
 import json
 import logging
 import math
@@ -21,33 +20,6 @@ from ray.tune.trial import Trial, Checkpoint
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
-
-
-class _ExploitResult(Enum):
-    """Implementation details of how exploitation is done through executor.
-
-    As of now, this has an implication on how PbtScheduler interacts with
-    Tune loop through scheduler decision.
-    This is far from ideal and is only temporary until we unify the
-    the interaction between schedulers and executors.
-    """
-    # The trial was paused and is still paused after transfer.
-    # This is only possible in sync pbt mode.
-    # In this case, the post-transfer trial will continue to run through
-    # `runner.step()` and `pbt.choose_trial_to_run` logic.
-    SYNC_TRANSFERRED = 1
-    # The trial was running and is still running after transfer.
-    # This is for async pbt mode. Transfer mechanism is done through
-    # `reset_config`. In this case, it is subject to the logic in
-    # `on_trial_result` to decide whether this trial should yield to
-    # other trials.
-    ASYNC_TRANSFERRED_THROUGH_RESET = 2
-    # The trial was running and is currently paused after transfer.
-    # This is for async pbt mode. Transfer mechanism is through
-    # pausing the trial and then updating it with new config and tag etc.
-    # In this case, the post-transfer trial will continue to run through
-    # `runner.step()` and `pbt.choose_trial_to_run` logic.
-    ASYNC_TRANSFERRED_AND_PAUSED = 3  # The trial is currently paused
 
 
 class PBTTrialState:
@@ -430,12 +402,10 @@ class PopulationBasedTraining(FIFOScheduler):
                 if other_trial.status in [Trial.PENDING, Trial.PAUSED]:
                     decision = TrialScheduler.PAUSE
                     break
-            if self._checkpoint_or_exploit(
-                    trial, trial_runner.trial_executor, upper_quantile,
-                    lower_quantile
-            ) == _ExploitResult.ASYNC_TRANSFERRED_AND_PAUSED:
-                return TrialScheduler.NONE
-            return decision
+            self._checkpoint_or_exploit(trial, trial_runner.trial_executor,
+                                        upper_quantile, lower_quantile)
+            return (TrialScheduler.NOOP
+                    if trial.status == Trial.PAUSED else decision)
         else:
             # Synchronous mode.
             if any(self._trial_state[t].last_train_time <
@@ -461,8 +431,8 @@ class PopulationBasedTraining(FIFOScheduler):
                                                 upper_quantile, lower_quantile)
 
                 all_train_times = [
-                    self._trial_state[trial].last_train_time
-                    for trial in trial_runner.get_trials()
+                    self._trial_state[t].last_train_time
+                    for t in trial_runner.get_trials()
                 ]
                 max_last_train_time = max(all_train_times)
                 self._next_perturbation_sync = max(
@@ -473,7 +443,8 @@ class PopulationBasedTraining(FIFOScheduler):
             # still all be paused.
             # choose_trial_to_run will then pick the next trial to run out of
             # the paused trials.
-            return TrialScheduler.PAUSE
+            return (TrialScheduler.NOOP
+                    if trial.status == Trial.PAUSED else TrialScheduler.PAUSE)
 
     def _save_trial_state(self, state: PBTTrialState, time: int, result: Dict,
                           trial: Trial):
@@ -494,15 +465,11 @@ class PopulationBasedTraining(FIFOScheduler):
 
         return score
 
-    def _checkpoint_or_exploit(
-            self, trial: Trial,
-            trial_executor: "trial_runner.RayTrialExecutor",
-            upper_quantile: List[Trial],
-            lower_quantile: List[Trial]) -> Optional[_ExploitResult]:
-        """Checkpoint if in upper quantile, exploits if in lower.
-
-        Return _ExploitResult only if exploitation happens, otherwise None.
-        """
+    def _checkpoint_or_exploit(self, trial: Trial,
+                               trial_executor: "trial_runner.RayTrialExecutor",
+                               upper_quantile: List[Trial],
+                               lower_quantile: List[Trial]):
+        """Checkpoint if in upper quantile, exploits if in lower."""
         state = self._trial_state[trial]
         if trial in upper_quantile:
             # The trial last result is only updated after the scheduler
@@ -527,7 +494,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 logger.info("[pbt]: no checkpoint for trial."
                             " Skip exploit for Trial {}".format(trial))
                 return
-            return self._exploit(trial_executor, trial, trial_to_clone)
+            self._exploit(trial_executor, trial, trial_to_clone)
 
     def _log_config_on_step(self, trial_state: PBTTrialState,
                             new_state: PBTTrialState, trial: Trial,
@@ -568,13 +535,10 @@ class PopulationBasedTraining(FIFOScheduler):
                        self._resample_probability, self._custom_explore_fn)
 
     def _exploit(self, trial_executor: "trial_executor.TrialExecutor",
-                 trial: Trial, trial_to_clone: Trial) -> _ExploitResult:
+                 trial: Trial, trial_to_clone: Trial):
         """Transfers perturbed state from trial_to_clone -> trial.
 
         If specified, also logs the updated hyperparam state.
-
-        Returns _ExploitResult.
-        Note: This is a short term solution to accommodate PBT scheduler.
         """
         trial_state = self._trial_state[trial]
         new_state = self._trial_state[trial_to_clone]
@@ -611,22 +575,16 @@ class PopulationBasedTraining(FIFOScheduler):
                 raise TuneError("Trials should be paused here only if in "
                                 "synchronous mode. If you encounter this error"
                                 " please raise an issue on Ray Github.")
-            trial.set_experiment_tag(new_tag)
-            trial.set_config(new_config)
-            trial.on_checkpoint(new_state.last_checkpoint)
-            exploit_result = _ExploitResult.SYNC_TRANSFERRED
         else:
             trial_executor.pause_trial(trial)
-            trial.set_experiment_tag(new_tag)
-            trial.set_config(new_config)
-            trial.on_checkpoint(new_state.last_checkpoint)
-            exploit_result = _ExploitResult.ASYNC_TRANSFERRED_AND_PAUSED
+        trial.set_experiment_tag(new_tag)
+        trial.set_config(new_config)
+        trial.on_checkpoint(new_state.last_checkpoint)
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
         trial_state.last_perturbation_time = new_state.last_perturbation_time
         trial_state.last_train_time = new_state.last_train_time
-        return exploit_result
 
     def _quantiles(self) -> Tuple[List[Trial], List[Trial]]:
         """Returns trials in the lower and upper `quantile` of the population.
@@ -818,7 +776,6 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
             # No more changes in the config
             return TrialScheduler.CONTINUE
 
-        scheduler_decision = TrialScheduler.CONTINUE
         step = result[TRAINING_ITERATION]
         self._current_step = step
 
@@ -839,23 +796,16 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
                                       new_config)
 
         trial_executor = trial_runner.trial_executor
-        reset_successful = trial_executor.reset_trial(trial, new_config,
-                                                      new_tag)
-
-        if reset_successful:
-            trial_executor.restore(trial, checkpoint, block=True)
-        else:
-            trial_executor.pause_trial(trial)
-            trial.set_experiment_tag(new_tag)
-            trial.set_config(new_config)
-            trial.on_checkpoint(checkpoint)
-            scheduler_decision = TrialScheduler.NONE
+        trial_executor.pause_trial(trial)
+        trial.set_experiment_tag(new_tag)
+        trial.set_config(new_config)
+        trial.on_checkpoint(checkpoint)
 
         self.current_config = new_config
         self._num_perturbations += 1
         self._next_policy = next(self._policy_iter, None)
 
-        return scheduler_decision
+        return TrialScheduler.NOOP
 
     def debug_string(self) -> str:
         return "PopulationBasedTraining replay: Step {}, perturb {}".format(
