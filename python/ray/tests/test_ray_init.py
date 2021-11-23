@@ -70,7 +70,6 @@ class TestRedisPassword:
             host=redis_ip, port=redis_port, password=password)
         assert redis_client.ping()
 
-    @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
     def test_redis_password_cluster(self, password, shutdown_only):
         @ray.remote
         def f():
