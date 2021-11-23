@@ -373,7 +373,7 @@ class _AgentCollector:
             # lists. These are monolithic items (infos is a dict that
             # should not be further split, same for state-out items, which
             # could be custom dicts as well).
-            if col in [SampleBatch.INFOS, SampleBatch.ACTIONS
+            if col in [SampleBatch.INFOS,# SampleBatch.ACTIONS
                        ] or col.startswith("state_out_"):
                 self.buffers[col] = [[data for _ in range(shift)]]
             else:

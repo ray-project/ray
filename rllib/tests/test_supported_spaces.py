@@ -13,40 +13,40 @@ from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.test_utils import framework_iterator
 
 ACTION_SPACES_TO_TEST = {
-    "discrete": Discrete(5),
-    "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-    "vector2": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-    "int_actions": Box(0, 3, (2, 3), dtype=np.int32),
-    "multidiscrete": MultiDiscrete([1, 2, 3, 4]),
+    #"discrete": Discrete(5),
+    #"vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    #"vector2": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    #"int_actions": Box(0, 3, (2, 3), dtype=np.int32),
+    #"multidiscrete": MultiDiscrete([1, 2, 3, 4]),
     "tuple": Tuple(
         [Discrete(2),
          Discrete(3),
          Box(-1.0, 1.0, (5, ), dtype=np.float32)]),
-    "dict": Dict({
-        "action_choice": Discrete(3),
-        "parameters": Box(-1.0, 1.0, (1, ), dtype=np.float32),
-        "yet_another_nested_dict": Dict({
-            "a": Tuple([Discrete(2), Discrete(3)])
-        })
-    }),
+    #"dict": Dict({
+    #    "action_choice": Discrete(3),
+    #    "parameters": Box(-1.0, 1.0, (1, ), dtype=np.float32),
+    #    "yet_another_nested_dict": Dict({
+    #        "a": Tuple([Discrete(2), Discrete(3)])
+    #    })
+    #}),
 }
 
 OBSERVATION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
-    "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-    "vector2": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
-    "image": Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
-    "atari": Box(-1.0, 1.0, (210, 160, 3), dtype=np.float32),
-    "tuple": Tuple([Discrete(10),
-                    Box(-1.0, 1.0, (5, ), dtype=np.float32)]),
-    "dict": Dict({
-        "task": Discrete(10),
-        "position": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-    }),
+    #"vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    #"vector2": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
+    #"image": Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
+    #"atari": Box(-1.0, 1.0, (210, 160, 3), dtype=np.float32),
+    #"tuple": Tuple([Discrete(10),
+    #                Box(-1.0, 1.0, (5, ), dtype=np.float32)]),
+    #"dict": Dict({
+    #    "task": Discrete(10),
+    #    "position": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    #}),
 }
 
 
-def check_support(alg, config, train=True, check_bounds=False, tfe=False):
+def check_support(alg, config, check_bounds=False, tfe=False):
     config["log_level"] = "ERROR"
     config["train_batch_size"] = 10
     config["rollout_fragment_length"] = 10
@@ -63,7 +63,7 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
                     action_space=action_space,
                     observation_space=obs_space,
                     reward_space=Box(1.0, 1.0, shape=(), dtype=np.float32),
-                    p_done=1.0,
+                    p_done=0.01,
                     check_action_bounds=check_bounds)))
         stat = "ok"
 
@@ -89,8 +89,7 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
                         assert isinstance(a.get_policy().model, TorchFCNetV2)
                     else:
                         assert isinstance(a.get_policy().model, FCNetV2)
-            if train:
-                a.train()
+            a.train()
             a.stop()
         print(stat)
 
@@ -125,7 +124,7 @@ class TestSupportedSpacesPG(unittest.TestCase):
         check_support("A3C", config, check_bounds=True)
 
     def test_appo(self):
-        check_support("APPO", {"num_gpus": 0, "vtrace": False}, train=False)
+        check_support("APPO", {"num_gpus": 0, "vtrace": False})
         check_support("APPO", {"num_gpus": 0, "vtrace": True})
 
     def test_impala(self):
@@ -143,7 +142,7 @@ class TestSupportedSpacesPG(unittest.TestCase):
 
     def test_pg(self):
         config = {"num_workers": 1, "optimizer": {}}
-        check_support("PG", config, train=False, check_bounds=True, tfe=True)
+        check_support("PG", config, check_bounds=True, tfe=True)
 
 
 class TestSupportedSpacesOffPolicy(unittest.TestCase):

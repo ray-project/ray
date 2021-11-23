@@ -230,18 +230,18 @@ class DynamicTFPolicy(TFPolicy):
                 self._get_input_dict_and_dummy_batch(
                     self.view_requirements, existing_inputs)
         else:
-            action_ph = ModelCatalog.get_action_placeholder(action_space)
-            prev_action_ph = {}
-            if SampleBatch.PREV_ACTIONS not in self.view_requirements:
-                prev_action_ph = {
-                    SampleBatch.PREV_ACTIONS: ModelCatalog.
-                    get_action_placeholder(action_space, "prev_action")
-                }
+            #action_ph = get_placeholder(space=action_space, flatten=False)#ModelCatalog.get_action_placeholder(action_space)
+            #prev_action_ph = {}
+            #if SampleBatch.PREV_ACTIONS not in self.view_requirements:
+            #    prev_action_ph = {
+            #        SampleBatch.PREV_ACTIONS: ModelCatalog.
+            #        get_action_placeholder(action_space, "prev_action")
+            #    }
             self._input_dict, self._dummy_batch = \
                 self._get_input_dict_and_dummy_batch(
-                    self.view_requirements,
-                    dict({SampleBatch.ACTIONS: action_ph},
-                         **prev_action_ph))
+                    self.view_requirements, {})
+                    #dict({SampleBatch.ACTIONS: action_ph},
+                    #     **prev_action_ph))
             # Placeholder for (sampling steps) timestep (int).
             timestep = tf1.placeholder_with_default(
                 tf.zeros((), dtype=tf.int64), (), name="timestep")
