@@ -76,7 +76,12 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name, const std::stri
   };
 
   std::string redis_key = GenRedisKey(table_name, key);
-  std::vector<std::string> args = {"HGET", redis_key, "value"};
+  std::vector<std::string> args;
+  if (RayConfig::instance().gcs_storage_backend() == "legacy") {
+    args = std::vector<std::string>{"GET", redis_key};
+  } else {
+    args = std::vector<std::string>{"HGET", redis_key, "value"};
+  }
 
   auto shard_context = redis_client_->GetShardContext(redis_key);
   return shard_context->RunArgvAsync(args, redis_callback);
@@ -206,7 +211,12 @@ Status RedisStoreClient::AsyncDeleteByIndex(const std::string &table_name,
 
 Status RedisStoreClient::DoPut(const std::string &key, const std::string &data,
                                const StatusCallback &callback) {
-  std::vector<std::string> args = {"HSET", key, "value", data};
+  std::vector<std::string> args;
+  if (RayConfig::instance().gcs_storage_backend() == "legacy") {
+    args = std::vector<std::string>{"SET", key, data};
+  } else {
+    args = std::vector<std::string>{"HSET", key, "value", data};
+  }
   RedisCallback write_callback = nullptr;
   if (callback) {
     write_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
