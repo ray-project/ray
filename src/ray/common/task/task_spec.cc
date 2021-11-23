@@ -387,23 +387,6 @@ std::string TaskSpecification::DebugString() const {
            << "}";
   }
 
-  // Print runtime env.
-  if (HasRuntimeEnv()) {
-    const auto &runtime_env_info = RuntimeEnvInfo();
-    stream << ", serialized_runtime_env=" << SerializedRuntimeEnv();
-    const auto &uris = runtime_env_info.uris();
-    if (uris.size() > 0) {
-      stream << ", runtime_env_uris=";
-      for (const auto &uri : uris) {
-        stream << uri << ":";
-      }
-      // Erase the last ":"
-      stream.seekp(-1, std::ios_base::end);
-    }
-    stream << ", runtime_env_eager_install="
-           << runtime_env_info.runtime_env_eager_install();
-  }
-
   return stream.str();
 }
 
