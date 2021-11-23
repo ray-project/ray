@@ -17,6 +17,7 @@ import yaml
 import logging
 import tempfile
 import grpc
+from grpc._channel import _InactiveRpcError
 
 import ray
 import ray._private.services
@@ -989,8 +990,11 @@ def get_and_run_node_killer(node_kill_interval_s):
             raylet_address = f"{ip}:{port}"
             channel = grpc.insecure_channel(raylet_address)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-            stub.ShutdownRaylet(
-                node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+            try:
+                stub.ShutdownRaylet(
+                    node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+            except _InactiveRpcError:
+                assert not graceful
 
         def _get_alive_nodes(self, nodes):
             alive_nodes = 0
