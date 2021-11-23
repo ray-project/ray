@@ -10,6 +10,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 class RandomAgent(Trainer):
     """Policy that takes random actions and never learns."""
 
+    @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return with_common_config({
