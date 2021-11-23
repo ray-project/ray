@@ -19,7 +19,6 @@ from ray.rllib.evaluate import rollout
 from ray.rllib.tests.test_external_env import SimpleServing
 from ray.tune.registry import register_env
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.test_utils import check
 
@@ -165,7 +164,7 @@ class TorchSpyModel(TorchModelV2, nn.Module):
                               model_config, name)
         nn.Module.__init__(self)
         self.fc = FullyConnectedNetwork(
-            obs_space.original_space.spaces["sensors"].spaces["position"],
+            obs_space["sensors"]["position"],
             action_space, num_outputs, model_config, name)
 
     def forward(self, input_dict, state, seq_lens):
@@ -234,7 +233,7 @@ class DictSpyModel(TFModelV2):
         super().__init__(obs_space, action_space, None, model_config, name)
         # Will only feed in sensors->pos.
         input_ = tf.keras.layers.Input(
-            shape=self.obs_space.original_space["sensors"]["position"].shape)
+            shape=self.obs_space["sensors"]["position"].shape)
 
         self.num_outputs = num_outputs or 64
         out = tf.keras.layers.Dense(self.num_outputs)(input_)
@@ -275,7 +274,7 @@ class TupleSpyModel(TFModelV2):
         super().__init__(obs_space, action_space, None, model_config, name)
         # Will only feed in 0th index of observation Tuple space.
         input_ = tf.keras.layers.Input(
-            shape=self.obs_space.original_space[0].shape)
+            shape=self.obs_space[0].shape)
 
         self.num_outputs = num_outputs or 64
         out = tf.keras.layers.Dense(self.num_outputs)(input_)
@@ -368,8 +367,8 @@ class NestedSpacesTest(unittest.TestCase):
                     "d_spy_in_{}".format(i)))
             pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
             cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
-            task_i = one_hot(
-                DICT_SAMPLES[i]["inner_state"]["job_status"]["task"], 5)
+            #task_i = one_hot(
+            task_i=    DICT_SAMPLES[i]["inner_state"]["job_status"]["task"]#, 5)
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
             check(seen[2][0], task_i)
@@ -400,7 +399,8 @@ class NestedSpacesTest(unittest.TestCase):
                     "t_spy_in_{}".format(i)))
             pos_i = TUPLE_SAMPLES[i][0].tolist()
             cam_i = TUPLE_SAMPLES[i][1][0].tolist()
-            task_i = one_hot(TUPLE_SAMPLES[i][2], 5)
+            #task_i = one_hot(TUPLE_SAMPLES[i][2], 5)
+            task_i = TUPLE_SAMPLES[i][2]
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
             check(seen[2][0], task_i)
@@ -473,8 +473,9 @@ class NestedSpacesTest(unittest.TestCase):
                     "d_spy_in_{}".format(i)))
             pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
             cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
-            task_i = one_hot(
-                DICT_SAMPLES[i]["inner_state"]["job_status"]["task"], 5)
+            #task_i = one_hot(
+            #    DICT_SAMPLES[i]["inner_state"]["job_status"]["task"], 5)
+            task_i = DICT_SAMPLES[i]["inner_state"]["job_status"]["task"]
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
             check(seen[2][0], task_i)
@@ -485,7 +486,8 @@ class NestedSpacesTest(unittest.TestCase):
                     "t_spy_in_{}".format(i)))
             pos_i = TUPLE_SAMPLES[i][0].tolist()
             cam_i = TUPLE_SAMPLES[i][1][0].tolist()
-            task_i = one_hot(TUPLE_SAMPLES[i][2], 5)
+            #task_i = one_hot(TUPLE_SAMPLES[i][2], 5)
+            task_i = TUPLE_SAMPLES[i][2]
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
             check(seen[2][0], task_i)
@@ -533,8 +535,9 @@ class NestedSpacesTest(unittest.TestCase):
 
             pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
             cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
-            task_i = one_hot(
-                DICT_SAMPLES[i]["inner_state"]["job_status"]["task"], 5)
+            #task_i = one_hot(
+            #    DICT_SAMPLES[i]["inner_state"]["job_status"]["task"], 5)
+            task_i = DICT_SAMPLES[i]["inner_state"]["job_status"]["task"]
             # Only look at the last entry (-1) in `seen` as we reset (re-use)
             # the ray-kv indices before training.
             self.assertEqual(seen[0][-1].tolist(), pos_i)
@@ -548,6 +551,7 @@ class NestedSpacesTest(unittest.TestCase):
         a2c = A2CTrainer(
             env="repeat",
             config={
+                "_disable_preprocessor_api": False,
                 "num_workers": 0,
                 "rollout_fragment_length": 5,
                 "train_batch_size": 5,
