@@ -803,7 +803,10 @@ def check_version_info(redis_client):
                          " was started with:" + "\n"
                          "    Ray: " + version_info[0] + "\n"
                          "    Python: " + version_info[1] + "\n")
-        raise RuntimeError(error_message)
+        if version_info[:2] != true_version_info[:2]:
+            raise RuntimeError(error_message)
+        else:
+            logger.warning(error_message)
 
 
 def start_reaper(fate_share=None):
