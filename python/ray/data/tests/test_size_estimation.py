@@ -118,6 +118,7 @@ def test_arrow_size_add_block(ray_start_regular_shared):
 
 def test_split_read_csv(ray_start_regular_shared, tmp_path):
     ctx = ray.data.context.DatasetContext.get_current()
+    ctx.block_splitting_enabled = True
 
     def gen(name):
         path = os.path.join(tmp_path, name)
@@ -149,6 +150,7 @@ def test_split_read_csv(ray_start_regular_shared, tmp_path):
 
 def test_split_read_parquet(ray_start_regular_shared, tmp_path):
     ctx = ray.data.context.DatasetContext.get_current()
+    ctx.block_splitting_enabled = True
 
     def gen(name):
         path = os.path.join(tmp_path, name)
@@ -182,6 +184,7 @@ def test_split_map(ray_start_regular_shared):
     # Simple block
     ctx = ray.data.context.DatasetContext.get_current()
     ctx.target_max_block_size = 20_000_000
+    ctx.block_splitting_enabled = True
     ds1 = ray.data.range(1000, parallelism=1).map(lambda _: LARGE_VALUE)
     nblocks = len(ds1.map(lambda x: x).get_internal_block_refs())
     assert nblocks == 1, nblocks
@@ -203,6 +206,7 @@ def test_split_flat_map(ray_start_regular_shared):
     # Simple block
     ctx = ray.data.context.DatasetContext.get_current()
     ctx.target_max_block_size = 20_000_000
+    ctx.block_splitting_enabled = True
     ds1 = ray.data.range(1000, parallelism=1).map(lambda _: LARGE_VALUE)
     nblocks = len(ds1.flat_map(lambda x: [x]).get_internal_block_refs())
     assert nblocks == 1, nblocks
@@ -224,6 +228,7 @@ def test_split_map_batches(ray_start_regular_shared):
     # Simple block
     ctx = ray.data.context.DatasetContext.get_current()
     ctx.target_max_block_size = 20_000_000
+    ctx.block_splitting_enabled = True
     ds1 = ray.data.range(1000, parallelism=1).map(lambda _: LARGE_VALUE)
     nblocks = len(
         ds1.map_batches(lambda x: x, batch_size=16).get_internal_block_refs())
