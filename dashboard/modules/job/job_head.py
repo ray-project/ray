@@ -27,6 +27,8 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.job_manager import JobManager
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
 routes = dashboard_utils.ClassMethodRouteTable
 
 RAY_INTERNAL_JOBS_NAMESPACE = "_ray_internal_jobs"
@@ -35,9 +37,17 @@ RAY_INTERNAL_JOBS_NAMESPACE = "_ray_internal_jobs"
 def _init_ray_and_catch_exceptions(f: Callable) -> Callable:
     @wraps(f)
     async def check(self, *args, **kwargs):
-        if not ray.is_initialized():
-            ray.init(address="auto", namespace=RAY_INTERNAL_JOBS_NAMESPACE)
         try:
+            if not ray.is_initialized():
+                address = self._redis_address
+                redis_pw = self._redis_password
+                logger.info(f"Connecting to ray with address={address}, "
+                            f"redis_pw={redis_pw}")
+                ray.init(
+                    address=address,
+                    namespace=RAY_INTERNAL_JOBS_NAMESPACE,
+                    _redis_password=redis_pw)
+
             return await f(self, *args, **kwargs)
         except Exception as e:
             logger.exception(f"Unexpected error in handler: {e}")
@@ -52,6 +62,9 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
 
+        ip, port = dashboard_head.redis_address
+        self._redis_address = f"{ip}:{port}"
+        self._redis_password = dashboard_head.redis_password
         self._job_manager = None
 
     async def _parse_and_validate_request(self, req: Request,
