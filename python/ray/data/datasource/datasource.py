@@ -135,12 +135,11 @@ class ReadTask(Callable[[], BlockPartition]):
             if len(partition) == 0:
                 raise ValueError("Read task must return non-empty list.")
             return partition
-
-        # Block splitting disabled case.
-        builder = DelegatingArrowBlockBuilder()
-        for block in result:
-            builder.add_block(block)
-        return builder.build()
+        else:
+            builder = DelegatingArrowBlockBuilder()
+            for block in result:
+                builder.add_block(block)
+            return builder.build()
 
 
 class RangeDatasource(Datasource[Union[ArrowRow, int]]):
