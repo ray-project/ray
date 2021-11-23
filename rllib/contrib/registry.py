@@ -3,7 +3,7 @@
 
 def _import_random_agent():
     from ray.rllib.contrib.random_agent.random_agent import RandomAgent
-    return RandomAgent, RandomAgent._default_config
+    return RandomAgent, RandomAgent.get_default_config()
 
 
 def _import_maddpg():
