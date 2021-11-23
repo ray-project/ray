@@ -219,8 +219,10 @@ Process WorkerPool::StartWorkerProcess(
     return Process();
   }
   // Either there are no workers pending registration or the worker start is being forced.
-  RAY_LOG(DEBUG) << "Starting new worker process, current pool has " << state.idle.size()
-                 << " workers";
+  RAY_LOG(INFO) << "Starting new worker process of language "
+                << rpc::Language_Name(language) << " and type "
+                << rpc::WorkerType_Name(worker_type) << ", current pool has "
+                << state.idle.size() << " workers";
 
   int workers_to_start = 1;
   if (dynamic_options.empty()) {
@@ -750,9 +752,11 @@ void WorkerPool::PushIOWorkerInternal(const std::shared_ptr<WorkerInterface> &wo
   auto &state = GetStateForLanguage(Language::PYTHON);
   auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
 
-  RAY_LOG(DEBUG) << "Pushing an IO worker to the worker pool.";
+  RAY_LOG(DEBUG) << "Pushing an IO worker to the worker pool. Worker type: "
+                 << rpc::WorkerType_Name(worker_type)
+                 << ", worker id: " << worker->WorkerId();
   if (io_worker_state.pending_io_tasks.empty()) {
-    io_worker_state.idle_io_workers.push(worker);
+    io_worker_state.idle_io_workers.emplace(worker);
   } else {
     auto callback = io_worker_state.pending_io_tasks.front();
     io_worker_state.pending_io_tasks.pop();
@@ -770,10 +774,16 @@ void WorkerPool::PopIOWorkerInternal(
     // We must fill the pending task first, because 'TryStartIOWorkers' will
     // start I/O workers according to the number of pending tasks.
     io_worker_state.pending_io_tasks.push(callback);
+    RAY_LOG(DEBUG) << "Failed to pop an IO worker. Try starting a new one. Worker type: "
+                   << rpc::WorkerType_Name(worker_type);
     TryStartIOWorkers(Language::PYTHON, worker_type);
   } else {
-    auto io_worker = io_worker_state.idle_io_workers.front();
-    io_worker_state.idle_io_workers.pop();
+    const auto it = io_worker_state.idle_io_workers.begin();
+    auto io_worker = *it;
+    io_worker_state.idle_io_workers.erase(it);
+    RAY_LOG(DEBUG) << "Popped an IO worker. Worker type: "
+                   << rpc::WorkerType_Name(worker_type)
+                   << ", worker ID: " << io_worker->WorkerId();
     callback(io_worker);
   }
 }
@@ -1186,8 +1196,18 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec, int64_t bac
 
 bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker,
                                   rpc::WorkerExitType disconnect_type) {
+  MarkPortAsFree(worker->AssignedPort());
+
   auto &state = GetStateForLanguage(worker->GetLanguage());
   RAY_CHECK(RemoveWorker(state.registered_workers, worker));
+
+  if (IsIOWorkerType(worker->GetWorkerType())) {
+    auto &io_worker_state =
+        GetIOWorkerStateFromWorkerType(worker->GetWorkerType(), state);
+    RAY_CHECK(RemoveWorker(io_worker_state.registered_io_workers, worker));
+    return RemoveWorker(io_worker_state.idle_io_workers, worker);
+  }
+
   RAY_UNUSED(RemoveWorker(state.pending_disconnection_workers, worker));
 
   for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end();
@@ -1198,8 +1218,6 @@ bool WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
       break;
     }
   }
-
-  MarkPortAsFree(worker->AssignedPort());
   auto status = RemoveWorker(state.idle, worker);
   if (disconnect_type != rpc::WorkerExitType::INTENDED_EXIT) {
     // A Java worker process may have multiple workers. If one of them disconnects

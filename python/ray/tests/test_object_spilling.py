@@ -642,5 +642,55 @@ def test_spill_dir_cleanup_on_raylet_start(object_spilling_config):
     cluster.shutdown()
 
 
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "object_store_memory": 75 * 1024 * 1024,
+        "_system_config": {
+            "max_io_workers": 1
+        }
+    }],
+    indirect=True)
+def test_spill_worker_failure(ray_start_regular):
+    def run_workload():
+        @ray.remote
+        def f():
+            return np.zeros(50 * 1024 * 1024, dtype=np.uint8)
+
+        ids = []
+        for _ in range(5):
+            x = f.remote()
+            ids.append(x)
+        for id in ids:
+            ray.get(id)
+        del ids
+
+    run_workload()
+
+    def get_spill_worker():
+        import psutil
+        for proc in psutil.process_iter():
+            try:
+                if ray.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE \
+                        in proc.name():
+                    return proc
+            except psutil.NoSuchProcess:
+                pass
+
+    # Spilling occurred. Get the PID of the spill worker.
+    spill_worker_proc = get_spill_worker()
+    assert spill_worker_proc
+
+    # Kill the spill worker
+    spill_worker_proc.kill()
+    spill_worker_proc.wait()
+
+    # Now we trigger spilling again
+    run_workload()
+
+    # A new spill worker should be created
+    spill_worker_proc = get_spill_worker()
+    assert spill_worker_proc
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

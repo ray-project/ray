@@ -1538,11 +1538,83 @@ TEST_F(WorkerPoolTest, PopWorkerStatus) {
   worker_pool_->ClearProcesses();
 }
 
+TEST_F(WorkerPoolTest, TestIOWorkerFailureAndSpawn) {
+  std::unordered_set<std::shared_ptr<WorkerInterface>> spill_worker_set;
+  auto spill_worker_callback =
+      [&spill_worker_set](std::shared_ptr<WorkerInterface> worker) {
+        spill_worker_set.emplace(worker);
+      };
+
+  // Initialize the worker pool with MAX_IO_WORKER_SIZE idle spill workers.
+
+  std::vector<Process> processes;
+  for (int i = 0; i < MAX_IO_WORKER_SIZE; i++) {
+    auto status = PopWorkerStatus::OK;
+    auto process = worker_pool_->StartWorkerProcess(
+        rpc::Language::PYTHON, rpc::WorkerType::SPILL_WORKER, JobID::Nil(), &status);
+    ASSERT_EQ(status, PopWorkerStatus::OK);
+    processes.push_back(process);
+  }
+  for (const auto &proc : processes) {
+    auto worker = CreateSpillWorker(Process());
+    RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                              worker_pool_->GetStartupToken(proc),
+                                              [](Status, int) {}));
+    worker_pool_->OnWorkerStarted(worker);
+    worker_pool_->PushSpillWorker(worker);
+  }
+
+  // Pop spill workers should work.
+
+  for (int i = 0; i < MAX_IO_WORKER_SIZE; i++) {
+    // Pop a spill worker.
+    worker_pool_->PopSpillWorker(spill_worker_callback);
+  }
+  ASSERT_EQ(spill_worker_set.size(), MAX_IO_WORKER_SIZE);
+  std::unordered_set<WorkerID> worker_ids;
+  for (const auto &worker : spill_worker_set) {
+    worker_ids.emplace(worker->WorkerId());
+  }
+
+  // Push them back and mock worker failure.
+
+  for (const auto &worker : spill_worker_set) {
+    worker_pool_->PushSpillWorker(worker);
+    worker_pool_->DisconnectWorker(
+        worker, /*disconnect_type=*/rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
+  }
+  spill_worker_set.clear();
+
+  // Pop a spill worker.
+
+  worker_pool_->PopSpillWorker(spill_worker_callback);
+  // Unable to pop a spill worker from the idle pool, but a new one is being started.
+  ASSERT_EQ(spill_worker_set.size(), 0);
+  auto worker2 = CreateSpillWorker(Process());
+  auto status = PopWorkerStatus::OK;
+  auto proc2 = worker_pool_->StartWorkerProcess(
+      rpc::Language::PYTHON, rpc::WorkerType::SPILL_WORKER, JobID::Nil(), &status);
+  ASSERT_EQ(status, PopWorkerStatus::OK);
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(worker2, proc2.GetId(), proc2.GetId(),
+                                            worker_pool_->GetStartupToken(proc2),
+                                            [](Status, int) {}));
+  worker_pool_->OnWorkerStarted(worker2);
+  worker_pool_->PushSpillWorker(worker2);
+  ASSERT_EQ(spill_worker_set.size(), 1);
+  ASSERT_EQ(worker2, *spill_worker_set.begin());
+  // The popped spill worker should be newly created.
+  ASSERT_FALSE(worker_ids.count(worker2->WorkerId()));
+}
+
 }  // namespace raylet
 
 }  // namespace ray
 
 int main(int argc, char **argv) {
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog, []() { ray::RayLog::ShutDownRayLog(); }, argv[0],
+      ray::RayLogLevel::INFO,
+      /*log_dir=*/"");
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
