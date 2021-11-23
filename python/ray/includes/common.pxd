@@ -238,7 +238,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
         CTaskOptions(c_string name, int num_returns,
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
-                     c_string serialized_runtime_env)
+                     c_string serialized_runtime_env,
+                     c_vector[c_string] runtime_env_uris)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -254,6 +255,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_pair[CPlacementGroupID, int64_t] placement_options,
             c_bool placement_group_capture_child_tasks,
             c_string serialized_runtime_env,
+            c_vector[c_string] runtime_env_uris,
             const c_vector[CConcurrencyGroup] &concurrency_groups,
             c_bool execute_out_of_order)
 

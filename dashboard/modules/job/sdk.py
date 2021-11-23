@@ -88,11 +88,19 @@ class JobSubmissionClient:
         self._cookies = cluster_info.cookies
         self._default_metadata = cluster_info.metadata or {}
 
-        self._test_connection()
+        self._check_connection_and_version()
 
-    def _test_connection(self):
+    def _check_connection_and_version(self):
         try:
-            assert not self._package_exists("gcs://FAKE_URI.zip")
+            r = self._do_request("GET", "/api/version")
+            if r.status_code == 404:
+                raise RuntimeError(
+                    "Jobs API not supported on the Ray cluster. "
+                    "Please ensure the cluster is running "
+                    "Ray 1.9 or higher.")
+
+            r.raise_for_status()
+            # TODO(edoakes): check the version if/when we break compatibility.
         except requests.exceptions.ConnectionError:
             raise ConnectionError(
                 f"Failed to connect to Ray at address: {self._address}.")

@@ -1,4 +1,5 @@
 import time
+import pytest
 
 from ray import serve
 from ray.serve.deployment_state import (SLOW_STARTUP_WARNING_S,
@@ -62,3 +63,18 @@ def test_slow_initialization_warning(serve_instance, capsys):
     # make sure that exactly one warning was printed
     # for this deployment
     assert captured.err.count(expected_warning) == 1
+
+
+def test_deployment_init_error_logging(serve_instance, capsys):
+    @serve.deployment
+    class D:
+        def __init__(self):
+            0 / 0
+
+    with pytest.raises(RuntimeError):
+        D.deploy()
+
+    captured = capsys.readouterr()
+
+    assert "Exception in deployment 'D'" in captured.err
+    assert "ZeroDivisionError" in captured.err
