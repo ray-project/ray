@@ -39,14 +39,18 @@ def _init_ray_and_catch_exceptions(f: Callable) -> Callable:
     async def check(self, *args, **kwargs):
         try:
             if not ray.is_initialized():
-                address = self._redis_address
-                redis_pw = self._redis_password
-                logger.info(f"Connecting to ray with address={address}, "
-                            f"redis_pw={redis_pw}")
-                ray.init(
-                    address=address,
-                    namespace=RAY_INTERNAL_JOBS_NAMESPACE,
-                    _redis_password=redis_pw)
+                try:
+                    address = self._redis_address
+                    redis_pw = self._redis_password
+                    logger.info(f"Connecting to ray with address={address}, "
+                                f"redis_pw={redis_pw}")
+                    ray.init(
+                        address=address,
+                        namespace=RAY_INTERNAL_JOBS_NAMESPACE,
+                        _redis_password=redis_pw)
+                except Exception as e:
+                    ray.shutdown()
+                    raise e from None
 
             return await f(self, *args, **kwargs)
         except Exception as e:
