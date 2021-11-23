@@ -161,7 +161,7 @@ def read_datasource(datasource: Datasource[T],
     read_tasks = datasource.prepare_read(parallelism, **read_args)
     context = DatasetContext.get_current()
 
-    def remote_read(task: ReadTask) -> Block:
+    def remote_read(task: ReadTask) -> MaybeBlockPartition:
         DatasetContext._set_current(context)
         return task()
 
@@ -185,7 +185,7 @@ def read_datasource(datasource: Datasource[T],
         # If no spread resource prefix given, yield an empty dictionary.
         resource_iter = itertools.repeat({})
 
-    calls: List[Callable[[], ObjectRef[BlockPartition]]] = []
+    calls: List[Callable[[], ObjectRef[MaybeBlockPartition]]] = []
     metadata: List[BlockPartitionMetadata] = []
 
     for task in read_tasks:

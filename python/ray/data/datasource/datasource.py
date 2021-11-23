@@ -115,7 +115,7 @@ class ReadTask(Callable[[], BlockPartition]):
     def get_metadata(self) -> BlockPartitionMetadata:
         return self._metadata
 
-    def __call__(self) -> BlockPartition:
+    def __call__(self) -> MaybeBlockPartition:
         context = DatasetContext.get_current()
         result = self._read_fn()
         if not hasattr(result, "__iter__"):
@@ -123,16 +123,24 @@ class ReadTask(Callable[[], BlockPartition]):
                 "Read function must return Iterable[Block], got {}. "
                 "Probably you need to return `[block]` instead of "
                 "`block`.".format(result))
-        partition: BlockPartition = []
+
+        if context.block_splitting_enabled:
+            partition: BlockPartition = []
+            for block in result:
+                metadata = BlockAccessor.for_block(block).get_metadata(
+                    input_files=self._metadata.input_files)
+                assert context.block_owner
+                partition.append((ray.put(block, _owner=context.block_owner),
+                                  metadata))
+            if len(partition) == 0:
+                raise ValueError("Read task must return non-empty list.")
+            return partition
+
+        # Block splitting disabled case.
+        builder = DelegatingArrowBlockBuilder()
         for block in result:
-            metadata = BlockAccessor.for_block(block).get_metadata(
-                input_files=self._metadata.input_files)
-            assert context.block_owner
-            partition.append((ray.put(block, _owner=context.block_owner),
-                              metadata))
-        if len(partition) == 0:
-            raise ValueError("Read task must return non-empty list.")
-        return partition
+            builder.add_block(block)
+        return build.build()
 
 
 class RangeDatasource(Datasource[Union[ArrowRow, int]]):
