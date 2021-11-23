@@ -2022,6 +2022,7 @@ cc_library(
     name = "store_client",
     srcs = [
         "src/ray/gcs/store_client/redis_store_client.cc",
+        "src/ray/gcs/store_client/store_client_factory.cc",
         "src/ray/gcs/store_client/in_memory_store_client.cc",
     ],
     hdrs = [
