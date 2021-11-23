@@ -56,8 +56,8 @@ class TestBackend(Backend):
 
 
 @pytest.mark.parametrize("workers_to_log", [0, None, [0, 1]])
-@pytest.mark.parametrize("filename", [None, "my_own_filename.json"])
 @pytest.mark.parametrize("detailed", [False, True])
+@pytest.mark.parametrize("filename", [None, "my_own_filename.json"])
 def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
               filename):
     if detailed:
