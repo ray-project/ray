@@ -7,7 +7,6 @@ load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
 proto_library(
     name = "common_proto",
     srcs = ["common.proto"],
-    deps = [":runtime_env_common_proto"],
     visibility = ["//java:__subpackages__"],
 )
 
@@ -25,26 +24,7 @@ proto_library(
     name = "gcs_proto",
     srcs = ["gcs.proto"],
     visibility = ["//java:__subpackages__"],
-    deps = [
-        ":common_proto",
-        ":runtime_env_common_proto",
-    ],
-)
-
-proto_library(
-    name = "runtime_env_common_proto",
-    srcs = ["runtime_env_common.proto"],
-    visibility = ["//java:__subpackages__"],
-)
-
-cc_proto_library(
-    name = "runtime_env_common_cc_proto",
-    deps = [":runtime_env_common_proto"],
-)
-
-python_grpc_compile(
-    name = "runtime_env_common_py_proto",
-    deps = [":runtime_env_common_proto"],
+    deps = [":common_proto"],
 )
 
 cc_proto_library(
