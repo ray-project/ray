@@ -15,7 +15,8 @@ if TYPE_CHECKING:
 import ray
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI, DeveloperAPI
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata, \
+    MaybeBlockPartition
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource, RangeDatasource, \
@@ -24,8 +25,7 @@ from ray.data.datasource import Datasource, RangeDatasource, \
 from ray.data.impl.arrow_block import ArrowRow, \
     DelegatingArrowBlockBuilder
 from ray.data.impl.block_list import BlockList
-from ray.data.impl.lazy_block_list import LazyBlockList, BlockPartition, \
-    BlockPartitionMetadata
+from ray.data.impl.lazy_block_list import LazyBlockList, BlockPartitionMetadata
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.util import _get_spread_resources_iter
 

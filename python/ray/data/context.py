@@ -21,8 +21,7 @@ class DatasetContext:
     """
 
     def __init__(self, block_owner: ray.actor.ActorHandle,
-                 block_splitting_enabled: bool,
-                 target_max_block_size: int):
+                 block_splitting_enabled: bool, target_max_block_size: int):
         """Private constructor (use get_current() instead)."""
         self.block_owner = block_owner
         self.block_splitting_enabled = block_splitting_enabled

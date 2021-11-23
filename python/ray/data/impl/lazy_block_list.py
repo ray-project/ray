@@ -5,8 +5,9 @@ import numpy as np
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockMetadata, BlockPartition, \
-    BlockPartitionMetadata, MaybeBlockPartition
+from ray.data.block import Block, BlockMetadata, BlockPartitionMetadata, \
+    MaybeBlockPartition
+from ray.data.context import DatasetContext
 from ray.data.impl.block_list import BlockList
 
 
@@ -18,10 +19,11 @@ class LazyBlockList(BlockList):
     .take() the first few rows or view the schema).
     """
 
-    def __init__(self,
-                 calls: Callable[[], ObjectRef[MaybeBlockPartition]],
-                 metadata: List[BlockPartitionMetadata],
-                 block_partitions: List[ObjectRef[MaybeBlockPartition]] = None):
+    def __init__(
+            self,
+            calls: Callable[[], ObjectRef[MaybeBlockPartition]],
+            metadata: List[BlockPartitionMetadata],
+            block_partitions: List[ObjectRef[MaybeBlockPartition]] = None):
         self._calls = calls
         self._num_blocks = len(self._calls)
         self._metadata = metadata
@@ -100,7 +102,8 @@ class LazyBlockList(BlockList):
 
         return Iter()
 
-    def _iter_block_partitions(self) -> Iterator[Tuple[ObjectRef[MaybeBlockPartition], BlockPartitionMetadata]]:
+    def _iter_block_partitions(self) -> Iterator[Tuple[ObjectRef[
+            MaybeBlockPartition], BlockPartitionMetadata]]:
         self._check_if_cleared()
         outer = self
 
@@ -114,9 +117,8 @@ class LazyBlockList(BlockList):
             def __next__(self):
                 self._pos += 1
                 if self._pos < len(outer._calls):
-                    return (
-                        outer._get_or_compute(self._pos),
-                        self._metadata[self._pos])
+                    return (outer._get_or_compute(self._pos),
+                            outer._metadata[self._pos])
                 raise StopIteration
 
         return Iter()

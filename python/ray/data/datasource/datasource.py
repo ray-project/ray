@@ -8,9 +8,9 @@ from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, \
     BlockPartition, BlockPartitionMetadata, MaybeBlockPartition
 from ray.data.context import DatasetContext
-from ray.data.impl.arrow_block import ArrowRow
-from ray.util.annotations import DeveloperAPI
+from ray.data.impl.arrow_block import ArrowRow, DelegatingArrowBlockBuilder
 from ray.data.impl.util import _check_pyarrow_version
+from ray.util.annotations import DeveloperAPI
 
 WriteResult = Any
 
@@ -140,7 +140,7 @@ class ReadTask(Callable[[], BlockPartition]):
         builder = DelegatingArrowBlockBuilder()
         for block in result:
             builder.add_block(block)
-        return build.build()
+        return builder.build()
 
 
 class RangeDatasource(Datasource[Union[ArrowRow, int]]):

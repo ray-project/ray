@@ -2,8 +2,9 @@ from typing import TypeVar, Any, Union, Callable, List, Iterable, Tuple
 
 import ray
 from ray.types import ObjectRef
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockPartition
 from ray.data.context import DatasetContext
+from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -20,8 +21,8 @@ class ComputeStrategy:
         raise NotImplementedError
 
 
-def _map_block(block: Block, fn: Any, input_files: List[str]
-               ) -> Iterable[Tuple[ObjectRef[Block], BlockMetadata]]:
+def _map_block_split(block: Block, fn: Any,
+                     input_files: List[str]) -> BlockPartition:
     output = []
     for new_block in fn(block):
         accessor = BlockAccessor.for_block(new_block)
@@ -35,6 +36,16 @@ def _map_block(block: Block, fn: Any, input_files: List[str]
     return output
 
 
+def _map_block_nosplit(block: Block, fn: Any, input_files: List[str]
+                       ) -> Iterable[Tuple[ObjectRef[Block], BlockMetadata]]:
+    builder = DelegatingArrowBlockBuilder()
+    for new_block in fn(block):
+        builder.add_block(new_block)
+    new_block = builder.build()
+    accessor = BlockAccessor.for_block(new_block)
+    return new_block, accessor.get_metadata(input_files=input_files)
+
+
 class TaskPool(ComputeStrategy):
     def apply(self, fn: Any, remote_args: dict,
               blocks: BlockList) -> BlockList:
@@ -43,14 +54,23 @@ class TaskPool(ComputeStrategy):
             return blocks
 
         blocks = list(blocks.iter_blocks_with_metadata())
+        context = DatasetContext.get_current()
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
-        map_block = cached_remote_fn(_map_block)
-        refs = [
-            map_block.options(**remote_args).remote(b, fn, m.input_files)
-            for b, m in blocks
-        ]
+        if context.block_splitting_enabled:
+            map_block = cached_remote_fn(_map_block_split).options(
+                **remote_args)
+            refs = [map_block.remote(b, fn, m.input_files) for b, m in blocks]
+        else:
+            map_block = cached_remote_fn(_map_block_nosplit).options(
+                **dict(remote_args, num_returns=2))
+            all_refs = [
+                map_block.remote(b, fn, m.input_files) for b, m in blocks
+            ]
+            data_refs = [r[0] for r in all_refs]
+            refs = [r[1] for r in all_refs]
 
+        # Common wait for non-data refs.
         try:
             results = map_bar.fetch_until_complete(refs)
         except (ray.exceptions.RayTaskError, KeyboardInterrupt) as e:
@@ -69,8 +89,13 @@ class TaskPool(ComputeStrategy):
             raise e from None
 
         new_blocks, new_metadata = [], []
-        for result in results:
-            for block, metadata in result:
+        if context.block_splitting_enabled:
+            for result in results:
+                for block, metadata in result:
+                    new_blocks.append(block)
+                    new_metadata.append(metadata)
+        else:
+            for block, metadata in zip(data_refs, results):
                 new_blocks.append(block)
                 new_metadata.append(metadata)
         return BlockList(list(new_blocks), list(new_metadata))
