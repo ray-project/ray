@@ -29,9 +29,8 @@
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
 
-DEFINE_stats(worker_register_time_ms,
-             "end to end latency of register a worker process.", (),
-             ({1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
+DEFINE_stats(worker_register_time_ms, "end to end latency of register a worker process.",
+             (), ({1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
 
 namespace {
 
