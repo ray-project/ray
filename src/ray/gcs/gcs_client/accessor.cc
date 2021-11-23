@@ -1334,6 +1334,7 @@ Status InternalKVAccessor::Put(const std::string &key, const std::string &value,
         added = static_cast<bool>(added_num.value_or(0));
         ret_promise.set_value(status);
       }));
+  // SANG-TODO Add timeout
   return ret_promise.get_future().get();
 }
 
@@ -1345,6 +1346,7 @@ Status InternalKVAccessor::Keys(const std::string &prefix,
         value = values.value_or(std::vector<std::string>());
         ret_promise.set_value(status);
       }));
+  // SANG-TODO Add timeout
   return ret_promise.get_future().get();
 }
 
@@ -1356,6 +1358,7 @@ Status InternalKVAccessor::Get(const std::string &key, std::string &value) {
     }
     ret_promise.set_value(status);
   }));
+  // SANG-TODO Add timeout
   return ret_promise.get_future().get();
 }
 
@@ -1363,6 +1366,7 @@ Status InternalKVAccessor::Del(const std::string &key) {
   std::promise<Status> ret_promise;
   RAY_CHECK_OK(AsyncInternalKVDel(
       key, [&ret_promise](Status status) { ret_promise.set_value(status); }));
+  // SANG-TODO Add timeout
   return ret_promise.get_future().get();
 }
 
@@ -1375,6 +1379,7 @@ Status InternalKVAccessor::Exists(const std::string &key, bool &exist) {
         }
         ret_promise.set_value(status);
       }));
+  // SANG-TODO Add timeout
   return ret_promise.get_future().get();
 }
 

@@ -216,7 +216,7 @@ void CoreWorkerProcess::InitializeSystemConfig() {
     io_service.run();
   });
   thread.join();
-
+  // SANG-TODO Add timeout
   RayConfig::instance().initialize(promise.get_future().get());
 }
 

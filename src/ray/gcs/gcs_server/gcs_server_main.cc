@@ -81,6 +81,7 @@ int main(int argc, char *argv[]) {
     boost::asio::io_service::work work(service);
     service.run();
   }).detach();
+  // SANG-TODO Add timeout
   promise->get_future().get();
 
   const ray::stats::TagsType global_tags = {

@@ -49,6 +49,7 @@ GlobalStateAccessor::GlobalStateAccessor(const std::string &redis_address,
     promise.set_value(true);
     io_service_->run();
   });
+  // SANG-TODO Add timeout
   promise.get_future().get();
 }
 
@@ -83,6 +84,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
         TransformForMultiItemCallback<rpc::JobTableData>(job_table_data, promise)));
   }
   promise.get_future().get();
+  // SANG-TODO Add timeout
   return job_table_data;
 }
 
@@ -93,6 +95,7 @@ JobID GlobalStateAccessor::GetNextJobID() {
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetNextJobID(
         [&promise](const JobID &job_id) { promise.set_value(job_id); }));
   }
+  // SANG-TODO Add timeout
   return promise.get_future().get();
 }
 
@@ -104,6 +107,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
         TransformForMultiItemCallback<rpc::GcsNodeInfo>(node_table_data, promise)));
   }
+  // SANG-TODO Add timeout
   promise.get_future().get();
   return node_table_data;
 }
@@ -117,6 +121,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllProfileInfo() {
         TransformForMultiItemCallback<rpc::ProfileTableData>(profile_table_data,
                                                              promise)));
   }
+  // SANG-TODO Add timeout
   promise.get_future().get();
   return profile_table_data;
 }
@@ -142,6 +147,7 @@ std::string GlobalStateAccessor::GetNodeResourceInfo(const NodeID &node_id) {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(node_id, on_done));
   }
+  // SANG-TODO Add timeout
   promise.get_future().get();
   return node_resource_map.SerializeAsString();
 }
@@ -155,6 +161,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllAvailableResources() {
         TransformForMultiItemCallback<rpc::AvailableResources>(available_resources,
                                                                promise)));
   }
+  // SANG-TODO Add timeout
   promise.get_future().get();
   return available_resources;
 }
@@ -168,6 +175,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetAllResourceUsage() {
         TransformForItemCallback<rpc::ResourceUsageBatchData>(resource_batch_data,
                                                               promise)));
   }
+  // SANG-TODO Add timeout
   promise.get_future().get();
   return resource_batch_data;
 }
@@ -180,6 +188,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGetAll(
         TransformForMultiItemCallback<rpc::ActorTableData>(actor_table_data, promise)));
   }
+  // SANG-TODO Add timeout
   promise.get_future().get();
   return actor_table_data;
 }
@@ -193,6 +202,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetActorInfo(const ActorID &ac
         actor_id, TransformForOptionalItemCallback<rpc::ActorTableData>(actor_table_data,
                                                                         promise)));
   }
+  // SANG-TODO Add timeout
   promise.get_future().get();
   return actor_table_data;
 }
@@ -207,6 +217,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetWorkerInfo(
         worker_id, TransformForOptionalItemCallback<rpc::WorkerTableData>(
                        worker_table_data, promise)));
   }
+  // SANG-TODO Add timeout
   promise.get_future().get();
   return worker_table_data;
 }
@@ -219,6 +230,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllWorkerInfo() {
     RAY_CHECK_OK(gcs_client_->Workers().AsyncGetAll(
         TransformForMultiItemCallback<rpc::WorkerTableData>(worker_table_data, promise)));
   }
+  // SANG-TODO Add timeout
   promise.get_future().get();
   return worker_table_data;
 }
@@ -235,6 +247,7 @@ bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
           promise.set_value(true);
         }));
   }
+  // SANG-TODO Add timeout
   promise.get_future().get();
   return true;
 }
@@ -248,6 +261,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllPlacementGroupInfo() {
         TransformForMultiItemCallback<rpc::PlacementGroupTableData>(
             placement_group_table_data, promise)));
   }
+  // SANG-TODO Add timeout
   promise.get_future().get();
   return placement_group_table_data;
 }
@@ -263,6 +277,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupInfo(
         TransformForOptionalItemCallback<rpc::PlacementGroupTableData>(
             placement_group_table_data, promise)));
   }
+  // SANG-TODO Add timeout
   promise.get_future().get();
   return placement_group_table_data;
 }
@@ -278,6 +293,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupByName(
         TransformForOptionalItemCallback<rpc::PlacementGroupTableData>(
             placement_group_table_data, promise)));
   }
+  // SANG-TODO Add timeout
   promise.get_future().get();
   return placement_group_table_data;
 }
@@ -323,6 +339,7 @@ ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
                 std::pair<Status, std::vector<rpc::GcsNodeInfo>>(status, nodes));
           }));
     }
+    // SANG-TODO Add timeout
     auto result = promise.get_future().get();
     auto status = result.first;
     if (!status.ok()) {
