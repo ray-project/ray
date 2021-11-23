@@ -182,7 +182,8 @@ void WorkerPool::update_worker_startup_token_counter() {
 Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
     PopWorkerStatus *status, const std::vector<std::string> &dynamic_options,
-    const int runtime_env_hash, const std::string &serialized_runtime_env_context,
+    const int runtime_env_hash, const std::string &serialized_runtime_env,
+    const std::string &serialized_runtime_env_context,
     const std::string &allocated_instances_serialized_json) {
   rpc::JobConfig *job_config = nullptr;
   if (!IsIOWorkerType(worker_type)) {
@@ -356,15 +357,19 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   if (language == Language::PYTHON || language == Language::JAVA) {
-    if (serialized_runtime_env_context != "{}" &&
-        !serialized_runtime_env_context.empty()) {
+    if (serialized_runtime_env != "{}" && serialized_runtime_env != "") {
+      worker_command_args.push_back("--serialized-runtime-env=" + serialized_runtime_env);
+
       worker_command_args.push_back("--language=" + Language_Name(language));
 
       worker_command_args.push_back("--runtime-env-hash=" +
                                     std::to_string(runtime_env_hash));
 
-      worker_command_args.push_back("--serialized-runtime-env-context=" +
-                                    serialized_runtime_env_context);
+      if (serialized_runtime_env_context != "{}" &&
+          !serialized_runtime_env_context.empty()) {
+        worker_command_args.push_back("--serialized-runtime-env-context=" +
+                                      serialized_runtime_env_context);
+      }
     } else {
       // The "shim process" setup worker is not needed, so do not run it.
       // Check that the arg really is the path to the setup worker before erasing it, to
@@ -545,9 +550,9 @@ void WorkerPool::MarkPortAsFree(int port) {
 
 void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) {
   all_jobs_[job_id] = job_config;
-  if (job_config.has_runtime_env_info() &&
-      job_config.runtime_env_info().runtime_env_eager_install()) {
-    auto const &runtime_env = job_config.runtime_env_info().serialized_runtime_env();
+  if (job_config.runtime_env().runtime_env_eager_install() &&
+      job_config.has_runtime_env()) {
+    auto const &runtime_env = job_config.runtime_env().serialized_runtime_env();
     if (runtime_env != "{}" && runtime_env != "") {
       RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
                     << ". The runtime environment was " << runtime_env << ".";
@@ -1021,8 +1026,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     PopWorkerStatus status = PopWorkerStatus::OK;
     Process proc = StartWorkerProcess(
         task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(), &status,
-        dynamic_options, task_spec.GetRuntimeEnvHash(), serialized_runtime_env_context,
-        allocated_instances_serialized_json);
+        dynamic_options, task_spec.GetRuntimeEnvHash(), serialized_runtime_env,
+        serialized_runtime_env_context, allocated_instances_serialized_json);
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();

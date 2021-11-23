@@ -5,7 +5,9 @@ import warnings
 from numbers import Number
 from typing import Any, Dict, List, Optional, Tuple
 
+from ray.tune.cloud import TrialCheckpoint
 from ray.util.debug import log_once
+from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
 from ray.tune.utils.util import is_nan_or_inf
@@ -64,7 +66,8 @@ class ExperimentAnalysis:
                  experiment_checkpoint_path: str,
                  trials: Optional[List[Trial]] = None,
                  default_metric: Optional[str] = None,
-                 default_mode: Optional[str] = None):
+                 default_mode: Optional[str] = None,
+                 sync_config: Optional[SyncConfig] = None):
         experiment_checkpoint_path = os.path.expanduser(
             experiment_checkpoint_path)
 
@@ -109,6 +112,18 @@ class ExperimentAnalysis:
                 "ExperimentAnalysis utilities.")
         else:
             self.fetch_trial_dataframes()
+
+        self._local_base_dir = os.path.abspath(
+            os.path.join(os.path.dirname(experiment_checkpoint_path), ".."))
+        self._sync_config = sync_config
+
+    def _parse_cloud_path(self, local_path: str):
+        """Convert local path into cloud storage path"""
+        if not self._sync_config or not self._sync_config.upload_dir:
+            return None
+
+        return local_path.replace(self._local_base_dir,
+                                  self._sync_config.upload_dir)
 
     def _get_latest_checkpoint(self,
                                experiment_checkpoint_path: str) -> List[str]:
@@ -177,7 +192,7 @@ class ExperimentAnalysis:
         return self.get_best_config(self.default_metric, self.default_mode)
 
     @property
-    def best_checkpoint(self) -> str:
+    def best_checkpoint(self) -> TrialCheckpoint:
         """Get the checkpoint path of the best trial of the experiment
 
         The best trial is determined by comparing the last trial results
@@ -185,6 +200,9 @@ class ExperimentAnalysis:
 
         If you didn't pass these parameters, use
         `get_best_checkpoint(trial, metric, mode)` instead.
+
+        Returns:
+            :class:`TrialCheckpoint <ray.tune.cloud.TrialCheckpoint>` object.
         """
         if not self.default_metric or not self.default_mode:
             raise ValueError(
@@ -382,10 +400,11 @@ class ExperimentAnalysis:
         else:
             raise ValueError("trial should be a string or a Trial instance.")
 
-    def get_best_checkpoint(self,
-                            trial: Trial,
-                            metric: Optional[str] = None,
-                            mode: Optional[str] = None) -> Optional[str]:
+    def get_best_checkpoint(
+            self,
+            trial: Trial,
+            metric: Optional[str] = None,
+            mode: Optional[str] = None) -> Optional[TrialCheckpoint]:
         """Gets best persistent checkpoint path of provided trial.
 
         Args:
@@ -396,7 +415,7 @@ class ExperimentAnalysis:
             mode (str): One of [min, max]. Defaults to ``self.default_mode``.
 
         Returns:
-            Path for best checkpoint of trial determined by metric
+            :class:`TrialCheckpoint <ray.tune.cloud.TrialCheckpoint>` object.
         """
         metric = metric or self.default_metric or TRAINING_ITERATION
         mode = self._validate_mode(mode)
@@ -405,10 +424,13 @@ class ExperimentAnalysis:
         if not checkpoint_paths:
             logger.error(f"No checkpoints have been found for trial {trial}.")
             return None
-        if mode == "max":
-            return max(checkpoint_paths, key=lambda x: x[1])[0]
-        else:
-            return min(checkpoint_paths, key=lambda x: x[1])[0]
+
+        a = -1 if mode == "max" else 1
+        best_path_metrics = sorted(checkpoint_paths, key=lambda x: a * x[1])
+
+        best_path, best_metric = best_path_metrics[0]
+        return TrialCheckpoint(
+            local_path=best_path, cloud_path=self._parse_cloud_path(best_path))
 
     def get_all_configs(self, prefix: bool = False) -> Dict[str, Dict]:
         """Returns a list of all configurations.

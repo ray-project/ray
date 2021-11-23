@@ -2325,7 +2325,6 @@ filegroup(
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
         "//src/ray/protobuf:runtime_env_agent_py_proto",
-        "//src/ray/protobuf:runtime_env_common_py_proto",
     ],
 )
 

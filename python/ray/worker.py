@@ -413,7 +413,7 @@ class Worker:
                     "function_id": function_to_run_id,
                     "function": pickled_function,
                 }), True, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
-            self.redis_client.rpush("Exports", key)
+            self.function_actor_manager.export_key(key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
             # successfully completes the hset and rpush, then the program will
             # most likely hang. This could be fixed by making these three
@@ -1018,6 +1018,8 @@ def shutdown(_exiting_interpreter: bool = False):
     if hasattr(global_worker, "core_worker"):
         global_worker.core_worker.shutdown()
         del global_worker.core_worker
+    # We need to reset function actor manager to clear the context
+    global_worker.function_actor_manager = FunctionActorManager(global_worker)
     # Disconnect global state from GCS.
     ray.state.state.disconnect()
 
@@ -1531,7 +1533,8 @@ def connect(node,
                 lambda worker_info: sys.path.insert(1, script_directory))
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
-        if not job_config.client_job and not job_config.runtime_env_has_uris():
+        if not job_config.client_job and len(
+                job_config.get_runtime_env_uris()) == 0:
             current_directory = os.path.abspath(os.path.curdir)
             worker.run_function_on_all_workers(
                 lambda worker_info: sys.path.insert(1, current_directory))
