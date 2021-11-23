@@ -18,8 +18,8 @@
 namespace ray {
 
 void RuntimeEnvManager::AddURIReference(const std::string &hex_id,
-                                        const rpc::RuntimeEnvInfo &runtime_env_info) {
-  const auto &uris = runtime_env_info.uris();
+                                        const rpc::RuntimeEnv &runtime_env) {
+  const auto &uris = runtime_env.uris();
   for (const auto &uri : uris) {
     uri_reference_[uri]++;
     id_to_uris_[hex_id].push_back(uri);

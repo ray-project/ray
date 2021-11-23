@@ -21,8 +21,9 @@ class MyPlugin(RuntimeEnvPlugin):
         return value
 
     @staticmethod
-    def modify_context(uri: str, plugin_config_dict: dict,
+    def modify_context(uri: str, runtime_env_dict: dict,
                        ctx: RuntimeEnvContext) -> None:
+        plugin_config_dict = runtime_env_dict["plugins"][MY_PLUGIN_CLASS_PATH]
         ctx.env_vars[MyPlugin.env_key] = str(plugin_config_dict["env_value"])
         ctx.command_prefix.append(
             f"echo {plugin_config_dict['tmp_content']} > "

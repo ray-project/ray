@@ -1286,7 +1286,6 @@ def start_dashboard(require_dashboard,
             import ray.dashboard.optional_deps  # noqa: F401
         except ImportError:
             if require_dashboard:
-                logger.exception("dashboard dependency error")
                 raise ImportError(DASHBOARD_DEPENDENCY_ERROR_MESSAGE)
             else:
                 return None, None

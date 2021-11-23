@@ -120,10 +120,8 @@ def test_container_option_serialize():
     job_config = ray.job_config.JobConfig(runtime_env=runtime_env)
     job_config_serialized = job_config.serialize()
     # job_config_serialized is JobConfig protobuf serialized string,
-    # job_config.runtime_env_info.serialized_runtime_env
-    # has container_option info
-    assert job_config_serialized.count(b"ray:latest") == 1
-    assert job_config_serialized.count(b"--name=test") == 1
+    # job_config.runtime_env.serialized_runtime_env has container_option info
+    assert job_config_serialized.count(b"image") == 1
 
 
 @pytest.mark.skipif(
