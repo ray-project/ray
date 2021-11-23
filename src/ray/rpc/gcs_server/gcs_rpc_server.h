@@ -62,9 +62,8 @@ namespace rpc {
   RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService, HANDLER, \
                       RayConfig::instance().gcs_max_active_rpcs_per_handler())
 
-#define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER)     \
-  RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, \
-                      -1)
+#define INTERNAL_KV_SERVICE_RPC_HANDLER(HANDLER) \
+  RPC_SERVICE_HANDLER(InternalKVGcsService, HANDLER, -1)
 
 // Unlimited max active RPCs, because of long poll.
 #define INTERNAL_PUBSUB_SERVICE_RPC_HANDLER(HANDLER) \
