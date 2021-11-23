@@ -454,4 +454,4 @@ def _ray_start_chaos_cluster(request):
 def ray_start_chaos_cluster(request):
     """Returns the cluster and chaos thread.
     """
-    return _ray_start_cluster(request)
+    return _ray_start_chaos_cluster(request)
