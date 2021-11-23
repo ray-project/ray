@@ -175,7 +175,7 @@ class CQLTrainer(SACTrainer):
                 _fake_gpus=config["_fake_gpus"],
                 framework=config.get("framework"))
 
-        replay_op = Replay(local_buffer=local_replay_buffer) \
+        train_op = Replay(local_buffer=local_replay_buffer) \
             .for_each(lambda x: post_fn(x, workers, config)) \
             .for_each(train_step_op) \
             .for_each(update_prio) \
@@ -183,4 +183,4 @@ class CQLTrainer(SACTrainer):
                 workers, config["target_network_update_freq"]))
 
         return StandardMetricsReporting(
-            replay_op, workers, config, by_steps_trained=True)
+            train_op, workers, config, by_steps_trained=True)

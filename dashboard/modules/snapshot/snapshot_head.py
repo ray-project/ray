@@ -9,7 +9,6 @@ from ray.core.generated import gcs_service_pb2_grpc
 from ray.experimental.internal_kv import (_internal_kv_initialized,
                                           _internal_kv_get, _internal_kv_list)
 import ray.dashboard.utils as dashboard_utils
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
 from ray.dashboard.modules.job.common import (
     JobStatusInfo, JobStatusStorageClient, JOB_ID_METADATA_KEY)
 
@@ -85,9 +84,8 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             config = {
                 "namespace": job_table_entry.config.ray_namespace,
                 "metadata": metadata,
-                "runtime_env": ParsedRuntimeEnv.deserialize(
-                    job_table_entry.config.runtime_env_info.
-                    serialized_runtime_env),
+                "runtime_env": json.loads(
+                    job_table_entry.config.runtime_env.serialized_runtime_env),
             }
             status = self._get_job_status(metadata)
             entry = {
