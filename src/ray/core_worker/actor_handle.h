@@ -37,7 +37,8 @@ class ActorHandle {
               const ObjectID &initial_cursor, const Language actor_language,
               const FunctionDescriptor &actor_creation_task_function_descriptor,
               const std::string &extension_data, int64_t max_task_retries,
-              const std::string &name, const std::string &ray_namespace);
+              const std::string &name, const std::string &ray_namespace,
+              bool execute_out_of_order = false);
 
   /// Constructs an ActorHandle from a serialized string.
   explicit ActorHandle(const std::string &serialized);
@@ -87,6 +88,8 @@ class ActorHandle {
   std::string GetName() const;
 
   std::string GetNamespace() const;
+
+  bool ExecuteOutOfOrder() const { return inner_.execute_out_of_order(); }
 
  private:
   // Protobuf-defined persistent state of the actor handle.
