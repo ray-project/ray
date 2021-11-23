@@ -90,7 +90,7 @@ if __name__ == "__main__":
         # Complex observations now arrive directly in the model as
         # structures of batches, e.g. {"a": tensor, "b": [tensor, tensor]}
         # for obs-space=Dict(a=..., b=Tuple(..., ...)).
-        "_disable_preprocessor_api": True,
+        #"_disable_preprocessor_api": True,
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", 0)),
         "framework": args.framework,

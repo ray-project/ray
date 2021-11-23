@@ -505,11 +505,9 @@ COMMON_CONFIG: TrainerConfigDict = {
     # from your `optimizer_fn`.
     # In the future, the default for this will be True.
     "_tf_policy_handles_more_than_one_loss": False,
-    # Experimental flag.
     # If True, no (observation) preprocessor will be created and
     # observations will arrive in model as they are returned by the env.
-    # In the future, the default for this will be True.
-    "_disable_preprocessor_api": False,
+    "_disable_preprocessor_api": True,
 
     # === Deprecated keys ===
     # Uses the sync samples optimizer instead of the multi-gpu one. This is

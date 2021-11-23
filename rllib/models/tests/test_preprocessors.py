@@ -43,7 +43,7 @@ class TestPreprocessors(unittest.TestCase):
         # Complex observations now arrive directly in the model as
         # structures of batches, e.g. {"a": tensor, "b": [tensor, tensor]}
         # for obs-space=Dict(a=..., b=Tuple(..., ...)).
-        config["_disable_preprocessor_api"] = True
+        #config["_disable_preprocessor_api"] = True
 
         num_iterations = 1
         # Only supported for tf so far.

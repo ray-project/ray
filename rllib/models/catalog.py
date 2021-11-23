@@ -44,11 +44,10 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # 2) fully connected and CNN default networks as well as
     # auto-wrapped LSTM- and attention nets.
     "_use_default_native_models": False,
-    # Experimental flag.
     # If True, user specified no preprocessor to be created
     # (via config._disable_preprocessor_api=True). If True, observations
     # will arrive in model as they are returned by the env.
-    "_disable_preprocessor_api": False,
+    "_disable_preprocessor_api": True,
 
     # === Built-in options ===
     # FullyConnectedNetwork (tf and torch): rllib.models.tf|torch.fcnet.py
