@@ -1,6 +1,8 @@
+import asyncio
 import os
 import sys
 import tempfile
+import time
 
 import ray
 
@@ -138,6 +140,40 @@ def test_zero_cpu_scheduling(shutdown_only):
     # Both tasks should be running, so the driver should be unblocked.
     ready, not_ready = ray.wait([block_driver_ref], timeout=1)
     assert len(not_ready) == 0
+
+
+def test_exponential_wait(shutdown_only):
+    ray.init(num_cpus=2)
+
+    num_tasks = 6
+
+    @ray.remote(num_cpus=0)
+    class Barrier:
+        def __init__(self, limit):
+            self.i = 0
+            self.limit = limit
+
+        async def join(self):
+            self.i += 1
+            while self.i < self.limit:
+                await asyncio.sleep(1)
+
+    b = Barrier.remote(num_tasks)
+
+    @ray.remote
+    def f(i, start):
+        delta = time.time() - start
+        print("Launch", i, delta)
+        ray.get(b.join.remote())
+        return delta
+
+    start = time.time()
+    results = ray.get([f.remote(i, start) for i in range(num_tasks)])
+
+    assert results[-4] > (1)
+    assert results[-3] > (1 + 2)
+    assert results[-2] > (1 + 2 + 4)
+    assert results[-1] > (1 + 2 + 4 + 8)
 
 
 if __name__ == "__main__":
