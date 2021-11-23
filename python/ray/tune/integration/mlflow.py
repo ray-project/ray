@@ -30,9 +30,9 @@ class MLflowLoggerCallback(LoggerCallback):
             mlflow.tracking.MlflowClient initialization.
         experiment_name (str): The experiment name to use for this Tune run.
             If None is passed in here, the Logger will automatically then
-            check the MLFLOW_EXPERIMENT_NAME and then the MLFLOW_EXPERIMENT_ID
+            check the MLFLOW_EXPERIMENT_ID and then the MLFLOW_EXPERIMENT_NAME
             environment variables to determine the experiment name.
-            If the experiment with the name already exists with MlFlow,
+            If the experiment with the name already exists with MLflow,
             it will be reused. If not, a new experiment will be created with
             that name.
         tags (Dict):  An optional dictionary of string keys and values to set
