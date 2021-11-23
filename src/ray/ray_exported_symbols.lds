@@ -31,5 +31,4 @@
 *ray*PeriodicalRunner*;
 *PyInit__raylet*
 *Java_io_ray*
-*JNI_*
 *ray*streaming*
