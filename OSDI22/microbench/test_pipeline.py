@@ -10,11 +10,11 @@ from time import perf_counter
 ####################
 parser = argparse.ArgumentParser()
 parser.add_argument('--WORKING_SET_RATIO', '-w', type=int, default=3)
-parser.add_argument('--OBJECT_STORE_SIZE', '-o', type=int, default=1_000_000_000)
+parser.add_argument('--OBJECT_STORE_SIZE', '-o', type=int, default=1_005_000_000)
 parser.add_argument('--OBJECT_SIZE', '-os', type=int, default=40_000_000)
 parser.add_argument('--RESULT_PATH', '-r', type=str, default="../data/dummy.csv")
 parser.add_argument('--NUM_STAGES', '-ns', type=int, default=1)
-parser.add_argument('--NUM_TRIAL', '-t', type=int, default=50)
+parser.add_argument('--NUM_TRIAL', '-t', type=int, default=5)
 args = parser.parse_args()
 params = vars(args)
 
@@ -24,6 +24,7 @@ WORKING_SET_RATIO = params['WORKING_SET_RATIO']
 RESULT_PATH = params['RESULT_PATH']
 NUM_STAGES = params['NUM_STAGES']
 NUM_TRIAL = params['NUM_TRIAL']
+OBJECT_STORE_BUFFER_SIZE = 5_000_000 #this value is to add some space in ObjS for nprand metadata and ray object metadata
 
 def test_ray_pipeline():
     ray_pipeline_begin = perf_counter()
@@ -91,7 +92,7 @@ def test_baseline_pipeline():
     baseline_end = perf_counter()
     return baseline_end - baseline_start
 
-ray.init(object_store_memory=OBJECT_STORE_SIZE)
+ray.init(object_store_memory=OBJECT_STORE_SIZE+OBJECT_STORE_BUFFER_SIZE )
 
 #Warm up tasks
 test_baseline_pipeline()
@@ -99,11 +100,11 @@ test_baseline_pipeline()
 ray_time = []
 base_time = []
 for i in range(NUM_TRIAL):
-    base_time.append(test_baseline_pipeline())
     ray_time.append(test_ray_pipeline())
+    base_time.append(test_baseline_pipeline())
 
-#header = ['base_var','ray_var','working_set_ratio', 'num_stages', 'object_store_size','object_size','baseline_pipeline','ray_pipeline']
-data = [np.var(base_time), np.var(ray_time), WORKING_SET_RATIO, NUM_STAGES, OBJECT_STORE_SIZE, OBJECT_SIZE, sum(base_time)/NUM_TRIAL, sum(ray_time)/NUM_TRIAL]
+#header = ['base_std','ray_std','base_var','ray_var','working_set_ratio', 'num_stages', 'object_store_size','object_size','baseline_pipeline','ray_pipeline']
+data = [np.std(base_time), np.std(ray_time), np.var(base_time), np.var(ray_time), WORKING_SET_RATIO, NUM_STAGES, OBJECT_STORE_SIZE, OBJECT_SIZE, sum(base_time)/NUM_TRIAL, sum(ray_time)/NUM_TRIAL]
 with open(RESULT_PATH, 'a', encoding='UTF-8', newline='') as f:
     writer = csv.writer(f)
     writer.writerow(data)
