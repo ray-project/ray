@@ -77,7 +77,10 @@ def parse_cluster_info(address: str,
 
 
 class JobSubmissionClient:
-    def __init__(self, address: str, create_cluster_if_needed=False):
+    def __init__(self,
+                 address: str,
+                 create_cluster_if_needed=False,
+                 headers: Optional[Dict[str, Any]] = None):
         if requests is None:
             raise RuntimeError(
                 "The Ray jobs CLI & SDK require the ray[default] "
@@ -87,6 +90,10 @@ class JobSubmissionClient:
         self._address = cluster_info.address
         self._cookies = cluster_info.cookies
         self._default_metadata = cluster_info.metadata or {}
+
+        # Headers used for all requests sent to job server, optional and only
+        # needed for cases like authentication to remote cluster.
+        self._headers = headers
 
         self._check_connection_and_version()
 
@@ -109,21 +116,27 @@ class JobSubmissionClient:
         raise RuntimeError(
             f"Request failed with status code {r.status_code}: {r.text}.")
 
-    def _do_request(
-            self,
-            method: str,
-            endpoint: str,
-            *,
-            data: Optional[bytes] = None,
-            json_data: Optional[dict] = None,
-    ) -> Optional[object]:
+    def _do_request(self,
+                    method: str,
+                    endpoint: str,
+                    *,
+                    data: Optional[bytes] = None,
+                    json_data: Optional[dict] = None) -> Optional[object]:
         url = self._address + endpoint
         logger.debug(
             f"Sending request to {url} with json data: {json_data or {}}.")
         return requests.request(
-            method, url, cookies=self._cookies, data=data, json=json_data)
+            method,
+            url,
+            cookies=self._cookies,
+            data=data,
+            json=json_data,
+            headers=self._headers)
 
-    def _package_exists(self, package_uri: str) -> bool:
+    def _package_exists(
+            self,
+            package_uri: str,
+    ) -> bool:
         protocol, package_name = uri_to_http_components(package_uri)
         r = self._do_request("GET", f"/api/packages/{protocol}/{package_name}")
 
@@ -188,12 +201,14 @@ class JobSubmissionClient:
                     working_dir, excludes=runtime_env.get("excludes", None))
                 runtime_env["working_dir"] = package_uri
 
-    def submit_job(self,
-                   *,
-                   entrypoint: str,
-                   job_id: Optional[str] = None,
-                   runtime_env: Optional[Dict[str, Any]] = None,
-                   metadata: Optional[Dict[str, str]] = None) -> str:
+    def submit_job(
+            self,
+            *,
+            entrypoint: str,
+            job_id: Optional[str] = None,
+            runtime_env: Optional[Dict[str, Any]] = None,
+            metadata: Optional[Dict[str, str]] = None,
+    ) -> str:
         runtime_env = runtime_env or {}
         metadata = metadata or {}
         metadata.update(self._default_metadata)
@@ -214,19 +229,22 @@ class JobSubmissionClient:
         else:
             self._raise_error(r)
 
-    def stop_job(self, job_id: str) -> bool:
+    def stop_job(
+            self,
+            job_id: str,
+    ) -> bool:
         logger.debug(f"Stopping job with job_id={job_id}.")
-        r = self._do_request(
-            "POST",
-            f"/api/jobs/{job_id}/stop",
-        )
+        r = self._do_request("POST", f"/api/jobs/{job_id}/stop")
 
         if r.status_code == 200:
             return JobStopResponse(**r.json()).stopped
         else:
             self._raise_error(r)
 
-    def get_job_status(self, job_id: str) -> JobStatusInfo:
+    def get_job_status(
+            self,
+            job_id: str,
+    ) -> JobStatusInfo:
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
         if r.status_code == 200:
