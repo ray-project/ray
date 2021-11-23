@@ -174,7 +174,7 @@ def get_trainer_class(alg: str, return_config=False) -> type:
     except ImportError:
         from ray.rllib.agents.mock import _trainer_import_failed
         class_ = _trainer_import_failed(traceback.format_exc())
-        config = class_._default_config
+        config = class_.get_default_config()
         if return_config:
             return class_, config
         return class_
@@ -195,14 +195,15 @@ def _get_trainer_class(alg: str, return_config=False) -> type:
         class_, config = script_runner.ScriptRunner, {}
     elif alg == "__fake":
         from ray.rllib.agents.mock import _MockTrainer
-        class_, config = _MockTrainer, _MockTrainer._default_config
+        class_, config = _MockTrainer, _MockTrainer.get_default_config()
     elif alg == "__sigmoid_fake_data":
         from ray.rllib.agents.mock import _SigmoidFakeData
-        class_, config = _SigmoidFakeData, _SigmoidFakeData._default_config
+        class_, config = _SigmoidFakeData, _SigmoidFakeData.get_default_config(
+        )
     elif alg == "__parameter_tuning":
         from ray.rllib.agents.mock import _ParameterTuningTrainer
         class_, config = _ParameterTuningTrainer, \
-            _ParameterTuningTrainer._default_config
+            _ParameterTuningTrainer.get_default_config()
     else:
         raise Exception(("Unknown algorithm {}.").format(alg))
 

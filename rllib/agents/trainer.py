@@ -589,6 +589,9 @@ class Trainer(Trainable):
     # entire value (dict), iff the "type" key in that value dict changes.
     _override_all_subkeys_if_type_changes = ["exploration_config"]
 
+    # TODO: Deprecate. Instead, override `Trainer.get_default_config()`.
+    _default_config = COMMON_CONFIG
+
     @PublicAPI
     def __init__(self,
                  config: Optional[PartialTrainerConfigDict] = None,
@@ -1729,12 +1732,6 @@ class Trainer(Trainable):
         logger.info("Synchronizing weights to workers.")
         weights = ray.put(self.workers.local_worker().save())
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
-
-    # TODO: Deprecate. Instead, override `Trainer.get_default_config()`.
-    @property
-    def _default_config(self) -> TrainerConfigDict:
-        """Subclasses should override this to declare their default config."""
-        return {}
 
     @ExperimentalAPI
     @classmethod
