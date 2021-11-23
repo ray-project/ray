@@ -6,7 +6,7 @@ import numpy as np
 import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, \
-    BlockPartition, BlockPartitionMetadata
+    BlockPartition, BlockPartitionMetadata, MaybeBlockPartition
 from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import ArrowRow
 from ray.util.annotations import DeveloperAPI
