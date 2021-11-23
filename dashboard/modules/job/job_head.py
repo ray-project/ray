@@ -13,13 +13,15 @@ import ray.dashboard.utils as dashboard_utils
 from ray._private.runtime_env.packaging import (package_exists,
                                                 upload_package_to_gcs)
 from ray.dashboard.modules.job.common import (
+    CURRENT_VERSION,
     http_uri_components_to_uri,
-    JobStatus,
+    JobStatusInfo,
     JobSubmitRequest,
     JobSubmitResponse,
     JobStopResponse,
     JobStatusResponse,
     JobLogsResponse,
+    VersionResponse,
     validate_request_type,
 )
 from ray.dashboard.modules.job.job_manager import JobManager
@@ -66,8 +68,22 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 status=aiohttp.web.HTTPBadRequest.status_code)
 
     def job_exists(self, job_id: str) -> bool:
-        status: JobStatus = self._job_manager.get_job_status(job_id)
-        return status != JobStatus.DOES_NOT_EXIST
+        status = self._job_manager.get_job_status(job_id)
+        return status is not None
+
+    @routes.get("/api/version")
+    async def get_version(self, req: Request) -> Response:
+        # NOTE(edoakes): CURRENT_VERSION should be bumped and checked on the
+        # client when we have backwards-incompatible changes.
+        resp = VersionResponse(
+            version=CURRENT_VERSION,
+            ray_version=ray.__version__,
+            ray_commit=ray.__commit__)
+        return Response(
+            text=json.dumps(dataclasses.asdict(resp)),
+            content_type="application/json",
+            status=aiohttp.web.HTTPOk.status_code,
+        )
 
     @routes.get("/api/packages/{protocol}/{package_name}")
     @_init_ray_and_catch_exceptions
@@ -162,8 +178,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 text=f"Job {job_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code)
 
-        status: JobStatus = self._job_manager.get_job_status(job_id)
-        resp = JobStatusResponse(status=status)
+        status: JobStatusInfo = self._job_manager.get_job_status(job_id)
+        resp = JobStatusResponse(status=status.status, message=status.message)
         return Response(
             text=json.dumps(dataclasses.asdict(resp)),
             content_type="application/json")

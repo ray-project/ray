@@ -9,13 +9,12 @@ import pytest
 import time
 
 from ray.data.impl.progress_bar import ProgressBar
-from ray.experimental import shuffle
-from ray._private.test_utils import get_all_log_message
+from ray._private.test_utils import get_log_message
 
 
-def assert_no_system_failure(p, total_lines, timeout):
-    # Get logs for 20 seconds.
-    logs = get_all_log_message(p, total_lines, timeout=timeout)
+def assert_no_system_failure(p, timeout):
+    # Get all logs for 20 seconds.
+    logs = get_log_message(p, timeout=timeout)
     for log in logs:
         assert "SIG" not in log, ("There's the segfault or SIGBART reported.")
         assert "Check failed" not in log, (
@@ -70,7 +69,7 @@ def test_chaos_task_retry(ray_start_chaos_cluster):
     pb.close()
 
     # TODO(sang): Enable this again.
-    # assert_no_system_failure(p, 10000, 10)
+    # assert_no_system_failure(p, 10)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -92,9 +91,7 @@ def test_chaos_task_retry(ray_start_chaos_cluster):
         },
     }],
     indirect=True)
-def test_chaos_actor_retry(ray_start_chaos_cluster, log_pubsub):
-    # p = log_pubsub
-
+def test_chaos_actor_retry(ray_start_chaos_cluster):
     # Chaos testing.
     @ray.remote(num_cpus=1, max_restarts=-1, max_task_retries=-1)
     class Actor:
@@ -123,37 +120,7 @@ def test_chaos_actor_retry(ray_start_chaos_cluster, log_pubsub):
 
     # TODO(sang): Currently, there are lots of SIGBART with
     # plasma client failures. Fix it.
-    # assert_no_system_failure(p, 10000, 10)
-
-
-@pytest.mark.skip(reason="Flaky.")
-@pytest.mark.parametrize(
-    "ray_start_chaos_cluster", [{
-        "kill_interval": 8,
-        "env_vars": {
-            "RAY_lineage_pinning_enabled": "true"
-        },
-        "head_resources": {
-            "CPU": 1
-        },
-        "worker_node_types": {
-            "cpu_node": {
-                "resources": {
-                    "CPU": 8,
-                },
-                "node_config": {},
-                "min_workers": 0,
-                "max_workers": 4,
-            },
-        },
-    }],
-    indirect=True)
-def test_chaos_lineage_reconstruction(ray_start_chaos_cluster):
-    shuffle.run(
-        ray_address="auto",
-        no_streaming=True,
-        num_partitions=200,
-        partition_size=15e6)
+    # assert_no_system_failure(p, 10)
 
 
 if __name__ == "__main__":

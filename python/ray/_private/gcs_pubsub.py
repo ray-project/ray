@@ -75,7 +75,7 @@ class _SubscriberBase:
 class GcsPublisher:
     """Publisher to GCS."""
 
-    def __init__(self, address: str = None, channel: grpc.Channel = None):
+    def __init__(self, *, address: str = None, channel: grpc.Channel = None):
         if address:
             assert channel is None, \
                 "address and channel cannot both be specified"

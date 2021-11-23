@@ -27,11 +27,11 @@
 #!/python/ray/rllib/ @ray-project/ray-core-python
 
 # Java worker.
-/java/dependencies.bzl @jovany-wang @kfstorm @raulchen
-/java/pom.xml @jovany-wang @kfstorm @raulchen
-/java/pom_template.xml @jovany-wang @kfstorm @raulchen
-/java/*/pom_template.xml @jovany-wang @kfstorm @raulchen
-/java/api/ @jovany-wang @kfstorm @raulchen
+/java/dependencies.bzl @jovany-wang @kfstorm @raulchen @ericl @iycheng
+/java/pom.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng
+/java/pom_template.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng
+/java/*/pom_template.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng
+/java/api/ @jovany-wang @kfstorm @raulchen @ericl @iycheng
 
 # Ray Client
 /src/ray/protobuf/ray_client.proto @ijrsvt @ameerhajali @ckw017 @mwtian
