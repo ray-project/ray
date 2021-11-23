@@ -1,6 +1,5 @@
 import asyncio
 import os
-import platform
 import pytest
 import sys
 import tempfile
