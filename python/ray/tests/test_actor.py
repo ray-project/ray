@@ -1111,5 +1111,28 @@ def test_actor_autocomplete(ray_start_regular_shared):
     assert set(method_options) == {"options", "remote"}
 
 
+def test_reuse_detached_actor_name():
+    @ray.remote
+    class Actor:
+        def f(self, t=5):
+            import time
+            # sleep so that ray kill take effect
+            time.sleep(t)
+            return "ok"
+
+    name = 'a'
+    namespace = 'foo'
+    a = Actor.options(name=name, namespace=namespace, lifetime="detached").remote()
+    a.f.remote()
+
+    actor = ray.get_actor(name=name, namespace=namespace)
+    ray.kill(actor)
+
+    a = Actor.options(name=name, namespace=namespace, lifetime="detached").remote()
+    # no sleep here
+    r = a.f.remote(0)
+    assert ray.get(r) == 'ok'
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
