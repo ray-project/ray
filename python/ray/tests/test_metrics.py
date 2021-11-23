@@ -2,6 +2,7 @@ import os
 import grpc
 import requests
 import time
+from unittest.mock import patch, MagicMock
 
 import ray
 from ray.core.generated import common_pb2
@@ -10,6 +11,7 @@ from ray.core.generated import node_manager_pb2_grpc
 from ray._private.test_utils import (RayTestTimeoutException,
                                      wait_until_succeeded_without_exception)
 from ray._private.utils import init_grpc_channel
+from ray._private.metrics import record_function
 
 import psutil  # We must import psutil after ray because we bundle it with ray.
 
@@ -144,6 +146,44 @@ def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
             (requests.exceptions.ConnectionError, ),
             # The dashboard takes more than 2s to startup.
             timeout_ms=5000)
+
+
+@patch("ray.util.metrics.Histogram")
+@patch("ray.util.metrics.Counter")
+def test_record_metrics_decorator(counter_mock, histogram_mock):
+    histogram_instance = MagicMock()
+    histogram_instance.observe = MagicMock()
+    histogram_mock.return_value = histogram_instance
+
+    counter_instance = MagicMock()
+    counter_instance.inc = MagicMock()
+    counter_mock.return_value = counter_instance
+
+    @record_function("test_1")
+    def success_call():
+        time.sleep(1)
+
+    success_call()
+    histogram_instance.observe.assert_called_once()
+    counter_instance.inc.assert_called_once()
+
+
+@patch("ray.util.metrics.Histogram")
+@patch("ray.util.metrics.Counter")
+def test_record_metrics_contextmanager(counter_mock, histogram_mock):
+    histogram_instance = MagicMock()
+    histogram_instance.observe = MagicMock()
+    histogram_mock.return_value = histogram_instance
+
+    counter_instance = MagicMock()
+    counter_instance.inc = MagicMock()
+    counter_mock.return_value = counter_instance
+
+    with record_function("test_1"):
+        time.sleep(1)
+
+    histogram_instance.observe.assert_called_once()
+    counter_instance.inc.assert_called_once()
 
 
 if __name__ == "__main__":
