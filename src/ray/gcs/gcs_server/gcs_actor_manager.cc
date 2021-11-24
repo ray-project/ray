@@ -41,11 +41,13 @@ const ray::rpc::ActorDeathCause GenWorkerDiedCause() {
       "The actor is dead because its worker process has died.");
   return death_cause;
 }
-const ray::rpc::ActorDeathCause GenOwnerDiedCause(const WorkerID &owner_id) {
+const ray::rpc::ActorDeathCause GenOwnerDiedCause(
+    const WorkerID &owner_id, const ray::rpc::WorkerExitType disconnect_type) {
   ray::rpc::ActorDeathCause death_cause;
   ray::rpc::ActorDeathOwnerDiedContext owner_died_context;
   owner_died_context.set_owner_id(owner_id.Binary());
   owner_died_context.set_error_message("The actor is dead because its owner has died.");
+  owner_died_context.set_owner_worker_exit_type(disconnect_type);
   death_cause.mutable_owner_died_context()->Swap(&owner_died_context);
   return death_cause;
 }
@@ -730,16 +732,18 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
       }));
 }
 
-absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerNode(
-    const NodeID &node_id) const {
-  absl::flat_hash_set<ActorID> actor_ids;
+absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>
+GcsActorManager::GetUnresolvedActorsByOwnerNode(const NodeID &node_id) const {
+  absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>> actor_ids_map;
   auto iter = unresolved_actors_.find(node_id);
   if (iter != unresolved_actors_.end()) {
-    for (auto &entry : iter->second) {
+    for (const auto &entry : iter->second) {
+      const auto &owner_id = entry.first;
+      auto &actor_ids = actor_ids_map[owner_id];
       actor_ids.insert(entry.second.begin(), entry.second.end());
     }
   }
-  return actor_ids;
+  return actor_ids_map;
 }
 
 absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerWorker(
@@ -789,7 +793,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
     // list.
     const auto children_ids = owner->second.children_actor_ids;
     for (const auto &child_id : children_ids) {
-      DestroyActor(child_id, GenOwnerDiedCause(worker_id));
+      DestroyActor(child_id, GenOwnerDiedCause(worker_id, disconnect_type));
     }
   }
 
@@ -799,7 +803,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
   auto unresolved_actors = GetUnresolvedActorsByOwnerWorker(node_id, worker_id);
   for (auto &actor_id : unresolved_actors) {
     if (registered_actors_.count(actor_id)) {
-      DestroyActor(actor_id, GenWorkerDiedCause());
+      DestroyActor(actor_id, GenOwnerDiedCause(worker_id, disconnect_type));
     }
   }
 
@@ -841,15 +845,15 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id) {
   // Kill all children of owner actors on a dead node.
   const auto it = owners_.find(node_id);
   if (it != owners_.end()) {
-    std::vector<ActorID> children_ids;
+    absl::flat_hash_map<WorkerID, ActorID> children_ids;
     // Make a copy of all the actor IDs owned by workers on the dead node.
     for (const auto &owner : it->second) {
       for (const auto &child_id : owner.second.children_actor_ids) {
-        children_ids.push_back(child_id);
+        children_ids.emplace(owner.first, child_id);
       }
     }
-    for (const auto &child_id : children_ids) {
-      DestroyActor(child_id, GenNodeDiedCause());
+    for (const auto &[owner_id, child_id] : children_ids) {
+      DestroyActor(child_id, GenOwnerDiedCause(owner_id, rpc::WorkerExitType::NODE_DIED));
     }
   }
 
@@ -875,9 +879,12 @@ void GcsActorManager::OnNodeDead(const NodeID &node_id) {
   // case, these actors will never be created successfully. So we need to destroy them,
   // to prevent actor tasks hang forever.
   auto unresolved_actors = GetUnresolvedActorsByOwnerNode(node_id);
-  for (auto &actor_id : unresolved_actors) {
-    if (registered_actors_.count(actor_id)) {
-      DestroyActor(actor_id, GenNodeDiedCause());
+  for (const auto &[owner_id, actor_ids] : unresolved_actors) {
+    for (const auto &actor_id : actor_ids) {
+      if (registered_actors_.count(actor_id)) {
+        DestroyActor(actor_id,
+                     GenOwnerDiedCause(owner_id, rpc::WorkerExitType::NODE_DIED));
+      }
     }
   }
 }

@@ -387,8 +387,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   void DestroyActor(const ActorID &actor_id, const rpc::ActorDeathCause &death_cause);
 
   /// Get unresolved actors that were submitted from the specified node.
-  absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerNode(
-      const NodeID &node_id) const;
+  absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>
+  GetUnresolvedActorsByOwnerNode(const NodeID &node_id) const;
 
   /// Get unresolved actors that were submitted from the specified worker.
   absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerWorker(
