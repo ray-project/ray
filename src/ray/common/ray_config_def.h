@@ -172,6 +172,12 @@ RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
 /// user.
 RAY_CONFIG(int64_t, fetch_warn_timeout_milliseconds, 60000)
 
+/// How long to wait for a fetch before timing it out and throwing an error to
+/// the user. This error should only be seen if there is extreme pressure on
+/// the object directory, or if there is a bug in either object recovery or the
+/// object directory.
+RAY_CONFIG(int64_t, fetch_fail_timeout_milliseconds, 600000)
+
 /// Temporary workaround for https://github.com/ray-project/ray/pull/16402.
 RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
 

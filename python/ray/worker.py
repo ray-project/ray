@@ -413,7 +413,7 @@ class Worker:
                     "function_id": function_to_run_id,
                     "function": pickled_function,
                 }), True, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
-            self.redis_client.rpush("Exports", key)
+            self.function_actor_manager.export_key(key)
             # TODO(rkn): If the worker fails after it calls setnx and before it
             # successfully completes the hset and rpush, then the program will
             # most likely hang. This could be fixed by making these three
@@ -1018,6 +1018,8 @@ def shutdown(_exiting_interpreter: bool = False):
     if hasattr(global_worker, "core_worker"):
         global_worker.core_worker.shutdown()
         del global_worker.core_worker
+    # We need to reset function actor manager to clear the context
+    global_worker.function_actor_manager = FunctionActorManager(global_worker)
     # Disconnect global state from GCS.
     ray.state.state.disconnect()
 
