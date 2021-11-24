@@ -256,7 +256,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool placement_group_capture_child_tasks,
             c_string serialized_runtime_env,
             c_vector[c_string] runtime_env_uris,
-            const c_vector[CConcurrencyGroup] &concurrency_groups)
+            const c_vector[CConcurrencyGroup] &concurrency_groups,
+            c_bool execute_out_of_order)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":

@@ -690,6 +690,7 @@ def run_learning_tests_from_yaml(
                     "timesteps_total": "ts",
                     "episodes_this_iter": "train_episodes",
                     "episode_reward_mean": "reward_mean",
+                    "evaluation/episode_reward_mean": "eval_reward_mean",
                 },
                 sort_by_metric=True,
                 max_report_frequency=30,

@@ -25,7 +25,8 @@ from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
+    MultiAgentReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.train_ops import TrainOneStep, MultiGPUTrainOneStep
 from ray.rllib.models import MODEL_DEFAULTS
@@ -588,6 +589,9 @@ class Trainer(Trainable):
     # entire value (dict), iff the "type" key in that value dict changes.
     _override_all_subkeys_if_type_changes = ["exploration_config"]
 
+    # TODO: Deprecate. Instead, override `Trainer.get_default_config()`.
+    _default_config = COMMON_CONFIG
+
     @PublicAPI
     def __init__(self,
                  config: Optional[PartialTrainerConfigDict] = None,
@@ -628,8 +632,7 @@ class Trainer(Trainable):
             # Default logdir prefix containing the agent's name and the
             # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            logdir_prefix = "{}_{}_{}".format(self._name, self._env_id,
-                                              timestr)
+            logdir_prefix = "{}_{}_{}".format(str(self), self._env_id, timestr)
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 os.makedirs(DEFAULT_RESULTS_DIR)
             logdir = tempfile.mkdtemp(
@@ -706,7 +709,7 @@ class Trainer(Trainable):
         update_global_seed_if_necessary(
             config.get("framework"), config.get("seed"))
 
-        self._validate_config(self.config, trainer_obj_or_none=self)
+        self.validate_config(self.config)
         if not callable(self.config["callbacks"]):
             raise ValueError(
                 "`callbacks` must be a callable method that "
@@ -773,7 +776,7 @@ class Trainer(Trainable):
                 extra_config["in_evaluation"] is True
             evaluation_config = merge_dicts(self.config, extra_config)
             # Validate evaluation config.
-            self._validate_config(evaluation_config, trainer_obj_or_none=self)
+            self.validate_config(evaluation_config)
             # Switch on complete_episode rollouts (evaluations are
             # always done on n complete episodes) and set the
             # `in_evaluation` flag. Also, make sure our rollout fragments
@@ -1730,18 +1733,6 @@ class Trainer(Trainable):
         weights = ray.put(self.workers.local_worker().save())
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
-    @property
-    def _name(self) -> str:
-        """Subclasses may override this to declare their name."""
-        # By default, return the class' name.
-        return type(self).__name__
-
-    # TODO: Deprecate. Instead, override `Trainer.get_default_config()`.
-    @property
-    def _default_config(self) -> TrainerConfigDict:
-        """Subclasses should override this to declare their default config."""
-        return {}
-
     @ExperimentalAPI
     @classmethod
     def get_default_config(cls) -> TrainerConfigDict:
@@ -1846,9 +1837,20 @@ class Trainer(Trainable):
         check_if_correct_nn_framework_installed()
         resolve_tf_settings()
 
-    @staticmethod
-    def _validate_config(config: PartialTrainerConfigDict,
-                         trainer_obj_or_none: Optional["Trainer"] = None):
+    @ExperimentalAPI
+    def validate_config(self, config: PartialTrainerConfigDict) -> None:
+        """Validates a given config dict for this Trainer.
+
+        Users should override this method to implement custom validation
+        behavior. It is recommended to call `super().validate_config()` in
+        this override.
+
+        Args:
+            config: The given config dict to check.
+
+        Raises:
+            ValueError: If there is something wrong with the config.
+        """
         model_config = config.get("model")
         if model_config is None:
             config["model"] = model_config = {}
@@ -1925,8 +1927,7 @@ class Trainer(Trainable):
             elif is_multi_agent:
                 from ray.rllib.policy.dynamic_tf_policy import DynamicTFPolicy
                 from ray.rllib.policy.torch_policy import TorchPolicy
-                default_policy_cls = None if trainer_obj_or_none is None else \
-                    getattr(trainer_obj_or_none, "_policy_class", None)
+                default_policy_cls = self.get_default_policy_class(config)
                 if any((p[0] or default_policy_cls) is None
                        or not issubclass(p[0] or default_policy_cls,
                                          (DynamicTFPolicy, TorchPolicy))
@@ -2189,15 +2190,15 @@ class Trainer(Trainable):
 
     @DeveloperAPI
     def _create_local_replay_buffer_if_necessary(
-            self,
-            config: PartialTrainerConfigDict) -> Optional[LocalReplayBuffer]:
-        """Create a LocalReplayBuffer instance if necessary.
+            self, config: PartialTrainerConfigDict
+    ) -> Optional[MultiAgentReplayBuffer]:
+        """Create a MultiAgentReplayBuffer instance if necessary.
 
         Args:
             config: Algorithm-specific configuration data.
 
         Returns:
-            LocalReplayBuffer instance based on trainer config.
+            MultiAgentReplayBuffer instance based on trainer config.
             None, if local replay buffer is not needed.
         """
         # These are the agents that utilizes a local replay buffer.
@@ -2208,7 +2209,7 @@ class Trainer(Trainable):
 
         replay_buffer_config = config["replay_buffer_config"]
         if ("type" not in replay_buffer_config
-                or replay_buffer_config["type"] != "LocalReplayBuffer"):
+                or replay_buffer_config["type"] != "MultiAgentReplayBuffer"):
             # DistributedReplayBuffer coming soon.
             return None
 
@@ -2232,7 +2233,7 @@ class Trainer(Trainable):
         else:
             prio_args = {}
 
-        return LocalReplayBuffer(
+        return MultiAgentReplayBuffer(
             num_shards=1,
             learning_starts=config["learning_starts"],
             capacity=capacity,
@@ -2281,16 +2282,22 @@ class Trainer(Trainable):
             "(e.g., YourEnvCls) or a registered env id (e.g., \"your_env\").")
 
     def __repr__(self):
-        return self._name
+        return type(self).__name__
 
-    @Deprecated(new="Trainer.evaluate", error=False)
+    @Deprecated(new="Trainer.evaluate()", error=False)
     def _evaluate(self) -> dict:
         return self.evaluate()
 
-    @Deprecated(new="compute_single_action", error=False)
+    @Deprecated(new="Trainer.compute_single_action()", error=False)
     def compute_action(self, *args, **kwargs):
         return self.compute_single_action(*args, **kwargs)
 
-    @Deprecated(new="try_recover_from_step_attempt", error=False)
+    @Deprecated(new="Trainer.try_recover_from_step_attempt()", error=False)
     def _try_recover(self):
         return self.try_recover_from_step_attempt()
+
+    @staticmethod
+    @Deprecated(new="Trainer.validate_config()", error=False)
+    def _validate_config(config, trainer_or_none):
+        assert trainer_or_none is not None
+        return trainer_or_none.validate_config(config)

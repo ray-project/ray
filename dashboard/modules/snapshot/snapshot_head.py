@@ -9,8 +9,8 @@ from ray.core.generated import gcs_service_pb2_grpc
 from ray.experimental.internal_kv import (_internal_kv_initialized,
                                           _internal_kv_get, _internal_kv_list)
 import ray.dashboard.utils as dashboard_utils
-from ray.dashboard.modules.job.common import (JobStatusStorageClient,
-                                              JOB_ID_METADATA_KEY)
+from ray.dashboard.modules.job.common import (
+    JobStatusInfo, JobStatusStorageClient, JOB_ID_METADATA_KEY)
 
 import json
 import aiohttp.web
@@ -66,15 +66,12 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         return dashboard_utils.rest_response(
             success=True, message="hello", snapshot=snapshot)
 
-    def _get_job_status(self, metadata: Dict[str, str]) -> Optional[str]:
-        status = None
-        job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
+    def _get_job_status(self,
+                        metadata: Dict[str, str]) -> Optional[JobStatusInfo]:
         # If a job submission ID has been added to a job, the status is
         # guaranteed to be returned.
-        if job_submission_id is not None:
-            status = str(self._job_status_client.get_status(job_submission_id))
-
-        return status
+        job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
+        return self._job_status_client.get_status(job_submission_id)
 
     async def get_job_info(self):
         request = gcs_service_pb2.GetAllJobInfoRequest()
@@ -90,8 +87,10 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 "runtime_env": json.loads(
                     job_table_entry.config.runtime_env.serialized_runtime_env),
             }
+            status = self._get_job_status(metadata)
             entry = {
-                "status": self._get_job_status(metadata),
+                "status": None if status is None else status.status,
+                "status_message": None if status is None else status.message,
                 "is_dead": job_table_entry.is_dead,
                 "start_time": job_table_entry.start_time,
                 "end_time": job_table_entry.end_time,

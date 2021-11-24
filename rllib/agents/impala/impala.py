@@ -130,7 +130,7 @@ class OverrideDefaultResourceRequest:
     @classmethod
     @override(Trainable)
     def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
+        cf = dict(cls.get_default_config(), **config)
 
         eval_config = cf["evaluation_config"]
 

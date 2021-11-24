@@ -1227,7 +1227,6 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
 }
 
 TEST(DirectTaskTransportTest, TestSchedulingKeys) {
-  RayConfig::instance().complex_scheduling_class() = true;
   auto store = std::make_shared<CoreWorkerMemoryStore>();
 
   std::unordered_map<std::string, double> resources1({{"a", 1.0}});

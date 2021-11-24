@@ -26,11 +26,11 @@ namespace ray {
 namespace core {
 
 void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
-    const ActorID &actor_id) {
+    const ActorID &actor_id, bool execute_out_of_order) {
   absl::MutexLock lock(&mu_);
   // No need to check whether the insert was successful, since it is possible
   // for this worker to have multiple references to the same actor.
-  client_queues_.emplace(actor_id, ClientQueue(actor_id));
+  client_queues_.emplace(actor_id, ClientQueue(actor_id, execute_out_of_order));
 }
 
 void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
