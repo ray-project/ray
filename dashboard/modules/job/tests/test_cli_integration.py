@@ -40,7 +40,7 @@ class TestSubmitIntegration:
         with set_env_var("RAY_ADDRESS", None):
             completed_process = subprocess.run(
                 ["ray", "job", "submit", "--", "echo hello"],
-                capture_output=True)
+                stderr=subprocess.PIPE)
             stderr = completed_process.stderr.decode("utf-8")
             # Current dashboard module that raises no exception from requests..
             assert ("Address must be specified using either the "
@@ -50,7 +50,7 @@ class TestSubmitIntegration:
         with set_env_var("RAY_ADDRESS", "127.0.0.1:8265"):
             completed_process = subprocess.run(
                 ["ray", "job", "submit", "--", "echo hello"],
-                capture_output=True)
+                stderr=subprocess.PIPE)
             stderr = completed_process.stderr.decode("utf-8")
             # Current dashboard module that raises no exception from requests..
             assert "Query the status of the job" in stderr
@@ -59,7 +59,7 @@ class TestSubmitIntegration:
         with set_env_var("RAY_ADDRESS", "http://127.0.0.1:8265"):
             completed_process = subprocess.run(
                 ["ray", "job", "submit", "--", "echo hello"],
-                capture_output=True)
+                stderr=subprocess.PIPE)
             stderr = completed_process.stderr.decode("utf-8")
             # Current dashboard module that raises no exception from requests..
             assert "Query the status of the job" in stderr
@@ -69,7 +69,7 @@ class TestSubmitIntegration:
             with ray_cluster_manager():
                 completed_process = subprocess.run(
                     ["ray", "job", "submit", "--", "echo hello"],
-                    capture_output=True)
+                    stderr=subprocess.PIPE)
                 stderr = completed_process.stderr.decode("utf-8")
                 # Current dashboard module that raises no exception from
                 # requests..
@@ -80,7 +80,7 @@ class TestSubmitIntegration:
             with ray_cluster_manager():
                 completed_process = subprocess.run(
                     ["ray", "job", "submit", "--", "echo hello"],
-                    capture_output=True)
+                    stderr=subprocess.PIPE)
                 stderr = completed_process.stderr.decode("utf-8")
                 # Current dashboard module that raises no exception from
                 # requests..
