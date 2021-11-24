@@ -51,7 +51,6 @@ GcsServerAddressUpdater::~GcsServerAddressUpdater() {
 }
 
 void GcsServerAddressUpdater::UpdateGcsServerAddress() {
-  RAY_LOG(DEBUG) << "Getting gcs server address from raylet.";
   raylet_client_->GetGcsServerAddress([this](const Status &status,
                                              const rpc::GetGcsServerAddressReply &reply) {
     if (!status.ok()) {
