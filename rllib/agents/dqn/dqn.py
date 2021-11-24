@@ -15,7 +15,7 @@ from typing import List, Optional, Type
 from ray.rllib.agents.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.agents.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.agents.dqn.simple_q import SimpleQTrainer, \
-    DEFAULT_CONFIG as SIMPLEQ_DEFAULT_CONFIG, execution_plan, validate_config
+    DEFAULT_CONFIG as SIMPLEQ_DEFAULT_CONFIG, validate_config
 from ray.rllib.agents.trainer import Trainer
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.evaluation.worker_set import WorkerSet
@@ -228,8 +228,8 @@ GenericOffPolicyTrainer = build_trainer(
     # No Policy preference.
     default_policy=None,
     get_policy_class=None,
-    # Use SimpleQ's config and exec. plan as base for
+    # Use SimpleQ's config + validation and DQN's exec. plan as base for
     # all other OffPolicy algos.
     default_config=DEFAULT_CONFIG,
     validate_config=validate_config,
-    execution_plan=execution_plan)
+    execution_plan=DQNTrainer.execution_plan)
