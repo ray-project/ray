@@ -1,13 +1,28 @@
 from contextlib import contextmanager
+import os
 import logging
 import sys
 import subprocess
+from typing import Optional
 
 import pytest
 
-from ray.dashboard.modules.job.tests.test_cli import set_env_var
-
 logger = logging.getLogger(__name__)
+
+@contextmanager
+def set_env_var(key: str, val: Optional[str] = None):
+    old_val = os.environ.get(key, None)
+    if val is not None:
+        os.environ[key] = val
+    elif key in os.environ:
+        del os.environ[key]
+
+    yield
+
+    if key in os.environ:
+        del os.environ[key]
+    if old_val is not None:
+        os.environ[key] = old_val
 
 
 @pytest.fixture
