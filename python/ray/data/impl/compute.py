@@ -67,8 +67,7 @@ class TaskPool(ComputeStrategy):
             all_refs = [
                 map_block.remote(b, fn, m.input_files) for b, m in blocks
             ]
-            data_refs = [r[0] for r in all_refs]
-            refs = [r[1] for r in all_refs]
+            data_refs, refs = zip(*all_refs)
 
         # Common wait for non-data refs.
         try:
