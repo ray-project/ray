@@ -5,7 +5,6 @@ import time
 
 import numpy as np
 import pytest
-import psutil
 
 import ray
 from ray._private.test_utils import (
@@ -779,60 +778,56 @@ def test_lineage_evicted(ray_start_cluster):
         assert "ObjectReconstructionFailedLineageEvictedError" in str(e)
 
 
-def test_worker_crashes(ray_start_cluster):
+@pytest.mark.parametrize("reconstruction_enabled", [False, True])
+def test_multiple_returns(ray_start_cluster, reconstruction_enabled):
     config = {
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_period_milliseconds": 100,
         "object_timeout_milliseconds": 200,
     }
+    # Workaround to reset the config to the default value.
+    if not reconstruction_enabled:
+        config["lineage_pinning_enabled"] = False
+
     cluster = ray_start_cluster
     # Head node with no resources.
-    cluster.add_node(num_cpus=0, _system_config=config)
+    cluster.add_node(
+        num_cpus=0,
+        _system_config=config,
+        enable_object_reconstruction=reconstruction_enabled)
     ray.init(address=cluster.address)
     # Node to place the initial object.
-    cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
     cluster.wait_for_nodes()
 
-    @ray.remote(num_cpus=0)
-    def kill_workers():
-        pids = []
-        for proc in psutil.process_iter():
-            if "ray::" in proc.name() and proc.pid != os.getpid():
-                pids.append(proc.pid)
-        time.sleep(1)
-        num_killed = 0
-        for pid in pids:
-            print("Killing", proc.pid)
-            try:
-                os.kill(proc.pid, SIGKILL)
-                num_killed += 1
-            except Exception:
-                pass
-        return num_killed
-
-    @ray.remote
-    def large_object():
-        return np.zeros(10**7, dtype=np.uint8)
+    @ray.remote(num_returns=2)
+    def two_large_objects():
+        return (np.zeros(10**7, dtype=np.uint8), np.zeros(
+            10**7, dtype=np.uint8))
 
     @ray.remote
     def dependent_task(x):
         return
 
-    def check_workers_killed():
-        killed = kill_workers.remote()
-        for i in range(100):
-            obj = large_object.remote()
-            # Check that we don't hang (can happen if the worker raylet
-            # crashes).
-            try:
-                ray.get(dependent_task.remote(obj))
-            except Exception:
-                pass
-            print(i)
+    obj1, obj2 = two_large_objects.remote()
+    ray.get(dependent_task.remote(obj1))
+    cluster.add_node(
+        num_cpus=1, resources={"node": 1}, object_store_memory=10**8)
+    ray.get(dependent_task.options(resources={"node": 1}).remote(obj1))
 
-        return ray.get(killed) > 0
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    wait_for_condition(
+        lambda: not all(node["Alive"] for node in ray.nodes()), timeout=10)
 
-    wait_for_condition(ceck_workers_killed)
+    if reconstruction_enabled:
+        ray.get(dependent_task.remote(obj1))
+        ray.get(dependent_task.remote(obj2))
+    else:
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(dependent_task.remote(obj1))
+            ray.get(dependent_task.remote(obj2))
+        with pytest.raises(ray.exceptions.ObjectLostError):
+            ray.get(obj2)
 
 
 if __name__ == "__main__":
