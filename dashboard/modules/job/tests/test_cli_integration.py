@@ -9,6 +9,7 @@ import pytest
 
 logger = logging.getLogger(__name__)
 
+
 @contextmanager
 def set_env_var(key: str, val: Optional[str] = None):
     old_val = os.environ.get(key, None)
