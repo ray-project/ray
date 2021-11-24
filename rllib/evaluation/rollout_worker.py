@@ -613,7 +613,7 @@ class RolloutWorker(ParallelIteratorWorker):
         self.filters: Dict[PolicyID, Filter] = {
             policy_id: get_filter(
                 self.observation_filter,
-                tree.map_structure(lambda s: s.shape, policy.observation_space_struct))
+                tree.map_structure(lambda s: np.array(s.shape), policy.observation_space_struct))
             for (policy_id, policy) in self.policy_map.items()
         }
         if self.worker_index == 0:

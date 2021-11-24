@@ -220,26 +220,26 @@ class MeanStdFilter(Filter):
         else:
             x = np.asarray(x)
 
-        return tree.map_structure(functools.partial(self._call_helper, update=update), x, self.rs, self.buffer)
+        def _helper(x, rs, buffer):
+            if update:
+                if len(x.shape) == len(rs.shape) + 1:
+                    # The vectorized case.
+                    for i in range(x.shape[0]):
+                        rs.push(x[i])
+                        buffer.push(x[i])
+                else:
+                    # The unvectorized case.
+                    rs.push(x)
+                    buffer.push(x)
+            if self.demean:
+                x = x - rs.mean
+            if self.destd:
+                x = x / (rs.std + 1e-8)
+            if self.clip:
+                x = np.clip(x, -self.clip, self.clip)
+            return x
 
-    def _call_helper(self, x, rs, buffer, update):
-        if update:
-            if len(x.shape) == len(rs.shape) + 1:
-                # The vectorized case.
-                for i in range(x.shape[0]):
-                    rs.push(x[i])
-                    buffer.push(x[i])
-            else:
-                # The unvectorized case.
-                rs.push(x)
-                buffer.push(x)
-        if self.demean:
-            x = x - rs.mean
-        if self.destd:
-            x = x / (rs.std + 1e-8)
-        if self.clip:
-            x = np.clip(x, -self.clip, self.clip)
-        return x
+        return tree.map_structure_up_to(x, _helper, x, self.rs, self.buffer)
 
     def __repr__(self):
         return "MeanStdFilter({}, {}, {}, {}, {}, {})".format(
