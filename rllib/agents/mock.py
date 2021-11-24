@@ -4,20 +4,24 @@ import numpy as np
 
 from ray.tune import result as tune_result
 from ray.rllib.agents.trainer import Trainer, with_common_config
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import TrainerConfigDict
 
 
 class _MockTrainer(Trainer):
     """Mock trainer for use in tests"""
 
-    _name = "MockTrainer"
-    _default_config = with_common_config({
-        "mock_error": False,
-        "persistent_error": False,
-        "test_variable": 1,
-        "num_workers": 0,
-        "user_checkpoint_freq": 0,
-        "framework": "tf",
-    })
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return with_common_config({
+            "mock_error": False,
+            "persistent_error": False,
+            "test_variable": 1,
+            "num_workers": 0,
+            "user_checkpoint_freq": 0,
+            "framework": "tf",
+        })
 
     @classmethod
     def default_resource_request(cls, config):
@@ -69,15 +73,17 @@ class _SigmoidFakeData(_MockTrainer):
 
     This can be helpful for evaluating early stopping algorithms."""
 
-    _name = "SigmoidFakeData"
-    _default_config = with_common_config({
-        "width": 100,
-        "height": 100,
-        "offset": 0,
-        "iter_time": 10,
-        "iter_timesteps": 1,
-        "num_workers": 0,
-    })
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return with_common_config({
+            "width": 100,
+            "height": 100,
+            "offset": 0,
+            "iter_time": 10,
+            "iter_timesteps": 1,
+            "num_workers": 0,
+        })
 
     def step(self):
         i = max(0, self.iteration - self.config["offset"])
@@ -92,16 +98,17 @@ class _SigmoidFakeData(_MockTrainer):
 
 
 class _ParameterTuningTrainer(_MockTrainer):
-
-    _name = "ParameterTuningTrainer"
-    _default_config = with_common_config({
-        "reward_amt": 10,
-        "dummy_param": 10,
-        "dummy_param2": 15,
-        "iter_time": 10,
-        "iter_timesteps": 1,
-        "num_workers": 0,
-    })
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return with_common_config({
+            "reward_amt": 10,
+            "dummy_param": 10,
+            "dummy_param2": 15,
+            "iter_time": 10,
+            "iter_timesteps": 1,
+            "num_workers": 0,
+        })
 
     def step(self):
         return dict(
