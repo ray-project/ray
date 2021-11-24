@@ -279,7 +279,7 @@ class GcsClient:
 
     @_auto_reconnect
     def internal_kv_keys(self, prefix: bytes,
-                         namespace: Optional[str] = None) -> List[bytes]:
+                         namespace: Optional[str]) -> List[bytes]:
         logger.debug(f"internal_kv_keys {prefix} {namespace}")
         prefix = _make_key(namespace, prefix)
         req = gcs_service_pb2.InternalKVKeysRequest(prefix=prefix)

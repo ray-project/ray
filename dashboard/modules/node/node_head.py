@@ -241,6 +241,24 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 logger.exception(f"Error updating node stats of {node_id}.")
 
     async def _update_log_info(self):
+        def process_log_batch(log_batch):
+            ip = log_batch["ip"]
+            pid = str(log_batch["pid"])
+            if pid != "autoscaler":
+                logs_for_ip = dict(DataSource.ip_and_pid_to_logs.get(ip, {}))
+                logs_for_pid = list(logs_for_ip.get(pid, []))
+                logs_for_pid.extend(log_batch["lines"])
+
+                # Only cache upto MAX_LOGS_TO_CACHE
+                logs_length = len(logs_for_pid)
+                if logs_length > MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD:
+                    offset = logs_length - MAX_LOGS_TO_CACHE
+                    del logs_for_pid[:offset]
+
+                logs_for_ip[pid] = logs_for_pid
+                DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
+            logger.info(f"Received a log for {ip} and {pid}")
+
         aioredis_client = self._dashboard_head.aioredis_client
         receiver = Receiver()
 
@@ -251,25 +269,10 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         async for sender, msg in receiver.iter():
             try:
                 data = json.loads(ray._private.utils.decode(msg))
-                ip = data["ip"]
-                pid = str(data["pid"])
-                if pid != "autoscaler":
-                    logs_for_ip = dict(
-                        DataSource.ip_and_pid_to_logs.get(ip, {}))
-                    logs_for_pid = list(logs_for_ip.get(pid, []))
-                    logs_for_pid.extend(data["lines"])
-
-                    # Only cache upto MAX_LOGS_TO_CACHE
-                    logs_length = len(logs_for_pid)
-                    if logs_length > MAX_LOGS_TO_CACHE * LOG_PRUNE_THREASHOLD:
-                        offset = logs_length - MAX_LOGS_TO_CACHE
-                        del logs_for_pid[:offset]
-
-                    logs_for_ip[pid] = logs_for_pid
-                    DataSource.ip_and_pid_to_logs[ip] = logs_for_ip
-                logger.info(f"Received a log for {ip} and {pid}")
+                data["pid"] = str(data["pid"])
+                process_log_batch(data)
             except Exception:
-                logger.exception("Error receiving log info.")
+                logger.exception("Error receiving log from Redis.")
 
     async def _update_error_info(self):
         def process_error(error_data):

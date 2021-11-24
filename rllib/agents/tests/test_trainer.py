@@ -9,7 +9,7 @@ import ray
 import ray.rllib.agents.a3c as a3c
 import ray.rllib.agents.dqn as dqn
 import ray.rllib.agents.pg as pg
-from ray.rllib.agents.trainer import Trainer, COMMON_CONFIG
+from ray.rllib.agents.trainer import COMMON_CONFIG
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.parallel_evaluation_and_training import \
     AssertNumEvalEpisodesCallback
@@ -33,15 +33,20 @@ class TestTrainer(unittest.TestCase):
         """
         # Given:
         standard_config = copy.deepcopy(COMMON_CONFIG)
+        trainer = pg.PGTrainer(env="CartPole-v0", config=standard_config)
 
-        # When (we validate config 2 times), ...
-        Trainer._validate_config(standard_config)
+        # When (we validate config 2 times).
+        # Try deprecated `Trainer._validate_config()` method (static).
+        trainer._validate_config(standard_config, trainer)
         config_v1 = copy.deepcopy(standard_config)
-        Trainer._validate_config(standard_config)
+        # Try new method: `Trainer.validate_config()` (non-static).
+        trainer.validate_config(standard_config)
         config_v2 = copy.deepcopy(standard_config)
 
-        # ... then ...
+        # Make sure nothing changed.
         self.assertEqual(config_v1, config_v2)
+
+        trainer.stop()
 
     def test_add_delete_policy(self):
         config = pg.DEFAULT_CONFIG.copy()

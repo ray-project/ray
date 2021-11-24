@@ -27,7 +27,7 @@ from ray.rllib.execution.common import (STEPS_TRAINED_COUNTER,
                                         _get_global_vars, _get_shared_metrics)
 from ray.rllib.execution.concurrency_ops import Concurrently, Dequeue, Enqueue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_buffer import ReplayActor
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import ReplayActor
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import UpdateTargetNetwork
@@ -80,7 +80,7 @@ class OverrideDefaultResourceRequest:
     @classmethod
     @override(Trainable)
     def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
+        cf = dict(cls.get_default_config(), **config)
 
         eval_config = cf["evaluation_config"]
 

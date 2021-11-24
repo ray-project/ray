@@ -22,7 +22,7 @@ from ray.actor import ActorHandle
 from ray.exceptions import GetTimeoutError
 from ray import ray_constants
 from ray._private.resource_spec import NODE_ID_PREFIX
-from ray.tune.error import AbortTrialExecution, TuneError
+from ray.tune.error import AbortTrialExecution
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.resources import Resources
@@ -175,10 +175,6 @@ class RayTrialExecutor(TrialExecutor):
                  wait_for_placement_group: Optional[float] = None):
         super(RayTrialExecutor, self).__init__()
         self._running = {}
-        # Since trial resume after paused should not run
-        # trial.train.remote(), thus no more new remote object ref generated.
-        # We use self._paused to store paused trials here.
-        self._paused = {}
 
         force_trial_cleanup = int(
             os.environ.get("TUNE_FORCE_TRIAL_CLEANUP_S", "0"))
@@ -408,12 +404,6 @@ class RayTrialExecutor(TrialExecutor):
 
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
-        if self._find_item(self._paused, trial):
-            raise TuneError(
-                "Should not call `train` on PAUSED trial {}. "
-                "This is an internal error - please file an issue "
-                "on https://github.com/ray-project/ray/issues/.".format(
-                    str(trial)))
 
         if self._find_item(self._running, trial):
             logging.debug(
@@ -466,8 +456,7 @@ class RayTrialExecutor(TrialExecutor):
         trial_item = self._find_item(self._running, trial)
         assert len(trial_item) < 2, trial_item
 
-    def _start_trial(self, trial, checkpoint=None, runner=None,
-                     train=True) -> bool:
+    def _start_trial(self, trial, checkpoint=None, train=True) -> bool:
         """Starts trial and restores last result if trial was paused.
 
         Args:
@@ -475,8 +464,6 @@ class RayTrialExecutor(TrialExecutor):
             checkpoint (Optional[Checkpoint]): The checkpoint to restore from.
                 If None, and no trial checkpoint exists, the trial is started
                 from the beginning.
-            runner (Trainable): The remote runner to use. This can be the
-                cached actor. If None, a new runner is created.
             train (bool): Whether or not to start training.
 
         Returns:
@@ -484,12 +471,10 @@ class RayTrialExecutor(TrialExecutor):
 
         See `RayTrialExecutor.restore` for possible errors raised.
         """
-        prior_status = trial.status
         self.set_status(trial, Trial.PENDING)
-        if runner is None:
-            runner = self._setup_remote_runner(trial)
-            if not runner:
-                return False
+        runner = self._setup_remote_runner(trial)
+        if not runner:
+            return False
         trial.set_runner(runner)
         self._notify_trainable_of_new_resources_if_needed(trial)
         self.restore(trial, checkpoint)
@@ -498,12 +483,7 @@ class RayTrialExecutor(TrialExecutor):
         if trial in self._staged_trials:
             self._staged_trials.remove(trial)
 
-        previous_run = self._find_item(self._paused, trial)
-        if prior_status == Trial.PAUSED and previous_run:
-            # If Trial was in flight when paused, self._paused stores result.
-            self._paused.pop(previous_run[0])
-            self._running[previous_run[0]] = trial
-        elif train and not trial.is_restoring:
+        if train and not trial.is_restoring:
             self._train(trial)
         return True
 
@@ -655,17 +635,6 @@ class RayTrialExecutor(TrialExecutor):
     def continue_training(self, trial: Trial) -> None:
         """Continues the training of this trial."""
         self._train(trial)
-
-    def pause_trial(self, trial: Trial) -> None:
-        """Pauses the trial.
-
-        If trial is in-flight, preserves return value in separate queue
-        before pausing, which is restored when Trial is resumed.
-        """
-        trial_future = self._find_item(self._running, trial)
-        if trial_future:
-            self._paused[trial_future[0]] = trial
-        super(RayTrialExecutor, self).pause_trial(trial)
 
     def reset_trial(self,
                     trial: Trial,
