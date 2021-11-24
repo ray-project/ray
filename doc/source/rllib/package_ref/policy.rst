@@ -3,10 +3,10 @@
 Policies
 ========
 
-The ``Policy`` class contains functionality to compute actions for decision making
-in an environment, as well as computing loss(es) and gradients, updating a neural
-network model as well as postprocessing a collected environment trajectory.
-One or more ``Policy`` objects sit inside a
+The :py:class:`~ray.rllib.policy.policy.Policy` class contains functionality to compute
+actions for decision making in an environment, as well as computing loss(es) and gradients,
+updating a neural network model as well as postprocessing a collected environment trajectory.
+One or more :py:class:`~ray.rllib.policy.policy.Policy` objects sit inside a
 :py:class:`~ray.rllib.evaluation.RolloutWorker`'s :py:class:`~ray.rllib.policy.policy_map.PolicyMap` and
 are - if more than one - are selected based on a multi-agent ``policy_mapping_fn``,
 which maps agent IDs to a policy ID.

@@ -37,12 +37,12 @@ In order to create a custom Trainer, sub-class the
 :py:class:`~ray.rllib.agents.trainer.Trainer` class
 and override one or more of its methods. Those are in particular:
 
-* :py:func:`~ray.rllib.agents.trainer.Trainer.get_default_config`
+* :py:meth:`~ray.rllib.agents.trainer.Trainer.get_default_config`
 * :py:meth:`~ray.rllib.agents.trainer.Trainer.validate_config`
 * :py:meth:`~ray.rllib.agents.trainer.Trainer.get_default_policy_class`
 * :py:meth:`~ray.rllib.agents.trainer.Trainer.setup`
 * :py:meth:`~ray.rllib.agents.trainer.Trainer.step_attempt`
-* :py:func:`~ray.rllib.agents.trainer.Trainer.execution_plan`
+* :py:meth:`~ray.rllib.agents.trainer.Trainer.execution_plan`
 
 `See here for an example on how to override Trainer <https://github.com/ray-project/ray/blob/master/rllib/agents/pg/pg.py>`_.
 
