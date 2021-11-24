@@ -35,6 +35,7 @@ APEX_DDPG_DEFAULT_CONFIG = DDPGTrainer.merge_trainer_configs(
 
 
 class ApexDDPGTrainer(DDPGTrainer):
+    @classmethod
     @override(DDPGTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return APEX_DDPG_DEFAULT_CONFIG
