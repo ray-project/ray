@@ -91,6 +91,7 @@ class R2D2Trainer(DQNTrainer):
     recurrent-replay-distributed-dqn-r2d2
     """
 
+    @classmethod
     @override(DQNTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return R2D2_DEFAULT_CONFIG
