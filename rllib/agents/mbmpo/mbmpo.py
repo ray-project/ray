@@ -338,6 +338,7 @@ class MBMPOTrainer(Trainer):
     ttps://docs.ray.io/en/master/rllib-algorithms.html#mbmpo
     """
 
+    @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG

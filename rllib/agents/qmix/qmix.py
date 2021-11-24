@@ -105,6 +105,7 @@ DEFAULT_CONFIG = with_common_config({
 
 
 class QMixTrainer(SimpleQTrainer):
+    @classmethod
     @override(SimpleQTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG

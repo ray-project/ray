@@ -159,6 +159,7 @@ def inner_adaptation(workers, samples):
 
 
 class MAMLTrainer(Trainer):
+    @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
