@@ -220,6 +220,8 @@ extern jfieldID java_gcs_client_options_password;
 extern jclass java_native_ray_object_class;
 /// Constructor of NativeRayObject class
 extern jmethodID java_native_ray_object_init;
+/// Constructor of NativeRayObject class for direct byte buffer
+extern jmethodID java_native_ray_object_buffer_init;
 /// data field of NativeRayObject class
 extern jfieldID java_native_ray_object_data;
 /// metadata field of NativeRayObject class
@@ -566,13 +568,29 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
   if (!rayObject) {
     return nullptr;
   }
-  auto java_data = NativeBufferToJavaByteArray(env, rayObject->GetData());
+  auto metadata_ptr = rayObject->GetMetadata();
+  auto java_metadata_str = env->NewStringUTF(
+      reinterpret_cast<const char*>(metadata_ptr->Data()));
+  auto metadata_str = JavaStringToNativeString(env, java_metadata_str);
+  env->DeleteLocalRef(java_metadata_str);
   auto java_metadata = NativeBufferToJavaByteArray(env, rayObject->GetMetadata());
-  auto java_obj = env->NewObject(java_native_ray_object_class,
+  jobject java_obj;
+  if (metadata_str.length() >=5 && metadata_str.substr(0, 5).compare("ARROW") == 0) {
+    auto data_ptr = rayObject->GetData();
+    auto java_data = env->NewDirectByteBuffer(
+      reinterpret_cast<void *>(const_cast<uint8_t *>(data_ptr->Data())), data_ptr->Size());
+    java_obj = env->NewObject(java_native_ray_object_class,
+                                   java_native_ray_object_buffer_init, java_data, java_metadata);
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    env->DeleteLocalRef(java_data);
+  } else {
+    auto java_data = NativeBufferToJavaByteArray(env, rayObject->GetData());
+    java_obj = env->NewObject(java_native_ray_object_class,
                                  java_native_ray_object_init, java_data, java_metadata);
-  RAY_CHECK_JAVA_EXCEPTION(env);
+    RAY_CHECK_JAVA_EXCEPTION(env);
+    env->DeleteLocalRef(java_data);
+  }
   env->DeleteLocalRef(java_metadata);
-  env->DeleteLocalRef(java_data);
   return java_obj;
 }
 

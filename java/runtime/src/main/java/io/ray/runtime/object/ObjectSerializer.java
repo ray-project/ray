@@ -79,8 +79,9 @@ public class ObjectSerializer {
 
     if (meta != null && meta.length > 0) {
       // If meta is not null, deserialize the object from meta.
-      if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_RAW) == 0 ||
-          Bytes.indexOf(meta, OBJECT_METADATA_TYPE_ARROW) == 0) {
+      if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_ARROW) == 0) {
+        return nativeRayObject.buffer;
+      } else if (Bytes.indexOf(meta, OBJECT_METADATA_TYPE_RAW) == 0) {
         if (objectType == ByteBuffer.class) {
           return ByteBuffer.wrap(data);
         }
