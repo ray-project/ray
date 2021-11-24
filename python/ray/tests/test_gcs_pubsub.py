@@ -3,8 +3,8 @@ import threading
 
 import ray
 import ray._private.gcs_utils as gcs_utils
-from ray._private.gcs_pubsub import GcsPublisher, GcsSubscriber, \
-    GcsAioPublisher, GcsAioSubscriber
+from ray._private.gcs_pubsub import GcsPublisher, GcsErrorSubscriber, \
+    GcsLogSubscriber, GcsAioPublisher, GcsAioSubscriber
 from ray.core.generated.gcs_pb2 import ErrorTableData
 import pytest
 
@@ -24,8 +24,8 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
 
     gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
 
-    subscriber = GcsSubscriber(address=gcs_server_addr)
-    subscriber.subscribe_error()
+    subscriber = GcsErrorSubscriber(address=gcs_server_addr)
+    subscriber.subscribe()
 
     publisher = GcsPublisher(address=gcs_server_addr)
     err1 = ErrorTableData(error_message="test error message 1")
@@ -33,8 +33,8 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
     publisher.publish_error(b"aaa_id", err1)
     publisher.publish_error(b"bbb_id", err2)
 
-    assert subscriber.poll_error() == (b"aaa_id", err1)
-    assert subscriber.poll_error() == (b"bbb_id", err2)
+    assert subscriber.poll() == (b"aaa_id", err1)
+    assert subscriber.poll() == (b"bbb_id", err2)
 
     subscriber.close()
 
@@ -85,8 +85,8 @@ def test_publish_and_subscribe_logs(ray_start_regular):
 
     gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
 
-    subscriber = GcsSubscriber(address=gcs_server_addr)
-    subscriber.subscribe_logs()
+    subscriber = GcsLogSubscriber(address=gcs_server_addr)
+    subscriber.subscribe()
 
     publisher = GcsPublisher(address=gcs_server_addr)
     log_batch = {
@@ -102,7 +102,7 @@ def test_publish_and_subscribe_logs(ray_start_regular):
 
     # PID is treated as string.
     log_batch["pid"] = "1234"
-    assert subscriber.poll_logs() == log_batch
+    assert subscriber.poll() == log_batch
 
     subscriber.close()
 
@@ -165,19 +165,19 @@ def test_subscribe_two_channels(ray_start_regular):
     errors = []
 
     def receive_errors():
-        subscriber = GcsSubscriber(address=gcs_server_addr)
-        subscriber.subscribe_error()
+        subscriber = GcsErrorSubscriber(address=gcs_server_addr)
+        subscriber.subscribe()
         while len(errors) < num_messages:
-            _, msg = subscriber.poll_error()
+            _, msg = subscriber.poll()
             errors.append(msg)
 
     logs = []
 
     def receive_logs():
-        subscriber = GcsSubscriber(address=gcs_server_addr)
-        subscriber.subscribe_logs()
+        subscriber = GcsLogSubscriber(address=gcs_server_addr)
+        subscriber.subscribe()
         while len(logs) < num_messages:
-            log_batch = subscriber.poll_logs()
+            log_batch = subscriber.poll()
             logs.append(log_batch)
 
     t1 = threading.Thread(target=receive_errors)

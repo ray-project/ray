@@ -3,7 +3,6 @@ from collections import deque
 import logging
 import random
 import threading
-import time
 from typing import Tuple
 
 import grpc
@@ -50,7 +49,8 @@ def construct_error_message(job_id, error_type, message, timestamp):
 
 
 class _PublisherBase:
-    def _create_log_request(self, log_json: dict):
+    @staticmethod
+    def _create_log_request(log_json: dict):
         job_id = log_json.get("job")
         return gcs_service_pb2.GcsPublishRequest(pub_messages=[
             pubsub_pb2.PubMessage(
@@ -65,24 +65,9 @@ class _SubscriberBase:
     def __init__(self):
         self._subscriber_id = bytes(
             bytearray(random.getrandbits(8) for _ in range(28)))
-        # Maps channel type to a deque of received PubMessage.
-        self._messages: dict = {}
 
-    def _subscribe_error_request(self):
-        if pubsub_pb2.RAY_ERROR_INFO_CHANNEL not in self._messages:
-            self._messages[pubsub_pb2.RAY_ERROR_INFO_CHANNEL] = deque()
-        cmd = pubsub_pb2.Command(
-            channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
-            subscribe_message={})
-        req = gcs_service_pb2.GcsSubscriberCommandBatchRequest(
-            subscriber_id=self._subscriber_id, commands=[cmd])
-        return req
-
-    def _subscribe_logs_request(self):
-        if pubsub_pb2.RAY_LOG_CHANNEL not in self._messages:
-            self._messages[pubsub_pb2.RAY_LOG_CHANNEL] = deque()
-        cmd = pubsub_pb2.Command(
-            channel_type=pubsub_pb2.RAY_LOG_CHANNEL, subscribe_message={})
+    def _subscribe_request(self, channel):
+        cmd = pubsub_pb2.Command(channel_type=channel, subscribe_message={})
         req = gcs_service_pb2.GcsSubscriberCommandBatchRequest(
             subscriber_id=self._subscriber_id, commands=[cmd])
         return req
@@ -91,44 +76,27 @@ class _SubscriberBase:
         return gcs_service_pb2.GcsSubscriberPollRequest(
             subscriber_id=self._subscriber_id)
 
-    def _process_poll_response(self, resp):
-        for msg in resp.pub_messages:
-            queue = self._messages.get(msg.channel_type)
-            if queue is not None:
-                queue.append(msg)
-            else:
-                logger.warn(
-                    f"Received message from unsubscribed channel {msg}")
-
-    def _unsubscribe_request(self):
+    def _unsubscribe_request(self, channels):
         req = gcs_service_pb2.GcsSubscriberCommandBatchRequest(
             subscriber_id=self._subscriber_id, commands=[])
-        for channel, _ in self._messages.items():
+        for channel in channels:
             req.commands.append(
                 pubsub_pb2.Command(
                     channel_type=channel, unsubscribe_message={}))
         return req
 
-    def _has_error_info(self) -> bool:
-        errors = self._messages.get(pubsub_pb2.RAY_ERROR_INFO_CHANNEL)
-        return len(errors) > 0
-
-    def _pop_error_info(self) -> Tuple[bytes, ErrorTableData]:
-        errors = self._messages.get(pubsub_pb2.RAY_ERROR_INFO_CHANNEL)
-        if len(errors) == 0:
+    @staticmethod
+    def _pop_error_info(queue):
+        if len(queue) == 0:
             return None, None
-        msg = errors.popleft()
+        msg = queue.popleft()
         return msg.key_id, msg.error_info_message
 
-    def _has_log_batch(self) -> bool:
-        logs = self._messages.get(pubsub_pb2.RAY_LOG_CHANNEL)
-        return len(logs) > 0
-
-    def _pop_log_batch(self) -> dict:
-        logs = self._messages.get(pubsub_pb2.RAY_LOG_CHANNEL)
-        if len(logs) == 0:
+    @staticmethod
+    def _pop_log_batch(queue):
+        if len(queue) == 0:
             return None
-        msg = logs.popleft()
+        msg = queue.popleft()
         return logging_utils.log_batch_proto_to_dict(msg.log_batch_message)
 
 
@@ -160,23 +128,10 @@ class GcsPublisher(_PublisherBase):
         self._stub.GcsPublish(req)
 
 
-class GcsSubscriber(_SubscriberBase):
-    """Subscriber to GCS. Thread safe.
-
-    Usage example:
-        subscriber = GcsSubscriber()
-        # Subscribe to one or more channels.
-        subscriber.subscribe_error()
-        ...
-        while running:
-            error_id, error_data = subscriber.poll_error()
-            ......
-        # Unsubscribe from all channels.
-        subscriber.close()
-    """
-
+class _SyncSubscriber(_SubscriberBase):
     def __init__(
             self,
+            pubsub_channel_type,
             address: str = None,
             channel: grpc.Channel = None,
     ):
@@ -189,158 +144,156 @@ class GcsSubscriber(_SubscriberBase):
         else:
             assert channel is not None, \
                 "One of address and channel must be specified"
-        # Protects multi-threaded read and write of self._messages.
-        # Also protects self._polling_thread.
-        self._lock = threading.Lock()
-        # Pollers of different channels use self._cond to wait on data
-        # available or subscriber closing. And on the flip side, this Condition
-        # must be notified whenever self._messages or self._close changes.
-        self._cond = threading.Condition(lock=self._lock)
-        # Thread for making polling requests.
-        self._polling_thread: threading.Thread = None
         # GRPC stub to GCS pubsub.
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
+
+        # Type of the channel.
+        self._channel = pubsub_channel_type
+        # Protects multi-threaded read and write of self._queue.
+        self._lock = threading.Lock()
+        # A queue of received PubMessage.
+        self._queue = deque()
         # Indicates whether the subscriber has closed.
         self._close = threading.Event()
 
-    def subscribe_error(self) -> None:
-        """Registers a subscription for error info.
+    def subscribe(self) -> None:
+        """Registers a subscription for the subscriber's channel type.
 
-        Before the registration, published errors will not be saved for the
-        subscriber.
+        Before the registration, published messages in the channel will not be
+        saved for the subscriber.
         """
         with self._lock:
             if self._close.is_set():
                 return
-            req = self._subscribe_error_request()
-        self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+            req = self._subscribe_request(self._channel)
+            self._stub.GcsSubscriberCommandBatch(req, timeout=30)
 
-    def subscribe_logs(self) -> None:
-        """Registers a subscription for logs.
-
-        Before the registration, published logs will not be saved for the
-        subscriber.
-        """
-        with self._lock:
-            if self._close.is_set():
-                return
-            req = self._subscribe_logs_request()
-        self._stub.GcsSubscriberCommandBatch(req, timeout=30)
-
-    def _do_polling(self) -> grpc.Future:
-        req = self._poll_request()
-        fut = self._stub.GcsSubscriberPoll.future(req)
-        while True:
-            # Terminate the polling if the subscriber has closed.
-            if self._close.is_set():
-                break
-            try:
-                # Release lock and wait for at most 1s for result to
-                # become available. This allows checking if the subscriber
-                # has closed.
-                fut.result(timeout=1)
-                # Result available.
-                break
-            except grpc.FutureTimeoutError:
-                # GRPC has not replied, continue waiting.
-                continue
-            except Exception:
-                if fut.done():
-                    # This should be a GRPC error e.g. connection unavailable.
-                    # Abort and retry from the outer loop.
-                    # The exception is stored in fut.
-                    break
-                # Unknown failure.
-                raise
-        return fut
-
-    def _polling_loop(self):
-        """Main loop of the polling thread.
-
-        Polling thread is terminated when subscriber has closed.
-        """
-        exception_count = 0
-        while True:
-            # Terminate the thread if the subscriber has closed.
-            if self._close.is_set():
-                break
-
-            # Run one polling request until it is done or an error occurs.
-            fut = self._do_polling()
-
-            # Happens only when the subscriber is closed.
-            if fut.running():
-                fut.cancel()
-                break
-
-            # Ignore failure and retry polling.
-            if fut.exception():
-                exception_count += 1
-                if exception_count % 100 == 0:
-                    logger.warn("GCS subscriber polling failed: "
-                                f"{fut.exception()}. Retrying ...")
-                time.sleep(1)
-                continue
-
-            with self._lock:
-                # fut.result() should not throw exception here.
-                self._process_poll_response(fut.result())
-                self._cond.notify_all()
-
-    def _poll(self, done=None, timeout=None):
-        """Starts a polling thread if it has not started yet."""
+    def _poll(self, timeout=None) -> None:
         assert self._lock.locked()
 
-        if not self._polling_thread:
-            self._polling_thread = threading.Thread(
-                target=self._polling_loop,
-                name="gcs_subscriber_polling",
-                daemon=True)
-            self._polling_thread.start()
+        # Poll until data becomes available.
+        while len(self._queue) == 0:
+            if self._close.is_set():
+                return
 
-        def done_polling():
-            return self._close.is_set() or done()
+            fut = self._stub.GcsSubscriberPoll.future(
+                self._poll_request(), timeout=timeout)
+            # Wait for result to become available, or cancel if the
+            # subscriber has closed.
+            while True:
+                # Unlock before waiting for reply.
+                self._lock.release()
+                try:
+                    # Use 1s timeout to check for subscriber closing
+                    # periodically.
+                    fut.result(timeout=1)
+                    break
+                except grpc.FutureTimeoutError:
+                    # Subscriber has closed. Cancel inflight request and
+                    # return from polling.
+                    if self._close.is_set():
+                        fut.cancel()
+                        return
+                    # GRPC has not replied, continue waiting.
+                    continue
+                except grpc.RpcError as e:
+                    # Choose to not raise deadline exceeded errors to the
+                    # caller. Instead return None. This can be revisited later.
+                    if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+                        return
+                    raise
+                finally:
+                    # Make sure lock is held if exiting from the loop.
+                    self._lock.acquire()
 
-        self._cond.wait_for(done_polling, timeout=timeout)
-
-    def poll_error(self, timeout=None) -> Tuple[bytes, ErrorTableData]:
-        """Polls for new error messages.
-
-        :return: A tuple of error message ID and ErrorTableData proto message,
-        or None, None if polling times out or subscriber closed.
-        """
-        with self._lock:
-            self._poll(done=self._has_error_info, timeout=timeout)
-            return self._pop_error_info()
-
-    def poll_logs(self, timeout=None) -> dict:
-        """Polls for new log batch.
-
-        :return: A dict containing a batch of log lines and their metadata,
-        or None if polling times out or subscriber closed.
-        """
-        with self._lock:
-            self._poll(done=self._has_log_batch, timeout=timeout)
-            return self._pop_log_batch()
+            if fut.done():
+                for msg in fut.result().pub_messages:
+                    if msg.channel_type != self._channel:
+                        logger.warn(
+                            f"Ignoring message from unsubscribed channel {msg}"
+                        )
+                        continue
+                    self._queue.append(msg)
 
     def close(self) -> None:
-        """Closes the subscriber and its active subscriptions."""
+        """Closes the subscriber and its active subscription."""
+
         # Mark close to terminate inflight polling and prevent future requests.
         self._close.set()
+        req = self._unsubscribe_request(channels=[self._channel])
+        try:
+            self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+        except Exception:
+            pass
+        self._stub = None
+
+
+class GcsErrorSubscriber(_SyncSubscriber):
+    """Subscriber to error info. Thread safe.
+
+    Usage example:
+        subscriber = GcsErrorSubscriber()
+        # Subscribe to the error channel.
+        subscriber.subscribe()
+        ...
+        while running:
+            error_id, error_data = subscriber.poll()
+            ......
+        # Unsubscribe from the error channels.
+        subscriber.close()
+    """
+
+    def __init__(
+            self,
+            address: str = None,
+            channel: grpc.Channel = None,
+    ):
+        super().__init__(pubsub_pb2.RAY_ERROR_INFO_CHANNEL, address, channel)
+
+    def poll(self, timeout=None) -> Tuple[bytes, ErrorTableData]:
+        """Polls for new error messages.
+
+        Returns:
+            A tuple of error message ID and ErrorTableData proto message,
+            or None, None if polling times out or subscriber closed.
+        """
         with self._lock:
-            self._cond.notify_all()
-            if not self._polling_thread:
-                # Subscriber already closed or never started.
-                return
-            polling_thread = self._polling_thread
-            self._polling_thread = None
-            req = self._unsubscribe_request()
-            try:
-                self._stub.GcsSubscriberCommandBatch(req, timeout=30)
-            except Exception:
-                pass
-            self._stub = None
-        polling_thread.join()
+            self._poll(timeout=timeout)
+            return self._pop_error_info(self._queue)
+
+
+class GcsLogSubscriber(_SyncSubscriber):
+    """Subscriber to logs. Thread safe.
+
+    Usage example:
+        subscriber = GcsLogSubscriber()
+        # Subscribe to the log channel.
+        subscriber.subscribe()
+        ...
+        while running:
+            log = subscriber.poll()
+            ......
+        # Unsubscribe from the log channel.
+        subscriber.close()
+    """
+
+    def __init__(
+            self,
+            address: str = None,
+            channel: grpc.Channel = None,
+    ):
+        super().__init__(pubsub_pb2.RAY_LOG_CHANNEL, address, channel)
+
+    def poll(self, timeout=None) -> Tuple[bytes, ErrorTableData]:
+        """Polls for new log messages.
+
+        Returns:
+            A dict containing a batch of log lines and their metadata,
+            or None if polling times out or subscriber closed.
+        """
+        with self._lock:
+            self._poll(timeout=timeout)
+            return self._pop_log_batch(self._queue)
 
 
 class GcsAioPublisher(_PublisherBase):
@@ -394,6 +347,8 @@ class GcsAioSubscriber(_SubscriberBase):
         else:
             assert channel is not None, \
                 "One of address and channel must be specified"
+        # Message queue for each channel.
+        self._messages = {}
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
 
     async def subscribe_error(self) -> None:
@@ -402,8 +357,10 @@ class GcsAioSubscriber(_SubscriberBase):
         Before the registration, published errors will not be saved for the
         subscriber.
         """
-        req = self._subscribe_error_request()
-        await self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+        if pubsub_pb2.RAY_ERROR_INFO_CHANNEL not in self._messages:
+            self._messages[pubsub_pb2.RAY_ERROR_INFO_CHANNEL] = deque()
+            req = self._subscribe_request(pubsub_pb2.RAY_ERROR_INFO_CHANNEL)
+            await self._stub.GcsSubscriberCommandBatch(req, timeout=30)
 
     async def subscribe_logs(self) -> None:
         """Registers a subscription for logs.
@@ -411,30 +368,43 @@ class GcsAioSubscriber(_SubscriberBase):
         Before the registration, published logs will not be saved for the
         subscriber.
         """
-        req = self._subscribe_logs_request()
-        await self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+        if pubsub_pb2.RAY_LOG_CHANNEL not in self._messages:
+            self._messages[pubsub_pb2.RAY_LOG_CHANNEL] = deque()
+            req = self._subscribe_request(pubsub_pb2.RAY_LOG_CHANNEL)
+            await self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+
+    def _enqueue_poll_response(self, resp):
+        for msg in resp.pub_messages:
+            queue = self._messages.get(msg.channel_type)
+            if queue is not None:
+                queue.append(msg)
+            else:
+                logger.warn(
+                    f"Ignoring message from unsubscribed channel {msg}")
 
     async def poll_error(self, timeout=None) -> Tuple[bytes, ErrorTableData]:
         """Polls for new error messages."""
-        while not self._has_error_info():
+        queue = self._messages.get(pubsub_pb2.RAY_ERROR_INFO_CHANNEL)
+        while len(queue) == 0:
             req = self._poll_request()
             reply = await self._stub.GcsSubscriberPoll(req, timeout=timeout)
-            self._process_poll_response(reply)
+            self._enqueue_poll_response(reply)
 
-        return self._pop_error_info()
+        return self._pop_error_info(queue)
 
     async def poll_logs(self, timeout=None) -> dict:
         """Polls for new error messages."""
-        while not self._has_log_batch():
+        queue = self._messages.get(pubsub_pb2.RAY_LOG_CHANNEL)
+        while len(queue) == 0:
             req = self._poll_request()
             reply = await self._stub.GcsSubscriberPoll(req, timeout=timeout)
-            self._process_poll_response(reply)
+            self._enqueue_poll_response(reply)
 
-        return self._pop_log_batch()
+        return self._pop_log_batch(queue)
 
     async def close(self) -> None:
         """Closes the subscriber and its active subscriptions."""
-        req = self._unsubscribe_request()
+        req = self._unsubscribe_request(self._messages.keys())
         try:
             await self._stub.GcsSubscriberCommandBatch(req, timeout=30)
         except Exception:
