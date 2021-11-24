@@ -576,7 +576,8 @@ class PopulationBasedTraining(FIFOScheduler):
                                 "synchronous mode. If you encounter this error"
                                 " please raise an issue on Ray Github.")
         else:
-            trial_executor.pause_trial(trial)
+            trial_executor.stop_trial(trial)
+            trial_executor.set_status(trial, Trial.PAUSED)
         trial.set_experiment_tag(new_tag)
         trial.set_config(new_config)
         trial.on_checkpoint(new_state.last_checkpoint)
@@ -796,7 +797,8 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
                                       new_config)
 
         trial_executor = trial_runner.trial_executor
-        trial_executor.pause_trial(trial)
+        trial_executor.stop_trial(trial)
+        trial_executor.set_status(trial, Trial.PAUSED)
         trial.set_experiment_tag(new_tag)
         trial.set_config(new_config)
         trial.on_checkpoint(checkpoint)
