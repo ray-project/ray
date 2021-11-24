@@ -153,14 +153,18 @@ def set_kill_interval(request):
     cluster = _ray_start_chaos_cluster(request)
     while True:
         try:
-            yield (lineage_reconstruction_enabled, kill_interval, next(cluster))
+            yield (lineage_reconstruction_enabled, kill_interval,
+                   next(cluster))
         except StopIteration:
             break
     if lineage_reconstruction_enabled:
         del os.environ["RAY_lineage_pinning_enabled"]
 
 
-@pytest.mark.parametrize("set_kill_interval", [(True, None), (True, 30), (False, None), (False, 30)], indirect=True)
+@pytest.mark.parametrize(
+    "set_kill_interval", [(True, None), (True, 30), (False, None),
+                          (False, 30)],
+    indirect=True)
 def test_nonstreaming_shuffle(set_kill_interval):
     lineage_reconstruction_enabled, kill_interval, _ = set_kill_interval
     try:
@@ -179,6 +183,7 @@ def test_nonstreaming_shuffle(set_kill_interval):
             tracker=tracker)
     except (RayTaskError, ObjectLostError):
         assert kill_interval is not None
+        assert not lineage_reconstruction_enabled
 
 
 if __name__ == "__main__":

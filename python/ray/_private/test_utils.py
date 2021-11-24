@@ -947,7 +947,6 @@ def get_and_run_node_killer(node_kill_interval_s):
             # -- logger. --
             logging.basicConfig(level=logging.INFO)
 
-
         def ready(self):
             pass
 
