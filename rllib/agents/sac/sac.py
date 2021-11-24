@@ -186,6 +186,7 @@ class SACTrainer(SimpleQTrainer):
         self._allow_unknown_subkeys += ["policy_model", "Q_model"]
         super().__init__(*args, **kwargs)
 
+    @classmethod
     @override(SimpleQTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
@@ -210,6 +211,7 @@ class SACTrainer(SimpleQTrainer):
                 "Trying to import tfp results in the following error:")
             try_import_tfp(error=True)
 
+    @override(SimpleQTrainer)
     def get_default_policy_class(self,
                                  config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":

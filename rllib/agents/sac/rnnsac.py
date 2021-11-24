@@ -38,6 +38,7 @@ DEFAULT_CONFIG = SACTrainer.merge_trainer_configs(
 
 
 class RNNSACTrainer(SACTrainer):
+    @classmethod
     @override(SACTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
