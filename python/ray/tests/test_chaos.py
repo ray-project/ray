@@ -186,6 +186,33 @@ def test_nonstreaming_shuffle(set_kill_interval):
         assert not lineage_reconstruction_enabled
 
 
+@pytest.mark.parametrize(
+    "set_kill_interval", [(True, None), (True, 30), (False, None),
+                          (False, 30)],
+    indirect=True)
+def test_streaming_shuffle(set_kill_interval):
+    lineage_reconstruction_enabled, kill_interval, _ = set_kill_interval
+    try:
+        # Create our own tracker so that it gets scheduled onto the head node.
+        tracker = shuffle._StatusTracker.remote()
+        ray.get(tracker.get_progress.remote())
+        assert len(ray.nodes()) == 1, (
+            "Tracker actor may have been scheduled to remote node "
+            "and may get killed during the test")
+
+        shuffle.run(
+            ray_address="auto",
+            no_streaming=False,
+            num_partitions=200,
+            partition_size=10e6,
+            tracker=tracker)
+    except (RayTaskError, ObjectLostError):
+        assert kill_interval is not None
+
+        # TODO(swang): Enable this once we implement support ray.put.
+        # assert not lineage_reconstruction_enabled
+
+
 if __name__ == "__main__":
     import pytest
     sys.exit(pytest.main(["-v", __file__]))
