@@ -168,20 +168,22 @@ class InplaceReturnedWorkflow:
     context: Dict
 
 
-class _WorkflowHolder:
+class _ObjectMover:
+    """Simulate right-value movement."""
+
     def __init__(self, x):
         self.x = x
 
-    def extract(self):
+    def move(self):
         if not hasattr(self, "x"):
-            raise ValueError("Stored value has been extracted.")
+            raise ValueError("Value has been extracted.")
         x = self.x
         del self.x
         return x
 
 
-def execute_workflow(workflow: Union[Workflow, _WorkflowHolder]
-                     ) -> "WorkflowExecutionResult":
+def execute_workflow(
+        workflow: Union[Workflow, _ObjectMover]) -> "WorkflowExecutionResult":
     """Execute workflow.
 
     This function also performs tail-recursion optimization for inplace
@@ -194,18 +196,18 @@ def execute_workflow(workflow: Union[Workflow, _WorkflowHolder]
         An object ref that represent the result.
     """
 
-    if isinstance(workflow, _WorkflowHolder):
-        workflow = workflow.extract()
+    if isinstance(workflow, _ObjectMover):
+        # Move the reference so we won't hold the reference
+        # of workflow in the current scope. Otherwise objects
+        # in workflow inputs may affect execution of the workflow.
+        # For example, actor handles in the workflow blocks creation
+        # of actors.
+        workflow = workflow.move()
 
     # Tail recursion optimization.
     context = {}
     while True:
         with workflow_context.fork_workflow_step_context(**context):
-            # Move the reference so we won't hold the reference
-            # of workflow in the current scope. Otherwise objects
-            # in workflow inputs may affect execution of the workflow.
-            # For example, actor handles in the workflow blocks creation
-            # of actors.
             result = _execute_workflow(workflow)
         if not isinstance(result.persisted_output, InplaceReturnedWorkflow):
             break
@@ -436,7 +438,7 @@ def _workflow_step_executor(func: Callable,
                 # in workflow inputs may affect execution of the workflow.
                 # For example, actor handles in the workflow blocks creation
                 # of actors.
-                t = _WorkflowHolder(persisted_output)
+                t = _ObjectMover(persisted_output)
                 del persisted_output
                 result = execute_workflow(t)
             # When virtual actor returns a workflow in the method,
