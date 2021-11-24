@@ -1,19 +1,13 @@
 .. _policy-reference-docs:
 
-Policy APIs
-===========
+Policies
+========
 
-.. toctree::
-   :maxdepth: 1
-
-   policy/policy.rst
-   policy/tf_policies.rst
-   policy/torch_policy.rst
-
-The ``Policy`` class contains functionality to compute actions for decision making
-in an environment, as well as computing loss(es) and gradients, updating a neural
-network model as well as postprocessing a collected environment trajectory.
-One or more ``Policy`` objects sit inside a `RolloutWorker's`` "policy_map" and
+The :py:class:`~ray.rllib.policy.policy.Policy` class contains functionality to compute
+actions for decision making in an environment, as well as computing loss(es) and gradients,
+updating a neural network model as well as postprocessing a collected environment trajectory.
+One or more :py:class:`~ray.rllib.policy.policy.Policy` objects sit inside a
+:py:class:`~ray.rllib.evaluation.RolloutWorker`'s :py:class:`~ray.rllib.policy.policy_map.PolicyMap` and
 are - if more than one - are selected based on a multi-agent ``policy_mapping_fn``,
 which maps agent IDs to a policy ID.
 
@@ -28,22 +22,14 @@ which maps agent IDs to a policy ID.
     needs.
 
 
-Building Custom Policy Classes
-++++++++++++++++++++++++++++++
+Policy API Reference
+--------------------
 
-.. warning::
-    It is not recommended anymore to use the ``build_policy_class()`` or ``build_tf_policy()``
-    utility functions for creating custom Policy sub-classes.
-    Instead, follow the simple guidelines here for directly sub-classing from
-    either one of the built-in types.
+.. toctree::
+   :maxdepth: 1
 
-In order to create a custom Policy, simply sub-class ``Policy`` (for a generic,
-framework-agnostic policy), ``TorchPolicy`` (for a PyTorch specific policy), or
-``TFPolicy`` (for a TensorFlow specific policy) and override one or more of their
-methods. Those are in particular:
+   policy/policy.rst
+   policy/tf_policies.rst
+   policy/torch_policy.rst
+   policy/custom_policies.rst
 
-* compute_actions_from_input_dict
-* postprocess_trajectory
-* loss
-
-`See here for a simple example on how to override TorchPolicy <https://github.com/ray-project/ray/blob/master/rllib/agents/ppo/ppo_torch_policy.py>`_.
