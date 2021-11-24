@@ -1547,7 +1547,11 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             def save_checkpoint(self, checkpoint_dir):
                 path = os.path.join(checkpoint_dir, "checkpoint")
                 with open(path, "w") as f:
-                    f.write(json.dumps({"iter": self.iter, "replayed": self.replayed}))
+                    f.write(
+                        json.dumps({
+                            "iter": self.iter,
+                            "replayed": self.replayed
+                        }))
                 return path
 
             def load_checkpoint(self, checkpoint_path):
@@ -1718,7 +1722,11 @@ class PopulationBasedTestingSuite(unittest.TestCase):
             def save_checkpoint(self, checkpoint_dir):
                 path = os.path.join(checkpoint_dir, "checkpoint")
                 with open(path, "w") as f:
-                    f.write(json.dumps({"iter": self.iter, "replayed": self.replayed}))
+                    f.write(
+                        json.dumps({
+                            "iter": self.iter,
+                            "replayed": self.replayed
+                        }))
                 return path
 
             def load_checkpoint(self, checkpoint_path):
