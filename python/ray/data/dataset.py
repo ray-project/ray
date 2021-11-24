@@ -805,6 +805,7 @@ class Dataset(Generic[T]):
             A new dataset holding the union of their data.
         """
 
+        context = DatasetContext.get_current()
         calls: List[Callable[[], ObjectRef[BlockPartition]]] = []
         metadata: List[BlockPartitionMetadata] = []
         block_partitions: List[ObjectRef[BlockPartition]] = []
@@ -819,10 +820,13 @@ class Dataset(Generic[T]):
             else:
                 calls.extend([None] * bl.initial_num_blocks())
                 metadata.extend(bl._metadata)
-                block_partitions.extend([
-                    ray.put([(b, m)])
-                    for b, m in bl.iter_blocks_with_metadata()
-                ])
+                if context.block_splitting_enabled:
+                    block_partitions.extend([
+                        ray.put([(b, m)])
+                        for b, m in bl.iter_blocks_with_metadata()
+                    ])
+                else:
+                    block_partitions.extend(bl.iter_blocks())
 
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
