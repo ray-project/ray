@@ -24,10 +24,10 @@
 #include <thread>
 #include <unordered_map>
 
+#include "absl/random/random.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/process.h"
-#include "absl/random/random.h"
 
 #ifdef _WIN32
 #include <process.h>  // to ensure getpid() on Windows
@@ -209,7 +209,8 @@ void FillRandom(T *data) {
   std::lock_guard<std::mutex> lock(random_engine_mutex);
   static absl::BitGen generator;
   for (size_t i = 0; i < data->size(); i++) {
-    (*data)[i] = static_cast<uint8_t>(absl::Uniform(generator, 0, std::numeric_limits<uint8_t>::max()));
+    (*data)[i] = static_cast<uint8_t>(
+        absl::Uniform(generator, 0, std::numeric_limits<uint8_t>::max()));
   }
 }
 
