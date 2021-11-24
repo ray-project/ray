@@ -1,23 +1,13 @@
 .. _policy-reference-docs:
 
-Policy APIs
-===========
-
-.. toctree::
-   :maxdepth: 1
-
-   policy/policy.rst
-   policy/tf_policies.rst
-   policy/torch_policy.rst
-   policy/custom_policies.rst
-
+Policies
+========
 
 The ``Policy`` class contains functionality to compute actions for decision making
 in an environment, as well as computing loss(es) and gradients, updating a neural
 network model as well as postprocessing a collected environment trajectory.
 One or more ``Policy`` objects sit inside a
-`RolloutWorker's <https://docs.ray.io/en/master/rllib-package-ref.html#module-ray.rllib.evaluation>`_
-`policy_map <https://github.com/ray-project/ray/blob/master/rllib/policy/policy_map.py>`_ and
+:py:class:`~ray.rllib.evaluation.RolloutWorker`'s :py:class:`~ray.rllib.policy.policy_map.PolicyMap` and
 are - if more than one - are selected based on a multi-agent ``policy_mapping_fn``,
 which maps agent IDs to a policy ID.
 
@@ -30,3 +20,16 @@ which maps agent IDs to a policy ID.
     TensorFlow 1.x graph in a session). You can define custom policy behavior
     by sub-classing either of the available, built-in classes, depending on your
     needs.
+
+
+Policy API Reference
+--------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   policy/policy.rst
+   policy/tf_policies.rst
+   policy/torch_policy.rst
+   policy/custom_policies.rst
+
