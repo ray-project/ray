@@ -54,7 +54,7 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
         return pandas.DataFrame(columns)
 
     def _concat_tables(self, tables: List[Block]) -> Block:
-        return pandas.DataFrame.concat(tables, ignore_index=True)
+        return pandas.concat(tables, ignore_index=True)
 
     @staticmethod
     def _empty_table() -> "pandas.DataFrame":

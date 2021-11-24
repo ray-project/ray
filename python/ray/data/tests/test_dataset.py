@@ -1613,8 +1613,8 @@ def test_parquet_write_with_udf(ray_start_regular_shared, tmp_path):
     df = pd.concat([df1, df2])
     ds = ray.data.from_pandas([df1, df2])
 
-    def _block_udf(block: pa.Table):
-        df = block.to_pandas()
+    def _block_udf(block):
+        df = BlockAccessor.for_block(block).to_pandas().copy()
         df["one"] += 1
         return pa.Table.from_pandas(df)
 
@@ -1782,7 +1782,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # blocks format.
     for batch, df in zip(ds.iter_batches(batch_format="native"), dfs):
-        assert batch.to_pandas().equals(df)
+        assert BlockAccessor.for_block(batch).to_pandas().equals(df)
 
     # Batch size.
     batch_size = 2

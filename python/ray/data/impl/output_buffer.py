@@ -1,6 +1,6 @@
 from typing import Callable, Any, Optional
 
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.impl.table_block import DelegatingBlockBuilder
 
 
@@ -64,7 +64,8 @@ class BlockOutputBuffer(object):
         """Returns the next complete output block."""
         assert self.has_next()
         block = self._buffer.build()
-        if self._block_udf and block.num_rows > 0:
+        accessor = BlockAccessor.for_block(block)
+        if self._block_udf and accessor.num_rows() > 0:
             block = self._block_udf(block)
         self._buffer = DelegatingBlockBuilder()
         self._returned_at_least_one_block = True
