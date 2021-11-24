@@ -12,7 +12,7 @@ _context_lock = threading.Lock()
 DEFAULT_TARGET_MAX_BLOCK_SIZE = 2048 * 1024 * 1024
 
 # Whether block splitting is on by default
-DEFAULT_BLOCK_SPLITTING_ENABLED = False
+DEFAULT_BLOCK_SPLITTING_ENABLED = True
 
 
 @DeveloperAPI
