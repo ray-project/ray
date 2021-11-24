@@ -71,7 +71,6 @@ class TestSubmitIntegration:
                     ["ray", "job", "submit", "--", "echo hello"],
                     capture_output=True)
                 stderr = completed_process.stderr.decode("utf-8")
-                print(stderr)
                 # Current dashboard module that raises no exception from
                 # requests..
                 assert "Query the status of the job" in stderr
@@ -83,7 +82,6 @@ class TestSubmitIntegration:
                     ["ray", "job", "submit", "--", "echo hello"],
                     capture_output=True)
                 stderr = completed_process.stderr.decode("utf-8")
-                print(stderr)
                 # Current dashboard module that raises no exception from
                 # requests..
                 assert "Query the status of the job" in stderr
