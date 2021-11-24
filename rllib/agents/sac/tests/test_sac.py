@@ -60,7 +60,7 @@ class TestSAC(unittest.TestCase):
     def setUpClass(cls) -> None:
         np.random.seed(42)
         torch.manual_seed(42)
-        ray.init(local_mode=True)  #TODO
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -84,6 +84,8 @@ class TestSAC(unittest.TestCase):
         # Test with saved replay buffer.
         config["store_buffer_in_checkpoints"] = True
         num_iterations = 1
+
+        config["observation_filter"] = "MeanStdFilter"#TODO
 
         ModelCatalog.register_custom_model("batch_norm", KerasBatchNormModel)
         ModelCatalog.register_custom_model("batch_norm_torch",

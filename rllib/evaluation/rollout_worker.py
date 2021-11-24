@@ -4,6 +4,7 @@ import logging
 import numpy as np
 import platform
 import os
+import tree  # pip install dm_tree
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
     TYPE_CHECKING, Union
 
@@ -610,8 +611,9 @@ class RolloutWorker(ParallelIteratorWorker):
                     f"MultiAgentEnv, ActorHandle, or ExternalMultiAgentEnv!")
 
         self.filters: Dict[PolicyID, Filter] = {
-            policy_id: get_filter(self.observation_filter,
-                                  policy.observation_space.shape)
+            policy_id: get_filter(
+                self.observation_filter,
+                tree.map_structure(lambda s: s.shape, policy.observation_space_struct))
             for (policy_id, policy) in self.policy_map.items()
         }
         if self.worker_index == 0:
