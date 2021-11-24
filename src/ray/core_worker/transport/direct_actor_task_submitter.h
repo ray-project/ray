@@ -138,6 +138,12 @@ class CoreWorkerDirectActorTaskSubmitter
   /// \return Whether the corresponding client queue is full or not.
   bool PendingTasksFull(const ActorID &actor_id) const;
 
+  /// Returns debug string for class.
+  ///
+  /// \param[in] actor_id The actor whose debug string to return.
+  /// \return string.
+  std::string DebugString(const ActorID &actor_id) const;
+
  private:
   struct ClientQueue {
     ClientQueue(ActorID actor_id, bool execute_out_of_order, int32_t max_pending_calls)
@@ -193,6 +199,16 @@ class CoreWorkerDirectActorTaskSubmitter
 
     /// The current task number in this client queue.
     int32_t cur_pending_calls = 0;
+
+    /// Returns debug string for class.
+    ///
+    /// \return string.
+    std::string DebugString() const {
+      std::ostringstream stream;
+      stream << "max_pending_calls=" << max_pending_calls
+             << " cur_pending_calls=" << cur_pending_calls;
+      return stream.str();
+    }
   };
 
   /// Push a task to a remote actor via the given client.

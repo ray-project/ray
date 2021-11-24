@@ -598,7 +598,9 @@ class ActorClass:
                 max_pending_calls, subsequent calls will be backpressued, and
                 the exception ray.exceptions.BackPressureError will be raised.
                 It must be note, that the pending calls is counted separately
-                for each caller actor.
+                for each caller actor. Set to -1 by default, which indicates
+                an infinite number of calls can be pending and backpressure
+                disabled.
 
         Returns:
             A handle to the newly created actor.

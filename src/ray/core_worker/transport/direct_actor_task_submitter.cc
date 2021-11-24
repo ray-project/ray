@@ -498,5 +498,16 @@ bool CoreWorkerDirectActorTaskSubmitter::PendingTasksFull(const ActorID &actor_i
          it->second.cur_pending_calls >= it->second.max_pending_calls;
 }
 
+std::string CoreWorkerDirectActorTaskSubmitter::DebugString(
+    const ActorID &actor_id) const {
+  absl::MutexLock lock(&mu_);
+  auto it = client_queues_.find(actor_id);
+  RAY_CHECK(it != client_queues_.end());
+  std::ostringstream stream;
+  stream << "Submitter debug string for actor " << actor_id << " "
+         << it->second.DebugString();
+  return stream.str();
+}
+
 }  // namespace core
 }  // namespace ray

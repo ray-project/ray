@@ -92,7 +92,7 @@ public class BaseActorCreator<T extends BaseActorCreator> {
    * Set the maximum number of pending calls for this actor.
    *
    * <p>The maximum pending calls is set to -1 by default, which indicates an infinite number of
-   * calls can be pending.
+   * calls can be pending and backpressure disabled.
    *
    * @param maxPendingCalls The maximum number of pending calls for this actor.
    * @return self

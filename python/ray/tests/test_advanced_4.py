@@ -97,7 +97,7 @@ def test_jemalloc_env_var_propagate():
     assert actual == expected
 
 
-def test_back_pressure():
+def test_back_pressure(shutdown_only_with_initialization_check):
     ray.init()
 
     signal_actor = Semaphore.options(max_pending_calls=10).remote(value=0)
@@ -127,6 +127,8 @@ def test_back_pressure():
         signal_actor.acquire.remote()
     except ray.exceptions.BackPressureError:
         assert False
+
+    ray.shutdown()
 
 
 if __name__ == "__main__":
