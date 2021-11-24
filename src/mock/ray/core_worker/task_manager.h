@@ -33,7 +33,7 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
                const std::vector<ObjectID> &contained_ids),
               (override));
   MOCK_METHOD(bool, MarkTaskCanceled, (const TaskID &task_id), (override));
-  MOCK_METHOD(void, MarkPendingTaskObjectFailed,
+  MOCK_METHOD(void, MarkTaskReturnObjectsFailed,
               (const TaskSpecification &spec, rpc::ErrorType error_type,
                const rpc::RayException *creation_task_exception),
               (override));

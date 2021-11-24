@@ -276,7 +276,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
       RAY_LOG(INFO) << "Failing tasks waiting for death info, size="
                     << wait_for_death_info_tasks.size() << ", actor_id=" << actor_id;
       for (auto &net_err_task : wait_for_death_info_tasks) {
-        RAY_UNUSED(task_finisher_.MarkPendingTaskObjectFailed(
+        RAY_UNUSED(task_finisher_.MarkTaskReturnObjectsFailed(
             net_err_task.second, error_type, creation_task_exception));
       }
 
@@ -304,7 +304,7 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
     while (deque_itr != queue.wait_for_death_info_tasks.end() &&
            /*timeout timestamp*/ deque_itr->first < current_time_ms()) {
       auto task_spec = deque_itr->second;
-      task_finisher_.MarkPendingTaskObjectFailed(task_spec, rpc::ErrorType::ACTOR_DIED);
+      task_finisher_.MarkTaskReturnObjectsFailed(task_spec, rpc::ErrorType::ACTOR_DIED);
       deque_itr = queue.wait_for_death_info_tasks.erase(deque_itr);
     }
   }
@@ -415,7 +415,8 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
               task_id, GenErrorTypeFromDeathCause(queue.death_cause.get()), &status,
               GetCreationTaskExceptionFromDeathCause(queue.death_cause.get()),
               /*mark_task_object_failed*/ is_actor_dead);
-          if (!is_actor_dead) {
+          if (!is_actor_dead && !will_retry) {
+            // No retry == actor is dead.
             // If actor is not dead yet, wait for the grace period until we mark the
             // return object as failed.
             int64_t death_info_grace_period_ms =

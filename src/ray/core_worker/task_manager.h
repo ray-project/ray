@@ -44,7 +44,7 @@ class TaskFinisherInterface {
 
   virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
 
-  virtual void MarkPendingTaskObjectFailed(
+  virtual void MarkTaskReturnObjectsFailed(
       const TaskSpecification &spec, rpc::ErrorType error_type,
       const rpc::RayException *creation_task_exception = nullptr) = 0;
 
@@ -156,7 +156,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] spec The TaskSpec that contains return object.
   /// \param[in] error_type The error type the returned Ray object will store.
   /// \param[in] creation_task_exception The serialized actor init exception.
-  void MarkPendingTaskObjectFailed(
+  void MarkTaskReturnObjectsFailed(
       const TaskSpecification &spec, rpc::ErrorType error_type,
       const rpc::RayException *creation_task_exception = nullptr) override
       LOCKS_EXCLUDED(mu_);

@@ -487,7 +487,7 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType e
     RemoveFinishedTaskReferences(spec, release_lineage, rpc::Address(),
                                  ReferenceCounter::ReferenceTableProto());
     if (mark_task_object_failed) {
-      MarkPendingTaskObjectFailed(spec, error_type, creation_task_exception);
+      MarkTaskReturnObjectsFailed(spec, error_type, creation_task_exception);
     }
   }
 
@@ -611,7 +611,7 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
   return it != submissible_tasks_.end();
 }
 
-void TaskManager::MarkPendingTaskObjectFailed(
+void TaskManager::MarkTaskReturnObjectsFailed(
     const TaskSpecification &spec, rpc::ErrorType error_type,
     const rpc::RayException *creation_task_exception) {
   const TaskID task_id = spec.TaskId();

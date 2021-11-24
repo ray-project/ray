@@ -553,7 +553,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             auto &task_queue = scheduling_key_entry.task_queue;
             while (!task_queue.empty()) {
               auto &task_spec = task_queue.front();
-              RAY_UNUSED(task_finisher_->MarkPendingTaskObjectFailed(
+              RAY_UNUSED(task_finisher_->MarkTaskReturnObjectsFailed(
                   task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED, nullptr));
               task_queue.pop_front();
             }

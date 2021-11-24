@@ -134,7 +134,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_contained_ids += contained_ids.size();
   }
 
-  void MarkPendingTaskObjectFailed(
+  void MarkTaskReturnObjectsFailed(
       const TaskSpecification &spec, rpc::ErrorType error_type,
       const rpc::RayException *creation_task_exception = nullptr) override {}
 
