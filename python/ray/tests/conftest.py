@@ -439,10 +439,11 @@ def _ray_start_chaos_cluster(request):
     yield cluster
 
     if kill_interval is not None:
-        num_killed = ray.get(node_killer.get_total_killed_nodes.remote())
-        assert num_killed > 0
-        num_died = len([node for node in ray.nodes() if not node["Alive"]])
-        assert num_killed == num_died, "Raylets that we did not kill crashed"
+        ray.get(node_killer.stop_run.remote())
+        killed = ray.get(node_killer.get_total_killed_nodes.remote())
+        assert len(killed) > 0
+        died = set([node["NodeID"] for node in ray.nodes() if not node["Alive"]])
+        assert killed == died, f"Raylets {died - killed} that we did not kill crashed"
 
     ray.shutdown()
     cluster.shutdown()

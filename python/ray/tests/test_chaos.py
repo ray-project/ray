@@ -1,6 +1,7 @@
 import sys
 import random
 import string
+import os
 
 import ray
 
@@ -128,7 +129,9 @@ def test_chaos_actor_retry(ray_start_chaos_cluster):
 
 @pytest.fixture
 def set_kill_interval(request):
-    kill_interval = request.param
+    lineage_reconstruction_enabled, kill_interval = request.param
+    if lineage_reconstruction_enabled:
+        os.environ["RAY_lineage_pinning_enabled"] = "1"
     request.param = {
         "kill_interval": kill_interval,
         "head_resources": {
@@ -150,14 +153,16 @@ def set_kill_interval(request):
     cluster = _ray_start_chaos_cluster(request)
     while True:
         try:
-            yield (kill_interval, next(cluster))
+            yield (lineage_reconstruction_enabled, kill_interval, next(cluster))
         except StopIteration:
             break
+    if lineage_reconstruction_enabled:
+        del os.environ["RAY_lineage_pinning_enabled"]
 
 
-@pytest.mark.parametrize("set_kill_interval", [None, 30], indirect=True)
-def test_shuffle(set_kill_interval):
-    kill_interval, _ = set_kill_interval
+@pytest.mark.parametrize("set_kill_interval", [(True, None), (True, 30), (False, None), (False, 30)], indirect=True)
+def test_nonstreaming_shuffle(set_kill_interval):
+    lineage_reconstruction_enabled, kill_interval, _ = set_kill_interval
     try:
         # Create our own tracker so that it gets scheduled onto the head node.
         tracker = shuffle._StatusTracker.remote()
@@ -170,7 +175,7 @@ def test_shuffle(set_kill_interval):
             ray_address="auto",
             no_streaming=True,
             num_partitions=200,
-            partition_size=15e6,
+            partition_size=10e6,
             tracker=tracker)
     except (RayTaskError, ObjectLostError):
         assert kill_interval is not None
