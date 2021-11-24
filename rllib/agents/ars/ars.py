@@ -51,6 +51,8 @@ DEFAULT_CONFIG = with_common_config({
         "num_envs_per_worker": 1,
         "observation_filter": "NoFilter"
     },
+    # No-Preprocessors not supported by ARS yet.
+    "_disable_preprocessor_api": False,
 })
 # __sphinx_doc_end__
 # yapf: enable

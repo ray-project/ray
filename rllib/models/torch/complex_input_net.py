@@ -37,8 +37,8 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                  name):
         self.original_space = obs_space.original_space if \
             hasattr(obs_space, "original_space") else obs_space
-        assert isinstance(self.original_space, (Dict, Tuple)), \
-            "`obs_space.original_space` must be [Dict|Tuple]!"
+        #assert isinstance(self.original_space, (Dict, Tuple)), \
+        #    "`obs_space.original_space` must be [Dict|Tuple]!"
 
         self.processed_obs_space = self.original_space if \
             model_config.get("_disable_preprocessor_api") else obs_space

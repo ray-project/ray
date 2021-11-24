@@ -163,9 +163,9 @@ class TorchSpyModel(TorchModelV2, nn.Module):
         TorchModelV2.__init__(self, obs_space, action_space, num_outputs,
                               model_config, name)
         nn.Module.__init__(self)
-        self.fc = FullyConnectedNetwork(
-            obs_space["sensors"]["position"],
-            action_space, num_outputs, model_config, name)
+        self.fc = FullyConnectedNetwork(obs_space["sensors"]["position"],
+                                        action_space, num_outputs,
+                                        model_config, name)
 
     def forward(self, input_dict, state, seq_lens):
         pos = input_dict["obs"]["sensors"]["position"].detach().cpu().numpy()
@@ -273,8 +273,7 @@ class TupleSpyModel(TFModelV2):
                  name):
         super().__init__(obs_space, action_space, None, model_config, name)
         # Will only feed in 0th index of observation Tuple space.
-        input_ = tf.keras.layers.Input(
-            shape=self.obs_space[0].shape)
+        input_ = tf.keras.layers.Input(shape=self.obs_space[0].shape)
 
         self.num_outputs = num_outputs or 64
         out = tf.keras.layers.Dense(self.num_outputs)(input_)
@@ -368,7 +367,8 @@ class NestedSpacesTest(unittest.TestCase):
             pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
             cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
             #task_i = one_hot(
-            task_i=    DICT_SAMPLES[i]["inner_state"]["job_status"]["task"]#, 5)
+            task_i = DICT_SAMPLES[i]["inner_state"]["job_status"][
+                "task"]  #, 5)
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
             check(seen[2][0], task_i)

@@ -1,5 +1,6 @@
 import numpy as np
 import scipy.signal
+import tree  # pip install dm_tree
 from typing import Dict, Optional
 
 from ray.rllib.evaluation.episode import Episode
@@ -45,12 +46,11 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
     len_ = len(batch)
 
     # Shift NEXT_OBS and DONES.
-    batch[SampleBatch.NEXT_OBS] = np.concatenate(
-        [
-            batch[SampleBatch.OBS][n_step:],
-            np.stack([batch[SampleBatch.NEXT_OBS][-1]] * min(n_step, len_))
-        ],
-        axis=0)
+    batch[SampleBatch.NEXT_OBS] = tree.map_structure(
+        lambda o, o_p1: np.concatenate([
+            o[n_step:], np.stack([o_p1[-1]] * min(n_step, len_))
+        ], axis=0), batch[SampleBatch.OBS], batch[SampleBatch.NEXT_OBS])
+
     batch[SampleBatch.DONES] = np.concatenate(
         [
             batch[SampleBatch.DONES][n_step - 1:],

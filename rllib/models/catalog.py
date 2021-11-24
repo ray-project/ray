@@ -822,8 +822,9 @@ class ModelCatalog:
         space_to_check = input_space if not hasattr(
             input_space, "original_space") else input_space.original_space
         if isinstance(input_space, (Dict, Tuple)) or any(
-                isinstance(s, Box) and len(s.shape) >= 2
-                for s in tree.flatten(space_to_check.spaces if isinstance(space_to_check, (Dict, Tuple)) else space_to_check)):
+                isinstance(s, Box) and len(s.shape) >= 2 for s in tree.flatten(
+                    space_to_check.spaces if isinstance(
+                        space_to_check, (Dict, Tuple)) else space_to_check)):
             return ComplexNet
 
         # Single, flattenable/one-hot-able space -> Simple FCNet.
