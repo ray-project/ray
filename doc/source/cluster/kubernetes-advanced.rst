@@ -1,5 +1,7 @@
 :orphan:
 
+.. include:: we_are_hiring.rst
+
 .. _k8s-advanced:
 
 Ray Operator Advanced Configuration
