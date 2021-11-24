@@ -25,26 +25,43 @@ def assert_no_system_failure(p, timeout):
             "There's the check failure reported.")
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize(
-    "ray_start_chaos_cluster", [{
-        "kill_interval": 5,
+@pytest.fixture
+def set_kill_interval(request):
+    lineage_reconstruction_enabled, kill_interval = request.param
+    os.environ["RAY_lineage_pinning_enabled"] = ("1" if
+                                                 lineage_reconstruction_enabled
+                                                 else "0")
+    request.param = {
+        "kill_interval": kill_interval,
         "head_resources": {
-            "CPU": 0
+            "CPU": 1
         },
         "worker_node_types": {
             "cpu_node": {
                 "resources": {
-                    "CPU": 8,
+                    "CPU": 2,
                 },
                 "node_config": {},
                 "min_workers": 0,
                 "max_workers": 4,
             },
         },
-    }],
+    }
+    cluster_fixture = _ray_start_chaos_cluster(request)
+    for x in cluster_fixture:
+        yield (lineage_reconstruction_enabled, kill_interval, cluster_fixture)
+    del os.environ["RAY_lineage_pinning_enabled"]
+
+
+@pytest.mark.skip(
+    reason="Skip until https://github.com/ray-project/ray/issues/20706 "
+    "is fixed.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize(
+    "set_kill_interval", [(True, None), (True, 20), (False, None),
+                          (False, 20)],
     indirect=True)
-def test_chaos_task_retry(ray_start_chaos_cluster):
+def test_chaos_task_retry(set_kill_interval):
     # Chaos testing.
     @ray.remote(max_retries=-1)
     def task():
@@ -78,26 +95,12 @@ def test_chaos_task_retry(ray_start_chaos_cluster):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
-    "ray_start_chaos_cluster", [{
-        "kill_interval": 5,
-        "head_resources": {
-            "CPU": 0
-        },
-        "worker_node_types": {
-            "cpu_node": {
-                "resources": {
-                    "CPU": 8,
-                },
-                "node_config": {},
-                "min_workers": 0,
-                "max_workers": 4,
-            },
-        },
-    }],
+    "set_kill_interval", [(True, None), (True, 20), (False, None),
+                          (False, 20)],
     indirect=True)
-def test_chaos_actor_retry(ray_start_chaos_cluster):
+def test_chaos_actor_retry(set_kill_interval):
     # Chaos testing.
-    @ray.remote(num_cpus=1, max_restarts=-1, max_task_retries=-1)
+    @ray.remote(num_cpus=0.25, max_restarts=-1, max_task_retries=-1)
     class Actor:
         def __init__(self):
             self.letter_dict = set()
@@ -127,40 +130,6 @@ def test_chaos_actor_retry(ray_start_chaos_cluster):
     # assert_no_system_failure(p, 10)
 
 
-@pytest.fixture
-def set_kill_interval(request):
-    lineage_reconstruction_enabled, kill_interval = request.param
-    os.environ["RAY_lineage_pinning_enabled"] = ("1" if
-                                                 lineage_reconstruction_enabled
-                                                 else "0")
-    request.param = {
-        "kill_interval": kill_interval,
-        "head_resources": {
-            "CPU": 1
-        },
-        "worker_node_types": {
-            "cpu_node": {
-                "resources": {
-                    "CPU": 2,
-                },
-                "node_config": {},
-                "min_workers": 0,
-                "max_workers": 4,
-            },
-        },
-        # We just want the autoscaler to restart nodes, not take them down.
-        "idle_timeout_minutes": 10,
-    }
-    cluster = _ray_start_chaos_cluster(request)
-    while True:
-        try:
-            yield (lineage_reconstruction_enabled, kill_interval,
-                   next(cluster))
-        except StopIteration:
-            break
-    del os.environ["RAY_lineage_pinning_enabled"]
-
-
 @pytest.mark.parametrize(
     "set_kill_interval", [(True, None), (True, 30), (False, None),
                           (False, 30)],
@@ -187,8 +156,8 @@ def test_nonstreaming_shuffle(set_kill_interval):
 
 
 @pytest.mark.parametrize(
-    "set_kill_interval", [(True, None), (True, 30), (False, None),
-                          (False, 30)],
+    "set_kill_interval", [(True, None), (True, 20), (False, None),
+                          (False, 20)],
     indirect=True)
 def test_streaming_shuffle(set_kill_interval):
     lineage_reconstruction_enabled, kill_interval, _ = set_kill_interval
