@@ -170,7 +170,7 @@ def test_shuffle(set_kill_interval):
             ray_address="auto",
             no_streaming=True,
             num_partitions=200,
-            partition_size=15e6,
+            partition_size=10e6,
             tracker=tracker)
     except (RayTaskError, ObjectLostError):
         assert kill_interval is not None
