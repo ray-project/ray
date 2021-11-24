@@ -4,6 +4,7 @@ import logging
 import uuid
 
 from ray import cloudpickle as pickle
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
 from ray._private.client_mode_hook import client_mode_convert_function
@@ -298,6 +299,17 @@ class RemoteFunction:
             num_cpus, num_gpus, memory, object_store_memory, resources,
             accelerator_type)
 
+        if (placement_group != "default") and (scheduling_strategy is
+                                               not None):
+            raise ValueError("TODO(jjyao) better error message")
+
+        if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
+            placement_group = scheduling_strategy.placement_group
+            placement_group_bundle_index = \
+                scheduling_strategy.placement_group_bundle_index
+            placement_group_capture_child_tasks = \
+                scheduling_strategy.placement_group_capture_child_tasks
+
         if placement_group_capture_child_tasks is None:
             placement_group_capture_child_tasks = (
                 worker.should_capture_child_tasks_in_placement_group)
@@ -310,6 +322,10 @@ class RemoteFunction:
             {},  # no placement_resources for tasks
             self._function_descriptor.function_name,
             placement_group=placement_group)
+        if not placement_group.is_empty:
+            scheduling_strategy = PlacementGroupSchedulingStrategy(
+                placement_group, placement_group_bundle_index,
+                placement_group_capture_child_tasks)
 
         if runtime_env and not isinstance(runtime_env, ParsedRuntimeEnv):
             runtime_env = ParsedRuntimeEnv(runtime_env)
@@ -338,10 +354,8 @@ class RemoteFunction:
             object_refs = worker.core_worker.submit_task(
                 self._language, self._function_descriptor, list_args, name,
                 num_returns, resources, max_retries, retry_exceptions,
-                placement_group.id, placement_group_bundle_index,
-                placement_group_capture_child_tasks, scheduling_strategy,
-                worker.debugger_breakpoint, parsed_runtime_env.serialize(),
-                parsed_runtime_env.get_uris())
+                scheduling_strategy, worker.debugger_breakpoint,
+                parsed_runtime_env.serialize(), parsed_runtime_env.get_uris())
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
             worker.debugger_breakpoint = b""

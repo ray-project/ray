@@ -305,7 +305,7 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
       /*placement_options=*/placement_group_options,
       /*placement_group_capture_child_tasks=*/true,
       /*scheduling_strategy=*/
-      rpc::TaskSchedulingStrategy::TASK_SCHEDULING_STRATEGY_DEFAULT,
+      rpc::SchedulingStrategy(),
       /*debugger_breakpoint*/ "");
   std::vector<ObjectID> return_ids;
   for (const auto &ref : return_refs) {

@@ -707,8 +707,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \param[in] max_retires max number of retry when the task fails.
-  /// \param[in] placement_options placement group options.
-  /// \param[in] placement_group_capture_child_tasks whether or not the submitted task
+  /// \param[in] scheduling_strategy Strategy about how to schedule the task.
   /// \param[in] debugger_breakpoint breakpoint to drop into for the debugger after this
   /// task starts executing, or "" if we do not want to drop into the debugger.
   /// should capture parent's placement group implicilty.
@@ -716,8 +715,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::vector<rpc::ObjectReference> SubmitTask(
       const RayFunction &function, const std::vector<std::unique_ptr<TaskArg>> &args,
       const TaskOptions &task_options, int max_retries, bool retry_exceptions,
-      BundleID placement_options, bool placement_group_capture_child_tasks,
-      TaskSchedulingStrategy scheduling_strategy, const std::string &debugger_breakpoint);
+      const rpc::SchedulingStrategy &scheduling_strategy,
+      const std::string &debugger_breakpoint);
 
   /// Create an actor.
   ///
@@ -1063,7 +1062,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::vector<std::unique_ptr<TaskArg>> &args, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const BundleID &bundle_id, bool placement_group_capture_child_tasks,
       const std::string &debugger_breakpoint, int64_t depth,
       const std::string &serialized_runtime_env,
       const std::vector<std::string> &runtime_env_uris,

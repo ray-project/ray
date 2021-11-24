@@ -150,8 +150,18 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CPlacementStrategy "ray::core::PlacementStrategy":
         pass
-    cdef cppclass CTaskSchedulingStrategy "ray::core::TaskSchedulingStrategy":
-        pass
+    cdef cppclass CSpreadSchedulingStrategy "ray::rpc::SpreadSchedulingStrategy":  # noqa: E501
+        CSpreadSchedulingStrategy()
+    cdef cppclass CPlacementGroupSchedulingStrategy "ray::rpc::PlacementGroupSchedulingStrategy":  # noqa: E501
+        CPlacementGroupSchedulingStrategy()
+        void set_placement_group_id(const c_string& placement_group_id)
+        void set_placement_group_bundle_index(int64_t placement_group_bundle_index)  # noqa: E501
+        void set_placement_group_capture_child_tasks(c_bool placement_group_capture_child_tasks)  # noqa: E501
+    cdef cppclass CSchedulingStrategy "ray::rpc::SchedulingStrategy":
+        CSchedulingStrategy()
+        void clear_scheduling_strategy()
+        CSpreadSchedulingStrategy* mutable_spread_scheduling_strategy()
+        CPlacementGroupSchedulingStrategy* mutable_placement_group_scheduling_strategy()  # noqa: E501
     cdef cppclass CAddress "ray::rpc::Address":
         CAddress()
         const c_string &SerializeAsString() const
@@ -177,12 +187,6 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CWorkerType WORKER_TYPE_SPILL_WORKER "ray::core::WorkerType::SPILL_WORKER"  # noqa: E501
     cdef CWorkerType WORKER_TYPE_RESTORE_WORKER "ray::core::WorkerType::RESTORE_WORKER"  # noqa: E501
     cdef CWorkerType WORKER_TYPE_UTIL_WORKER "ray::core::WorkerType::UTIL_WORKER"  # noqa: E501
-
-cdef extern from "src/ray/protobuf/common.pb.h" nogil:
-    cdef CTaskSchedulingStrategy TASK_SCHEDULING_STRATEGY_DEFAULT \
-        "ray::core::TaskSchedulingStrategy::TASK_SCHEDULING_STRATEGY_DEFAULT"
-    cdef CTaskSchedulingStrategy TASK_SCHEDULING_STRATEGY_SPREAD \
-        "ray::core::TaskSchedulingStrategy::TASK_SCHEDULING_STRATEGY_SPREAD"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CTaskType TASK_TYPE_NORMAL_TASK "ray::TaskType::NORMAL_TASK"
@@ -260,12 +264,10 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const c_vector[c_string] &dynamic_worker_options,
             c_bool is_detached, c_string &name, c_string &ray_namespace,
             c_bool is_asyncio,
-            c_pair[CPlacementGroupID, int64_t] placement_options,
-            c_bool placement_group_capture_child_tasks,
+            const CSchedulingStrategy &scheduling_strategy,
             c_string serialized_runtime_env,
             c_vector[c_string] runtime_env_uris,
-            const c_vector[CConcurrencyGroup] &concurrency_groups,
-            CTaskSchedulingStrategy task_scheduling_strategy)
+            const c_vector[CConcurrencyGroup] &concurrency_groups)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":

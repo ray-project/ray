@@ -103,7 +103,6 @@ class TaskSpecBuilder {
       const rpc::Address &caller_address, uint64_t num_returns,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
-      const BundleID &bundle_id, bool placement_group_capture_child_tasks,
       const std::string &debugger_breakpoint, int64_t depth,
       const std::string &serialized_runtime_env = "{}",
       const std::vector<std::string> &runtime_env_uris = {},
@@ -123,10 +122,6 @@ class TaskSpecBuilder {
                                                    required_resources.end());
     message_->mutable_required_placement_resources()->insert(
         required_placement_resources.begin(), required_placement_resources.end());
-    message_->set_placement_group_id(bundle_id.first.Binary());
-    message_->set_placement_group_bundle_index(bundle_id.second);
-    message_->set_placement_group_capture_child_tasks(
-        placement_group_capture_child_tasks);
     message_->set_debugger_breakpoint(debugger_breakpoint);
     message_->set_depth(depth);
     message_->mutable_runtime_env()->set_serialized_runtime_env(serialized_runtime_env);
@@ -138,10 +133,10 @@ class TaskSpecBuilder {
   }
 
   TaskSpecBuilder &SetNormalTaskSpec(int max_retries, bool retry_exceptions,
-                                     rpc::TaskSchedulingStrategy scheduling_strategy) {
+                                     const rpc::SchedulingStrategy &scheduling_strategy) {
     message_->set_max_retries(max_retries);
     message_->set_retry_exceptions(retry_exceptions);
-    message_->set_scheduling_strategy(scheduling_strategy);
+    message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
     return *this;
   }
 
@@ -184,8 +179,7 @@ class TaskSpecBuilder {
       std::string ray_namespace = "", bool is_asyncio = false,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       const std::string &extension_data = "",
-      rpc::TaskSchedulingStrategy scheduling_strategy =
-          rpc::TaskSchedulingStrategy::TASK_SCHEDULING_STRATEGY_DEFAULT) {
+      const rpc::SchedulingStrategy &scheduling_strategy = rpc::SchedulingStrategy()) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
@@ -211,7 +205,7 @@ class TaskSpecBuilder {
         *fd = item->GetMessage();
       }
     }
-    message_->set_scheduling_strategy(scheduling_strategy);
+    message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
     return *this;
   }
 

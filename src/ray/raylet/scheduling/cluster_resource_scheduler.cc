@@ -212,7 +212,7 @@ bool ClusterResourceScheduler::IsSchedulable(const ResourceRequest &resource_req
 
 int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     const ResourceRequest &resource_request,
-    rpc::TaskSchedulingStrategy task_scheduling_strategy, bool actor_creation,
+    const rpc::SchedulingStrategy &scheduling_strategy, bool actor_creation,
     bool force_spillback, int64_t *total_violations, bool *is_infeasible) {
   // The zero cpu actor is a special case that must be handled the same way by all
   // scheduling policies.
@@ -247,8 +247,8 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = scheduling_policy_->HybridPolicy(
       resource_request,
-      task_scheduling_strategy ==
-              rpc::TaskSchedulingStrategy::TASK_SCHEDULING_STRATEGY_SPREAD
+      scheduling_strategy.scheduling_strategy_case() ==
+              rpc::SchedulingStrategy::SchedulingStrategyCase::kSpreadSchedulingStrategy
           ? 0.0
           : RayConfig::instance().scheduler_spread_threshold(),
       force_spillback, force_spillback,
@@ -271,13 +271,13 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
 
 std::string ClusterResourceScheduler::GetBestSchedulableNode(
     const absl::flat_hash_map<std::string, double> &task_resources,
-    rpc::TaskSchedulingStrategy task_scheduling_strategy,
-    bool requires_object_store_memory, bool actor_creation, bool force_spillback,
-    int64_t *total_violations, bool *is_infeasible) {
+    const rpc::SchedulingStrategy &scheduling_strategy, bool requires_object_store_memory,
+    bool actor_creation, bool force_spillback, int64_t *total_violations,
+    bool *is_infeasible) {
   ResourceRequest resource_request = ResourceMapToResourceRequest(
       string_to_int_map_, task_resources, requires_object_store_memory);
   int64_t node_id =
-      GetBestSchedulableNode(resource_request, task_scheduling_strategy, actor_creation,
+      GetBestSchedulableNode(resource_request, scheduling_strategy, actor_creation,
                              force_spillback, total_violations, is_infeasible);
 
   if (node_id == -1) {

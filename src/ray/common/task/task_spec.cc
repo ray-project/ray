@@ -61,12 +61,31 @@ SchedulingClass TaskSpecification::GetSchedulingClass(
 }
 
 const BundleID TaskSpecification::PlacementGroupBundleId() const {
-  return std::make_pair(PlacementGroupID::FromBinary(message_->placement_group_id()),
-                        message_->placement_group_bundle_index());
+  if (message_->scheduling_strategy().scheduling_strategy_case() ==
+      rpc::SchedulingStrategy::SchedulingStrategyCase::
+          kPlacementGroupSchedulingStrategy) {
+    return std::make_pair(
+        PlacementGroupID::FromBinary(message_->scheduling_strategy()
+                                         .placement_group_scheduling_strategy()
+                                         .placement_group_id()),
+        message_->scheduling_strategy()
+            .placement_group_scheduling_strategy()
+            .placement_group_bundle_index());
+  } else {
+    return std::make_pair(PlacementGroupID::Nil(), -1);
+  }
 }
 
 bool TaskSpecification::PlacementGroupCaptureChildTasks() const {
-  return message_->placement_group_capture_child_tasks();
+  if (message_->scheduling_strategy().scheduling_strategy_case() ==
+      rpc::SchedulingStrategy::SchedulingStrategyCase::
+          kPlacementGroupSchedulingStrategy) {
+    return message_->scheduling_strategy()
+        .placement_group_scheduling_strategy()
+        .placement_group_capture_child_tasks();
+  } else {
+    return false;
+  }
 }
 
 void TaskSpecification::ComputeResources() {

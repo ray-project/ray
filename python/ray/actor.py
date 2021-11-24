@@ -10,6 +10,7 @@ from ray._private.runtime_env.validation import (
 import ray.worker
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
@@ -743,6 +744,18 @@ class ActorClass:
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
 
+        if (placement_group != "default") and (scheduling_strategy is
+                                               not None):
+            raise ValueError("TODO(jjyao) better error message")
+
+        scheduling_strategy = scheduling_strategy or meta.scheduling_strategy
+        if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
+            placement_group = scheduling_strategy.placement_group
+            placement_group_bundle_index = \
+                scheduling_strategy.placement_group_bundle_index
+            placement_group_capture_child_tasks = \
+                scheduling_strategy.placement_group_capture_child_tasks
+
         if placement_group_capture_child_tasks is None:
             placement_group_capture_child_tasks = (
                 worker.should_capture_child_tasks_in_placement_group)
@@ -753,6 +766,10 @@ class ActorClass:
             actor_placement_resources,
             meta.class_name,
             placement_group=placement_group)
+        if not placement_group.is_empty:
+            scheduling_strategy = PlacementGroupSchedulingStrategy(
+                placement_group, placement_group_bundle_index,
+                placement_group_capture_child_tasks)
 
         if runtime_env and not isinstance(runtime_env, ParsedRuntimeEnv):
             runtime_env = ParsedRuntimeEnv(runtime_env)
@@ -797,16 +814,12 @@ class ActorClass:
             name if name is not None else "",
             namespace if namespace is not None else "",
             is_asyncio,
-            placement_group.id,
-            placement_group_bundle_index,
-            placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
             serialized_runtime_env=parsed_runtime_env.serialize(),
             runtime_env_uris=parsed_runtime_env.get_uris(),
             concurrency_groups_dict=concurrency_groups_dict or dict(),
-            scheduling_strategy=scheduling_strategy
-            or meta.scheduling_strategy)
+            scheduling_strategy=scheduling_strategy)
 
         actor_handle = ActorHandle(
             meta.language,

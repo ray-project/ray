@@ -26,7 +26,6 @@ namespace ray {
 namespace core {
 
 using WorkerType = rpc::WorkerType;
-using TaskSchedulingStrategy = rpc::TaskSchedulingStrategy;
 
 // Return a string representation of the worker type.
 std::string WorkerTypeString(WorkerType type);
@@ -92,13 +91,10 @@ struct ActorCreationOptions {
       const std::unordered_map<std::string, double> &placement_resources,
       const std::vector<std::string> &dynamic_worker_options, bool is_detached,
       std::string &name, std::string &ray_namespace, bool is_asyncio,
-      BundleID placement_options = std::make_pair(PlacementGroupID::Nil(), -1),
-      bool placement_group_capture_child_tasks = true,
+      const rpc::SchedulingStrategy &scheduling_strategy = rpc::SchedulingStrategy(),
       const std::string &serialized_runtime_env = "{}",
       const std::vector<std::string> &runtime_env_uris = {},
-      const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      const TaskSchedulingStrategy scheduling_strategy =
-          TaskSchedulingStrategy::TASK_SCHEDULING_STRATEGY_DEFAULT)
+      const std::vector<ConcurrencyGroup> &concurrency_groups = {})
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -109,8 +105,6 @@ struct ActorCreationOptions {
         name(name),
         ray_namespace(ray_namespace),
         is_asyncio(is_asyncio),
-        placement_options(placement_options),
-        placement_group_capture_child_tasks(placement_group_capture_child_tasks),
         serialized_runtime_env(serialized_runtime_env),
         runtime_env_uris(runtime_env_uris),
         concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()),
@@ -146,13 +140,6 @@ struct ActorCreationOptions {
   const std::string ray_namespace;
   /// Whether to use async mode of direct actor call.
   const bool is_asyncio = false;
-  /// The placement_options include placement_group_id and bundle_index.
-  /// If the actor doesn't belong to a placement group, the placement_group_id will be
-  /// nil, and the bundle_index will be -1.
-  BundleID placement_options;
-  /// When true, the child task will always scheduled on the same placement group
-  /// specified in the PlacementOptions.
-  bool placement_group_capture_child_tasks = true;
   // Runtime Env used by this actor.  Propagated to child actors and tasks.
   std::string serialized_runtime_env;
   // URIs contained in the runtime_env.
@@ -161,7 +148,7 @@ struct ActorCreationOptions {
   /// methods concurrently.
   const std::vector<ConcurrencyGroup> concurrency_groups;
   // The strategy about how to schedule this actor.
-  TaskSchedulingStrategy scheduling_strategy;
+  rpc::SchedulingStrategy scheduling_strategy;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;
