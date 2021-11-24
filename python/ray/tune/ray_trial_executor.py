@@ -283,7 +283,7 @@ class RayTrialExecutor(TrialExecutor):
     def _setup_remote_runner(self, trial):
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
-        self.try_checkpoint_metadata(trial)
+        self._trials_to_cache.add(trial)
         logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
 
         if self._reuse_actors and len(self._cached_actor_pg) > 0:
