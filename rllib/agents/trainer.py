@@ -1738,12 +1738,6 @@ class Trainer(Trainable):
         weights = ray.put(self.workers.local_worker().save())
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
-    @property
-    def _name(self) -> str:
-        """Subclasses may override this to declare their name."""
-        # By default, return the class' name.
-        return type(self).__name__
-
     @classmethod
     @override(Trainable)
     def resource_help(cls, config: TrainerConfigDict) -> str:
