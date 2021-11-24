@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 def _get_sdk_client(address: Optional[str],
                     create_cluster_if_needed: bool = False
                     ) -> JobSubmissionClient:
-
     if address is None:
         if "RAY_ADDRESS" not in os.environ:
             raise ValueError(
@@ -22,7 +21,6 @@ def _get_sdk_client(address: Optional[str],
                 "or RAY_ADDRESS environment variable.")
         address = os.environ["RAY_ADDRESS"]
 
-    logger.info(f"Creating JobSubmissionClient at address: {address}")
     return JobSubmissionClient(address, create_cluster_if_needed)
 
 
