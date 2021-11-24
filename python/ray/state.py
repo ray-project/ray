@@ -125,7 +125,7 @@ class GlobalState:
         actor_info = {
             "ActorID": binary_to_hex(actor_table_data.actor_id),
             "ActorClassName": actor_table_data.class_name,
-            "IsDeatched": actor_table_data.is_detached,
+            "IsDetached": actor_table_data.is_detached,
             "Name": actor_table_data.name,
             "JobID": binary_to_hex(actor_table_data.job_id),
             "Address": {

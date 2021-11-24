@@ -142,6 +142,7 @@ inline rpc::ErrorType GenErrorTypeFromDeathCause(
 inline const std::string &GetDeathCauseString(const rpc::ActorDeathCause *death_cause) {
   static absl::flat_hash_map<ContextCase, std::string> death_cause_string{
       {ContextCase::CONTEXT_NOT_SET, "CONTEXT_NOT_SET"},
+      {ContextCase::kRuntimeEnvFailedContext, "RuntimeEnvFailedContext"},
       {ContextCase::kCreationTaskFailureContext, "CreationTaskFailureContext"},
       {ContextCase::kWorkerDiedContext, "WorkerDiedContext"},
       {ContextCase::kNodeDiedContext, "NodeDiedContext"},

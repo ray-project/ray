@@ -31,22 +31,21 @@ const ray::rpc::ActorDeathCause GenRuntimeEnvFailedCause(const std::string &erro
 const ray::rpc::ActorDeathCause GenNodeDiedCause() {
   ray::rpc::ActorDeathCause death_cause;
   death_cause.mutable_node_died_context()->set_error_message(
-      "The actor is dead because the node where actor resides is dead.");
+      "The actor is dead because its node has died.");
   return death_cause;
 }
 
 const ray::rpc::ActorDeathCause GenWorkerDiedCause() {
   ray::rpc::ActorDeathCause death_cause;
   death_cause.mutable_worker_died_context()->set_error_message(
-      "The actor is dead because the worker process where actor resides is dead.");
+      "The actor is dead because its worker process has died.");
   return death_cause;
 }
 const ray::rpc::ActorDeathCause GenOwnerDiedCause(const WorkerID &owner_id) {
   ray::rpc::ActorDeathCause death_cause;
   ray::rpc::ActorDeathOwnerDiedContext owner_died_context;
   owner_died_context.set_owner_id(owner_id.Binary());
-  owner_died_context.set_error_message(
-      "The actor is dead because the owner of the actor is dead.");
+  owner_died_context.set_error_message("The actor is dead because its owner has died.");
   death_cause.mutable_owner_died_context()->Swap(&owner_died_context);
   return death_cause;
 }
@@ -54,15 +53,14 @@ const ray::rpc::ActorDeathCause GenOwnerDiedCause(const WorkerID &owner_id) {
 const ray::rpc::ActorDeathCause GenKilledByApplicationCause() {
   ray::rpc::ActorDeathCause death_cause;
   death_cause.mutable_killed_by_app_context()->set_error_message(
-      "The actor is dead because it is killed by ray.kill.");
+      "The actor is dead because it was killed by `ray.kill`.");
   return death_cause;
 }
 
 const ray::rpc::ActorDeathCause GenActorOutOfScopeCause() {
   ray::rpc::ActorDeathCause death_cause;
   death_cause.mutable_out_of_scope_context()->set_error_message(
-      "The actor is dead because there's no more reference to this actor, and it is "
-      "garbage collected.");
+      "The actor is dead because because all references to the actor were removed.");
   return death_cause;
 }
 }  // namespace
