@@ -119,6 +119,18 @@ def wait_for_command_to_succeed(cmd):
 
 
 @retry_until_true
+def wait_for_command_to_succeed_on_head(cmd_template, head_filter, namespace):
+    try:
+        head_pod = [pod for pod in pods() if head_filter in pod].pop()
+        wait_for_pod_status(head_pod, "Running")
+        cmd = cmd_template.format(namespace=namespace, head_pod=head_pod)
+        subprocess.check_call(cmd, shell=True)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
+@retry_until_true
 def wait_for_pod_status(pod_name, status):
     client = kubernetes.client.CoreV1Api()
     pod = client.read_namespaced_pod(namespace=NAMESPACE, name=pod_name)
@@ -291,20 +303,20 @@ class KubernetesOperatorTest(unittest.TestCase):
             # Head pod recovered.
             wait_for_pods(6)
 
-            # Get the new head pod
-            head_pod = [pod for pod in pods() if "r-ray-head" in pod].pop()
-            wait_for_pod_status(head_pod, "Running")
-            stat_cmd = f"kubectl -n {NAMESPACE} exec {head_pod} -- ray status"
+            stat_cmd = "kubectl -n {namespace} exec {head_pod} -- ray status"
             print(">>>Waiting for success of `ray status` on recovered head.")
-            wait_for_command_to_succeed(stat_cmd)
+            wait_for_command_to_succeed_on_head(
+                stat_cmd, head_filter="r-ray-head", namespace=NAMESPACE)
             print(">>>Stopping ray on the head node to test recovery.")
-            stop_cmd = f"kubectl -n {NAMESPACE} exec {head_pod} -- ray stop"
-            subprocess.check_call(stop_cmd, shell=True)
+            stop_cmd = "kubectl -n {namespace} exec {head_pod} -- ray stop"
+            wait_for_command_to_succeed_on_head(
+                stop_cmd, head_filter="r-ray-head", namespace=NAMESPACE)
             # ray status should fail when called immediately after ray stop
             with pytest.raises(subprocess.CalledProcessError):
                 subprocess.check_call(stat_cmd, shell=True)
             print(">>>Waiting for success of `ray status` on recovered head.")
-            wait_for_command_to_succeed(stat_cmd)
+            wait_for_command_to_succeed_on_head(
+                stat_cmd, head_filter="r-ray-head", namespace=NAMESPACE)
 
             # Delete the second cluster
             print(">>>Deleting example-cluster2.")

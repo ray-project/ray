@@ -27,7 +27,7 @@ class TestPettingZooEnv(unittest.TestCase):
             env = normalize_obs_v0(env)
             return env
 
-        config = deepcopy(get_trainer_class("PPO")._default_config)
+        config = deepcopy(get_trainer_class("PPO").get_default_config())
         config["env_config"] = {"local_ratio": 0.5}
         # Register env
         register_env("pistonball",
@@ -70,7 +70,7 @@ class TestPettingZooEnv(unittest.TestCase):
 
         agent_class = get_trainer_class("PPO")
 
-        config = deepcopy(agent_class._default_config)
+        config = deepcopy(agent_class.get_default_config())
 
         config["multiagent"] = {
             # Set of policy IDs (by default, will use Trainer's
