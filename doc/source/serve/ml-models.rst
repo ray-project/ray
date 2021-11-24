@@ -2,6 +2,11 @@
 Serving ML Models
 =================
 
+This section should help you:
+
+- batch requests to optimize performance
+- serve multiple models by composing deployments
+
 .. contents::
 
 .. _serve-batching:
@@ -43,6 +48,10 @@ dive.
 
 Model Composition
 =================
+
+.. note::
+  Serve recently added an experimental first-class API for model composition (pipelines).
+  Please take a look at the :ref:`Pipeline API <serve-pipeline-api>` and try it out!
 
 Ray Serve supports composing individually scalable models into a single model
 out of the box. For instance, you can combine multiple models to perform

@@ -1,7 +1,4 @@
-
-.. important:: The ML team at `Anyscale Inc. <https://anyscale.io>`__, the company behind Ray, is looking for interns and full-time **reinforcement learning engineers** to help advance and maintain RLlib.
- If you have a background in ML/RL and are interested in making RLlib **the** industry-leading open-source RL library, `apply here today <https://jobs.lever.co/anyscale/186d9b8d-3fee-4e07-bb8e-49e85cf33d6b>`__.
- We'd be thrilled to welcome you on the team!
+.. include:: rllib/we_are_hiring.rst
 
 RLlib Training APIs
 ===================
@@ -398,6 +395,15 @@ Accessing Model State
 Similar to accessing policy state, you may want to get a reference to the underlying neural network model being trained. For example, you may want to pre-train it separately, or otherwise update its weights outside of RLlib. This can be done by accessing the ``model`` of the policy:
 
 **Example: Preprocessing observations for feeding into a model**
+
+First, install the dependencies:
+
+.. code-block:: python
+
+    # The "Pong-v0" Atari environment requires a few additional gym installs:
+    pip install "ray[rllib]" tensorflow torch "gym[atari]" "gym[accept-rom-license]" atari_py
+
+Then for the code:
 
 .. code-block:: python
 

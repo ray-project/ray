@@ -1,3 +1,4 @@
+import copy
 import logging
 import json
 import yaml
@@ -29,20 +30,24 @@ class AutoscalingCluster:
             head_resources: resources of the head node, including CPU.
             worker_node_types: autoscaler node types config for worker nodes.
         """
+        self._head_resources = head_resources
+        self._config = self._generate_config(head_resources, worker_node_types)
+        self._process = None
+
+    def _generate_config(self, head_resources, worker_node_types):
         base_config = yaml.safe_load(
             open(
                 os.path.join(
                     os.path.dirname(ray.__file__),
                     "autoscaler/_private/fake_multi_node/example.yaml")))
-        base_config["available_node_types"] = worker_node_types
-        base_config["available_node_types"]["ray.head.default"] = {
+        custom_config = copy.deepcopy(base_config)
+        custom_config["available_node_types"] = worker_node_types
+        custom_config["available_node_types"]["ray.head.default"] = {
             "resources": head_resources,
             "node_config": {},
             "max_workers": 0,
         }
-        self._head_resources = head_resources
-        self._config = base_config
-        self._process = None
+        return custom_config
 
     def start(self):
         """Start the cluster.
