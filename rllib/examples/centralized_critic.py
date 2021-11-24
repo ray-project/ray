@@ -216,16 +216,14 @@ class CCPPOTorchPolicy(PPOTorchPolicy):
                                                  other_agent_batches, episode)
 
 
-def get_policy_class(config):
-    if config["framework"] == "torch":
-        return CCPPOTorchPolicy
+class CCTrainer(PPOTrainer):
+    @override(PPOTrainer)
+    def get_default_policy_class(self, config):
+        if config["framework"] == "torch":
+            return CCPPOTorchPolicy
+        else:
+            return CCPPOTFPolicy
 
-
-CCTrainer = PPOTrainer.with_updates(
-    name="CCPPOTrainer",
-    default_policy=CCPPOTFPolicy,
-    get_policy_class=get_policy_class,
-)
 
 if __name__ == "__main__":
     ray.init()

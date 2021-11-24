@@ -23,7 +23,7 @@ runtime_env = {
 # __runtime_env_conda_def_end__
 
 # __ray_init_start__
-# Running on the Ray cluster
+# Starting a single-node local Ray cluster
 ray.init(runtime_env=runtime_env)
 # __ray_init_end__
 
@@ -49,10 +49,27 @@ def f():
     pass
 
 @ray.remote
-class Actor:
+class SomeClass:
     pass
 
 # __per_task_per_actor_start__
+# Invoke a remote task that will run in a specified runtime environment.
 f.options(runtime_env=runtime_env).remote()
-Actor.options(runtime_env=runtime_env).remote()
+
+# Instantiate an actor that will run in a specified runtime environment.
+actor = SomeClass.options(runtime_env=runtime_env).remote()
+
+# Specify a runtime environment in the task definition.  Future invocations via
+# `g.remote()` will use this runtime environment unless overridden by using
+# `.options()` as above.
+@ray.remote(runtime_env=runtime_env)
+def g():
+    pass
+
+# Specify a runtime environment in the actor definition.  Future instantiations
+# via `MyClass.remote()` will use this runtime environment unless overridden by
+# using `.options()` as above.
+@ray.remote(runtime_env=runtime_env)
+class MyClass:
+    pass
 # __per_task_per_actor_end__

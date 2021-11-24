@@ -6,7 +6,7 @@ Environment Samplers
 When a simulator (environment) is available, ``Samplers`` - child classes
 of ``InputReader`` - are used to collect and return experiences from the envs.
 For more details on InputReader used for offline RL (e.g. reading files of
-pre-recorded data), see the :ref:`offline RL API reference here<offline-docs>`.
+pre-recorded data), see the :ref:`offline RL API reference here<offline-reference-docs>`.
 
 The base sampler API (SamplerInput) is defined as follows:
 

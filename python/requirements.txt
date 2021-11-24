@@ -25,6 +25,7 @@ pydantic >= 1.8
 pyyaml
 redis >= 3.5.0, < 4.0.0
 requests
+smart_open
 
 ## setup.py extras
 dm_tree

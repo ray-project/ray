@@ -84,7 +84,7 @@ DEFAULT_CONFIG = with_common_config({
     # each worker will have a replay buffer of this size.
     "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
-        "type": "LocalReplayBuffer",
+        "type": "MultiAgentReplayBuffer",
         "capacity": 50000,
     },
     # The number of contiguous environment steps to replay at once. This may
