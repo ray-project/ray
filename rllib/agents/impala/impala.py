@@ -211,6 +211,11 @@ class BroadcastUpdateLearnerWeights:
 
 
 class ImpalaTrainer(Trainer):
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
+
     @override(Trainer)
     def get_default_policy_class(self, config: PartialTrainerConfigDict) -> \
             Optional[Type[Policy]]:
@@ -229,10 +234,6 @@ class ImpalaTrainer(Trainer):
             else:
                 from ray.rllib.agents.a3c.a3c_tf_policy import A3CTFPolicy
                 return A3CTFPolicy
-
-    @override(Trainer)
-    def get_default_config(cls) -> TrainerConfigDict:
-        return DEFAULT_CONFIG
 
     @override(Trainer)
     def validate_config(self, config):
@@ -337,7 +338,7 @@ class ImpalaTrainer(Trainer):
     @classmethod
     @override(Trainer)
     def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
+        cf = dict(cls.get_default_config(), **config)
 
         eval_config = cf["evaluation_config"]
 
