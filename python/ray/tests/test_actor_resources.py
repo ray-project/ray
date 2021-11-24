@@ -31,7 +31,9 @@ def test_actor_deletion_with_gpus(shutdown_only):
         ray.get(a.getpid.remote())
 
 
-def test_actor_state(ray_start_regular):
+def test_actor_state():
+    ray.init(num_cpus=2)
+
     @ray.remote
     class Counter:
         def __init__(self):

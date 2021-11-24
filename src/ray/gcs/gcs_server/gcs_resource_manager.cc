@@ -85,6 +85,10 @@ void GcsResourceManager::HandleUpdateResources(
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
 
+    for (const auto &listener : resources_changed_listeners_) {
+      listener();
+    }
+
     auto start = absl::GetCurrentTimeNanos();
     auto on_done = [this, node_id, changed_resources, reply, send_reply_callback,
                     start](const Status &status) {
