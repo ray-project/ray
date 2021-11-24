@@ -213,6 +213,8 @@ def main():
 
     # Report the result.
     ray.get(monitor_actor.stop_run.remote())
+    print("Total number of killed nodes: "
+          f"{ray.get(node_killer.get_total_killed_nodes.remote())}")
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(
             json.dumps({
