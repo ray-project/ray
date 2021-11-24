@@ -805,15 +805,25 @@ class ModelCatalog:
                 "framework={} not supported in `ModelCatalog._get_v2_model_"
                 "class`!".format(framework))
 
-        # Complex space, where at least one sub-space is image.
+        # input_space is 1D Box -> fc
+        # input_space is 3D Box -> vision
+        # else: Complex (Dict, Tuple, 2D Box (flatten), Discrete, MultiDiscrete).
+        if isinstance(input_space, Box) and len(input_space.shape) == 3:
+            return VisionNet
+        elif isinstance(input_space, Box) and len(input_space.shape) == 1:
+            return FCNet
+        else:
+            return ComplexNet
+
+        #TODO:erase?
+        # Complex space, where at least one sub-space is non-1D Box.
         # -> Complex input model (which auto-flattens everything, but correctly
         # processes image components with default CNN stacks).
         space_to_check = input_space if not hasattr(
             input_space, "original_space") else input_space.original_space
-        if isinstance(input_space, (Dict, Tuple)) or (isinstance(
-                space_to_check, (Dict, Tuple)) and any(
-                    isinstance(s, Box) and len(s.shape) >= 2
-                    for s in tree.flatten(space_to_check.spaces))):
+        if isinstance(input_space, (Dict, Tuple)) or any(
+                isinstance(s, Box) and len(s.shape) >= 2
+                for s in tree.flatten(space_to_check.spaces if isinstance(space_to_check, (Dict, Tuple)) else space_to_check)):
             return ComplexNet
 
         # Single, flattenable/one-hot-able space -> Simple FCNet.
