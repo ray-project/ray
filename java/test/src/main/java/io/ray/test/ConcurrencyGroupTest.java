@@ -175,6 +175,7 @@ public class ConcurrencyGroupTest extends BaseTest {
 
   /// This case tests that blocking task in default group will block other groups.
   /// See https://github.com/ray-project/ray/issues/20475
+  @Test(groups = {"cluster"})
   public void testDefaultCgDoNotBlockOthers() {
     ConcurrencyGroup group =
         new ConcurrencyGroupBuilder<ConcurrencyActor2>()
