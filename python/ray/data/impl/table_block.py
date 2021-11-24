@@ -9,6 +9,11 @@ from ray.data.impl.size_estimator import SizeEstimator
 
 T = TypeVar("T")
 
+# An Arrow block can be sorted by a list of (column, asc/desc) pairs,
+# e.g. [("column1", "ascending"), ("column2", "descending")]
+SortKeyT = List[Tuple[str, str]]
+GroupKeyT = Union[None, str]
+
 # The max size of Python tuples to buffer before compacting them into a
 # table in the BlockBuilder.
 MAX_UNCOMPACTED_SIZE_BYTES = 50 * 1024 * 1024
@@ -131,7 +136,8 @@ class TableBlockBuilder(BlockBuilder[T]):
     def _concat_tables(self, tables: List[Block]) -> Block:
         raise NotImplementedError
 
-    def _empty_table(self):
+    @staticmethod
+    def _empty_table() -> Any:
         raise NotImplementedError
 
     def build(self) -> Block:
@@ -206,3 +212,21 @@ class TableBlockAccessor(BlockAccessor):
                 "Cannot zip self (length {}) with block of length {}".format(
                     self.num_rows(), acc.num_rows()))
         return self._zip(acc)
+
+    @staticmethod
+    def _empty_table() -> Any:
+        raise NotImplementedError
+
+    def _sample(self, n_samples: int, key: SortKeyT) -> Any:
+        raise NotImplementedError
+
+    def sample(self, n_samples: int, key: SortKeyT) -> Any:
+        if key is None or callable(key):
+            raise NotImplementedError(
+                "Table sort key must be a column name, was: {}".format(key))
+        if self.num_rows() == 0:
+            # If the pyarrow table is empty we may not have schema
+            # so calling table.select() will raise an error.
+            return self._empty_table()
+        k = min(n_samples, self.num_rows())
+        return self._sample(k, key)

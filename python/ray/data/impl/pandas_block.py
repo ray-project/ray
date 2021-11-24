@@ -10,7 +10,7 @@ except ImportError:
 
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.impl.table_block import TableBlockAccessor, TableRow, \
-    TableBlockBuilder
+    TableBlockBuilder, SortKeyT, GroupKeyT
 from ray.data.aggregate import AggregateFn
 
 if TYPE_CHECKING:
@@ -18,12 +18,6 @@ if TYPE_CHECKING:
     import pandas
 
 T = TypeVar("T")
-
-# TODO
-# An Arrow block can be sorted by a list of (column, asc/desc) pairs,
-# e.g. [("column1", "ascending"), ("column2", "descending")]
-SortKeyT = List[Tuple[str, str]]
-GroupKeyT = Union[None, str]
 
 
 class PandasRow(TableRow):
@@ -34,9 +28,10 @@ class PandasRow(TableRow):
 
     def __getitem__(self, key: str) -> Any:
         col = self._row[key]
+        print(col)
         if len(col) == 0:
             return None
-        item = col[0]
+        item = col.iloc[0]
         try:
             # Try to interpret this as a numpy-type value.
             # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
@@ -52,7 +47,7 @@ class PandasRow(TableRow):
 class PandasBlockBuilder(TableBlockBuilder[T]):
     def __init__(self):
         if pandas is None:
-            raise ImportError("Run `pip install pandas` for pandas support")
+            raise ImportError("Run `pip install pandas` for Pandas support")
         TableBlockBuilder.__init__(self, pandas.DataFrame)
 
     def _table_from_pydict(self, columns: Dict[str, List[Any]]) -> Block:
@@ -61,8 +56,9 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
     def _concat_tables(self, tables: List[Block]) -> Block:
         return pandas.DataFrame.concat(tables, ignore_index=True)
 
-    def _empty_table(self):
-        raise pandas.DataFrame()
+    @staticmethod
+    def _empty_table() -> "pandas.DataFrame":
+        return pandas.DataFrame()
 
 
 class PandasBlockSchema:
@@ -74,7 +70,7 @@ class PandasBlockSchema:
 class PandasBlockAccessor(TableBlockAccessor):
     def __init__(self, table: "pandas.DataFrame"):
         if pandas is None:
-            raise ImportError("Run `pip install pandas` for pandas support")
+            raise ImportError("Run `pip install pandas` for Pandas support")
         TableBlockAccessor.__init__(self, table)
 
     def _create_table_row(self, row: "pandas.DataFrame") -> PandasRow:
@@ -90,7 +86,6 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.sample(frac=1, random_state=random_seed)
 
     def schema(self) -> Any:
-        # TODO: No native representation in pandas.
         dtypes = self._table.dtypes
         return PandasBlockSchema(names=dtypes.index.tolist(), types=dtypes.values.tolist())
 
@@ -101,7 +96,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         if not column:
             raise ValueError(
                 "`column` must be specified when calling .to_numpy() "
-                "on pandas blocks.")
+                "on Pandas blocks.")
         if column not in self._table.columns:
             raise ValueError(
                 "Cannot find column {}, available columns: {}".format(
@@ -109,6 +104,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table[column].to_numpy()
 
     def to_arrow(self) -> "pyarrow.Table":
+        import pyarrow
         return pyarrow.table(self._table)
 
     def num_rows(self) -> int:
@@ -138,9 +134,12 @@ class PandasBlockAccessor(TableBlockAccessor):
     def builder() -> PandasBlockBuilder[T]:
         return PandasBlockBuilder()
 
-    def sample(self, n_samples: int, key: SortKeyT) -> "pandas.DataFrame":
-        # TODO: to be implemented
-        raise NotImplementedError
+    @staticmethod
+    def _empty_table() -> "pandas.DataFrame":
+        return pandas.DataFrame()
+
+    def _sample(self, n_samples: int, key: SortKeyT) -> "pandas.DataFrame":
+        return self._table[[k[0] for k in key]].sample(n_samples, ignore_index=True)
 
     def sort_and_partition(self, boundaries: List[T], key: SortKeyT,
                            descending: bool) -> List["Block[T]"]:

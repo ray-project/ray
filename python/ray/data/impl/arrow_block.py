@@ -13,18 +13,13 @@ except ImportError:
 
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.impl.table_block import TableBlockAccessor, TableRow, \
-    TableBlockBuilder
+    TableBlockBuilder, SortKeyT, GroupKeyT
 from ray.data.aggregate import AggregateFn
 
 if TYPE_CHECKING:
     import pandas
 
 T = TypeVar("T")
-
-# An Arrow block can be sorted by a list of (column, asc/desc) pairs,
-# e.g. [("column1", "ascending"), ("column2", "descending")]
-SortKeyT = List[Tuple[str, str]]
-GroupKeyT = Union[None, str]
 
 
 class ArrowRow(TableRow):
@@ -60,8 +55,9 @@ class ArrowBlockBuilder(TableBlockBuilder[T]):
     def _concat_tables(self, tables: List[Block]) -> Block:
         return pyarrow.concat_tables(tables, promote=True)
 
-    def _empty_table(self):
-        raise pyarrow.Table.from_pydict({})
+    @staticmethod
+    def _empty_table() -> "pyarrow.Table":
+        return pyarrow.Table.from_pydict({})
 
 
 class ArrowBlockAccessor(TableBlockAccessor):
@@ -139,16 +135,12 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def builder() -> ArrowBlockBuilder[T]:
         return ArrowBlockBuilder()
 
-    def sample(self, n_samples: int, key: SortKeyT) -> "pyarrow.Table":
-        if key is None or callable(key):
-            raise NotImplementedError(
-                "Arrow sort key must be a column name, was: {}".format(key))
-        if self._table.num_rows == 0:
-            # If the pyarrow table is empty we may not have schema
-            # so calling table.select() will raise an error.
-            return pyarrow.Table.from_pydict({})
-        k = min(n_samples, self._table.num_rows)
-        indices = random.sample(range(self._table.num_rows), k)
+    @staticmethod
+    def _empty_table() -> "pyarrow.Table":
+        return pyarrow.Table.from_pydict({})
+
+    def _sample(self, n_samples: int, key: SortKeyT) -> "pyarrow.Table":
+        indices = random.sample(range(self._table.num_rows), n_samples)
         return self._table.select([k[0] for k in key]).take(indices)
 
     def sort_and_partition(self, boundaries: List[T], key: SortKeyT,
@@ -161,7 +153,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             # If the pyarrow table is empty we may not have schema
             # so calling sort_indices() will raise an error.
             return [
-                pyarrow.Table.from_pydict({})
+                self._empty_table()
                 for _ in range(len(boundaries) + 1)
             ]
 
@@ -281,7 +273,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             _descending: bool) -> Tuple[Block[T], BlockMetadata]:
         blocks = [b for b in blocks if b.num_rows > 0]
         if len(blocks) == 0:
-            ret = pyarrow.Table.from_pydict({})
+            ret = ArrowBlockAccessor._empty_table()
         else:
             ret = pyarrow.concat_tables(blocks, promote=True)
             indices = pyarrow.compute.sort_indices(ret, sort_keys=key)

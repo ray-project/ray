@@ -2144,7 +2144,7 @@ class Dataset(Generic[T]):
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
         """Convert this dataset into a single Pandas DataFrame.
 
-        This is only supported for datasets convertible to Arrow records. An
+        This is only supported for datasets convertible to Arrow or Pandas records. An
         error is raised if the number of records exceeds the provided limit.
         Note that you can use ``.limit()`` on the dataset beforehand to
         truncate the dataset manually.
@@ -2168,7 +2168,12 @@ class Dataset(Generic[T]):
         output = DelegatingBlockBuilder()
         for block in ray.get(blocks):
             output.add_block(block)
-        return output.build().to_pandas()
+        result = output.build()
+
+        import pandas
+        if not isinstance(result, pandas.DataFrame):
+            result = result.to_pandas()
+        return result
 
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
