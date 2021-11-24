@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import logging
 import sys
 import subprocess
@@ -11,6 +12,16 @@ logger = logging.getLogger(__name__)
 
 @pytest.fixture
 def ray_start_stop():
+    subprocess.check_output(["ray", "start", "--head"])
+    yield
+    subprocess.check_output(["ray", "stop", "--force"])
+
+
+@contextmanager
+def ray_cluster_manager():
+    """
+    Used not as fixture in case we want to set RAY_ADDRESS first.
+    """
     subprocess.check_output(["ray", "start", "--head"])
     yield
     subprocess.check_output(["ray", "stop", "--force"])
@@ -52,6 +63,30 @@ class TestSubmitIntegration:
             stderr = completed_process.stderr.decode("utf-8")
             # Current dashboard module that raises no exception from requests..
             assert "Query the status of the job" in stderr
+
+    def test_set_ray_http_address_first(self):
+        with set_env_var("RAY_ADDRESS", "http://127.0.0.1:8265"):
+            with ray_cluster_manager():
+                completed_process = subprocess.run(
+                    ["ray", "job", "submit", "--", "echo hello"],
+                    capture_output=True)
+                stderr = completed_process.stderr.decode("utf-8")
+                print(stderr)
+                # Current dashboard module that raises no exception from
+                # requests..
+                assert "Query the status of the job" in stderr
+
+    def test_set_ray_client_address_first(self):
+        with set_env_var("RAY_ADDRESS", "127.0.0.1:8265"):
+            with ray_cluster_manager():
+                completed_process = subprocess.run(
+                    ["ray", "job", "submit", "--", "echo hello"],
+                    capture_output=True)
+                stderr = completed_process.stderr.decode("utf-8")
+                print(stderr)
+                # Current dashboard module that raises no exception from
+                # requests..
+                assert "Query the status of the job" in stderr
 
 
 if __name__ == "__main__":
