@@ -120,10 +120,10 @@ class MockTaskFinisher : public TaskFinisherInterface {
     return false;
   }
 
-  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                         const Status *status,
-                         const rpc::RayException *creation_task_exception = nullptr,
-                         bool immediately_mark_object_fail = true) override {
+  bool FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+                              const Status *status,
+                              const rpc::RayException *creation_task_exception = nullptr,
+                              bool mark_task_object_failed = true) override {
     num_tasks_failed++;
     return true;
   }
@@ -134,7 +134,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_contained_ids += contained_ids.size();
   }
 
-  void MarkPendingTaskFailed(
+  void MarkTaskReturnObjectsFailed(
       const TaskSpecification &spec, rpc::ErrorType error_type,
       const rpc::RayException *creation_task_exception = nullptr) override {}
 
