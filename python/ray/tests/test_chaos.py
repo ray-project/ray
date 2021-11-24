@@ -130,8 +130,9 @@ def test_chaos_actor_retry(ray_start_chaos_cluster):
 @pytest.fixture
 def set_kill_interval(request):
     lineage_reconstruction_enabled, kill_interval = request.param
-    if lineage_reconstruction_enabled:
-        os.environ["RAY_lineage_pinning_enabled"] = "1"
+    os.environ["RAY_lineage_pinning_enabled"] = ("1" if
+                                                 lineage_reconstruction_enabled
+                                                 else "0")
     request.param = {
         "kill_interval": kill_interval,
         "head_resources": {
@@ -157,8 +158,7 @@ def set_kill_interval(request):
                    next(cluster))
         except StopIteration:
             break
-    if lineage_reconstruction_enabled:
-        del os.environ["RAY_lineage_pinning_enabled"]
+    del os.environ["RAY_lineage_pinning_enabled"]
 
 
 @pytest.mark.parametrize(
