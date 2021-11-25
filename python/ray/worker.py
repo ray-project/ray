@@ -1711,7 +1711,8 @@ def get(object_refs: Union[ray.ObjectRef, List[ray.ObjectRef]],
                 if isinstance(value, ray.exceptions.ObjectLostError):
                     worker.core_worker.dump_object_store_memory_usage()
                 if isinstance(value, RayTaskError):
-                    raise value.as_instanceof_cause()
+                    raise ValueError("RayTaskError len: {} and size: {}, {}.".format(
+                                        len(values), sys.getsizeof(value), sys.getsizeof(values)))
                 else:
                     raise value
 
