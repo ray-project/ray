@@ -51,10 +51,18 @@
 #include "ray/object_manager/plasma/malloc.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
+#include "ray/stats/stats.h"
 #include "ray/util/util.h"
 
 namespace ph = boost::placeholders;
 namespace fb = plasma::flatbuf;
+
+DEFINE_stats(num_pending_requests,
+             "The number of pending object creation requests in the queue.", (), (),
+             ray::stats::GAUGE);
+DEFINE_stats(num_pending_bytes,
+             "The number of pending object creation requests in bytes.", (), (),
+             ray::stats::GAUGE);
 
 namespace plasma {
 namespace {
@@ -96,14 +104,15 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allo
             return GetDebugDump();
           }),
       total_consumed_bytes_(0),
-      get_request_queue_(io_context_, object_lifecycle_mgr_,
-                         // absl failed to check thread safety for lambda
-                         [this](const ObjectID &object_id, const auto &request)
-                             ABSL_NO_THREAD_SAFETY_ANALYSIS {
-                               mutex_.AssertHeld();
-                               this->AddToClientObjectIds(object_id, request->client);
-                             },
-                         [this](const auto &request) { this->ReturnFromGet(request); }) {
+      get_request_queue_(
+          io_context_, object_lifecycle_mgr_,
+          // absl failed to check thread safety for lambda
+          [this](const ObjectID &object_id, const auto &request)
+              ABSL_NO_THREAD_SAFETY_ANALYSIS {
+                mutex_.AssertHeld();
+                this->AddToClientObjectIds(object_id, request->client);
+              },
+          [this](const auto &request) { this->ReturnFromGet(request); }) {
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms > 0 && RayConfig::instance().event_stats()) {
@@ -487,13 +496,14 @@ void PlasmaStore::ProcessCreateRequests() {
 
   if (retry_after_ms > 0) {
     // Try to process requests later, after space has been made.
-    create_timer_ = execute_after(io_context_,
-                                  [this]() {
-                                    absl::MutexLock lock(&mutex_);
-                                    create_timer_ = nullptr;
-                                    ProcessCreateRequests();
-                                  },
-                                  retry_after_ms);
+    create_timer_ = execute_after(
+        io_context_,
+        [this]() {
+          absl::MutexLock lock(&mutex_);
+          create_timer_ = nullptr;
+          ProcessCreateRequests();
+        },
+        retry_after_ms);
   }
 }
 
@@ -528,8 +538,9 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
 void PlasmaStore::PrintDebugDump() const {
   absl::MutexLock lock(&mutex_);
   RAY_LOG(INFO) << GetDebugDump();
-  stats_timer_ = execute_after(io_context_, [this]() { PrintDebugDump(); },
-                               RayConfig::instance().event_stats_print_interval_ms());
+  stats_timer_ = execute_after(
+      io_context_, [this]() { PrintDebugDump(); },
+      RayConfig::instance().event_stats_print_interval_ms());
 }
 
 std::string PlasmaStore::GetDebugDump() const {
@@ -543,6 +554,10 @@ std::string PlasmaStore::GetDebugDump() const {
   auto num_pending_bytes = create_request_queue_.NumPendingBytes();
   buffer << num_pending_requests << " pending objects of total size "
          << num_pending_bytes / 1024 / 1024 << "MB\n";
+
+  // Record Metrics.
+  STATS_num_pending_requests.Record(num_pending_requests);
+  STATS_num_pending_bytes.Record(num_pending_bytes);
   object_lifecycle_mgr_.GetDebugDump(buffer);
   return buffer.str();
 }

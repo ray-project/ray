@@ -375,6 +375,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":plasma_client",
+        ":stats_lib",
     ],
 )
 

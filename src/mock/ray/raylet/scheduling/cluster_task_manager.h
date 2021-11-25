@@ -53,7 +53,6 @@ class MockClusterTaskManager : public ClusterTaskManager {
   MOCK_METHOD(bool, ReturnCpuResourcesToBlockedWorker,
               (std::shared_ptr<WorkerInterface> worker), (override));
   MOCK_METHOD(void, ScheduleAndDispatchTasks, (), (override));
-  MOCK_METHOD(void, RecordMetrics, (), (override));
   MOCK_METHOD(std::string, DebugStr, (), (const, override));
   MOCK_METHOD(ResourceSet, CalcNormalTaskResources, (), (const, override));
 };

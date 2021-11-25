@@ -260,8 +260,6 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   // Schedule and dispatch tasks.
   void ScheduleAndDispatchTasks() override;
 
-  void RecordMetrics() override;
-
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
 
@@ -452,9 +450,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   const int64_t sched_cls_cap_max_ms_;
 
-  /// Metrics collected since the last report.
-  uint64_t metric_tasks_queued_;
-  uint64_t metric_tasks_dispatched_;
+  /// Total number of tasks spilled.
   uint64_t metric_tasks_spilled_;
 
   /// Determine whether a task should be immediately dispatched,

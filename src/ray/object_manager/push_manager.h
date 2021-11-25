@@ -69,15 +69,7 @@ class PushManager {
   /// Return the number of pushes currently in flight. For testing only.
   int64_t NumPushesInFlight() const { return push_info_.size(); };
 
-  std::string DebugString() const {
-    std::stringstream result;
-    result << "PushManager:";
-    result << "\n- num pushes in flight: " << NumPushesInFlight();
-    result << "\n- num chunks in flight: " << NumChunksInFlight();
-    result << "\n- num chunks remaining: " << NumChunksRemaining();
-    result << "\n- max chunks allowed: " << max_chunks_in_flight_;
-    return result.str();
-  }
+  std::string DebugString() const;
 
  private:
   /// Tracks the state of an active object push to another node.

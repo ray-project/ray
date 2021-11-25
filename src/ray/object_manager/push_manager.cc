@@ -15,7 +15,15 @@
 #include "ray/object_manager/push_manager.h"
 
 #include "ray/common/common_protocol.h"
+#include "ray/stats/stats.h"
 #include "ray/util/util.h"
+
+DEFINE_stats(num_pushes_in_flight, "Number of object push requests in flight.", (), (),
+             ray::stats::GAUGE);
+DEFINE_stats(num_chunks_in_flight, "Number of object chunks transfer in flight.", (), (),
+             ray::stats::GAUGE);
+DEFINE_stats(num_chunks_remainig, "Number of object chunks transfer remaining.", (), (),
+             ray::stats::GAUGE);
 
 namespace ray {
 
@@ -70,6 +78,25 @@ void PushManager::ScheduleRemainingPushes() {
       it++;
     }
   }
+}
+
+std::string PushManager::DebugString() const {
+  int64_t num_pushes_in_flight = NumPushesInFlight();
+  int64_t num_chunks_in_flight = NumChunksInFlight();
+  int64_t num_chunks_remainig = NumChunksRemaining();
+
+  std::stringstream result;
+  result << "PushManager:";
+  result << "\n- num pushes in flight: " << num_pushes_in_flight;
+  result << "\n- num chunks in flight: " << num_chunks_in_flight;
+  result << "\n- num chunks remaining: " << num_chunks_remainig;
+  result << "\n- max chunks allowed: " << max_chunks_in_flight_;
+
+  // Record metrics.
+  STATS_num_pushes_in_flight.Record(num_pushes_in_flight);
+  STATS_num_chunks_in_flight.Record(num_chunks_in_flight);
+  STATS_num_chunks_remainig.Record(num_chunks_remainig);
+  return result.str();
 }
 
 }  // namespace ray

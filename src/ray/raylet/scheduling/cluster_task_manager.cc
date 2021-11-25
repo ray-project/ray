@@ -21,6 +21,41 @@
 #include "ray/stats/stats.h"
 #include "ray/util/logging.h"
 
+DEFINE_stats(num_waiting_for_resource,
+             "Number of tasks waiting for resources to be available.", (), (),
+             ray::stats::GAUGE);
+DEFINE_stats(num_waiting_for_plasma_memory,
+             "Number of tasks waiting for additional object store memory.", (), (),
+             ray::stats::GAUGE);
+DEFINE_stats(num_waiting_for_remote_node_resources,
+             "Number of tasks waiting for available resources from remote nodes.", (), (),
+             ray::stats::GAUGE);
+DEFINE_stats(num_worker_not_started_by_job_config_not_exist,
+             "Number of tasks that have failed to be scheduled because workers were not "
+             "available due to missing job config.",
+             (), (), ray::stats::GAUGE);
+DEFINE_stats(num_worker_not_started_by_registration_timeout,
+             "Number of tasks that have failed to be scheduled because workers were not "
+             "available due to worker registration timeout.",
+             (), (), ray::stats::GAUGE);
+DEFINE_stats(num_worker_not_started_by_process_rate_limit,
+             "Number of tasks that have failed to be scheduled because workers were not "
+             "available due to rate limiting.",
+             (), (), ray::stats::GAUGE);
+DEFINE_stats(num_worker_waiting_for_workers,
+             "Number of tasks that are waiting for a worker process to be available.", (),
+             (), ray::stats::GAUGE);
+DEFINE_stats(num_cancelled_tasks, "Number of cancelled tasks.", (), (),
+             ray::stats::GAUGE);
+DEFINE_stats(num_waitng_tasks,
+             "Number of tasks that are waiting for dependencies to be available locally.",
+             (), (), ray::stats::GAUGE);
+DEFINE_stats(num_executing_tasks, "Number of tasks that are executing.", (), (),
+             ray::stats::GAUGE);
+DEFINE_stats(num_pinned_task_args,
+             "Number of task arguments that are pinned because they are used by tasks.",
+             (), (), ray::stats::GAUGE);
+
 namespace ray {
 namespace raylet {
 
@@ -57,8 +92,6 @@ ClusterTaskManager::ClusterTaskManager(
       sched_cls_cap_enabled_(RayConfig::instance().worker_cap_enabled()),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
       sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()),
-      metric_tasks_queued_(0),
-      metric_tasks_dispatched_(0),
       metric_tasks_spilled_(0) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
@@ -480,7 +513,6 @@ void ClusterTaskManager::QueueAndScheduleTask(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
-  metric_tasks_queued_++;
   auto work = std::make_shared<internal::Work>(
       task, grant_or_reject, reply,
       [send_reply_callback] { send_reply_callback(Status::OK(), nullptr, nullptr); });
@@ -956,6 +988,9 @@ std::string ClusterTaskManager::DebugStr() const {
   size_t num_worker_not_started_by_process_rate_limit = 0;
   size_t num_worker_waiting_for_workers = 0;
   size_t num_cancelled_tasks = 0;
+  size_t num_waiting_tasks = waiting_tasks_index_.size();
+  size_t num_executing_tasks = executing_task_args_.size();
+  size_t num_pinned_task_args = pinned_task_arguments_.size();
 
   size_t num_infeasible_tasks = std::accumulate(
       infeasible_tasks_.begin(), infeasible_tasks_.end(), (size_t)0, accumulator);
@@ -1031,12 +1066,13 @@ std::string ClusterTaskManager::DebugStr() const {
          << num_worker_not_started_by_process_rate_limit << "\n";
   buffer << "num_worker_waiting_for_workers: " << num_worker_waiting_for_workers << "\n";
   buffer << "num_cancelled_tasks: " << num_cancelled_tasks << "\n";
-  buffer << "Waiting tasks size: " << waiting_tasks_index_.size() << "\n";
-  buffer << "Number of executing tasks: " << executing_task_args_.size() << "\n";
-  buffer << "Number of pinned task arguments: " << pinned_task_arguments_.size() << "\n";
+  buffer << "Waiting tasks size: " << num_waiting_tasks << "\n";
+  buffer << "Number of executing tasks: " << num_executing_tasks << "\n";
+  buffer << "Number of pinned task arguments: " << num_pinned_task_args << "\n";
   buffer << "cluster_resource_scheduler state: "
          << cluster_resource_scheduler_->DebugString() << "\n";
   buffer << "Resource usage {\n";
+
   // Calculates how much resources are occupied by tasks or actors.
   // Only iterate upto this number to avoid excessive CPU usage.
   auto max_iteration = RayConfig::instance().worker_max_resource_analysis_iteration();
@@ -1082,24 +1118,30 @@ std::string ClusterTaskManager::DebugStr() const {
   }
 
   buffer << "==================================================\n";
-  return buffer.str();
-}
 
-void ClusterTaskManager::RecordMetrics() {
-  stats::NumReceivedTasks.Record(metric_tasks_queued_);
-  stats::NumDispatchedTasks.Record(metric_tasks_dispatched_);
+  /// Record Metrics
+  stats::NumReceivedTasks.Record(num_tasks_to_schedule);
+  stats::NumDispatchedTasks.Record(num_tasks_to_dispatch);
   stats::NumSpilledTasks.Record(metric_tasks_spilled_);
   stats::NumInfeasibleSchedulingClasses.Record(infeasible_tasks_.size());
-
-  metric_tasks_queued_ = 0;
-  metric_tasks_dispatched_ = 0;
-  metric_tasks_spilled_ = 0;
-
-  uint64_t num_infeasible_tasks = 0;
-  for (const auto &pair : infeasible_tasks_) {
-    num_infeasible_tasks += pair.second.size();
-  }
   stats::NumInfeasibleTasks.Record(num_infeasible_tasks);
+  STATS_num_waiting_for_resource.Record(num_waiting_for_resource);
+  STATS_num_waiting_for_plasma_memory.Record(num_waiting_for_plasma_memory);
+  STATS_num_waiting_for_remote_node_resources.Record(
+      num_waiting_for_remote_node_resources);
+  STATS_num_worker_not_started_by_job_config_not_exist.Record(
+      num_worker_not_started_by_job_config_not_exist);
+  STATS_num_worker_not_started_by_registration_timeout.Record(
+      num_worker_not_started_by_registration_timeout);
+  STATS_num_worker_not_started_by_process_rate_limit.Record(
+      num_worker_not_started_by_process_rate_limit);
+  STATS_num_worker_waiting_for_workers.Record(num_worker_waiting_for_workers);
+  STATS_num_cancelled_tasks.Record(num_cancelled_tasks);
+  STATS_num_waitng_tasks.Record(num_waiting_tasks);
+  STATS_num_executing_tasks.Record(num_executing_tasks);
+  STATS_num_pinned_task_args.Record(num_pinned_task_args);
+
+  return buffer.str();
 }
 
 void ClusterTaskManager::TryLocalInfeasibleTaskScheduling() {
@@ -1142,7 +1184,6 @@ void ClusterTaskManager::Dispatch(
     const std::shared_ptr<TaskResourceInstances> &allocated_instances,
     const RayTask &task, rpc::RequestWorkerLeaseReply *reply,
     std::function<void(void)> send_reply_callback) {
-  metric_tasks_dispatched_++;
   const auto &task_spec = task.GetTaskSpecification();
 
   worker->SetBundleId(task_spec.PlacementGroupBundleId());

@@ -487,10 +487,6 @@ ray::Status NodeManager::RegisterGcs() {
       RayConfig::instance().debug_dump_period_milliseconds(),
       "NodeManager.deadline_timer.debug_state_dump");
   uint64_t now_ms = current_time_ms();
-  last_metrics_recorded_at_ms_ = now_ms;
-  periodical_runner_.RunFnPeriodically([this] { RecordMetrics(); },
-                                       record_metrics_period_ms_,
-                                       "NodeManager.deadline_timer.record_metrics");
   if (RayConfig::instance().free_objects_period_milliseconds() > 0) {
     periodical_runner_.RunFnPeriodically(
         [this] { local_object_manager_.FlushFreeObjects(); },
@@ -2202,8 +2198,8 @@ void NodeManager::HandleGetNodeStats(const rpc::GetNodeStatsRequest &node_stats_
   object_manager_.FillObjectStoreStats(reply);
   // Ensure we never report an empty set of metrics.
   if (!recorded_metrics_) {
-    RecordMetrics();
-    RAY_CHECK(recorded_metrics_);
+    DebugString();
+    recorded_metrics_ = true;
   }
   for (const auto &view : opencensus::stats::StatsExporter::GetViewData()) {
     auto view_data = reply->add_view_data();
@@ -2458,22 +2454,6 @@ void NodeManager::Stop() {
   if (heartbeat_sender_) {
     heartbeat_sender_.reset();
   }
-}
-
-void NodeManager::RecordMetrics() {
-  recorded_metrics_ = true;
-  if (stats::StatsConfig::instance().IsStatsDisabled()) {
-    return;
-  }
-
-  cluster_task_manager_->RecordMetrics();
-  object_manager_.RecordMetrics();
-  local_object_manager_.RecordObjectSpillingStats();
-
-  uint64_t current_time = current_time_ms();
-  uint64_t duration_ms = current_time - last_metrics_recorded_at_ms_;
-  last_metrics_recorded_at_ms_ = current_time;
-  object_directory_->RecordMetrics(duration_ms);
 }
 
 void NodeManager::PublishInfeasibleTaskError(const RayTask &task) const {
