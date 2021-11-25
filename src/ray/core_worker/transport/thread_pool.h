@@ -34,7 +34,7 @@ namespace core {
 /// by the SchedulingQueue to provide backpressure to clients.
 class BoundedExecutor {
  public:
-   static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group) {
+  static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group) {
     //  Threaded actor mode only need a default executor when max_concurrency > 1.
     return max_concurrency_in_default_group > 1;
   }

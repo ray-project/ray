@@ -83,7 +83,6 @@ using FiberChannel = boost::fibers::unbuffered_channel<std::function<void()>>;
 
 class FiberState {
  public:
-  
   static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group) {
     RAY_UNUSED(max_concurrency_in_default_group);
     /// asycio mode always need a default executor.
