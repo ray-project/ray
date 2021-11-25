@@ -119,7 +119,7 @@ class RayParams:
             worker available externally to the node it is running on. This will
             bind on 0.0.0.0 instead of localhost.
         env_vars (dict): Override environment variables for the raylet.
-        force_load_code_from_local(bool): If true, don't allow execute task by 
+        force_load_code_from_local(bool): If true, don't allow execute task by
             dynamic pickled function.
     """
 

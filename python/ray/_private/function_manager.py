@@ -175,6 +175,12 @@ class FunctionActorManager:
             if self.load_function_or_class_from_local(
                     module_name, function_name) is not None:
                 return
+            elif self._worker.force_load_code_from_local:
+                raise RuntimeError(
+                    "Load function or class from local failed."
+                    "And this node don't allow execute task from "
+                    "dynamic pickled function. The module_name: "
+                    f"{module_name}, the function_name: {function_name}")
         function = remote_function._function
         pickled_function = remote_function._pickled_function
 

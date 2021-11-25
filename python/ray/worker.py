@@ -131,6 +131,7 @@ class Worker:
         # running on.
         self.ray_debugger_external = False
         self._load_code_from_local = False
+        self._force_load_code_from_local = False
         # Used to toggle whether or not logs should be filtered to only those
         # produced in the same job.
         self.filter_logs_by_job = True
@@ -149,6 +150,11 @@ class Worker:
     def load_code_from_local(self):
         self.check_connected()
         return self._load_code_from_local
+
+    @property
+    def force_load_code_from_local(self):
+        self.check_connected()
+        return self._force_load_code_from_local
 
     @property
     def current_job_id(self):
@@ -252,6 +258,9 @@ class Worker:
 
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
+
+    def set_force_load_code_from_local(self):
+        self._force_load_code_from_local = True
 
     def put_object(self, value, object_ref=None, owner_address=None):
         """Put value in the local object store with object reference `object_ref`.

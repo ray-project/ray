@@ -214,6 +214,7 @@ if __name__ == "__main__":
                 sys.path.insert(0, p)
     else:
         load_code_from_local = True
+        ray.worker.global_worker.set_force_load_code_from_local()
     ray.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
     # Setup log file.
