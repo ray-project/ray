@@ -10,6 +10,7 @@ import ray
 from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
+    SignalActor,
 )
 
 SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
@@ -828,6 +829,72 @@ def test_multiple_returns(ray_start_cluster, reconstruction_enabled):
             ray.get(dependent_task.remote(obj2))
         with pytest.raises(ray.exceptions.ObjectLostError):
             ray.get(obj2)
+
+
+@pytest.mark.parametrize("reconstruction_enabled", [False, True])
+def test_nested(ray_start_cluster, reconstruction_enabled):
+    config = {
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "object_timeout_milliseconds": 200,
+    }
+    # Workaround to reset the config to the default value.
+    if not reconstruction_enabled:
+        config["lineage_pinning_enabled"] = False
+
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config=config,
+        enable_object_reconstruction=reconstruction_enabled)
+    ray.init(address=cluster.address)
+    done_signal = SignalActor.remote()
+    exit_signal = SignalActor.remote()
+    ray.get(done_signal.wait.remote(should_wait=False))
+    ray.get(exit_signal.wait.remote(should_wait=False))
+
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    @ray.remote
+    def dependent_task(x):
+        return
+
+    @ray.remote
+    def large_object():
+        return np.zeros(10**7, dtype=np.uint8)
+
+    @ray.remote
+    def return_ref(done_signal, exit_signal):
+        ref = ray.put(np.zeros(10**7, dtype=np.uint8))
+        # Flush object store.
+        for _ in range(20):
+            ray.put(np.zeros(10**7, dtype=np.uint8))
+        dep = dependent_task.options(resources={"node": 1}).remote(ref)
+        ray.get(done_signal.send.remote(clear=True))
+        ray.get(dep)
+        return ray.get(ref)
+
+    ref = return_ref.remote(done_signal, exit_signal)
+    # Wait for task to get scheduled on the node to kill.
+    ray.get(done_signal.wait.remote())
+    # Wait for ray.put object to get transferred to the other node.
+    cluster.add_node(
+        num_cpus=2, resources={"node": 10}, object_store_memory=10**8)
+    ray.get(dependent_task.remote(ref))
+
+    # Kill the task while it's still running.
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    wait_for_condition(
+        lambda: not all(node["Alive"] for node in ray.nodes()), timeout=10)
+
+    if reconstruction_enabled:
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(dependent_task.remote(ref))
+    else:
+        ray.get(dependent_task.remote(ref), timeout=60)
 
 
 if __name__ == "__main__":

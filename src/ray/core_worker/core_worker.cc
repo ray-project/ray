@@ -922,13 +922,17 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
                                               /* owner_address = */ rpc_address_, data,
                                               created_by_worker);
     }
-    if (!status.ok() || !data) {
+    if (!status.ok()) {
       if (owned_by_us) {
         reference_counter_->RemoveOwnedObject(*object_id);
       } else {
         RemoveLocalReference(*object_id);
       }
       return status;
+    } else if (*data == nullptr) {
+      // Object already exists in plasma. Store the in-memory value so that the
+      // client will check the plasma store.
+      RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), *object_id));
     }
   }
   return Status::OK();
