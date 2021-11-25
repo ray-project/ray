@@ -837,6 +837,7 @@ def test_nested(ray_start_cluster, reconstruction_enabled):
         "num_heartbeats_timeout": 10,
         "raylet_heartbeat_period_milliseconds": 100,
         "object_timeout_milliseconds": 200,
+        "fetch_fail_timeout_milliseconds": 10_000,
     }
     # Workaround to reset the config to the default value.
     if not reconstruction_enabled:
