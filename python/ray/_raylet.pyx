@@ -114,7 +114,7 @@ from ray.exceptions import (
     GetTimeoutError,
     TaskCancelledError,
     AsyncioActorExit,
-    BackPressureError,
+    PendingCallsLimitExceeded,
 )
 from ray import external_storage
 import ray.ray_constants as ray_constants
@@ -1643,18 +1643,19 @@ cdef class CoreWorker:
                 actor = self.get_actor_handle(actor_id)
                 actor_handle = (CCoreWorkerProcess.GetCoreWorker()
                                 .GetActorHandle(c_actor_id))
-                raise BackPressureError("Cannot submit the actor task {} "
-                                        "of actor {} because the number "
-                                        "of pending tasks queued exceeds "
-                                        "the limit {}. To increase the max "
-                                        "number of queued tasks to the actor, "
-                                        "set the max_pending_calls option "
-                                        "when create the actor. ".format(
-                                            function_descriptor.function_name,
-                                            repr(actor),
-                                            (dereference(actor_handle)
-                                                .MaxPendingCalls()))
-                                        )
+                raise PendingCallsLimitExceeded("The task {} could not be "
+                                                "submitted to {} because more "
+                                                "than {} tasks are queued on "
+                                                "the actor. This limit "
+                                                "can be adjusted with the "
+                                                "`max_pending_calls` actor "
+                                                "option.".format(
+                                                    function_descriptor
+                                                    .function_name,
+                                                    repr(actor),
+                                                    (dereference(actor_handle)
+                                                        .MaxPendingCalls())
+                                                ))
 
     def kill_actor(self, ActorID actor_id, c_bool no_restart):
         cdef:

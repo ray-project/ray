@@ -446,7 +446,7 @@ class RuntimeEnvSetupError(RayError):
         return "The runtime_env failed to be set up."
 
 
-class BackPressureError(RayError):
+class PendingCallsLimitExceeded(RayError):
     """Raised when actor call back pressure occurs."""
     pass
 
@@ -468,5 +468,5 @@ RAY_EXCEPTION_TYPES = [
     GetTimeoutError,
     AsyncioActorExit,
     RuntimeEnvSetupError,
-    BackPressureError,
+    PendingCallsLimitExceeded,
 ]

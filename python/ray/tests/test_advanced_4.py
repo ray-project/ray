@@ -105,10 +105,10 @@ def test_back_pressure(shutdown_only_with_initialization_check):
     try:
         for i in range(10):
             signal_actor.acquire.remote()
-    except ray.exceptions.BackPressureError:
+    except ray.exceptions.PendingCallsLimitExceeded:
         assert False
 
-    with pytest.raises(ray.exceptions.BackPressureError):
+    with pytest.raises(ray.exceptions.PendingCallsLimitExceeded):
         signal_actor.acquire.remote()
 
     @ray.remote
@@ -125,7 +125,7 @@ def test_back_pressure(shutdown_only_with_initialization_check):
     # back presssure released.
     try:
         signal_actor.acquire.remote()
-    except ray.exceptions.BackPressureError:
+    except ray.exceptions.PendingCallsLimitExceeded:
         assert False
 
     ray.shutdown()
