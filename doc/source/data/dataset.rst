@@ -327,6 +327,135 @@ By default, transformations are executed using Ray tasks. For transformations th
     # Save the results.
     ds.repartition(1).write_json("s3://bucket/inference-results")
 
+Last-mile preprocessing
+-------------------------------------
+
+Datasets supports data preprocessing transformations commonly performed just before model training and model inference, which we refer to as **last-mile preprocessing**. These transformations are carried out via a few key operations: mapping, groupbys + aggregations, and random shuffling.
+
+Mapping
+~~~~~~~
+
+Many common preprocessing transformations, such as:
+
+- adding new columns
+- transforming existing columns
+- dropping columns
+- dropping nulls
+- one-hot encoding
+
+can be efficiently applied to a dataset using Pandas DataFrame UDFs and ``.map_batches()``; this will do these transformations in parallel over the dataset's blocks, and will allow you to apply vectorized Pandas operations to columns.
+
+.. code-block:: python
+
+    def transform_batch(df: pd.DataFrame):
+        # Drop nulls.
+        df = df.dropna(subset=["feature_1"])
+        # Add new column.
+        df["new_col"] = df["feature_1"] - 2 * df["feature_2"] + df["feature_3"] / 3
+        # Transform existing column.
+        df["feature_1"] = 2 * df["feature_1"] + 1
+        # Drop column.
+        df.drop(columns="feature_2", inplace=True)
+        # One-hot encoding.
+        fruits = ["apple", "orange", "banana"]
+        for fruit in fruits:
+            df[f"fruit_{fruit}"] = df[fruit].map(
+                collections.defaultdict(int, **{fruit: 1}))
+        return df
+
+    ds = ds.map_batches(transform_batch, batch_format="pandas")
+
+Groupbys and aggregations
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Other preprocessing operations require global operations, such as groupbys and grouped/global aggregations.
+
+.. code-block:: python
+
+    ds = ray.data.from_items([
+        {"A": x % 3, "B": 2 * x, "C": 3 * x}
+        for x in range(10)])
+
+    # Group by the A column and calculate the per-group mean for B and C columns.
+    agg_ds = ds.groupby("A").mean(["B", "C"])
+    agg_ds.to_pandas()
+    # ->
+    #    A  mean(B)  mean(C)
+    # 0  0      9.0     13.5
+    # 1  1      8.0     12.0
+    # 2  2     10.0     15.0
+
+    # Global mean on B column.
+    ds.mean("B")
+    # -> 9.0
+
+    # Global mean on multiple columns.
+    ds.mean(["B", "C"])
+    # -> {'mean(B)': 9.0, 'mean(C)': 13.5} 
+
+    # Multiple global aggregations on multiple columns.
+    from ray.data.aggregate import Mean, Std
+    ds.aggregate(Mean("B"), Std("B", ddof=0), Mean("C"), Std("C", ddof=0))
+    # -> {'mean(A)': 0.9, 'std(A)': 0.8306623862918076, 'mean(B)': 9.0, 'std(B)': 5.744562646538029}
+
+These aggregations can be combined with batch mapping to e.g. efficiently impute missing values with statistics and standard scale feature columns.
+
+.. code-block:: python
+
+    # Impute missing values with the column mean.
+    b_mean = ds.mean("B")
+
+    def impute_b(df: pd.DataFrame):
+        df["B"].fillna(b_mean)
+        return df
+
+    ds = ds.map_batches(impute_b, batch_format="pandas")
+
+    # Standard scaling of all feature columns.
+    stats = ds.aggregate(Mean("B"), Std("B"), Mean("C"), Std("C"))
+
+    def batch_standard_scaler(df: pd.DataFrame):
+        def column_standard_scaler(s: pd.Series):
+            if s.name == "label":
+                # Don't standard scale label column.
+                return s
+            s_mean = stats[f"mean({s.name})"]
+            s_std = stats[f"std({s.name})"]
+            return (s - s_mean) / s_std
+
+        return df.transform(column_standard_scaler)
+
+    ds = ds.map_batches(batch_standard_scaler, batch_format="pandas")
+
+Random shuffle
+~~~~~~~~~~~~~~
+
+Randomly shuffling data is an important part of training machine learning models: it decorrelates samples, preventing overfitting and improving generalization. For many models, even between-epoch shuffling can drastically improve the precision gain per step/epoch. Datasets has a hyper-scalable distributed random shuffle:
+
+.. code-block:: python
+
+    ds = ray.data.range(10)
+    # -> [0, 1, ..., 9]
+
+    # Global random shuffle.
+    ds = ds.random_shuffle()
+    # -> [6, 2, ..., 4]
+
+    # Scales to terabytes of data with the same simple API.
+    ds = ray.data.read_parquet("s3://ursa-labs-taxi-data")  # open, tabular, NYC taxi dataset
+    # -> Dataset(num_blocks=2000, num_rows=4000000000, schema={col1: int64, col2: string})
+    ds = ds.random_shuffle()
+    # -> Dataset(num_blocks=2000, num_rows=4000000000, schema={col1: int64, col2: string})
+
+    # Per-epoch shuffling is as simple as changing where we shuffle.
+    num_epochs = 20
+    # Shuffle once.
+    ds.random_shuffle().repeat(num_epochs)
+    # Shuffle every epoch.
+    ds.repeat(num_epochs).random_shuffle()
+
+See the `large-scale ML ingest example <examples/big_data_ingestion.html>`__ for an end-to-end example of per-epoch shuffled data loading for distributed training.
+
 Exchanging datasets
 -------------------
 
