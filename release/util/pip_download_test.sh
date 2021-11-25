@@ -31,7 +31,14 @@ pip install --upgrade pip
 # This is required to use conda activate
 source "$(conda info --base)/etc/profile.d/conda.sh"
 
-for PYTHON_VERSION in "3.6" "3.7" "3.8" "3.9"
+if [[ `uname -m` == 'arm64' ]]; then
+  echo M1
+  PYTHON_VERSIONS=( "3.8" "3.9" )
+else
+  PYTHON_VERSION=( "3.6" "3.7" "3.8" "3.9" )
+fi
+
+for PYTHON_VERSION in $PYTHON_VERSIONS
 do
     env_name="${RAY_VERSION}-${PYTHON_VERSION}-env"
     conda create -y -n "${env_name}" python=${PYTHON_VERSION}
