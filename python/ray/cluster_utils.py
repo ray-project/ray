@@ -14,6 +14,8 @@ from ray import ray_constants
 
 logger = logging.getLogger(__name__)
 
+cluster_not_supported = (os.name == "nt")
+
 
 class AutoscalingCluster:
     """Create a local autoscaling cluster for testing.
@@ -106,6 +108,11 @@ class Cluster:
             shutdown_at_exit (bool): If True, registers an exit hook
                 for shutting down all started processes.
         """
+        if cluster_not_supported:
+            logger.warning(
+                "Ray cluster mode is currently experimental and untested on "
+                "Windows. If you are using it and running into issues please "
+                "file a report at https://github.com/ray-project/ray/issues.")
         self.head_node = None
         self.worker_nodes = set()
         self.redis_address = None

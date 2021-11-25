@@ -9,7 +9,7 @@ import psutil
 
 import ray.ray_constants as ray_constants
 
-from ray.cluster_utils import Cluster
+from ray.cluster_utils import Cluster, cluster_not_supported
 from ray import NodeID
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
@@ -95,6 +95,7 @@ def test_retry_application_level_error(ray_start_regular):
         ray.get(r3)
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_connect_with_disconnected_node(shutdown_only):
     config = {
         "num_heartbeats_timeout": 50,

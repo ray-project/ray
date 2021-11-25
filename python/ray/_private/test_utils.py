@@ -932,7 +932,10 @@ def teardown_tls(key_filepath, cert_filepath, temp_dir):
     del os.environ["RAY_TLS_CA_CERT"]
 
 
-def get_and_run_node_killer(node_kill_interval_s):
+def get_and_run_node_killer(node_kill_interval_s,
+                            namespace=None,
+                            lifetime=None,
+                            no_start=False):
     assert ray.is_initialized(), (
         "The API is only available when Ray is initialized.")
 
@@ -1020,12 +1023,17 @@ def get_and_run_node_killer(node_kill_interval_s):
     head_node_ip = ray.worker.global_worker.node_ip_address
     head_node_id = ray.worker.global_worker.current_node_id.hex()
     # Schedule the actor on the current node.
-    node_killer = NodeKillerActor.options(resources={
-        f"node:{head_node_ip}": 0.001
-    }).remote(
-        head_node_id, node_kill_interval_s=node_kill_interval_s)
+    node_killer = NodeKillerActor.options(
+        resources={
+            f"node:{head_node_ip}": 0.001
+        },
+        namespace=namespace,
+        name="node_killer",
+        lifetime=lifetime).remote(
+            head_node_id, node_kill_interval_s=node_kill_interval_s)
     print("Waiting for node killer actor to be ready...")
     ray.get(node_killer.ready.remote())
     print("Node killer actor is ready now.")
-    node_killer.run.remote()
+    if not no_start:
+        node_killer.run.remote()
     return node_killer
