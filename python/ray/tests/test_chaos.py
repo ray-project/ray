@@ -156,8 +156,8 @@ def test_nonstreaming_shuffle(set_kill_interval):
 
 
 @pytest.mark.parametrize(
-    "set_kill_interval", [(True, None), (True, 20), (False, None),
-                          (False, 20)],
+    "set_kill_interval", [(True, None), (True, 30), (False, None),
+                          (False, 30)],
     indirect=True)
 def test_streaming_shuffle(set_kill_interval):
     lineage_reconstruction_enabled, kill_interval, _ = set_kill_interval

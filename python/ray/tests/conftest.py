@@ -419,7 +419,7 @@ def slow_spilling_config(request, tmp_path):
 
 
 def _ray_start_chaos_cluster(request):
-    os.environ["RAY_num_heartbeats_timeout"] = "5"
+    os.environ["RAY_num_heartbeats_timeout"] = "10"
     os.environ["RAY_raylet_heartbeat_period_milliseconds"] = "100"
     os.environ["RAY_task_retry_delay_ms"] = "100"
     param = getattr(request, "param", {})
