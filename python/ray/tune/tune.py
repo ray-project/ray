@@ -11,6 +11,7 @@ import warnings
 
 import ray
 from ray.util.annotations import PublicAPI
+from ray.util.ml_utils.node import force_on_current_node
 from ray.util.queue import Queue, Empty
 
 from ray.tune.analysis import ExperimentAnalysis
@@ -28,13 +29,12 @@ from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, \
 from ray.tune.suggest.suggestion import ConcurrencyLimiter, Searcher
 from ray.tune.suggest.util import set_search_properties_backwards_compatible
 from ray.tune.suggest.variant_generator import has_unresolved_values
-from ray.tune.syncer import SyncConfig, set_sync_periods, wait_for_sync
+from ray.tune.syncer import (SyncConfig, set_sync_periods, wait_for_sync)
 from ray.tune.trainable import Trainable
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
 from ray.tune.utils.callback import create_default_callbacks
 from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
-from ray.tune.utils import force_on_current_node
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
@@ -431,15 +431,12 @@ def run(
                 resources_per_trial=resources_per_trial,
                 num_samples=num_samples,
                 local_dir=local_dir,
-                upload_dir=sync_config.upload_dir,
-                sync_to_driver=sync_config.sync_to_driver,
-                sync_to_cloud=sync_config.sync_to_cloud,
+                sync_config=sync_config,
                 trial_name_creator=trial_name_creator,
                 trial_dirname_creator=trial_dirname_creator,
                 log_to_file=log_to_file,
                 checkpoint_freq=checkpoint_freq,
                 checkpoint_at_end=checkpoint_at_end,
-                sync_on_checkpoint=sync_config.sync_on_checkpoint,
                 keep_checkpoints_num=keep_checkpoints_num,
                 checkpoint_score_attr=checkpoint_score_attr,
                 export_formats=export_formats,
@@ -447,11 +444,6 @@ def run(
                 restore=restore)
     else:
         logger.debug("Ignoring some parameters passed into tune.run.")
-
-    if sync_config.sync_to_cloud:
-        for exp in experiments:
-            assert exp.remote_checkpoint_dir, (
-                "Need `upload_dir` if `sync_to_cloud` given.")
 
     if fail_fast and max_failures != 0:
         raise ValueError("max_failures must be 0 if fail_fast=True.")
@@ -530,7 +522,7 @@ def run(
         scheduler=scheduler,
         local_checkpoint_dir=experiments[0].checkpoint_dir,
         remote_checkpoint_dir=experiments[0].remote_checkpoint_dir,
-        sync_to_cloud=sync_config.sync_to_cloud,
+        sync_config=sync_config,
         stopper=experiments[0].stopper,
         resume=resume,
         server_port=server_port,
@@ -538,8 +530,9 @@ def run(
         trial_executor=trial_executor,
         callbacks=callbacks,
         metric=metric,
-        # Driver should only sync trial checkpoints if not a DurableTrainable
-        driver_sync_trial_checkpoints=not experiments[0].is_durable_trainable)
+        # Driver should only sync trial checkpoints if
+        # checkpoints are not synced to cloud
+        driver_sync_trial_checkpoints=not bool(sync_config.upload_dir))
 
     if not runner.resumed:
         for exp in experiments:
@@ -644,7 +637,8 @@ def run(
         runner.checkpoint_file,
         trials=trials,
         default_metric=metric,
-        default_mode=mode)
+        default_mode=mode,
+        sync_config=sync_config)
 
 
 @PublicAPI

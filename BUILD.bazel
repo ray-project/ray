@@ -440,6 +440,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/random",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
@@ -764,6 +765,7 @@ cc_library(
         ":worker_rpc",
         "//src/ray/protobuf:worker_cc_proto",
         "@boost//:fiber",
+        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
@@ -908,6 +910,18 @@ cc_test(
 cc_test(
     name = "scheduling_queue_test",
     srcs = ["src/ray/core_worker/test/scheduling_queue_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "actor_submit_queue_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/actor_submit_queue_test.cc"],
     copts = COPTS,
     tags = ["team:core"],
     deps = [
@@ -1322,6 +1336,20 @@ cc_test(
     name = "client_connection_test",
     size = "small",
     srcs = ["src/ray/common/test/client_connection_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":ray_common",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "status_test",
+    size = "small",
+    srcs = [
+        "src/ray/common/test/status_test.cc",
+    ],
     copts = COPTS,
     tags = ["team:core"],
     deps = [
@@ -1890,6 +1918,7 @@ cc_library(
         "@com_google_absl//absl/debugging:failure_signal_handler",
         "@com_google_absl//absl/debugging:stacktrace",
         "@com_google_absl//absl/debugging:symbolize",
+        "@com_google_absl//absl/random",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
@@ -2201,6 +2230,12 @@ pyx_library(
     ),
     deps = [
         "//streaming:streaming_lib",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -2292,6 +2327,7 @@ filegroup(
         "//src/ray/protobuf:ray_client_py_proto",
         "//src/ray/protobuf:reporter_py_proto",
         "//src/ray/protobuf:runtime_env_agent_py_proto",
+        "//src/ray/protobuf:runtime_env_common_py_proto",
     ],
 )
 

@@ -10,13 +10,14 @@ import unittest
 import pytest
 
 import ray
-from ray.tests.test_autoscaler import MockProvider, MockProcessRunner
+from ray.tests.test_autoscaler import (MockProvider, MockProcessRunner,
+                                       MockNodeInfoStub, mock_raylet_id,
+                                       MockAutoscaler)
 from ray.tests.test_resource_demand_scheduler import MULTI_WORKER_CLUSTER
 from ray.autoscaler._private.providers import (
     _NODE_PROVIDERS,
     _clear_provider_cache,
 )
-from ray.autoscaler._private.autoscaler import StandardAutoscaler
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.node_launcher import NodeLauncher
 from ray.autoscaler.tags import (TAG_RAY_USER_NODE_TYPE, TAG_RAY_NODE_KIND,
@@ -74,6 +75,7 @@ class Node:
         self.in_cluster = in_cluster
         self.node_type = node_type
         self.start_time = start_time
+        self.raylet_id = mock_raylet_id()
 
     def bundle_fits(self, bundle):
         if not self.in_cluster:
@@ -177,10 +179,11 @@ class Simulator:
         )
         self.head_ip = self.provider.non_terminated_node_ips({})[0]
 
-        self.load_metrics = LoadMetrics(local_ip=self.head_ip)
-        self.autoscaler = StandardAutoscaler(
+        self.load_metrics = LoadMetrics()
+        self.autoscaler = MockAutoscaler(
             self.config_path,
             self.load_metrics,
+            MockNodeInfoStub(),
             # Don't let the autoscaler start any node launchers. Instead, we
             # will launch nodes ourself after every update call.
             max_concurrent_launches=0,
@@ -353,6 +356,7 @@ class Simulator:
                 continue
             self.load_metrics.update(
                 ip=ip,
+                raylet_id=node.raylet_id,
                 static_resources=node.total_resources,
                 dynamic_resources=node.available_resources,
                 resource_load={},

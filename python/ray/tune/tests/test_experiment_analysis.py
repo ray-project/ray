@@ -175,7 +175,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             })
 
         # check if it's loaded correctly
-        last_checkpoint = new_ea.get_last_checkpoint()
+        last_checkpoint = new_ea.get_last_checkpoint().local_path
         assert self.test_path in last_checkpoint
         assert "checkpoint_000002" in last_checkpoint
 

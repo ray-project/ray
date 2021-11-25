@@ -79,10 +79,9 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     }
   }
 
-  std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor = nullptr;
+  std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor =
+      CreateGlobalStateAccessor(redis_address, ConfigInternal::Instance().redis_password);
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
-    global_state_accessor = CreateGlobalStateAccessor(
-        redis_address, ConfigInternal::Instance().redis_password);
     std::string node_to_connect;
     auto status =
         global_state_accessor->GetNodeToConnectForDriver(node_ip, &node_to_connect);
@@ -102,12 +101,8 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   if (log_dir.empty()) {
     std::string session_dir = ConfigInternal::Instance().session_dir;
     if (session_dir.empty()) {
-      if (!global_state_accessor) {
-        global_state_accessor = ProcessHelper::GetInstance().CreateGlobalStateAccessor(
-            redis_address, ConfigInternal::Instance().redis_password);
-        RAY_CHECK(global_state_accessor->Connect()) << "Failed to connect to GCS.";
-      }
-      session_dir = *global_state_accessor->GetInternalKV("session_dir");
+      session_dir =
+          *global_state_accessor->GetInternalKV("@namespace_session:session_dir");
     }
     log_dir = session_dir + "/logs";
   }
@@ -125,12 +120,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     if (!ConfigInternal::Instance().job_id.empty()) {
       options.job_id = JobID::FromHex(ConfigInternal::Instance().job_id);
     } else {
-      /// TODO(SongGuyang): Get next job id from core worker by GCS client.
-      /// Random a number to avoid repeated job ids.
-      /// The repeated job ids will lead to task hang when driver connects to a existing
-      /// cluster more than once.
-      std::srand(std::time(nullptr));
-      options.job_id = JobID::FromInt(std::rand());
+      options.job_id = global_state_accessor->GetNextJobID();
     }
   }
   options.gcs_options = gcs_options;

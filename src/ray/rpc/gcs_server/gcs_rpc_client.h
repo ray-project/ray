@@ -277,6 +277,8 @@ class GcsRpcClient {
                              internal_kv_grpc_client_, )
 
   /// Operations for pubsub
+  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService, GcsPublish,
+                             internal_pubsub_grpc_client_, )
   VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService, GcsSubscriberPoll,
                              internal_pubsub_grpc_client_, )
   VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService, GcsSubscriberCommandBatch,

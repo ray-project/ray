@@ -8,7 +8,7 @@ import psutil
 
 import ray.ray_constants as ray_constants
 
-from ray.cluster_utils import Cluster
+from ray.cluster_utils import Cluster, cluster_not_supported
 from ray import NodeID
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
@@ -94,6 +94,7 @@ def test_retry_application_level_error(ray_start_regular):
         ray.get(r3)
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 def test_connect_with_disconnected_node(shutdown_only):
     config = {
         "num_heartbeats_timeout": 50,
@@ -104,9 +105,8 @@ def test_connect_with_disconnected_node(shutdown_only):
     ray.init(address=cluster.address)
     p = init_error_pubsub()
     errors = get_error_message(p, 1, timeout=5)
-    print(errors)
     assert len(errors) == 0
-    # This node is killed by SIGKILL, ray_monitor will mark it to dead.
+    # This node will be killed by SIGKILL, ray_monitor will mark it to dead.
     dead_node = cluster.add_node(num_cpus=0)
     cluster.remove_node(dead_node, allow_graceful=False)
     errors = get_error_message(p, 1, ray_constants.REMOVED_NODE_ERROR)

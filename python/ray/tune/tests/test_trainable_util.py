@@ -36,10 +36,12 @@ class TrainableUtilTest(unittest.TestCase):
         ray.init(local_mode=True)
         ray.tune.run(tune_one, local_dir=self.checkpoint_dir, name=name)
 
-        a = ray.tune.Analysis(
-            os.path.join(self.checkpoint_dir, name), "score", "max")
+        a = ray.tune.ExperimentAnalysis(
+            os.path.join(self.checkpoint_dir, name),
+            default_metric="score",
+            default_mode="max")
         df = a.dataframe()
-        checkpoint_dir = a.get_best_checkpoint(df["logdir"].iloc[0])
+        checkpoint_dir = a.get_best_checkpoint(df["logdir"].iloc[0]).local_path
         assert checkpoint_dir.endswith("/checkpoint_000001/")
 
     def testFindCheckpointDir(self):

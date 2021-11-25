@@ -325,4 +325,10 @@ The list of available driver options:
   - Default: empty string.
   - Example: ``/path/to/jars1:/path/to/jars2:/path/to/pys1:/path/to/pys2``
 
+- ``ray.job.namespace``
+
+  - The namespace of this job. It's used for isolation between jobs. Jobs in different namespaces cannot access each other. If it's not specified, a randomized value will be used instead.
+  - Type: ``String``
+  - Default: A random UUID string value.
+
 .. _`Apache Arrow`: https://arrow.apache.org/

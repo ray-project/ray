@@ -1,5 +1,8 @@
 import pytest
+import os
+import uuid
 
+import ray
 from ray.tests.conftest import *  # noqa
 from ray.data.impl.simple_block import SimpleBlockBuilder
 from ray.data.impl.arrow_block import ArrowBlockBuilder
@@ -111,6 +114,153 @@ def test_arrow_size_add_block(ray_start_regular_shared):
     assert b2._num_compactions == 0
     assert_close(b2.get_estimated_memory_usage(), 100040020)
     assert b2.build().num_rows == 10000
+
+
+def test_split_read_csv(ray_start_regular_shared, tmp_path):
+    ctx = ray.data.context.DatasetContext.get_current()
+    ctx.block_splitting_enabled = True
+
+    def gen(name):
+        path = os.path.join(tmp_path, name)
+        ray.data.range(1000, parallelism=1).map(lambda _: LARGE_VALUE) \
+            .write_csv(path)
+        return ray.data.read_csv(path)
+
+    # 20MiB
+    ctx.target_max_block_size = 20_000_000
+    ds1 = gen("out1")
+    assert ds1._block_num_rows() == [1000]
+
+    # 3MiB
+    ctx.target_max_block_size = 3_000_000
+    ds2 = gen("out2")
+    nrow = ds2._block_num_rows()
+    assert 3 < len(nrow) < 5, nrow
+    for x in nrow[:-1]:
+        assert 200 < x < 400, (x, nrow)
+
+    # 1MiB
+    ctx.target_max_block_size = 1_000_000
+    ds3 = gen("out3")
+    nrow = ds3._block_num_rows()
+    assert 8 < len(nrow) < 12, nrow
+    for x in nrow[:-1]:
+        assert 80 < x < 120, (x, nrow)
+
+    # Disabled.
+    ctx.target_max_block_size = 1_000_000
+    ctx.block_splitting_enabled = False
+    ds4 = gen("out4")
+    assert ds4._block_num_rows() == [1000]
+
+
+def test_split_read_parquet(ray_start_regular_shared, tmp_path):
+    ctx = ray.data.context.DatasetContext.get_current()
+    ctx.block_splitting_enabled = True
+
+    def gen(name):
+        path = os.path.join(tmp_path, name)
+        ray.data.range(200000, parallelism=1).map(lambda _: uuid.uuid4().hex) \
+            .write_parquet(path)
+        return ray.data.read_parquet(path)
+
+    # 20MiB
+    ctx.target_max_block_size = 20_000_000
+    ds1 = gen("out1")
+    assert ds1._block_num_rows() == [200000]
+
+    # 3MiB
+    ctx.target_max_block_size = 3_000_000
+    ds2 = gen("out2")
+    nrow = ds2._block_num_rows()
+    assert 2 < len(nrow) < 4, nrow
+    for x in nrow[:-1]:
+        assert 50000 < x < 75000, (x, nrow)
+
+    # 1MiB
+    ctx.target_max_block_size = 1_000_000
+    ds3 = gen("out3")
+    nrow = ds3._block_num_rows()
+    assert 8 < len(nrow) < 12, nrow
+    for x in nrow[:-1]:
+        assert 20000 < x < 25000, (x, nrow)
+
+
+def test_split_map(ray_start_regular_shared):
+    # Simple block
+    ctx = ray.data.context.DatasetContext.get_current()
+    ctx.target_max_block_size = 20_000_000
+    ctx.block_splitting_enabled = True
+    ds1 = ray.data.range(1000, parallelism=1).map(lambda _: LARGE_VALUE)
+    nblocks = len(ds1.map(lambda x: x).get_internal_block_refs())
+    assert nblocks == 1, nblocks
+    ctx.target_max_block_size = 2_000_000
+    nblocks = len(ds1.map(lambda x: x).get_internal_block_refs())
+    assert 4 < nblocks < 7, nblocks
+
+    # Arrow block
+    ctx.target_max_block_size = 20_000_000
+    ds2 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE)
+    nblocks = len(ds2.map(lambda x: x).get_internal_block_refs())
+    assert nblocks == 1, nblocks
+    ctx.target_max_block_size = 2_000_000
+    nblocks = len(ds2.map(lambda x: x).get_internal_block_refs())
+    assert 4 < nblocks < 7, nblocks
+
+    # Disabled.
+    ctx.target_max_block_size = 1_000_000
+    ctx.block_splitting_enabled = False
+    ds3 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE)
+    nblocks = len(ds3.map(lambda x: x).get_internal_block_refs())
+    assert nblocks == 1, nblocks
+
+
+def test_split_flat_map(ray_start_regular_shared):
+    # Simple block
+    ctx = ray.data.context.DatasetContext.get_current()
+    ctx.target_max_block_size = 20_000_000
+    ctx.block_splitting_enabled = True
+    ds1 = ray.data.range(1000, parallelism=1).map(lambda _: LARGE_VALUE)
+    nblocks = len(ds1.flat_map(lambda x: [x]).get_internal_block_refs())
+    assert nblocks == 1, nblocks
+    ctx.target_max_block_size = 2_000_000
+    nblocks = len(ds1.flat_map(lambda x: [x]).get_internal_block_refs())
+    assert 4 < nblocks < 7, nblocks
+
+    # Arrow block
+    ctx.target_max_block_size = 20_000_000
+    ds2 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE)
+    nblocks = len(ds2.flat_map(lambda x: [x]).get_internal_block_refs())
+    assert nblocks == 1, nblocks
+    ctx.target_max_block_size = 2_000_000
+    nblocks = len(ds2.flat_map(lambda x: [x]).get_internal_block_refs())
+    assert 4 < nblocks < 7, nblocks
+
+
+def test_split_map_batches(ray_start_regular_shared):
+    # Simple block
+    ctx = ray.data.context.DatasetContext.get_current()
+    ctx.target_max_block_size = 20_000_000
+    ctx.block_splitting_enabled = True
+    ds1 = ray.data.range(1000, parallelism=1).map(lambda _: LARGE_VALUE)
+    nblocks = len(
+        ds1.map_batches(lambda x: x, batch_size=16).get_internal_block_refs())
+    assert nblocks == 1, ds1._block_num_rows()
+    ctx.target_max_block_size = 2_000_000
+    nblocks = len(
+        ds1.map_batches(lambda x: x, batch_size=16).get_internal_block_refs())
+    assert 4 < nblocks < 7, ds1._block_num_rows()
+
+    # Arrow block
+    ctx.target_max_block_size = 20_000_000
+    ds2 = ray.data.range(1000, parallelism=1).map(lambda _: ARROW_LARGE_VALUE)
+    nblocks = len(
+        ds2.map_batches(lambda x: x, batch_size=1).get_internal_block_refs())
+    assert nblocks == 1, nblocks
+    ctx.target_max_block_size = 2_000_000
+    nblocks = len(
+        ds2.map_batches(lambda x: x, batch_size=16).get_internal_block_refs())
+    assert 4 < nblocks < 7, nblocks
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import os
-import tempfile
 import sys
+import tempfile
 from typing import Optional
 
 import pytest
@@ -9,6 +9,7 @@ from ray.serve.storage.checkpoint_path import make_kv_store
 from ray.serve.storage.kv_store import (RayInternalKVStore, RayLocalKVStore,
                                         RayS3KVStore)
 from ray.serve.storage.kv_store_base import KVStoreBase
+from ray.serve.storage.ray_gcs_kv_store import RayGcsKVStore
 
 
 def test_ray_internal_kv(serve_instance):  # noqa: F811
@@ -94,6 +95,17 @@ def test_external_kv_aws_s3():
     _test_operations(kv_store)
 
 
+@pytest.mark.skip(reason="Need to figure out credentials for testing")
+def test_external_kv_gcs():
+    kv_store = RayGcsKVStore(
+        "namespace",
+        bucket="jiao-test",
+        prefix="/checkpoint",
+    )
+
+    _test_operations(kv_store)
+
+
 class MyNonCompliantStoreCls:
     pass
 
@@ -143,11 +155,13 @@ def test_make_kv_store(serve_instance):
 
     store = make_kv_store(
         f"custom://{module_name}.MyCustomStorageCls?arg1=val1&arg2=val2",
-        namespace=namespace)
+        namespace=namespace,
+    )
     assert store.namespace == namespace
     assert store.kwargs == {"arg1": "val1", "arg2": "val2"}
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -25,6 +25,7 @@ import inspect
 import json
 from ray.util.client.common import (ClientServerHandle, GRPC_OPTIONS,
                                     CLIENT_SERVER_MAX_THREADS, ResponseCache)
+from ray import ray_constants
 from ray.util.client.server.proxier import serve_proxier
 from ray.util.client.server.server_pickler import convert_from_arg
 from ray.util.client.server.server_pickler import dumps_from_server
@@ -147,14 +148,14 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         # If the server has been initialized, we need to compare whether the
         # runtime env is compatible.
         if current_job_config and \
-                set(job_config.runtime_env.uris) != set(
-                current_job_config.runtime_env.uris) and \
-                len(job_config.runtime_env.uris) > 0:
+                set(job_config.runtime_env_info.uris) != set(
+                current_job_config.runtime_env_info.uris) and \
+                len(job_config.runtime_env_info.uris) > 0:
             return ray_client_pb2.InitResponse(
                 ok=False,
                 msg="Runtime environment doesn't match "
-                f"request one {job_config.runtime_env.uris} "
-                f"current one {current_job_config.runtime_env.uris}")
+                f"request one {job_config.runtime_env_info.uris} "
+                f"current one {current_job_config.runtime_env_info.uris}")
         return ray_client_pb2.InitResponse(ok=True)
 
     @_use_response_cache
@@ -229,7 +230,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 ctx.namespace = rtc.namespace
                 ctx.capture_client_tasks = \
                     rtc.should_capture_child_tasks_in_placement_group
-                ctx.runtime_env = json.dumps(rtc.runtime_env)
+                ctx.runtime_env = rtc.get_runtime_env_string()
             resp.runtime_context.CopyFrom(ctx)
         else:
             with disable_client_hook():
@@ -515,7 +516,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 result.valid = True
                 return result
         except Exception as e:
-            logger.debug(f"Caught schedule exception, returning: {e}")
+            logger.exception("Caught schedule exception")
             return ray_client_pb2.ClientTaskTicket(
                 valid=False, error=cloudpickle.dumps(e))
 
@@ -828,8 +829,15 @@ def main():
                 if not redis_client:
                     redis_client = try_create_redis_client(
                         args.redis_address, args.redis_password)
-                redis_client.hset("healthcheck:ray_client_server", "value",
-                                  json.dumps(health_report))
+                if not ray.experimental.internal_kv._internal_kv_initialized():
+                    gcs_client = (ray._private.gcs_utils.GcsClient.
+                                  create_from_redis(redis_client))
+                    ray.experimental.internal_kv._initialize_internal_kv(
+                        gcs_client)
+                ray.experimental.internal_kv._internal_kv_put(
+                    "ray_client_server",
+                    json.dumps(health_report),
+                    namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK)
             except Exception as e:
                 logger.error(f"[{args.mode}] Failed to put health check "
                              f"on {args.redis_address}")
