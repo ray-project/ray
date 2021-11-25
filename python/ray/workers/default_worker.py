@@ -134,6 +134,10 @@ parser.add_argument(
     default=False,
     action="store_true",
     help="True if Ray debugger is made available externally.")
+parser.add_argument(
+    "--force-load-code-from-local",
+    default=False,
+    help="If true, don't allow execute task by dynamic pickled function.")
 
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
@@ -200,13 +204,16 @@ if __name__ == "__main__":
     # Add code search path to sys.path, set load_code_from_local.
     core_worker = ray.worker.global_worker.core_worker
     code_search_path = core_worker.get_job_config().code_search_path
-    load_code_from_local = False
-    if code_search_path:
+    if not args.force_load_code_from_local:
+        load_code_from_local = False
+        if code_search_path:
+            load_code_from_local = True
+            for p in code_search_path:
+                if os.path.isfile(p):
+                    p = os.path.dirname(p)
+                sys.path.insert(0, p)
+    else:
         load_code_from_local = True
-        for p in code_search_path:
-            if os.path.isfile(p):
-                p = os.path.dirname(p)
-            sys.path.insert(0, p)
     ray.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
     # Setup log file.

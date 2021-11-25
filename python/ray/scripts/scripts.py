@@ -477,6 +477,12 @@ def debug(address):
     default=False,
     help="Make the Ray debugger available externally to the node. This is only"
     "safe to activate if the node is behind a firewall.")
+@click.option(
+    "--force-load-code-from-local",
+    is_flag=True,
+    hidden=True,
+    default=False,
+    help="If true, don't allow execute task by dynamic pickled function.")
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
@@ -488,8 +494,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           autoscaling_config, no_redirect_worker_output, no_redirect_output,
           plasma_store_socket_name, raylet_socket_name, temp_dir,
           system_config, enable_object_reconstruction, metrics_export_port,
-          no_monitor, tracing_startup_hook, ray_debugger_external, log_style,
-          log_color, verbose):
+          no_monitor, tracing_startup_hook, ray_debugger_external,
+          force_load_code_from_local, log_style, log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
     if gcs_server_port and not head:

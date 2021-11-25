@@ -119,6 +119,8 @@ class RayParams:
             worker available externally to the node it is running on. This will
             bind on 0.0.0.0 instead of localhost.
         env_vars (dict): Override environment variables for the raylet.
+        force_load_code_from_local(bool): If true, don't allow execute task by 
+            dynamic pickled function.
     """
 
     def __init__(self,
@@ -172,7 +174,8 @@ class RayParams:
                  metrics_export_port=None,
                  tracing_startup_hook=None,
                  no_monitor=False,
-                 env_vars=None):
+                 env_vars=None,
+                 force_load_code_from_local=False):
         self.object_ref_seed = object_ref_seed
         self.external_addresses = external_addresses
         self.redis_address = redis_address
@@ -222,6 +225,7 @@ class RayParams:
             start_initial_python_workers_for_first_job)
         self.ray_debugger_external = ray_debugger_external
         self.env_vars = env_vars
+        self.force_load_code_from_local = force_load_code_from_local
         self._system_config = _system_config or {}
         self._enable_object_reconstruction = enable_object_reconstruction
         self._check_usage()

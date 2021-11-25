@@ -1459,7 +1459,8 @@ def start_raylet(redis_address,
                  max_bytes=0,
                  backup_count=0,
                  ray_debugger_external=False,
-                 env_updates=None):
+                 env_updates=None,
+                 force_load_code_from_local=False):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1506,6 +1507,8 @@ def start_raylet(redis_address,
         ray_debugger_external (bool): True if the Ray debugger should be made
             available externally to this node.
         env_updates (dict): Environment variable overrides.
+        force_load_code_from_local(bool): If true, don't allow execute task by
+            dynamic pickled function.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1580,6 +1583,7 @@ def start_raylet(redis_address,
         f"--metrics-agent-port={metrics_agent_port}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
+        f"--force-load-code-from-local={force_load_code_from_local}"
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
     if redis_password:
