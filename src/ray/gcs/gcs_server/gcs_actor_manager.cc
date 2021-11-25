@@ -1267,23 +1267,29 @@ std::string GcsActorManager::DebugString() const {
     num_named_actors += pair.second.size();
   }
   std::ostringstream stream;
-  stream << "GcsActorManager: {RegisterActor request count: "
+  stream << "GcsActorManager: "
+         << "\n- RegisterActor request count: "
          << counts_[CountType::REGISTER_ACTOR_REQUEST]
-         << ", CreateActor request count: " << counts_[CountType::CREATE_ACTOR_REQUEST]
-         << ", GetActorInfo request count: " << counts_[CountType::GET_ACTOR_INFO_REQUEST]
-         << ", GetNamedActorInfo request count: "
+         << "\n- CreateActor request count: " << counts_[CountType::CREATE_ACTOR_REQUEST]
+         << "\n- GetActorInfo request count: "
+         << counts_[CountType::GET_ACTOR_INFO_REQUEST]
+         << "\n- GetNamedActorInfo request count: "
          << counts_[CountType::GET_NAMED_ACTOR_INFO_REQUEST]
-         << ", GetAllActorInfo request count: "
+         << "\n- GetAllActorInfo request count: "
          << counts_[CountType::GET_ALL_ACTOR_INFO_REQUEST]
-         << ", KillActor request count: " << counts_[CountType::KILL_ACTOR_REQUEST]
-         << ", ListNamedActors request count: "
+         << "\n- KillActor request count: " << counts_[CountType::KILL_ACTOR_REQUEST]
+         << "\n- ListNamedActors request count: "
          << counts_[CountType::LIST_NAMED_ACTORS_REQUEST]
-         << ", Registered actors count: " << registered_actors_.size()
-         << ", Destroyed actors count: " << destroyed_actors_.size()
-         << ", Named actors count: " << num_named_actors
-         << ", Unresolved actors count: " << unresolved_actors_.size()
-         << ", Pending actors count: " << pending_actors_.size()
-         << ", Created actors count: " << created_actors_.size() << "}";
+         << "\n- Registered actors count: " << registered_actors_.size()
+         << "\n- Destroyed actors count: " << destroyed_actors_.size()
+         << "\n- Named actors count: " << num_named_actors
+         << "\n- Unresolved actors count: " << unresolved_actors_.size()
+         << "\n- Pending actors count: " << pending_actors_.size()
+         << "\n- Created actors count: " << created_actors_.size()
+         << "\n- owners_: " << owners_.size()
+         << "\n- actor_to_register_callbacks_: " << actor_to_register_callbacks_.size()
+         << "\n- actor_to_create_callbacks_: " << actor_to_create_callbacks_.size()
+         << "\n- sorted_destroyed_actor_list_: " << sorted_destroyed_actor_list_.size();
   return stream.str();
 }
 
