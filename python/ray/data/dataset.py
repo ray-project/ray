@@ -398,11 +398,17 @@ class Dataset(Generic[T]):
         # Handle empty blocks.
         if len(new_blocks) < num_blocks:
             from ray.data.impl.arrow_block import ArrowBlockBuilder
+            from ray.data.impl.pandas_block import PandasBlockBuilder
             from ray.data.impl.simple_block import SimpleBlockBuilder
 
             num_empties = num_blocks - len(new_blocks)
-            builder = (ArrowBlockBuilder()
-                       if self._is_arrow_dataset() else SimpleBlockBuilder())
+            dataset_format = self._dataset_format()
+            if dataset_format == "arrow":
+                builder = ArrowBlockBuilder()
+            elif dataset_format == "pandas":
+                builder = PandasBlockBuilder()
+            else:
+                builder = SimpleBlockBuilder()
             empty_block = builder.build()
             empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
                 input_files=None)
@@ -913,13 +919,13 @@ class Dataset(Generic[T]):
                 "When giving a list for `on`, it must be nonempty.")
 
         try:
-            is_arrow = self._is_arrow_dataset()
+            dataset_format = self._dataset_format()
         except ValueError:
             # Dataset is empty/cleared, let downstream ops handle this.
             return on
 
-        if is_arrow:
-            # This should be cached from the ._is_arrow_dataset() check, so we
+        if dataset_format == "arrow" or dataset_format == "pandas":
+            # This should be cached from the ._dataset_format() check, so we
             # don't fetch and we assert that the schema is not None.
             schema = self.schema(fetch_if_missing=False)
             assert schema is not None
@@ -929,7 +935,7 @@ class Dataset(Generic[T]):
                 return on
 
             if on is None:
-                # If a null `on` is given for an Arrow Dataset, coerce it to
+                # If a null `on` is given for a table Dataset, coerce it to
                 # all columns sans any that we want to skip.
                 if skip_cols is None:
                     skip_cols = []
@@ -951,29 +957,33 @@ class Dataset(Generic[T]):
                                        and isinstance(on[0], str)):
                 raise ValueError(
                     "Can't aggregate on a column when using a simple Dataset; "
-                    "use a callable `on` argument or use an Arrow Dataset "
+                    "use a callable `on` argument or use an Arrow or Pandas Dataset "
                     "instead of a simple Dataset.")
         return on
 
-    def _is_arrow_dataset(self) -> bool:
-        """Determine if Dataset is an Arrow dataset.
+    def _dataset_format(self) -> bool:
+        """Determine the format of the dataset. Possible values are: "arrow", "pandas", "simple".
 
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
         """
+        # We need schema to properly validate, so synchronously
+        # fetch it if necessary.
+        schema = self.schema(fetch_if_missing=True)
+        if schema is None:
+            raise ValueError(
+                "Dataset is empty or cleared, can't determine the format of the dataset")
+
         try:
             import pyarrow as pa
+            if isinstance(schema, pa.Schema):
+                return "arrow"
         except ModuleNotFoundError:
-            return False
-        else:
-            # We need schema to properly validate, so synchronously
-            # fetch it if necessary.
-            schema = self.schema(fetch_if_missing=True)
-            if schema is None:
-                raise ValueError(
-                    "Dataset is empty or cleared, can't determine whether "
-                    "it's an Arrow dataset")
-            return isinstance(schema, pa.Schema)
+            pass
+        from ray.data.impl.pandas_block import PandasBlockSchema
+        if isinstance(schema, PandasBlockSchema):
+            return "pandas"
+        return "simple"
 
     def _aggregate_on(self, agg_cls: type, on: Optional["AggregateOnTs"],
                       *args, **kwargs):
@@ -2233,7 +2243,7 @@ class Dataset(Generic[T]):
         """
         blocks: List[ObjectRef[Block]] = list(self._blocks.iter_blocks())
 
-        if self._is_arrow_dataset():
+        if self._dataset_format() == "arrow":
             # Zero-copy path.
             return blocks
 
