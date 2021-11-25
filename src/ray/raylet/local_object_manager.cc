@@ -253,17 +253,22 @@ void LocalObjectManager::SpillObjectsInternal(
   io_worker_pool_.PopSpillWorker(
       [this, objects_to_spill, callback](std::shared_ptr<WorkerInterface> io_worker) {
         rpc::SpillObjectsRequest request;
+        std::vector<ObjectID> requested_objects_to_spill;
         for (const auto &object_id : objects_to_spill) {
-          RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
-          auto ref = request.add_object_refs_to_spill();
-          ref->set_object_id(object_id.Binary());
           RAY_CHECK(objects_pending_spill_.count(object_id));
           auto owner_it = objects_waiting_for_free_.find(object_id);
-          RAY_CHECK(owner_it != objects_waiting_for_free_.end());
-          ref->mutable_owner_address()->CopyFrom(owner_it->second);
+          if (owner_it == objects_waiting_for_free_.end()) {
+            objects_pending_spill_.erase(object_id);
+          } else {
+            auto ref = request.add_object_refs_to_spill();
+            ref->set_object_id(object_id.Binary());
+            ref->mutable_owner_address()->CopyFrom(owner_it->second);
+            RAY_LOG(DEBUG) << "Sending spill request for object " << object_id;
+            requested_objects_to_spill.push_back(object_id);
+          }
         }
         io_worker->rpc_client()->SpillObjects(
-            request, [this, objects_to_spill, callback, io_worker](
+            request, [this, requested_objects_to_spill, callback, io_worker](
                          const ray::Status &status, const rpc::SpillObjectsReply &r) {
               {
                 absl::MutexLock lock(&mutex_);
@@ -274,9 +279,10 @@ void LocalObjectManager::SpillObjectsInternal(
               // Object spilling is always done in the order of the request.
               // For example, if an object succeeded, it'll guarentee that all objects
               // before this will succeed.
-              RAY_CHECK(num_objects_spilled <= objects_to_spill.size());
-              for (size_t i = num_objects_spilled; i != objects_to_spill.size(); ++i) {
-                const auto &object_id = objects_to_spill[i];
+              RAY_CHECK(num_objects_spilled <= requested_objects_to_spill.size());
+              for (size_t i = num_objects_spilled; i != requested_objects_to_spill.size();
+                   ++i) {
+                const auto &object_id = requested_objects_to_spill[i];
                 auto it = objects_pending_spill_.find(object_id);
                 RAY_CHECK(it != objects_pending_spill_.end());
                 pinned_objects_size_ += it->second->GetSize();
@@ -289,7 +295,7 @@ void LocalObjectManager::SpillObjectsInternal(
                 RAY_LOG(ERROR) << "Failed to send object spilling request: "
                                << status.ToString();
               } else {
-                OnObjectSpilled(objects_to_spill, r);
+                OnObjectSpilled(requested_objects_to_spill, r);
               }
               if (callback) {
                 callback(status);
