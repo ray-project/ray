@@ -11,6 +11,7 @@ import ray.util.client.server.server as ray_client_server
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 
 from ray.util.client import _ClientContext, CURRENT_PROTOCOL_VERSION
+from ray.cluster_utils import cluster_not_supported
 
 import ray
 
@@ -40,6 +41,7 @@ class C:
         return self.val
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 @pytest.fixture
 def init_and_serve_lazy():
     cluster = ray.cluster_utils.Cluster()
