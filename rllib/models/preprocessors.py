@@ -4,7 +4,7 @@ import numpy as np
 import gym
 from typing import Any, List
 
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.typing import TensorType
 from ray.rllib.utils.images import resize
@@ -20,7 +20,6 @@ OBS_VALIDATION_INTERVAL = 100
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
 class Preprocessor:
     """Defines an abstract observation preprocessor function.
 
@@ -28,7 +27,6 @@ class Preprocessor:
         shape (List[int]): Shape of the preprocessed output.
     """
 
-    @PublicAPI
     def __init__(self, obs_space: gym.Space, options: dict = None):
         legacy_patch_shapes(obs_space)
         self._obs_space = obs_space
@@ -42,12 +40,10 @@ class Preprocessor:
         self._i = 0
         self._obs_for_type_matching = self._obs_space.sample()
 
-    @PublicAPI
     def _init_shape(self, obs_space: gym.Space, options: dict) -> List[int]:
         """Returns the shape after preprocessing."""
         raise NotImplementedError
 
-    @PublicAPI
     def transform(self, observation: TensorType) -> np.ndarray:
         """Returns the preprocessed observation."""
         raise NotImplementedError
@@ -81,12 +77,10 @@ class Preprocessor:
         self._i += 1
 
     @property
-    @PublicAPI
     def size(self) -> int:
         return self._size
 
     @property
-    @PublicAPI
     def observation_space(self) -> gym.Space:
         obs_space = gym.spaces.Box(-1., 1., self.shape, dtype=np.float32)
         # Stash the unwrapped space so that we can unwrap dict and tuple spaces
@@ -329,7 +323,6 @@ class RepeatedValuesPreprocessor(Preprocessor):
             self.child_preprocessor.write(elem, array, offset_i)
 
 
-@PublicAPI
 def get_preprocessor(space: gym.Space) -> type:
     """Returns an appropriate preprocessor class for the given space."""
 

@@ -3,6 +3,8 @@ import numpy as np
 import threading
 import tree  # pip install dm_tree
 
+from ray.rllib.utils.numpy import SMALL_NUMBER
+
 logger = logging.getLogger(__name__)
 
 
@@ -138,11 +140,15 @@ class MeanStdFilter(Filter):
 
     def __init__(self, shape, demean=True, destd=True, clip=10.0):
         self.shape = shape
+        self.no_preprocessor = isinstance(self.shape, (dict, tuple)) and \
+            isinstance(tree.flatten(self.shape)[0], np.ndarray)
+        if not self.no_preprocessor:
+            self.shape = np.array(self.shape)
         self.demean = demean
         self.destd = destd
         self.clip = clip
         # Running stats.
-        self.rs = tree.map_structure(lambda s: RunningStat(s), shape)
+        self.rs = tree.map_structure(lambda s: RunningStat(s), self.shape)
 
         # In distributed rollouts, each worker sees different states.
         # The buffer is used to keep track of deltas amongst all the
@@ -214,7 +220,7 @@ class MeanStdFilter(Filter):
         self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
     def __call__(self, x, update=True):
-        if isinstance(self.shape, (dict, tuple)):
+        if self.no_preprocessor:
             x = tree.map_structure(lambda x_: np.asarray(x_), x)
         else:
             x = np.asarray(x)
@@ -240,13 +246,16 @@ class MeanStdFilter(Filter):
             if self.demean:
                 x = x - rs.mean
             if self.destd:
-                x = x / (rs.std + 1e-8)
+                x = x / (rs.std + SMALL_NUMBER)
             if self.clip:
                 x = np.clip(x, -self.clip, self.clip)
             return x.astype(orig_dtype)
 
-        return tree.map_structure_up_to(x, _helper, x, self.rs, self.buffer,
-                                        self.shape)
+        if self.no_preprocessor:
+            return tree.map_structure_up_to(x, _helper, x, self.rs, self.buffer,
+                                            self.shape)
+        else:
+            return _helper(x, self.rs, self.buffer, self.shape)
 
     def __repr__(self):
         return "MeanStdFilter({}, {}, {}, {}, {}, {})".format(

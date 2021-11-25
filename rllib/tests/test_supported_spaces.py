@@ -18,8 +18,8 @@ from ray.rllib.utils.test_utils import framework_iterator
 
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
-    "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-    "vector2": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "vector1d": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "vector2d": Box(-1.0, 1.0, (5, ), dtype=np.float32),
     "int_actions": Box(0, 3, (2, 3), dtype=np.int32),
     "multidiscrete": MultiDiscrete([1, 2, 3, 4]),
     "tuple": Tuple(
@@ -37,8 +37,8 @@ ACTION_SPACES_TO_TEST = {
 
 OBSERVATION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
-    "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-    "vector2": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
+    "vector1d": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "vector2d": Box(-1.0, 1.0, (5, 5), dtype=np.float32),
     "image": Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32),
     "vizdoomgym": Box(-1.0, 1.0, (240, 320, 3), dtype=np.float32),
     "tuple": Tuple([Discrete(10),
@@ -87,12 +87,12 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
                         assert isinstance(a.get_policy().model, TorchVisionNet)
                     else:
                         assert isinstance(a.get_policy().model, VisionNet)
-                elif o_name == "vector":
+                elif o_name == "vector1d":
                     if fw == "torch":
                         assert isinstance(a.get_policy().model, TorchFCNet)
                     else:
                         assert isinstance(a.get_policy().model, FCNet)
-                elif o_name == "vector2":
+                elif o_name == "vector2d":
                     if fw == "torch":
                         assert isinstance(a.get_policy().model,
                                           TorchComplexNet)
@@ -123,7 +123,7 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
 class TestSupportedSpacesPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init()
+        ray.init(local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -187,7 +187,7 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
 class TestSupportedSpacesEvolutionAlgos(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)
+        ray.init(num_cpus=4, local_mode=True)#TODO
 
     @classmethod
     def tearDownClass(cls) -> None:
