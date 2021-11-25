@@ -4,7 +4,7 @@ Offline RL
 ==========
 
 InputReaders
-++++++++++++
+------------
 
 The InputReader API is used by individual RolloutWorkers to produce batches of experiences
 either from an simulator/environment or from an offline source (e.g. a file).
@@ -17,11 +17,12 @@ from simulators/environments), see the :ref:`Sampler docs here<sampler-docs>`.
 
 
 JsonReader (ray.rllib.offline.json_reader.JsonReader)
------------------------------------------------------
++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 For reading data from offline files (for example when no simulator/environment is available),
 you can use the built-in JsonReader class. You will have to change the "input" config setting
-from "sampler" (default) to a JSON file name (str) or a list of JSON files.
+from "sampler" (default) to a JSON file name (str), a list of JSON files, or a path name (str)
+that contains json files.
 Alternatively, you can specify a callable that returns a new InputReader object.
 
 .. autoclass:: ray.rllib.offline.json_reader.JsonReader
@@ -29,7 +30,7 @@ Alternatively, you can specify a callable that returns a new InputReader object.
     :members:
 
 MixedInput  (ray.rllib.offline.mixed_input.MixedInput)
-------------------------------------------------------
+++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 In order to mix different input readers with each other in different custom ratios, you can use
 the MixedInput reader. This reader is chosen automatically by RLlib when you provide a dict under
@@ -49,7 +50,7 @@ the "input" config key that maps input reader specifiers to probabilities, e.g.:
 
 
 D4RLReader (ray.rllib.offline.d4rl_reader.D4RLReader)
------------------------------------------------------
++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 .. autoclass:: ray.rllib.offline.d4rl_reader.D4RLReader
     :special-members: __init__
