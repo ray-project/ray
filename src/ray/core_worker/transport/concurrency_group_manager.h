@@ -41,7 +41,9 @@ class ConcurrencyGroupManager final {
     // this actor, the tasks of default group will be performed in main thread instead of
     // any executor pool, otherwise tasks in any concurrency group should be performed in
     // the thread pools instead of main thread.
-    if (ConcurrencyGroupExecutorType::NeedDefaultExecutor(max_concurrency_for_default_concurrency_group) || !concurrency_groups.empty()) {
+    if (ConcurrencyGroupExecutorType::NeedDefaultExecutor(
+            max_concurrency_for_default_concurrency_group) ||
+        !concurrency_groups.empty()) {
       defatult_executor_ = std::make_shared<ConcurrencyGroupExecutorType>(
           max_concurrency_for_default_concurrency_group);
     }
