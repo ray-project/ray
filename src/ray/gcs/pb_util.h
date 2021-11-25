@@ -151,6 +151,24 @@ inline const std::string &GetDeathCauseString(const rpc::ActorDeathCause *death_
   return death_cause_string.at(death_cause_case);
 }
 
+/// Get the error information from the actor death cause.
+/// \param[in] death_cause The rpc message that contains the actos death information.
+/// \return RayErrorInfo that has propagated death cause. Nullptr if not sufficient
+/// information is provided.
+inline std::unique_ptr<rpc::RayErrorInfo> GetErrorInfoFromActorDeathCause(
+    const rpc::ActorDeathCause *death_cause) {
+  auto creation_task_exception = GetCreationTaskExceptionFromDeathCause(death_cause);
+  if (creation_task_exception == nullptr) {
+    return nullptr;
+  }
+  auto error_info = std::make_unique<rpc::RayErrorInfo>();
+  if (creation_task_exception != nullptr) {
+    // Shouldn't use Swap here because we don't own the pointer.
+    error_info->mutable_actor_init_failure()->CopyFrom(*creation_task_exception);
+  }
+  return error_info;
+}
+
 }  // namespace gcs
 
 }  // namespace ray
