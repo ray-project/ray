@@ -59,6 +59,13 @@ class DirectTaskTransportTest : public ::testing::Test {
     return TaskSpecification(task_spec);
   }
 
+ protected:
+  bool CheckSubmitTask(TaskSpecification task) {
+    EXPECT_TRUE(actor_task_submitter->SubmitTask(task).ok());
+    return 1 == io_context.poll_one();
+  }
+
+ protected:
   instrumented_io_context io_context;
   boost::asio::io_service::work io_work;
   std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> actor_task_submitter;
@@ -86,8 +93,7 @@ TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
   ASSERT_TRUE(actor_creator->AsyncRegisterActor(creation_task_spec, nullptr).ok());
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   actor_task_submitter->AddActorQueueIfNotExists(actor_id, -1);
-  ASSERT_TRUE(actor_task_submitter->SubmitTask(task_spec).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_TRUE(CheckSubmitTask(task_spec));
   EXPECT_CALL(*task_finisher, FailOrRetryPendingTask(
                                   task_spec.TaskId(),
                                   rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, _, _, _));
@@ -111,8 +117,7 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
   ASSERT_TRUE(actor_creator->AsyncRegisterActor(creation_task_spec, nullptr).ok());
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   actor_task_submitter->AddActorQueueIfNotExists(actor_id, -1);
-  ASSERT_TRUE(actor_task_submitter->SubmitTask(task_spec).ok());
-  ASSERT_EQ(1, io_context.run_one());
+  ASSERT_TRUE(CheckSubmitTask(task_spec));
   EXPECT_CALL(*task_finisher, FailOrRetryPendingTask(_, _, _, _, _)).Times(0);
   register_cb(Status::OK());
 }

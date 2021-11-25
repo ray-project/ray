@@ -361,7 +361,8 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
        << CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id)->MaxPendingCalls();
     ss << " tasks are queued on the actor. This limit can be adjusted with the "
           "`setMaxPendingCalls` actor option.";
-    env->ThrowNew(java_ray_back_pressure_exception_class, ss.str().c_str());
+    env->ThrowNew(java_ray_pending_calls_limit_exceeded_exception_class,
+                  ss.str().c_str());
     return nullptr;
   }
 

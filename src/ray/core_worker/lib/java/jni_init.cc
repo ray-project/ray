@@ -61,7 +61,7 @@ jclass java_ray_exception_class;
 jclass java_ray_intentional_system_exit_exception_class;
 jclass java_ray_timeout_exception_class;
 
-jclass java_ray_back_pressure_exception_class;
+jclass java_ray_pending_calls_limit_exceeded_exception_class;
 
 jclass java_ray_actor_exception_class;
 jmethodID java_ray_exception_to_bytes;
@@ -221,8 +221,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
   java_ray_actor_exception_class =
       LoadClass(env, "io/ray/runtime/exception/RayActorException");
 
-  java_ray_back_pressure_exception_class =
-      LoadClass(env, "io/ray/runtime/exception/BackPressureException");
+  java_ray_pending_calls_limit_exceeded_exception_class =
+      LoadClass(env, "io/ray/runtime/exception/PendingCallsLimitExceededException");
 
   java_ray_exception_to_bytes =
       env->GetMethodID(java_ray_exception_class, "toBytes", "()[B");

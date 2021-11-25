@@ -7,11 +7,11 @@ import io.ray.api.id.ActorId;
  *
  * <p>This exception could happen probably because the caller calls the callee too frequently.
  */
-public class BackPressureException extends RayException {
+public class PendingCallsLimitExceededException extends RayException {
 
   public ActorId actorId;
 
-  public BackPressureException(String message) {
+  public PendingCallsLimitExceededException(String message) {
     super(message);
   }
 }
