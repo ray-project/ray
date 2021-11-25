@@ -110,7 +110,7 @@ def build_trainer(
             if override_all_subkeys_if_type_changes is not None:
                 self._override_all_subkeys_if_type_changes += \
                     override_all_subkeys_if_type_changes
-            super().setup(config)
+            Trainer.setup(self, config)
 
         def _init(self, config: TrainerConfigDict,
                   env_creator: Callable[[EnvConfigDict], EnvType]):
@@ -139,26 +139,33 @@ def build_trainer(
                 policy_class=self._policy_class,
                 config=config,
                 num_workers=self.config["num_workers"])
-            # If execution plan is not provided (None), the Trainer will use
-            # it's already existing default `execution_plan()` static method
-            # instead.
-            if execution_plan is not None:
-                self.execution_plan = execution_plan
+
             self.train_exec_impl = self.execution_plan(
                 self.workers, config, **self._kwargs_for_execution_plan())
 
             if after_init:
                 after_init(self)
 
-        @staticmethod
         @override(Trainer)
-        def _validate_config(config: PartialTrainerConfigDict,
-                             trainer_obj_or_none: Optional["Trainer"] = None):
+        def validate_config(self, config: PartialTrainerConfigDict):
             # Call super (Trainer) validation method first.
-            Trainer._validate_config(config, trainer_obj_or_none)
+            Trainer.validate_config(self, config)
             # Then call user defined one, if any.
             if validate_config is not None:
                 validate_config(config)
+
+        @staticmethod
+        @override(Trainer)
+        def execution_plan(workers, config, **kwargs):
+            # `execution_plan` is provided, use it inside
+            # `self.execution_plan()`.
+            if execution_plan is not None:
+                return execution_plan(workers, config, **kwargs)
+            # If `execution_plan` is not provided (None), the Trainer will use
+            # it's already existing default `execution_plan()` static method
+            # instead.
+            else:
+                return Trainer.execution_plan(workers, config, **kwargs)
 
         @override(Trainer)
         def _before_evaluate(self):

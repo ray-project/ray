@@ -589,6 +589,9 @@ class Trainer(Trainable):
     # entire value (dict), iff the "type" key in that value dict changes.
     _override_all_subkeys_if_type_changes = ["exploration_config"]
 
+    # TODO: Deprecate. Instead, override `Trainer.get_default_config()`.
+    _default_config = COMMON_CONFIG
+
     @PublicAPI
     def __init__(self,
                  config: Optional[PartialTrainerConfigDict] = None,
@@ -629,8 +632,7 @@ class Trainer(Trainable):
             # Default logdir prefix containing the agent's name and the
             # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
-            logdir_prefix = "{}_{}_{}".format(self._name, self._env_id,
-                                              timestr)
+            logdir_prefix = "{}_{}_{}".format(str(self), self._env_id, timestr)
             if not os.path.exists(DEFAULT_RESULTS_DIR):
                 os.makedirs(DEFAULT_RESULTS_DIR)
             logdir = tempfile.mkdtemp(
@@ -811,7 +813,7 @@ class Trainer(Trainable):
         raise NotImplementedError
 
     @ExperimentalAPI
-    def get_default_policy_class(self, config: PartialTrainerConfigDict):
+    def get_default_policy_class(self, config: TrainerConfigDict):
         """Returns a default Policy class to use, given a config.
 
         This class will be used inside RolloutWorkers' PolicyMaps in case
@@ -1736,18 +1738,6 @@ class Trainer(Trainable):
         weights = ray.put(self.workers.local_worker().save())
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
-    @property
-    def _name(self) -> str:
-        """Subclasses may override this to declare their name."""
-        # By default, return the class' name.
-        return type(self).__name__
-
-    # TODO: Deprecate. Instead, override `Trainer.get_default_config()`.
-    @property
-    def _default_config(self) -> TrainerConfigDict:
-        """Subclasses should override this to declare their default config."""
-        return {}
-
     @classmethod
     @override(Trainable)
     def resource_help(cls, config: TrainerConfigDict) -> str:
@@ -2292,7 +2282,7 @@ class Trainer(Trainable):
             "(e.g., YourEnvCls) or a registered env id (e.g., \"your_env\").")
 
     def __repr__(self):
-        return self._name
+        return type(self).__name__
 
     @Deprecated(new="Trainer.evaluate()", error=False)
     def _evaluate(self) -> dict:

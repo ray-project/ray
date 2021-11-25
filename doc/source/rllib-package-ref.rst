@@ -1,11 +1,5 @@
 .. include:: rllib/we_are_hiring.rst
 
-ray.rllib.policy
-================
-
-.. automodule:: ray.rllib.policy
-    :members:
-
 ray.rllib.evaluation
 ====================
 

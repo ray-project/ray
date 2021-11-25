@@ -252,7 +252,6 @@ def test_actor_scheduling(shutdown_only):
         ray.get([a.get.remote()])
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_worker_startup_count(ray_start_cluster):
     """Test that no extra workers started while no available cpu resources
     in cluster."""
@@ -294,7 +293,7 @@ def test_worker_startup_count(ray_start_cluster):
         return None
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
-    timeout_limit = 40 if sys.platform == "win32" else 10
+    timeout_limit = 15
     start = time.time()
     wait_for_condition(lambda: get_num_workers() == 16, timeout=timeout_limit)
     time_waited = time.time() - start
