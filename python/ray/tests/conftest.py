@@ -9,7 +9,8 @@ import json
 import time
 
 import ray
-from ray.cluster_utils import Cluster, AutoscalingCluster
+from ray.cluster_utils import (Cluster, AutoscalingCluster,
+                               cluster_not_supported)
 from ray._private.services import REDIS_EXECUTABLE, _start_redis_instance
 from ray._private.test_utils import (init_error_pubsub, init_log_pubsub,
                                      setup_tls, teardown_tls,
@@ -117,6 +118,8 @@ def ray_start_10_cpus(request):
 
 @contextmanager
 def _ray_start_cluster(**kwargs):
+    if cluster_not_supported:
+        pytest.skip("Cluster not supported")
     init_kwargs = get_default_fixture_ray_kwargs()
     num_nodes = 0
     do_init = False
@@ -290,6 +293,8 @@ def two_node_cluster():
         "object_timeout_milliseconds": 200,
         "num_heartbeats_timeout": 10,
     }
+    if cluster_not_supported:
+        pytest.skip("Cluster not supported")
     cluster = ray.cluster_utils.Cluster(
         head_node_args={"_system_config": system_config})
     for _ in range(2):
