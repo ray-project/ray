@@ -63,6 +63,8 @@ class _PublisherBase:
 
 class _SubscriberBase:
     def __init__(self):
+        # self._subscriber_id needs to match the binary format of a random
+        # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
         self._subscriber_id = bytes(
             bytearray(random.getrandbits(8) for _ in range(28)))
 
@@ -168,7 +170,7 @@ class _SyncSubscriber(_SubscriberBase):
             req = self._subscribe_request(self._channel)
             self._stub.GcsSubscriberCommandBatch(req, timeout=30)
 
-    def _poll(self, timeout=None) -> None:
+    def _poll_locked(self, timeout=None) -> None:
         assert self._lock.locked()
 
         # Poll until data becomes available.
@@ -181,8 +183,6 @@ class _SyncSubscriber(_SubscriberBase):
             # Wait for result to become available, or cancel if the
             # subscriber has closed.
             while True:
-                # Unlock before waiting for reply.
-                self._lock.release()
                 try:
                     # Use 1s timeout to check for subscriber closing
                     # periodically.
@@ -202,9 +202,6 @@ class _SyncSubscriber(_SubscriberBase):
                     if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
                         return
                     raise
-                finally:
-                    # Make sure lock is held if exiting from the loop.
-                    self._lock.acquire()
 
             if fut.done():
                 for msg in fut.result().pub_messages:
@@ -222,7 +219,7 @@ class _SyncSubscriber(_SubscriberBase):
         self._close.set()
         req = self._unsubscribe_request(channels=[self._channel])
         try:
-            self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+            self._stub.GcsSubscriberCommandBatch(req, timeout=5)
         except Exception:
             pass
         self._stub = None
@@ -258,7 +255,7 @@ class GcsErrorSubscriber(_SyncSubscriber):
             or None, None if polling times out or subscriber closed.
         """
         with self._lock:
-            self._poll(timeout=timeout)
+            self._poll_locked(timeout=timeout)
             return self._pop_error_info(self._queue)
 
 
@@ -292,7 +289,7 @@ class GcsLogSubscriber(_SyncSubscriber):
             or None if polling times out or subscriber closed.
         """
         with self._lock:
-            self._poll(timeout=timeout)
+            self._poll_locked(timeout=timeout)
             return self._pop_log_batch(self._queue)
 
 
@@ -406,6 +403,6 @@ class GcsAioSubscriber(_SubscriberBase):
         """Closes the subscriber and its active subscriptions."""
         req = self._unsubscribe_request(self._messages.keys())
         try:
-            await self._stub.GcsSubscriberCommandBatch(req, timeout=30)
+            await self._stub.GcsSubscriberCommandBatch(req, timeout=5)
         except Exception:
             pass
