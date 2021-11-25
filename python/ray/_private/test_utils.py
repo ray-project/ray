@@ -237,6 +237,8 @@ def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
 
 
 def convert_actor_state(state):
+    if not state:
+        return None
     return (gcs_pb2.ActorTableData.ActorState.DESCRIPTOR.values_by_number[
         state].name)
 
@@ -245,7 +247,6 @@ def wait_for_num_actors(num_actors, state=None, timeout=10):
     state = convert_actor_state(state)
     start_time = time.time()
     while time.time() - start_time < timeout:
-        print("actor: ", ray.state.actors())
         if len([
                 _ for _ in ray.state.actors().values()
                 if state is None or _["State"] == state

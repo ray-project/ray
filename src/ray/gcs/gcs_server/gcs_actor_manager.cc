@@ -826,7 +826,7 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
 
   rpc::ActorDeathCause death_cause;
   if (creation_task_exception != nullptr) {
-    absl::StrAppend(&message, " Formatted creation task exception: ",
+    absl::StrAppend(&message, ": ",
                     creation_task_exception->formatted_exception_string());
 
     death_cause.mutable_creation_task_failure_context()
@@ -980,9 +980,10 @@ void GcsActorManager::OnActorSchedulingFailed(std::shared_ptr<GcsActor> actor,
   }
 
   // If there is runtime env failure, mark this actor as dead immediately.
-  DestroyActor(actor->GetActorID(),
-               GenRuntimeEnvFailedCause("Cannot create an actor because the associated "
-                                        "runtime env couldn't be created."));
+  DestroyActor(
+      actor->GetActorID(),
+      GenRuntimeEnvFailedCause("Could not create the actor because its associated "
+                               "runtime env failed to be created."));
 }
 
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,
