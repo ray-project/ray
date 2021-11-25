@@ -236,7 +236,6 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       placement_options,
       /*placement_group_capture_child_tasks=*/true,
       /*serialized_runtime_env=*/"{}",
-      /*runtime_env_uris=*/{},
       concurrency_groups,
       /*execute_out_of_order*/ false,
       max_pending_calls};

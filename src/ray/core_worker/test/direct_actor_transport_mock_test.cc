@@ -88,9 +88,9 @@ TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
   actor_task_submitter->AddActorQueueIfNotExists(actor_id, -1);
   ASSERT_TRUE(actor_task_submitter->SubmitTask(task_spec).ok());
   ASSERT_EQ(1, io_context.run_one());
-  EXPECT_CALL(*task_finisher,
-              PendingTaskFailed(task_spec.TaskId(),
-                                rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, _, _, _));
+  EXPECT_CALL(*task_finisher, FailOrRetryPendingTask(
+                                  task_spec.TaskId(),
+                                  rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, _, _, _));
   register_cb(Status::IOError(""));
 }
 
@@ -113,7 +113,7 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
   actor_task_submitter->AddActorQueueIfNotExists(actor_id, -1);
   ASSERT_TRUE(actor_task_submitter->SubmitTask(task_spec).ok());
   ASSERT_EQ(1, io_context.run_one());
-  EXPECT_CALL(*task_finisher, PendingTaskFailed(_, _, _, _, _)).Times(0);
+  EXPECT_CALL(*task_finisher, FailOrRetryPendingTask(_, _, _, _, _)).Times(0);
   register_cb(Status::OK());
 }
 
