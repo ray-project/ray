@@ -25,6 +25,7 @@ import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
+from ray.core.generated import gcs_pb2
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsSubscriber
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray.util.queue import Queue, _QueueActor, Empty
@@ -235,7 +236,15 @@ def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
     return proc
 
 
+def convert_actor_state(state):
+    if not state:
+        return None
+    return (gcs_pb2.ActorTableData.ActorState.DESCRIPTOR.values_by_number[
+        state].name)
+
+
 def wait_for_num_actors(num_actors, state=None, timeout=10):
+    state = convert_actor_state(state)
     start_time = time.time()
     while time.time() - start_time < timeout:
         if len([
@@ -282,7 +291,8 @@ def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     start = time.time()
     while time.time() - start <= timeout:
         actor_status = ray.state.actors(actor_id)
-        if actor_status["State"] == gcs_utils.ActorTableData.DEAD \
+        if actor_status["State"] == convert_actor_state(
+            gcs_utils.ActorTableData.DEAD) \
                 or actor_status["NumRestarts"] > current_num_restarts:
             return
         time.sleep(retry_interval_ms / 1000.0)

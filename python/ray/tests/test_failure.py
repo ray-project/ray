@@ -13,7 +13,8 @@ import ray.ray_constants as ray_constants
 from ray.exceptions import RayTaskError, RayActorError, GetTimeoutError
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher
 from ray._private.test_utils import (wait_for_condition, SignalActor,
-                                     init_error_pubsub, get_error_message)
+                                     init_error_pubsub, get_error_message,
+                                     convert_actor_state)
 
 
 def test_unhandled_errors(ray_start_regular):
@@ -663,8 +664,8 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
         actors = list(ray.state.actors().values())
         assert len(actors) == 1
         print(actors)
-        return (actors[0]["State"] == gcs_utils.ActorTableData.ALIVE
-                and actors[0]["NumRestarts"] == 1)
+        return (actors[0]["State"] == convert_actor_state(
+            gcs_utils.ActorTableData.ALIVE) and actors[0]["NumRestarts"] == 1)
 
     wait_for_condition(check_actor_restart)
 
