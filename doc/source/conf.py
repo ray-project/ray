@@ -62,6 +62,7 @@ MOCK_MODULES = [
     "ray._raylet",
     "ray.core.generated",
     "ray.core.generated.common_pb2",
+    "ray.core.generated.runtime_env_common_pb2",
     "ray.core.generated.gcs_pb2",
     "ray.core.generated.logging_pb2",
     "ray.core.generated.ray.protocol.Task",

@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/core_worker.h"
 
+#include <google/protobuf/util/json_util.h>
+
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
@@ -62,342 +64,7 @@ ObjectLocation CreateObjectLocation(const rpc::GetObjectLocationsOwnerReply &rep
                         object_info.spilled_url(),
                         NodeID::FromBinary(object_info.spilled_node_id()));
 }
-
-/// The global instance of `CoreWorkerProcess`.
-std::unique_ptr<CoreWorkerProcess> core_worker_process;
 }  // namespace
-
-thread_local std::weak_ptr<CoreWorker> CoreWorkerProcess::current_core_worker_;
-
-void CoreWorkerProcess::Initialize(const CoreWorkerOptions &options) {
-  RAY_CHECK(!core_worker_process)
-      << "The process is already initialized for core worker.";
-  core_worker_process.reset(new CoreWorkerProcess(options));
-}
-
-void CoreWorkerProcess::Shutdown() {
-  RAY_LOG(DEBUG) << "Shutdown. Core worker process will be deleted";
-  if (!core_worker_process) {
-    return;
-  }
-  RAY_CHECK(core_worker_process->options_.worker_type == WorkerType::DRIVER)
-      << "The `Shutdown` interface is for driver only.";
-  auto global_worker = core_worker_process->GetGlobalWorker();
-  RAY_CHECK(global_worker);
-  global_worker->Disconnect();
-  global_worker->Shutdown();
-  core_worker_process->RemoveWorker(global_worker);
-  core_worker_process.reset();
-}
-
-bool CoreWorkerProcess::IsInitialized() { return core_worker_process != nullptr; }
-
-CoreWorkerProcess::CoreWorkerProcess(const CoreWorkerOptions &options)
-    : options_(options),
-      global_worker_id_(
-          options.worker_type == WorkerType::DRIVER
-              ? ComputeDriverIdFromJob(options_.job_id)
-              : (options_.num_workers == 1 ? WorkerID::FromRandom() : WorkerID::Nil())) {
-  if (options_.enable_logging) {
-    std::stringstream app_name;
-    app_name << LanguageString(options_.language) << "-core-"
-             << WorkerTypeString(options_.worker_type);
-    if (!global_worker_id_.IsNil()) {
-      app_name << "-" << global_worker_id_;
-    }
-    RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, options_.log_dir);
-    if (options_.install_failure_signal_handler) {
-      // Core worker is loaded as a dynamic library from Python or other languages.
-      // We are not sure if the default argv[0] would be suitable for loading symbols
-      // so leaving it unspecified as nullptr. This could make symbolization of crash
-      // traces fail in some circumstances.
-      //
-      // Also, call the previous crash handler, e.g. the one installed by the Python
-      // worker.
-      RayLog::InstallFailureSignalHandler(nullptr, /*call_previous_handler=*/true);
-    }
-  } else {
-    RAY_CHECK(options_.log_dir.empty())
-        << "log_dir must be empty because ray log is disabled.";
-    RAY_CHECK(!options_.install_failure_signal_handler)
-        << "install_failure_signal_handler must be false because ray log is disabled.";
-  }
-
-  RAY_CHECK(options_.num_workers > 0);
-  if (options_.worker_type == WorkerType::DRIVER) {
-    // Driver process can only contain one worker.
-    RAY_CHECK(options_.num_workers == 1);
-  }
-
-  RAY_LOG(INFO) << "Constructing CoreWorkerProcess. pid: " << getpid();
-
-  // NOTE(kfstorm): any initialization depending on RayConfig must happen after this line.
-  InitializeSystemConfig();
-
-  if (ShouldCreateGlobalWorkerOnConstruction()) {
-    CreateWorker();
-  }
-
-  // Assume stats module will be initialized exactly once in once process.
-  // So it must be called in CoreWorkerProcess constructor and will be reused
-  // by all of core worker.
-  RAY_LOG(DEBUG) << "Stats setup in core worker.";
-  // Initialize stats in core worker global tags.
-  const ray::stats::TagsType global_tags = {
-      {ray::stats::ComponentKey, "core_worker"},
-      {ray::stats::VersionKey, kRayVersion},
-      {ray::stats::NodeAddressKey, options_.node_ip_address}};
-
-  // NOTE(lingxuan.zlx): We assume RayConfig is initialized before it's used.
-  // RayConfig is generated in Java_io_ray_runtime_RayNativeRuntime_nativeInitialize
-  // for java worker or in constructor of CoreWorker for python worker.
-  stats::Init(global_tags, options_.metrics_agent_port);
-
-  // Initialize event framework.
-  if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
-    RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
-                 std::unordered_map<std::string, std::string>(), options_.log_dir,
-                 RayConfig::instance().event_level());
-  }
-
-#ifndef _WIN32
-  // NOTE(kfstorm): std::atexit should be put at the end of `CoreWorkerProcess`
-  // constructor. We assume that spdlog has been initialized before this line. When the
-  // process is exiting, `HandleAtExit` will be invoked before destructing spdlog static
-  // variables. We explicitly destruct `CoreWorkerProcess` instance in the callback to
-  // ensure the static `CoreWorkerProcess` instance is destructed while spdlog is still
-  // usable. This prevents crashing (or hanging) when using `RAY_LOG` in
-  // `CoreWorkerProcess` destructor.
-  RAY_CHECK(std::atexit(CoreWorkerProcess::HandleAtExit) == 0);
-#endif
-}
-
-CoreWorkerProcess::~CoreWorkerProcess() {
-  RAY_LOG(INFO) << "Destructing CoreWorkerProcess. pid: " << getpid();
-  RAY_LOG(DEBUG) << "Stats stop in core worker.";
-  // Shutdown stats module if worker process exits.
-  stats::Shutdown();
-  if (options_.enable_logging) {
-    RayLog::ShutDownRayLog();
-  }
-}
-
-void CoreWorkerProcess::EnsureInitialized(bool quick_exit) {
-  if (core_worker_process != nullptr) {
-    return;
-  }
-
-  if (quick_exit) {
-    RAY_LOG(WARNING) << "The core worker process is not initialized yet or already "
-                     << "shutdown.";
-    QuickExit();
-  } else {
-    RAY_CHECK(core_worker_process)
-        << "The core worker process is not initialized yet or already "
-        << "shutdown.";
-  }
-}
-
-void CoreWorkerProcess::HandleAtExit() { core_worker_process.reset(); }
-
-void CoreWorkerProcess::InitializeSystemConfig() {
-  // We have to create a short-time thread here because the RPC request to get the system
-  // config from Raylet is asynchronous, and we need to synchronously initialize the
-  // system config in the constructor of `CoreWorkerProcess`.
-  std::promise<std::string> promise;
-  std::thread thread([&] {
-    instrumented_io_context io_service;
-    boost::asio::io_service::work work(io_service);
-    rpc::ClientCallManager client_call_manager(io_service);
-    auto grpc_client = rpc::NodeManagerWorkerClient::make(
-        options_.raylet_ip_address, options_.node_manager_port, client_call_manager);
-    raylet::RayletClient raylet_client(grpc_client);
-
-    std::function<void(int64_t)> get_once = [this, &get_once, &raylet_client, &promise,
-                                             &io_service](int64_t num_attempts) {
-      raylet_client.GetSystemConfig(
-          [this, num_attempts, &get_once, &promise, &io_service](
-              const Status &status, const rpc::GetSystemConfigReply &reply) {
-            RAY_LOG(DEBUG) << "Getting system config from raylet, remaining retries = "
-                           << num_attempts;
-            if (status.ok()) {
-              promise.set_value(reply.system_config());
-              io_service.stop();
-              return;
-            }
-
-            if (num_attempts > 1) {
-              std::this_thread::sleep_for(std::chrono::milliseconds(
-                  RayConfig::instance().raylet_client_connect_timeout_milliseconds()));
-              get_once(num_attempts - 1);
-              return;
-            }
-
-            // If there's no more attempt to try.
-            if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
-              std::ostringstream ss;
-              ss << "Failed to get the system config from raylet because "
-                 << "it is dead. Worker will terminate. Status: " << status;
-              if (options_.worker_type == WorkerType::DRIVER) {
-                // If it is the driver, surface the issue to the user.
-                RAY_LOG(ERROR) << ss.str();
-              } else {
-                RAY_LOG(WARNING) << ss.str();
-              }
-              QuickExit();
-            }
-
-            // Unexpected.
-            RAY_LOG(FATAL)
-                << "Failed to get the system config from Raylet on time unexpectedly."
-                << status;
-          });
-    };
-
-    get_once(RayConfig::instance().raylet_client_num_connect_attempts());
-    io_service.run();
-  });
-  thread.join();
-
-  RayConfig::instance().initialize(promise.get_future().get());
-}
-
-bool CoreWorkerProcess::ShouldCreateGlobalWorkerOnConstruction() const {
-  // We need to create the worker instance here if:
-  // 1. This is a driver process. In this case, the driver is ready to use right after
-  // the CoreWorkerProcess::Initialize.
-  // 2. This is a Python worker process. In this case, Python will invoke some core
-  // worker APIs before `CoreWorkerProcess::RunTaskExecutionLoop` is called. So we need
-  // to create the worker instance here. One example of invocations is
-  // https://github.com/ray-project/ray/blob/45ce40e5d44801193220d2c546be8de0feeef988/python/ray/worker.py#L1281.
-  return options_.num_workers == 1 && (options_.worker_type == WorkerType::DRIVER ||
-                                       options_.language == Language::PYTHON);
-}
-
-std::shared_ptr<CoreWorker> CoreWorkerProcess::TryGetWorker(const WorkerID &worker_id) {
-  if (!core_worker_process) {
-    return nullptr;
-  }
-  absl::ReaderMutexLock workers_lock(&core_worker_process->mutex_);
-  auto it = core_worker_process->workers_.find(worker_id);
-  if (it != core_worker_process->workers_.end()) {
-    return it->second;
-  }
-  return nullptr;
-}
-
-CoreWorker &CoreWorkerProcess::GetCoreWorker() {
-  EnsureInitialized(/*quick_exit*/ true);
-  if (core_worker_process->options_.num_workers == 1) {
-    auto global_worker = core_worker_process->GetGlobalWorker();
-    if (core_worker_process->ShouldCreateGlobalWorkerOnConstruction() && !global_worker) {
-      // This could only happen when the worker has already been shutdown.
-      // In this case, we should exit without crashing.
-      // TODO (scv119): A better solution could be returning error code
-      // and handling it at language frontend.
-      RAY_LOG(ERROR) << "The global worker has already been shutdown. This happens when "
-                        "the language frontend accesses the Ray's worker after it is "
-                        "shutdown. The process will exit";
-      QuickExit();
-    }
-    RAY_CHECK(global_worker) << "global_worker_ must not be NULL";
-    return *global_worker;
-  }
-  auto ptr = current_core_worker_.lock();
-  RAY_CHECK(ptr != nullptr)
-      << "The current thread is not bound with a core worker instance.";
-  return *ptr;
-}
-
-void CoreWorkerProcess::SetCurrentThreadWorkerId(const WorkerID &worker_id) {
-  EnsureInitialized(/*quick_exit*/ false);
-  if (core_worker_process->options_.num_workers == 1) {
-    auto global_worker = core_worker_process->GetGlobalWorker();
-    RAY_CHECK(global_worker) << "Global worker must not be NULL.";
-    RAY_CHECK(global_worker->GetWorkerID() == worker_id);
-    return;
-  }
-  current_core_worker_ = core_worker_process->GetWorker(worker_id);
-}
-
-std::shared_ptr<CoreWorker> CoreWorkerProcess::GetWorker(
-    const WorkerID &worker_id) const {
-  absl::ReaderMutexLock lock(&mutex_);
-  auto it = workers_.find(worker_id);
-  RAY_CHECK(it != workers_.end()) << "Worker " << worker_id << " not found.";
-  return it->second;
-}
-
-std::shared_ptr<CoreWorker> CoreWorkerProcess::GetGlobalWorker() {
-  absl::ReaderMutexLock lock(&mutex_);
-  return global_worker_;
-}
-
-std::shared_ptr<CoreWorker> CoreWorkerProcess::CreateWorker() {
-  auto worker = std::make_shared<CoreWorker>(
-      options_,
-      global_worker_id_ != WorkerID::Nil() ? global_worker_id_ : WorkerID::FromRandom());
-  RAY_LOG(DEBUG) << "Worker " << worker->GetWorkerID() << " is created.";
-  absl::WriterMutexLock lock(&mutex_);
-  if (options_.num_workers == 1) {
-    global_worker_ = worker;
-  }
-  current_core_worker_ = worker;
-
-  workers_.emplace(worker->GetWorkerID(), worker);
-  RAY_CHECK(workers_.size() <= static_cast<size_t>(options_.num_workers));
-  return worker;
-}
-
-void CoreWorkerProcess::RemoveWorker(std::shared_ptr<CoreWorker> worker) {
-  worker->WaitForShutdown();
-  absl::WriterMutexLock lock(&mutex_);
-  if (global_worker_) {
-    RAY_CHECK(global_worker_ == worker);
-  } else {
-    RAY_CHECK(current_core_worker_.lock() == worker);
-  }
-  current_core_worker_.reset();
-  {
-    workers_.erase(worker->GetWorkerID());
-    RAY_LOG(INFO) << "Removed worker " << worker->GetWorkerID();
-  }
-  if (global_worker_ == worker) {
-    global_worker_ = nullptr;
-  }
-}
-
-void CoreWorkerProcess::RunTaskExecutionLoop() {
-  EnsureInitialized(/*quick_exit*/ false);
-  RAY_CHECK(core_worker_process->options_.worker_type == WorkerType::WORKER);
-  if (core_worker_process->options_.num_workers == 1) {
-    // Run the task loop in the current thread only if the number of workers is 1.
-    auto worker = core_worker_process->GetGlobalWorker();
-    if (!worker) {
-      worker = core_worker_process->CreateWorker();
-    }
-    worker->RunTaskExecutionLoop();
-    RAY_LOG(DEBUG) << "Task execution loop terminated. Removing the global worker.";
-    core_worker_process->RemoveWorker(worker);
-  } else {
-    std::vector<std::thread> worker_threads;
-    for (int i = 0; i < core_worker_process->options_.num_workers; i++) {
-      worker_threads.emplace_back([i] {
-        SetThreadName("worker.task" + std::to_string(i));
-        auto worker = core_worker_process->CreateWorker();
-        worker->RunTaskExecutionLoop();
-        RAY_LOG(INFO) << "Task execution loop terminated for a thread "
-                      << std::to_string(i) << ". Removing a worker.";
-        core_worker_process->RemoveWorker(worker);
-      });
-    }
-    for (auto &thread : worker_threads) {
-      thread.join();
-    }
-  }
-
-  core_worker_process.reset();
-}
 
 CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id)
     : options_(options),
@@ -461,6 +128,15 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   // Parse job config from serialized string.
   job_config_.reset(new rpc::JobConfig());
   job_config_->ParseFromString(serialized_job_config);
+  auto job_serialized_runtime_env =
+      job_config_->runtime_env_info().serialized_runtime_env();
+  if (!job_serialized_runtime_env.empty()) {
+    job_runtime_env_.reset(new rpc::RuntimeEnv());
+    RAY_CHECK(google::protobuf::util::JsonStringToMessage(
+                  job_config_->runtime_env_info().serialized_runtime_env(),
+                  job_runtime_env_.get())
+                  .ok());
+  }
 
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
@@ -1683,6 +1359,122 @@ std::unordered_map<std::string, double> AddPlacementGroupConstraint(
   return resources;
 }
 
+rpc::RuntimeEnv CoreWorker::OverrideRuntimeEnv(
+    const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent) {
+  // By default, the child runtime env inherits non-specified options from the
+  // parent. There is one exception to this:
+  //     - The env_vars dictionaries are merged, so environment variables
+  //       not specified by the child are still inherited from the parent.
+
+  // Override environment variables.
+  google::protobuf::Map<std::string, std::string> result_env_vars(parent->env_vars());
+  result_env_vars.insert(child.env_vars().begin(), child.env_vars().end());
+  // Inherit all other non-specified options from the parent.
+  rpc::RuntimeEnv result_runtime_env(*parent);
+  // TODO(SongGuyang): avoid dupliacated fields.
+  result_runtime_env.MergeFrom(child);
+  if (child.py_modules().size() > 0 && parent->py_modules().size() > 0) {
+    result_runtime_env.clear_py_modules();
+    for (auto &module : child.py_modules()) {
+      result_runtime_env.add_py_modules(module);
+    }
+    result_runtime_env.mutable_uris()->clear_py_modules_uris();
+    result_runtime_env.mutable_uris()->mutable_py_modules_uris()->CopyFrom(
+        child.uris().py_modules_uris());
+  }
+  if (child.has_pip_runtime_env() && parent->has_pip_runtime_env()) {
+    result_runtime_env.clear_pip_runtime_env();
+    result_runtime_env.mutable_pip_runtime_env()->CopyFrom(child.pip_runtime_env());
+  }
+  if (!result_env_vars.empty()) {
+    result_runtime_env.mutable_env_vars()->insert(result_env_vars.begin(),
+                                                  result_env_vars.end());
+  }
+  return result_runtime_env;
+}
+
+// TODO(SongGuyang): This function exists in both C++ and Python. We should make this
+// logic clearly.
+static std::string encode_plugin_uri(std::string plugin, std::string uri) {
+  return plugin + "|" + uri;
+}
+
+static std::vector<std::string> GetUrisFromRuntimeEnv(
+    const rpc::RuntimeEnv *runtime_env) {
+  std::vector<std::string> result;
+  if (runtime_env == nullptr) {
+    return result;
+  }
+  if (!runtime_env->uris().working_dir_uri().empty()) {
+    const auto &uri = runtime_env->uris().working_dir_uri();
+    result.emplace_back(encode_plugin_uri("working_dir", uri));
+  }
+  for (const auto &uri : runtime_env->uris().py_modules_uris()) {
+    result.emplace_back(encode_plugin_uri("py_modules", uri));
+  }
+  if (!runtime_env->uris().conda_uri().empty()) {
+    const auto &uri = runtime_env->uris().conda_uri();
+    result.emplace_back(encode_plugin_uri("conda", uri));
+  }
+  for (const auto &uri : runtime_env->uris().plugin_uris()) {
+    result.emplace_back(encode_plugin_uri("plugin", uri));
+  }
+  return result;
+}
+
+static std::vector<std::string> GetUrisFromSerializedRuntimeEnv(
+    const std::string &serialized_runtime_env) {
+  rpc::RuntimeEnv runtime_env;
+  if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env, &runtime_env)
+           .ok()) {
+    RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env;
+    // TODO(SongGuyang): We pass the raw string here and the task will fail after an
+    // exception raised in runtime env agent. Actually, we can fail the task here.
+    return {};
+  }
+  return GetUrisFromRuntimeEnv(&runtime_env);
+}
+
+std::string CoreWorker::OverrideTaskOrActorRuntimeEnv(
+    const std::string &serialized_runtime_env,
+    std::vector<std::string> *runtime_env_uris) {
+  std::shared_ptr<rpc::RuntimeEnv> parent = nullptr;
+  if (options_.worker_type == WorkerType::DRIVER) {
+    if (serialized_runtime_env == "") {
+      *runtime_env_uris = GetUrisFromRuntimeEnv(job_runtime_env_.get());
+      return job_config_->runtime_env_info().serialized_runtime_env();
+    }
+    parent = job_runtime_env_;
+  } else {
+    if (serialized_runtime_env == "") {
+      *runtime_env_uris =
+          GetUrisFromRuntimeEnv(worker_context_.GetCurrentRuntimeEnv().get());
+      return worker_context_.GetCurrentSerializedRuntimeEnv();
+    }
+    parent = worker_context_.GetCurrentRuntimeEnv();
+  }
+  if (parent) {
+    rpc::RuntimeEnv child_runtime_env;
+    if (!google::protobuf::util::JsonStringToMessage(serialized_runtime_env,
+                                                     &child_runtime_env)
+             .ok()) {
+      RAY_LOG(WARNING) << "Parse runtime env failed for " << serialized_runtime_env;
+      // TODO(SongGuyang): We pass the raw string here and the task will fail after an
+      // exception raised in runtime env agent. Actually, we can fail the task here.
+      return serialized_runtime_env;
+    }
+    auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
+    std::string result;
+    RAY_CHECK(
+        google::protobuf::util::MessageToJsonString(override_runtime_env, &result).ok());
+    *runtime_env_uris = GetUrisFromRuntimeEnv(&override_runtime_env);
+    return result;
+  } else {
+    *runtime_env_uris = GetUrisFromSerializedRuntimeEnv(serialized_runtime_env);
+    return serialized_runtime_env;
+  }
+}
+
 void CoreWorker::BuildCommonTaskSpec(
     TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
     const std::string &name, const TaskID &current_task_id, uint64_t task_index,
@@ -1693,22 +1485,17 @@ void CoreWorker::BuildCommonTaskSpec(
     const BundleID &bundle_id, bool placement_group_capture_child_tasks,
     const std::string &debugger_breakpoint, int64_t depth,
     const std::string &serialized_runtime_env,
-    const std::vector<std::string> &runtime_env_uris,
     const std::string &concurrency_group_name) {
   // Build common task spec.
+  std::vector<std::string> runtime_env_uris;
+  auto override_runtime_env =
+      OverrideTaskOrActorRuntimeEnv(serialized_runtime_env, &runtime_env_uris);
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
       required_placement_resources, bundle_id, placement_group_capture_child_tasks,
-      debugger_breakpoint, depth,
-      // TODO(SongGuyang): Move the logic of `prepare_runtime_env` from Python to Core
-      // Worker. A common process is needed.
-      // If runtime env is not provided, use job config. Only for Java and C++ because it
-      // has been set in Python by `prepare_runtime_env`.
-      (serialized_runtime_env.empty() || serialized_runtime_env == "{}")
-          ? job_config_->runtime_env().serialized_runtime_env()
-          : serialized_runtime_env,
-      runtime_env_uris, concurrency_group_name);
+      debugger_breakpoint, depth, override_runtime_env, runtime_env_uris,
+      concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1739,7 +1526,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       rpc_address_, function, args, task_options.num_returns,
                       constrained_resources, required_resources, placement_options,
                       placement_group_capture_child_tasks, debugger_breakpoint, depth,
-                      task_options.serialized_runtime_env, task_options.runtime_env_uris);
+                      task_options.serialized_runtime_env);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
@@ -1794,10 +1581,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, 1, new_resource,
                       new_placement_resources, actor_creation_options.placement_options,
-                      actor_creation_options.placement_group_capture_child_tasks,
-                      "" /* debugger_breakpoint */, depth,
-                      actor_creation_options.serialized_runtime_env,
-                      actor_creation_options.runtime_env_uris);
+                      actor_creation_options.placement_group_capture_child_tasks, "",
+                      /* debugger_breakpoint */ depth,
+                      actor_creation_options.serialized_runtime_env);
 
   // If the namespace is not specified, get it from the job.
   const auto &ray_namespace = (actor_creation_options.ray_namespace.empty()
@@ -1995,7 +1781,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
                       "",    /* debugger_breakpoint */
                       depth, /*depth*/
                       "{}",  /* serialized_runtime_env */
-                      {},    /* runtime_env_uris */
                       task_options.concurrency_group_name);
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.

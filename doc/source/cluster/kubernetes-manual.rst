@@ -1,5 +1,7 @@
 :orphan:
 
+.. include:: we_are_hiring.rst
+
 .. _ray-k8s-static:
 
 Deploying a Static Ray Cluster on Kubernetes
