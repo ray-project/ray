@@ -5,19 +5,23 @@ import unittest
 import ray
 from ray.rllib.agents.registry import get_trainer_class
 from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.models.tf.fcnet import FullyConnectedNetwork as FCNetV2
-from ray.rllib.models.tf.visionnet import VisionNetwork as VisionNetV2
-from ray.rllib.models.torch.visionnet import VisionNetwork as TorchVisionNetV2
-from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFCNetV2
+from ray.rllib.models.tf.complex_input_net import ComplexInputNetwork as \
+    ComplexNet
+from ray.rllib.models.tf.fcnet import FullyConnectedNetwork as FCNet
+from ray.rllib.models.tf.visionnet import VisionNetwork as VisionNet
+from ray.rllib.models.torch.complex_input_net import ComplexInputNetwork as \
+    TorchComplexNet
+from ray.rllib.models.torch.fcnet import FullyConnectedNetwork as TorchFCNet
+from ray.rllib.models.torch.visionnet import VisionNetwork as TorchVisionNet
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.test_utils import framework_iterator
 
 ACTION_SPACES_TO_TEST = {
     "discrete": Discrete(5),
-    #"vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-    #"vector2": Box(-1.0, 1.0, (5, ), dtype=np.float32),
-    #"int_actions": Box(0, 3, (2, 3), dtype=np.int32),
-    #"multidiscrete": MultiDiscrete([1, 2, 3, 4]),
+    "vector": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "vector2": Box(-1.0, 1.0, (5, ), dtype=np.float32),
+    "int_actions": Box(0, 3, (2, 3), dtype=np.int32),
+    "multidiscrete": MultiDiscrete([1, 2, 3, 4]),
     "tuple": Tuple(
         [Discrete(2),
          Discrete(3),
@@ -80,15 +84,20 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
             if alg not in ["DDPG", "ES", "ARS", "SAC"]:
                 if o_name in ["atari", "image"]:
                     if fw == "torch":
-                        assert isinstance(a.get_policy().model,
-                                          TorchVisionNetV2)
+                        assert isinstance(a.get_policy().model, TorchVisionNet)
                     else:
-                        assert isinstance(a.get_policy().model, VisionNetV2)
-                elif o_name in ["vector", "vector2"]:
+                        assert isinstance(a.get_policy().model, VisionNet)
+                elif o_name == "vector":
                     if fw == "torch":
-                        assert isinstance(a.get_policy().model, TorchFCNetV2)
+                        assert isinstance(a.get_policy().model, TorchFCNet)
                     else:
-                        assert isinstance(a.get_policy().model, FCNetV2)
+                        assert isinstance(a.get_policy().model, FCNet)
+                elif o_name == "vector2":
+                    if fw == "torch":
+                        assert isinstance(a.get_policy().model,
+                                          TorchComplexNet)
+                    else:
+                        assert isinstance(a.get_policy().model, ComplexNet)
             if train:
                 a.train()
             a.stop()

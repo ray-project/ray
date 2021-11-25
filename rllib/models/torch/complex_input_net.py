@@ -1,4 +1,4 @@
-from gym.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
+from gym.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
 
@@ -37,8 +37,6 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                  name):
         self.original_space = obs_space.original_space if \
             hasattr(obs_space, "original_space") else obs_space
-        #assert isinstance(self.original_space, (Dict, Tuple)), \
-        #    "`obs_space.original_space` must be [Dict|Tuple]!"
 
         self.processed_obs_space = self.original_space if \
             model_config.get("_disable_preprocessor_api") else obs_space
@@ -56,6 +54,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
         # Build the CNN(s) given obs_space's image components.
         self.cnns = {}
         self.one_hot = {}
+        self.flatten_dims = {}
         self.flatten = {}
         concat_size = 0
         for i, component in enumerate(self.flattened_input_space):
@@ -69,7 +68,7 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                     "post_fcnet_hiddens": [],
                 }
                 # if self.cnn_type == "atari":
-                cnn = ModelCatalog.get_model_v2(
+                self.cnns[i] = ModelCatalog.get_model_v2(
                     component,
                     action_space,
                     num_outputs=None,
@@ -85,20 +84,44 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 #        model_config=config,
                 #        name="cnn_{}".format(i))
 
-                concat_size += cnn.num_outputs
-                self.cnns[i] = cnn
-                self.add_module("cnn_{}".format(i), cnn)
+                concat_size += self.cnns[i].num_outputs
+                self.add_module("cnn_{}".format(i), self.cnns[i])
             # Discrete|MultiDiscrete inputs -> One-hot encode.
-            elif isinstance(component, Discrete):
-                self.one_hot[i] = True
-                concat_size += component.n
-            elif isinstance(component, MultiDiscrete):
-                self.one_hot[i] = True
-                concat_size += sum(component.nvec)
+            elif isinstance(component, (Discrete, MultiDiscrete)):
+                if isinstance(component, Discrete):
+                    size = component.n
+                else:
+                    size = sum(component.nvec)
+                config = {
+                    "fcnet_hiddens": model_config["fcnet_hiddens"],
+                    "fcnet_activation": model_config.get("fcnet_activation"),
+                    "post_fcnet_hiddens": [],
+                }
+                self.one_hot[i] = ModelCatalog.get_model_v2(
+                    Box(-1.0, 1.0, (size, ), np.float32),
+                    action_space,
+                    num_outputs=None,
+                    model_config=config,
+                    framework="torch",
+                    name="one_hot_{}".format(i))
+                concat_size += self.one_hot[i].num_outputs
             # Everything else (1D Box).
             else:
-                self.flatten[i] = int(np.product(component.shape))
-                concat_size += self.flatten[i]
+                size = int(np.product(component.shape))
+                config = {
+                    "fcnet_hiddens": model_config["fcnet_hiddens"],
+                    "fcnet_activation": model_config.get("fcnet_activation"),
+                    "post_fcnet_hiddens": [],
+                }
+                self.flatten[i] = ModelCatalog.get_model_v2(
+                    Box(-1.0, 1.0, (size, ), np.float32),
+                    action_space,
+                    num_outputs=None,
+                    model_config=config,
+                    framework="torch",
+                    name="flatten_{}".format(i))
+                self.flatten_dims[i] = size
+                concat_size += self.flatten[i].num_outputs
 
         # Optional post-concat FC-stack.
         post_fc_stack_config = {
@@ -155,12 +178,20 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 outs.append(cnn_out)
             elif i in self.one_hot:
                 if component.dtype in [torch.int32, torch.int64, torch.uint8]:
-                    outs.append(
-                        one_hot(component, self.flattened_input_space[i]))
+                    one_hot_out, _ = self.one_hot[i]({
+                        SampleBatch.OBS: one_hot(component,
+                                                 self.flattened_input_space[i])
+                    })
+                    outs.append(one_hot_out)
                 else:
-                    outs.append(component)
+                    outs.append(self.one_hot[i]({SampleBatch.OBS: component}))
             else:
-                outs.append(torch.reshape(component, [-1, self.flatten[i]]))
+                nn_out, _ = self.flatten[i]({
+                    SampleBatch.OBS: torch.reshape(component,
+                                                   [-1, self.flatten_dims[i]])
+                })
+                outs.append(nn_out)
+
         # Concat all outputs and the non-image inputs.
         out = torch.cat(outs, dim=1)
         # Push through (optional) FC-stack (this may be an empty stack).

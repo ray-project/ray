@@ -176,8 +176,8 @@ class MeanStdFilter(Filter):
             >>> print([a.rs.n, a.rs.mean, a.buffer.n])
             [4, 5.75, 1]
         """
-        tree.map_structure(lambda rs, other_rs: rs.update(other_rs), self.rs, other.buffer)
-        #self.rs.update(other.buffer)
+        tree.map_structure(lambda rs, other_rs: rs.update(other_rs), self.rs,
+                           other.buffer)
         if with_buffer:
             self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
@@ -207,12 +207,11 @@ class MeanStdFilter(Filter):
             >>> print([a.rs.n, a.rs.mean, a.buffer.n])
             [1, array(10.0), 1]
         """
-        #assert other.shape == self.shape, "Shapes don't match!"
         self.demean = other.demean
         self.destd = other.destd
         self.clip = other.clip
         self.rs = tree.map_structure(lambda rs: rs.copy(), other.rs)
-        self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)#.copy()
+        self.buffer = tree.map_structure(lambda b: b.copy(), other.buffer)
 
     def __call__(self, x, update=True):
         if isinstance(self.shape, (dict, tuple)):
@@ -220,7 +219,14 @@ class MeanStdFilter(Filter):
         else:
             x = np.asarray(x)
 
-        def _helper(x, rs, buffer):
+        def _helper(x, rs, buffer, shape):
+            # Discrete|MultiDiscrete spaces -> No normalization.
+            if shape is None:
+                return x
+
+            # Keep dtype as is througout this filter.
+            orig_dtype = x.dtype
+
             if update:
                 if len(x.shape) == len(rs.shape) + 1:
                     # The vectorized case.
@@ -237,9 +243,10 @@ class MeanStdFilter(Filter):
                 x = x / (rs.std + 1e-8)
             if self.clip:
                 x = np.clip(x, -self.clip, self.clip)
-            return x
+            return x.astype(orig_dtype)
 
-        return tree.map_structure_up_to(x, _helper, x, self.rs, self.buffer)
+        return tree.map_structure_up_to(x, _helper, x, self.rs, self.buffer,
+                                        self.shape)
 
     def __repr__(self):
         return "MeanStdFilter({}, {}, {}, {}, {}, {})".format(

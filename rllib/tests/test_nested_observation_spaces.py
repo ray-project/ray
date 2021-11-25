@@ -366,9 +366,7 @@ class NestedSpacesTest(unittest.TestCase):
                     "d_spy_in_{}".format(i)))
             pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
             cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
-            #task_i = one_hot(
-            task_i = DICT_SAMPLES[i]["inner_state"]["job_status"][
-                "task"]  #, 5)
+            task_i = DICT_SAMPLES[i]["inner_state"]["job_status"]["task"]
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
             check(seen[2][0], task_i)
@@ -399,7 +397,6 @@ class NestedSpacesTest(unittest.TestCase):
                     "t_spy_in_{}".format(i)))
             pos_i = TUPLE_SAMPLES[i][0].tolist()
             cam_i = TUPLE_SAMPLES[i][1][0].tolist()
-            #task_i = one_hot(TUPLE_SAMPLES[i][2], 5)
             task_i = TUPLE_SAMPLES[i][2]
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
@@ -473,8 +470,6 @@ class NestedSpacesTest(unittest.TestCase):
                     "d_spy_in_{}".format(i)))
             pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
             cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
-            #task_i = one_hot(
-            #    DICT_SAMPLES[i]["inner_state"]["job_status"]["task"], 5)
             task_i = DICT_SAMPLES[i]["inner_state"]["job_status"]["task"]
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
@@ -486,7 +481,6 @@ class NestedSpacesTest(unittest.TestCase):
                     "t_spy_in_{}".format(i)))
             pos_i = TUPLE_SAMPLES[i][0].tolist()
             cam_i = TUPLE_SAMPLES[i][1][0].tolist()
-            #task_i = one_hot(TUPLE_SAMPLES[i][2], 5)
             task_i = TUPLE_SAMPLES[i][2]
             self.assertEqual(seen[0][0].tolist(), pos_i)
             self.assertEqual(seen[1][0].tolist(), cam_i)
@@ -535,8 +529,6 @@ class NestedSpacesTest(unittest.TestCase):
 
             pos_i = DICT_SAMPLES[i]["sensors"]["position"].tolist()
             cam_i = DICT_SAMPLES[i]["sensors"]["front_cam"][0].tolist()
-            #task_i = one_hot(
-            #    DICT_SAMPLES[i]["inner_state"]["job_status"]["task"], 5)
             task_i = DICT_SAMPLES[i]["inner_state"]["job_status"]["task"]
             # Only look at the last entry (-1) in `seen` as we reset (re-use)
             # the ray-kv indices before training.
