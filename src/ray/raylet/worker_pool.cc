@@ -958,7 +958,6 @@ void WorkerPool::TryKillingIdleWorkers() {
         rpc::ExitRequest request;
         rpc_client->Exit(request, [this, worker](const ray::Status &status,
                                                  const rpc::ExitReply &r) {
-          RAY_CHECK(pending_exit_idle_workers_.count(worker->WorkerId()));
           RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
