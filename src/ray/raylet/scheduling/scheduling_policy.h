@@ -70,10 +70,6 @@ class SchedulingPolicy {
   /// List of nodes in the clusters and their resources organized as a map.
   /// The key of the map is the node ID.
   const absl::flat_hash_map<int64_t, Node> &nodes_;
-  // The node to start round robin if it's spread scheduling.
-  // The index may be inaccurate when nodes are added or removed dynamically,
-  // but it should still be better than always scanning from 0 for spread scheduling.
-  size_t spread_scheduling_next_index_ = 0;
 
   enum class NodeFilter {
     /// Default scheduling.

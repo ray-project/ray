@@ -118,6 +118,7 @@ def test_hybrid_policy(ray_start_cluster):
 
 
 def test_spread_scheduling_strategy(ray_start_cluster):
+    import ray.experimental.internal_kv as internal_kv
     cluster = ray_start_cluster
     # Create a head node
     cluster.add_node(
@@ -145,17 +146,28 @@ def test_spread_scheduling_strategy(ray_start_cluster):
 
     @ray.remote(scheduling_strategy="SPREAD")
     def task1():
+        internal_kv._internal_kv_put("test_task1", "task1")
+        while internal_kv._internal_kv_exists("test_task1"):
+            time.sleep(0.1)
         return ray.worker.global_worker.current_node_id
 
     @ray.remote
     def task2():
+        internal_kv._internal_kv_put("test_task2", "task2")
         return ray.worker.global_worker.current_node_id
 
-    locations = {
-        ray.get(task1.remote()),
-        ray.get(task2.options(scheduling_strategy="SPREAD").remote())
-    }
-    assert locations == worker_node_ids
+    locations = []
+    locations.append(task1.remote())
+    while not internal_kv._internal_kv_exists("test_task1"):
+        time.sleep(0.1)
+    # Wait for updating driver raylet's resource view.
+    time.sleep(5)
+    locations.append(task2.options(scheduling_strategy="SPREAD").remote())
+    while not internal_kv._internal_kv_exists("test_task2"):
+        time.sleep(0.1)
+    internal_kv._internal_kv_del("test_task1")
+    internal_kv._internal_kv_del("test_task2")
+    assert set(ray.get(locations)) == worker_node_ids
 
     # Wait for updating driver raylet's resource view.
     time.sleep(5)
@@ -170,13 +182,14 @@ def test_spread_scheduling_strategy(ray_start_cluster):
         def get_node_id(self):
             return ray.worker.global_worker.current_node_id
 
+    locations = []
     actor1 = Actor1.remote()
+    locations.append(ray.get(actor1.get_node_id.remote()))
+    # Wait for updating driver raylet's resource view.
+    time.sleep(5)
     actor2 = Actor2.options(scheduling_strategy="SPREAD").remote()
-    locations = {
-        ray.get(actor1.get_node_id.remote()),
-        ray.get(actor2.get_node_id.remote())
-    }
-    assert locations == worker_node_ids
+    locations.append(ray.get(actor2.get_node_id.remote()))
+    assert set(locations) == worker_node_ids
 
     with pytest.raises(TypeError):
         ray.get(task1.options(scheduling_strategy="XXXX").remote())

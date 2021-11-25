@@ -28,8 +28,6 @@ def simple_shuffle(input_blocks: BlockList,
         map_ray_remote_args = {}
     if reduce_ray_remote_args is None:
         reduce_ray_remote_args = {}
-    if "scheduling_strategy" not in reduce_ray_remote_args:
-        reduce_ray_remote_args["scheduling_strategy"] = "SPREAD"
     input_num_blocks = len(input_blocks)
     if _spread_resource_prefix is not None:
         # Use given spread resource prefix for round-robin resource-based
