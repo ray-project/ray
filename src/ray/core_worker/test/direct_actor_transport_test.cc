@@ -797,33 +797,6 @@ TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
   StopIOService();
 }
 
-class Message {
- public:
-  Message() {}
-  virtual ~Message() {}
-  Message(const Message &m) { RAY_LOG(INFO) << "copy constructor"; }
-  Message(Message &&m) { RAY_LOG(INFO) << "move constructor"; }
-};
-
-std::optional<std::vector<Message>> Foo() {
-  std::vector<Message> vec;
-  vec.push_back(Message());
-  RAY_LOG(INFO) << "1";
-  return {std::move(vec)};
-}
-
-std::vector<Message> Bar() {
-  std::vector<Message> vec;
-  vec.push_back(Message());
-  RAY_LOG(INFO) << "2";
-  return vec;
-}
-
-TEST(TestCopy, Test) {
-  Foo();
-  Bar();
-}
-
 }  // namespace core
 }  // namespace ray
 

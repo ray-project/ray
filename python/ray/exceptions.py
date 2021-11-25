@@ -447,7 +447,11 @@ class RuntimeEnvSetupError(RayError):
 
 
 class PendingCallsLimitExceeded(RayError):
-    """Raised when actor call back pressure occurs."""
+    """Raised when the pending actor calls exceeds `max_pending_calls` option.
+
+    This exception could happen probably because the caller calls the callee
+    too frequently.
+    """
     pass
 
 

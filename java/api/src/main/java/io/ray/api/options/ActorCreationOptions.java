@@ -137,12 +137,9 @@ public class ActorCreationOptions extends BaseTaskOptions {
     }
 
     /**
-     * Set the maximum number of pending calls sending to the actor. When the number of pending
-     * calls reach max_pending_calls, subsequent calls will be backpressued, and the exception
-     * ray.exceptions.BackPressureError will be raised.
-     *
-     * <p>The maximum pending calls is set to -1 by default, which indicates an infinite number of
-     * calls can be pending.
+     * Set the max number of pending calls allowed on the actor handle. When this value is exceeded,
+     * ray.exceptions.BackPressureError will be thrown for further tasks. Note that this limit is
+     * counted per handle. -1 means that the number of pending calls is unlimited.
      *
      * @param maxPendingCalls The maximum number of pending calls for this actor.
      * @return self

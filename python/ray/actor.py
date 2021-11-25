@@ -593,15 +593,11 @@ class ActorClass:
                 this actor or task and its children (see
                 :ref:`runtime-environments` for details).  This API is in beta
                 and may change before becoming stable.
-            max_pending_calls (int): Set the maximum number of pending calls
-                sending to the actor. When the number of pending calls reach
-                max_pending_calls, subsequent calls will be backpressued, and
-                the exception ray.exceptions.PendingCallsLimitExceeded will
-                be raised. Set to -1 by default, which indicates
-                an infinite number of calls can be pending and backpressure
-                disabled.
-                It must be note, that the pending calls is counted separately
-                for each caller actor.
+            max_pending_calls (int): Set the max number of pending calls
+                allowed on the actor handle. When this value is exceeded,
+                PendingCallsLimitExceeded will be raised for further tasks.
+                Note that this limit is counted per handle. -1 means that the
+                number of pending calls is unlimited.
 
         Returns:
             A handle to the newly created actor.
