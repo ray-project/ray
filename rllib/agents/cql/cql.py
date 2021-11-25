@@ -98,6 +98,7 @@ class CQLTrainer(SACTrainer):
                 " offline files (json) or a D4RL-specific InputReader "
                 "specifier (e.g. 'd4rl.hopper-medium-v0').")
 
+    @classmethod
     @override(SACTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return CQL_DEFAULT_CONFIG
