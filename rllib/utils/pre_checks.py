@@ -2,7 +2,8 @@
 import logging
 
 import gym
-from ray.rllib.utils.typing import EnvType
+
+from ray.rllib.utils.typing import EnvType, MultiAgentDict
 
 logger = logging.getLogger(__name__)
 
@@ -148,3 +149,34 @@ def check_gym_environments(env: gym.Env) -> None:
         done, bool), "Your step function must return a done that is a boolean."
     assert isinstance(
         info, dict), "Your step function must return a info that is a dict."
+
+
+def check_base_env(env: "BaseEnv"):
+    """Perform pre-checks on Base Envs
+
+    Args:
+        env: Environment to be checked
+
+    Notes:
+        This function isn't guaranteed to catch all errors, since poll()
+        and try_reset() aren't guaranteed to return any time-step tuples.
+        This is because these functions are non-blocking and asynchronous.
+
+    Raises:
+        ValueError: If the environment is not a BaseEnv
+    """
+    from ray.rllib.env import BaseEnv
+    if not isinstance(env, BaseEnv):
+        raise ValueError(
+            f"The environment you passed in is not a BaseEnv. "
+            f"Please check the documentation for more information.")
+    reset_obs = env.try_reset()
+    if not isinstance(reset_obs, dict):
+        raise ValueError("All obs in reset_obs should be a MultiAgentDict")
+    action_spaces = [sub_env.action_space for sub_env in
+                     env.get_sub_environments()]
+    obs_spaces = [sub_env.observation_space for sub_env in
+                  env.get_sub_environments()]
+    sampled_actions = [space.sample() for space in action_spaces]
+
+    env.send_actions(sampled_actions)

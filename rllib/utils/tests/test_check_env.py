@@ -1,8 +1,11 @@
 from unittest.mock import Mock, MagicMock
 
+import gym
 import pytest
-from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.utils.pre_checks import check_gym_environments
+
+from ray.rllib import BaseEnv
+from ray.rllib.examples.env.random_env import RandomEnv, RandomMultiAgentEnv
+from ray.rllib.utils.pre_checks import check_gym_environments, check_base_env
 
 
 class TestGymCheckEnv():
@@ -108,6 +111,15 @@ class TestGymCheckEnv():
         error = "Your step function must return a info that is a dict."
         with pytest.raises(AssertionError, match=error):
             check_gym_environments(env)
+        del env
+
+
+class TestCheckBaseEnv():
+
+    def test_base_env_check(self):
+        env = BaseEnv.to_base_env(RandomMultiAgentEnv())
+        # env = BaseEnv.to_base_env(gym.make("CartPole-v1"))
+        check_base_env(env)
         del env
 
 
