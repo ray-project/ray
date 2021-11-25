@@ -39,6 +39,39 @@ def maybe_pipeline(ds, enabled):
         return ds
 
 
+# Tests that we don't block on exponential rampup when doing bulk reads.
+# https://github.com/ray-project/ray/issues/20625
+@pytest.mark.parametrize("block_split", [False, True])
+def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
+    ray.init(num_cpus=8)
+    ctx = ray.data.context.DatasetContext.get_current()
+
+    class SlowCSVDatasource(CSVDatasource):
+        def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
+            for block in CSVDatasource._read_stream(self, f, path,
+                                                    **reader_args):
+                time.sleep(3)
+                yield block
+
+    try:
+        original = ctx.block_splitting_enabled
+
+        ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
+        ctx.block_splitting_enabled = True
+        ds = ray.data.read_datasource(
+            SlowCSVDatasource(), parallelism=8, paths=str(tmp_path))
+
+        start = time.time()
+        ds.map(lambda x: x)
+        delta = time.time() - start
+
+        print("full read time", delta)
+        # Should run in ~3 seconds. It takes >9 seconds if bulk read is broken.
+        assert delta < 8, delta
+    finally:
+        ctx.block_splitting_enabled = original
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_basic_actors(shutdown_only, pipelined):
     ray.init(num_cpus=2)
@@ -1689,7 +1722,7 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.iter_blocks_with_metadata():
+    for block, meta in ds2._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
     if fs is None:
         shutil.rmtree(path)
@@ -2130,7 +2163,7 @@ def test_split_hints(ray_start_regular_shared):
         """
         num_blocks = len(block_node_ids)
         ds = ray.data.range(num_blocks, parallelism=num_blocks)
-        blocks = list(ds._blocks.iter_blocks())
+        blocks = ds._blocks.get_blocks()
         assert len(block_node_ids) == len(blocks)
         actors = [Actor.remote() for i in range(len(actor_node_ids))]
         with patch("ray.experimental.get_object_locations") as location_mock:
@@ -2156,7 +2189,7 @@ def test_split_hints(ray_start_regular_shared):
                 for i in range(len(actors)):
                     assert {blocks[j]
                             for j in expected_split_result[i]} == set(
-                                datasets[i]._blocks.iter_blocks())
+                                datasets[i]._blocks.get_blocks())
 
     assert_split_assignment(["node2", "node1", "node1"], ["node1", "node2"],
                             [[1, 2], [0]])
@@ -2394,7 +2427,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._blocks.iter_blocks_with_metadata():
+    for block, meta in ds._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
@@ -2515,7 +2548,7 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     dsdf = ds.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._blocks.iter_blocks_with_metadata():
+    for block, meta in ds._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes()
 
     # Directory and file, two files.
@@ -2594,7 +2627,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.iter_blocks_with_metadata():
+    for block, meta in ds2._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     if fs is None:
@@ -2611,7 +2644,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.iter_blocks_with_metadata():
+    for block, meta in ds2._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
@@ -2703,7 +2736,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._blocks.iter_blocks_with_metadata():
+    for block, meta in ds._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
@@ -2834,7 +2867,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.iter_blocks_with_metadata():
+    for block, meta in ds2._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Two blocks.
@@ -2846,7 +2879,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.iter_blocks_with_metadata():
+    for block, meta in ds2._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
@@ -3679,8 +3712,8 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular):
     # Test empty dataset.
     ds = ray.data.range_arrow(10).filter(lambda r: r["value"] > 10)
     assert len(
-        ray.data.impl.sort.sample_boundaries(
-            list(ds._blocks.iter_blocks()), "value", 3)) == 2
+        ray.data.impl.sort.sample_boundaries(ds._blocks.get_blocks(), "value",
+                                             3)) == 2
     assert ds.sort("value").count() == 0
 
 

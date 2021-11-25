@@ -76,7 +76,7 @@ class GroupedDataset(Generic[T]):
         if self._dataset.num_blocks() == 0:
             return self._dataset
 
-        blocks = list(self._dataset._blocks.iter_blocks())
+        blocks = self._dataset._blocks.get_blocks()
         num_mappers = len(blocks)
         num_reducers = num_mappers
         if self._key is None:

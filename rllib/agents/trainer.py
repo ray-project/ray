@@ -806,7 +806,7 @@ class Trainer(Trainable):
         raise NotImplementedError
 
     @ExperimentalAPI
-    def get_default_policy_class(self, config: PartialTrainerConfigDict):
+    def get_default_policy_class(self, config: TrainerConfigDict):
         """Returns a default Policy class to use, given a config.
 
         This class will be used inside RolloutWorkers' PolicyMaps in case
