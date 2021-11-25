@@ -681,6 +681,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::function<double()> get_time_;
   /// Agent manager.
   std::shared_ptr<AgentManager> agent_manager_;
+
+  friend class WorkerPoolTest;
 };
 
 }  // namespace raylet

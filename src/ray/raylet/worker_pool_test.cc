@@ -343,6 +343,10 @@ class WorkerPoolTest : public ::testing::Test {
     StartMockAgent();
   }
 
+  virtual void TearDown() { AssertNoLeaks(); }
+
+  void AssertNoLeaks() { ASSERT_EQ(worker_pool_->pending_exit_idle_workers_.size(), 0); }
+
   ~WorkerPoolTest() {
     io_service_.stop();
     thread_io_service_->join();
