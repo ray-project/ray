@@ -943,7 +943,8 @@ Status CoreWorker::CreateOwned(const std::shared_ptr<Buffer> &metadata,
     } else if (*data == nullptr) {
       // Object already exists in plasma. Store the in-memory value so that the
       // client will check the plasma store.
-      RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), *object_id));
+      RAY_CHECK(
+          memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), *object_id));
     }
   }
   return Status::OK();

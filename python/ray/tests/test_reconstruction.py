@@ -868,7 +868,7 @@ def test_nested(ray_start_cluster, reconstruction_enabled):
         return np.zeros(10**7, dtype=np.uint8)
 
     @ray.remote
-    def return_ref(done_signal, exit_signal):
+    def nested(done_signal, exit_signal):
         ref = ray.put(np.zeros(10**7, dtype=np.uint8))
         # Flush object store.
         for _ in range(20):
@@ -878,7 +878,7 @@ def test_nested(ray_start_cluster, reconstruction_enabled):
         ray.get(dep)
         return ray.get(ref)
 
-    ref = return_ref.remote(done_signal, exit_signal)
+    ref = nested.remote(done_signal, exit_signal)
     # Wait for task to get scheduled on the node to kill.
     ray.get(done_signal.wait.remote())
     # Wait for ray.put object to get transferred to the other node.
@@ -886,16 +886,23 @@ def test_nested(ray_start_cluster, reconstruction_enabled):
         num_cpus=2, resources={"node": 10}, object_store_memory=10**8)
     ray.get(dependent_task.remote(ref))
 
-    # Kill the task while it's still running.
+    # Destroy the task's output.
     cluster.remove_node(node_to_kill, allow_graceful=False)
     wait_for_condition(
         lambda: not all(node["Alive"] for node in ray.nodes()), timeout=10)
 
     if reconstruction_enabled:
-        with pytest.raises(ray.exceptions.RayTaskError):
-            ray.get(dependent_task.remote(ref))
+        # NOTE(swang): This is supposed to work because nested doesn't actually
+        # return any ObjectRefs. However, currently the ray.put in `nested`
+        # fails because the object already exists with a different owner.
+        # See https://github.com/ray-project/ray/issues/20713.
+        try:
+            ray.get(ref, timeout=60)
+        except ray.exceptions.RayTaskError as e:
+            assert isinstance(e.cause, ray.exceptions.ObjectFetchTimedOutError)
     else:
-        ray.get(dependent_task.remote(ref), timeout=60)
+        with pytest.raises(ray.exceptions.ObjectLostError):
+            ray.get(ref, timeout=60)
 
 
 if __name__ == "__main__":
