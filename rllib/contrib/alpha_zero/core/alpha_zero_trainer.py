@@ -107,6 +107,9 @@ DEFAULT_CONFIG = with_common_config({
     "callbacks": AlphaZeroDefaultCallbacks,
 
     "framework": "torch",  # Only PyTorch supported so far.
+
+    # No-Preprocessors not supported by AlphaZero yet.
+    "_disable_preprocessor_api": False,
 })
 
 

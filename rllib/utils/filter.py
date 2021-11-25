@@ -252,8 +252,8 @@ class MeanStdFilter(Filter):
             return x.astype(orig_dtype)
 
         if self.no_preprocessor:
-            return tree.map_structure_up_to(x, _helper, x, self.rs, self.buffer,
-                                            self.shape)
+            return tree.map_structure_up_to(x, _helper, x, self.rs,
+                                            self.buffer, self.shape)
         else:
             return _helper(x, self.rs, self.buffer, self.shape)
 

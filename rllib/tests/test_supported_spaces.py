@@ -123,7 +123,7 @@ def check_support(alg, config, train=True, check_bounds=False, tfe=False):
 class TestSupportedSpacesPG(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)#TODO
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -187,7 +187,7 @@ class TestSupportedSpacesOffPolicy(unittest.TestCase):
 class TestSupportedSpacesEvolutionAlgos(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(num_cpus=4, local_mode=True)#TODO
+        ray.init(num_cpus=4)
 
     @classmethod
     def tearDownClass(cls) -> None:

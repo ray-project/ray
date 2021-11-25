@@ -9,7 +9,7 @@ import ray.rllib.agents.ppo as ppo
 import ray.rllib.agents.sac as sac
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check, framework_iterator
-from ray.rllib.utils.numpy import one_hot, fc, MIN_LOG_NN_OUTPUT, \
+from ray.rllib.utils.numpy import fc, MIN_LOG_NN_OUTPUT, \
     MAX_LOG_NN_OUTPUT
 
 tf1, tf, tfv = try_import_tf()
@@ -28,12 +28,11 @@ def do_test_log_likelihood(run,
     # Env setup.
     if continuous:
         env = "Pendulum-v1"
-        obs_batch = preprocessed_obs_batch = np.array([[0.0, 0.1, -0.1]])
+        obs_batch = np.array([[0.0, 0.1, -0.1]])
     else:
         env = "FrozenLake-v1"
         config["env_config"] = {"is_slippery": False, "map_name": "4x4"}
         obs_batch = np.array([0])
-        preprocessed_obs_batch = one_hot(obs_batch, depth=16)
 
     prev_r = None if prev_a is None else np.array(0.0)
 
@@ -91,7 +90,7 @@ def do_test_log_likelihood(run,
                     expected_logp = logp_func(mean, log_std, a)
                 logp = policy.compute_log_likelihoods(
                     np.array([a]),
-                    preprocessed_obs_batch,
+                    obs_batch,
                     prev_action_batch=np.array([prev_a]) if prev_a else None,
                     prev_reward_batch=np.array([prev_r]) if prev_r else None,
                     actions_normalized=True,
@@ -104,7 +103,7 @@ def do_test_log_likelihood(run,
                 expected_prob = count / num_actions
                 logp = policy.compute_log_likelihoods(
                     np.array([a]),
-                    preprocessed_obs_batch,
+                    obs_batch,
                     prev_action_batch=np.array([prev_a]) if prev_a else None,
                     prev_reward_batch=np.array([prev_r]) if prev_r else None)
                 check(np.exp(logp), expected_prob, atol=0.2)

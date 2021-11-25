@@ -178,13 +178,14 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
                 outs.append(cnn_out)
             elif i in self.one_hot:
                 if component.dtype in [torch.int32, torch.int64, torch.uint8]:
-                    one_hot_out, _ = self.one_hot[i]({
+                    one_hot_in = {
                         SampleBatch.OBS: one_hot(component,
                                                  self.flattened_input_space[i])
-                    })
-                    outs.append(one_hot_out)
+                    }
                 else:
-                    outs.append(self.one_hot[i]({SampleBatch.OBS: component}))
+                    one_hot_in = {SampleBatch.OBS: component}
+                one_hot_out, _ = self.one_hot[i](one_hot_in)
+                outs.append(one_hot_out)
             else:
                 nn_out, _ = self.flatten[i]({
                     SampleBatch.OBS: torch.reshape(component,
