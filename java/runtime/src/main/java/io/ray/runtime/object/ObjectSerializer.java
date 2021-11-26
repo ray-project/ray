@@ -144,7 +144,7 @@ public class ObjectSerializer {
       return new NativeRayObject(bytes, OBJECT_METADATA_TYPE_ARROW);
     } else {
       throw new IllegalArgumentException(
-        "Arrow data should be serialized to a byte array or ByteBuffer before put.");
+          "Arrow data should be serialized to a byte array or ByteBuffer before put.");
     }
   }
 

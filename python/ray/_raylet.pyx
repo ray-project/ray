@@ -1893,8 +1893,8 @@ cdef class CoreWorker:
                 if returns[0][i].get().HasData():
                     if isinstance(serialized_object, ArrowSerializedObject):
                         arrow_object = <ArrowSerializedObject>serialized_object
-                        sink = pa.FixedSizeBufferWriter(
-                            pa.py_buffer(Buffer.make(returns[0][i].get().GetData())))
+                        sink = pa.FixedSizeBufferWriter(pa.py_buffer(
+                            Buffer.make(returns[0][i].get().GetData())))
                         writer = pa.ipc.new_stream(sink, arrow_object.schema)
                         writer.write(arrow_object.value)
                         writer.close()

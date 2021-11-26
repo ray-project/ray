@@ -569,21 +569,23 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
     return nullptr;
   }
   auto metadata_ptr = rayObject->GetMetadata();
-  auto metadata_str = std::string(reinterpret_cast<const char*>(metadata_ptr->Data()));
+  auto metadata_str = std::string(reinterpret_cast<const char *>(metadata_ptr->Data()));
   auto java_metadata = NativeBufferToJavaByteArray(env, rayObject->GetMetadata());
   jobject java_obj;
-  if (metadata_str.length() >=5 && metadata_str.substr(0, 5).compare("ARROW") == 0) {
+  if (metadata_str.length() >= 5 && metadata_str.substr(0, 5).compare("ARROW") == 0) {
     auto data_ptr = rayObject->GetData();
     auto java_data = env->NewDirectByteBuffer(
-      reinterpret_cast<void *>(const_cast<uint8_t *>(data_ptr->Data())), data_ptr->Size());
-    java_obj = env->NewObject(java_native_ray_object_class,
-                                   java_native_ray_object_buffer_init, java_data, java_metadata);
+        reinterpret_cast<void *>(const_cast<uint8_t *>(data_ptr->Data())),
+        data_ptr->Size());
+    java_obj =
+        env->NewObject(java_native_ray_object_class, java_native_ray_object_buffer_init,
+                       java_data, java_metadata);
     RAY_CHECK_JAVA_EXCEPTION(env);
     env->DeleteLocalRef(java_data);
   } else {
     auto java_data = NativeBufferToJavaByteArray(env, rayObject->GetData());
-    java_obj = env->NewObject(java_native_ray_object_class,
-                                 java_native_ray_object_init, java_data, java_metadata);
+    java_obj = env->NewObject(java_native_ray_object_class, java_native_ray_object_init,
+                              java_data, java_metadata);
     RAY_CHECK_JAVA_EXCEPTION(env);
     env->DeleteLocalRef(java_data);
   }

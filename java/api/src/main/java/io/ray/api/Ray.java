@@ -88,8 +88,8 @@ public final class Ray extends RayCall {
   }
 
   /**
-   * Store Arrow-serialized data in the object store and assign its ownership to owner. This function is
-   * experimental.
+   * Store Arrow-serialized data in the object store and assign its ownership to owner. This
+   * function is experimental.
    *
    * @param obj The Java object to be stored.
    * @param owner The actor that should own this object. This allows creating objects with lifetimes
