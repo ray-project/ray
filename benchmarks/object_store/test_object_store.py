@@ -5,7 +5,7 @@ import ray.autoscaler.sdk
 
 import json
 import os
-from time import sleep, perf_counter
+from time import perf_counter
 from tqdm import tqdm
 
 NUM_NODES = 50
