@@ -521,7 +521,9 @@ def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
     cols = table.columns
     new_cols = []
     for col in cols:
-        if col.num_chunks > 0 and isinstance(col.chunk(0), pa.ExtensionArray):
+        if col.num_chunks == 0:
+            arr = pa.chunked_array([], type=col.type)
+        elif isinstance(col.chunk(0), pa.ExtensionArray):
             # If an extension array, we copy the underlying storage arrays.
             chunk = col.chunk(0)
             arr = type(chunk).from_storage(
