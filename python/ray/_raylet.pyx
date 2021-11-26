@@ -409,16 +409,8 @@ cdef prepare_args(
                 arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
                 if size > 0:
-                    if isinstance(serialized_arg, ArrowSerializedObject):
-                        arrow_object = <ArrowSerializedObject>serialized_arg
-                        sink = pa.FixedSizeBufferWriter(
-                            pa.py_buffer(Buffer.make(arg_data)))
-                        writer = pa.ipc.new_stream(sink, arrow_object.schema)
-                        writer.write(arrow_object.value)
-                        writer.close()
-                    else:
-                        (<SerializedObject>serialized_arg).write_to(
-                            Buffer.make(arg_data))
+                    (<SerializedObject>serialized_arg).write_to(
+                        Buffer.make(arg_data))
                 for object_ref in serialized_arg.contained_object_refs:
                     inlined_ids.push_back((<ObjectRef>object_ref).native())
                 inlined_refs = (CCoreWorkerProcess.GetCoreWorker()
@@ -1329,16 +1321,8 @@ cdef class CoreWorker:
 
         if not object_already_exists:
             if total_bytes > 0:
-                if isinstance(serialized_object, ArrowSerializedObject):
-                    arrow_object = <ArrowSerializedObject>serialized_object
-                    sink = pa.FixedSizeBufferWriter(
-                        pa.py_buffer(Buffer.make(data)))
-                    writer = pa.ipc.new_stream(sink, arrow_object.schema)
-                    writer.write(arrow_object.value)
-                    writer.close()
-                else:
-                    (<SerializedObject>serialized_object).write_to(
-                        Buffer.make(data))
+                (<SerializedObject>serialized_object).write_to(
+                    Buffer.make(data))
             if self.is_local_mode or (put_small_object_in_memory_store
                and <int64_t>total_bytes < put_threshold):
                 contained_object_refs = (
@@ -1891,16 +1875,8 @@ cdef class CoreWorker:
 
             if returns[0][i].get() != NULL:
                 if returns[0][i].get().HasData():
-                    if isinstance(serialized_object, ArrowSerializedObject):
-                        arrow_object = <ArrowSerializedObject>serialized_object
-                        sink = pa.FixedSizeBufferWriter(pa.py_buffer(
-                            Buffer.make(returns[0][i].get().GetData())))
-                        writer = pa.ipc.new_stream(sink, arrow_object.schema)
-                        writer.write(arrow_object.value)
-                        writer.close()
-                    else:
-                        (<SerializedObject>serialized_object).write_to(
-                            Buffer.make(returns[0][i].get().GetData()))
+                    (<SerializedObject>serialized_object).write_to(
+                        Buffer.make(returns[0][i].get().GetData()))
                 if self.is_local_mode:
                     return_ids_vector.push_back(return_ids[i])
                     check_status(

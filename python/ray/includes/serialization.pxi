@@ -338,42 +338,43 @@ cdef class Pickle5Writer:
     @cython.boundscheck(False)
     @cython.wraparound(False)
     cdef void write_to(self, const uint8_t[:] inband, uint8_t[:] data,
-                       int memcopy_threads) nogil:
+                       int memcopy_threads):
         cdef:
             uint8_t *ptr = &data[0]
             uint64_t buffer_addr
             uint64_t buffer_len
             int i
             int64_t protobuf_size = self.python_object.GetCachedSize()
-        if self._total_bytes < 0:
-            raise ValueError("Must call 'get_total_bytes()' first "
-                             "to get the actual size")
-        # Write inband data & protobuf size for deserialization.
-        (<int64_t*>ptr)[0] = len(inband)
-        (<int64_t*>ptr)[1] = protobuf_size
-        # Write inband data.
-        ptr += sizeof(int64_t) * 2
-        memcpy(ptr, &inband[0], len(inband))
-        # Write protobuf data.
-        ptr += len(inband)
-        self.python_object.SerializeWithCachedSizesToArray(ptr)
-        ptr += protobuf_size
-        if self._curr_buffer_addr <= 0:
-            # End of serialization. Writing more stuff will corrupt the memory.
-            return
-        # aligned to 64 bytes
-        ptr = aligned_address(ptr, kMajorBufferAlign)
-        for i in range(self.python_object.buffer_size()):
-            buffer_addr = self.python_object.buffer(i).address()
-            buffer_len = self.python_object.buffer(i).length()
-            if (memcopy_threads > 1 and
-                    buffer_len > kMemcopyDefaultThreshold):
-                parallel_memcopy(ptr + buffer_addr,
-                                 <const uint8_t*> self.buffers[i].buf,
-                                 buffer_len,
-                                 kMemcopyDefaultBlocksize, memcopy_threads)
-            else:
-                memcpy(ptr + buffer_addr, self.buffers[i].buf, buffer_len)
+        with nogil:
+            if self._total_bytes < 0:
+                raise ValueError("Must call 'get_total_bytes()' first "
+                                "to get the actual size")
+            # Write inband data & protobuf size for deserialization.
+            (<int64_t*>ptr)[0] = len(inband)
+            (<int64_t*>ptr)[1] = protobuf_size
+            # Write inband data.
+            ptr += sizeof(int64_t) * 2
+            memcpy(ptr, &inband[0], len(inband))
+            # Write protobuf data.
+            ptr += len(inband)
+            self.python_object.SerializeWithCachedSizesToArray(ptr)
+            ptr += protobuf_size
+            if self._curr_buffer_addr <= 0:
+                # End of serialization. Writing more stuff will corrupt the memory.
+                return
+            # aligned to 64 bytes
+            ptr = aligned_address(ptr, kMajorBufferAlign)
+            for i in range(self.python_object.buffer_size()):
+                buffer_addr = self.python_object.buffer(i).address()
+                buffer_len = self.python_object.buffer(i).length()
+                if (memcopy_threads > 1 and
+                        buffer_len > kMemcopyDefaultThreshold):
+                    parallel_memcopy(ptr + buffer_addr,
+                                    <const uint8_t*> self.buffers[i].buf,
+                                    buffer_len,
+                                    kMemcopyDefaultBlocksize, memcopy_threads)
+                else:
+                    memcpy(ptr + buffer_addr, self.buffers[i].buf, buffer_len)
 
 
 cdef class SerializedObject(object):
@@ -400,7 +401,7 @@ cdef class SerializedObject(object):
 
     @cython.boundscheck(False)
     @cython.wraparound(False)
-    cdef void write_to(self, uint8_t[:] buffer) nogil:
+    cdef void write_to(self, uint8_t[:] buffer):
         raise NotImplementedError("{}.write_to not implemented.".format(
                 type(self).__name__))
 
@@ -428,7 +429,7 @@ cdef class Pickle5SerializedObject(SerializedObject):
 
     @cython.boundscheck(False)
     @cython.wraparound(False)
-    cdef void write_to(self, uint8_t[:] buffer) nogil:
+    cdef void write_to(self, uint8_t[:] buffer):
         self.writer.write_to(self.inband, buffer, MEMCOPY_THREADS)
 
 
@@ -474,13 +475,14 @@ cdef class MessagePackSerializedObject(SerializedObject):
 
     @cython.boundscheck(False)
     @cython.wraparound(False)
-    cdef void write_to(self, uint8_t[:] buffer) nogil:
+    cdef void write_to(self, uint8_t[:] buffer):
         cdef uint8_t *ptr = &buffer[0]
 
-        # Write msgpack data first.
-        memcpy(ptr, self.msgpack_header_ptr, self._msgpack_header_bytes)
-        memcpy(ptr + kMessagePackOffset,
-               self.msgpack_data_ptr, self._msgpack_data_bytes)
+        with nogil:
+            # Write msgpack data first.
+            memcpy(ptr, self.msgpack_header_ptr, self._msgpack_header_bytes)
+            memcpy(ptr + kMessagePackOffset,
+                self.msgpack_data_ptr, self._msgpack_data_bytes)
 
         if self.nest_serialized_object is not None:
             self.nest_serialized_object.write_to(
@@ -506,15 +508,16 @@ cdef class RawSerializedObject(SerializedObject):
 
     @cython.boundscheck(False)
     @cython.wraparound(False)
-    cdef void write_to(self, uint8_t[:] buffer) nogil:
-        if (MEMCOPY_THREADS > 1 and
-                self._total_bytes > kMemcopyDefaultThreshold):
-            parallel_memcopy(&buffer[0],
-                             self.value_ptr,
-                             self._total_bytes, kMemcopyDefaultBlocksize,
-                             MEMCOPY_THREADS)
-        else:
-            memcpy(&buffer[0], self.value_ptr, self._total_bytes)
+    cdef void write_to(self, uint8_t[:] buffer):
+        with nogil:
+            if (MEMCOPY_THREADS > 1 and
+                    self._total_bytes > kMemcopyDefaultThreshold):
+                parallel_memcopy(&buffer[0],
+                                self.value_ptr,
+                                self._total_bytes, kMemcopyDefaultBlocksize,
+                                MEMCOPY_THREADS)
+            else:
+                memcpy(&buffer[0], self.value_ptr, self._total_bytes)
 
 cdef class ArrowSerializedObject(SerializedObject):
     cdef:
@@ -532,19 +535,13 @@ cdef class ArrowSerializedObject(SerializedObject):
         self._total_bytes = sink.size()
 
     @property
-    def value(self):
-        return self.value
-
-    @property
     def total_bytes(self):
         return self._total_bytes
 
-    @property
-    def schema(self):
-        return self.value.schema
-
     @cython.boundscheck(False)
     @cython.wraparound(False)
-    cdef void write_to(self, uint8_t[:] buffer) nogil:
-        raise NotImplementedError("{}.write_to not implemented.".format(
-                type(self).__name__))
+    cdef void write_to(self, uint8_t[:] buffer):
+        sink = pa.FixedSizeBufferWriter(pa.py_buffer(buffer))
+        writer = pa.ipc.new_stream(sink, self.value.schema)
+        writer.write(self.value)
+        writer.close()
