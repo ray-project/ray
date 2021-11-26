@@ -4,6 +4,7 @@ import sys
 import threading
 import pytest
 import ray
+import time
 
 
 # This tests the methods are executed in the correct eventloop.
@@ -120,6 +121,7 @@ def test_default_concurrency_group_does_not_block_others():
             pass
 
         async def f1(self):
+            time.sleep(10000)
             return "never return"
 
         @ray.method(concurrency_group="my_group")
