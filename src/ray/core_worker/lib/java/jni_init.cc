@@ -142,6 +142,8 @@ jmethodID java_resource_value_init;
 
 JavaVM *jvm;
 
+const std::string OBJECT_METADATA_TYPE_ARROW = "ARROW";
+
 inline jclass LoadClass(JNIEnv *env, const char *class_name) {
   jclass tempLocalClassRef = env->FindClass(class_name);
   jclass ret = (jclass)env->NewGlobalRef(tempLocalClassRef);

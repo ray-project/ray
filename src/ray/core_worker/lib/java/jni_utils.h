@@ -255,6 +255,8 @@ extern jmethodID java_resource_value_init;
 
 extern JavaVM *jvm;
 
+extern const std::string OBJECT_METADATA_TYPE_ARROW;
+
 /// Throws a Java RayException if the status is not OK.
 #define THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, ret)                         \
   {                                                                                    \
@@ -573,7 +575,7 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
                       metadata_ptr->Size());
   auto java_metadata = NativeBufferToJavaByteArray(env, rayObject->GetMetadata());
   jobject java_obj;
-  if (metadata_str.length() >= 5 && metadata_str.substr(0, 5).compare("ARROW") == 0) {
+  if (metadata_str.rfind(OBJECT_METADATA_TYPE_ARROW) == 0) {
     auto data_ptr = rayObject->GetData();
     auto java_data = env->NewDirectByteBuffer(
         reinterpret_cast<void *>(const_cast<uint8_t *>(data_ptr->Data())),
