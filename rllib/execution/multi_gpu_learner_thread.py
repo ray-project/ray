@@ -154,7 +154,7 @@ class MultiGPULearnerThread(LearnerThread):
 
             for pid in self.policy_map.keys():
                 # Not a policy-to-train.
-                if pid not in self.local_worker.policies_to_train:
+                if not self.local_worker._is_policy_to_train(pid):
                     continue
                 policy = self.policy_map[pid]
                 default_policy_results = policy.learn_on_loaded_batch(

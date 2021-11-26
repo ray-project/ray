@@ -9,7 +9,7 @@ import os
 import pickle
 import tempfile
 import time
-from typing import Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -44,8 +44,8 @@ from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.multi_agent import check_multi_agent
 from ray.rllib.utils.spaces import space_utils
 from ray.rllib.utils.typing import AgentID, EnvInfoDict, EnvType, EpisodeID, \
-    PartialTrainerConfigDict, PolicyID, ResultDict, TensorStructType, \
-    TensorType, TrainerConfigDict
+    PartialTrainerConfigDict, PolicyID, ResultDict, SampleBatchType, \
+    TensorStructType, TensorType, TrainerConfigDict
 from ray.tune.logger import Logger, UnifiedLogger
 from ray.tune.registry import ENV_CREATOR, register_env, _global_registry
 from ray.tune.resources import Resources
@@ -471,7 +471,12 @@ COMMON_CONFIG: TrainerConfigDict = {
         "policy_map_cache": None,
         # Function mapping agent ids to policy ids.
         "policy_mapping_fn": None,
-        # Optional list of policies to train, or None for all policies.
+        # Specifies those policies that should be updated.
+        # Options are:
+        # - None for all policies.
+        # - An iterable of PolicyIDs to be updated.
+        # - A callable taking a PolicyID and a SampleBatch or MultiAgentBatch
+        #   and returning a bool (trainable or not?).
         "policies_to_train": None,
         # Optional function that can be used to enhance the local agent
         # observations to include more state.
@@ -1423,7 +1428,8 @@ class Trainer(Trainable):
             config: Optional[PartialTrainerConfigDict] = None,
             policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID],
                                                  PolicyID]] = None,
-            policies_to_train: Optional[List[PolicyID]] = None,
+            policies_to_train: Optional[Union[Set[PolicyID], Callable[
+                [PolicyID, SampleBatchType], bool]]] = None,
             evaluation_workers: bool = True,
     ) -> Policy:
         """Adds a new policy to this Trainer.
@@ -1443,10 +1449,12 @@ class Trainer(Trainable):
                 Note that already ongoing episodes will not change their
                 mapping but will use the old mapping till the end of the
                 episode.
-            policies_to_train (Optional[List[PolicyID]]): An optional list of
-                policy IDs to be trained. If None, will keep the existing list
-                in place. Policies, whose IDs are not in the list will not be
-                updated.
+            policies_to_train: An optional list of policy IDs to be trained
+                or a callable taking PolicyID and SampleBatchType and
+                returning a bool (trainable or not?).
+                If None, will keep the existing setup in place. Policies,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
             evaluation_workers (bool): Whether to add the new policy also
                 to the evaluation WorkerSet.
 
@@ -1482,7 +1490,8 @@ class Trainer(Trainable):
             policy_id: PolicyID = DEFAULT_POLICY_ID,
             *,
             policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
-            policies_to_train: Optional[List[PolicyID]] = None,
+            policies_to_train: Optional[Union[Set[PolicyID], Callable[
+                [PolicyID, SampleBatchType], bool]]] = None,
             evaluation_workers: bool = True,
     ) -> None:
         """Removes a new policy from this Trainer.
@@ -1494,10 +1503,12 @@ class Trainer(Trainable):
                 Note that already ongoing episodes will not change their
                 mapping but will use the old mapping till the end of the
                 episode.
-            policies_to_train (Optional[List[PolicyID]]): An optional list of
-                policy IDs to be trained. If None, will keep the existing list
-                in place. Policies, whose IDs are not in the list will not be
-                updated.
+            policies_to_train: An optional list of policy IDs to be trained
+                or a callable taking PolicyID and SampleBatchType and
+                returning a bool (trainable or not?).
+                If None, will keep the existing setup in place. Policies,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
             evaluation_workers (bool): Whether to also remove the policy from
                 the evaluation WorkerSet.
         """

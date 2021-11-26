@@ -2,7 +2,8 @@ import gym
 import logging
 import importlib.util
 from types import FunctionType
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from typing import Callable, Dict, List, Optional, Set, Tuple, Type, TypeVar, \
+    Union
 
 import ray
 from ray.actor import ActorHandle
@@ -14,9 +15,11 @@ from ray.rllib.offline import NoopOutput, JsonReader, MixedInput, JsonWriter, \
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.utils import merge_dicts
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.typing import EnvType, PolicyID, TrainerConfigDict
+from ray.rllib.utils.typing import EnvType, PolicyID, SampleBatchType, \
+    TrainerConfigDict
 from ray.tune.registry import registry_contains_input, registry_get_input
 
 tf1, tf, tfv = try_import_tf()
@@ -188,6 +191,13 @@ class WorkerSet:
                 w.__ray_terminate__.remote()
 
     @DeveloperAPI
+    def policies_to_train(
+            self
+    ) -> Union[Set[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]:
+        """Returns the list of trainable policy ids."""
+        return self.local_worker().policies_to_train
+
+    @DeveloperAPI
     def foreach_worker(self, func: Callable[[RolloutWorker], T]) -> List[T]:
         """Calls the given function with each worker instance as arg.
 
@@ -256,11 +266,6 @@ class WorkerSet:
         for r in remote_results:
             results.extend(r)
         return results
-
-    @DeveloperAPI
-    def trainable_policies(self) -> List[PolicyID]:
-        """Returns the list of trainable policy ids."""
-        return self.local_worker().policies_to_train
 
     @DeveloperAPI
     def foreach_trainable_policy(
@@ -490,3 +495,7 @@ class WorkerSet:
         )
 
         return worker
+
+    @Deprecated(new="WorkerSet.policies_to_train", error=False)
+    def trainable_policies(self):
+        return self.policies_to_train()
