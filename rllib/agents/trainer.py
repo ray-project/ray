@@ -271,8 +271,8 @@ COMMON_CONFIG: TrainerConfigDict = {
     # === Evaluation Settings ===
     # Evaluate with every `evaluation_interval` training iterations.
     # The evaluation stats will be reported under the "evaluation" metric key.
-    # Note that evaluation is currently not parallelized, and that for Ape-X
-    # metrics are already only reported for the lowest epsilon workers.
+    # Note that for Ape-X metrics are already only reported for the lowest
+    # epsilon workers.
     "evaluation_interval": None,
     # Number of episodes to run in total per evaluation period.
     # If using multiple evaluation workers (evaluation_num_workers > 1),
@@ -310,9 +310,9 @@ COMMON_CONFIG: TrainerConfigDict = {
     "evaluation_num_workers": 0,
     # Customize the evaluation method. This must be a function of signature
     # (trainer: Trainer, eval_workers: WorkerSet) -> metrics: dict. See the
-    # Trainer.evaluate() method to see the default implementation. The
-    # trainer guarantees all eval workers have the latest policy state before
-    # this function is called.
+    # Trainer.evaluate() method to see the default implementation.
+    # The Trainer guarantees all eval workers have the latest policy state
+    # before this function is called.
     "custom_eval_function": None,
 
     # === Advanced Rollout Settings ===
