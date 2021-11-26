@@ -129,7 +129,7 @@ class TestGrpcServerClientFixture : public ::testing::Test {
   }
 
  protected:
-  VOID_RPC_CLIENT_METHOD(TestService, Ping, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(TestService, Ping, grpc_client_, /*method_timeout_ms*/ -1, )
   // Server
   TestServiceHandler test_service_handler_;
   instrumented_io_context handler_io_service_;
@@ -195,7 +195,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientCallManagerTimeout) {
   std::atomic<bool> call_timed_out(false);
   Ping(request, [&call_timed_out](const Status &status, const PingReply &reply) {
     RAY_LOG(INFO) << "Replied, status=" << status;
-    ASSERT_TRUE(status.IsIOError());
+    ASSERT_TRUE(status.IsTimedOut());
     call_timed_out = true;
   });
   // Wait for clinet call timed out.
@@ -227,7 +227,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientDiedBeforeReply) {
   std::atomic<bool> call_timed_out(false);
   Ping(request, [&call_timed_out](const Status &status, const PingReply &reply) {
     RAY_LOG(INFO) << "Replied, status=" << status;
-    ASSERT_TRUE(status.IsIOError());
+    ASSERT_TRUE(status.IsTimedOut());
     call_timed_out = true;
   });
   // Wait for clinet call timed out. Client socket won't be closed until all calls are
