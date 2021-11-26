@@ -759,10 +759,6 @@ absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerWorker(
   return actor_ids;
 }
 
-void GcsActorManager::CollectStats() const {
-  stats::PendingActors.Record(pending_actors_.size());
-}
-
 void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                    const ray::WorkerID &worker_id) {
   OnWorkerDead(node_id, worker_id, rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
@@ -1309,6 +1305,7 @@ std::string GcsActorManager::DebugString() const {
   for (const auto &pair : named_actors_) {
     num_named_actors += pair.second.size();
   }
+
   std::ostringstream stream;
   stream << "GcsActorManager: "
          << "\n- RegisterActor request count: "
@@ -1333,7 +1330,17 @@ std::string GcsActorManager::DebugString() const {
          << "\n- actor_to_register_callbacks_: " << actor_to_register_callbacks_.size()
          << "\n- actor_to_create_callbacks_: " << actor_to_create_callbacks_.size()
          << "\n- sorted_destroyed_actor_list_: " << sorted_destroyed_actor_list_.size();
+
+  // Collect metrics
   return stream.str();
+}
+
+void GcsActorManager::RecordMetrics() const {
+  STATS_gcs_num_actors.Record(registered_actors_.size(), "Registered");
+  STATS_gcs_num_actors.Record(created_actors_.size(), "Created");
+  STATS_gcs_num_actors.Record(destroyed_actors_.size(), "Destroyed");
+  STATS_gcs_num_actors.Record(unresolved_actors_.size(), "Unresolved");
+  STATS_gcs_num_actors.Record(pending_actors_.size(), "Pending");
 }
 
 }  // namespace gcs

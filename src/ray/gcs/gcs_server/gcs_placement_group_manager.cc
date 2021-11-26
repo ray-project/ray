@@ -288,9 +288,9 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
       absl::Microseconds(1);
   stats->set_scheduling_latency_us(scheduling_latency_us);
   stats->set_end_to_end_creation_latency_us(creation_latency_us);
-  ray::stats::STATS_placement_group_scheduling_latency_ms.Record(scheduling_latency_us /
+  ray::stats::STATS_gcs_placement_group_scheduling_latency_ms.Record(scheduling_latency_us /
                                                                  1e3);
-  ray::stats::STATS_placement_group_creation_latency_ms.Record(creation_latency_us / 1e3);
+  ray::stats::STATS_gcs_placement_group_creation_latency_ms.Record(creation_latency_us / 1e3);
   stats->set_scheduling_state(rpc::PlacementGroupStats::FINISHED);
 
   // Update states and persists the information.
@@ -756,12 +756,12 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
   }
 }
 
-void GcsPlacementGroupManager::CollectStats() const {
-  ray::stats::STATS_pending_placement_group.Record(pending_placement_groups_.size());
-  ray::stats::STATS_registered_placement_group.Record(
-      registered_placement_groups_.size());
-  ray::stats::STATS_infeasible_placement_group.Record(
-      infeasible_placement_groups_.size());
+void GcsPlacementGroupManager::RecordMetrics() const {
+  ray::stats::STATS_gcs_num_placement_group.Record(pending_placement_groups_.size(), "Pending");
+  ray::stats::STATS_gcs_num_placement_group.Record(
+      registered_placement_groups_.size(), "Registered");
+  ray::stats::STATS_gcs_num_placement_group.Record(
+      infeasible_placement_groups_.size(), "Infeasible");
 }
 
 void GcsPlacementGroupManager::Tick() {
@@ -843,9 +843,9 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
 }
 
 std::string GcsPlacementGroupManager::DebugString() const {
-  uint64_t num_pgs = 0;
+  uint64_t named_num_pgs = 0;
   for (auto it : named_placement_groups_) {
-    num_pgs += it.second.size();
+    named_num_pgs += it.second.size();
   }
   std::ostringstream stream;
   stream << "GcsPlacementGroupManager: "
@@ -863,10 +863,10 @@ std::string GcsPlacementGroupManager::DebugString() const {
          << counts_[CountType::GET_NAMED_PLACEMENT_GROUP_REQUEST]
          << "\n- Scheduling pending placement group count: "
          << counts_[CountType::SCHEDULING_PENDING_PLACEMENT_GROUP]
-         << "\n- Registered placement groups count: "
-         << registered_placement_groups_.size()
-         << "\n- Named placement group count: " << num_pgs
-         << "\n- Pending placement groups count: " << pending_placement_groups_.size();
+         << "\n- Registered placement groups count: " << registered_placement_groups_.size()
+         << "\n- Named placement group count: " << named_num_pgs
+         << "\n- Pending placement groups count: " << pending_placement_groups_.size()
+         << "\n- Infeasible placement groups count: " << infeasible_placement_groups_.size();
   return stream.str();
 }
 

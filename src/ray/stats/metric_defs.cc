@@ -60,21 +60,19 @@ DEFINE_stats(new_resource_creation_latency_ms,
 // The time from placement group creation request has received
 // <-> Placement group creation succeeds (meaning all resources
 // are committed to nodes and available).
-DEFINE_stats(placement_group_creation_latency_ms,
+DEFINE_stats(gcs_placement_group_creation_latency_ms,
              "end to end latency of placement group creation", (),
              ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
 // The time from placement group scheduling has started
 // <-> Placement group creation succeeds.
-DEFINE_stats(placement_group_scheduling_latency_ms,
+DEFINE_stats(gcs_placement_group_scheduling_latency_ms,
              "scheduling latency of placement groups", (),
              ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
-DEFINE_stats(pending_placement_group, "Number of total pending placement groups", (), (),
+DEFINE_stats(gcs_num_placement_group, "Number of placement groups per type. There are registered/pending/infeasible types.", ("Type"), (),
              ray::stats::GAUGE);
-DEFINE_stats(registered_placement_group, "Number of total registered placement groups",
-             (), (), ray::stats::GAUGE);
-DEFINE_stats(infeasible_placement_group, "Number of total infeasible placement groups",
-             (), (), ray::stats::GAUGE);
 
+/// GCS Actor Manager
+DEFINE_stats(gcs_num_actors, "Number of actors per type. Types can be created/destroyed/named/unresolved/pending", ("Type"), (), ray::stats::GAUGE);
 }  // namespace stats
 
 }  // namespace ray

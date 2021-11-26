@@ -107,6 +107,9 @@ class GcsPlacementGroup {
   /// Get debug string for the placement group.
   std::string DebugString() const;
 
+  /// Record internal metrics of the placement group manager.
+  void RecordMetrics() const;
+
   /// Below fields are used for automatic cleanup of placement groups.
 
   /// Get the actor id that created the placement group.
@@ -299,9 +302,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param actor_id The actor id where placement groups that need to be cleaned belong
   /// to.
   void CleanPlacementGroupIfNeededWhenActorDead(const ActorID &actor_id);
-
-  /// Collect stats from gcs placement group manager in-memory data structures.
-  void CollectStats() const;
 
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
