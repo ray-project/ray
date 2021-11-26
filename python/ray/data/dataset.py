@@ -1063,7 +1063,10 @@ class Dataset(Generic[T]):
         if ret is None:
             return 0
         elif len(ret) == 1:
-            return ret[0]
+            if isinstance(ret, tuple):
+                return ret[0]
+            else:
+                return list(ret.values())[0]
         else:
             return ret
 
@@ -1118,7 +1121,10 @@ class Dataset(Generic[T]):
         if ret is None:
             raise ValueError("Cannot compute min on an empty dataset")
         elif len(ret) == 1:
-            return ret[0]
+            if isinstance(ret, tuple):
+                return ret[0]
+            else:
+                return list(ret.values())[0]
         else:
             return ret
 
@@ -1173,7 +1179,10 @@ class Dataset(Generic[T]):
         if ret is None:
             raise ValueError("Cannot compute max on an empty dataset")
         elif len(ret) == 1:
-            return ret[0]
+            if isinstance(ret, tuple):
+                return ret[0]
+            else:
+                return list(ret.values())[0]
         else:
             return ret
 
@@ -1228,7 +1237,10 @@ class Dataset(Generic[T]):
         if ret is None:
             raise ValueError("Cannot compute mean on an empty dataset")
         elif len(ret) == 1:
-            return ret[0]
+            if isinstance(ret, tuple):
+                return ret[0]
+            else:
+                return list(ret.values())[0]
         else:
             return ret
 
@@ -1293,7 +1305,10 @@ class Dataset(Generic[T]):
         if ret is None:
             raise ValueError("Cannot compute std on an empty dataset")
         elif len(ret) == 1:
-            return ret[0]
+            if isinstance(ret, tuple):
+                return ret[0]
+            else:
+                return list(ret.values())[0]
         else:
             return ret
 

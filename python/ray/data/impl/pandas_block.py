@@ -11,6 +11,7 @@ except ImportError:
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.impl.table_block import TableBlockAccessor, TableRow, \
     TableBlockBuilder, SortKeyT, GroupKeyT
+from ray.data.impl.arrow_block import ArrowBlockAccessor
 from ray.data.aggregate import AggregateFn
 
 if TYPE_CHECKING:
@@ -27,6 +28,7 @@ class PandasRow(TableRow):
         return {k: v[0] for k, v in self._row.to_dict("list").items()}
 
     def __getitem__(self, key: str) -> Any:
+        assert isinstance(key, str)
         col = self._row[key]
         print(col)
         if len(col) == 0:
@@ -41,7 +43,7 @@ class PandasRow(TableRow):
             return item
 
     def __len__(self):
-        return self._row.df.shape[1]
+        return self._row.shape[1]
 
 
 class PandasBlockBuilder(TableBlockBuilder[T]):
@@ -63,9 +65,11 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
 
 class PandasBlockSchema:
     # This is to be compatible with pyarrow.lib.schema
+    # TODO: We need an implementation-ignorant way to represent schema.
     def __init__(self, names, types):
         self.names = names
         self.types = types
+
 
 class PandasBlockAccessor(TableBlockAccessor):
     def __init__(self, table: "pandas.DataFrame"):
@@ -87,7 +91,8 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def schema(self) -> Any:
         dtypes = self._table.dtypes
-        return PandasBlockSchema(names=dtypes.index.tolist(), types=dtypes.values.tolist())
+        return PandasBlockSchema(
+            names=dtypes.index.tolist(), types=dtypes.values.tolist())
 
     def to_pandas(self) -> "pandas.DataFrame":
         return self._table
@@ -139,28 +144,40 @@ class PandasBlockAccessor(TableBlockAccessor):
         return pandas.DataFrame()
 
     def _sample(self, n_samples: int, key: SortKeyT) -> "pandas.DataFrame":
-        return self._table[[k[0] for k in key]].sample(n_samples, ignore_index=True)
+        return self._table[[k[0] for k in key]].sample(
+            n_samples, ignore_index=True)
 
     def sort_and_partition(self, boundaries: List[T], key: SortKeyT,
                            descending: bool) -> List["Block[T]"]:
-        # TODO: to be implemented
-        raise NotImplementedError
+        # TODO: A workaround to pass tests. Not efficient.
+        delegated_result = BlockAccessor.for_block(
+            self.to_arrow()).sort_and_partition(boundaries, key, descending)
+        return [
+            BlockAccessor.for_block(_).to_pandas() for _ in delegated_result
+        ]
 
     def combine(self, key: GroupKeyT,
                 aggs: Tuple[AggregateFn]) -> Block[PandasRow]:
-        # TODO: to be implemented
-        raise NotImplementedError
+        # TODO: A workaround to pass tests. Not efficient.
+        return BlockAccessor.for_block(self.to_arrow()).combine(
+            key, aggs).to_pandas()
 
     @staticmethod
     def merge_sorted_blocks(
             blocks: List[Block[T]], key: SortKeyT,
             _descending: bool) -> Tuple[Block[T], BlockMetadata]:
-        # TODO: to be implemented
-        raise NotImplementedError
+        # TODO: A workaround to pass tests. Not efficient.
+        block, metadata = ArrowBlockAccessor.merge_sorted_blocks(
+            [BlockAccessor.for_block(block).to_arrow() for block in blocks],
+            key, _descending)
+        return BlockAccessor.for_block(block).to_pandas(), metadata
 
     @staticmethod
     def aggregate_combined_blocks(blocks: List[Block[PandasRow]],
                                   key: GroupKeyT, aggs: Tuple[AggregateFn]
                                   ) -> Tuple[Block[PandasRow], BlockMetadata]:
-        # TODO: to be implemented
-        raise NotImplementedError
+        # TODO: A workaround to pass tests. Not efficient.
+        block, metadata = ArrowBlockAccessor.aggregate_combined_blocks(
+            [BlockAccessor.for_block(block).to_arrow() for block in blocks],
+            key, aggs)
+        return BlockAccessor.for_block(block).to_pandas(), metadata

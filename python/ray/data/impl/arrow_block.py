@@ -27,6 +27,7 @@ class ArrowRow(TableRow):
         return {k: v[0] for k, v in self._row.to_pydict().items()}
 
     def __getitem__(self, key: str) -> Any:
+        assert isinstance(key, str)
         col = self._row[key]
         if len(col) == 0:
             return None
