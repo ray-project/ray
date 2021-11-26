@@ -56,9 +56,12 @@ PoolManager::PoolManager(const std::vector<ConcurrencyGroup> &concurrency_groups
     }
     name_to_thread_pool_index_[name] = pool;
   }
-  // If max concurrency of default group is 1, the tasks of default group
-  // will be performed in main thread instead of any executor pool.
-  if (default_group_max_concurrency > 1) {
+  // If max concurrency of default group is 1 and there is no other concurrency group of
+  // this actor, the tasks of default group will be performed in main thread instead of
+  // any executor pool, otherwise tasks in any concurrency group should be performed in
+  // the thread pools instead of main thread.
+  if (default_group_max_concurrency > 1 || !concurrency_groups.empty()) {
+    /// The concurrency group is enabled.
     default_thread_pool_ =
         std::make_shared<BoundedExecutor>(default_group_max_concurrency);
   }
