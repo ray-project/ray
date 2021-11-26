@@ -2,7 +2,7 @@ import logging
 from typing import Type
 
 from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.dqn.simple_q import SimpleQTrainer
+from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.agents.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -171,7 +171,7 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-class SACTrainer(SimpleQTrainer):
+class SACTrainer(DQNTrainer):
     """Soft Actor Critic (SAC) Trainer class.
 
     This file defines the distributed Trainer class for the soft actor critic
@@ -187,11 +187,11 @@ class SACTrainer(SimpleQTrainer):
         super().__init__(*args, **kwargs)
 
     @classmethod
-    @override(SimpleQTrainer)
+    @override(DQNTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
 
-    @override(SimpleQTrainer)
+    @override(DQNTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
         super().validate_config(config)
 
@@ -211,7 +211,7 @@ class SACTrainer(SimpleQTrainer):
                 "Trying to import tfp results in the following error:")
             try_import_tfp(error=True)
 
-    @override(SimpleQTrainer)
+    @override(DQNTrainer)
     def get_default_policy_class(self,
                                  config: TrainerConfigDict) -> Type[Policy]:
         if config["framework"] == "torch":
