@@ -19,6 +19,7 @@
     "@types/react-redux": "^7.1.7",
     "@types/react-router-dom": "^5.1.3",
     "@types/react-window": "^1.8.2",
+    "@cypress/request": "2.88.7",
     "axios": "^0.21.1",
     "classnames": "^2.2.6",
     "dayjs": "^1.9.4",
@@ -34,7 +35,6 @@
     "typeface-roboto": "0.0.75",
     "typescript": "3.8.3",
     "use-debounce": "^3.4.3",
-    "@cypress/request": "2.88.7"
   },
   "devDependencies": {
     "eslint-plugin-import": "2.20.1",
