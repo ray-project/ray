@@ -14,8 +14,6 @@
 
 #include "ray/core_worker/transport/concurrency_group_manager.h"
 
-#include <thread>
-
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/test_util.h"
@@ -24,51 +22,46 @@
 namespace ray {
 namespace core {
 
-template <typename ExecutorType>
-class MockConcurrencyGroupManager : public ConcurrencyGroupManager<ExecutorType> {};
-
-class MockExecutor {};
-
-TEST(ConcurrencyGroupManagerTest, TestSkipAlreadyProcessedByClient111) {
+TEST(ConcurrencyGroupManagerTest, TestEmptyConcurrencyGroupManager) {
   static auto empty = std::make_shared<ray::EmptyFunctionDescriptor>();
-  {
-    ConcurrencyGroupManager<FiberState> manager;
-    auto executor = manager.GetExecutor("", empty);
-    ASSERT_EQ(manager.GetDefaultExecutor(), executor);
-  }
+  ConcurrencyGroupManager<FiberState> manager;
+  auto executor = manager.GetExecutor("", empty);
+  ASSERT_EQ(manager.GetDefaultExecutor(), executor);
+}
 
-  {
-    auto func_1_in_io_group =
-        FunctionDescriptorBuilder::BuildPython("io_module", "io_class", "io_func1", "");
-    auto func_2_in_io_group =
-        FunctionDescriptorBuilder::BuildPython("io_module", "io_class", "io_func2", "");
-    auto func_1_in_executing_group = FunctionDescriptorBuilder::BuildPython(
-        "executing_module", "executing_class", "executing_func1", "");
-    auto func_2_in_executing_group = FunctionDescriptorBuilder::BuildPython(
-        "executing_module", "executing_class", "executing_func2", "");
-    const std::vector<ray::FunctionDescriptor> fds_in_io_group = {func_1_in_io_group,
-                                                                  func_2_in_io_group};
+TEST(ConcurrencyGroupManagerTest, TestBasicConcurrencyGroupManager) {
+  static auto empty = std::make_shared<ray::EmptyFunctionDescriptor>();
 
-    const std::vector<ray::FunctionDescriptor> fds_in_executing_group = {
-        func_1_in_executing_group, func_2_in_executing_group};
+  auto func_1_in_io_group =
+      FunctionDescriptorBuilder::BuildPython("io_module", "io_class", "io_func1", "");
+  auto func_2_in_io_group =
+      FunctionDescriptorBuilder::BuildPython("io_module", "io_class", "io_func2", "");
+  auto func_1_in_executing_group = FunctionDescriptorBuilder::BuildPython(
+      "executing_module", "executing_class", "executing_func1", "");
+  auto func_2_in_executing_group = FunctionDescriptorBuilder::BuildPython(
+      "executing_module", "executing_class", "executing_func2", "");
+  const std::vector<ray::FunctionDescriptor> fds_in_io_group = {func_1_in_io_group,
+                                                                func_2_in_io_group};
 
-    std::vector<ConcurrencyGroup> defined_concurrency_groups = {
-        {"io_group", 2, fds_in_io_group}, {"executing_group", 4, fds_in_executing_group}};
+  const std::vector<ray::FunctionDescriptor> fds_in_executing_group = {
+      func_1_in_executing_group, func_2_in_executing_group};
 
-    ConcurrencyGroupManager<BoundedExecutor> manager(defined_concurrency_groups, 3);
-    ASSERT_EQ(manager.GetDefaultExecutor()->GetMaxConcurrency(), 3);
-    ASSERT_EQ(manager.GetExecutor("io_group", empty)->GetMaxConcurrency(), 2);
-    ASSERT_EQ(manager.GetExecutor("executing_group", empty)->GetMaxConcurrency(), 4);
+  std::vector<ConcurrencyGroup> defined_concurrency_groups = {
+      {"io_group", 2, fds_in_io_group}, {"executing_group", 4, fds_in_executing_group}};
 
-    ASSERT_EQ(manager.GetExecutor("", func_1_in_io_group)->GetMaxConcurrency(), 2);
-    ASSERT_EQ(manager.GetExecutor("", func_2_in_io_group)->GetMaxConcurrency(), 2);
-    auto func_3_in_io_group =
-        FunctionDescriptorBuilder::BuildPython("io_module", "io_class", "io_func3", "");
-    ASSERT_EQ(manager.GetExecutor("", func_3_in_io_group)->GetMaxConcurrency(), 3);
+  ConcurrencyGroupManager<BoundedExecutor> manager(defined_concurrency_groups, 3);
+  ASSERT_EQ(manager.GetDefaultExecutor()->GetMaxConcurrency(), 3);
+  ASSERT_EQ(manager.GetExecutor("io_group", empty)->GetMaxConcurrency(), 2);
+  ASSERT_EQ(manager.GetExecutor("executing_group", empty)->GetMaxConcurrency(), 4);
 
-    ASSERT_EQ(manager.GetExecutor("", func_1_in_executing_group)->GetMaxConcurrency(), 4);
-    ASSERT_EQ(manager.GetExecutor("", func_2_in_executing_group)->GetMaxConcurrency(), 4);
-  }
+  ASSERT_EQ(manager.GetExecutor("", func_1_in_io_group)->GetMaxConcurrency(), 2);
+  ASSERT_EQ(manager.GetExecutor("", func_2_in_io_group)->GetMaxConcurrency(), 2);
+  auto func_3_in_io_group =
+      FunctionDescriptorBuilder::BuildPython("io_module", "io_class", "io_func3", "");
+  ASSERT_EQ(manager.GetExecutor("", func_3_in_io_group)->GetMaxConcurrency(), 3);
+
+  ASSERT_EQ(manager.GetExecutor("", func_1_in_executing_group)->GetMaxConcurrency(), 4);
+  ASSERT_EQ(manager.GetExecutor("", func_2_in_executing_group)->GetMaxConcurrency(), 4);
 }
 
 }  // namespace core

@@ -35,29 +35,7 @@ class ConcurrencyGroupManager final {
  public:
   explicit ConcurrencyGroupManager(
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      const int32_t max_concurrency_for_default_concurrency_group = 1) {
-    for (auto &group : concurrency_groups) {
-      const auto name = group.name;
-      const auto max_concurrency = group.max_concurrency;
-      auto executor = std::make_shared<ExecutorType>(max_concurrency);
-      auto &fds = group.function_descriptors;
-      for (auto fd : fds) {
-        functions_to_executor_index_[fd->ToString()] = executor;
-      }
-      name_to_executor_index_[name] = executor;
-    }
-
-    // If max concurrency of default group is 1 and there is no other concurrency group of
-    // this actor, the tasks of default group will be performed in main thread instead of
-    // any executor pool, otherwise tasks in any concurrency group should be performed in
-    // the thread pools instead of main thread.
-    if (ExecutorType::NeedDefaultExecutor(
-            max_concurrency_for_default_concurrency_group) ||
-        !concurrency_groups.empty()) {
-      defatult_executor_ =
-          std::make_shared<ExecutorType>(max_concurrency_for_default_concurrency_group);
-    }
-  }
+      const int32_t max_concurrency_for_default_concurrency_group = 1);
 
   /// Get the corresponding concurrency group executor by the give concurrency group or
   /// function descriptor.
@@ -71,48 +49,13 @@ class ConcurrencyGroupManager final {
   /// if concurrency_group_name is given.
   /// Otherwise return the corresponding executor by the given function descriptor.
   std::shared_ptr<ExecutorType> GetExecutor(const std::string &concurrency_group_name,
-                                            const ray::FunctionDescriptor &fd) {
-    if (!concurrency_group_name.empty()) {
-      auto it = name_to_executor_index_.find(concurrency_group_name);
-      /// TODO(qwang): Fail the user task.
-      RAY_CHECK(it != name_to_executor_index_.end())
-          << "Failed to look up the executor of the given concurrency group "
-          << concurrency_group_name << " . It might be that you didn't define "
-          << "the concurrency group " << concurrency_group_name;
-      return it->second;
-    }
-    /// Code path of that this task wasn't specified in a concurrency group addtionally.
-    /// Use the predefined concurrency group.
-    if (functions_to_executor_index_.find(fd->ToString()) !=
-        functions_to_executor_index_.end()) {
-      return functions_to_executor_index_[fd->ToString()];
-    }
-    return defatult_executor_;
-  }
+                                            const ray::FunctionDescriptor &fd);
 
   /// Get the default executor.
-  std::shared_ptr<ExecutorType> GetDefaultExecutor() const { return defatult_executor_; }
+  std::shared_ptr<ExecutorType> GetDefaultExecutor() const;
 
   /// Stop and join the executors that the this manager owns.
-  void Stop() {
-    if (defatult_executor_) {
-      RAY_LOG(DEBUG) << "Default executor is stopping.";
-      defatult_executor_->Stop();
-      RAY_LOG(INFO)
-          << "Default executor is joining. If the 'Default executor is joined.' "
-             "message is not printed after this, the worker is probably "
-             "hanging because the actor task is running an infinite loop.";
-      defatult_executor_->Join();
-      RAY_LOG(INFO) << "Default executor is joined.";
-    }
-
-    for (const auto &it : name_to_executor_index_) {
-      it.second->Stop();
-    }
-    for (const auto &it : name_to_executor_index_) {
-      it.second->Join();
-    }
-  }
+  void Stop();
 
  private:
   // Map from the name to their corresponding concurrency group executor.
