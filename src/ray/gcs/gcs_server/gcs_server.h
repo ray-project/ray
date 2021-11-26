@@ -142,9 +142,6 @@ class GcsServer {
   /// server address directly to raylets and get rid of this lookup.
   void StoreGcsServerAddressInRedis();
 
-  /// Collect stats from each module for every (metrics_report_interval_ms / 2) ms.
-  void CollectStats();
-
   /// Print debug info periodically.
   std::string GetDebugState() const;
 

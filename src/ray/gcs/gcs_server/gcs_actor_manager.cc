@@ -21,6 +21,13 @@
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/stats.h"
 
+DEFINE_stats(num_registered_actors, "operation count", ("Method"), (), ray::stats::GAUGE);
+DEFINE_stats(num_created_actors, "operation count", ("Method"), (), ray::stats::GAUGE);
+DEFINE_stats(num_destroyed_actors, "operation count", ("Method"), (), ray::stats::GAUGE);
+DEFINE_stats(num_named_actors, "operation count", ("Method"), (), ray::stats::GAUGE);
+DEFINE_stats(num_unresolved_actors, "operation count", ("Method"), (), ray::stats::GAUGE);
+DEFINE_stats(num_pending_actors, "operation count", ("Method"), (), ray::stats::GAUGE);
+
 namespace ray {
 namespace gcs {
 
@@ -713,10 +720,6 @@ absl::flat_hash_set<ActorID> GcsActorManager::GetUnresolvedActorsByOwnerWorker(
   return actor_ids;
 }
 
-void GcsActorManager::CollectStats() const {
-  stats::PendingActors.Record(pending_actors_.size());
-}
-
 void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                    const ray::WorkerID &worker_id) {
   OnWorkerDead(node_id, worker_id, rpc::WorkerExitType::SYSTEM_ERROR_EXIT);
@@ -1266,6 +1269,12 @@ std::string GcsActorManager::DebugString() const {
   for (const auto &pair : named_actors_) {
     num_named_actors += pair.second.size();
   }
+  auto num_pending_actors = pending_actors_.size();
+  auto num_created_actors = created_actors_.size();
+  auto num_unresolved_actors = unresolved_actors_.size();
+  auto num_destroyed_actors = destroyed_actors_.size();
+  auto num_registered_actors = registered_actors_.size();
+
   std::ostringstream stream;
   stream << "GcsActorManager: "
          << "\n- RegisterActor request count: "
@@ -1280,16 +1289,25 @@ std::string GcsActorManager::DebugString() const {
          << "\n- KillActor request count: " << counts_[CountType::KILL_ACTOR_REQUEST]
          << "\n- ListNamedActors request count: "
          << counts_[CountType::LIST_NAMED_ACTORS_REQUEST]
-         << "\n- Registered actors count: " << registered_actors_.size()
-         << "\n- Destroyed actors count: " << destroyed_actors_.size()
+         << "\n- Registered actors count: " << num_registered_actors
+         << "\n- Destroyed actors count: " << num_destroyed_actors
          << "\n- Named actors count: " << num_named_actors
-         << "\n- Unresolved actors count: " << unresolved_actors_.size()
-         << "\n- Pending actors count: " << pending_actors_.size()
-         << "\n- Created actors count: " << created_actors_.size()
+         << "\n- Unresolved actors count: " << num_unresolved_actors
+         << "\n- Pending actors count: " << num_pending_actors
+         << "\n- Created actors count: " << num_created_actors
          << "\n- owners_: " << owners_.size()
          << "\n- actor_to_register_callbacks_: " << actor_to_register_callbacks_.size()
          << "\n- actor_to_create_callbacks_: " << actor_to_create_callbacks_.size()
          << "\n- sorted_destroyed_actor_list_: " << sorted_destroyed_actor_list_.size();
+
+  // Collect metrics
+  stats::PendingActors.Record(pending_actors_.size());
+  STATS_num_registered_actors.Record(num_registered_actors);
+  STATS_num_created_actors.Record(num_created_actors);
+  STATS_num_destroyed_actors.Record(num_destroyed_actors);
+  STATS_num_named_actors.Record(num_named_actors);
+  STATS_num_unresolved_actors.Record(num_unresolved_actors);
+  STATS_num_pending_actors.Record(num_pending_actors);
   return stream.str();
 }
 

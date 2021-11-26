@@ -300,9 +300,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// to.
   void CleanPlacementGroupIfNeededWhenActorDead(const ActorID &actor_id);
 
-  /// Collect stats from gcs placement group manager in-memory data structures.
-  void CollectStats() const;
-
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///

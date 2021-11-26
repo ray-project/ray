@@ -39,6 +39,8 @@ DEFINE_stats(registered_placement_group, "Number of total registered placement g
              (), (), ray::stats::GAUGE);
 DEFINE_stats(infeasible_placement_group, "Number of total infeasible placement groups",
              (), (), ray::stats::GAUGE);
+DEFINE_stats(named_placement_group, "Number of named placement groups", (), (),
+             ray::stats::GAUGE);
 
 namespace ray {
 namespace gcs {
@@ -774,12 +776,6 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
   }
 }
 
-void GcsPlacementGroupManager::CollectStats() const {
-  STATS_pending_placement_group.Record(pending_placement_groups_.size());
-  STATS_registered_placement_group.Record(registered_placement_groups_.size());
-  STATS_infeasible_placement_group.Record(infeasible_placement_groups_.size());
-}
-
 void GcsPlacementGroupManager::Tick() {
   UpdatePlacementGroupLoad();
   // To avoid scheduling exhaution in some race conditions.
@@ -859,10 +855,13 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
 }
 
 std::string GcsPlacementGroupManager::DebugString() const {
-  uint64_t num_pgs = 0;
+  uint64_t named_num_pgs = 0;
   for (auto it : named_placement_groups_) {
-    num_pgs += it.second.size();
+    named_num_pgs += it.second.size();
   }
+  auto pending_pgs = pending_placement_groups_.size();
+  auto registered_pgs = registered_placement_groups_.size();
+  auto infeasible_pgs = infeasible_placement_groups_.size();
   std::ostringstream stream;
   stream << "GcsPlacementGroupManager: "
          << "\n- CreatePlacementGroup request count: "
@@ -879,10 +878,16 @@ std::string GcsPlacementGroupManager::DebugString() const {
          << counts_[CountType::GET_NAMED_PLACEMENT_GROUP_REQUEST]
          << "\n- Scheduling pending placement group count: "
          << counts_[CountType::SCHEDULING_PENDING_PLACEMENT_GROUP]
-         << "\n- Registered placement groups count: "
-         << registered_placement_groups_.size()
-         << "\n- Named placement group count: " << num_pgs
-         << "\n- Pending placement groups count: " << pending_placement_groups_.size();
+         << "\n- Registered placement groups count: " << registered_pgs
+         << "\n- Named placement group count: " << named_num_pgs
+         << "\n- Pending placement groups count: " << pending_pgs
+         << "\n- Infeasible placement groups count: " << infeasible_pgs;
+
+  // Collect metrics.
+  STATS_pending_placement_group.Record(pending_pgs);
+  STATS_registered_placement_group.Record(registered_pgs);
+  STATS_infeasible_placement_group.Record(infeasible_pgs);
+  STATS_named_placement_group.Record(named_num_pgs);
   return stream.str();
 }
 
