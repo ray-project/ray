@@ -41,6 +41,8 @@ class BoundedExecutor {
 
   explicit BoundedExecutor(int max_concurrency);
 
+  int32_t GetMaxConcurrency() const;
+
   /// Posts work to the pool, blocking if no free threads are available.
   void PostBlocking(std::function<void()> fn);
 

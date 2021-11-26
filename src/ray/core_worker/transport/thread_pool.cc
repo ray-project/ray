@@ -36,6 +36,8 @@ void BoundedExecutor::PostBlocking(std::function<void()> fn) {
   });
 }
 
+int32_t BoundedExecutor::GetMaxConcurrency() const { return max_concurrency_; }
+
 /// Stop the thread pool.
 void BoundedExecutor::Stop() { pool_.stop(); }
 

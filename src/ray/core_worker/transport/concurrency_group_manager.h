@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2020-2021 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,13 +14,23 @@
 
 #pragma once
 
-namespace ray {
+#include <memory>
 
+#include "ray/common/task/task_spec.h"
+
+namespace ray {
 namespace core {
 
 /// A manager that manages a set of concurrency group executors, which will perform
 /// the methods defined in one concurrency group.
-template <typename ConcurrencyGroupExecutorType>
+///
+/// We will create an executor for every concurrency group and create an executor
+/// for the default concurrency group if it's necessary.
+/// Note that threaded actor and ascycio actor are the actors with a default concurrency
+/// group.
+///
+/// \param ExecutorType The type of executor to execute tasks in concurrency groups.
+template <typename ExecutorType>
 class ConcurrencyGroupManager final {
  public:
   explicit ConcurrencyGroupManager(
@@ -29,7 +39,7 @@ class ConcurrencyGroupManager final {
     for (auto &group : concurrency_groups) {
       const auto name = group.name;
       const auto max_concurrency = group.max_concurrency;
-      auto executor = std::make_shared<ConcurrencyGroupExecutorType>(max_concurrency);
+      auto executor = std::make_shared<ExecutorType>(max_concurrency);
       auto &fds = group.function_descriptors;
       for (auto fd : fds) {
         functions_to_executor_index_[fd->ToString()] = executor;
@@ -41,22 +51,27 @@ class ConcurrencyGroupManager final {
     // this actor, the tasks of default group will be performed in main thread instead of
     // any executor pool, otherwise tasks in any concurrency group should be performed in
     // the thread pools instead of main thread.
-    if (ConcurrencyGroupExecutorType::NeedDefaultExecutor(
+    if (ExecutorType::NeedDefaultExecutor(
             max_concurrency_for_default_concurrency_group) ||
         !concurrency_groups.empty()) {
-      defatult_executor_ = std::make_shared<ConcurrencyGroupExecutorType>(
-          max_concurrency_for_default_concurrency_group);
+      defatult_executor_ =
+          std::make_shared<ExecutorType>(max_concurrency_for_default_concurrency_group);
     }
   }
 
   /// Get the corresponding concurrency group executor by the give concurrency group or
   /// function descriptor.
   ///
-  /// Return the corresponding executor of the concurrency group
+  /// \param concurrency_group_name The concurrency group name of the executor that to
+  /// get.
+  /// \param fd The function descriptor that's used to get the corresponding exeutor
+  /// if the first parameter concurrency_group_name is not gaven.
+  ///
+  /// \return Return the corresponding executor of the concurrency group
   /// if concurrency_group_name is given.
   /// Otherwise return the corresponding executor by the given function descriptor.
-  std::shared_ptr<ConcurrencyGroupExecutorType> GetExecutor(
-      const std::string &concurrency_group_name, ray::FunctionDescriptor fd) {
+  std::shared_ptr<ExecutorType> GetExecutor(const std::string &concurrency_group_name,
+                                            const ray::FunctionDescriptor &fd) {
     if (!concurrency_group_name.empty()) {
       auto it = name_to_executor_index_.find(concurrency_group_name);
       /// TODO(qwang): Fail the user task.
@@ -74,6 +89,9 @@ class ConcurrencyGroupManager final {
     }
     return defatult_executor_;
   }
+
+  /// Get the default executor.
+  std::shared_ptr<ExecutorType> GetDefaultExecutor() const { return defatult_executor_; }
 
   /// Stop and join the executors that the this manager owns.
   void Stop() {
@@ -98,15 +116,16 @@ class ConcurrencyGroupManager final {
 
  private:
   // Map from the name to their corresponding concurrency group executor.
-  absl::flat_hash_map<std::string, std::shared_ptr<ConcurrencyGroupExecutorType>>
-      name_to_executor_index_;
+  absl::flat_hash_map<std::string, std::shared_ptr<ExecutorType>> name_to_executor_index_;
 
   // Map from the FunctionDescriptors to their corresponding concurrency group executor.
-  absl::flat_hash_map<std::string, std::shared_ptr<ConcurrencyGroupExecutorType>>
+  absl::flat_hash_map<std::string, std::shared_ptr<ExecutorType>>
       functions_to_executor_index_;
 
   // The default concurrency group executor. It's nullptr if its max concurrency is 1.
-  std::shared_ptr<ConcurrencyGroupExecutorType> defatult_executor_ = nullptr;
+  std::shared_ptr<ExecutorType> defatult_executor_ = nullptr;
+
+  friend class ConcurrencyGroupManagerTest;
 };
 
 }  // namespace core
