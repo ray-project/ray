@@ -644,70 +644,72 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   request->mutable_resource_mapping()->CopyFrom(assigned_resources);
   request->set_intended_worker_id(addr.worker_id.Binary());
-  client.PushNormalTask(
-      std::move(request),
-      [this, task_spec, task_id, is_actor, is_actor_creation, scheduling_key, addr,
-       assigned_resources](Status status, const rpc::PushTaskReply &reply) {
-        {
-          RAY_LOG(DEBUG) << "Task " << task_id << " finished from worker "
-                         << addr.worker_id << " of raylet " << addr.raylet_id;
-          absl::MutexLock lock(&mu_);
-          executing_tasks_.erase(task_id);
+  client.PushNormalTask(std::move(request), [this, task_spec, task_id, is_actor,
+                                             is_actor_creation, scheduling_key, addr,
+                                             assigned_resources](
+                                                Status status,
+                                                const rpc::PushTaskReply &reply) {
+    {
+      RAY_LOG(DEBUG) << "Task " << task_id << " finished from worker " << addr.worker_id
+                     << " of raylet " << addr.raylet_id;
+      absl::MutexLock lock(&mu_);
+      executing_tasks_.erase(task_id);
 
-          // Decrement the number of tasks in flight to the worker
-          auto &lease_entry = worker_to_lease_entry_[addr];
-          RAY_CHECK(lease_entry.tasks_in_flight > 0);
-          lease_entry.tasks_in_flight--;
+      // Decrement the number of tasks in flight to the worker
+      auto &lease_entry = worker_to_lease_entry_[addr];
+      RAY_CHECK(lease_entry.tasks_in_flight > 0);
+      lease_entry.tasks_in_flight--;
 
-          // Decrement the total number of tasks in flight to any worker with the current
-          // scheduling_key.
-          auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-          RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
-          RAY_CHECK(scheduling_key_entry.total_tasks_in_flight >= 1);
-          scheduling_key_entry.total_tasks_in_flight--;
+      // Decrement the total number of tasks in flight to any worker with the current
+      // scheduling_key.
+      auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+      RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
+      RAY_CHECK(scheduling_key_entry.total_tasks_in_flight >= 1);
+      scheduling_key_entry.total_tasks_in_flight--;
 
-          if (reply.worker_exiting()) {
-            RAY_LOG(DEBUG) << "Worker " << addr.worker_id
-                           << " replied that it is exiting.";
-            // The worker is draining and will shutdown after it is done. Don't return
-            // it to the Raylet since that will kill it early.
-            worker_to_lease_entry_.erase(addr);
-            auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-            scheduling_key_entry.active_workers.erase(addr);
-            if (scheduling_key_entry.CanDelete()) {
-              // We can safely remove the entry keyed by scheduling_key from the
-              // scheduling_key_entries_ hashmap.
-              scheduling_key_entries_.erase(scheduling_key);
-            }
-          } else if (reply.task_stolen()) {
-            // If the task was stolen, we push it to the thief worker & call OnWorkerIdle
-            // in the StealTasks callback within StealTasksOrReturnWorker. So we don't
-            // need to do anything here.
-            return;
-          } else if (!status.ok() || !is_actor_creation) {
-            RAY_LOG(DEBUG) << "Task failed with error: " << status;
-            // Successful actor creation leases the worker indefinitely from the raylet.
-            OnWorkerIdle(addr, scheduling_key,
-                         /*error=*/!status.ok(), assigned_resources);
-          }
+      if (reply.worker_exiting()) {
+        RAY_LOG(DEBUG) << "Worker " << addr.worker_id << " replied that it is exiting.";
+        // The worker is draining and will shutdown after it is done. Don't return
+        // it to the Raylet since that will kill it early.
+        worker_to_lease_entry_.erase(addr);
+        auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+        scheduling_key_entry.active_workers.erase(addr);
+        if (scheduling_key_entry.CanDelete()) {
+          // We can safely remove the entry keyed by scheduling_key from the
+          // scheduling_key_entries_ hashmap.
+          scheduling_key_entries_.erase(scheduling_key);
         }
-        if (!status.ok()) {
-          // TODO: It'd be nice to differentiate here between process vs node
-          // failure (e.g., by contacting the raylet). If it was a process
-          // failure, it may have been an application-level error and it may
-          // not make sense to retry the task.
-          RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-              task_id,
-              is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
-              &status));
-        } else {
-          if (!task_spec.GetMessage().retry_exceptions() ||
-              !reply.is_application_level_error() ||
-              !task_finisher_->RetryTaskIfPossible(task_id)) {
-            task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
-          }
-        }
-      });
+      } else if (reply.task_stolen()) {
+        // If the task was stolen, we push it to the thief worker & call OnWorkerIdle
+        // in the StealTasks callback within StealTasksOrReturnWorker. So we don't
+        // need to do anything here.
+        return;
+      } else if (!status.ok() || !is_actor_creation) {
+        RAY_LOG(DEBUG) << "Task failed with error: " << status;
+        // Successful actor creation leases the worker indefinitely from the raylet.
+        OnWorkerIdle(addr, scheduling_key,
+                     /*error=*/!status.ok(), assigned_resources);
+      }
+    }
+    if (!status.ok()) {
+      // TODO: It'd be nice to differentiate here between process vs node
+      // failure (e.g., by contacting the raylet). If it was a process
+      // failure, it may have been an application-level error and it may
+      // not make sense to retry the task.
+      rpc::ErrorType error_type =
+          is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED;
+      if (status.IsFunctionLoadingError()) {
+        error_type = rpc::ErrorType::FUNCTION_LOADING_ERROR;
+      }
+      RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(task_id, error_type, &status));
+    } else {
+      if (!task_spec.GetMessage().retry_exceptions() ||
+          !reply.is_application_level_error() ||
+          !task_finisher_->RetryTaskIfPossible(task_id)) {
+        task_finisher_->CompletePendingTask(task_id, reply, addr.ToProto());
+      }
+    }
+  });
 }
 
 Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,

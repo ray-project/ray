@@ -116,40 +116,42 @@ enum ErrorType {
   // but this object is not reconstructable (created by actor, ray.put, or a
   // borowed ObjectRef).
   OBJECT_UNRECONSTRUCTABLE = 2;
+  // Indicates that a task failed because the function or class couldn't be loaded.
+  FUNCTION_LOADING_ERROR = 3;
   // Indicates that a task failed due to user code failure.
-  TASK_EXECUTION_EXCEPTION = 3;
+  TASK_EXECUTION_EXCEPTION = 4;
   // Indicates that the object has been placed in plasma. This error shouldn't
   // ever be exposed to user code; it is only used internally to indicate the
   // result of a direct call has been placed in plasma.
-  OBJECT_IN_PLASMA = 4;
+  OBJECT_IN_PLASMA = 5;
   // Indicates that an object has been cancelled.
-  TASK_CANCELLED = 5;
+  TASK_CANCELLED = 6;
   // Indicates that the GCS service failed to create the actor.
-  ACTOR_CREATION_FAILED = 6;
+  ACTOR_CREATION_FAILED = 7;
   // Indicates that the runtime_env failed to be created.
-  RUNTIME_ENV_SETUP_FAILED = 7;
+  RUNTIME_ENV_SETUP_FAILED = 8;
   // This object was lost from distributed memory to a node failure or system
   // error. We use this error when lineage reconstruction is disabled.
-  OBJECT_LOST = 8;
+  OBJECT_LOST = 9;
   // This object is unreachable because its owner has died.
-  OWNER_DIED = 9;
+  OWNER_DIED = 10;
   // This object is unreachable because the owner is alive but no longer has a
   // record of this object, meaning that the physical object has likely already
   // been deleted from distributed memory. This can happen in distributed
   // reference counting, due to a bug or corner case.
-  OBJECT_DELETED = 10;
+  OBJECT_DELETED = 11;
   // Indicates there is some error when resolving the dependence
-  DEPENDENCY_RESOLUTION_FAILED = 11;
+  DEPENDENCY_RESOLUTION_FAILED = 12;
   // The object is reconstructable but we have already exceeded its maximum
   // number of task retries.
-  OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED = 12;
+  OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED = 13;
   // The object is reconstructable, but its lineage was evicted due to memory
   // pressure.
-  OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED = 13;
+  OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED = 14;
   // We use this error for object fetches that have timed out. This error will
   // get thrown if an object appears to be created, but the requestor is not
   // able to fetch it after the configured timeout.
-  OBJECT_FETCH_TIMED_OUT = 14;
+  OBJECT_FETCH_TIMED_OUT = 15;
 }
 
 /// The task exception encapsulates all information about task

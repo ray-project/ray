@@ -53,6 +53,7 @@ namespace ray {
 #define STATUS_CODE_UNKNOWN "Unknown"
 #define STATUS_CODE_NOT_FOUND "NotFound"
 #define STATUS_CODE_DISCONNECTED "Disconnected"
+#define STATUS_CODE_FUNCTION_LOADING_ERROR "FunctionLoadingError"
 // object store status
 #define STATUS_CODE_OBJECT_EXISTS "ObjectExists"
 #define STATUS_CODE_OBJECT_NOT_FOUND "ObjectNotFound"
@@ -99,6 +100,7 @@ std::string Status::CodeAsString() const {
       {StatusCode::CreationTaskError, STATUS_CODE_CREATION_TASK_ERROR},
       {StatusCode::NotFound, STATUS_CODE_NOT_FOUND},
       {StatusCode::Disconnected, STATUS_CODE_DISCONNECTED},
+      {StatusCode::FunctionLoadingError, STATUS_CODE_FUNCTION_LOADING_ERROR},
       {StatusCode::ObjectExists, STATUS_CODE_OBJECT_EXISTS},
       {StatusCode::ObjectNotFound, STATUS_CODE_OBJECT_NOT_FOUND},
       {StatusCode::ObjectAlreadySealed, STATUS_CODE_OBJECT_STORE_ALREADY_SEALED},
@@ -132,6 +134,7 @@ StatusCode Status::StringToCode(const std::string &str) {
       {STATUS_CODE_CREATION_TASK_ERROR, StatusCode::CreationTaskError},
       {STATUS_CODE_NOT_FOUND, StatusCode::NotFound},
       {STATUS_CODE_DISCONNECTED, StatusCode::Disconnected},
+      {STATUS_CODE_FUNCTION_LOADING_ERROR, StatusCode::FunctionLoadingError},
       {STATUS_CODE_OBJECT_EXISTS, StatusCode::ObjectExists},
       {STATUS_CODE_OBJECT_NOT_FOUND, StatusCode::ObjectNotFound},
       {STATUS_CODE_OBJECT_STORE_ALREADY_SEALED, StatusCode::ObjectAlreadySealed},

@@ -1583,7 +1583,7 @@ def start_raylet(redis_address,
         f"--metrics-agent-port={metrics_agent_port}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
-        f"--force-load-code-from-local={force_load_code_from_local}"
+        f"--force-load-code-from-local={force_load_code_from_local}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
     if redis_password:

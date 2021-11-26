@@ -554,7 +554,8 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         metrics_export_port=metrics_export_port,
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
-        ray_debugger_external=ray_debugger_external)
+        ray_debugger_external=ray_debugger_external,
+        force_load_code_from_local=force_load_code_from_local)
     if head:
         # Use default if port is none, allocate an available port if port is 0
         if port is None:

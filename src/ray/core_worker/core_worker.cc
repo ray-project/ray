@@ -2181,6 +2181,8 @@ Status CoreWorker::ExecuteTask(const TaskSpecification &task_spec,
     Exit(rpc::WorkerExitType::INTENDED_EXIT, creation_task_exception_pb_bytes);
   } else if (status.IsUnexpectedSystemExit()) {
     Exit(rpc::WorkerExitType::SYSTEM_ERROR_EXIT, creation_task_exception_pb_bytes);
+  } else if (status.IsFunctionLoadingError()) {
+    Exit(rpc::WorkerExitType::SYSTEM_ERROR_EXIT, creation_task_exception_pb_bytes);
   } else if (!status.ok()) {
     RAY_LOG(FATAL) << "Unexpected task status type : " << status;
   }

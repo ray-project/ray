@@ -174,6 +174,9 @@ if __name__ == "__main__":
     if raylet_ip_address is None:
         raylet_ip_address = args.node_ip_address
 
+    if args.force_load_code_from_local:
+        ray.worker.global_worker.set_force_load_code_from_local()
+
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
         raylet_ip_address=raylet_ip_address,
@@ -184,6 +187,7 @@ if __name__ == "__main__":
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
         metrics_agent_port=args.metrics_agent_port,
+        force_load_code_from_local=args.force_load_code_from_local,
     )
 
     node = ray.node.Node(
@@ -204,17 +208,15 @@ if __name__ == "__main__":
     # Add code search path to sys.path, set load_code_from_local.
     core_worker = ray.worker.global_worker.core_worker
     code_search_path = core_worker.get_job_config().code_search_path
-    if not args.force_load_code_from_local:
-        load_code_from_local = False
-        if code_search_path:
-            load_code_from_local = True
-            for p in code_search_path:
-                if os.path.isfile(p):
-                    p = os.path.dirname(p)
-                sys.path.insert(0, p)
-    else:
+    load_code_from_local = False
+    if code_search_path:
         load_code_from_local = True
-        ray.worker.global_worker.set_force_load_code_from_local()
+        for p in code_search_path:
+            if os.path.isfile(p):
+                p = os.path.dirname(p)
+            sys.path.insert(0, p)
+    if args.force_load_code_from_local:
+        load_code_from_local = True
     ray.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
     # Setup log file.

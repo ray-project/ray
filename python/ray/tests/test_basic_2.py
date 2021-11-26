@@ -17,6 +17,7 @@ from ray._private.test_utils import client_test_enabled
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.exceptions import GetTimeoutError
 from ray.exceptions import RayTaskError
+from ray.exceptions import FunctionLoadingError
 from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 if client_test_enabled():
     from ray.util.client import ray
@@ -763,6 +764,21 @@ def test_use_dynamic_function_and_class():
         foo_actor._ray_actor_creation_function_descriptor.function_id.binary())
     assert ray.worker.global_worker.gcs_client.internal_kv_exists(
         key_cls, namespace=KV_NAMESPACE_FUNCTION_TABLE)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
+@pytest.mark.parametrize(
+    "call_ray_start", ["ray start --head --force-load-code-from-local"],
+    indirect=True)
+def test_force_load_code_from_local(call_ray_start):
+    ray.init(address="auto")
+
+    @ray.remote
+    def f():
+        return 1
+
+    with pytest.raises(FunctionLoadingError):
+        ray.get(f.remote())
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ from ray.exceptions import (
     ObjectReconstructionFailedError,
     ObjectReconstructionFailedMaxAttemptsExceededError,
     ObjectReconstructionFailedLineageEvictedError, RaySystemError,
-    RuntimeEnvSetupError)
+    RuntimeEnvSetupError, FunctionLoadingError)
 from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
@@ -217,6 +217,8 @@ class SerializationContext:
                 return RayError.from_bytes(obj)
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return WorkerCrashedError()
+            elif error_type == ErrorType.Value("FUNCTION_LOADING_ERROR"):
+                return FunctionLoadingError()
             elif error_type == ErrorType.Value("ACTOR_DIED"):
                 if data:
                     pb_bytes = self._deserialize_msgpack_data(
