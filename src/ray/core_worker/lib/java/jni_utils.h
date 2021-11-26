@@ -569,10 +569,7 @@ inline jobject NativeRayObjectToJavaNativeRayObject(
     return nullptr;
   }
   auto metadata_ptr = rayObject->GetMetadata();
-  auto java_metadata_str = env->NewStringUTF(
-      reinterpret_cast<const char*>(metadata_ptr->Data()));
-  auto metadata_str = JavaStringToNativeString(env, java_metadata_str);
-  env->DeleteLocalRef(java_metadata_str);
+  auto metadata_str = std::string(reinterpret_cast<const char*>(metadata_ptr->Data()));
   auto java_metadata = NativeBufferToJavaByteArray(env, rayObject->GetMetadata());
   jobject java_obj;
   if (metadata_str.length() >=5 && metadata_str.substr(0, 5).compare("ARROW") == 0) {
