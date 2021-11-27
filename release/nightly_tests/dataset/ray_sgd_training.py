@@ -405,7 +405,7 @@ class TrainingWorker:
             # Following code emulates epoch based SGD training.
             print(f"Training... worker: {self.rank}, epoch: {epoch}")
             for i, _ in enumerate(
-                    training_dataset.to_torch(batch_size=self.batch_size)):
+                    training_dataset.to_torch(batch_size=self.batch_size, label_column="label")):
                 if i % 10000 == 0:
                     print(
                         f"epoch: {epoch}, worker: {self.rank}, processing batch: {i}"
@@ -535,14 +535,14 @@ if __name__ == "__main__":
     DROPOUT_PROB = 0.2
 
     if args.debug:
-        train_dataset_pipeline = train_dataset.repeat(NUM_EPOCHS) \
+        shards = train_dataset.repeat(NUM_EPOCHS) \
             .random_shuffle_each_window(_spread_resource_prefix="node:") \
             .split(num_workers)
         del train_dataset
 
         training_workers = [
-            TrainingWorker.remote(rank, shard)
-            for rank, shard in enumerate(BATCH_SIZE)
+            TrainingWorker.remote(rank, shard, BATCH_SIZE)
+            for rank, shard in enumerate(shards)
         ]
         ray.get([worker.train.remote() for worker in training_workers])
 
