@@ -40,6 +40,7 @@ DOCKER_NODE_SKELETON = {
     "mem_reservation": "3000m",
     "shm_size": "1200m",
     "volumes": [
+        # Todo: Remove
         "/Users/kai/coding/ray/python/ray/autoscaler:"
         "/home/ray/anaconda3/lib/python3.7/site-packages/ray/autoscaler:ro"
     ]

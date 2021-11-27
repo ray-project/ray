@@ -14,7 +14,15 @@ def _read_yaml(path: str):
         return yaml.safe_load(f)
 
 
-def _update_docker_compose(docker_compose_path: str, project_name: str):
+def _update_docker_compose(docker_compose_path: str, project_name: str) -> bool:
+    docker_compose_config = _read_yaml(docker_compose_path)
+
+    cmd = ["up", "-d"]
+    shutdown = False
+    if not docker_compose_config["services"]:
+        # If no more nodes, run `down` instead of `up`
+        cmd = ["down"]
+        shutdown = True
     try:
         subprocess.check_output([
             "docker",
@@ -22,14 +30,15 @@ def _update_docker_compose(docker_compose_path: str, project_name: str):
             "-f",
             docker_compose_path,
             "-p",
-            project_name,
-            "up",
-            "-d",
+            project_name
+        ] + cmd + [
             "--remove-orphans",
         ])
     except Exception as e:
         print(f"Ran into error when updating docker compose: {e}")
         # Ignore error
+
+    return shutdown
 
 
 def _get_ip(project_name: str,
@@ -99,11 +108,12 @@ def monitor_docker(docker_compose_path: str,
 
     # Force update
     next_update = time.monotonic() - 1.
-    while True:
+    shutdown = False
+    while not shutdown:
         new_docker_config = _read_yaml(docker_compose_path)
         if new_docker_config != docker_config:
             # Update cluster
-            _update_docker_compose(docker_compose_path, project_name)
+            shutdown = _update_docker_compose(docker_compose_path, project_name)
 
             # Force status update
             next_update = time.monotonic() - 1.
@@ -116,6 +126,8 @@ def monitor_docker(docker_compose_path: str,
 
         docker_config = new_docker_config
         time.sleep(0.1)
+
+    print("Cluster shut down, terminating monitoring script.")
 
 
 def start_monitor(config_file: str):
@@ -132,11 +144,9 @@ def start_monitor(config_file: str):
     project_name = provider_config["project_name"]
 
     volume_dir = provider_config["shared_volume_dir"]
-
     os.makedirs(volume_dir, mode=0o755, exist_ok=True)
 
     boostrap_config_path = os.path.join(volume_dir, "bootstrap_config.yaml")
-
     shutil.copy(config_file, boostrap_config_path)
 
     docker_compose_config_path = os.path.join(volume_dir,
@@ -149,6 +159,9 @@ def start_monitor(config_file: str):
 
     if os.path.exists(status_path):
         os.remove(status_path)
+        # Create empty file so it can be mounted
+        with open(status_path, "wt") as f:
+            f.write("{}")
 
     print(f"Starting monitor process. Please start Ray cluster with:\n"
           f"   RAY_FAKE_CLUSTER=1 ray up {config_file}")
