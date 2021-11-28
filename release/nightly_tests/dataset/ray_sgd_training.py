@@ -394,8 +394,7 @@ def train_func(config):
 
 @ray.remote
 class TrainingWorker:
-    def __init__(self, rank: int, shard: DatasetPipeline,
-                 batch_size: int):
+    def __init__(self, rank: int, shard: DatasetPipeline, batch_size: int):
         self.rank = rank
         self.shard = shard
         self.batch_size = batch_size
@@ -405,11 +404,10 @@ class TrainingWorker:
             # Following code emulates epoch based SGD training.
             print(f"Training... worker: {self.rank}, epoch: {epoch}")
             for i, _ in enumerate(
-                    training_dataset.to_torch(batch_size=self.batch_size, label_column="label")):
+                    training_dataset.to_torch(
+                        batch_size=self.batch_size, label_column="label")):
                 if i % 10000 == 0:
-                    print(
-                        f"epoch: {epoch}, worker: {self.rank}, processing batch: {i}"
-                    )
+                    print(f"epoch: {epoch}, worker: {self.rank}, batch: {i}")
 
 
 if __name__ == "__main__":
@@ -540,9 +538,10 @@ if __name__ == "__main__":
             .split(num_workers)
         del train_dataset
 
+        num_gpus = 1 if use_gpu else 0
         training_workers = [
-            TrainingWorker.remote(rank, shard, BATCH_SIZE)
-            for rank, shard in enumerate(shards)
+            TrainingWorker.options(num_gpus=num_gpus, num_cpus=0).remote(
+                rank, shard, BATCH_SIZE) for rank, shard in enumerate(shards)
         ]
         ray.get([worker.train.remote() for worker in training_workers])
 
