@@ -205,20 +205,19 @@ class LeaseStatusTracker {
 
   /// Indicate the tracker that prepare requests are sent to a specific node.
   ///
-  /// \param node_id Id of a node where prepare request is sent.
-  /// \param bundle Bundle specification the node is supposed to prepare.
-  /// \return False if the prepare phase was already started. True otherwise.
-  bool MarkPreparePhaseStarted(const NodeID &node_id,
-                               const std::shared_ptr<const BundleSpecification> &bundle);
+  /// \param node_id Id of a node to which prepare request will be sent.
+  /// \param bundles Bundles that will be supposed to schedule.
+  void MarkPreparePhaseStarted(const NodeID &node_id,
+                               const std::vector<std::shared_ptr<const BundleSpecification>> &bundles);
 
   /// Indicate the tracker that all prepare requests are returned.
   ///
   /// \param node_id Id of a node where prepare request is returned.
-  /// \param bundle Bundle specification the node was supposed to schedule.
+  /// \param bundles Bundles that will be supposed to schedule.
   /// \param status Status of the prepare response.
-  /// \param void
+  /// \return void
   void MarkPrepareRequestReturned(
-      const NodeID &node_id, const std::shared_ptr<const BundleSpecification> &bundle,
+      const NodeID &node_id, const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
       const Status &status);
 
   /// Used to know if all prepare requests are returned.
@@ -469,14 +468,14 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
                       &group_to_bundles) override;
 
  protected:
-  /// Send a bundle PREPARE request to a node. The PREPARE request will lock resources
+  /// Send bundles PREPARE requests to a node. The PREPARE requests will lock resources
   /// on a node until COMMIT or CANCEL requests are sent to a node.
   ///
-  /// \param bundle A bundle to schedule on a node.
+  /// \param bundles Bundles to be scheduled on a node.
   /// \param node A node to prepare resources for a given bundle.
   /// \param callback
   void PrepareResources(
-      const std::shared_ptr<const BundleSpecification> &bundle,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
       const absl::optional<std::shared_ptr<ray::rpc::GcsNodeInfo>> &node,
       const StatusCallback &callback);
 

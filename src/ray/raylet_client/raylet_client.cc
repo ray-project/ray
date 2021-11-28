@@ -381,10 +381,13 @@ void raylet::RayletClient::CancelWorkerLease(
 }
 
 void raylet::RayletClient::PrepareBundleResources(
-    const BundleSpecification &bundle_spec,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
     const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback) {
   rpc::PrepareBundleResourcesRequest request;
-  request.mutable_bundle_spec()->CopyFrom(bundle_spec.GetMessage());
+  for (const auto &bundle_spec: bundle_specs) {
+    auto message_bundle = request.add_bundle_specs();
+    message_bundle->CopyFrom(bundle_spec->GetMessage());
+  }
   grpc_client_->PrepareBundleResources(request, callback);
 }
 

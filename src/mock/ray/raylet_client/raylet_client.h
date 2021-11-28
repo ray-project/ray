@@ -62,7 +62,7 @@ class MockResourceReserveInterface : public ResourceReserveInterface {
  public:
   MOCK_METHOD(
       void, PrepareBundleResources,
-      (const BundleSpecification &bundle_spec,
+      (const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
        const ray::rpc::ClientCallback<ray::rpc::PrepareBundleResourcesReply> &callback),
       (override));
   MOCK_METHOD(
