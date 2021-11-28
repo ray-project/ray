@@ -26,16 +26,27 @@ def _get_sdk_client(address: Optional[str],
 
     return JobSubmissionClient(address, create_cluster_if_needed)
 
+def _log_job_status(client: JobSubmissionClient, job_id: str):
+    status = client.get_job_status(job_id)
+    if status.status == JobStatus.SUCCEEDED:
+        cli_logger.success(f"Job '{job_id}' succeeded.")
+    elif status.status == JobStatus.STOPPED:
+        cli_logger.warning(f"Job '{job_id}' was stopped.")
+    elif status.status == JobStatus.FAILED:
+        cli_logger.error(f"Job '{job_id}' failed.")
+    else:
+        # Catch-all.
+        cli_logger.print(f"Status for job '{job_id}': {status.status}.")
+
+    if status.message is not None:
+        cli_logger.print(f"Status message: {status.message}")
+
 
 async def _tail_logs(client: JobSubmissionClient, job_id: str):
-    cli_logger.print(f"Tailing logs for job '{job_id}' until it exits:")
     async for lines in client.tail_job_logs(job_id):
         print(lines, end="")
 
-    status = client.get_job_status(job_id)
-    cli_logger.print(f"Job '{job_id}' finished with status: {status.status}.")
-    if status.message is not None:
-        cli_logger.print(status.message)
+    _log_job_status(client, job_id)
 
 
 @click.group("job")
@@ -85,7 +96,7 @@ def job_cli_group():
     is_flag=True,
     type=bool,
     default=False,
-    help="If set, will not tail logs and wait for the job to exit.")
+    help="If set, will not stream logs and wait for the job to exit.")
 @add_click_logging_options
 @click.argument("entrypoint", nargs=-1, required=True, type=click.UNPROCESSED)
 def job_submit(address: Optional[str], job_id: Optional[str],
@@ -122,12 +133,14 @@ def job_submit(address: Optional[str], job_id: Optional[str],
         entrypoint=" ".join(entrypoint),
         job_id=job_id,
         runtime_env=final_runtime_env)
-    cli_logger.print(f"Job submitted successfully: {job_id}.")
+    cli_logger.success(f"Job '{job_id}' submitted successfully.")
 
     if no_wait:
         cli_logger.print(
             f"Query the logs of the job using: `ray job logs {job_id}`.")
     else:
+        cli_logger.print(f"Tailing logs for job '{job_id}' until it exits "
+               f"(disable with --no-wait).")
         asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
 
 
@@ -148,10 +161,7 @@ def job_status(address: Optional[str], job_id: str):
         >>> ray job status <my_job_id>
     """
     client = _get_sdk_client(address)
-    status = client.get_job_status(job_id)
-    cli_logger.print(f"Job status for '{job_id}': {status.status}.")
-    if status.message is not None:
-        cli_logger.print(status.message)
+    _log_job_status(client, job_id)
 
 
 @job_cli_group.command("stop", help="Attempt to stop a running job.")
@@ -182,16 +192,19 @@ def job_stop(address: Optional[str], no_wait: bool, job_id: str):
 
     if no_wait:
         return
+    else:
+        cli_logger.print(f"Waiting for job '{job_id}' to exit "
+               f"(disable with --no-wait).")
 
     while True:
         status = client.get_job_status(job_id)
-        if status in {
+        if status.status in {
                 JobStatus.STOPPED, JobStatus.SUCCEEDED, JobStatus.FAILED
         }:
-            cli_logger.print(f"Job exited with status: {status}.")
+            _log_job_status(client, job_id)
             break
         else:
-            cli_logger.print(f"Waiting for job to exit. Status: {status}.")
+            cli_logger.print(f"Job has not exited yet. Status: {status}.")
             time.sleep(1)
 
 

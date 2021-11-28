@@ -43,7 +43,7 @@ def ray_cluster_manager():
     subprocess.check_output(["ray", "stop", "--force"])
 
 
-class TestSubmitIntegration:
+class TestRayAddress:
     """
     Integration version of job CLI test that ensures interaction with the
     following components are working as expected:
@@ -62,45 +62,43 @@ class TestSubmitIntegration:
             assert ("Address must be specified using either the "
                     "--address flag or RAY_ADDRESS environment") in stderr
 
-    def test_ray_client_adress(self, ray_start_stop):
+    def test_ray_client_address(self, ray_start_stop):
         with set_env_var("RAY_ADDRESS", "127.0.0.1:8265"):
             completed_process = subprocess.run(
                 ["ray", "job", "submit", "--", "echo hello"],
-                stderr=subprocess.PIPE)
-            stderr = completed_process.stderr.decode("utf-8")
-            # Current dashboard module that raises no exception from requests..
-            assert "Query the status of the job" in stderr
+                stdout=subprocess.PIPE)
+            stdout = completed_process.stdout.decode("utf-8")
+            assert "hello" in stdout
+            assert "Job finished successfully" in stdout
 
     def test_valid_http_ray_address(self, ray_start_stop):
         with set_env_var("RAY_ADDRESS", "http://127.0.0.1:8265"):
             completed_process = subprocess.run(
                 ["ray", "job", "submit", "--", "echo hello"],
-                stderr=subprocess.PIPE)
-            stderr = completed_process.stderr.decode("utf-8")
-            # Current dashboard module that raises no exception from requests..
-            assert "Query the status of the job" in stderr
+                stdout=subprocess.PIPE)
+            stdout = completed_process.stdout.decode("utf-8")
+            assert "hello" in stdout
+            assert "Job finished successfully" in stdout
 
     def test_set_ray_http_address_first(self):
         with set_env_var("RAY_ADDRESS", "http://127.0.0.1:8265"):
             with ray_cluster_manager():
                 completed_process = subprocess.run(
                     ["ray", "job", "submit", "--", "echo hello"],
-                    stderr=subprocess.PIPE)
-                stderr = completed_process.stderr.decode("utf-8")
-                # Current dashboard module that raises no exception from
-                # requests..
-                assert "Query the status of the job" in stderr
+                    stdout=subprocess.PIPE)
+                stdout = completed_process.stdout.decode("utf-8")
+                assert "hello" in stdout
+                assert "Job finished successfully" in stdout
 
     def test_set_ray_client_address_first(self):
         with set_env_var("RAY_ADDRESS", "127.0.0.1:8265"):
             with ray_cluster_manager():
                 completed_process = subprocess.run(
                     ["ray", "job", "submit", "--", "echo hello"],
-                    stderr=subprocess.PIPE)
-                stderr = completed_process.stderr.decode("utf-8")
-                # Current dashboard module that raises no exception from
-                # requests..
-                assert "Query the status of the job" in stderr
+                    stdout=subprocess.PIPE)
+                stdout = completed_process.stdout.decode("utf-8")
+                assert "hello" in stdout
+                assert "Job finished successfully" in stdout
 
 
 if __name__ == "__main__":
