@@ -3,7 +3,6 @@ import psutil
 import tempfile
 import sys
 from uuid import uuid4
-import time
 import signal
 
 import pytest
@@ -32,9 +31,7 @@ def _driver_script_path(file_name: str) -> str:
         os.path.dirname(__file__), "subprocess_driver_scripts", file_name)
 
 
-def _run_hanging_command(job_manager,
-                         tmp_dir,
-                         start_signal_actor=None):
+def _run_hanging_command(job_manager, tmp_dir, start_signal_actor=None):
     tmp_file = os.path.join(tmp_dir, "hello")
     pid_file = os.path.join(tmp_dir, "pid")
 
@@ -44,8 +41,7 @@ def _run_hanging_command(job_manager,
                          "do echo 'Waiting...' && sleep 1; "
                          "done")
     job_id = job_manager.submit_job(
-        entrypoint=wait_for_file_cmd,
-        _start_signal_actor=start_signal_actor)
+        entrypoint=wait_for_file_cmd, _start_signal_actor=start_signal_actor)
 
     status = job_manager.get_job_status(job_id)
     if start_signal_actor:
@@ -478,7 +474,8 @@ class TestTailLogs:
 
             # TODO(edoakes): check we get no logs before actor starts (not sure
             # how to timeout the iterator call).
-            assert job_manager.get_job_status(job_id).status == JobStatus.PENDING
+            assert job_manager.get_job_status(
+                job_id).status == JobStatus.PENDING
 
             # Signal job to start.
             ray.get(start_signal_actor.send.remote())

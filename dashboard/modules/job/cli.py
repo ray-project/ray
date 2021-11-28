@@ -1,6 +1,5 @@
 import asyncio
 import json
-import logging
 import os
 import time
 from typing import Optional, Tuple
@@ -8,7 +7,8 @@ import yaml
 
 import click
 
-from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
+from ray.autoscaler._private.cli_logger import (add_click_logging_options,
+                                                cli_logger, cf)
 from ray.dashboard.modules.job.common import JobStatus
 from ray.dashboard.modules.job.sdk import JobSubmissionClient
 
@@ -143,8 +143,7 @@ def job_submit(address: Optional[str], job_id: Optional[str],
     if working_dir is not None:
         if "working_dir" in final_runtime_env:
             cli_logger.warning(
-                "Overriding runtime_env working_dir with --working-dir option"
-            )
+                "Overriding runtime_env working_dir with --working-dir option")
 
         final_runtime_env["working_dir"] = working_dir
 
@@ -171,8 +170,8 @@ def job_submit(address: Optional[str], job_id: Optional[str],
     cli_logger.newline()
 
     if not no_wait:
-        cli_logger.print(f"Tailing logs until the job exits "
-                f"(disable with --no-wait):")
+        cli_logger.print("Tailing logs until the job exits "
+                         "(disable with --no-wait):")
         asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
 
 
@@ -226,7 +225,7 @@ def job_stop(address: Optional[str], no_wait: bool, job_id: str):
         return
     else:
         cli_logger.print(f"Waiting for job '{job_id}' to exit "
-                f"(disable with --no-wait):")
+                         f"(disable with --no-wait):")
 
     while True:
         status = client.get_job_status(job_id)

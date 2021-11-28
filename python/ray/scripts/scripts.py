@@ -31,7 +31,8 @@ from ray.autoscaler._private.fake_multi_node.node_provider import \
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 from ray.internal.internal_api import memory_summary
-from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
+from ray.autoscaler._private.cli_logger import (add_click_logging_options,
+                                                cli_logger, cf)
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.modules.job.cli import job_cli_group
