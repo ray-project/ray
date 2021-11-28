@@ -22,9 +22,9 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/transport/actor_scheduling_util.h"
-#include "ray/core_worker/transport/fiber_state_manager.h"
+#include "ray/core_worker/transport/concurrency_group_manager.h"
 #include "ray/core_worker/transport/scheduling_queue.h"
-#include "ray/core_worker/transport/thread_pool_manager.h"
+#include "ray/core_worker/transport/thread_pool.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/server_call.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -41,7 +41,8 @@ class ActorSchedulingQueue : public SchedulingQueue {
  public:
   ActorSchedulingQueue(
       instrumented_io_context &main_io_service, DependencyWaiter &waiter,
-      std::shared_ptr<PoolManager> pool_manager = std::make_shared<PoolManager>(),
+      std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager =
+          std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
       bool is_asyncio = false, int fiber_max_concurrency = 1,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       int64_t reorder_wait_seconds = kMaxReorderWaitSeconds);
@@ -90,13 +91,13 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// Reference to the waiter owned by the task receiver.
   DependencyWaiter &waiter_;
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
-  std::shared_ptr<PoolManager> pool_manager_;
+  std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
   /// Whether we should enqueue requests into asyncio pool. Setting this to true
   /// will instantiate all tasks as fibers that can be yielded.
   bool is_asyncio_ = false;
   /// Manage the running fiber states of actors in this worker. It works with
   /// python asyncio if this is an asyncio actor.
-  std::unique_ptr<FiberStateManager> fiber_state_manager_;
+  std::unique_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager_;
 
   friend class SchedulingQueueTest;
 };

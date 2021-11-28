@@ -5,11 +5,12 @@ import tempfile
 
 import pytest
 
+import ray
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.tests.conftest import _ray_start
 from ray._private.test_utils import (format_web_url, wait_for_condition,
                                      wait_until_server_available)
-from ray.dashboard.modules.job.common import JobStatus
+from ray.dashboard.modules.job.common import CURRENT_VERSION, JobStatus
 from ray.dashboard.modules.job.sdk import (ClusterInfo, JobSubmissionClient,
                                            parse_cluster_info)
 
@@ -26,20 +27,20 @@ def job_sdk_client():
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    if status == JobStatus.FAILED:
+    if status.status == JobStatus.FAILED:
         logs = client.get_job_logs(job_id)
         raise RuntimeError(f"Job failed\nlogs:\n{logs}")
-    return status == JobStatus.SUCCEEDED
+    return status.status == JobStatus.SUCCEEDED
 
 
 def _check_job_failed(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    return status == JobStatus.FAILED
+    return status.status == JobStatus.FAILED
 
 
 def _check_job_stopped(client: JobSubmissionClient, job_id: str) -> bool:
     status = client.get_job_status(job_id)
-    return status == JobStatus.STOPPED
+    return status.status == JobStatus.STOPPED
 
 
 @pytest.fixture(
@@ -122,12 +123,26 @@ def test_http_bad_request(job_sdk_client):
     assert r.status_code == 400
     assert "TypeError: __init__() got an unexpected keyword argument" in r.text
 
-    # 500 - HTTPInternalServerError
-    with pytest.raises(
-            RuntimeError, match="Only .zip files supported for remote URIs"):
-        r = client.submit_job(
-            entrypoint="echo hello",
-            runtime_env={"working_dir": "s3://does_not_exist"})
+
+def test_invalid_runtime_env(job_sdk_client):
+    client = job_sdk_client
+    job_id = client.submit_job(
+        entrypoint="echo hello", runtime_env={"working_dir": "s3://not_a_zip"})
+
+    wait_for_condition(_check_job_failed, client=client, job_id=job_id)
+    status = client.get_job_status(job_id)
+    assert "Only .zip files supported for remote URIs" in status.message
+
+
+def test_runtime_env_setup_failure(job_sdk_client):
+    client = job_sdk_client
+    job_id = client.submit_job(
+        entrypoint="echo hello",
+        runtime_env={"working_dir": "s3://does_not_exist.zip"})
+
+    wait_for_condition(_check_job_failed, client=client, job_id=job_id)
+    status = client.get_job_status(job_id)
+    assert "The runtime_env failed to be set up" in status.message
 
 
 def test_submit_job_with_exception_in_driver(job_sdk_client):
@@ -256,6 +271,18 @@ def test_missing_resources(job_sdk_client):
 
     for method, route in conditions:
         assert client._do_request(method, route).status_code == 404
+
+
+def test_version_endpoint(job_sdk_client):
+    client = job_sdk_client
+
+    r = client._do_request("GET", "/api/version")
+    assert r.status_code == 200
+    assert r.json() == {
+        "version": CURRENT_VERSION,
+        "ray_version": ray.__version__,
+        "ray_commit": ray.__commit__
+    }
 
 
 @pytest.mark.parametrize("address", [

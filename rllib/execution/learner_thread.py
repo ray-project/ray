@@ -4,12 +4,12 @@ import threading
 from typing import Dict, Optional
 
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
+from ray.rllib.execution.buffers.minibatch_buffer import MinibatchBuffer
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder, \
     LEARNER_INFO, LEARNER_STATS_KEY
-from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.rllib.utils.timer import TimerStat
+from ray.rllib.utils.metrics.window_stat import WindowStat
 from ray.util.iter import _NextValueNotReady
 
 tf1, tf, tfv = try_import_tf()

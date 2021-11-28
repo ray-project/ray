@@ -140,7 +140,11 @@ def test_many_fractional_resources(shutdown_only):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_background_tasks_with_max_calls(shutdown_only):
-    ray.init(num_cpus=2)
+    ray.init(
+        # TODO (Alex): We need to fix
+        # https://github.com/ray-project/ray/issues/20203 to remove this flag.
+        num_cpus=2,
+        _system_config={"worker_cap_initial_backoff_delay_ms": 0})
 
     @ray.remote
     def g():
@@ -181,7 +185,8 @@ def test_fair_queueing(shutdown_only):
             # the more parallism we have,
             # the more workers we need to start to execute f and g tasks
             # before we can execute the first h task.
-            "max_pending_lease_requests_per_scheduling_category": 1
+            "max_pending_lease_requests_per_scheduling_category": 1,
+            "worker_cap_enabled": True,
         })
 
     @ray.remote
@@ -247,7 +252,6 @@ def test_actor_scheduling(shutdown_only):
         ray.get([a.get.remote()])
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_worker_startup_count(ray_start_cluster):
     """Test that no extra workers started while no available cpu resources
     in cluster."""
@@ -289,7 +293,7 @@ def test_worker_startup_count(ray_start_cluster):
         return None
 
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
-    timeout_limit = 40 if sys.platform == "win32" else 10
+    timeout_limit = 15
     start = time.time()
     wait_for_condition(lambda: get_num_workers() == 16, timeout=timeout_limit)
     time_waited = time.time() - start

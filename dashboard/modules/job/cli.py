@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 def _get_sdk_client(address: Optional[str],
                     create_cluster_if_needed: bool = False
                     ) -> JobSubmissionClient:
+
     if address is None:
         if "RAY_ADDRESS" not in os.environ:
             raise ValueError(
@@ -24,6 +25,7 @@ def _get_sdk_client(address: Optional[str],
                 "or RAY_ADDRESS environment variable.")
         address = os.environ["RAY_ADDRESS"]
 
+    logger.info(f"Creating JobSubmissionClient at address: {address}")
     return JobSubmissionClient(address, create_cluster_if_needed)
 
 
@@ -144,7 +146,10 @@ def job_status(address: Optional[str], job_id: str):
         >>> ray job status <my_job_id>
     """
     client = _get_sdk_client(address)
-    logger.info(f"Job status for '{job_id}': {client.get_job_status(job_id)}")
+    status = client.get_job_status(job_id)
+    logger.info(f"Job status for '{job_id}': {status.status}.")
+    if status.message is not None:
+        logger.info(status.message)
 
 
 @job_cli_group.command("stop", help="Attempt to stop a running job.")

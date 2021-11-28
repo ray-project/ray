@@ -19,6 +19,7 @@
 
   cluster:
     app_config: app_config.yaml
+    prepare: python distributed/wait_cluster.py --num-nodes=50
     compute_template: object_store.yaml
 
   run:

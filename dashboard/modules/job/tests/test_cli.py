@@ -6,6 +6,7 @@ import tempfile
 import os
 from unittest import mock
 import yaml
+from typing import Optional
 
 from click.testing import CliRunner
 
@@ -47,11 +48,17 @@ def runtime_env_formats():
 
 
 @contextmanager
-def set_env_var(key: str, val: str):
+def set_env_var(key: str, val: Optional[str] = None):
     old_val = os.environ.get(key, None)
-    os.environ[key] = val
+    if val is not None:
+        os.environ[key] = val
+    elif key in os.environ:
+        del os.environ[key]
+
     yield
-    del os.environ[key]
+
+    if key in os.environ:
+        del os.environ[key]
     if old_val is not None:
         os.environ[key] = old_val
 
