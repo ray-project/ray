@@ -38,6 +38,7 @@ import io.ray.runtime.task.ArgumentsBuilder;
 import io.ray.runtime.task.FunctionArg;
 import io.ray.runtime.task.TaskExecutor;
 import io.ray.runtime.task.TaskSubmitter;
+import io.ray.runtime.util.ConcurrencyGroupUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -45,7 +46,6 @@ import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import io.ray.runtime.util.ConcurrencyGroupUtils;
 
 /** Core functionality to implement Ray APIs. */
 public abstract class AbstractRayRuntime implements RayRuntimeInternal {

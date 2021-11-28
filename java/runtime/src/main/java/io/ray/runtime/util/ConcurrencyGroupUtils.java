@@ -1,6 +1,6 @@
 package io.ray.runtime.util;
-import com.google.common.base.Preconditions;
 
+import com.google.common.base.Preconditions;
 import io.ray.api.Ray;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.concurrencygroup.annotations.DefConcurrencyGroup;
@@ -21,13 +21,13 @@ import java.util.Map;
 public final class ConcurrencyGroupUtils {
 
   public static List<ConcurrencyGroup> extractConcurrencyGroupsByAnnotations(
-    RayFuncR<?> actorConstructorLambda) {
+      RayFuncR<?> actorConstructorLambda) {
     SerializedLambda serializedLambda = LambdaUtils.getSerializedLambda(actorConstructorLambda);
     Class<?> actorClz = getReturnTypeFromSignature(serializedLambda.getInstantiatedMethodType());
 
     ArrayList<ConcurrencyGroup> ret = new ArrayList<ConcurrencyGroup>();
     DefConcurrencyGroups concurrencyGroupsDefinitionAnnotation =
-      actorClz.getAnnotation(DefConcurrencyGroups.class);
+        actorClz.getAnnotation(DefConcurrencyGroups.class);
     if (concurrencyGroupsDefinitionAnnotation == null) {
       /// This actor is not defined with concurrency groups definition.
       return ret;
@@ -40,30 +40,30 @@ public final class ConcurrencyGroupUtils {
     }
     for (DefConcurrencyGroup def : defAnnotations) {
       concurrencyGroupsMap.put(
-        def.name(), new ConcurrencyGroupImpl(def.name(), def.maxConcurrency()));
+          def.name(), new ConcurrencyGroupImpl(def.name(), def.maxConcurrency()));
     }
 
     Method[] methods = actorClz.getMethods();
     for (Method method : methods) {
       UseConcurrencyGroup useConcurrencyGroupAnnotation =
-        method.getAnnotation(UseConcurrencyGroup.class);
+          method.getAnnotation(UseConcurrencyGroup.class);
       if (useConcurrencyGroupAnnotation != null) {
         String concurrencyGroupName = useConcurrencyGroupAnnotation.name();
         Preconditions.checkState(concurrencyGroupsMap.containsKey(concurrencyGroupName));
         concurrencyGroupsMap
-          .get(concurrencyGroupName)
-          .addJavaFunctionDescriptor(
-            new JavaFunctionDescriptor(
-              method.getDeclaringClass().getName(),
-              method.getName(),
-              MethodUtils.getSignature(method)));
+            .get(concurrencyGroupName)
+            .addJavaFunctionDescriptor(
+                new JavaFunctionDescriptor(
+                    method.getDeclaringClass().getName(),
+                    method.getName(),
+                    MethodUtils.getSignature(method)));
       }
     }
 
     concurrencyGroupsMap.forEach(
-      (key, value) -> {
-        ret.add(value);
-      });
+        (key, value) -> {
+          ret.add(value);
+        });
     return ret;
   }
 
@@ -79,7 +79,7 @@ public final class ConcurrencyGroupUtils {
         /// This code path indicates that here might be in another thread of a worker.
         /// So try to load the class from URLClassLoader of this worker.
         ClassLoader cl =
-          ((RayRuntimeInternal) Ray.internal()).getWorkerContext().getCurrentClassLoader();
+            ((RayRuntimeInternal) Ray.internal()).getWorkerContext().getCurrentClassLoader();
         actorClz = Class.forName(className, true, cl);
       }
     } catch (Exception e) {

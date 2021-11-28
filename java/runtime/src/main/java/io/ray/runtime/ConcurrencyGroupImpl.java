@@ -4,10 +4,10 @@ import io.ray.api.Ray;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.function.RayFunc;
 import io.ray.runtime.functionmanager.FunctionDescriptor;
+import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 import io.ray.runtime.functionmanager.RayFunction;
 import java.util.ArrayList;
 import java.util.List;
-import io.ray.runtime.functionmanager.JavaFunctionDescriptor;
 
 public class ConcurrencyGroupImpl implements ConcurrencyGroup {
 

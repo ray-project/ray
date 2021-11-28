@@ -25,11 +25,11 @@ public final class MethodUtils {
     }
 
     return sb.append(')')
-      .append(
-        m.getReturnType() == void.class
-          ? "V"
-          : (sig = Array.newInstance(m.getReturnType(), 0).toString())
-          .substring(1, sig.indexOf('@')))
-      .toString();
+        .append(
+            m.getReturnType() == void.class
+                ? "V"
+                : (sig = Array.newInstance(m.getReturnType(), 0).toString())
+                    .substring(1, sig.indexOf('@')))
+        .toString();
   }
 }

@@ -5,13 +5,12 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.api.concurrencygroup.ConcurrencyGroup;
 import io.ray.api.concurrencygroup.ConcurrencyGroupBuilder;
+import io.ray.api.concurrencygroup.annotations.DefConcurrencyGroup;
+import io.ray.api.concurrencygroup.annotations.UseConcurrencyGroup;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-import io.ray.api.concurrencygroup.annotations.DefConcurrencyGroup;
-import io.ray.api.concurrencygroup.annotations.UseConcurrencyGroup;
-import io.ray.api.concurrencygroup.annotations.DefConcurrencyGroups;
 
 @Test
 public class ConcurrencyGroupTest extends BaseTest {
@@ -200,21 +199,26 @@ public class ConcurrencyGroupTest extends BaseTest {
     public long f1() {
       return Thread.currentThread().getId();
     }
+
     @UseConcurrencyGroup(name = "io")
     public long f2() {
       return Thread.currentThread().getId();
     }
+
     @UseConcurrencyGroup(name = "compute")
     public long f3(int a, int b) {
       return Thread.currentThread().getId();
     }
+
     @UseConcurrencyGroup(name = "compute")
     public long f4() {
       return Thread.currentThread().getId();
     }
+
     public long f5() {
       return Thread.currentThread().getId();
     }
+
     public long f6() {
       return Thread.currentThread().getId();
     }
