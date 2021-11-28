@@ -247,16 +247,16 @@ class JobSubmissionClient:
             self._raise_error(r)
 
     async def tail_job_logs(self, job_id: str) -> Iterator[str]:
-        session = aiohttp.ClientSession(cookies=self._cookies)
-        ws = await session.ws_connect(
-            f"{self._address}/api/jobs/{job_id}/logs/tail")
+        async with aiohttp.ClientSession(cookies=self._cookies) as session:
+            ws = await session.ws_connect(
+                f"{self._address}/api/jobs/{job_id}/logs/tail")
 
-        while True:
-            msg = await ws.receive()
+            while True:
+                msg = await ws.receive()
 
-            if msg.type == aiohttp.WSMsgType.TEXT:
-                yield msg.data
-            elif msg.type == aiohttp.WSMsgType.CLOSED:
-                break
-            elif msg.type == aiohttp.WSMsgType.ERROR:
-                pass
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    yield msg.data
+                elif msg.type == aiohttp.WSMsgType.CLOSED:
+                    break
+                elif msg.type == aiohttp.WSMsgType.ERROR:
+                    pass
