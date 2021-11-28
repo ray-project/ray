@@ -8,7 +8,7 @@ import yaml
 
 import click
 
-from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger
+from ray.autoscaler._private.cli_logger import add_click_logging_options, cli_logger, cf
 from ray.dashboard.modules.job.common import JobStatus
 from ray.dashboard.modules.job.sdk import JobSubmissionClient
 
@@ -24,22 +24,41 @@ def _get_sdk_client(address: Optional[str],
                 "or RAY_ADDRESS environment variable.")
         address = os.environ["RAY_ADDRESS"]
 
+    cli_logger.labeled_value("Job submission server address", address)
     return JobSubmissionClient(address, create_cluster_if_needed)
+
+
+def _log_big_success_msg(success_msg):
+    cli_logger.newline()
+    cli_logger.success("-" * len(success_msg))
+    cli_logger.success(success_msg)
+    cli_logger.success("-" * len(success_msg))
+    cli_logger.newline()
+
+
+def _log_big_error_msg(success_msg):
+    cli_logger.newline()
+    cli_logger.error("-" * len(success_msg))
+    cli_logger.error(success_msg)
+    cli_logger.error("-" * len(success_msg))
+    cli_logger.newline()
+
 
 def _log_job_status(client: JobSubmissionClient, job_id: str):
     status = client.get_job_status(job_id)
     if status.status == JobStatus.SUCCEEDED:
-        cli_logger.success(f"Job '{job_id}' succeeded.")
+        _log_big_success_msg(f"Job '{job_id}' succeeded")
     elif status.status == JobStatus.STOPPED:
-        cli_logger.warning(f"Job '{job_id}' was stopped.")
+        cli_logger.warning(f"Job '{job_id}' was stopped")
     elif status.status == JobStatus.FAILED:
-        cli_logger.error(f"Job '{job_id}' failed.")
+        _log_big_error_msg(f"Job '{job_id}' failed")
+        if status.message is not None:
+            cli_logger.print(f"Status message: {status.message}")
     else:
         # Catch-all.
-        cli_logger.print(f"Status for job '{job_id}': {status.status}.")
-
-    if status.message is not None:
-        cli_logger.print(f"Status message: {status.message}")
+        cli_logger.print(f"Status for job '{job_id}': {status.status}")
+        if status.message is not None:
+            cli_logger.print(f"Status message: {status.message}")
 
 
 async def _tail_logs(client: JobSubmissionClient, job_id: str):
@@ -124,7 +143,7 @@ def job_submit(address: Optional[str], job_id: Optional[str],
     if working_dir is not None:
         if "working_dir" in final_runtime_env:
             cli_logger.warning(
-                "Overriding runtime_env working_dir with --working-dir option."
+                "Overriding runtime_env working_dir with --working-dir option"
             )
 
         final_runtime_env["working_dir"] = working_dir
@@ -133,14 +152,27 @@ def job_submit(address: Optional[str], job_id: Optional[str],
         entrypoint=" ".join(entrypoint),
         job_id=job_id,
         runtime_env=final_runtime_env)
-    cli_logger.success(f"Job '{job_id}' submitted successfully.")
 
-    if no_wait:
-        cli_logger.print(
-            f"Query the logs of the job using: `ray job logs {job_id}`.")
-    else:
-        cli_logger.print(f"Tailing logs for job '{job_id}' until it exits "
-               f"(disable with --no-wait).")
+    _log_big_success_msg(f"Job '{job_id}' submitted successfully")
+
+    with cli_logger.group("Next steps"):
+        cli_logger.print("Query the logs of the job:")
+        with cli_logger.indented():
+            cli_logger.print(cf.bold(f"ray job logs {job_id}"))
+
+        cli_logger.print("Query the status of the job:")
+        with cli_logger.indented():
+            cli_logger.print(cf.bold(f"ray job status {job_id}"))
+
+        cli_logger.print("Request the job to be stopped:")
+        with cli_logger.indented():
+            cli_logger.print(cf.bold(f"ray job stop {job_id}"))
+
+    cli_logger.newline()
+
+    if not no_wait:
+        cli_logger.print(f"Tailing logs until the job exits "
+                f"(disable with --no-wait):")
         asyncio.get_event_loop().run_until_complete(_tail_logs(client, job_id))
 
 
@@ -187,14 +219,14 @@ def job_stop(address: Optional[str], no_wait: bool, job_id: str):
         >>> ray job stop <my_job_id>
     """
     client = _get_sdk_client(address)
-    cli_logger.print(f"Attempting to stop job {job_id}.")
+    cli_logger.print(f"Attempting to stop job {job_id}")
     client.stop_job(job_id)
 
     if no_wait:
         return
     else:
         cli_logger.print(f"Waiting for job '{job_id}' to exit "
-               f"(disable with --no-wait).")
+                f"(disable with --no-wait):")
 
     while True:
         status = client.get_job_status(job_id)
@@ -204,7 +236,7 @@ def job_stop(address: Optional[str], no_wait: bool, job_id: str):
             _log_job_status(client, job_id)
             break
         else:
-            cli_logger.print(f"Job has not exited yet. Status: {status}.")
+            cli_logger.print(f"Job has not exited yet. Status: {status}")
             time.sleep(1)
 
 
