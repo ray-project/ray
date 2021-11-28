@@ -777,7 +777,7 @@ class SilentClickException(click.ClickException):
 
 cli_logger = _CliLogger()
 
-LOGGING_OPTIONS = [
+CLICK_LOGGING_OPTIONS = [
     click.option(
         "--log-style",
         required=False,
@@ -799,13 +799,12 @@ LOGGING_OPTIONS = [
 
 
 def add_click_logging_options(f: Callable) -> Callable:
-    for option in reversed(LOGGING_OPTIONS):
+    for option in reversed(CLICK_LOGGING_OPTIONS):
         f = option(f)
 
     @wraps(f)
     def wrapper(*args, log_style=None, log_color=None, verbose=None, **kwargs):
-        global cli_logger
         cli_logger.configure(log_style, log_color, verbose)
-        return f
+        return f(*args, **kwargs)
 
     return wrapper
