@@ -360,7 +360,8 @@ class ParsedRuntimeEnv(dict):
     def get_proto_runtime_env(self):
         """Return the protobuf structure of runtime env."""
         if self._cached_pb is None:
-            self._cached_pb = RuntimeEnv.from_dict(self, conda.get_uri)
+            self._cached_pb = RuntimeEnv.from_dict(self, get_conda_uri,
+                                                   get_pip_uri)
 
         return self._cached_pb
 

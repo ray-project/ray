@@ -228,6 +228,7 @@ class CondaManager:
         if runtime_env.conda_env_name():
             conda_env_name = runtime_env.conda_env_name()
         else:
+            conda_dict = json.loads(runtime_env.conda_config())
             protocol, hash = parse_uri(runtime_env.conda_uri())
             conda_env_name = self._get_path_from_hash(hash)
             assert conda_dict is not None
