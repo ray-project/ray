@@ -13,7 +13,8 @@ from ray.exceptions import (
     ObjectReconstructionFailedError,
     ObjectReconstructionFailedMaxAttemptsExceededError,
     ObjectReconstructionFailedLineageEvictedError, RaySystemError,
-    RuntimeEnvSetupError, PlacementGroupRemovedError)
+    RuntimeEnvSetupError, TaskPlacementGroupRemoved,
+    ActorPlacementGroupRemoved)
 from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
