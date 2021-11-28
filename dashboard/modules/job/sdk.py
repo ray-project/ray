@@ -13,7 +13,7 @@ except ImportError:
 from ray._private.runtime_env.packaging import (
     create_package, get_uri_for_directory, parse_uri)
 from ray.dashboard.modules.job.common import (
-    JobSubmitRequest, JobSubmitResponse, JobStopResponse, JobStatus,
+    JobSubmitRequest, JobSubmitResponse, JobStopResponse, JobStatusInfo,
     JobStatusResponse, JobLogsResponse, uri_to_http_components)
 
 from ray.client_builder import _split_address
@@ -88,16 +88,24 @@ class JobSubmissionClient:
         self._cookies = cluster_info.cookies
         self._default_metadata = cluster_info.metadata or {}
 
-        self._test_connection()
+        self._check_connection_and_version()
 
-    def _test_connection(self):
+    def _check_connection_and_version(self):
         try:
-            assert not self._package_exists("gcs://FAKE_URI.zip")
+            r = self._do_request("GET", "/api/version")
+            if r.status_code == 404:
+                raise RuntimeError(
+                    "Jobs API not supported on the Ray cluster. "
+                    "Please ensure the cluster is running "
+                    "Ray 1.9 or higher.")
+
+            r.raise_for_status()
+            # TODO(edoakes): check the version if/when we break compatibility.
         except requests.exceptions.ConnectionError:
             raise ConnectionError(
                 f"Failed to connect to Ray at address: {self._address}.")
 
-    def _raise_error(self, r: requests.Response):
+    def _raise_error(self, r: "requests.Response"):
         raise RuntimeError(
             f"Request failed with status code {r.status_code}: {r.text}.")
 
@@ -218,11 +226,13 @@ class JobSubmissionClient:
         else:
             self._raise_error(r)
 
-    def get_job_status(self, job_id: str) -> JobStatus:
+    def get_job_status(self, job_id: str) -> JobStatusInfo:
         r = self._do_request("GET", f"/api/jobs/{job_id}")
 
         if r.status_code == 200:
-            return JobStatusResponse(**r.json()).status
+            response = JobStatusResponse(**r.json())
+            return JobStatusInfo(
+                status=response.status, message=response.message)
         else:
             self._raise_error(r)
 

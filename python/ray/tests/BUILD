@@ -95,6 +95,7 @@ py_test_module_list(
     "test_threaded_actor.py",
     "test_tls_auth.py",
     "test_ray_debugger.py",
+    "test_worker_capping.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -213,6 +214,7 @@ py_test_module_list(
     "test_object_manager.py",
     "test_multi_tenancy.py",
     "test_scheduling.py",
+    "test_scheduling_2.py",
   ],
   size = "medium",
   extra_srcs = SRCS,
@@ -336,7 +338,7 @@ py_test(
 
 py_test(
     name = "test_runtime_env_ray_minimal",
-    size = "small",
+    size = "medium",
     srcs = SRCS + ["test_runtime_env_ray_minimal.py"],
     tags = ["exclusive", "team:serve"],
     deps = ["//:ray_lib"],
@@ -390,6 +392,7 @@ py_test_module_list(
     "test_object_spilling_2.py",
     "test_object_spilling_3.py",
     "test_scheduling.py",
+    "test_scheduling_2.py",
     "test_array.py"
   ],
   size = "medium",
@@ -405,6 +408,7 @@ py_test_module_list(
     "test_object_spilling_2.py",
     "test_object_spilling_3.py",
     "test_scheduling.py",
+    "test_scheduling_2.py",
     "test_array.py"
   ],
   size = "large",

@@ -55,6 +55,14 @@ py_test(
 )
 
 py_test(
+    name = "test_cloud",
+    size = "medium",
+    srcs = ["tests/test_cloud.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_C"],
+)
+
+py_test(
     name = "test_cluster",
     size = "large",
     srcs = ["tests/test_cluster.py"],
@@ -72,7 +80,7 @@ py_test(
 
 py_test(
     name = "test_commands",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_commands.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "tests_dir_C"],
@@ -304,7 +312,7 @@ py_test(
 
 py_test(
     name = "test_trial_scheduler_pbt",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_trial_scheduler_pbt.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "flaky", "tests_dir_T"],
@@ -397,7 +405,7 @@ py_test(
 
 py_test(
     name = "blendsearch_example",
-    size = "small",
+    size = "medium",
     srcs = ["examples/blendsearch_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
@@ -427,6 +435,15 @@ py_test(
     srcs = ["examples/cifar10_pytorch.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "pytorch"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "custom_func_checkpointing",
+    size = "small",
+    srcs = ["examples/custom_func_checkpointing.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 
@@ -656,6 +673,15 @@ py_test(
     name = "optuna_example",
     size = "small",
     srcs = ["examples/optuna_example.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "example"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "optuna_multiobjective_example",
+    size = "small",
+    srcs = ["examples/optuna_multiobjective_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]

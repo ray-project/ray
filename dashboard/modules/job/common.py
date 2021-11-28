@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
 import pickle
 
 from ray import ray_constants
@@ -11,21 +11,43 @@ from ray.experimental.internal_kv import (
 )
 from ray._private.runtime_env.packaging import parse_uri
 
-# NOTE(edoakes): constant should be considered a public API because it's
-# exposed in the snapshot API.
+# NOTE(edoakes): these constants should be considered a public API because
+# they're exposed in the snapshot API.
 JOB_ID_METADATA_KEY = "job_submission_id"
+JOB_NAME_METADATA_KEY = "job_name"
+
+CURRENT_VERSION = "0"
 
 
 class JobStatus(str, Enum):
     def __str__(self):
         return f"{self.value}"
 
-    DOES_NOT_EXIST = "DOES_NOT_EXIST"
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     STOPPED = "STOPPED"
     SUCCEEDED = "SUCCEEDED"
     FAILED = "FAILED"
+
+
+@dataclass
+class JobStatusInfo:
+    status: JobStatus
+    message: Optional[str] = None
+
+    def __post_init__(self):
+        if self.message is None:
+            if self.status == JobStatus.PENDING:
+                self.message = ("Job has not started yet, likely waiting "
+                                "for the runtime_env to be set up.")
+            elif self.status == JobStatus.RUNNING:
+                self.message = "Job is currently running."
+            elif self.status == JobStatus.STOPPED:
+                self.message = "Job was intentionally stopped."
+            elif self.status == JobStatus.SUCCEEDED:
+                self.message = "Job finished successfully."
+            elif self.status == JobStatus.FAILED:
+                self.message = "Job failed."
 
 
 class JobStatusStorageClient:
@@ -37,19 +59,23 @@ class JobStatusStorageClient:
     def __init__(self):
         assert _internal_kv_initialized()
 
-    def put_status(self, job_id: str, status: JobStatus):
-        assert isinstance(status, JobStatus)
+    def put_status(self, job_id: str, status: Union[JobStatus, JobStatusInfo]):
+        if isinstance(status, JobStatus):
+            status = JobStatusInfo(status=status)
+        elif not isinstance(status, JobStatusInfo):
+            assert False, "status must be JobStatus or JobStatusInfo."
+
         _internal_kv_put(
             self.JOB_STATUS_KEY.format(job_id=job_id),
             pickle.dumps(status),
             namespace=ray_constants.KV_NAMESPACE_JOB)
 
-    def get_status(self, job_id: str) -> JobStatus:
+    def get_status(self, job_id: str) -> Optional[JobStatusInfo]:
         pickled_status = _internal_kv_get(
             self.JOB_STATUS_KEY.format(job_id=job_id),
             namespace=ray_constants.KV_NAMESPACE_JOB)
         if pickled_status is None:
-            return JobStatus.DOES_NOT_EXIST
+            return None
         else:
             return pickle.loads(pickled_status)
 
@@ -73,6 +99,13 @@ def http_uri_components_to_uri(protocol: str, package_name: str) -> str:
 def validate_request_type(json_data: Dict[str, Any],
                           request_type: dataclass) -> Any:
     return request_type(**json_data)
+
+
+@dataclass
+class VersionResponse:
+    version: str
+    ray_version: str
+    ray_commit: str
 
 
 @dataclass
@@ -137,6 +170,7 @@ class JobStopResponse:
 @dataclass
 class JobStatusResponse:
     status: JobStatus
+    message: Optional[str]
 
 
 # TODO(jiaodong): Support log streaming #19415

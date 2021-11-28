@@ -9,6 +9,7 @@ from typing import Optional, List, Dict
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
+from ray._private.runtime_env.utils import RuntimeEnv
 from ray._private.utils import try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
@@ -79,17 +80,17 @@ class PipManager:
         return successful
 
     def setup(self,
-              runtime_env: Dict,
+              runtime_env: RuntimeEnv,
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
-        if not runtime_env.get("pip"):
+        if not runtime_env.has_pip():
             return
 
         logger.debug(f"Setting up pip for runtime_env: {runtime_env}")
-        target_dir = self._get_path_from_hash(
-            _get_pip_hash(runtime_env["pip"]))
+        pip_packages: List[str] = runtime_env.pip_packages()
+        target_dir = self._get_path_from_hash(_get_pip_hash(pip_packages))
 
-        _install_pip_list_to_dir(runtime_env["pip"], target_dir, logger=logger)
+        _install_pip_list_to_dir(pip_packages, target_dir, logger=logger)
 
         # Insert the target directory into the PYTHONPATH.
         python_path = target_dir

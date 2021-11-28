@@ -76,9 +76,9 @@ class DefaultCallbacks:
             base_env: BaseEnv running the episode. The underlying
                 sub environment objects can be retrieved by calling
                 `base_env.get_sub_environments()`.
-            policies: Mapping of policy id
-                to policy objects. In single agent mode there will only be a
-                single "default_policy".
+            policies: Mapping of policy id to policy objects.
+                In single agent mode there will only be a single
+                "default_policy".
             episode: Episode object which contains episode
                 state. You can use the `episode.user_data` dict to store
                 temporary data, and `episode.custom_metrics` to store custom
@@ -177,6 +177,12 @@ class DefaultCallbacks:
 
         Note: This is called before 0-padding via
         `pad_batch_to_sequences_of_same_size`.
+
+        Also note, SampleBatch.INFOS column will not be available on
+        train_batch within this callback if framework is tf1, due to
+        the fact that tf1 static graph would mistake it as part of the
+        input dict if present.
+        It is available though, for tf2 and torch frameworks.
 
         Args:
             policy: Reference to the current Policy object.

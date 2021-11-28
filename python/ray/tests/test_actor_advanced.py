@@ -13,7 +13,7 @@ import ray.cluster_utils
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     run_string_as_driver, get_non_head_nodes, kill_actor_and_wait_for_failure,
-    SignalActor, wait_for_condition, wait_for_pid_to_exit)
+    SignalActor, wait_for_condition, wait_for_pid_to_exit, convert_actor_state)
 from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_put
 from ray._raylet import GlobalStateAccessor
 
@@ -756,7 +756,8 @@ def test_detached_actor_cleanup(ray_start_regular):
             actor_id=detached_actor._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
-        while actor_status["State"] != gcs_utils.ActorTableData.DEAD:
+        while actor_status["State"] != convert_actor_state(
+                gcs_utils.ActorTableData.DEAD):
             actor_status = ray.state.actors(
                 actor_id=detached_actor._actor_id.hex())
             time.sleep(1.0)
@@ -777,6 +778,7 @@ def test_detached_actor_cleanup(ray_start_regular):
 import ray
 import ray._private.gcs_utils as gcs_utils
 import time
+from ray._private.test_utils import convert_actor_state
 ray.init(address="{}", namespace="default_test_namespace")
 
 @ray.remote
@@ -792,7 +794,7 @@ ray.kill(detached_actor)
 actor_status = ray.state.actors(actor_id=detached_actor._actor_id.hex())
 max_wait_time = 10
 wait_time = 0
-while actor_status["State"] != gcs_utils.ActorTableData.DEAD:
+while actor_status["State"] != convert_actor_state(gcs_utils.ActorTableData.DEAD): # noqa
     actor_status = ray.state.actors(actor_id=detached_actor._actor_id.hex())
     time.sleep(1.0)
     wait_time += 1
@@ -875,7 +877,8 @@ def test_detached_actor_cleanup_due_to_failure(ray_start_cluster):
         actor_status = ray.state.actors(actor_id=handle._actor_id.hex())
         max_wait_time = 10
         wait_time = 0
-        while actor_status["State"] != gcs_utils.ActorTableData.DEAD:
+        while actor_status["State"] != convert_actor_state(
+                gcs_utils.ActorTableData.DEAD):
             actor_status = ray.state.actors(actor_id=handle._actor_id.hex())
             time.sleep(1.0)
             wait_time += 1
@@ -1311,7 +1314,6 @@ def test_get_actor_after_killed(shutdown_only):
     actor = A.options(
         name="actor", namespace="namespace", lifetime="detached").remote()
     ray.kill(actor)
-    # This could be flaky due to our caching named actor mechanism.
     with pytest.raises(ValueError):
         ray.get_actor("actor", namespace="namespace")
 
@@ -1323,12 +1325,6 @@ def test_get_actor_after_killed(shutdown_only):
     ray.kill(actor, no_restart=False)
     assert ray.get(
         ray.get_actor("actor_2", namespace="namespace").ready.remote())
-
-    # TODO(sang): This currently doesn't pass without time.sleep.
-    # ray.kill(actor, no_restart=False)
-    # # Now the actor is killed.
-    # with pytest.raises(ValueError):
-    #     ray.get_actor("actor_2", namespace="namespace")
 
 
 def test_get_actor_race_condition(shutdown_only):

@@ -17,7 +17,7 @@ from pytest_lazyfixture import lazy_fixture
 import ray
 
 from ray.tests.conftest import *  # noqa
-from ray.data.dataset import Dataset
+from ray.data.dataset import Dataset, _sliding_window
 from ray.data.datasource import DummyOutputDatasource
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockAccessor
@@ -37,6 +37,39 @@ def maybe_pipeline(ds, enabled):
         return ds.window(blocks_per_window=1)
     else:
         return ds
+
+
+# Tests that we don't block on exponential rampup when doing bulk reads.
+# https://github.com/ray-project/ray/issues/20625
+@pytest.mark.parametrize("block_split", [False, True])
+def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
+    ray.init(num_cpus=8)
+    ctx = ray.data.context.DatasetContext.get_current()
+
+    class SlowCSVDatasource(CSVDatasource):
+        def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
+            for block in CSVDatasource._read_stream(self, f, path,
+                                                    **reader_args):
+                time.sleep(3)
+                yield block
+
+    try:
+        original = ctx.block_splitting_enabled
+
+        ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
+        ctx.block_splitting_enabled = True
+        ds = ray.data.read_datasource(
+            SlowCSVDatasource(), parallelism=8, paths=str(tmp_path))
+
+        start = time.time()
+        ds.map(lambda x: x)
+        delta = time.time() - start
+
+        print("full read time", delta)
+        # Should run in ~3 seconds. It takes >9 seconds if bulk read is broken.
+        assert delta < 8, delta
+    finally:
+        ctx.block_splitting_enabled = original
 
 
 @pytest.mark.parametrize("pipelined", [False, True])
@@ -1025,38 +1058,38 @@ def test_repartition_shuffle(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.sum() == 190
-    assert ds._block_sizes() == [2] * 10
+    assert ds._block_num_rows() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=True)
     assert ds2.num_blocks() == 5
     assert ds2.sum() == 190
-    assert ds2._block_sizes() == [10, 10, 0, 0, 0]
+    assert ds2._block_num_rows() == [10, 10, 0, 0, 0]
 
     ds3 = ds2.repartition(20, shuffle=True)
     assert ds3.num_blocks() == 20
     assert ds3.sum() == 190
-    assert ds3._block_sizes() == [2] * 10 + [0] * 10
+    assert ds3._block_num_rows() == [2] * 10 + [0] * 10
 
     large = ray.data.range(10000, parallelism=10)
     large = large.repartition(20, shuffle=True)
-    assert large._block_sizes() == [500] * 20
+    assert large._block_num_rows() == [500] * 20
 
 
 def test_repartition_noshuffle(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.sum() == 190
-    assert ds._block_sizes() == [2] * 10
+    assert ds._block_num_rows() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=False)
     assert ds2.num_blocks() == 5
     assert ds2.sum() == 190
-    assert ds2._block_sizes() == [4, 4, 4, 4, 4]
+    assert ds2._block_num_rows() == [4, 4, 4, 4, 4]
 
     ds3 = ds2.repartition(20, shuffle=False)
     assert ds3.num_blocks() == 20
     assert ds3.sum() == 190
-    assert ds3._block_sizes() == [1] * 20
+    assert ds3._block_num_rows() == [1] * 20
 
     # Test num_partitions > num_rows
     ds4 = ds.repartition(40, shuffle=False)
@@ -1064,36 +1097,36 @@ def test_repartition_noshuffle(ray_start_regular_shared):
     blocks = ray.get(ds4.get_internal_block_refs())
     assert all(isinstance(block, list) for block in blocks), blocks
     assert ds4.sum() == 190
-    assert ds4._block_sizes() == ([1] * 20) + ([0] * 20)
+    assert ds4._block_num_rows() == ([1] * 20) + ([0] * 20)
 
     ds5 = ray.data.range(22).repartition(4)
     assert ds5.num_blocks() == 4
-    assert ds5._block_sizes() == [5, 6, 5, 6]
+    assert ds5._block_num_rows() == [5, 6, 5, 6]
 
     large = ray.data.range(10000, parallelism=10)
     large = large.repartition(20)
-    assert large._block_sizes() == [500] * 20
+    assert large._block_num_rows() == [500] * 20
 
 
 def test_repartition_shuffle_arrow(ray_start_regular_shared):
     ds = ray.data.range_arrow(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.count() == 20
-    assert ds._block_sizes() == [2] * 10
+    assert ds._block_num_rows() == [2] * 10
 
     ds2 = ds.repartition(5, shuffle=True)
     assert ds2.num_blocks() == 5
     assert ds2.count() == 20
-    assert ds2._block_sizes() == [10, 10, 0, 0, 0]
+    assert ds2._block_num_rows() == [10, 10, 0, 0, 0]
 
     ds3 = ds2.repartition(20, shuffle=True)
     assert ds3.num_blocks() == 20
     assert ds3.count() == 20
-    assert ds3._block_sizes() == [2] * 10 + [0] * 10
+    assert ds3._block_num_rows() == [2] * 10 + [0] * 10
 
     large = ray.data.range_arrow(10000, parallelism=10)
     large = large.repartition(20, shuffle=True)
-    assert large._block_sizes() == [500] * 20
+    assert large._block_num_rows() == [500] * 20
 
 
 def test_from_pandas(ray_start_regular_shared):
@@ -1689,7 +1722,7 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.iter_blocks_with_metadata():
+    for block, meta in ds2._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
     if fs is None:
         shutil.rmtree(path)
@@ -1762,6 +1795,25 @@ def test_read_binary_files_s3(ray_start_regular_shared):
     assert item == expected
 
 
+def test_sliding_window():
+    arr = list(range(10))
+
+    # Test all windows over this iterable.
+    window_sizes = list(range(1, len(arr) + 1))
+    for window_size in window_sizes:
+        windows = list(_sliding_window(arr, window_size))
+        assert len(windows) == len(arr) - window_size + 1
+        assert all(len(window) == window_size for window in windows)
+        assert all(
+            list(window) == arr[i:i + window_size]
+            for i, window in enumerate(windows))
+
+    # Test window size larger than iterable length.
+    windows = list(_sliding_window(arr, 15))
+    assert len(windows) == 1
+    assert list(windows[0]) == arr
+
+
 def test_iter_batches_basic(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": [5, 6, 7]})
@@ -1830,8 +1882,9 @@ def test_iter_batches_basic(ray_start_regular_shared):
         batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
 
     # Prefetch.
-    for batch, df in zip(
-            ds.iter_batches(prefetch_blocks=1, batch_format="pandas"), dfs):
+    batches = list(ds.iter_batches(prefetch_blocks=1, batch_format="pandas"))
+    assert len(batches) == len(dfs)
+    for batch, df in zip(batches, dfs):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
 
@@ -1844,6 +1897,14 @@ def test_iter_batches_basic(ray_start_regular_shared):
         (len(df1) + len(df2) + len(df3) + len(df4)) / batch_size))
     assert pd.concat(
         batches, ignore_index=True).equals(pd.concat(dfs, ignore_index=True))
+
+    # Prefetch more than number of blocks.
+    batches = list(
+        ds.iter_batches(prefetch_blocks=len(dfs), batch_format="pandas"))
+    assert len(batches) == len(dfs)
+    for batch, df in zip(batches, dfs):
+        assert isinstance(batch, pd.DataFrame)
+        assert batch.equals(df)
 
 
 def test_iter_batches_grid(ray_start_regular_shared):
@@ -2044,7 +2105,7 @@ def test_split(ray_start_regular_shared):
     ds = ray.data.range(20, parallelism=10)
     assert ds.num_blocks() == 10
     assert ds.sum() == 190
-    assert ds._block_sizes() == [2] * 10
+    assert ds._block_num_rows() == [2] * 10
 
     datasets = ds.split(5)
     assert [2] * 5 == [
@@ -2102,7 +2163,7 @@ def test_split_hints(ray_start_regular_shared):
         """
         num_blocks = len(block_node_ids)
         ds = ray.data.range(num_blocks, parallelism=num_blocks)
-        blocks = list(ds._blocks.iter_blocks())
+        blocks = ds._blocks.get_blocks()
         assert len(block_node_ids) == len(blocks)
         actors = [Actor.remote() for i in range(len(actor_node_ids))]
         with patch("ray.experimental.get_object_locations") as location_mock:
@@ -2128,7 +2189,7 @@ def test_split_hints(ray_start_regular_shared):
                 for i in range(len(actors)):
                     assert {blocks[j]
                             for j in expected_split_result[i]} == set(
-                                datasets[i]._blocks.iter_blocks())
+                                datasets[i]._blocks.get_blocks())
 
     assert_split_assignment(["node2", "node1", "node1"], ["node1", "node2"],
                             [[1, 2], [0]])
@@ -2366,7 +2427,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._blocks.iter_blocks_with_metadata():
+    for block, meta in ds._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
@@ -2487,7 +2548,7 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     dsdf = ds.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._blocks.iter_blocks_with_metadata():
+    for block, meta in ds._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes()
 
     # Directory and file, two files.
@@ -2566,7 +2627,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.iter_blocks_with_metadata():
+    for block, meta in ds2._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     if fs is None:
@@ -2583,7 +2644,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.iter_blocks_with_metadata():
+    for block, meta in ds2._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
@@ -2675,7 +2736,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._blocks.iter_blocks_with_metadata():
+    for block, meta in ds._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
@@ -2806,7 +2867,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.iter_blocks_with_metadata():
+    for block, meta in ds2._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Two blocks.
@@ -2818,7 +2879,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.iter_blocks_with_metadata():
+    for block, meta in ds2._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
@@ -3651,8 +3712,8 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular):
     # Test empty dataset.
     ds = ray.data.range_arrow(10).filter(lambda r: r["value"] > 10)
     assert len(
-        ray.data.impl.sort.sample_boundaries(
-            list(ds._blocks.iter_blocks()), "value", 3)) == 2
+        ray.data.impl.sort.sample_boundaries(ds._blocks.get_blocks(), "value",
+                                             3)) == 2
     assert ds.sort("value").count() == 0
 
 
@@ -3670,12 +3731,14 @@ def test_dataset_retry_exceptions(ray_start_regular, local_path):
         def __init__(self):
             self.counter = Counter.remote()
 
-        def _read_file(self, f: "pa.NativeFile", path: str, **reader_args):
+        def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
             count = self.counter.increment.remote()
             if ray.get(count) == 1:
                 raise ValueError("oops")
             else:
-                return CSVDatasource._read_file(self, f, path, **reader_args)
+                for block in CSVDatasource._read_stream(
+                        self, f, path, **reader_args):
+                    yield block
 
         def _write_block(self, f: "pa.NativeFile", block: BlockAccessor,
                          **writer_args):
