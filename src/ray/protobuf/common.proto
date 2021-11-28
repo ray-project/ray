@@ -154,6 +154,13 @@ enum ErrorType {
   CORRESPONDING_PLACEMENT_GROUP_REMOVED = 15;
 }
 
+/// The information per ray error type.
+message RayErrorInfo {
+  oneof error {
+    RayException actor_init_failure = 1;
+  }
+}
+
 /// The task exception encapsulates all information about task
 /// execution execeptions.
 message RayException {
@@ -522,6 +529,8 @@ enum WorkerExitType {
   CREATION_TASK_ERROR = 4;
   // Worker killed by raylet if it has been idle for too long.
   IDLE_EXIT = 5;
+  // Worker killed because its node is dead.
+  NODE_DIED = 6;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

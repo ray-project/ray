@@ -26,7 +26,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   resolver_.ResolveDependencies(task_spec, [this, task_spec](Status status) {
     if (!status.ok()) {
       RAY_LOG(WARNING) << "Resolving task dependencies failed " << status.ToString();
-      RAY_UNUSED(task_finisher_->PendingTaskFailed(
+      RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
           task_spec.TaskId(), rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, &status));
       return;
     }
@@ -52,7 +52,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
             } else {
               RAY_LOG(ERROR) << "Failed to create actor " << actor_id
                              << " with status: " << status.ToString();
-              RAY_UNUSED(task_finisher_->PendingTaskFailed(
+              RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
                   task_id, rpc::ErrorType::ACTOR_CREATION_FAILED, &status));
             }
           }));
@@ -106,7 +106,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       }
     }
     if (!keep_executing) {
-      RAY_UNUSED(task_finisher_->PendingTaskFailed(
+      RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
           task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
     }
   });
@@ -562,12 +562,11 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                 auto &task_spec = task_queue.front();
                 if (reply.cancel_type() ==
                     rpc::RequestWorkerLeaseReply::RUNTIME_ENV_SETUP_FAILED) {
-                  RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
-                      task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED, nullptr));
+                  RAY_UNUSED(task_finisher_->MarkTaskReturnObjectsFailed(
+                      task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED));
                 } else {
-                  RAY_UNUSED(task_finisher_->MarkPendingTaskFailed(
-                      task_spec, rpc::ErrorType::CORRESPONDING_PLACEMENT_GROUP_REMOVED,
-                      nullptr));
+                  RAY_UNUSED(task_finisher_->MarkTaskReturnObjectsFailed(
+                      task_spec, rpc::ErrorType::CORRESPONDING_PLACEMENT_GROUP_REMOVED));
                 }
                 task_queue.pop_front();
               }
@@ -710,7 +709,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
           // failure (e.g., by contacting the raylet). If it was a process
           // failure, it may have been an application-level error and it may
           // not make sense to retry the task.
-          RAY_UNUSED(task_finisher_->PendingTaskFailed(
+          RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
               task_id,
               is_actor ? rpc::ErrorType::ACTOR_DIED : rpc::ErrorType::WORKER_DIED,
               &status));
@@ -752,7 +751,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
           if (scheduled_tasks.empty()) {
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
-          RAY_UNUSED(task_finisher_->PendingTaskFailed(
+          RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
               task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
           return Status::OK();
         }

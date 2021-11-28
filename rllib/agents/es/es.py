@@ -17,6 +17,7 @@ from ray.rllib.utils import FilterManager
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.torch_utils import set_torch_seed
+from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -218,8 +219,10 @@ def validate_config(config):
 class ESTrainer(Trainer):
     """Large-scale implementation of Evolution Strategies in Ray."""
 
-    _name = "ES"
-    _default_config = DEFAULT_CONFIG
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
 
     @override(Trainer)
     def _init(self, config, env_creator):
