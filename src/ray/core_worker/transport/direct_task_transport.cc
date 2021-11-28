@@ -553,11 +553,13 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                     rpc::RequestWorkerLeaseReply::RUNTIME_ENV_SETUP_FAILED ||
                 reply.cancel_type() ==
                     rpc::RequestWorkerLeaseReply::PLACEMENT_GROUP_REMOVED) {
-              // We need to actively fail this task when the placement group was removed or the runtime env setup failed.
-              // especially, if the runtime_env failed to be set up, we fail all of the pending
-              // tasks in the queue. This makes an implicit assumption that runtime_env
-              // failures are not transient -- we may consider adding some retries
-              // in the future.
+              // We need to actively fail all of the pending tasks in the queue when the
+              // placement group was removed or the runtime env failed to be set up. Such
+              // an operation is straightforward for the scenario of placement group
+              // removal as all tasks in the queue are associated with the same placement
+              // group, but in the case of runtime env setup failed, This makes an
+              // implicit assumption that runtime_env failures are not transient -- we may
+              // consider adding some retries in the future.
               auto &task_queue = scheduling_key_entry.task_queue;
               while (!task_queue.empty()) {
                 auto &task_spec = task_queue.front();
@@ -568,10 +570,10 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                 } else {
                   if (task_spec.IsActorCreationTask()) {
                     RAY_UNUSED(task_finisher_->MarkTaskReturnObjectsFailed(
-                      task_spec, rpc::ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED));
+                        task_spec, rpc::ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED));
                   } else {
                     RAY_UNUSED(task_finisher_->MarkTaskReturnObjectsFailed(
-                      task_spec, rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED));
+                        task_spec, rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED));
                   }
                 }
                 task_queue.pop_front();

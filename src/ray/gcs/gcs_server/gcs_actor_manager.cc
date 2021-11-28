@@ -987,15 +987,15 @@ void GcsActorManager::OnActorSchedulingFailed(
     break;
   case ActorSchedulingFailedType::RUNTIME_ENV_SETUP_FAILED:
     error_msg =
-        "Could not create the actor because its associated runtime env failed to be created..";
+        "Could not create the actor because its associated runtime env failed to be "
+        "created..";
     break;
   default:
     error_msg = "Unknown error.";
     break;
   }
 
-  DestroyActor(
-      actor->GetActorID(), GenActorDeathCause(error_msg));
+  DestroyActor(actor->GetActorID(), GenActorDeathCause(error_msg));
 }
 
 void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &actor,

@@ -52,7 +52,8 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   if (!node.has_value()) {
     // There are no available nodes to schedule the actor, so just trigger the failed
     // handler.
-    schedule_failure_handler_(std::move(actor), ActorSchedulingFailedType::NOT_ENOUGH_RESOURCES);
+    schedule_failure_handler_(std::move(actor),
+                              ActorSchedulingFailedType::NOT_ENOUGH_RESOURCES);
     return;
   }
 

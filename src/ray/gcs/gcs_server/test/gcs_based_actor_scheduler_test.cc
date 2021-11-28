@@ -48,7 +48,8 @@ class GcsBasedActorSchedulerTest : public ::testing::Test {
             io_service_, *gcs_actor_table_, *gcs_node_manager_, gcs_resource_manager_,
             resource_scheduler,
             /*schedule_failure_handler=*/
-            [this](std::shared_ptr<gcs::GcsActor> actor, const gcs::ActorSchedulingFailedType failed_type) {
+            [this](std::shared_ptr<gcs::GcsActor> actor,
+                   const gcs::ActorSchedulingFailedType failed_type) {
               failure_actors_.emplace_back(std::move(actor));
             },
             /*schedule_success_handler=*/
