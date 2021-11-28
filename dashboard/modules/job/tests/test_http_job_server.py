@@ -5,11 +5,12 @@ import tempfile
 
 import pytest
 
+import ray
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.tests.conftest import _ray_start
 from ray._private.test_utils import (format_web_url, wait_for_condition,
                                      wait_until_server_available)
-from ray.dashboard.modules.job.common import JobStatus
+from ray.dashboard.modules.job.common import CURRENT_VERSION, JobStatus
 from ray.dashboard.modules.job.sdk import (ClusterInfo, JobSubmissionClient,
                                            parse_cluster_info)
 
@@ -270,6 +271,18 @@ def test_missing_resources(job_sdk_client):
 
     for method, route in conditions:
         assert client._do_request(method, route).status_code == 404
+
+
+def test_version_endpoint(job_sdk_client):
+    client = job_sdk_client
+
+    r = client._do_request("GET", "/api/version")
+    assert r.status_code == 200
+    assert r.json() == {
+        "version": CURRENT_VERSION,
+        "ray_version": ray.__version__,
+        "ray_commit": ray.__commit__
+    }
 
 
 @pytest.mark.parametrize("address", [

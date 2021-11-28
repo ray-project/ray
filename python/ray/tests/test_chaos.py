@@ -31,11 +31,11 @@ def assert_no_system_failure(p, timeout):
         "worker_node_types": {
             "cpu_node": {
                 "resources": {
-                    "CPU": 8,
+                    "CPU": 4,
                 },
                 "node_config": {},
                 "min_workers": 0,
-                "max_workers": 4,
+                "max_workers": 3,
             },
         },
     }],
@@ -58,7 +58,7 @@ def test_chaos_task_retry(ray_start_chaos_cluster):
         return ray.get(task.remote())
 
     # 50MB of return values.
-    TOTAL_TASKS = 300
+    TOTAL_TASKS = 100
 
     pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS)
     results = [invoke_nested_task.remote() for _ in range(TOTAL_TASKS)]
@@ -82,7 +82,7 @@ def test_chaos_task_retry(ray_start_chaos_cluster):
         "worker_node_types": {
             "cpu_node": {
                 "resources": {
-                    "CPU": 8,
+                    "CPU": 4,
                 },
                 "node_config": {},
                 "min_workers": 0,
@@ -104,7 +104,7 @@ def test_chaos_actor_retry(ray_start_chaos_cluster):
         def get(self):
             return self.letter_dict
 
-    NUM_CPUS = 32
+    NUM_CPUS = 16
     TOTAL_TASKS = 300
 
     pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS * NUM_CPUS)
