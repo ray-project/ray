@@ -441,7 +441,7 @@ class JobManager:
             if line is None:
                 # Return if the job has exited and there are no new log lines.
                 status = self.get_job_status(job_id)
-                if status not in {JobStatus.PENDING, JobStatus.RUNNING}:
+                if status.status not in {JobStatus.PENDING, JobStatus.RUNNING}:
                     return
 
                 await asyncio.sleep(self.LOG_TAIL_SLEEP_S)
