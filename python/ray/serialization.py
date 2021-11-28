@@ -259,8 +259,11 @@ class SerializationContext:
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):
                 return RuntimeEnvSetupError()
             elif error_type == ErrorType.Value(
-                    "CORRESPONDING_PLACEMENT_GROUP_REMOVED"):
-                return PlacementGroupRemovedError()
+                    "TASK_PLACEMENT_GROUP_REMOVED"):
+                return TaskPlacementGroupRemoved()
+            elif error_type == ErrorType.Value(
+                    "ACTOR_PLACEMENT_GROUP_REMOVED"):
+                return ActorPlacementGroupRemoved()
             else:
                 return RaySystemError("Unrecognized error type " +
                                       str(error_type))

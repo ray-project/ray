@@ -52,7 +52,7 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   if (!node.has_value()) {
     // There are no available nodes to schedule the actor, so just trigger the failed
     // handler.
-    schedule_failure_handler_(std::move(actor), ActorSchedulingFailedType::RESOURCE_LACK);
+    schedule_failure_handler_(std::move(actor), ActorSchedulingFailedType::NOT_ENOUGH_RESOURCES);
     return;
   }
 
@@ -330,7 +330,7 @@ void GcsActorScheduler::HandleRequestWorkerLeaseCanceled(
     schedule_failure_handler_(actor, ActorSchedulingFailedType::RUNTIME_ENV_SETUP_FAILED);
     break;
   default:
-    schedule_failure_handler_(actor, ActorSchedulingFailedType::RESOURCE_LACK);
+    schedule_failure_handler_(actor, ActorSchedulingFailedType::NOT_ENOUGH_RESOURCES);
     break;
   }
 }

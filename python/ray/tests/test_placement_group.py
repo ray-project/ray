@@ -557,12 +557,13 @@ def test_remove_placement_group_worker_startup_slowly(ray_start_cluster):
 
     # Make sure the actor has been killed
     # because of the removal of the pg.
+    # TODO(@clay4444): Make it throw a `ActorPlacementGroupRemoved`.
     with pytest.raises(ray.exceptions.RayActorError, match="actor died"):
         ray.get(a.f.remote(), timeout=3.0)
 
     # The long-running task should still be in the state
     # of leasing-worker bacause of the worker startup delay.
-    with pytest.raises(ray.exceptions.PlacementGroupRemovedError):
+    with pytest.raises(ray.exceptions.TaskPlacementGroupRemoved):
         ray.get(task_ref)
 
 

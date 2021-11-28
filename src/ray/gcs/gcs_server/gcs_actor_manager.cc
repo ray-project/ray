@@ -972,7 +972,7 @@ void GcsActorManager::ReconstructActor(const ActorID &actor_id, bool need_resche
 
 void GcsActorManager::OnActorSchedulingFailed(
     std::shared_ptr<GcsActor> actor, const ActorSchedulingFailedType failed_type) {
-  if (failed_type == ActorSchedulingFailedType::RESOURCE_LACK) {
+  if (failed_type == ActorSchedulingFailedType::NOT_ENOUGH_RESOURCES) {
     // We will attempt to schedule this actor once an eligible node is
     // registered.
     pending_actors_.emplace_back(std::move(actor));
@@ -983,7 +983,7 @@ void GcsActorManager::OnActorSchedulingFailed(
   switch (failed_type) {
   case ActorSchedulingFailedType::PLACEMENT_GROUP_REMOVED:
     error_msg =
-        "Cannot create an actor because the corresponding placement group was removed.";
+        "Could not create the actor because its associated placement group was removed.";
     break;
   case ActorSchedulingFailedType::RUNTIME_ENV_SETUP_FAILED:
     error_msg =

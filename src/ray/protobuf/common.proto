@@ -150,8 +150,10 @@ enum ErrorType {
   // get thrown if an object appears to be created, but the requestor is not
   // able to fetch it after the configured timeout.
   OBJECT_FETCH_TIMED_OUT = 14;
-  // Indicates that the corresponding placement group has been removed.
-  CORRESPONDING_PLACEMENT_GROUP_REMOVED = 15;
+  // Indicates that the placement group corresponding to a task has been removed.
+  TASK_PLACEMENT_GROUP_REMOVED = 15;
+  // Indicates that the placement group corresponding to an actor has been removed.
+  ACTOR_PLACEMENT_GROUP_REMOVED = 16;
 }
 
 /// The information per ray error type.

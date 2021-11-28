@@ -72,13 +72,13 @@ message RequestWorkerLeaseReply {
   // client should try again if the resources are still required.
   bool canceled = 4;
   // PID of the worker process.
-  uint32 worker_pid = 5;
+  uint32 worker_pid = 6;
   // Whether the request was rejected because of insufficient resources.
-  bool rejected = 6;
+  bool rejected = 7;
   // The (normal task) resources data to be carried by the Reply.
-  ResourcesData resources_data = 7;
+  ResourcesData resources_data = 8;
   // Cancel type.
-  CancelType cancel_type = 8;
+  CancelType cancel_type = 9;
 }
 
 message PrepareBundleResourcesRequest {

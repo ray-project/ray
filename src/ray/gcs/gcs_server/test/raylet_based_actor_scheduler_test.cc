@@ -39,7 +39,7 @@ class RayletBasedActorSchedulerTest : public ::testing::Test {
         std::make_shared<GcsServerMocker::MockedRayletBasedActorScheduler>(
             io_service_, *gcs_actor_table_, *gcs_node_manager_,
             /*schedule_failure_handler=*/
-            [this](std::shared_ptr<gcs::GcsActor> actor, bool destroy_actor) {
+            [this](std::shared_ptr<gcs::GcsActor> actor, const gcs::ActorSchedulingFailedType failed_type) {
               failure_actors_.emplace_back(std::move(actor));
             },
             /*schedule_success_handler=*/
