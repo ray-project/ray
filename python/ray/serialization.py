@@ -259,8 +259,7 @@ class SerializationContext:
                     object_ref.call_site())
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):
                 return RuntimeEnvSetupError()
-            elif error_type == ErrorType.Value(
-                    "TASK_PLACEMENT_GROUP_REMOVED"):
+            elif error_type == ErrorType.Value("TASK_PLACEMENT_GROUP_REMOVED"):
                 return TaskPlacementGroupRemoved()
             elif error_type == ErrorType.Value(
                     "ACTOR_PLACEMENT_GROUP_REMOVED"):
