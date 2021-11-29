@@ -18,7 +18,8 @@ from ray.serve.constants import (MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
                                  MAX_NUM_DELETED_DEPLOYMENTS)
 from ray.serve.storage.kv_store import KVStoreBase
 from ray.serve.long_poll import LongPollHost, LongPollNamespace
-from ray.serve.utils import format_actor_name, get_random_letters, logger
+from ray.serve.utils import (format_actor_name, get_random_letters, logger,
+                             wrap_to_ray_error)
 from ray.serve.version import DeploymentVersion, VersionedReplica
 from ray.util.placement_group import PlacementGroup
 
@@ -1175,6 +1176,8 @@ class DeploymentState:
                 # that caused the failure?
                 exception = RuntimeError("Failed to reach deployment goal. "
                                          "Check the serve logs for details.")
+            # wrap this exception so that it can be sent across the cluster
+            exception = wrap_to_ray_error("unknown", exception)
 
             # Roll back or delete the deployment if it failed.
             if self._rollback_info is None:

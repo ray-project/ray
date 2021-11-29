@@ -2,7 +2,6 @@ from collections import defaultdict
 import os
 import sys
 import time
-from pathlib import Path
 
 from pydantic.error_wrappers import ValidationError
 import pytest
@@ -1126,22 +1125,10 @@ def test_deployment_error_handling(serve_instance):
             }
         }).deploy()
 
-    ray_package_dir = Path(__file__).parents[2]
-
-    # extract (relative_file_path, name) frames from the traceback
-    tb = exception_info.tb
-    frames = []
-    while tb.tb_next:
-        file_path = Path(tb.tb_frame.f_code.co_filename)
-        rel_path = file_path.relative_to(ray_package_dir)
-        name = tb.tb_frame.f_code.co_name
-        frames.append((str(rel_path), name))
-        tb = tb.tb_next
-
-    # This is the method where deployment exceptions should
+    # This is the file where deployment exceptions should
     # be caught. If this frame is not present in the stacktrace,
     # the stacktrace is incomplete.
-    assert ("serve/deployment_state.py", "update") in frames
+    assert "serve/deployment_state.py" in str(exception_info.value)
 
 
 if __name__ == "__main__":
