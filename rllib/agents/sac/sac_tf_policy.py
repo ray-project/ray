@@ -199,9 +199,10 @@ def get_distribution_inputs_and_class(
             (in the RNN case).
     """
     # Get base-model (forward) output (this should be a noop call).
-    forward_out, state_out = model(SampleBatch(
-        obs=obs_batch,
-        _is_training=policy._get_is_training_placeholder()), [], None)
+    forward_out, state_out = model(
+        SampleBatch(
+            obs=obs_batch, _is_training=policy._get_is_training_placeholder()),
+        [], None)
     # Use the base output to get the policy outputs from the SAC model's
     # policy components.
     distribution_inputs = model.get_policy_output(forward_out)
@@ -232,20 +233,23 @@ def sac_actor_critic_loss(
 
     _is_training = policy._get_is_training_placeholder()
     # Get the base model output from the train batch.
-    model_out_t, _ = model(SampleBatch(
-        obs=train_batch[SampleBatch.CUR_OBS],
-        _is_training=_is_training), [], None)
+    model_out_t, _ = model(
+        SampleBatch(
+            obs=train_batch[SampleBatch.CUR_OBS], _is_training=_is_training),
+        [], None)
 
     # Get the base model output from the next observations in the train batch.
-    model_out_tp1, _ = model(SampleBatch(
-        obs=train_batch[SampleBatch.NEXT_OBS],
-        _is_training=_is_training), [], None)
+    model_out_tp1, _ = model(
+        SampleBatch(
+            obs=train_batch[SampleBatch.NEXT_OBS], _is_training=_is_training),
+        [], None)
 
     # Get the target model's base outputs from the next observations in the
     # train batch.
-    target_model_out_tp1, _ = policy.target_model(SampleBatch(
-        obs=train_batch[SampleBatch.NEXT_OBS],
-        _is_training=_is_training), [], None)
+    target_model_out_tp1, _ = policy.target_model(
+        SampleBatch(
+            obs=train_batch[SampleBatch.NEXT_OBS], _is_training=_is_training),
+        [], None)
 
     # Discrete actions case.
     if model.discrete:

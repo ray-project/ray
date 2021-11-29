@@ -323,9 +323,10 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
         with tf1.variable_scope(scope, reuse=tf1.AUTO_REUSE) as scope:
             if use_state_preprocessor:
                 model_n = [
-                    ModelCatalog.get_model(SampleBatch(
-                        obs=obs,
-                        _is_training=self._get_is_training_placeholder()),
+                    ModelCatalog.get_model(
+                        SampleBatch(
+                            obs=obs,
+                            _is_training=self._get_is_training_placeholder()),
                         obs_space, act_space, 1, self.config["model"])
                     for obs, obs_space, act_space in zip(
                         obs_n, obs_space_n, act_space_n)
@@ -354,9 +355,10 @@ class MADDPGTFPolicy(MADDPGPostprocessing, TFPolicy):
                              scope=None):
         with tf1.variable_scope(scope, reuse=tf1.AUTO_REUSE) as scope:
             if use_state_preprocessor:
-                model = ModelCatalog.get_model(SampleBatch(
-                    obs=obs,
-                    _is_training=self._get_is_training_placeholder()),
+                model = ModelCatalog.get_model(
+                    SampleBatch(
+                        obs=obs,
+                        _is_training=self._get_is_training_placeholder()),
                     obs_space, act_space, 1, self.config["model"])
                 out = model.last_layer
             else:

@@ -69,7 +69,8 @@ class KerasBatchNormModel(TFModelV2):
             is_training = input_dict["is_training"]
         # Have to batch the is_training flag (B=1).
         out, self._value_out = self.base_model(
-            [input_dict["obs"], tf.expand_dims(is_training, 0)])
+            [input_dict["obs"],
+             tf.expand_dims(is_training, 0)])
         return out, []
 
     @override(ModelV2)
@@ -117,9 +118,7 @@ class BatchNormModel(TFModelV2):
                     name="fc{}".format(i))
                 # Add a batch norm layer
                 last_layer = tf1.layers.batch_normalization(
-                    last_layer,
-                    training=is_training,
-                    name="bn_{}".format(i))
+                    last_layer, training=is_training, name="bn_{}".format(i))
 
             output = tf1.layers.dense(
                 last_layer,
