@@ -1873,22 +1873,22 @@ cdef class CoreWorker:
                         return_id, data_size, metadata, contained_id,
                         task_output_inlined_bytes, &returns[0][i]))
 
-            if self.is_local_mode:
-                check_status(
-                    CCoreWorkerProcess.GetCoreWorker().Put(
-                        CRayObject(returns[0][i].get().GetData(),
-                                   returns[0][i].get().GetMetadata(),
-                                   c_vector[CObjectReference]()),
-                        c_vector[CObjectID](), return_ids[i]))
-
-            elif returns[0][i].get() != NULL:
+            if returns[0][i].get() != NULL:
                 if returns[0][i].get().HasData():
                     (<SerializedObject>serialized_object).write_to(
                         Buffer.make(returns[0][i].get().GetData()))
-                with nogil:
+                if self.is_local_mode:
                     check_status(
-                        CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
-                            return_id, returns[0][i]))
+                        CCoreWorkerProcess.GetCoreWorker().Put(
+                            CRayObject(returns[0][i].get().GetData(),
+                                       returns[0][i].get().GetMetadata(),
+                                       c_vector[CObjectReference]()),
+                            c_vector[CObjectID](), return_ids[i]))
+                else:
+                    with nogil:
+                        check_status(
+                            CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
+                                return_id, returns[0][i]))
             else:
                 with nogil:
                     check_status(
