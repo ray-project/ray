@@ -219,10 +219,10 @@ Process WorkerPool::StartWorkerProcess(
     return Process();
   }
   // Either there are no workers pending registration or the worker start is being forced.
-  RAY_LOG(INFO) << "Starting new worker process of language "
-                << rpc::Language_Name(language) << " and type "
-                << rpc::WorkerType_Name(worker_type) << ", current pool has "
-                << state.idle.size() << " workers";
+  RAY_LOG(DEBUG) << "Starting new worker process of language "
+                 << rpc::Language_Name(language) << " and type "
+                 << rpc::WorkerType_Name(worker_type) << ", current pool has "
+                 << state.idle.size() << " workers";
 
   int workers_to_start = 1;
   if (dynamic_options.empty()) {
