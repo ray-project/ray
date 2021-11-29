@@ -1,14 +1,15 @@
-from uuid import uuid4
-import tempfile
 import os
-import time
 import psutil
+import tempfile
+import sys
+from uuid import uuid4
 
 import pytest
 
 import ray
-from ray.dashboard.modules.job.common import JobStatus, JOB_ID_METADATA_KEY
-from ray.dashboard.modules.job.job_manager import JobManager
+from ray.dashboard.modules.job.common import (JobStatus, JOB_ID_METADATA_KEY,
+                                              JOB_NAME_METADATA_KEY)
+from ray.dashboard.modules.job.job_manager import generate_job_id, JobManager
 from ray._private.test_utils import SignalActor, wait_for_condition
 
 TEST_NAMESPACE = "jobs_test_namespace"
@@ -31,29 +32,51 @@ def _driver_script_path(file_name: str) -> str:
 
 def check_job_succeeded(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
-    if status == JobStatus.FAILED:
-        logs = job_manager.get_job_logs(job_id)
-        raise RuntimeError(f"Job failed! logs:\n{logs}")
-    assert status in {
+    if status.status == JobStatus.FAILED:
+        raise RuntimeError(f"Job failed! {status.message}")
+    assert status.status in {
         JobStatus.PENDING, JobStatus.RUNNING, JobStatus.SUCCEEDED
     }
-    return status == JobStatus.SUCCEEDED
+    return status.status == JobStatus.SUCCEEDED
 
 
 def check_job_failed(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
-    assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.FAILED}
-    return status == JobStatus.FAILED
+    assert status.status in {
+        JobStatus.PENDING, JobStatus.RUNNING, JobStatus.FAILED
+    }
+    return status.status == JobStatus.FAILED
 
 
 def check_job_stopped(job_manager, job_id):
     status = job_manager.get_job_status(job_id)
-    assert status in {JobStatus.PENDING, JobStatus.RUNNING, JobStatus.STOPPED}
-    return status == JobStatus.STOPPED
+    assert status.status in {
+        JobStatus.PENDING, JobStatus.RUNNING, JobStatus.STOPPED
+    }
+    return status.status == JobStatus.STOPPED
+
+
+def check_job_running(job_manager, job_id):
+    status = job_manager.get_job_status(job_id)
+    assert status.status in {JobStatus.PENDING, JobStatus.RUNNING}
+    return status.status == JobStatus.RUNNING
 
 
 def check_subprocess_cleaned(pid):
     return psutil.pid_exists(pid) is False
+
+
+def test_generate_job_id():
+    ids = set()
+    for _ in range(10000):
+        new_id = generate_job_id()
+        assert new_id.startswith("raysubmit_")
+        assert new_id.count("_") == 1
+        assert "-" not in new_id
+        assert "/" not in new_id
+        ids.add(new_id)
+
+    assert len(ids) == 10000
 
 
 def test_pass_job_id(job_manager):
@@ -105,17 +128,24 @@ class TestShellScriptExecution:
         run_cmd = f"python {_driver_script_path('script_with_exception.py')}"
         job_id = job_manager.submit_job(entrypoint=run_cmd)
 
-        wait_for_condition(
-            check_job_failed, job_manager=job_manager, job_id=job_id)
-        logs = job_manager.get_job_logs(job_id)
-        last_line = logs.strip().splitlines()[-1]
-        assert last_line == "Exception: Script failed with exception !"
-        assert job_manager._get_actor_for_job(job_id) is None
+        def cleaned_up():
+            status = job_manager.get_job_status(job_id)
+            if status.status != JobStatus.FAILED:
+                return False
+            if ("Exception: Script failed with exception !" not in
+                    status.message):
+                return False
+
+            return job_manager._get_actor_for_job(job_id) is None
+
+        wait_for_condition(cleaned_up)
 
     def test_submit_with_s3_runtime_env(self, job_manager):
         job_id = job_manager.submit_job(
             entrypoint="python script.py",
-            runtime_env={"working_dir": "s3://runtime-env-test/script.zip"})
+            runtime_env={
+                "working_dir": "s3://runtime-env-test/script_runtime_env.zip"
+            })
 
         wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id)
@@ -192,17 +222,32 @@ class TestRuntimeEnv:
             "are provided")
         assert "JOB_1_VAR" in logs
 
-    def test_failed_runtime_env_configuration(self, job_manager):
-        """Ensure job status is correctly set as failed if job supervisor
-        actor failed to setup runtime_env.
+    def test_failed_runtime_env_validation(self, job_manager):
+        """Ensure job status is correctly set as failed if job has an invalid
+        runtime_env.
         """
-        with pytest.raises(RuntimeError):
-            run_cmd = f"python {_driver_script_path('override_env_var.py')}"
-            job_id = job_manager.submit_job(
-                entrypoint=run_cmd,
-                runtime_env={"working_dir": "path_not_exist"})
+        run_cmd = f"python {_driver_script_path('override_env_var.py')}"
+        job_id = job_manager.submit_job(
+            entrypoint=run_cmd, runtime_env={"working_dir": "path_not_exist"})
 
-            assert job_manager.get_job_status(job_id) == JobStatus.FAILED
+        status = job_manager.get_job_status(job_id)
+        assert status.status == JobStatus.FAILED
+        assert "path_not_exist is not a valid URI" in status.message
+
+    def test_failed_runtime_env_setup(self, job_manager):
+        """Ensure job status is correctly set as failed if job has a valid
+        runtime_env that fails to be set up.
+        """
+        run_cmd = f"python {_driver_script_path('override_env_var.py')}"
+        job_id = job_manager.submit_job(
+            entrypoint=run_cmd,
+            runtime_env={"working_dir": "s3://does_not_exist.zip"})
+
+        wait_for_condition(
+            check_job_failed, job_manager=job_manager, job_id=job_id)
+
+        status = job_manager.get_job_status(job_id)
+        assert "runtime_env setup failed" in status.message
 
     def test_pass_metadata(self, job_manager):
         def dict_to_str(d):
@@ -216,12 +261,13 @@ class TestRuntimeEnv:
             "print(dict(sorted(job_config.metadata.items())))"
             "\"")
 
-        # Check that we default to only the job ID.
+        # Check that we default to only the job ID and job name.
         job_id = job_manager.submit_job(entrypoint=print_metadata_cmd)
 
         wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id)
         assert dict_to_str({
+            JOB_NAME_METADATA_KEY: job_id,
             JOB_ID_METADATA_KEY: job_id
         }) in job_manager.get_job_logs(job_id)
 
@@ -236,9 +282,22 @@ class TestRuntimeEnv:
         wait_for_condition(
             check_job_succeeded, job_manager=job_manager, job_id=job_id)
         assert dict_to_str({
+            JOB_NAME_METADATA_KEY: job_id,
             JOB_ID_METADATA_KEY: job_id,
             "key1": "val1",
             "key2": "val2"
+        }) in job_manager.get_job_logs(job_id)
+
+        # Check that we can override job name.
+        job_id = job_manager.submit_job(
+            entrypoint=print_metadata_cmd,
+            metadata={JOB_NAME_METADATA_KEY: "custom_name"})
+
+        wait_for_condition(
+            check_job_succeeded, job_manager=job_manager, job_id=job_id)
+        assert dict_to_str({
+            JOB_NAME_METADATA_KEY: "custom_name",
+            JOB_ID_METADATA_KEY: job_id
         }) in job_manager.get_job_logs(job_id)
 
 
@@ -259,17 +318,18 @@ class TestAsyncAPI:
             entrypoint=wait_for_file_cmd,
             _start_signal_actor=_start_signal_actor)
 
-        for _ in range(10):
-            time.sleep(0.1)
-            status = job_manager.get_job_status(job_id)
-            if _start_signal_actor:
-                assert status == JobStatus.PENDING
+        status = job_manager.get_job_status(job_id)
+        if _start_signal_actor:
+            for _ in range(10):
+                assert status.status == JobStatus.PENDING
                 logs = job_manager.get_job_logs(job_id)
                 assert logs == ""
-            else:
-                assert status == JobStatus.RUNNING
-                logs = job_manager.get_job_logs(job_id)
-                assert "Waiting..." in logs
+        else:
+            wait_for_condition(
+                check_job_running, job_manager=job_manager, job_id=job_id)
+
+            wait_for_condition(
+                lambda: "Waiting..." in job_manager.get_job_logs(job_id))
 
         return pid_file, tmp_file, job_id
 
@@ -400,6 +460,4 @@ class TestAsyncAPI:
 
 
 if __name__ == "__main__":
-    import sys
-    import pytest
     sys.exit(pytest.main(["-v", __file__]))

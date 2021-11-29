@@ -34,6 +34,7 @@ from ray.internal.internal_api import memory_summary
 from ray.autoscaler._private.cli_logger import cli_logger, cf
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import gcs_service_pb2_grpc
+from ray.dashboard.modules.job.cli import job_cli_group
 from distutils.dir_util import copy_tree
 
 logger = logging.getLogger(__name__)
@@ -1662,7 +1663,7 @@ def local_dump(stream: bool = False,
     "--debug-state/--no-debug-state",
     is_flag=True,
     default=True,
-    help="Collect debug_state.txt from ray session dir")
+    help="Collect debug_state.txt from ray log dir")
 @click.option(
     "--pip/--no-pip",
     is_flag=True,
@@ -1975,6 +1976,7 @@ cli.add_command(global_gc)
 cli.add_command(timeline)
 cli.add_command(install_nightly)
 cli.add_command(cpp)
+add_command_alias(job_cli_group, name="job", hidden=True)
 
 try:
     from ray.serve.scripts import serve_cli

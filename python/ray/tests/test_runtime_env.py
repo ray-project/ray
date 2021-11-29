@@ -120,8 +120,10 @@ def test_container_option_serialize():
     job_config = ray.job_config.JobConfig(runtime_env=runtime_env)
     job_config_serialized = job_config.serialize()
     # job_config_serialized is JobConfig protobuf serialized string,
-    # job_config.runtime_env.serialized_runtime_env has container_option info
-    assert job_config_serialized.count(b"image") == 1
+    # job_config.runtime_env_info.serialized_runtime_env
+    # has container_option info
+    assert job_config_serialized.count(b"ray:latest") == 1
+    assert job_config_serialized.count(b"--name=test") == 1
 
 
 @pytest.mark.skipif(
@@ -147,10 +149,8 @@ def test_invalid_conda_env(shutdown_only):
     # Check that another valid task can run.
     ray.get(f.remote())
 
-    # Check actor is also broken.
-    # TODO(sang): It should raise RuntimeEnvSetupError
     a = A.options(runtime_env=bad_env).remote()
-    with pytest.raises(ray.exceptions.RayActorError):
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
         ray.get(a.f.remote())
 
     # The second time this runs it should be faster as the error is cached.
@@ -188,7 +188,7 @@ def test_no_spurious_worker_startup(shutdown_only):
     # Check "debug_state.txt" to ensure no extra workers were started.
     session_dir = ray.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
-    debug_state_path = session_path / "debug_state.txt"
+    debug_state_path = session_path / "logs" / "debug_state.txt"
 
     def get_num_workers():
         with open(debug_state_path) as f:
@@ -281,8 +281,7 @@ def test_runtime_env_broken(set_agent_failure_env_var, ray_start_cluster_head):
     Test actor task raises an exception.
     """
     a = A.options(runtime_env=runtime_env).remote()
-    # TODO(sang): Raise a RuntimeEnvSetupError with proper error.
-    with pytest.raises(ray.exceptions.RayActorError):
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
         ray.get(a.ready.remote())
 
 

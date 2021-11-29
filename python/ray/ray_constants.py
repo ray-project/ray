@@ -271,6 +271,9 @@ HEALTHCHECK_EXPIRATION_S = os.environ.get("RAY_HEALTHCHECK_EXPIRATION_S", 10)
 # src/ray/common/constants.h.
 SETUP_WORKER_FILENAME = "setup_worker.py"
 
+# Directory name where runtime_env resources will be created & cached.
+DEFAULT_RUNTIME_ENV_DIR_NAME = "runtime_resources"
+
 # Used to separate lines when formatting the call stack where an ObjectRef was
 # created.
 CALL_STACK_LINE_DELIMITER = " | "
@@ -291,3 +294,4 @@ KV_NAMESPACE_JOB = "job"
 # This might introduce some compatibility issues so leave it here for now.
 KV_NAMESPACE_PACKAGE = None
 KV_NAMESPACE_SERVE = "serve"
+KV_NAMESPACE_FUNCTION_TABLE = "fun"

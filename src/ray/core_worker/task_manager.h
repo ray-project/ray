@@ -33,10 +33,10 @@ class TaskFinisherInterface {
 
   virtual bool RetryTaskIfPossible(const TaskID &task_id) = 0;
 
-  virtual bool PendingTaskFailed(
-      const TaskID &task_id, rpc::ErrorType error_type, const Status *status,
-      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr,
-      bool immediately_mark_object_fail = true) = 0;
+  virtual bool FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+                                      const Status *status,
+                                      const rpc::RayErrorInfo *ray_error_info = nullptr,
+                                      bool mark_task_object_failed = true) = 0;
 
   virtual void OnTaskDependenciesInlined(
       const std::vector<ObjectID> &inlined_dependency_ids,
@@ -44,9 +44,9 @@ class TaskFinisherInterface {
 
   virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
 
-  virtual void MarkPendingTaskFailed(
+  virtual void MarkTaskReturnObjectsFailed(
       const TaskSpecification &spec, rpc::ErrorType error_type,
-      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr) = 0;
+      const rpc::RayErrorInfo *ray_error_info = nullptr) = 0;
 
   virtual absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
 
@@ -139,23 +139,24 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] task_id ID of the pending task.
   /// \param[in] error_type The type of the specific error.
   /// \param[in] status Optional status message.
-  /// \param[in] creation_task_exception If this arg is set, it means this task failed
-  /// because the callee actor is dead caused by an exception thrown in creation task,
-  /// only applies when error_type=ACTOR_DIED.
-  /// \param[in] immediately_mark_object_fail whether immediately mark the task
-  /// result object as failed.
+  /// \param[in] ray_error_info The error information of a given error type.
+  /// \param[in] mark_task_object_failed whether or not it marks the task
+  /// return object as failed.
   /// \return Whether the task will be retried or not.
-  bool PendingTaskFailed(
-      const TaskID &task_id, rpc::ErrorType error_type, const Status *status = nullptr,
-      const std::shared_ptr<rpc::RayException> &creation_task_exception = nullptr,
-      bool immediately_mark_object_fail = true) override;
+  bool FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+                              const Status *status = nullptr,
+                              const rpc::RayErrorInfo *ray_error_info = nullptr,
+                              bool mark_task_object_failed = true) override;
 
-  /// Treat a pending task as failed. The lock should not be held when calling
-  /// this method because it may trigger callbacks in this or other classes.
-  void MarkPendingTaskFailed(const TaskSpecification &spec, rpc::ErrorType error_type,
-                             const std::shared_ptr<rpc::RayException>
-                                 &creation_task_exception = nullptr) override
-      LOCKS_EXCLUDED(mu_);
+  /// Treat a pending task's returned Ray object as failed. The lock should not be held
+  /// when calling this method because it may trigger callbacks in this or other classes.
+  ///
+  /// \param[in] spec The TaskSpec that contains return object.
+  /// \param[in] error_type The error type the returned Ray object will store.
+  /// \param[in] ray_error_info The error information of a given error type.
+  void MarkTaskReturnObjectsFailed(
+      const TaskSpecification &spec, rpc::ErrorType error_type,
+      const rpc::RayErrorInfo *ray_error_info = nullptr) override LOCKS_EXCLUDED(mu_);
 
   /// A task's dependencies were inlined in the task spec. This will decrement
   /// the ref count for the dependency IDs. If the dependencies contained other

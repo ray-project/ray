@@ -2,6 +2,7 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
+from ray._private.runtime_env.utils import RuntimeEnv
 from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
@@ -35,8 +36,9 @@ def upload_working_dir_if_needed(
         protocol, path = None, None
 
     if protocol is not None:
-        if protocol == Protocol.S3 and not path.endswith(".zip"):
-            raise ValueError("Only .zip files supported for S3 URIs.")
+        if protocol in Protocol.remote_protocols(
+        ) and not path.endswith(".zip"):
+            raise ValueError("Only .zip files supported for remote URIs.")
         return runtime_env
 
     excludes = runtime_env.get("excludes", None)
@@ -70,14 +72,15 @@ class WorkingDirManager:
         return deleted
 
     def setup(self,
-              runtime_env: dict,
+              runtime_env: RuntimeEnv,
               context: RuntimeEnvContext,
               logger: Optional[logging.Logger] = default_logger):
-        if not runtime_env.get("working_dir"):
+        if not runtime_env.working_dir():
             return
 
+        logger.info(f"Setup working dir for {runtime_env.working_dir()}")
         working_dir = download_and_unpack_package(
-            runtime_env["working_dir"], self._resources_dir, logger=logger)
+            runtime_env.working_dir(), self._resources_dir, logger=logger)
         context.command_prefix += [f"cd {working_dir}"]
 
         # Insert the working_dir as the first entry in PYTHONPATH. This is

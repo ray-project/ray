@@ -1,6 +1,6 @@
 import copy
-import logging
 import json
+import logging
 import math
 import os
 import random
@@ -397,13 +397,15 @@ class PopulationBasedTraining(FIFOScheduler):
         if not self._synch:
             state.last_perturbation_time = time
             lower_quantile, upper_quantile = self._quantiles()
-            self._perturb_trial(trial, trial_runner, upper_quantile,
-                                lower_quantile)
-            for trial in trial_runner.get_trials():
-                if trial.status in [Trial.PENDING, Trial.PAUSED]:
-                    return TrialScheduler.PAUSE  # yield time to other trials
-
-            return TrialScheduler.CONTINUE
+            decision = TrialScheduler.CONTINUE
+            for other_trial in trial_runner.get_trials():
+                if other_trial.status in [Trial.PENDING, Trial.PAUSED]:
+                    decision = TrialScheduler.PAUSE
+                    break
+            self._checkpoint_or_exploit(trial, trial_runner.trial_executor,
+                                        upper_quantile, lower_quantile)
+            return (TrialScheduler.NOOP
+                    if trial.status == Trial.PAUSED else decision)
         else:
             # Synchronous mode.
             if any(self._trial_state[t].last_train_time <
@@ -425,12 +427,12 @@ class PopulationBasedTraining(FIFOScheduler):
                 for t in all_trials:
                     logger.debug("Perturbing Trial {}".format(t))
                     self._trial_state[t].last_perturbation_time = time
-                    self._perturb_trial(t, trial_runner, upper_quantile,
-                                        lower_quantile)
+                    self._checkpoint_or_exploit(t, trial_runner.trial_executor,
+                                                upper_quantile, lower_quantile)
 
                 all_train_times = [
-                    self._trial_state[trial].last_train_time
-                    for trial in trial_runner.get_trials()
+                    self._trial_state[t].last_train_time
+                    for t in trial_runner.get_trials()
                 ]
                 max_last_train_time = max(all_train_times)
                 self._next_perturbation_sync = max(
@@ -441,7 +443,8 @@ class PopulationBasedTraining(FIFOScheduler):
             # still all be paused.
             # choose_trial_to_run will then pick the next trial to run out of
             # the paused trials.
-            return TrialScheduler.PAUSE
+            return (TrialScheduler.NOOP
+                    if trial.status == Trial.PAUSED else TrialScheduler.PAUSE)
 
     def _save_trial_state(self, state: PBTTrialState, time: int, result: Dict,
                           trial: Trial):
@@ -462,9 +465,10 @@ class PopulationBasedTraining(FIFOScheduler):
 
         return score
 
-    def _perturb_trial(
-            self, trial: Trial, trial_runner: "trial_runner.TrialRunner",
-            upper_quantile: List[Trial], lower_quantile: List[Trial]):
+    def _checkpoint_or_exploit(self, trial: Trial,
+                               trial_executor: "trial_runner.RayTrialExecutor",
+                               upper_quantile: List[Trial],
+                               lower_quantile: List[Trial]):
         """Checkpoint if in upper quantile, exploits if in lower."""
         state = self._trial_state[trial]
         if trial in upper_quantile:
@@ -476,7 +480,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 # Paused trial will always have an in-memory checkpoint.
                 state.last_checkpoint = trial.checkpoint
             else:
-                state.last_checkpoint = trial_runner.trial_executor.save(
+                state.last_checkpoint = trial_executor.save(
                     trial, Checkpoint.MEMORY, result=state.last_result)
             self._num_checkpoints += 1
         else:
@@ -490,7 +494,7 @@ class PopulationBasedTraining(FIFOScheduler):
                 logger.info("[pbt]: no checkpoint for trial."
                             " Skip exploit for Trial {}".format(trial))
                 return
-            self._exploit(trial_runner.trial_executor, trial, trial_to_clone)
+            self._exploit(trial_executor, trial, trial_to_clone)
 
     def _log_config_on_step(self, trial_state: PBTTrialState,
                             new_state: PBTTrialState, trial: Trial,
@@ -571,36 +575,12 @@ class PopulationBasedTraining(FIFOScheduler):
                 raise TuneError("Trials should be paused here only if in "
                                 "synchronous mode. If you encounter this error"
                                 " please raise an issue on Ray Github.")
-            trial.set_experiment_tag(new_tag)
-            trial.set_config(new_config)
-            trial.on_checkpoint(new_state.last_checkpoint)
         else:
-            # If trial is running, we first try to reset it.
-            # If that is unsuccessful, then we have to stop it and start it
-            # again with a new checkpoint.
-            reset_successful = trial_executor.reset_trial(
-                trial, new_config, new_tag)
-            # TODO(ujvl): Refactor Scheduler abstraction to abstract
-            #  mechanism for trial restart away. We block on restore
-            #  and suppress train on start as a stop-gap fix to
-            #  https://github.com/ray-project/ray/issues/7258.
-            if reset_successful:
-                trial_executor.restore(
-                    trial, new_state.last_checkpoint, block=True)
-            else:
-                # Stop trial, but do not free resources (so we can use them
-                # again right away)
-                trial_executor.stop_trial(
-                    trial, destroy_pg_if_cannot_replace=False)
-                trial.set_experiment_tag(new_tag)
-                trial.set_config(new_config)
-
-                if not trial_executor.start_trial(
-                        trial, new_state.last_checkpoint, train=False):
-                    logger.warning(
-                        f"Trial couldn't be reset: {trial}. Terminating "
-                        f"instead.")
-                    trial_executor.stop_trial(trial, error=True)
+            trial_executor.stop_trial(trial)
+            trial_executor.set_status(trial, Trial.PAUSED)
+        trial.set_experiment_tag(new_tag)
+        trial.set_config(new_config)
+        trial.on_checkpoint(new_state.last_checkpoint)
 
         self._num_perturbations += 1
         # Transfer over the last perturbation time as well
@@ -641,7 +621,7 @@ class PopulationBasedTraining(FIFOScheduler):
         candidates = []
         for trial in trial_runner.get_trials():
             if trial.status in [Trial.PENDING, Trial.PAUSED] and \
-                    trial_runner.has_resources_for_trial(trial):
+                    trial_runner.trial_executor.has_resources_for_trial(trial):
                 if not self._synch:
                     candidates.append(trial)
                 elif self._trial_state[trial].last_train_time < \
@@ -651,10 +631,12 @@ class PopulationBasedTraining(FIFOScheduler):
             key=lambda trial: self._trial_state[trial].last_train_time)
         return candidates[0] if candidates else None
 
+    # Unit test only. TODO(xwjiang): Remove test-specific APIs.
     def reset_stats(self):
         self._num_perturbations = 0
         self._num_checkpoints = 0
 
+    # Unit test only. TODO(xwjiang): Remove test-specific APIs.
     def last_scores(self, trials: List[Trial]) -> List[float]:
         scores = []
         for trial in trials:
@@ -815,23 +797,17 @@ class PopulationBasedTrainingReplay(FIFOScheduler):
                                       new_config)
 
         trial_executor = trial_runner.trial_executor
-        reset_successful = trial_executor.reset_trial(trial, new_config,
-                                                      new_tag)
-
-        if reset_successful:
-            trial_executor.restore(trial, checkpoint, block=True)
-        else:
-            trial_executor.stop_trial(
-                trial, destroy_pg_if_cannot_replace=False)
-            trial.set_experiment_tag(new_tag)
-            trial.set_config(new_config)
-            trial_executor.start_trial(trial, checkpoint, train=False)
+        trial_executor.stop_trial(trial)
+        trial_executor.set_status(trial, Trial.PAUSED)
+        trial.set_experiment_tag(new_tag)
+        trial.set_config(new_config)
+        trial.on_checkpoint(checkpoint)
 
         self.current_config = new_config
         self._num_perturbations += 1
         self._next_policy = next(self._policy_iter, None)
 
-        return TrialScheduler.CONTINUE
+        return TrialScheduler.NOOP
 
     def debug_string(self) -> str:
         return "PopulationBasedTraining replay: Step {}, perturb {}".format(

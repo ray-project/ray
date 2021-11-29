@@ -4,9 +4,9 @@
 Serve: Scalable and Programmable Serving
 ========================================
 
-.. warning::
-  You're probably running the latest pip release and not the nightly build, so please ensure you're viewing the correct version of this documentation.
-  `Here's the documentation for the latest pip release of Ray Serve <https://docs.ray.io/en/latest/serve/index.html>`_.
+.. tip::
+   Get in touch with us if you're using or considering using `Ray Serve <https://docs.google.com/forms/d/1l8HT35jXMPtxVUtQPeGoe09VGp5jcvSv0TqPgyz6lGU>`_.
+
 
 
 .. image:: logo.svg
@@ -23,6 +23,9 @@ Ray Serve is an easy-to-use scalable model serving library built on Ray.  Ray Se
   :ref:`Tensorflow, and Keras <serve-tensorflow-tutorial>`, to :ref:`Scikit-Learn <serve-sklearn-tutorial>` models, to arbitrary Python business logic.
 - **Python-first**: Configure your model serving declaratively in pure Python, without needing YAML or JSON configs.
 
+Ray Serve enables :ref:`seamless multi-models inference pipeline (also known as model composition) <serve-pipeline-api>`. You can
+write your inference pipeline all in code and integrate business logic with ML.
+
 Since Ray Serve is built on Ray, it allows you to easily scale to many machines, both in your datacenter and in the cloud.
 
 Ray Serve can be used in two primary ways to deploy your models at scale:
@@ -31,12 +34,13 @@ Ray Serve can be used in two primary ways to deploy your models at scale:
 
 2. Alternatively, call them from :ref:`within your existing Python web server <serve-web-server-integration-tutorial>` using the Python-native :ref:`servehandle-api`.
 
-
+.. note::
+  Serve recently added an experimental first-class API for model composition (pipelines).
+  Please take a look at the :ref:`Pipeline API <serve-pipeline-api>` and try it out!
 
 .. tip::
   Chat with Ray Serve users and developers on our `forum <https://discuss.ray.io/>`_!
  
-
 Ray Serve Quickstart
 ====================
 
@@ -97,6 +101,7 @@ or head over to the :doc:`tutorials/index` to get started building your Ray Serv
 
 For more, see the following blog posts about Ray Serve:
 
+- `Serving ML Models in Production: Common Patterns <https://www.anyscale.com/blog/serving-ml-models-in-production-common-patterns>`_ by Simon Mo, Edward Oakes, and Michael Galarnyk
 - `How to Scale Up Your FastAPI Application Using Ray Serve <https://medium.com/distributed-computing-with-ray/how-to-scale-up-your-fastapi-application-using-ray-serve-c9a7b69e786>`_ by Archit Kulkarni
 - `Machine Learning is Broken <https://medium.com/distributed-computing-with-ray/machine-learning-serving-is-broken-f59aff2d607f>`_ by Simon Mo
 - `The Simplest Way to Serve your NLP Model in Production with Pure Python <https://medium.com/distributed-computing-with-ray/the-simplest-way-to-serve-your-nlp-model-in-production-with-pure-python-d42b6a97ad55>`_ by Edward Oakes and Bill Chambers

@@ -93,12 +93,22 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
 
   @Override
   public <T> T get(ObjectRef<T> objectRef) throws RuntimeException {
-    List<T> ret = get(ImmutableList.of(objectRef));
+    return get(objectRef, -1);
+  }
+
+  @Override
+  public <T> T get(ObjectRef<T> objectRef, long timeoutMs) throws RuntimeException {
+    List<T> ret = get(ImmutableList.of(objectRef), timeoutMs);
     return ret.get(0);
   }
 
   @Override
   public <T> List<T> get(List<ObjectRef<T>> objectRefs) {
+    return get(objectRefs, -1);
+  }
+
+  @Override
+  public <T> List<T> get(List<ObjectRef<T>> objectRefs, long timeoutMs) {
     List<ObjectId> objectIds = new ArrayList<>();
     Class<T> objectType = null;
     for (ObjectRef<T> o : objectRefs) {
@@ -107,7 +117,7 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
       objectType = objectRefImpl.getType();
     }
     LOGGER.debug("Getting Objects {}.", objectIds);
-    return objectStore.get(objectIds, objectType);
+    return objectStore.get(objectIds, objectType, timeoutMs);
   }
 
   @Override
@@ -211,8 +221,10 @@ public abstract class AbstractRayRuntime implements RayRuntimeInternal {
   }
 
   @Override
-  public PlacementGroup getPlacementGroup(String name, boolean global) {
-    return gcsClient.getPlacementGroupInfo(name, global);
+  public PlacementGroup getPlacementGroup(String name, String namespace) {
+    return namespace == null
+        ? gcsClient.getPlacementGroupInfo(name, runtimeContext.getNamespace())
+        : gcsClient.getPlacementGroupInfo(name, namespace);
   }
 
   @Override

@@ -14,11 +14,11 @@ import os
 
 import ray
 from ray.rllib.agents.ppo import PPOTrainer
-from ray.rllib.utils import add_mixins
+from ray.rllib.agents.trainer import Trainer
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray import tune
-from ray.tune import PlacementGroupFactory, Trainable
+from ray.tune import PlacementGroupFactory
 from ray.tune.logger import pretty_print
 
 
@@ -71,11 +71,15 @@ def get_cli_args():
     return args
 
 
-class OverrideDefaultResourceRequest:
+# The modified Trainer class we will use. This is the exact same
+# as a PPOTrainer, but with the additional default_resource_request
+# override, telling tune that it's ok (not mandatory) to place our
+# n remote envs on a different node (each env using 1 CPU).
+class PPOTrainerRemoteInference(PPOTrainer):
     @classmethod
-    @override(Trainable)
+    @override(Trainer)
     def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
+        cf = dict(cls.get_default_config(), **config)
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
@@ -96,13 +100,6 @@ class OverrideDefaultResourceRequest:
             ],
             strategy=config.get("placement_strategy", "PACK"))
 
-
-# The modified Trainer class we will use. This is the exact same
-# as a PPOTrainer, but with the additional default_resource_request
-# override, telling tune that it's ok (not mandatory) to place our
-# n remote envs on a different node (each env using 1 CPU).
-PPOTrainerRemoteInference = add_mixins(PPOTrainer,
-                                       [OverrideDefaultResourceRequest])
 
 if __name__ == "__main__":
     args = get_cli_args()

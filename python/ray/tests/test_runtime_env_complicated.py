@@ -1,4 +1,3 @@
-import json
 import os
 from contextlib import contextmanager
 from pathlib import Path
@@ -20,8 +19,9 @@ from ray._private.runtime_env.conda import (
 )
 
 from ray._private.runtime_env.conda_utils import get_conda_env_list
-from ray._private.test_utils import (
-    run_string_as_driver, run_string_as_driver_nonblocking, wait_for_condition)
+from ray._private.test_utils import (run_string_as_driver,
+                                     run_string_as_driver_nonblocking,
+                                     wait_for_condition, get_log_batch)
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 
 if not os.environ.get("CI"):
@@ -931,19 +931,11 @@ def test_runtime_env_logging_to_driver(ray_start_regular_shared, log_pubsub):
     ray.get(func.remote())
 
     # Check the stderr from the worker.
-    start = time.time()
-    while True:
-        if (time.time() - start) > 5:
-            assert False, "runtime_env log has not been propogated after 5s"
+    def matcher(log_batch):
+        return log_batch["pid"] == "runtime_env"
 
-        msg = log_pubsub.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            continue
-
-        log_data = json.loads(ray._private.utils.decode(msg["data"]))
-        if log_data["pid"] == "runtime_env":
-            break
+    match = get_log_batch(log_pubsub, 1, timeout=5, matcher=matcher)
+    assert len(match) > 0
 
 
 if __name__ == "__main__":

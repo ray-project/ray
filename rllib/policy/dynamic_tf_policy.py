@@ -703,8 +703,11 @@ class DynamicTFPolicy(TFPolicy):
                             "automatically remove non-used items from the "
                             "data stream. Remove the `del` from your "
                             "postprocessing function.".format(key))
-                    else:
+                    # If we are not writing output to disk, safe to erase
+                    # this key to save space in the sample batch.
+                    elif self.config["output"] is None:
                         del self.view_requirements[key]
+
                     if key in self._loss_input_dict:
                         del self._loss_input_dict[key]
             # Add those data_cols (again) that are missing and have
