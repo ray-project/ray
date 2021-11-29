@@ -31,17 +31,21 @@ def set_kill_interval(request):
     os.environ["RAY_lineage_pinning_enabled"] = ("1" if
                                                  lineage_reconstruction_enabled
                                                  else "0")
+    os.environ["RAY_max_direct_call_object_size"] = "1000"
+
     request.param = {
         "kill_interval": kill_interval,
         "head_resources": {
-            "CPU": 1
+            "CPU": 1,
         },
         "worker_node_types": {
             "cpu_node": {
                 "resources": {
                     "CPU": 2,
                 },
-                "node_config": {},
+                "node_config": {
+                    "object_store_memory": int(200e6),
+                    },
                 "min_workers": 0,
                 "max_workers": 3,
             },
@@ -51,6 +55,7 @@ def set_kill_interval(request):
     for x in cluster_fixture:
         yield (lineage_reconstruction_enabled, kill_interval, cluster_fixture)
     del os.environ["RAY_lineage_pinning_enabled"]
+    del os.environ["RAY_max_direct_call_object_size"]
 
 
 @pytest.mark.skip(
@@ -65,13 +70,10 @@ def test_chaos_task_retry(set_kill_interval):
     # Chaos testing.
     @ray.remote(max_retries=-1)
     def task():
-        def generate_data(size_in_kb=10):
-            return np.zeros(1024 * size_in_kb, dtype=np.uint8)
-
         a = ""
         for _ in range(100000):
             a = a + random.choice(string.ascii_letters)
-        return generate_data(size_in_kb=50)
+        return
 
     @ray.remote(max_retries=-1)
     def invoke_nested_task():
@@ -108,9 +110,6 @@ def test_chaos_actor_retry(set_kill_interval):
         def add(self, letter):
             self.letter_dict.add(letter)
 
-        def get(self):
-            return self.letter_dict
-
     NUM_CPUS = 16
     TOTAL_TASKS = 300
 
@@ -130,15 +129,50 @@ def test_chaos_actor_retry(set_kill_interval):
     # assert_no_system_failure(p, 10)
 
 
+@ray.remote
+class ShuffleStatusTracker:
+    def __init__(self):
+        self.num_map = 0
+        self.num_reduce = 0
+        self.map_refs = []
+        self.reduce_refs = []
+
+    def register_objectrefs(self, map_refs, reduce_refs):
+        self.map_refs = map_refs
+        self.reduce_refs = reduce_refs
+
+    def get_progress(self):
+        if self.map_refs:
+            ready, self.map_refs = ray.wait(
+                self.map_refs,
+                timeout=1,
+                num_returns=len(self.map_refs),
+                fetch_local=False)
+            if ready:
+                print("Still waiting on map refs", self.map_refs)
+            self.num_map += len(ready)
+        elif self.reduce_refs:
+            ready, self.reduce_refs = ray.wait(
+                self.reduce_refs,
+                timeout=1,
+                num_returns=len(self.reduce_refs),
+                fetch_local=False)
+            if ready:
+                print("Still waiting on reduce refs", self.reduce_refs)
+            self.num_reduce += len(ready)
+        return self.num_map, self.num_reduce
+
+
+
 @pytest.mark.parametrize(
-    "set_kill_interval", [(True, None), (True, 30), (False, None),
-                          (False, 30)],
+    "set_kill_interval", [(True, None), (True, 60), (False, None),
+                          (False, 60)],
     indirect=True)
 def test_nonstreaming_shuffle(set_kill_interval):
     lineage_reconstruction_enabled, kill_interval, _ = set_kill_interval
     try:
         # Create our own tracker so that it gets scheduled onto the head node.
-        tracker = shuffle._StatusTracker.remote()
+        tracker = ShuffleStatusTracker.remote()
         ray.get(tracker.get_progress.remote())
         assert len(ray.nodes()) == 1, (
             "Tracker actor may have been scheduled to remote node "
@@ -148,7 +182,7 @@ def test_nonstreaming_shuffle(set_kill_interval):
             ray_address="auto",
             no_streaming=True,
             num_partitions=200,
-            partition_size=10e6,
+            partition_size=1e6,
             tracker=tracker)
     except (RayTaskError, ObjectLostError):
         assert kill_interval is not None
@@ -156,14 +190,14 @@ def test_nonstreaming_shuffle(set_kill_interval):
 
 
 @pytest.mark.parametrize(
-    "set_kill_interval", [(True, None), (True, 30), (False, None),
-                          (False, 30)],
+    "set_kill_interval", [(True, None), (True, 60), (False, None),
+                          (False, 60)],
     indirect=True)
 def test_streaming_shuffle(set_kill_interval):
     lineage_reconstruction_enabled, kill_interval, _ = set_kill_interval
     try:
         # Create our own tracker so that it gets scheduled onto the head node.
-        tracker = shuffle._StatusTracker.remote()
+        tracker = ShuffleStatusTracker.remote()
         ray.get(tracker.get_progress.remote())
         assert len(ray.nodes()) == 1, (
             "Tracker actor may have been scheduled to remote node "
@@ -173,7 +207,7 @@ def test_streaming_shuffle(set_kill_interval):
             ray_address="auto",
             no_streaming=False,
             num_partitions=200,
-            partition_size=10e6,
+            partition_size=1e6,
             tracker=tracker)
     except (RayTaskError, ObjectLostError):
         assert kill_interval is not None

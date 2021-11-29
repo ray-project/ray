@@ -114,8 +114,6 @@ class _StatusTracker:
                 timeout=1,
                 num_returns=len(self.map_refs),
                 fetch_local=False)
-            if not ready:
-                print("Still waiting on map refs", self.map_refs)
             self.num_map += len(ready)
         elif self.reduce_refs:
             ready, self.reduce_refs = ray.wait(
@@ -123,8 +121,6 @@ class _StatusTracker:
                 timeout=1,
                 num_returns=len(self.reduce_refs),
                 fetch_local=False)
-            if not ready:
-                print("Still waiting on reduce refs", self.reduce_refs)
             self.num_reduce += len(ready)
         return self.num_map, self.num_reduce
 
