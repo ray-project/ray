@@ -79,6 +79,7 @@ public class LongPollClientFactory {
     for (KeyType keyType : keyListeners.keySet()) {
       SNAPSHOT_IDS.put(keyType, -1);
     }
+    LOGGER.info("LongPollClient registered keys: {}.", keyListeners.keySet());
   }
 
   public static synchronized void init(BaseActorHandle hostActor) {
@@ -135,12 +136,13 @@ public class LongPollClientFactory {
         intervalS,
         TimeUnit.SECONDS);
     inited = true;
-    LOGGER.info("LongPollClient was initialized.");
+    LOGGER.info("LongPollClient was initialized with interval {}s.", intervalS);
   }
 
   /** Poll the updates. */
   @SuppressWarnings("unchecked")
   public static void pollNext() {
+    LOGGER.info("LongPollClient polls next snapshotIds {}", SNAPSHOT_IDS);
     LongPollRequest longPollRequest = new LongPollRequest(SNAPSHOT_IDS);
     LongPollResult longPollResult = null;
     if (hostActor instanceof PyActorHandle) {
@@ -196,7 +198,6 @@ public class LongPollClientFactory {
   }
 
   public static void unregister(Set<KeyType> keys) {
-    // TODO log
     if (CollectionUtil.isEmpty(keys)) {
       return;
     }
@@ -205,6 +206,7 @@ public class LongPollClientFactory {
       KEY_LISTENERS.remove(keyType);
       OBJECT_SNAPSHOTS.remove(keyType);
     }
+    LOGGER.info("LongPollClient unregistered keys: {}.", keys);
   }
 
   public static synchronized void stop() {

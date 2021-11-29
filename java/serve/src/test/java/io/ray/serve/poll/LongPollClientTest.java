@@ -34,7 +34,7 @@ public class LongPollClientTest {
     }
   }
 
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({"unchecked", "unused"})
   @Test
   public void normalTest() throws Throwable {
     boolean inited = Ray.isInitialized();
@@ -49,10 +49,6 @@ public class LongPollClientTest {
           Ray.actor(DummyServeController::new).setName(controllerName).remote();
 
       Serve.setInternalReplicaContext(null, null, controllerName, null);
-
-      // Construct LongPollClient and gc it.
-      processLongPollClient();
-      Assert.assertTrue(LongPollClientFactory.isInitialized());
 
       // Init route table.
       String endpointName1 = "normalTest1";
@@ -74,7 +70,8 @@ public class LongPollClientTest {
                   ((Map<String, EndpointInfo>) object).get(endpointName1).getEndpointName());
 
       // Register.
-      LongPollClientFactory.register(null, keyListeners);
+      LongPollClient longPollClient = new LongPollClient(null, keyListeners);
+      Assert.assertTrue(LongPollClientFactory.isInitialized());
 
       // Construct updated object.
       int snapshotId = 10;
@@ -108,23 +105,5 @@ public class LongPollClientTest {
       Serve.setInternalReplicaContext(null);
       LongPollClientFactory.stop();
     }
-  }
-
-  @SuppressWarnings("unused")
-  private void processLongPollClient() {
-
-    KeyType keyType = new KeyType(LongPollNamespace.ROUTE_TABLE, "processLongPollClient");
-
-    // Construct a listener map.
-    Map<KeyType, KeyListener> keyListeners = new HashMap<>();
-    keyListeners.put(keyType, (object) -> {});
-
-    // Initialize LongPollClient.
-    LongPollClient longPollClient = new LongPollClient(null, keyListeners);
-
-    // Validation.
-    Assert.assertTrue(LongPollClientFactory.isInitialized());
-    Assert.assertTrue(LongPollClientFactory.SNAPSHOT_IDS.containsKey(keyType));
-    Assert.assertEquals(LongPollClientFactory.SNAPSHOT_IDS.get(keyType).intValue(), -1);
   }
 }
