@@ -45,7 +45,10 @@ NewPlacementGroupResourceManager::NewPlacementGroupResourceManager(
       delete_resources_(delete_resources) {}
 
 bool NewPlacementGroupResourceManager::PrepareBundle(
-    const BundleSpecification &bundle_spec) {
+    const std::vector<const BundleSpecification> &bundle_specs) {
+
+  
+
   auto iter = pg_bundles_.find(bundle_spec.BundleId());
   if (iter != pg_bundles_.end()) {
     if (iter->second->state_ == CommitState::COMMITTED) {
