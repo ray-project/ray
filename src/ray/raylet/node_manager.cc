@@ -556,7 +556,8 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
   // NOTE: Technically `HandleJobStarted` isn't idempotent because we'll
   // increment the ref count multiple times. This is fine because
   // `HandleJobFinisehd` will also decrement the ref count multiple times.
-  runtime_env_manager_.AddURIReference(job_id.Hex(), job_data.config().runtime_env());
+  runtime_env_manager_.AddURIReference(job_id.Hex(),
+                                       job_data.config().runtime_env_info());
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
   // reschedule these tasks.
@@ -1952,7 +1953,7 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
     auto job_config = worker_pool_.GetJobConfig(job_id);
     RAY_CHECK(job_config);
     runtime_env_manager_.AddURIReference(actor_id.Hex(),
-                                         task.GetTaskSpecification().RuntimeEnv());
+                                         task.GetTaskSpecification().RuntimeEnvInfo());
   }
 }
 
@@ -2065,7 +2066,7 @@ void NodeManager::ProcessSubscribePlasmaReady(
 
 void NodeManager::DumpDebugState() const {
   std::fstream fs;
-  fs.open(initial_config_.session_dir + "/debug_state.txt",
+  fs.open(initial_config_.log_dir + "/debug_state.txt",
           std::fstream::out | std::fstream::trunc);
   fs << DebugString();
   fs.close();

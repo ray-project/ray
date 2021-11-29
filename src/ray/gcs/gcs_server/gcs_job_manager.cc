@@ -47,9 +47,9 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
                      << ", driver pid = " << mutable_job_table_data.driver_pid();
     } else {
       RAY_CHECK_OK(gcs_publisher_->PublishJob(job_id, mutable_job_table_data, nullptr));
-      if (mutable_job_table_data.config().has_runtime_env()) {
+      if (mutable_job_table_data.config().has_runtime_env_info()) {
         runtime_env_manager_.AddURIReference(
-            job_id.Hex(), mutable_job_table_data.config().runtime_env());
+            job_id.Hex(), mutable_job_table_data.config().runtime_env_info());
       }
       RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
                     << ", driver pid = " << mutable_job_table_data.driver_pid();

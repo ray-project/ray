@@ -74,6 +74,11 @@ class LazyBlockList(BlockList):
                               self._block_partitions[part_idx:])
         return left, right
 
+    def get_blocks(self) -> List[ObjectRef[Block]]:
+        # Force bulk evaluation of all block partitions futures.
+        list(self._iter_block_partitions())
+        return list(self.iter_blocks())
+
     def iter_blocks_with_metadata(
             self) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
         context = DatasetContext.get_current()
