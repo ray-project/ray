@@ -428,10 +428,10 @@ def _ray_start_chaos_cluster(request):
     kill_interval = param.pop("kill_interval", None)
     config = param.pop("_system_config", {})
     config.update({
-            "num_heartbeats_timeout": 10,
-            "raylet_heartbeat_period_milliseconds": 100,
-            "task_retry_delay_ms": 100,
-            })
+        "num_heartbeats_timeout": 10,
+        "raylet_heartbeat_period_milliseconds": 100,
+        "task_retry_delay_ms": 100,
+    })
     # Config of workers that are re-started.
     head_resources = param.pop("head_resources")
     worker_node_types = param.pop("worker_node_types")

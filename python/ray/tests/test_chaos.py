@@ -1,11 +1,9 @@
 import sys
 import random
 import string
-import os
 
 import ray
 
-import numpy as np
 import pytest
 import time
 
@@ -33,7 +31,7 @@ def set_kill_interval(request):
         "_system_config": {
             "lineage_pinning_enabled": lineage_reconstruction_enabled,
             "max_direct_call_object_size": 1000,
-            },
+        },
         "kill_interval": kill_interval,
         "head_resources": {
             "CPU": 1,
@@ -45,7 +43,7 @@ def set_kill_interval(request):
                 },
                 "node_config": {
                     "object_store_memory": int(200e6),
-                    },
+                },
                 "min_workers": 0,
                 "max_workers": 3,
             },
@@ -161,10 +159,8 @@ class ShuffleStatusTracker:
         return self.num_map, self.num_reduce
 
 
-
 @pytest.mark.parametrize(
-    "set_kill_interval", [(False, None), (False, 60)],
-    indirect=True)
+    "set_kill_interval", [(False, None), (False, 60)], indirect=True)
 def test_nonstreaming_shuffle(set_kill_interval):
     lineage_reconstruction_enabled, kill_interval, _ = set_kill_interval
     try:
@@ -186,11 +182,10 @@ def test_nonstreaming_shuffle(set_kill_interval):
         assert not lineage_reconstruction_enabled
 
 
-
-@pytest.mark.skip(
-        reason="https://github.com/ray-project/ray/issues/20713")
+@pytest.mark.skip(reason="https://github.com/ray-project/ray/issues/20713")
 @pytest.mark.parametrize(
-    "set_kill_interval", [(True, None), (True, 60), (False, None), (False, 60)],
+    "set_kill_interval", [(True, None), (True, 60), (False, None),
+                          (False, 60)],
     indirect=True)
 def test_streaming_shuffle(set_kill_interval):
     lineage_reconstruction_enabled, kill_interval, _ = set_kill_interval

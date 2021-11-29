@@ -76,7 +76,7 @@ class AutoscalingCluster:
                 json.dumps(self._head_resources)))
         if _system_config is not None:
             cmd.append("--system-config={}".format(
-                json.dumps(_system_config, separators=(',',':'))))
+                json.dumps(_system_config, separators=(",", ":"))))
         env = os.environ.copy()
         env.update({
             "AUTOSCALER_UPDATE_INTERVAL_S": "1",
