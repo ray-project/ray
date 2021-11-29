@@ -2066,7 +2066,7 @@ void NodeManager::ProcessSubscribePlasmaReady(
 
 void NodeManager::DumpDebugState() const {
   std::fstream fs;
-  fs.open(initial_config_.session_dir + "/debug_state.txt",
+  fs.open(initial_config_.log_dir + "/debug_state.txt",
           std::fstream::out | std::fstream::trunc);
   fs << DebugString();
   fs.close();

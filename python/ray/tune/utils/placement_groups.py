@@ -607,37 +607,17 @@ class PlacementGroupManager:
         self._ready[pgf].add(pg)
         return True
 
-    def return_pg(self,
-                  trial: "Trial",
-                  destroy_pg_if_cannot_replace: bool = True):
-        """Return pg, making it available for other trials to use.
-
-        If destroy_pg_if_cannot_replace is True, this will only return
-        a placement group if a staged placement group can be replaced
-        by it. If not, it will destroy the placement group.
+    def return_pg(self, trial: "Trial"):
+        """Return pg back to Core scheduling.
 
         Args:
             trial (Trial): Return placement group of this trial.
-
-        Returns:
-            Boolean indicating if the placement group was returned.
         """
-        pgf = trial.placement_group_factory
+
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
 
-        if destroy_pg_if_cannot_replace:
-            staged_pg = self._unstage_unused_pg(pgf)
-
-            # Could not replace
-            if not staged_pg:
-                self.remove_pg(pg)
-                return False
-
-            self.remove_pg(staged_pg)
-        self._ready[pgf].add(pg)
-
-        return True
+        self.remove_pg(pg)
 
     def _unstage_unused_pg(
             self, pgf: PlacementGroupFactory) -> Optional[PlacementGroup]:
