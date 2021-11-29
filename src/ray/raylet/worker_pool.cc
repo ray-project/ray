@@ -182,8 +182,7 @@ void WorkerPool::update_worker_startup_token_counter() {
 Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
     PopWorkerStatus *status, const std::vector<std::string> &dynamic_options,
-    const int runtime_env_hash, const std::string &serialized_runtime_env,
-    const std::string &serialized_runtime_env_context,
+    const int runtime_env_hash, const std::string &serialized_runtime_env_context,
     const std::string &allocated_instances_serialized_json) {
   rpc::JobConfig *job_config = nullptr;
   if (!IsIOWorkerType(worker_type)) {
@@ -357,19 +356,15 @@ Process WorkerPool::StartWorkerProcess(
   }
 
   if (language == Language::PYTHON || language == Language::JAVA) {
-    if (serialized_runtime_env != "{}" && serialized_runtime_env != "") {
-      worker_command_args.push_back("--serialized-runtime-env=" + serialized_runtime_env);
-
+    if (serialized_runtime_env_context != "{}" &&
+        !serialized_runtime_env_context.empty()) {
       worker_command_args.push_back("--language=" + Language_Name(language));
 
       worker_command_args.push_back("--runtime-env-hash=" +
                                     std::to_string(runtime_env_hash));
 
-      if (serialized_runtime_env_context != "{}" &&
-          !serialized_runtime_env_context.empty()) {
-        worker_command_args.push_back("--serialized-runtime-env-context=" +
-                                      serialized_runtime_env_context);
-      }
+      worker_command_args.push_back("--serialized-runtime-env-context=" +
+                                    serialized_runtime_env_context);
     } else {
       // The "shim process" setup worker is not needed, so do not run it.
       // Check that the arg really is the path to the setup worker before erasing it, to
@@ -550,9 +545,9 @@ void WorkerPool::MarkPortAsFree(int port) {
 
 void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job_config) {
   all_jobs_[job_id] = job_config;
-  if (job_config.runtime_env().runtime_env_eager_install() &&
-      job_config.has_runtime_env()) {
-    auto const &runtime_env = job_config.runtime_env().serialized_runtime_env();
+  if (job_config.has_runtime_env_info() &&
+      job_config.runtime_env_info().runtime_env_eager_install()) {
+    auto const &runtime_env = job_config.runtime_env_info().serialized_runtime_env();
     if (runtime_env != "{}" && runtime_env != "") {
       RAY_LOG(INFO) << "[Eagerly] Start install runtime environment for job " << job_id
                     << ". The runtime environment was " << runtime_env << ".";
@@ -883,11 +878,6 @@ void WorkerPool::TryKillingIdleWorkers() {
       }
     }
 
-    if (pending_exit_idle_workers_.count(idle_worker->WorkerId())) {
-      // If the worker is pending exit, just skip it.
-      continue;
-    }
-
     if (now - idle_pair.second <
         RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
       break;
@@ -922,6 +912,13 @@ void WorkerPool::TryKillingIdleWorkers() {
         can_be_killed = false;
         break;
       }
+
+      // Skip killing the worker process if there's any inflight `Exit` RPC requests to
+      // this worker process.
+      if (pending_exit_idle_workers_.count(worker->WorkerId())) {
+        can_be_killed = false;
+        break;
+      }
     }
     if (!can_be_killed) {
       continue;
@@ -950,6 +947,7 @@ void WorkerPool::TryKillingIdleWorkers() {
       if (!worker->IsDead()) {
         // Register the worker to pending exit so that we can correctly calculate the
         // running_size.
+        // This also means that there's an inflight `Exit` RPC request to the worker.
         pending_exit_idle_workers_.emplace(worker->WorkerId(), worker);
         auto rpc_client = worker->rpc_client();
         RAY_CHECK(rpc_client);
@@ -958,6 +956,7 @@ void WorkerPool::TryKillingIdleWorkers() {
         rpc::ExitRequest request;
         rpc_client->Exit(request, [this, worker](const ray::Status &status,
                                                  const rpc::ExitReply &r) {
+          RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
           }
@@ -983,9 +982,6 @@ void WorkerPool::TryKillingIdleWorkers() {
             idle_of_all_languages_.pop_front();
             RAY_CHECK(idle_of_all_languages_.size() == idle_of_all_languages_map_.size());
           }
-
-          RAY_CHECK(pending_exit_idle_workers_.count(worker->WorkerId()));
-          RAY_CHECK(pending_exit_idle_workers_.erase(worker->WorkerId()));
         });
       } else {
         // Even it's a dead worker, we still need to remove them from the pool.
@@ -1026,8 +1022,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     PopWorkerStatus status = PopWorkerStatus::OK;
     Process proc = StartWorkerProcess(
         task_spec.GetLanguage(), rpc::WorkerType::WORKER, task_spec.JobId(), &status,
-        dynamic_options, task_spec.GetRuntimeEnvHash(), serialized_runtime_env,
-        serialized_runtime_env_context, allocated_instances_serialized_json);
+        dynamic_options, task_spec.GetRuntimeEnvHash(), serialized_runtime_env_context,
+        allocated_instances_serialized_json);
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();

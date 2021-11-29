@@ -14,7 +14,7 @@ import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import (
     get_other_nodes, generate_system_config_map,
     kill_actor_and_wait_for_failure, run_string_as_driver, wait_for_condition,
-    get_error_message, placement_group_assert_no_leak)
+    get_error_message, placement_group_assert_no_leak, convert_actor_state)
 from ray.util.placement_group import get_current_placement_group
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 
@@ -395,7 +395,8 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # (why? The placement group has STRICT_PACK strategy).
         node_id_set = set()
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == convert_actor_state(
+                    gcs_utils.ActorTableData.ALIVE):
                 node_id = actor_info["Address"]["NodeID"]
                 node_id_set.add(node_id)
 
@@ -418,7 +419,8 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # placement group.
         node_id_set = set()
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == convert_actor_state(
+                    gcs_utils.ActorTableData.ALIVE):
                 node_id = actor_info["Address"]["NodeID"]
                 node_id_set.add(node_id)
 
@@ -441,7 +443,8 @@ def test_capture_child_actors(ray_start_cluster, connect_to_client):
         # placement group.
         node_id_set = set()
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == convert_actor_state(
+                    gcs_utils.ActorTableData.ALIVE):
                 node_id = actor_info["Address"]["NodeID"]
                 node_id_set.add(node_id)
 

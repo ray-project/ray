@@ -510,8 +510,8 @@ class TrialRunnerTest3(unittest.TestCase):
         runner2.step()  # Process save
         self.assertRaises(TuneError, runner2.step)
 
-    def testTrialNoSave(self):
-        """Check that non-checkpointing trials are not saved."""
+    def testTrialNoCheckpointSave(self):
+        """Check that non-checkpointing trials *are* saved."""
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
 
         ray.init(num_cpus=3)
@@ -557,7 +557,7 @@ class TrialRunnerTest3(unittest.TestCase):
             runner2.get_trial("checkpoint").status == Trial.TERMINATED)
         self.assertTrue(runner2.get_trial("pending").status == Trial.PENDING)
         self.assertTrue(
-            not runner2.get_trial("pending").has_reported_at_least_once)
+            runner2.get_trial("pending").has_reported_at_least_once)
         runner2.step()
 
     def testCheckpointWithFunction(self):

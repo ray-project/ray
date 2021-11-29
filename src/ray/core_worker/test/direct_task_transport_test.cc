@@ -120,10 +120,10 @@ class MockTaskFinisher : public TaskFinisherInterface {
     return false;
   }
 
-  bool PendingTaskFailed(const TaskID &task_id, rpc::ErrorType error_type,
-                         const Status *status,
-                         const rpc::RayException *creation_task_exception = nullptr,
-                         bool immediately_mark_object_fail = true) override {
+  bool FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+                              const Status *status,
+                              const rpc::RayErrorInfo *ray_error_info = nullptr,
+                              bool mark_task_object_failed = true) override {
     num_tasks_failed++;
     return true;
   }
@@ -134,9 +134,9 @@ class MockTaskFinisher : public TaskFinisherInterface {
     num_contained_ids += contained_ids.size();
   }
 
-  void MarkPendingTaskFailed(
+  void MarkTaskReturnObjectsFailed(
       const TaskSpecification &spec, rpc::ErrorType error_type,
-      const rpc::RayException *creation_task_exception = nullptr) override {}
+      const rpc::RayErrorInfo *ray_error_info = nullptr) override {}
 
   bool MarkTaskCanceled(const TaskID &task_id) override { return true; }
 
@@ -1227,7 +1227,6 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
 }
 
 TEST(DirectTaskTransportTest, TestSchedulingKeys) {
-  RayConfig::instance().complex_scheduling_class() = true;
   auto store = std::make_shared<CoreWorkerMemoryStore>();
 
   std::unordered_map<std::string, double> resources1({{"a", 1.0}});

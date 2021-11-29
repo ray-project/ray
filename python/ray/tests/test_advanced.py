@@ -371,6 +371,7 @@ def test_illegal_api_calls(ray_start_regular):
 
 @pytest.mark.skipif(
     client_test_enabled(), reason="grpc interaction with releasing resources")
+@pytest.mark.skipif(sys.platform == "win32", reason="Time out on Windows")
 def test_multithreading(ray_start_2_cpus):
     # This test requires at least 2 CPUs to finish since the worker does not
     # release resources when joining the threads.
