@@ -381,6 +381,9 @@ class _ExternalEnvToBaseEnv(BaseEnv):
                 _with_dummy_agent_id(off_policy_actions)
 
 
+@Deprecated(old="ray.rllib.env.base_env._VectorEnvToBaseEnv",
+            new="ray.rllib.env.multi_agent_env.VectorEnvWrapper",
+            error=False)
 class _VectorEnvToBaseEnv(BaseEnv):
     """Internal adapter of VectorEnv to BaseEnv.
 
@@ -440,6 +443,9 @@ class _VectorEnvToBaseEnv(BaseEnv):
         return self.vector_env.try_render_at(env_id)
 
 
+@Deprecated(old="ray.rllib.env.base_env._MultiAgentEnvToBaseEnv",
+            new="ray.rllib.env.multi_agent_env.MultiAgentEnvWrapper",
+            error=False)
 class _MultiAgentEnvToBaseEnv(BaseEnv):
     """Internal adapter of MultiAgentEnv to BaseEnv.
 
@@ -521,6 +527,9 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
         return self.envs[env_id].render()
 
 
+@Deprecated(old="ray.rllib.env.base_env._MultiAgentEnvState",
+            new="ray.rllib.env.multi_agent_env._MultiAgentEnvState",
+            error=False)
 class _MultiAgentEnvState:
     def __init__(self, env: MultiAgentEnv):
         assert isinstance(env, MultiAgentEnv)
