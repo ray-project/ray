@@ -137,6 +137,7 @@ parser.add_argument(
 parser.add_argument(
     "--force-load-code-from-local",
     default=False,
+    action="store_true",
     help="If true, don't allow execute task by dynamic pickled function.")
 
 if __name__ == "__main__":

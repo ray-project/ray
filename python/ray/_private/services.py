@@ -1583,11 +1583,13 @@ def start_raylet(redis_address,
         f"--metrics-agent-port={metrics_agent_port}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
-        f"--force-load-code-from-local={force_load_code_from_local}",
         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER",
     ]
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
+
+    if force_load_code_from_local:
+        start_worker_command += ["--force-load-code-from-local"]
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.

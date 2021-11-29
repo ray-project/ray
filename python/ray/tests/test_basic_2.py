@@ -15,9 +15,8 @@ from unittest.mock import MagicMock, patch
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray._private.test_utils import client_test_enabled
 from ray.tests.client_test_utils import create_remote_signal_actor
-from ray.exceptions import GetTimeoutError
-from ray.exceptions import RayTaskError
-from ray.exceptions import FunctionLoadingError
+from ray.exceptions import (GetTimeoutError, RayTaskError,
+                            FunctionLoadingError, RayActorError)
 from ray.ray_constants import KV_NAMESPACE_FUNCTION_TABLE
 if client_test_enabled():
     from ray.util.client import ray
@@ -779,6 +778,16 @@ def test_force_load_code_from_local(call_ray_start):
 
     with pytest.raises(FunctionLoadingError):
         ray.get(f.remote())
+
+    @ray.remote
+    class Foo:
+        def foo(self):
+            return "OK"
+
+    foo_actor = Foo.remote()
+    # TODO(SongGuyang): Throw FunctionLoadingError for actor tasks.
+    with pytest.raises(RayActorError):
+        ray.get(foo_actor.foo.remote())
 
 
 if __name__ == "__main__":
