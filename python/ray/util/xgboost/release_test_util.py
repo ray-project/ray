@@ -60,7 +60,7 @@ class TrackingCallback(TrainingCallback):
         put_queue(get_world_size())
 
 
-def get_parquet_files(path, num_files):
+def get_parquet_files(path, num_files=0):
     path = os.path.expanduser(path)
     if not os.path.exists(path):
         raise ValueError(f"Path does not exist: {path}")
