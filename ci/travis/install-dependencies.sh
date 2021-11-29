@@ -359,6 +359,12 @@ install_dependencies() {
     pip install 'recsim>=0.2.4'
   fi
 
+  # Additional Train test dependencies.
+  if [ "${TRAIN_TESTING-}" != 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+    pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_dl.txt
+  fi
+
+
   # Additional Tune/SGD/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${SGD_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_tune.txt
