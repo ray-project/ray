@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_server.h"
 
+#include <fstream>
+
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/network_util.h"
@@ -42,6 +44,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
       pubsub_periodical_runner_(main_service_),
+      periodical_runner_(main_service),
       is_started_(false),
       is_stopped_(false) {}
 
@@ -154,13 +157,20 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // detector is already run.
   gcs_heartbeat_manager_->Start();
 
-  // Print debug info periodically.
-  PrintDebugInfo();
-
-  // Print the asio event loop stats periodically if configured.
-  PrintAsioStats();
-
   CollectStats();
+
+  periodical_runner_.RunFnPeriodically(
+      [this] {
+        RAY_LOG(INFO) << GetDebugState();
+        PrintAsioStats();
+      },
+      /*ms*/ RayConfig::instance().event_stats_print_interval_ms(),
+      "GCSServer.deadline_timer.debug_state_event_stats_print");
+
+  periodical_runner_.RunFnPeriodically(
+      [this] { DumpDebugStateToFile(); },
+      /*ms*/ RayConfig::instance().debug_dump_period_milliseconds(),
+      "GCSServer.deadline_timer.debug_state_dump");
 
   is_started_ = true;
 }
@@ -518,24 +528,27 @@ void GcsServer::CollectStats() {
       (RayConfig::instance().metrics_report_interval_ms() / 2) /* milliseconds */);
 }
 
-void GcsServer::PrintDebugInfo() {
+void GcsServer::DumpDebugStateToFile() const {
+  std::fstream fs;
+  fs.open(config_.log_dir + "/debug_state_gcs.txt",
+          std::fstream::out | std::fstream::trunc);
+  fs << GetDebugState() << "\n\n";
+  fs << main_service_.StatsString();
+  fs.close();
+}
+
+std::string GcsServer::GetDebugState() const {
   std::ostringstream stream;
-  stream << gcs_node_manager_->DebugString() << "\n"
-         << gcs_actor_manager_->DebugString() << "\n"
-         << gcs_placement_group_manager_->DebugString() << "\n"
-         << gcs_publisher_->DebugString() << "\n"
-         << ((rpc::DefaultTaskInfoHandler *)task_info_handler_.get())->DebugString();
+  stream << gcs_node_manager_->DebugString() << "\n\n"
+         << gcs_actor_manager_->DebugString() << "\n\n"
+         << gcs_resource_manager_->DebugString() << "\n\n"
+         << gcs_placement_group_manager_->DebugString() << "\n\n"
+         << gcs_publisher_->DebugString() << "\n\n";
 
   if (config_.grpc_based_resource_broadcast) {
-    stream << "\n" << grpc_based_resource_broadcaster_->DebugString();
+    stream << grpc_based_resource_broadcaster_->DebugString();
   }
-  // TODO(ffbin): We will get the session_dir in the next PR, and write the log to
-  // gcs_debug_state.txt.
-  RAY_LOG(INFO) << stream.str();
-  execute_after(
-      main_service_, [this] { PrintDebugInfo(); },
-      (RayConfig::instance().gcs_dump_debug_log_interval_minutes() *
-       60000) /* milliseconds */);
+  return stream.str();
 }
 
 void GcsServer::PrintAsioStats() {
@@ -544,9 +557,6 @@ void GcsServer::PrintAsioStats() {
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.StatsString() << "\n\n";
-    execute_after(
-        main_service_, [this] { PrintAsioStats(); },
-        event_stats_print_interval_ms /* milliseconds */);
   }
 }
 
