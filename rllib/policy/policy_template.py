@@ -321,8 +321,7 @@ def build_policy_class(
         @override(parent_cls)
         def extra_compute_grad_fetches(self):
             if extra_learn_fetches_fn:
-                fetches = convert_to_numpy(
-                    extra_learn_fetches_fn(self))
+                fetches = convert_to_numpy(extra_learn_fetches_fn(self))
                 # Auto-add empty learner stats dict if needed.
                 return dict({LEARNER_STATS_KEY: {}}, **fetches)
             else:
