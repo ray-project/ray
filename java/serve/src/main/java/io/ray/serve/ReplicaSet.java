@@ -68,8 +68,6 @@ public class ReplicaSet {
     }
   }
 
-  public synchronized void updateRunningReplicas(List<RunningReplicaInfo> runningReplicas) {}
-
   /**
    * Given a query, submit it to a replica and return the object ref. This method will keep track of
    * the in flight queries for each replicas and only send a query to available replicas (determined

@@ -16,10 +16,13 @@ public class KeyType implements Serializable {
 
   private int hashCode;
 
+  private String name;
+
   public KeyType(LongPollNamespace longPollNamespace, String key) {
     this.longPollNamespace = longPollNamespace;
     this.key = key;
     this.hashCode = Objects.hash(this.longPollNamespace, this.key);
+    this.name = parseName();
   }
 
   public LongPollNamespace getLongPollNamespace() {
@@ -48,8 +51,7 @@ public class KeyType implements Serializable {
         && Objects.equals(key, keyType.getKey());
   }
 
-  @Override
-  public String toString() {
+  private String parseName() {
     if (longPollNamespace == null && StringUtils.isBlank(key)) {
       return "";
     }
@@ -60,6 +62,11 @@ public class KeyType implements Serializable {
       return key;
     }
     return "(" + longPollNamespace.toString() + ", " + key + ")";
+  }
+
+  @Override
+  public String toString() {
+    return name;
   }
 
   public static KeyType parseFrom(String key) {
