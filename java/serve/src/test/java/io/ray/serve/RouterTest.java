@@ -57,6 +57,12 @@ public class RouterTest {
               .remote();
       Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());
 
+      // Set ReplicaContext
+      Serve.setInternalReplicaContext(null, null, controllerName, null);
+      Serve.getReplicaContext()
+          .setRayServeConfig(
+              new RayServeConfig().setConfig(RayServeConfig.LONG_POOL_CLIENT_ENABLED, "false"));
+
       // Router
       Router router = new Router(controllerHandle, deploymentName);
       ActorSet.Builder builder = ActorSet.newBuilder();
