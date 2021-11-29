@@ -8,6 +8,7 @@ import ray
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
 from ray import train
 from ray.data.dataset_pipeline import DatasetPipeline
 from ray.train import Trainer
@@ -213,13 +214,11 @@ def create_dataset_pipeline(files, num_workers, epochs, num_windows):
             for i in range(1, num_workers)
         ]
         pipe = pipe.random_shuffle_each_window(_spread_resource_prefix="node:")
-        pipe_shards = pipe.split_at_indices(split_indices)
     else:
         ds = ray.data.read_parquet(files, _spread_resource_prefix="node:")
         pipe = ds.repeat(epochs)
         pipe = pipe.random_shuffle_each_window(_spread_resource_prefix="node:")
-        pipe_shards = pipe.split(num_workers, equal=True)
-    return pipe_shards
+    return pipe
 
 
 if __name__ == "__main__":
@@ -276,15 +275,16 @@ if __name__ == "__main__":
     test_dataset = ray.data.read_parquet([files.pop(0)])
 
     num_columns = len(test_dataset.schema().names)
-    # remove label column and internal Arrow column.
-    num_features = num_columns - 2
+    num_features = num_columns - 1
 
     if smoke_test:
         # Only read a single file.
-        files = [files[0]]
-
-    train_dataset_pipeline = create_dataset_pipeline(files, num_workers,
-                                                     num_epochs, num_windows)
+        files = files[:1]
+        train_dataset_pipeline = create_dataset_pipeline(
+            files, num_workers, num_epochs, 1)
+    else:
+        train_dataset_pipeline = create_dataset_pipeline(
+            files, num_workers, num_epochs, num_windows)
 
     datasets = {
         "train_dataset": train_dataset_pipeline,
@@ -303,13 +303,16 @@ if __name__ == "__main__":
         "num_features": num_features
     }
 
+    num_gpus = 1 if use_gpu else 0
+    num_cpus = 0 if use_gpu else 1
+
     trainer = Trainer(
         backend="torch",
         num_workers=num_workers,
         use_gpu=use_gpu,
         resources_per_worker={
-            "CPU": 0,
-            "GPU": 1
+            "CPU": num_cpus,
+            "GPU": num_gpus
         })
     trainer.start()
     results = trainer.run(
