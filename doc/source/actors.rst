@@ -325,12 +325,9 @@ Automatic termination
 .. tabs::
   .. group-tab:: Python
 
-    Actor processes will be terminated automatically when the initial actor handle
-    goes out of scope in Python. If we create an actor with ``actor_handle =
-    Counter.remote()``, then when ``actor_handle`` goes out of scope and is
-    destructed, the actor process will be terminated. Note that this only applies to
-    the original actor handle created for the actor and not to subsequent actor
-    handles created by passing the actor handle to other tasks.
+    Actor processes will be terminated automatically when all copies of the
+    actor handle have gone out of scope in Python, or if the original creator
+    process dies.
 
   .. group-tab:: Java
 
