@@ -1,5 +1,6 @@
 import os
 import sys
+import signal
 
 import ray
 
@@ -7,7 +8,36 @@ import numpy as np
 import pytest
 import time
 
-from ray._private.test_utils import SignalActor
+from ray._private.test_utils import SignalActor, wait_for_pid_to_exit
+
+SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
+
+
+def test_worker_exit_after_parent_raylet_dies(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=8, resources={"foo": 1})
+    cluster.wait_for_nodes()
+
+    ray.init(address=cluster.address)
+
+    @ray.remote(resources={"foo": 1})
+    class Actor():
+        def getpid(self):
+            return os.getpid()
+
+        def getppid(self):
+            return os.getppid()
+
+    actor = Actor.remote()
+    pid = ray.get(actor.getpid.remote())
+    ppid = ray.get(actor.getppid.remote())
+    # Kill the parent raylet.
+    os.kill(ppid, SIGKILL)
+    os.waitpid(ppid, 0)
+    wait_for_pid_to_exit(ppid)
+    # Make sure the worker process exits as well.
+    wait_for_pid_to_exit(pid)
 
 
 @pytest.mark.parametrize(
