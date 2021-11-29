@@ -53,7 +53,7 @@ class AutoscalingCluster:
         custom_config.update(config_kwargs)
         return custom_config
 
-    def start(self):
+    def start(self, _system_config=None):
         """Start the cluster.
 
         After this call returns, you can connect to the cluster with
@@ -74,6 +74,9 @@ class AutoscalingCluster:
         if self._head_resources:
             cmd.append("--resources='{}'".format(
                 json.dumps(self._head_resources)))
+        if _system_config is not None:
+            cmd.append("--system-config={}".format(
+                json.dumps(_system_config, separators=(',',':'))))
         env = os.environ.copy()
         env.update({
             "AUTOSCALER_UPDATE_INTERVAL_S": "1",

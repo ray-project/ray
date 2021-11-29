@@ -28,12 +28,12 @@ def assert_no_system_failure(p, timeout):
 @pytest.fixture
 def set_kill_interval(request):
     lineage_reconstruction_enabled, kill_interval = request.param
-    os.environ["RAY_lineage_pinning_enabled"] = ("1" if
-                                                 lineage_reconstruction_enabled
-                                                 else "0")
-    os.environ["RAY_max_direct_call_object_size"] = "1000"
 
     request.param = {
+        "_system_config": {
+            "lineage_pinning_enabled": lineage_reconstruction_enabled,
+            "max_direct_call_object_size": 1000,
+            },
         "kill_interval": kill_interval,
         "head_resources": {
             "CPU": 1,
@@ -54,8 +54,6 @@ def set_kill_interval(request):
     cluster_fixture = _ray_start_chaos_cluster(request)
     for x in cluster_fixture:
         yield (lineage_reconstruction_enabled, kill_interval, cluster_fixture)
-    del os.environ["RAY_lineage_pinning_enabled"]
-    del os.environ["RAY_max_direct_call_object_size"]
 
 
 @pytest.mark.skip(
@@ -165,8 +163,7 @@ class ShuffleStatusTracker:
 
 
 @pytest.mark.parametrize(
-    "set_kill_interval", [(True, None), (True, 60), (False, None),
-                          (False, 60)],
+    "set_kill_interval", [(False, None), (False, 60)],
     indirect=True)
 def test_nonstreaming_shuffle(set_kill_interval):
     lineage_reconstruction_enabled, kill_interval, _ = set_kill_interval
@@ -189,9 +186,11 @@ def test_nonstreaming_shuffle(set_kill_interval):
         assert not lineage_reconstruction_enabled
 
 
+
+@pytest.mark.skip(
+        reason="https://github.com/ray-project/ray/issues/20713")
 @pytest.mark.parametrize(
-    "set_kill_interval", [(True, None), (True, 60), (False, None),
-                          (False, 60)],
+    "set_kill_interval", [(True, None), (True, 60), (False, None), (False, 60)],
     indirect=True)
 def test_streaming_shuffle(set_kill_interval):
     lineage_reconstruction_enabled, kill_interval, _ = set_kill_interval

@@ -424,11 +424,14 @@ def slow_spilling_config(request, tmp_path):
 
 
 def _ray_start_chaos_cluster(request):
-    os.environ["RAY_num_heartbeats_timeout"] = "10"
-    os.environ["RAY_raylet_heartbeat_period_milliseconds"] = "100"
-    os.environ["RAY_task_retry_delay_ms"] = "100"
     param = getattr(request, "param", {})
     kill_interval = param.pop("kill_interval", None)
+    config = param.pop("_system_config", {})
+    config.update({
+            "num_heartbeats_timeout": 10,
+            "raylet_heartbeat_period_milliseconds": 100,
+            "task_retry_delay_ms": 100,
+            })
     # Config of workers that are re-started.
     head_resources = param.pop("head_resources")
     worker_node_types = param.pop("worker_node_types")
@@ -437,7 +440,7 @@ def _ray_start_chaos_cluster(request):
         worker_node_types,
         idle_timeout_minutes=10,  # Don't take down nodes.
         **param)
-    cluster.start()
+    cluster.start(_system_config=config)
     ray.init("auto")
     nodes = ray.nodes()
     assert len(nodes) == 1
@@ -457,9 +460,6 @@ def _ray_start_chaos_cluster(request):
 
     ray.shutdown()
     cluster.shutdown()
-    del os.environ["RAY_num_heartbeats_timeout"]
-    del os.environ["RAY_raylet_heartbeat_period_milliseconds"]
-    del os.environ["RAY_task_retry_delay_ms"]
 
 
 @pytest.fixture
