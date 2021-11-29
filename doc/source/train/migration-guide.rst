@@ -50,6 +50,7 @@ There are 3 primary API differences between Ray SGD v1 and Ray Train.
         trainer.shutdown()
 
 If you are using PyTorch, you can use the :ref:`train-api-torch-utils` to automatically prepare your model & data loaders for distributed training.
+If you are using Tensorflow, you would have to add ``MultiWorkerMirroredStrategy`` to your model in the training function instead of this automatically being done for you.
 
 3. Rather than iteratively calling ``trainer.train()`` or ``trainer.validate()`` for each epoch, in Ray Train the training function defines the full training execution and is run via ``trainer.run(train_func)``.
 
