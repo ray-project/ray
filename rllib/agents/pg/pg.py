@@ -1,60 +1,35 @@
-"""
-Policy Gradient (PG)
-====================
+from typing import Type
 
-This file defines the distributed Trainer class for policy gradients.
-See `pg_[tf|torch]_policy.py` for the definition of the policy loss.
-
-Detailed documentation: https://docs.ray.io/en/master/rllib-algorithms.html#pg
-"""
-
-import logging
-from typing import Optional, Type
-
-from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer import Trainer
+from ray.rllib.agents.pg.default_config import DEFAULT_CONFIG
 from ray.rllib.agents.pg.pg_tf_policy import PGTFPolicy
 from ray.rllib.agents.pg.pg_torch_policy import PGTorchPolicy
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TrainerConfigDict
 
-logger = logging.getLogger(__name__)
 
-# yapf: disable
-# __sphinx_doc_begin__
+class PGTrainer(Trainer):
+    """Policy Gradient (PG) Trainer.
 
-# Adds the following updates to the (base) `Trainer` config in
-# rllib/agents/trainer.py (`COMMON_CONFIG` dict).
-DEFAULT_CONFIG = with_common_config({
-    # No remote workers by default.
-    "num_workers": 0,
-    # Learning rate.
-    "lr": 0.0004,
-})
+    Defines the distributed Trainer class for policy gradients.
+    See `pg_[tf|torch]_policy.py` for the definition of the policy losses for
+    TensorFlow and PyTorch.
 
-# __sphinx_doc_end__
-# yapf: enable
+    Detailed documentation:
+    https://docs.ray.io/en/master/rllib-algorithms.html#pg
 
-
-def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    """Policy class picker function. Class is chosen based on DL-framework.
-
-    Args:
-        config (TrainerConfigDict): The trainer's configuration dict.
-
-    Returns:
-        Optional[Type[Policy]]: The Policy class to use with PGTrainer.
-            If None, use `default_policy` provided in build_trainer().
+    Only overrides the default config- and policy selectors
+    (`get_default_policy` and `get_default_config`). Utilizes
+    the default `execution_plan()` of `Trainer`.
     """
-    if config["framework"] == "torch":
-        return PGTorchPolicy
 
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
 
-# Build a child class of `Trainer`, which uses the framework specific Policy
-# determined in `get_policy_class()` above.
-PGTrainer = build_trainer(
-    name="PG",
-    default_config=DEFAULT_CONFIG,
-    default_policy=PGTFPolicy,
-    get_policy_class=get_policy_class,
-)
+    @override(Trainer)
+    def get_default_policy_class(self, config) -> Type[Policy]:
+        return PGTorchPolicy if config.get("framework") == "torch" \
+            else PGTFPolicy

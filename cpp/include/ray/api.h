@@ -99,17 +99,7 @@ ray::internal::TaskCaller<F> Task(F func);
 template <typename F>
 ray::internal::ActorCreator<F> Actor(F create_func);
 
-/// Get a handle to a global named actor.
-/// Gets a handle to a global named actor with the given name. The actor must have been
-/// created with global name specified.
-///
-/// \param[in] name The global name of the named actor.
-/// \return An ActorHandle to the actor if the actor of specified name exists or an
-/// empty optional object.
-template <typename T>
-boost::optional<ActorHandle<T>> GetGlobalActor(const std::string &actor_name);
-
-/// Get a handle to a named actor of current job.
+/// Get a handle to a named actor in current namespace.
 /// Gets a handle to a named actor with the given name. The actor must have been created
 /// with name specified.
 ///
@@ -147,9 +137,6 @@ PlacementGroup GetPlacementGroupById(const std::string &id);
 
 /// Get a placement group by name.
 PlacementGroup GetPlacementGroup(const std::string &name);
-
-/// Get a placement group by placement group name from all jobs.
-PlacementGroup GetGlobalPlacementGroup(const std::string &name);
 
 /// Returns true if the current actor was restarted, otherwise false.
 bool WasCurrentActorRestarted();
@@ -245,13 +232,12 @@ ray::internal::ActorCreator<F> Actor(F create_func) {
 }
 
 template <typename T>
-inline boost::optional<ActorHandle<T>> GetActorInternal(bool global,
-                                                        const std::string &actor_name) {
+inline boost::optional<ActorHandle<T>> GetActorInternal(const std::string &actor_name) {
   if (actor_name.empty()) {
     return {};
   }
 
-  auto actor_id = ray::internal::GetRayRuntime()->GetActorId(global, actor_name);
+  auto actor_id = ray::internal::GetRayRuntime()->GetActorId(actor_name);
   if (actor_id.empty()) {
     return {};
   }
@@ -260,13 +246,8 @@ inline boost::optional<ActorHandle<T>> GetActorInternal(bool global,
 }
 
 template <typename T>
-boost::optional<ActorHandle<T>> GetGlobalActor(const std::string &actor_name) {
-  return GetActorInternal<T>(true, actor_name);
-}
-
-template <typename T>
 boost::optional<ActorHandle<T>> GetActor(const std::string &actor_name) {
-  return GetActorInternal<T>(false, actor_name);
+  return GetActorInternal<T>(actor_name);
 }
 
 inline PlacementGroup CreatePlacementGroup(
@@ -287,11 +268,7 @@ inline PlacementGroup GetPlacementGroupById(const std::string &id) {
 }
 
 inline PlacementGroup GetPlacementGroup(const std::string &name) {
-  return ray::internal::GetRayRuntime()->GetPlacementGroup(name, false);
-}
-
-inline PlacementGroup GetGlobalPlacementGroup(const std::string &name) {
-  return ray::internal::GetRayRuntime()->GetPlacementGroup(name, true);
+  return ray::internal::GetRayRuntime()->GetPlacementGroup(name);
 }
 
 inline bool WasCurrentActorRestarted() {

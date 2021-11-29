@@ -14,20 +14,24 @@ import ray._private.gcs_utils as gcs_utils
 from ray.autoscaler._private.commands import debug_status
 from ray._private.test_utils import (
     generate_system_config_map, kill_actor_and_wait_for_failure,
-    run_string_as_driver, wait_for_condition, is_placement_group_removed)
+    run_string_as_driver, wait_for_condition, is_placement_group_removed,
+    convert_actor_state)
 from ray.exceptions import RaySystemError
 from ray._raylet import PlacementGroupID
 from ray.util.placement_group import (PlacementGroup, placement_group,
                                       remove_placement_group)
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
+import ray.experimental.internal_kv as internal_kv
 from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR, \
     DEBUG_AUTOSCALING_STATUS
 
 
 def get_ray_status_output(address):
     redis_client = ray._private.services.create_redis_client(address, "")
-    status = redis_client.hget(DEBUG_AUTOSCALING_STATUS, "value")
-    error = redis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
+    gcs_client = gcs_utils.GcsClient.create_from_redis(redis_client)
+    internal_kv._initialize_internal_kv(gcs_client)
+    status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
+    error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
     return {
         "demand": debug_status(
             status, error).split("Demands:")[1].strip("\n").strip(" "),
@@ -170,7 +174,8 @@ ray.shutdown()
     def assert_alive_num_actor(expected_num_actor):
         alive_num_actor = 0
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == convert_actor_state(
+                    gcs_utils.ActorTableData.ALIVE):
                 alive_num_actor += 1
         return alive_num_actor == expected_num_actor
 

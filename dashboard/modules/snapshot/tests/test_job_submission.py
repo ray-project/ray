@@ -55,6 +55,7 @@ def test_successful_job_status(ray_start_with_dashboard, disable_aiohttp_cache,
                     "PENDING", "RUNNING", "SUCCEEDED"
                 }
                 return job_entry["status"] == "SUCCEEDED"
+                assert job_entry["statusMessage"] is not None
 
         return False
 
@@ -85,6 +86,7 @@ def test_failed_job_status(ray_start_with_dashboard, disable_aiohttp_cache,
                 assert job_entry["config"]["metadata"][
                     "jobSubmissionId"] == job_id
                 assert job_entry["status"] in {"PENDING", "RUNNING", "FAILED"}
+                assert job_entry["statusMessage"] is not None
                 return job_entry["status"] == "FAILED"
 
         return False
