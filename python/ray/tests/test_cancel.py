@@ -150,7 +150,7 @@ def test_comprehensive(ray_start_regular, use_force):
         ray.get(a, timeout=10)
 
     with pytest.raises(valid_exceptions(use_force)):
-        ray.get(a2, timeout=40)
+        ray.get(a2, timeout=10)
 
     signaler.send.remote()
 
