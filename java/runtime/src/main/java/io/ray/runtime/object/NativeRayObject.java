@@ -25,8 +25,8 @@ public class NativeRayObject {
   }
 
   public NativeRayObject(ByteBuffer buffer, byte[] metadata) {
-    Preconditions.checkState(
-        (buffer == null ? 0 : buffer.remaining()) > 0 || bufferLength(metadata) > 0);
+    Preconditions.checkNotNull(buffer);
+    Preconditions.checkState(buffer.remaining() > 0 || bufferLength(metadata) > 0);
     this.buffer = buffer;
     this.metadata = metadata;
     this.containedObjectIds = Collections.emptyList();
