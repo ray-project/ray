@@ -43,6 +43,7 @@ from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.table_block import DelegatingBlockBuilder
+from ray.data.impl.util import _enable_pandas_block
 
 # An output type of iter_batches() determined by the batch_format parameter.
 BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
@@ -1063,10 +1064,13 @@ class Dataset(Generic[T]):
         if ret is None:
             return 0
         elif len(ret) == 1:
-            if isinstance(ret, tuple):
-                return ret[0]
+            if _enable_pandas_block():
+                if isinstance(ret, tuple):
+                    return ret[0]
+                else:
+                    return list(ret.values())[0]
             else:
-                return list(ret.values())[0]
+                return ret[0]
         else:
             return ret
 
@@ -1121,10 +1125,13 @@ class Dataset(Generic[T]):
         if ret is None:
             raise ValueError("Cannot compute min on an empty dataset")
         elif len(ret) == 1:
-            if isinstance(ret, tuple):
-                return ret[0]
+            if _enable_pandas_block():
+                if isinstance(ret, tuple):
+                    return ret[0]
+                else:
+                    return list(ret.values())[0]
             else:
-                return list(ret.values())[0]
+                return ret[0]
         else:
             return ret
 
@@ -1179,10 +1186,13 @@ class Dataset(Generic[T]):
         if ret is None:
             raise ValueError("Cannot compute max on an empty dataset")
         elif len(ret) == 1:
-            if isinstance(ret, tuple):
-                return ret[0]
+            if _enable_pandas_block():
+                if isinstance(ret, tuple):
+                    return ret[0]
+                else:
+                    return list(ret.values())[0]
             else:
-                return list(ret.values())[0]
+                return ret[0]
         else:
             return ret
 
@@ -1237,10 +1247,13 @@ class Dataset(Generic[T]):
         if ret is None:
             raise ValueError("Cannot compute mean on an empty dataset")
         elif len(ret) == 1:
-            if isinstance(ret, tuple):
-                return ret[0]
+            if _enable_pandas_block():
+                if isinstance(ret, tuple):
+                    return ret[0]
+                else:
+                    return list(ret.values())[0]
             else:
-                return list(ret.values())[0]
+                return ret[0]
         else:
             return ret
 
@@ -1305,10 +1318,13 @@ class Dataset(Generic[T]):
         if ret is None:
             raise ValueError("Cannot compute std on an empty dataset")
         elif len(ret) == 1:
-            if isinstance(ret, tuple):
-                return ret[0]
+            if _enable_pandas_block():
+                if isinstance(ret, tuple):
+                    return ret[0]
+                else:
+                    return list(ret.values())[0]
             else:
-                return list(ret.values())[0]
+                return ret[0]
         else:
             return ret
 
@@ -2193,12 +2209,14 @@ class Dataset(Generic[T]):
         output = DelegatingBlockBuilder()
         for block in ray.get(blocks):
             output.add_block(block)
-        result = output.build()
-
-        import pandas
-        if not isinstance(result, pandas.DataFrame):
-            result = result.to_pandas()
-        return result
+        if _enable_pandas_block():
+            result = output.build()
+            import pandas
+            if not isinstance(result, pandas.DataFrame):
+                result = result.to_pandas()
+            return result
+        else:
+            return output.build().to_pandas()
 
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.

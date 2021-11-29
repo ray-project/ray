@@ -27,7 +27,6 @@ class ArrowRow(TableRow):
         return {k: v[0] for k, v in self._row.to_pydict().items()}
 
     def __getitem__(self, key: str) -> Any:
-        assert isinstance(key, str)
         col = self._row[key]
         if len(col) == 0:
             return None
@@ -138,7 +137,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def _empty_table() -> "pyarrow.Table":
-        return pyarrow.Table.from_pydict({})
+        return ArrowBlockBuilder._empty_table()
 
     def _sample(self, n_samples: int, key: SortKeyT) -> "pyarrow.Table":
         indices = random.sample(range(self._table.num_rows), n_samples)

@@ -141,7 +141,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def _empty_table() -> "pandas.DataFrame":
-        return pandas.DataFrame()
+        return PandasBlockBuilder._empty_table()
 
     def _sample(self, n_samples: int, key: SortKeyT) -> "pandas.DataFrame":
         return self._table[[k[0] for k in key]].sample(

@@ -6,6 +6,7 @@ from ray.data.block import Block, BlockAccessor
 from ray.data.impl.block_builder import BlockBuilder
 from ray.data.impl.simple_block import SimpleBlockBuilder
 from ray.data.impl.size_estimator import SizeEstimator
+from ray.data.impl.util import _enable_pandas_block
 
 T = TypeVar("T")
 
@@ -61,6 +62,7 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
         import pyarrow
 
         if self._builder is None:
+            # TODO (kfstorm): Maybe we can use Pandas block format for dict.
             if isinstance(item, dict) or isinstance(item, ArrowRow):
                 try:
                     check = ArrowBlockBuilder()
@@ -81,11 +83,13 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
         self._builder.add_block(block)
 
     def build(self) -> Block:
-        from ray.data.impl.pandas_block import PandasBlockBuilder
-
         if self._builder is None:
-            # TODO: Allow switching to PandasBlockBuilder
-            self._builder = PandasBlockBuilder()
+            if _enable_pandas_block():
+                from ray.data.impl.pandas_block import PandasBlockBuilder
+                self._builder = PandasBlockBuilder
+            else:
+                from ray.data.impl.arrow_block import ArrowBlockBuilder
+                self._builder = ArrowBlockBuilder()
         return self._builder.build()
 
     def num_rows(self) -> int:
