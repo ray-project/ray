@@ -81,7 +81,7 @@ def train_ray(path,
               xgboost_params=None,
               **kwargs):
     if not isinstance(path, list):
-        path = get_parquet_files(path)
+        path = get_parquet_files(path, num_files=num_files)
 
     use_device_matrix = False
     if use_gpu:
