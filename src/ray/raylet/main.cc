@@ -208,6 +208,7 @@ int main(int argc, char *argv[]) {
             RayConfig::instance().metrics_report_interval_ms() / 2;
         node_manager_config.store_socket_name = store_socket_name;
         node_manager_config.temp_dir = temp_dir;
+        node_manager_config.log_dir = log_dir;
         node_manager_config.session_dir = session_dir;
         node_manager_config.resource_dir = resource_dir;
         node_manager_config.ray_debugger_external = ray_debugger_external;
