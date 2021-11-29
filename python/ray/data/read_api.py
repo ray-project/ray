@@ -27,7 +27,8 @@ from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList, BlockPartition, \
     BlockPartitionMetadata
 from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.util import _get_spread_resources_iter
+from ray.data.impl.util import _enable_pandas_block, \
+    _get_spread_resources_iter
 
 T = TypeVar("T")
 
@@ -657,8 +658,11 @@ def from_spark(df: "pyspark.sql.DataFrame",
 
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
-    import pyarrow as pa
-    block = pa.table(df)
+    if _enable_pandas_block():
+        block = df
+    else:
+        import pyarrow as pa
+        block = pa.table(df)
     return (block,
             BlockAccessor.for_block(block).get_metadata(input_files=None))
 

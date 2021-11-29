@@ -86,7 +86,7 @@ class DelegatingBlockBuilder(BlockBuilder[T]):
         if self._builder is None:
             if _enable_pandas_block():
                 from ray.data.impl.pandas_block import PandasBlockBuilder
-                self._builder = PandasBlockBuilder
+                self._builder = PandasBlockBuilder()
             else:
                 from ray.data.impl.arrow_block import ArrowBlockBuilder
                 self._builder = ArrowBlockBuilder()

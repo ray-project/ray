@@ -105,4 +105,4 @@ def _enable_pandas_block():
     """This is a temporary workaround to only enable pandas block format when
     running tests. This function will be updated or deleted later.
     """
-    return bool(os.environ.get('PANDAS_BLOCK_FORMAT'))
+    return bool(os.environ.get('RAY_DATA_PANDAS_BLOCK_FORMAT'))

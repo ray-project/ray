@@ -1,6 +1,7 @@
 from typing import Dict, List, Union, Tuple, Any, TypeVar, Optional, \
     TYPE_CHECKING
 
+import collections
 import numpy as np
 
 try:
@@ -23,8 +24,9 @@ T = TypeVar("T")
 
 class PandasRow(TableRow):
     def as_pydict(self) -> dict:
-        # TODO: If the type of column name is not str, e.g. int.
+        # TODO (kfsorm): If the type of column name is not str, e.g. int.
         # The result keys will stay as int. Should we enforce `str(k)`?
+        # Maybe we don't even allow non-str column names?
         return {k: v[0] for k, v in self._row.to_dict("list").items()}
 
     def __getitem__(self, key: str) -> Any:
@@ -63,12 +65,9 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
         return pandas.DataFrame()
 
 
-class PandasBlockSchema:
-    # This is to be compatible with pyarrow.lib.schema
-    # TODO: We need an implementation-ignorant way to represent schema.
-    def __init__(self, names, types):
-        self.names = names
-        self.types = types
+# This is to be compatible with pyarrow.lib.schema
+# TODO (kfstorm): We need a format-independent way to represent schema.
+PandasBlockSchema = collections.namedtuple("PandasBlockSchema", ["names", "types"])
 
 
 class PandasBlockAccessor(TableBlockAccessor):
@@ -116,7 +115,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        # TODO: Should we count index?
+        # TODO (kfstorm): Should we count index?
         return self._table.memory_usage(index=True, deep=True).sum()
 
     def _zip(self, acc: BlockAccessor) -> "Block[T]":
@@ -149,7 +148,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def sort_and_partition(self, boundaries: List[T], key: SortKeyT,
                            descending: bool) -> List["Block[T]"]:
-        # TODO: A workaround to pass tests. Not efficient.
+        # TODO (kfstorm): A workaround to pass tests. Not efficient.
         delegated_result = BlockAccessor.for_block(
             self.to_arrow()).sort_and_partition(boundaries, key, descending)
         return [
@@ -158,7 +157,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def combine(self, key: GroupKeyT,
                 aggs: Tuple[AggregateFn]) -> Block[PandasRow]:
-        # TODO: A workaround to pass tests. Not efficient.
+        # TODO (kfstorm): A workaround to pass tests. Not efficient.
         return BlockAccessor.for_block(self.to_arrow()).combine(
             key, aggs).to_pandas()
 
@@ -166,7 +165,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     def merge_sorted_blocks(
             blocks: List[Block[T]], key: SortKeyT,
             _descending: bool) -> Tuple[Block[T], BlockMetadata]:
-        # TODO: A workaround to pass tests. Not efficient.
+        # TODO (kfstorm): A workaround to pass tests. Not efficient.
         block, metadata = ArrowBlockAccessor.merge_sorted_blocks(
             [BlockAccessor.for_block(block).to_arrow() for block in blocks],
             key, _descending)
@@ -176,7 +175,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     def aggregate_combined_blocks(blocks: List[Block[PandasRow]],
                                   key: GroupKeyT, aggs: Tuple[AggregateFn]
                                   ) -> Tuple[Block[PandasRow], BlockMetadata]:
-        # TODO: A workaround to pass tests. Not efficient.
+        # TODO (kfstorm): A workaround to pass tests. Not efficient.
         block, metadata = ArrowBlockAccessor.aggregate_combined_blocks(
             [BlockAccessor.for_block(block).to_arrow() for block in blocks],
             key, aggs)
