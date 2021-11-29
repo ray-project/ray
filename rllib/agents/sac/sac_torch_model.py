@@ -6,7 +6,6 @@ from typing import Dict, List, Optional
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -249,17 +248,17 @@ class SACTorchModel(TorchModelV2, nn.Module):
         # Continuous case -> concat actions to model_out.
         if actions is not None:
             if self.concat_obs_and_actions:
-                input_dict = SampleBatch(
-                    obs=torch.cat([model_out, actions], dim=-1))
+                input_dict = {"obs": torch.cat([model_out, actions], dim=-1)}
             else:
-                input_dict = SampleBatch(
-                    obs=force_list(model_out) + [actions])
+                # TODO(junogng) : SampleBatch doesn't support list columns yet.
+                #     Use ModelInputDict.
+                input_dict = {"obs": force_list(model_out) + [actions]}
         # Discrete case -> return q-vals for all actions.
         else:
-            input_dict = SampleBatch(obs=model_out)
+            input_dict = {"obs": model_out}
         # Switch on training mode (when getting Q-values, we are usually in
         # training).
-        input_dict.set_training(True)
+        input_dict["is_training"] = True
 
         out, _ = net(input_dict, [], None)
         return out
