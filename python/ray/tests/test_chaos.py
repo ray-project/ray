@@ -9,12 +9,12 @@ import pytest
 import time
 
 from ray.data.impl.progress_bar import ProgressBar
-from ray._private.test_utils import get_all_log_message
+from ray._private.test_utils import get_log_message
 
 
-def assert_no_system_failure(p, total_lines, timeout):
-    # Get logs for 20 seconds.
-    logs = get_all_log_message(p, total_lines, timeout=timeout)
+def assert_no_system_failure(p, timeout):
+    # Get all logs for 20 seconds.
+    logs = get_log_message(p, timeout=timeout)
     for log in logs:
         assert "SIG" not in log, ("There's the segfault or SIGBART reported.")
         assert "Check failed" not in log, (
@@ -24,28 +24,23 @@ def assert_no_system_failure(p, total_lines, timeout):
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_chaos_cluster", [{
-        "kill_interval": 3,
-        "timeout": 45,
+        "kill_interval": 5,
         "head_resources": {
             "CPU": 0
         },
         "worker_node_types": {
             "cpu_node": {
                 "resources": {
-                    "CPU": 8,
+                    "CPU": 4,
                 },
                 "node_config": {},
                 "min_workers": 0,
-                "max_workers": 4,
+                "max_workers": 3,
             },
         },
     }],
     indirect=True)
-def test_chaos_task_retry(ray_start_chaos_cluster, log_pubsub):
-    chaos_test_thread = ray_start_chaos_cluster
-    p = log_pubsub
-    chaos_test_thread.start()
-
+def test_chaos_task_retry(ray_start_chaos_cluster):
     # Chaos testing.
     @ray.remote(max_retries=-1)
     def task():
@@ -63,7 +58,7 @@ def test_chaos_task_retry(ray_start_chaos_cluster, log_pubsub):
         return ray.get(task.remote())
 
     # 50MB of return values.
-    TOTAL_TASKS = 300
+    TOTAL_TASKS = 100
 
     pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS)
     results = [invoke_nested_task.remote() for _ in range(TOTAL_TASKS)]
@@ -73,22 +68,21 @@ def test_chaos_task_retry(ray_start_chaos_cluster, log_pubsub):
     print(f"Runtime when there are many failures: {runtime_with_failure}")
     pb.close()
 
-    chaos_test_thread.join()
-    assert_no_system_failure(p, 10000, 10)
+    # TODO(sang): Enable this again.
+    # assert_no_system_failure(p, 10)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "ray_start_chaos_cluster", [{
-        "kill_interval": 30,
-        "timeout": 30,
+        "kill_interval": 5,
         "head_resources": {
             "CPU": 0
         },
         "worker_node_types": {
             "cpu_node": {
                 "resources": {
-                    "CPU": 8,
+                    "CPU": 4,
                 },
                 "node_config": {},
                 "min_workers": 0,
@@ -97,11 +91,7 @@ def test_chaos_task_retry(ray_start_chaos_cluster, log_pubsub):
         },
     }],
     indirect=True)
-def test_chaos_actor_retry(ray_start_chaos_cluster, log_pubsub):
-    chaos_test_thread = ray_start_chaos_cluster
-    # p = log_pubsub
-    chaos_test_thread.start()
-
+def test_chaos_actor_retry(ray_start_chaos_cluster):
     # Chaos testing.
     @ray.remote(num_cpus=1, max_restarts=-1, max_task_retries=-1)
     class Actor:
@@ -114,7 +104,7 @@ def test_chaos_actor_retry(ray_start_chaos_cluster, log_pubsub):
         def get(self):
             return self.letter_dict
 
-    NUM_CPUS = 32
+    NUM_CPUS = 16
     TOTAL_TASKS = 300
 
     pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS * NUM_CPUS)
@@ -127,10 +117,10 @@ def test_chaos_actor_retry(ray_start_chaos_cluster, log_pubsub):
     runtime_with_failure = time.time() - start
     print(f"Runtime when there are many failures: {runtime_with_failure}")
     pb.close()
-    chaos_test_thread.join()
+
     # TODO(sang): Currently, there are lots of SIGBART with
     # plasma client failures. Fix it.
-    # assert_no_system_failure(p, 10000, 10)
+    # assert_no_system_failure(p, 10)
 
 
 if __name__ == "__main__":

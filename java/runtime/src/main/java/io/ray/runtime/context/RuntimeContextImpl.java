@@ -91,4 +91,9 @@ public class RuntimeContextImpl implements RuntimeContext {
     }
     return gpuIds;
   }
+
+  @Override
+  public String getNamespace() {
+    return runtime.getNamespace();
+  }
 }

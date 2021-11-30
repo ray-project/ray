@@ -40,7 +40,7 @@ def main(smoke_test: bool = False):
         checkpoint_size_b=int(0.75 * 1000**3),
         keep_checkpoints_num=2,  # 2 * 16 * 4 = 128 GB
         resources_per_trial={"cpu": 1},
-        sync_config=tune.SyncConfig(sync_to_driver=True),
+        sync_config=tune.SyncConfig(syncer="auto"),
         callbacks=[callback])
 
 

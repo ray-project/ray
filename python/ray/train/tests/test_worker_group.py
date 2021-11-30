@@ -107,6 +107,17 @@ def test_bad_resources(ray_start_2_cpus):
         WorkerGroup(num_gpus_per_worker=-1)
 
 
+def test_placement_group(ray_start_2_cpus):
+    """Tests that workers can be removed and added to a placement group."""
+    num_workers = 2
+    bundle = {"CPU": 1}
+    bundles = [bundle.copy() for _ in range(num_workers)]
+    placement_group = ray.util.placement_group(bundles)
+    wg = WorkerGroup(num_workers=num_workers, placement_group=placement_group)
+    wg.remove_workers([0])
+    wg.add_workers(1)
+
+
 if __name__ == "__main__":
     import pytest
     import sys

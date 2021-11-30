@@ -41,13 +41,16 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
   rpc::Address address;
   std::unordered_map<std::string, double> required_resources;
   std::unordered_map<std::string, double> required_placement_resources;
+  std::string task_id_data(TaskID::Size(), 0);
+  FillRandom(&task_id_data);
+  auto task_id = TaskID::FromBinary(task_id_data);
   TaskSpecBuilder builder;
   std::string task_name =
       invocation.name.empty() ? functionDescriptor->DefaultTaskName() : invocation.name;
 
   // TODO (Alex): Properly set the depth here?
-  builder.SetCommonTaskSpec(invocation.task_id, task_name, rpc::Language::CPP,
-                            functionDescriptor, local_mode_ray_tuntime_.GetCurrentJobID(),
+  builder.SetCommonTaskSpec(task_id, task_name, rpc::Language::CPP, functionDescriptor,
+                            local_mode_ray_tuntime_.GetCurrentJobID(),
                             local_mode_ray_tuntime_.GetCurrentTaskId(), 0,
                             local_mode_ray_tuntime_.GetCurrentTaskId(), address, 1,
                             required_resources, required_placement_resources,
@@ -111,17 +114,12 @@ ObjectID LocalModeTaskSubmitter::SubmitTask(InvocationSpec &invocation,
   return Submit(invocation, {});
 }
 
-JobID LocalModeTaskSubmitter::GetCurrentJobID() const {
-  return local_mode_ray_tuntime_.GetCurrentJobID();
-}
-
 ActorID LocalModeTaskSubmitter::CreateActor(InvocationSpec &invocation,
                                             const ActorCreationOptions &create_options) {
   Submit(invocation, create_options);
-  auto full_actor_name = GetFullName(create_options.global, create_options.name);
-  if (!full_actor_name.empty()) {
+  if (!create_options.name.empty()) {
     absl::MutexLock lock(&named_actors_mutex_);
-    named_actors_.emplace(std::move(full_actor_name), invocation.actor_id);
+    named_actors_.emplace(create_options.name, invocation.actor_id);
   }
 
   return invocation.actor_id;
@@ -132,11 +130,9 @@ ObjectID LocalModeTaskSubmitter::SubmitActorTask(InvocationSpec &invocation,
   return Submit(invocation, {});
 }
 
-ActorID LocalModeTaskSubmitter::GetActor(bool global,
-                                         const std::string &actor_name) const {
-  auto full_actor_name = GetFullName(global, actor_name);
+ActorID LocalModeTaskSubmitter::GetActor(const std::string &actor_name) const {
   absl::MutexLock lock(&named_actors_mutex_);
-  auto it = named_actors_.find(full_actor_name);
+  auto it = named_actors_.find(actor_name);
   if (it == named_actors_.end()) {
     return ActorID::Nil();
   }
@@ -167,8 +163,7 @@ PlacementGroup LocalModeTaskSubmitter::GetPlacementGroupById(const std::string &
   throw RayException("Ray doesn't support placement group operations in local mode.");
 }
 
-PlacementGroup LocalModeTaskSubmitter::GetPlacementGroup(const std::string &name,
-                                                         bool global) {
+PlacementGroup LocalModeTaskSubmitter::GetPlacementGroup(const std::string &name) {
   throw RayException("Ray doesn't support placement group operations in local mode.");
 }
 

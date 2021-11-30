@@ -14,13 +14,15 @@
 
 #include "ray/core_worker/context.h"
 
+#include <google/protobuf/util/json_util.h>
+
 namespace ray {
 namespace core {
 
 /// per-thread context for core worker.
 struct WorkerThreadContext {
-  WorkerThreadContext()
-      : current_task_id_(TaskID::ForFakeTask()), task_index_(0), put_counter_(0) {}
+  explicit WorkerThreadContext(const JobID &job_id)
+      : current_task_id_(TaskID::FromRandom(job_id)), task_index_(0), put_counter_(0) {}
 
   uint64_t GetNextTaskIndex() { return ++task_index_; }
 
@@ -180,7 +182,12 @@ bool WorkerContext::ShouldCaptureChildTasksInPlacementGroup() const {
 
 const std::string &WorkerContext::GetCurrentSerializedRuntimeEnv() const {
   absl::ReaderMutexLock lock(&mutex_);
-  return runtime_env_.serialized_runtime_env();
+  return runtime_env_info_.serialized_runtime_env();
+}
+
+std::shared_ptr<rpc::RuntimeEnv> WorkerContext::GetCurrentRuntimeEnv() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return runtime_env_;
 }
 
 void WorkerContext::SetCurrentTaskId(const TaskID &task_id) {
@@ -202,10 +209,6 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;
-    // TODO(architkulkarni): Once workers are cached by runtime env, we should
-    // only set runtime_env_ once and then RAY_CHECK that we
-    // never see a new one.
-    runtime_env_ = task_spec.RuntimeEnv();
   } else if (task_spec.IsActorCreationTask()) {
     if (!current_actor_id_.IsNil()) {
       RAY_CHECK(current_actor_id_ == task_spec.ActorCreationId());
@@ -217,11 +220,22 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     is_detached_actor_ = task_spec.IsDetachedActor();
     current_actor_placement_group_id_ = task_spec.PlacementGroupBundleId().first;
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
-    runtime_env_ = task_spec.RuntimeEnv();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
   } else {
     RAY_CHECK(false);
+  }
+  if (task_spec.IsNormalTask() || task_spec.IsActorCreationTask()) {
+    // TODO(architkulkarni): Once workers are cached by runtime env, we should
+    // only set runtime_env_ once and then RAY_CHECK that we
+    // never see a new one.
+    runtime_env_info_ = task_spec.RuntimeEnvInfo();
+    if (!runtime_env_info_.serialized_runtime_env().empty()) {
+      runtime_env_.reset(new rpc::RuntimeEnv());
+      RAY_CHECK(google::protobuf::util::JsonStringToMessage(
+                    runtime_env_info_.serialized_runtime_env(), runtime_env_.get())
+                    .ok());
+    }
   }
 }
 
@@ -276,9 +290,9 @@ bool WorkerContext::CurrentActorDetached() const {
   return is_detached_actor_;
 }
 
-WorkerThreadContext &WorkerContext::GetThreadContext() {
+WorkerThreadContext &WorkerContext::GetThreadContext() const {
   if (thread_context_ == nullptr) {
-    thread_context_ = std::make_unique<WorkerThreadContext>();
+    thread_context_ = std::make_unique<WorkerThreadContext>(current_job_id_);
   }
 
   return *thread_context_;

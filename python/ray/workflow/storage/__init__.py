@@ -36,7 +36,7 @@ def create_storage(storage_url: str) -> Storage:
     elif parsed_url.scheme == "s3":
         from ray.workflow.storage.s3 import S3StorageImpl
         bucket = parsed_url.netloc
-        s3_path = parsed_url.path
+        s3_path = parsed_url.path.lstrip("/")
         if not s3_path:
             raise ValueError(f"Invalid s3 path: {s3_path}")
         params = dict(parse.parse_qsl(parsed_url.query))
