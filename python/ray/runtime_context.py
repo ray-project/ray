@@ -1,6 +1,7 @@
 import ray.worker
 import logging
 from ray._private.client_mode_hook import client_mode_hook
+from ray._private.runtime_env.validation import ParsedRuntimeEnv
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -150,14 +151,23 @@ class RuntimeContext(object):
         """
         return self.worker.should_capture_child_tasks_in_placement_group
 
-    @property
-    def runtime_env(self):
-        """Get the runtime env used for the current driver or worker.
+    def get_runtime_env_string(self):
+        """Get the runtime env string used for the current driver or worker.
 
         Returns:
-            The runtime env currently using by this worker.
+            The runtime env string currently using by this worker.
         """
         return self.worker.runtime_env
+
+    @property
+    def runtime_env(self):
+        """Get the runtime env dict used for the current driver or worker.
+
+        Returns:
+            The runtime env dict currently using by this worker.
+        """
+
+        return ParsedRuntimeEnv.deserialize(self.get_runtime_env_string())
 
     @property
     def current_actor(self):

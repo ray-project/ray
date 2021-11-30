@@ -31,10 +31,10 @@ RAY_CONFIG(bool, event_stats, false)
 RAY_CONFIG(bool, legacy_scheduler_warnings, true)
 
 /// The interval of periodic event loop stats print.
-/// -1 means the feature is disabled. In this case, stats are only available to
-/// debug_state.txt for raylets.
+/// -1 means the feature is disabled. In this case, stats are available to
+/// debug_state_*.txt
 /// NOTE: This requires event_stats=1.
-RAY_CONFIG(int64_t, event_stats_print_interval_ms, 10000)
+RAY_CONFIG(int64_t, event_stats_print_interval_ms, 60000)
 
 /// In theory, this is used to detect Ray cookie mismatches.
 /// This magic number (hex for "RAY") is used instead of zero, rationale is
@@ -271,8 +271,6 @@ RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5);
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
-/// The interval at which the gcs server will print debug info.
-RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 // The interval at which the gcs server will pull a new resource.
 RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
 // The number of concurrent polls to polls to GCS.
