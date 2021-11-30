@@ -102,13 +102,10 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
         ObjectID id = ObjectID::FromIndex(task_spec.TaskId(), /*index=*/i + 1);
         return_object->set_object_id(id.Binary());
 
-        // The object is nullptr if it already existed in the object store.
-        if (!return_objects[i]) {
-          RAY_LOG(INFO) << "Failed to create task return object " << id
-                        << " in the object store, returning an error to the application.";
-          return_objects[i] = std::make_shared<RayObject>(rpc::ErrorType::OBJECT_LOST);
-        }
-
+        // This should only happen if the local raylet died. Caller should
+        // retry the task.
+        RAY_CHECK(return_objects[i])
+            << "Failed to create task return object " << id << " in the object store";
         const auto &result = return_objects[i];
         return_object->set_size(result->GetSize());
         if (result->GetData() != nullptr && result->GetData()->IsPlasmaBuffer()) {
