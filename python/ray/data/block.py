@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
-from ray.data.impl.util import _check_pyarrow_version, _enable_pandas_block
+from ray.data.impl.util import _check_pyarrow_version
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -139,20 +139,19 @@ class BlockAccessor(Generic[T]):
     @staticmethod
     def for_block(block: Block) -> "BlockAccessor[T]":
         """Create a block accessor for the given block."""
-        if _enable_pandas_block():
-            import pandas
-            if isinstance(block, pandas.DataFrame):
-                from ray.data.impl.pandas_block import \
-                    PandasBlockAccessor
-                return PandasBlockAccessor(block)
 
         _check_pyarrow_version()
         import pyarrow
+        import pandas
 
         if isinstance(block, pyarrow.Table):
             from ray.data.impl.arrow_block import \
                 ArrowBlockAccessor
             return ArrowBlockAccessor(block)
+        elif isinstance(block, pandas.DataFrame):
+            from ray.data.impl.pandas_block import \
+                PandasBlockAccessor
+            return PandasBlockAccessor(block)
         elif isinstance(block, bytes):
             from ray.data.impl.arrow_block import \
                 ArrowBlockAccessor

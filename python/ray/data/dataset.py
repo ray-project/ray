@@ -42,8 +42,7 @@ from ray.data.impl.shuffle import simple_shuffle, _shuffle_reduce
 from ray.data.impl.sort import sort_impl
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
-from ray.data.impl.table_block import DelegatingBlockBuilder
-from ray.data.impl.util import _enable_pandas_block
+from ray.data.impl.table_block import DelegatingBlockBuilder, TableRow
 
 # An output type of iter_batches() determined by the batch_format parameter.
 BatchType = Union["pandas.DataFrame", "pyarrow.Table", np.ndarray, list]
@@ -1013,6 +1012,18 @@ class Dataset(Generic[T]):
             on = [on]
         return [agg_cls(on_, *args, **kwargs) for on_ in on]
 
+    def _aggregate_result(self, result: Union[Tuple, TableRow]) -> U:
+        if len(result) == 1:
+            if isinstance(result, tuple):
+                return result[0]
+            else:
+                # NOTE (kfstorm): We cannot call `result[0]` directly on
+                # `PandasRow` because indexing a column with position is not
+                # supported by pandas.
+                return list(result.values())[0]
+        else:
+            return result
+
     def sum(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute sum over entire dataset.
 
@@ -1063,16 +1074,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Sum, on)
         if ret is None:
             return 0
-        elif len(ret) == 1:
-            if _enable_pandas_block():
-                if isinstance(ret, tuple):
-                    return ret[0]
-                else:
-                    return list(ret.values())[0]
-            else:
-                return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def min(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute minimum over entire dataset.
@@ -1124,16 +1127,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Min, on)
         if ret is None:
             raise ValueError("Cannot compute min on an empty dataset")
-        elif len(ret) == 1:
-            if _enable_pandas_block():
-                if isinstance(ret, tuple):
-                    return ret[0]
-                else:
-                    return list(ret.values())[0]
-            else:
-                return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def max(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute maximum over entire dataset.
@@ -1185,16 +1180,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Max, on)
         if ret is None:
             raise ValueError("Cannot compute max on an empty dataset")
-        elif len(ret) == 1:
-            if _enable_pandas_block():
-                if isinstance(ret, tuple):
-                    return ret[0]
-                else:
-                    return list(ret.values())[0]
-            else:
-                return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def mean(self, on: Optional["AggregateOnTs"] = None) -> U:
         """Compute mean over entire dataset.
@@ -1246,16 +1233,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Mean, on)
         if ret is None:
             raise ValueError("Cannot compute mean on an empty dataset")
-        elif len(ret) == 1:
-            if _enable_pandas_block():
-                if isinstance(ret, tuple):
-                    return ret[0]
-                else:
-                    return list(ret.values())[0]
-            else:
-                return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def std(self, on: Optional["AggregateOnTs"] = None, ddof: int = 1) -> U:
         """Compute standard deviation over entire dataset.
@@ -1317,16 +1296,8 @@ class Dataset(Generic[T]):
         ret = self._aggregate_on(Std, on, ddof=ddof)
         if ret is None:
             raise ValueError("Cannot compute std on an empty dataset")
-        elif len(ret) == 1:
-            if _enable_pandas_block():
-                if isinstance(ret, tuple):
-                    return ret[0]
-                else:
-                    return list(ret.values())[0]
-            else:
-                return ret[0]
         else:
-            return ret
+            return self._aggregate_result(ret)
 
     def sort(self,
              key: Union[None, str, List[str], Callable[[T], Any]] = None,
@@ -2209,14 +2180,7 @@ class Dataset(Generic[T]):
         output = DelegatingBlockBuilder()
         for block in ray.get(blocks):
             output.add_block(block)
-        if _enable_pandas_block():
-            result = output.build()
-            import pandas
-            if not isinstance(result, pandas.DataFrame):
-                result = result.to_pandas()
-            return result
-        else:
-            return output.build().to_pandas()
+        return BlockAccessor.for_block(output.build()).to_pandas()
 
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
         """Convert this dataset into a distributed set of Pandas dataframes.
