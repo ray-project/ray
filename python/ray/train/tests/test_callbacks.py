@@ -163,21 +163,50 @@ def test_TBX(ray_start_4_cpus, make_temp_dir):
 def test_mlflow(ray_start_4_cpus, make_temp_dir):
     config = TestConfig()
 
+    params = {"p1": "p1"}
+
     temp_dir = make_temp_dir
     num_workers = 4
 
-    def train_func():
+    def train_func(config):
         train.report(episode_reward_mean=4)
         train.report(episode_reward_mean=5)
-        train.report(
-            episode_reward_mean=6, score=[1, 2, 3], hello={"world": 1})
+        train.report(episode_reward_mean=6)
         return 1
 
-    callback = MLflowLoggerCallback(logdir=temp_dir)
+    callback = MLflowLoggerCallback(experiment_name="test_exp",
+                                    logdir=temp_dir)
     trainer = Trainer(config, num_workers=num_workers)
     trainer.start()
-    trainer.run(train_func, callbacks=[callback])
+    trainer.run(train_func, config=params, callbacks=[callback])
 
-    
+    from mlflow.tracking import MlflowClient
+
+    client = MlflowClient(
+        tracking_uri=callback.mlflow_util._mlflow.get_tracking_uri())
+
+    all_runs = callback.mlflow_util._mlflow.search_runs(experiment_ids=["0"])
+    assert len(all_runs) == 1
+    # all_runs is a pandas dataframe.
+    all_runs = all_runs.to_dict(orient="records")
+    run_id = all_runs[0]["run_id"]
+    run = client.get_run(run_id)
+
+    assert run.data.params == params
+    assert "episode_reward_mean" in run.data.metrics and run.data.metrics[
+        "episode_reward_mean"] == 6.0
+    assert TRAINING_ITERATION in run.data.metrics and run.data.metrics[
+        TRAINING_ITERATION] == 3.0
+
+
+
+    metric_history = client.get_metric_history(run_id=run_id,
+                                               key="episode_reward_mean")
+
+    assert len(metric_history) == 3
+    iterations = [metric.step for metric in metric_history]
+    assert iterations == [1, 2, 3]
+    rewards = [metric.value for metric in metric_history]
+    assert rewards == [4, 5, 6]
 
 

@@ -236,10 +236,10 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
 
         tracking_uri = self.tracking_uri if self.tracking_uri is not None \
             else \
-            self.logdir
+            str(self.logdir)
         registry_uri = self.registry_uri if self.registry_uri is not None \
             else \
-            self.logdir
+            str(self.logdir)
 
         success = self.mlflow_util.setup_mlflow(
             tracking_uri=tracking_uri,
@@ -265,6 +265,8 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
         self.mlflow_util.log_metrics(metrics_to_log=result, step=result[TRAINING_ITERATION])
 
     def finish_training(self, error: bool = False, **info):
+        if self.save_artifact:
+            self.mlflow_util.save_artifacts(dir=str(self.logdir))
         self.mlflow_util.end_run(status="FAILED" if error else "FINISHED")
 
 

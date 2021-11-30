@@ -435,11 +435,11 @@ You can plug all of these into Ray Train with the following interface:
 Logging Callbacks
 +++++++++++++++++
 
-The following ``TrainingCallback``\s are available and will write to a file within the
-:ref:`log directory <train-log-dir>` of each training run.
+The following ``TrainingCallback``\s are available and will log the intermediate results of the training run.
 
 1. :ref:`train-api-json-logger-callback`
 2. :ref:`train-api-tbx-logger-callback`
+3. :ref:`train-api-mlflow-logger-callback`
 
 Custom Callbacks
 ++++++++++++++++

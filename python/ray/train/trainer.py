@@ -264,7 +264,8 @@ class Trainer:
 
         for callback in callbacks:
             callback.start_training(
-                logdir=str(self.latest_run_dir), config=config)
+                logdir=str(self.latest_run_dir), config=config if config
+                else {})
 
         train_func = self._get_train_func(train_func, config)
 
@@ -281,7 +282,7 @@ class Trainer:
             )
             for intermediate_result in iterator:
                 for callback in callbacks:
-                    callback.handle_result(intermediate_result, step=step)
+                    callback.handle_result(intermediate_result)
 
             assert iterator.is_finished()
             return iterator.get_final_results()
