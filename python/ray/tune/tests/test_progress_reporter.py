@@ -106,11 +106,11 @@ with patch("ray.tune.progress_reporter._get_trial_location",
         progress_reporter=reporter)"""
 
 EXPECTED_END_TO_END_START = """Number of trials: 30/30 (29 PENDING, 1 RUNNING)
-+---------------+----------+-------+-----+-----+
-| Trial name    | status   | loc   |   a |   b |
-|---------------+----------+-------+-----+-----|
-| f_xxxxx_00000 | RUNNING  |       |   0 |     |
-| f_xxxxx_00001 | PENDING  |       |   1 |     |"""
++---------------+----------+-------------------+-----+-----+
+| Trial name    | status   | loc               |   a |   b |
+|---------------+----------+-------------------+-----+-----|
+| f_xxxxx_00000 | RUNNING  | 123.123.123.123:1 |   0 |     |
+| f_xxxxx_00001 | PENDING  |                   |   1 |     |"""
 
 EXPECTED_END_TO_END_END = """Number of trials: 30/30 (30 TERMINATED)
 +---------------+------------+-------------------+-----+-----+-----+--------+
@@ -234,15 +234,26 @@ Trial train_xxxxx_00002 reported acc=7 with parameters={'do': 'twice'}.
 Trial train_xxxxx_00002 reported acc=8 with parameters={'do': 'twice'}. """ + \
     "This trial completed."
 
-VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------+----------+
-| Trial name        | status   | loc   | do       |
-|-------------------+----------+-------+----------|
-| train_xxxxx_00000 | RUNNING  |       | complete |"""
+VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------------------+----------+
+| Trial name        | status   | loc               | do       |
+|-------------------+----------+-------------------+----------|
+| train_xxxxx_00000 | RUNNING  | 123.123.123.123:1 | complete |"""
 
 VERBOSE_CMD = """from ray import tune
 import random
 import numpy as np
 import time
+from ray.tune.trial import Location
+from ray.tune.progress_reporter import _get_trial_location
+from unittest.mock import patch
+
+
+def mock_get_trial_location(trial, result):
+    location = _get_trial_location(trial, result)
+    if location.pid:
+        return Location("123.123.123.123", "1")
+    return location
+
 
 def train(config):
     if config["do"] == "complete":
@@ -259,11 +270,14 @@ def train(config):
 random.seed(1234)
 np.random.seed(1234)
 
-tune.run(
-    train,
-    config={
-        "do": tune.grid_search(["complete", "once", "twice"])
-    },"""
+
+with patch("ray.tune.progress_reporter._get_trial_location",
+           mock_get_trial_location):
+    tune.run(
+        train,
+        config={
+            "do": tune.grid_search(["complete", "once", "twice"])
+        },"""
 
 # Add "verbose=3)" etc
 

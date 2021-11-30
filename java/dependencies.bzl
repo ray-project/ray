@@ -7,6 +7,7 @@ def gen_java_deps():
             "com.google.code.gson:gson:2.8.5",
             "com.google.guava:guava:30.0-jre",
             "com.google.protobuf:protobuf-java:3.16.0",
+            "com.google.protobuf:protobuf-java-util:3.16.0",
             "com.puppycrawl.tools:checkstyle:8.15",
             "com.sun.xml.bind:jaxb-core:2.3.0",
             "com.sun.xml.bind:jaxb-impl:2.3.0",
@@ -24,6 +25,8 @@ def gen_java_deps():
             "com.lmax:disruptor:3.3.4",
             "org.yaml:snakeyaml:1.26",
             "net.java.dev.jna:jna:5.5.0",
+            "org.apache.httpcomponents.client5:httpclient5:5.0.3",
+            "org.apache.httpcomponents.core5:httpcore5:5.0.2",
             maven.artifact(
                 group = "org.testng",
                 artifact = "testng",

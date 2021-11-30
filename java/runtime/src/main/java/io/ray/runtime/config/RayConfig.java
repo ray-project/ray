@@ -17,6 +17,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.apache.commons.lang3.StringUtils;
 
 /** Configurations of Ray runtime. See `ray.default.conf` for the meaning of each field. */
@@ -47,6 +48,8 @@ public class RayConfig {
   // Listening port for node manager.
   public int nodeManagerPort;
 
+  public int startupToken;
+
   public static class LoggerConf {
     public final String loggerName;
     public final String fileName;
@@ -66,6 +69,8 @@ public class RayConfig {
   public final List<String> headArgs;
 
   public final int numWorkersPerProcess;
+
+  public final String namespace;
 
   public final List<String> jvmOptionsForJavaWorker;
   public final Map<String, String> workerEnv;
@@ -114,6 +119,16 @@ public class RayConfig {
       this.jobId = JobId.fromHexString(jobId);
     } else {
       this.jobId = JobId.NIL;
+    }
+
+    // Namespace of this job.
+    String localNamespace = config.getString("ray.job.namespace");
+    if (workerMode == WorkerType.DRIVER) {
+      namespace =
+          StringUtils.isEmpty(localNamespace) ? UUID.randomUUID().toString() : localNamespace;
+    } else {
+      /// We shouldn't set it for worker.
+      namespace = null;
     }
 
     // jvm options for java workers of this job.
@@ -170,6 +185,8 @@ public class RayConfig {
 
     numWorkersPerProcess = config.getInt("ray.job.num-java-workers-per-process");
 
+    startupToken = config.getInt("ray.raylet.startup-token");
+
     {
       loggers = new ArrayList<>();
       List<Config> loggerConfigs = (List<Config>) config.getConfigList("ray.logging.loggers");
@@ -213,6 +230,10 @@ public class RayConfig {
     return nodeManagerPort;
   }
 
+  public int getStartupToken() {
+    return startupToken;
+  }
+
   public void setSessionDir(String sessionDir) {
     updateSessionDir(sessionDir);
   }
@@ -232,6 +253,7 @@ public class RayConfig {
     dynamic.put("ray.object-store.socket-name", objectStoreSocketName);
     dynamic.put("ray.raylet.node-manager-port", nodeManagerPort);
     dynamic.put("ray.address", redisAddress);
+    dynamic.put("ray.raylet.startup-token", startupToken);
     Config toRender = ConfigFactory.parseMap(dynamic).withFallback(config);
     return toRender.root().render(ConfigRenderOptions.concise());
   }

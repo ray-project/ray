@@ -37,7 +37,7 @@ int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO, /*log_dir=*/"");
-  ray::RayLog::InstallFailureSignalHandler();
+  ray::RayLog::InstallFailureSignalHandler(argv[0]);
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   const std::string redis_address = FLAGS_redis_address;
@@ -80,13 +80,12 @@ int main(int argc, char *argv[]) {
         storage->InternalConfigTable().Put(ray::UniqueID::Nil(), config, on_done));
     boost::asio::io_service::work work(service);
     service.run();
-  })
-      .detach();
+  }).detach();
   promise->get_future().get();
 
   const ray::stats::TagsType global_tags = {
       {ray::stats::ComponentKey, "gcs_server"},
-      {ray::stats::VersionKey, "2.0.0.dev0"},
+      {ray::stats::VersionKey, kRayVersion},
       {ray::stats::NodeAddressKey, node_ip_address}};
   ray::stats::Init(global_tags, metrics_agent_port);
 
@@ -116,6 +115,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.grpc_based_resource_broadcast =
       RayConfig::instance().grpc_based_resource_broadcast();
   gcs_server_config.grpc_pubsub_enabled = RayConfig::instance().gcs_grpc_based_pubsub();
+  gcs_server_config.log_dir = log_dir;
   ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is

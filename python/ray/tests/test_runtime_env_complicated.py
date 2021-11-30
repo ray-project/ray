@@ -1,4 +1,3 @@
-import json
 import os
 from contextlib import contextmanager
 from pathlib import Path
@@ -18,8 +17,11 @@ from ray._private.runtime_env.conda import (
     _resolve_install_from_source_ray_dependencies,
     _current_py_version,
 )
+
+from ray._private.runtime_env.conda_utils import get_conda_env_list
 from ray._private.test_utils import (run_string_as_driver,
-                                     run_string_as_driver_nonblocking)
+                                     run_string_as_driver_nonblocking,
+                                     wait_for_condition, get_log_batch)
 from ray._private.utils import get_conda_env_dir, get_conda_bin_executable
 
 if not os.environ.get("CI"):
@@ -187,6 +189,39 @@ def test_job_config_conda_env(conda_envs, shutdown_only):
         ray.init(runtime_env=runtime_env)
         assert ray.get(get_requests_version.remote()) == package_version
         ray.shutdown()
+
+
+@pytest.mark.skipif(
+    os.environ.get("CONDA_DEFAULT_ENV") is None,
+    reason="must be run from within a conda environment")
+@pytest.mark.skipif(
+    os.environ.get("CI") and sys.platform != "linux",
+    reason="This test is only run on linux CI machines.")
+def test_job_eager_install(shutdown_only):
+    # Test enable eager install. This flag is set to True by default.
+    runtime_env = {"conda": {"dependencies": ["toolz"]}}
+    env_count = len(get_conda_env_list())
+    ray.init(runtime_env=runtime_env)
+    wait_for_condition(
+        lambda: len(get_conda_env_list()) == env_count + 1, timeout=60)
+    ray.shutdown()
+    # Test disable eager install
+    runtime_env = {
+        "conda": {
+            "dependencies": ["toolz"]
+        },
+        "eager_install": False
+    }
+    ray.init(runtime_env=runtime_env)
+    with pytest.raises(RuntimeError):
+        wait_for_condition(
+            lambda: len(get_conda_env_list()) == env_count + 2, timeout=5)
+    ray.shutdown()
+    # Test unavailable type
+    runtime_env = {"conda": {"dependencies": ["toolz"]}, "eager_install": 123}
+    with pytest.raises(TypeError):
+        ray.init(runtime_env=runtime_env)
+    ray.shutdown()
 
 
 def test_get_conda_env_dir(tmp_path):
@@ -585,8 +620,8 @@ def test_conda_pip_filepaths_remote(call_ray_start, tmp_path):
             with pytest.raises(ModuleNotFoundError):
                 # Ensure pip-install-test is not installed on the test machine
                 import pip_install_test  # noqa
-            assert ray.get(f_pip.remote())
-            assert ray.get(f_conda.remote())
+            assert ray.get(f_pip.remote()), str(runtime_env)
+            assert ray.get(f_conda.remote()), str(runtime_env)
 
 
 install_env_script = """
@@ -741,7 +776,7 @@ def test_e2e_complex(call_ray_start, tmp_path):
         "ray[serve, tune]",
         "texthero",
         "PyGithub",
-        "xgboost_ray[default]",
+        "xgboost_ray",
         "pandas==1.1",  # pandas 1.2.4 in the demo, but not supported on py36
         "typer",
         "aiofiles",
@@ -873,7 +908,6 @@ def test_runtime_env_override(call_ray_start):
         parent = ray.get_actor("parent")
 
         env = ray.get_runtime_context().runtime_env
-        del env["working_dir"]  # make sure to directly use the direcotry
         print("Spawning with env:", env)
         ray.get(parent.spawn_child.remote("child", env))
 
@@ -889,39 +923,6 @@ def test_runtime_env_override(call_ray_start):
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform != "linux",
     reason="This test is only run on linux CI machines.")
-def test_runtime_env_inheritance_regression(shutdown_only):
-    # https://github.com/ray-project/ray/issues/16479
-    with tempfile.TemporaryDirectory() as tmpdir, chdir(tmpdir):
-        with open("hello", "w") as f:
-            f.write("world")
-
-        job_config = ray.job_config.JobConfig(runtime_env={"working_dir": "."})
-        ray.init(job_config=job_config)
-
-        with open("hello", "w") as f:
-            f.write("file should already been cached")
-
-        @ray.remote
-        class Test:
-            def f(self):
-                return open("hello").read()
-
-        env1 = ray.get_runtime_context().runtime_env
-        del env1["working_dir"]
-        print("Using env:", env1)
-        t = Test.options(runtime_env=env1).remote()
-        assert ray.get(t.f.remote()) == "world"
-
-        # Using working_dir is not supported
-        env2 = ray.get_runtime_context().runtime_env
-        assert "working_dir" in env2
-        with pytest.raises(NotImplementedError):
-            t = Test.options(runtime_env=env2).remote()
-
-
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.")
 def test_runtime_env_logging_to_driver(ray_start_regular_shared, log_pubsub):
     @ray.remote(runtime_env={"pip": [f"requests=={REQUEST_VERSIONS[0]}"]})
     def func():
@@ -930,19 +931,11 @@ def test_runtime_env_logging_to_driver(ray_start_regular_shared, log_pubsub):
     ray.get(func.remote())
 
     # Check the stderr from the worker.
-    start = time.time()
-    while True:
-        if (time.time() - start) > 5:
-            assert False, "runtime_env log has not been propogated after 5s"
+    def matcher(log_batch):
+        return log_batch["pid"] == "runtime_env"
 
-        msg = log_pubsub.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            continue
-
-        log_data = json.loads(ray._private.utils.decode(msg["data"]))
-        if log_data["pid"] == "runtime_env":
-            break
+    match = get_log_batch(log_pubsub, 1, timeout=5, matcher=matcher)
+    assert len(match) > 0
 
 
 if __name__ == "__main__":

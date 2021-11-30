@@ -60,6 +60,7 @@ from ray.includes.common cimport (
     CRayFunction,
     CWorkerType,
     CJobConfig,
+    CConcurrencyGroup,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -115,7 +116,6 @@ import ray.ray_constants as ray_constants
 from ray._private.async_compat import sync_to_async, get_new_event_loop
 from ray._private.client_mode_hook import disable_client_hook
 import ray._private.gcs_utils as gcs_utils
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
 from ray._private.utils import decode
@@ -316,10 +316,39 @@ cdef int prepare_resources(
             resource_map[0][key.encode("ascii")] = float(value)
     return 0
 
+cdef c_vector[CFunctionDescriptor] prepare_function_descriptors(pyfd_list):
+    cdef:
+        c_vector[CFunctionDescriptor] fd_list
+        CRayFunction ray_function
+
+    for pyfd in pyfd_list:
+        fd_list.push_back(CFunctionDescriptorBuilder.BuildPython(
+            pyfd.module_name, pyfd.class_name, pyfd.function_name, b""))
+    return fd_list
+
+
+cdef int prepare_actor_concurrency_groups(
+        dict concurrency_groups_dict,
+        c_vector[CConcurrencyGroup] *concurrency_groups):
+
+    cdef:
+        CConcurrencyGroup cg
+        c_vector[CFunctionDescriptor] c_fd_list
+
+    if concurrency_groups_dict is None:
+        raise ValueError("Must provide it...")
+
+    for key, value in concurrency_groups_dict.items():
+        c_fd_list = prepare_function_descriptors(value["function_descriptors"])
+        cg = CConcurrencyGroup(
+            key.encode("ascii"), value["max_concurrency"], c_fd_list)
+        concurrency_groups.push_back(cg)
+    return 1
 
 cdef prepare_args(
         CoreWorker core_worker,
-        Language language, args, c_vector[unique_ptr[CTaskArg]] *args_vector):
+        Language language, args,
+        c_vector[unique_ptr[CTaskArg]] *args_vector, function_descriptor):
     cdef:
         size_t size
         int64_t put_threshold
@@ -345,7 +374,17 @@ cdef prepare_args(
                     arg.call_site())))
 
         else:
-            serialized_arg = worker.get_serialization_context().serialize(arg)
+            try:
+                serialized_arg = worker.get_serialization_context(
+                ).serialize(arg)
+            except TypeError as e:
+                msg = (
+                    "Could not serialize the argument "
+                    f"{repr(arg)} for a task or actor "
+                    f"{function_descriptor.repr}. Check "
+                    "https://docs.ray.io/en/master/serialization.html#troubleshooting " # noqa
+                    "for more information.")
+                raise TypeError(msg) from e
             metadata = serialized_arg.metadata
             if language != Language.PYTHON:
                 metadata_fields = metadata.split(b",")
@@ -411,7 +450,11 @@ cdef execute_task(
         const c_vector[CObjectID] &c_return_ids,
         const c_string debugger_breakpoint,
         c_vector[shared_ptr[CRayObject]] *returns,
-        c_bool *is_application_level_error):
+        c_bool *is_application_level_error,
+        # This parameter is only used for actor creation task to define
+        # the concurrency groups of this actor.
+        const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups,
+        const c_string c_name_of_concurrency_group_to_execute):
 
     is_application_level_error[0] = False
 
@@ -456,8 +499,16 @@ cdef execute_task(
             # We need to handle this separately because `__repr__` may not be
             # runnable until after `__init__` (e.g., if it accesses fields
             # defined in the constructor).
-            print("{}{}".format(
-                ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__))
+            actor_magic_token = "{}{}".format(
+                ray_constants.LOG_PREFIX_ACTOR_NAME, actor_class.__name__)
+            # Flush to both .out and .err
+            print(actor_magic_token)
+            print(actor_magic_token, file=sys.stderr)
+
+        # Initial eventloops for asyncio for this actor.
+        if core_worker.current_actor_is_asyncio():
+            core_worker.initialize_eventloops_for_actor_concurrency_group(
+                c_defined_concurrency_groups)
 
     execution_info = execution_infos.get(function_descriptor)
     if not execution_info:
@@ -470,6 +521,8 @@ cdef execute_task(
                   b' "task_id": ' + task_id.hex().encode("ascii") + b'}')
 
     task_name = name.decode("utf-8")
+    name_of_concurrency_group_to_execute = \
+        c_name_of_concurrency_group_to_execute.decode("ascii")
     title = f"ray::{task_name}"
 
     if <int>task_type == <int>TASK_TYPE_NORMAL_TASK:
@@ -477,8 +530,11 @@ cdef execute_task(
         function_executor = execution_info.function
         # Record the task name via :task_name: magic token in the log file.
         # This is used for the prefix in driver logs `(task_name pid=123) ...`
-        print("{}{}".format(
-            ray_constants.LOG_PREFIX_TASK_NAME, task_name.replace("()", "")))
+        task_name_magic_token = "{}{}".format(
+            ray_constants.LOG_PREFIX_TASK_NAME, task_name.replace("()", ""))
+        # Print on both .out and .err
+        print(task_name_magic_token)
+        print(task_name_magic_token, file=sys.stderr)
     else:
         actor = worker.actors[core_worker.get_actor_id()]
         class_name = actor.__class__.__name__
@@ -514,7 +570,9 @@ cdef execute_task(
                     async_function = sync_to_async(function)
 
                 return core_worker.run_async_func_in_event_loop(
-                    async_function, actor, *arguments, **kwarguments)
+                    async_function, function_descriptor,
+                    name_of_concurrency_group_to_execute, actor,
+                    *arguments, **kwarguments)
 
             return function(actor, *arguments, **kwarguments)
 
@@ -540,7 +598,8 @@ cdef execute_task(
                                     .deserialize_objects(
                                         metadata_pairs, object_refs))
                         args = core_worker.run_async_func_in_event_loop(
-                            deserialize_args)
+                            deserialize_args, function_descriptor,
+                            name_of_concurrency_group_to_execute)
                     else:
                         args = ray.worker.global_worker.deserialize_objects(
                             metadata_pairs, object_refs)
@@ -575,9 +634,12 @@ cdef execute_task(
                             # task. In that case we just exit the debugger.
                             ray.experimental.internal_kv._internal_kv_put(
                                 "RAY_PDB_{}".format(next_breakpoint),
-                                "{\"exit_debugger\": true}")
+                                "{\"exit_debugger\": true}",
+                                namespace=ray_constants.KV_NAMESPACE_PDB
+                            )
                             ray.experimental.internal_kv._internal_kv_del(
-                                "RAY_PDB_CONTINUE_{}".format(next_breakpoint)
+                                "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
+                                namespace=ray_constants.KV_NAMESPACE_PDB
                             )
                             ray.worker.global_worker.debugger_breakpoint = b""
                     task_exception = False
@@ -605,8 +667,11 @@ cdef execute_task(
                 if (hasattr(actor_class, "__ray_actor_class__") and
                         "__repr__" in
                         actor_class.__ray_actor_class__.__dict__):
-                    print("{}{}".format(
-                        ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor)))
+                    actor_magic_token = "{}{}".format(
+                        ray_constants.LOG_PREFIX_ACTOR_NAME, repr(actor))
+                    # Flush on both stdout and stderr.
+                    print(actor_magic_token)
+                    print(actor_magic_token, file=sys.stderr)
             # Check for a cancellation that was called when the function
             # was exiting and was raised after the except block.
             if not check_signals().ok():
@@ -666,7 +731,6 @@ cdef execute_task(
             exit.is_ray_terminate = True
             raise exit
 
-# return a protobuf-serialized ray_exception
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
     return make_shared[LocalMemoryBuffer](
@@ -683,7 +747,9 @@ cdef CRayStatus task_execution_handler(
         const c_string debugger_breakpoint,
         c_vector[shared_ptr[CRayObject]] *returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
-        c_bool *is_application_level_error) nogil:
+        c_bool *is_application_level_error,
+        const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
+        const c_string name_of_concurrency_group_to_execute) nogil:
     with gil, disable_client_hook():
         try:
             try:
@@ -692,7 +758,9 @@ cdef CRayStatus task_execution_handler(
                 execute_task(task_type, task_name, ray_function, c_resources,
                              c_args, c_arg_refs, c_return_ids,
                              debugger_breakpoint, returns,
-                             is_application_level_error)
+                             is_application_level_error,
+                             defined_concurrency_groups,
+                             name_of_concurrency_group_to_execute)
             except Exception as e:
                 sys_exit = SystemExit()
                 if isinstance(e, RayActorError) and \
@@ -724,8 +792,19 @@ cdef CRayStatus task_execution_handler(
                 return CRayStatus.IntentionalSystemExit()
             elif hasattr(e, "is_creation_task_error"):
                 return CRayStatus.CreationTaskError()
+            elif e.code and e.code == 0:
+                # This means the system exit was
+                # normal based on the python convention.
+                # https://docs.python.org/3/library/sys.html#sys.exit
+                return CRayStatus.IntentionalSystemExit()
             else:
-                logger.exception("SystemExit was raised from the worker")
+                msg = "SystemExit was raised from the worker."
+                # In K8s, SIGTERM likely means we hit memory limits, so print
+                # a more informative message there.
+                if "KUBERNETES_SERVICE_HOST" in os.environ:
+                    msg += (
+                        " The worker may have exceeded K8s pod memory limits.")
+                logger.exception(msg)
                 return CRayStatus.UnexpectedSystemExit()
 
     return CRayStatus.OK()
@@ -957,7 +1036,7 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  worker_shim_pid):
+                  worker_shim_pid, startup_token):
         self.is_local_mode = local_mode
 
         cdef CCoreWorkerOptions options = CCoreWorkerOptions()
@@ -1008,7 +1087,12 @@ cdef class CoreWorker:
         options.connect_on_start = False
         options.runtime_env_hash = runtime_env_hash
         options.worker_shim_pid = worker_shim_pid
+        options.startup_token = startup_token
         CCoreWorkerProcess.Initialize(options)
+
+        self.cgname_to_eventloop_dict = None
+        self.fd_to_cgname_dict = None
+        self.eventloop_for_default_cg = None
 
     def shutdown(self):
         with nogil:
@@ -1351,7 +1435,6 @@ cdef class CoreWorker:
                     c_bool placement_group_capture_child_tasks,
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env,
-                    runtime_env_uris,
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
@@ -1359,14 +1442,14 @@ cdef class CoreWorker:
             c_vector[unique_ptr[CTaskArg]] args_vector
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
-            c_vector[c_string] c_runtime_env_uris = runtime_env_uris
             c_vector[CObjectReference] return_refs
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(self, language, args, &args_vector)
+            prepare_args(
+                self, language, args, &args_vector, function_descriptor)
 
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:
@@ -1375,8 +1458,7 @@ cdef class CoreWorker:
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
                     b"",
-                    serialized_runtime_env,
-                    c_runtime_env_uris),
+                    serialized_runtime_env),
                 max_retries, retry_exceptions,
                 c_pair[CPlacementGroupID, int64_t](
                     c_placement_group_id, placement_group_bundle_index),
@@ -1403,7 +1485,7 @@ cdef class CoreWorker:
                      c_bool placement_group_capture_child_tasks,
                      c_string extension_data,
                      c_string serialized_runtime_env,
-                     runtime_env_uris,
+                     concurrency_groups_dict,
                      ):
         cdef:
             CRayFunction ray_function
@@ -1414,14 +1496,17 @@ cdef class CoreWorker:
             CActorID c_actor_id
             CPlacementGroupID c_placement_group_id = \
                 placement_group_id.native()
-            c_vector[c_string] c_runtime_env_uris = runtime_env_uris
+            c_vector[CConcurrencyGroup] c_concurrency_groups
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(self, language, args, &args_vector)
+            prepare_args(
+                self, language, args, &args_vector, function_descriptor)
+            prepare_actor_concurrency_groups(
+                concurrency_groups_dict, &c_concurrency_groups)
 
             with nogil:
                 check_status(CCoreWorkerProcess.GetCoreWorker().CreateActor(
@@ -1437,7 +1522,10 @@ cdef class CoreWorker:
                             placement_group_bundle_index),
                         placement_group_capture_child_tasks,
                         serialized_runtime_env,
-                        c_runtime_env_uris),
+                        c_concurrency_groups,
+                        # execute out of order for
+                        # async or threaded actors.
+                        is_asyncio or max_concurrency > 1),
                     extension_data,
                     &c_actor_id))
 
@@ -1525,7 +1613,8 @@ cdef class CoreWorker:
                 c_resources[b"CPU"] = num_method_cpus
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
-            prepare_args(self, language, args, &args_vector)
+            prepare_args(
+                self, language, args, &args_vector, function_descriptor)
 
             # NOTE(edoakes): releasing the GIL while calling this method causes
             # segfaults. See relevant issue for details:
@@ -1804,32 +1893,96 @@ cdef class CoreWorker:
                     CCoreWorkerProcess.GetCoreWorker().SealReturnObject(
                         return_id, returns[0][i]))
 
-    def create_or_get_event_loop(self):
-        if self.async_event_loop is None:
-            self.async_event_loop = get_new_event_loop()
-            asyncio.set_event_loop(self.async_event_loop)
+    cdef c_function_descriptors_to_python(
+            self,
+            const c_vector[CFunctionDescriptor] &c_function_descriptors):
 
-        if self.async_thread is None:
-            self.async_thread = threading.Thread(
-                target=lambda: self.async_event_loop.run_forever(),
-                name="AsyncIO Thread"
+        ret = []
+        for i in range(c_function_descriptors.size()):
+            ret.append(CFunctionDescriptorToPython(c_function_descriptors[i]))
+        return ret
+
+    cdef initialize_eventloops_for_actor_concurrency_group(
+            self,
+            const c_vector[CConcurrencyGroup] &c_defined_concurrency_groups):
+
+        cdef:
+            CConcurrencyGroup c_concurrency_group
+            c_vector[CFunctionDescriptor] c_function_descriptors
+
+        self.cgname_to_eventloop_dict = {}
+        self.fd_to_cgname_dict = {}
+
+        self.eventloop_for_default_cg = get_new_event_loop()
+        self.thread_for_default_cg = threading.Thread(
+            target=lambda: self.eventloop_for_default_cg.run_forever(),
+            name="AsyncIO Thread: default"
+            )
+        # Making the thread as daemon to let it exit
+        # when the main thread exits.
+        self.thread_for_default_cg.daemon = True
+        self.thread_for_default_cg.start()
+
+        for i in range(c_defined_concurrency_groups.size()):
+            c_concurrency_group = c_defined_concurrency_groups[i]
+            cg_name = c_concurrency_group.GetName().decode("ascii")
+            function_descriptors = self.c_function_descriptors_to_python(
+                c_concurrency_group.GetFunctionDescriptors())
+
+            async_eventloop = get_new_event_loop()
+            async_thread = threading.Thread(
+                target=lambda: async_eventloop.run_forever(),
+                name="AsyncIO Thread: {}".format(cg_name)
             )
             # Making the thread a daemon causes it to exit
             # when the main thread exits.
-            self.async_thread.daemon = True
-            self.async_thread.start()
+            async_thread.daemon = True
+            async_thread.start()
 
-        return self.async_event_loop
+            self.cgname_to_eventloop_dict[cg_name] = {
+                "eventloop": async_eventloop,
+                "thread": async_thread,
+            }
 
-    def run_async_func_in_event_loop(self, func, *args, **kwargs):
+            for fd in function_descriptors:
+                self.fd_to_cgname_dict[fd] = cg_name
+
+    def get_event_loop(self, function_descriptor, specified_cgname):
+        # __init__ will be invoked in default eventloop
+        if function_descriptor.function_name == "__init__":
+            return self.eventloop_for_default_cg, self.thread_for_default_cg
+
+        if specified_cgname is not None:
+            if specified_cgname in self.cgname_to_eventloop_dict:
+                this_group = self.cgname_to_eventloop_dict[specified_cgname]
+                return (this_group["eventloop"], this_group["thread"])
+
+        if function_descriptor in self.fd_to_cgname_dict:
+            curr_cgname = self.fd_to_cgname_dict[function_descriptor]
+            if curr_cgname in self.cgname_to_eventloop_dict:
+                return (
+                    self.cgname_to_eventloop_dict[curr_cgname]["eventloop"],
+                    self.cgname_to_eventloop_dict[curr_cgname]["thread"])
+            else:
+                raise ValueError(
+                    "The function {} is defined to be executed "
+                    "in the concurrency group {} . But there is no this group."
+                    .format(function_descriptor, curr_cgname))
+
+        return self.eventloop_for_default_cg, self.thread_for_default_cg
+
+    def run_async_func_in_event_loop(
+          self, func, function_descriptor, specified_cgname, *args, **kwargs):
+
         cdef:
             CFiberEvent event
-        loop = self.create_or_get_event_loop()
+        eventloop, async_thread = self.get_event_loop(
+            function_descriptor, specified_cgname)
         coroutine = func(*args, **kwargs)
-        if threading.get_ident() == self.async_thread.ident:
-            future = asyncio.ensure_future(coroutine, loop)
+        if threading.get_ident() == async_thread.ident:
+            future = asyncio.ensure_future(coroutine, eventloop)
         else:
-            future = asyncio.run_coroutine_threadsafe(coroutine, loop)
+            future = asyncio.run_coroutine_threadsafe(coroutine, eventloop)
         future.add_done_callback(lambda _: event.Notify())
         with nogil:
             (CCoreWorkerProcess.GetCoreWorker()
@@ -1847,18 +2000,19 @@ cdef class CoreWorker:
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
 
-    def get_current_runtime_env(self) -> ParsedRuntimeEnv:
+    def get_current_runtime_env(self) -> str:
         # This should never change, so we can safely cache it to avoid ser/de
         if self.current_runtime_env is None:
             if self.is_driver:
                 job_config = self.get_job_config()
-                serialized_env = job_config.runtime_env.serialized_runtime_env
+                serialized_env = job_config.runtime_env_info \
+                                           .serialized_runtime_env
             else:
                 serialized_env = CCoreWorkerProcess.GetCoreWorker() \
-                        .GetWorkerContext().GetCurrentSerializedRuntimeEnv()
+                        .GetWorkerContext().GetCurrentSerializedRuntimeEnv() \
+                        .decode("utf-8")
 
-            self.current_runtime_env = ParsedRuntimeEnv.deserialize(
-                    serialized_env)
+            self.current_runtime_env = serialized_env
 
         return self.current_runtime_env
 

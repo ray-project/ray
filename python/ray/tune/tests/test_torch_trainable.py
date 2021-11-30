@@ -75,6 +75,15 @@ def test_save_checkpoint(ray_start_2_cpus):  # noqa: F811
     trainer.stop()
 
 
+def test_restore_checkpoint(ray_start_2_cpus):  # noqa: F811
+    trainable_cls = DistributedTrainableCreator(_train_simple, num_workers=2)
+    trainer = trainable_cls(config={"epochs": 1})
+    trainer.train()
+    checkpoint_dir = trainer.save()
+    trainer.restore(checkpoint_dir)
+    trainer.stop()
+
+
 @pytest.mark.parametrize("enabled_checkpoint", [True, False])
 def test_simple_tune(ray_start_4_cpus, enabled_checkpoint):
     trainable_cls = DistributedTrainableCreator(_train_simple, num_workers=2)

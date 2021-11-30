@@ -9,6 +9,9 @@ import sys
 import numpy as np
 import time
 
+from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.queue import Queue
+
 from ray.tune.callback import Callback
 from ray.tune.logger import pretty_print, logger
 from ray.tune.result import (
@@ -17,7 +20,6 @@ from ray.tune.result import (
 from ray.tune.trial import DEBUG_PRINT_INTERVAL, Trial, Location
 from ray.tune.utils import unflattened_lookup
 from ray.tune.utils.log import Verbosity, has_verbosity
-from ray.util.annotations import PublicAPI, DeveloperAPI
 
 try:
     from collections.abc import Mapping, MutableMapping
@@ -429,15 +431,32 @@ class JupyterNotebookReporter(TuneReporterBase):
                 "to `tune.run()` instead.")
 
         self._overwrite = overwrite
+        self._output_queue = None
+
+    def set_output_queue(self, queue: Queue):
+        self._output_queue = queue
 
     def report(self, trials: List[Trial], done: bool, *sys_info: Dict):
-        from IPython.display import clear_output
-        from IPython.core.display import display, HTML
-        if self._overwrite:
-            clear_output(wait=True)
+        overwrite = self._overwrite
         progress_str = self._progress_str(
             trials, done, *sys_info, fmt="html", delim="<br>")
-        display(HTML(progress_str))
+
+        def update_output():
+            from IPython.display import clear_output
+            from IPython.core.display import display, HTML
+
+            if overwrite:
+                clear_output(wait=True)
+
+            display(HTML(progress_str))
+
+        if self._output_queue is not None:
+            # If an output queue is set, send callable (e.g. when using
+            # Ray client)
+            self._output_queue.put(update_output)
+        else:
+            # Else, output directly
+            update_output()
 
 
 @PublicAPI

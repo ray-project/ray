@@ -1,4 +1,4 @@
-base_image: "anyscale/ray-ml:pinned-nightly-py37-gpu"
+base_image: "anyscale/ray-ml:nightly-py37-gpu"
 env_vars: { }
 debian_packages:
   - curl
@@ -11,6 +11,7 @@ python:
     - fastapi
     - uvicorn
     - tblib
+    - filelock>=3.3.0
   conda_packages: [ ]
 
 post_build_cmds:

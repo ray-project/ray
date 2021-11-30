@@ -28,7 +28,11 @@ class RayError(Exception):
         ray_exception = RayException()
         ray_exception.ParseFromString(b)
         if ray_exception.language == PYTHON:
-            return pickle.loads(ray_exception.serialized_exception)
+            try:
+                return pickle.loads(ray_exception.serialized_exception)
+            except Exception as e:
+                msg = "Failed to unpickle serialized exception"
+                raise RuntimeError(msg) from e
         else:
             return CrossLanguageError(ray_exception)
 
@@ -314,6 +318,20 @@ class ObjectLostError(RayError):
             "more information about the failure.")
 
 
+class ObjectFetchTimedOutError(ObjectLostError):
+    """Indicates that an object fetch timed out.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return self._base_str() + "\n\n" + (
+            f"Fetch for object {self.object_ref_hex} timed out because no "
+            "locations were found for the object. This may indicate a "
+            "system-level bug.")
+
+
 class ReferenceCountingAssertionError(ObjectLostError, AssertionError):
     """Indicates that an object has been deleted while there was still a
     reference to it.
@@ -361,8 +379,7 @@ class OwnerDiedError(ObjectLostError):
 
 
 class ObjectReconstructionFailedError(ObjectLostError):
-    """Indicates that the owner of the object has died while there is still a
-    reference to the object.
+    """Indicates that the object cannot be reconstructed.
 
     Attributes:
         object_ref_hex: Hex ID of the object.
@@ -371,7 +388,40 @@ class ObjectReconstructionFailedError(ObjectLostError):
     def __str__(self):
         return self._base_str() + "\n\n" + (
             "The object cannot be reconstructed "
-            "because the maximum number of task retries has been exceeded.")
+            "because it was created by an actor, ray.put() call, or its "
+            "ObjectRef was created by a different worker.")
+
+
+class ObjectReconstructionFailedMaxAttemptsExceededError(ObjectLostError):
+    """Indicates that the object cannot be reconstructed because the maximum
+    number of task retries has been exceeded.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return self._base_str() + "\n\n" + (
+            "The object cannot be reconstructed "
+            "because the maximum number of task retries has been exceeded. "
+            "To prevent this error, set "
+            "`@ray.remote(max_retries=<num retries>)` (default 3).")
+
+
+class ObjectReconstructionFailedLineageEvictedError(ObjectLostError):
+    """Indicates that the object cannot be reconstructed because its lineage
+    was evicted due to memory pressure.
+
+    Attributes:
+        object_ref_hex: Hex ID of the object.
+    """
+
+    def __str__(self):
+        return self._base_str() + "\n\n" + (
+            "The object cannot be reconstructed because its lineage has been "
+            "evicted to reduce memory pressure. "
+            "To prevent this error, set the environment variable "
+            "RAY_max_lineage_bytes=<bytes> (default 1GB) during `ray start`.")
 
 
 class GetTimeoutError(RayError):
@@ -393,10 +443,7 @@ class RuntimeEnvSetupError(RayError):
     """Raised when a runtime environment fails to be set up."""
 
     def __str__(self):
-        return (
-            "The runtime environment for this task or actor failed to be "
-            "installed. Corresponding error logs should have been streamed "
-            "to the driver's STDOUT.")
+        return "The runtime_env failed to be set up."
 
 
 RAY_EXCEPTION_TYPES = [
@@ -407,8 +454,11 @@ RAY_EXCEPTION_TYPES = [
     RayActorError,
     ObjectStoreFullError,
     ObjectLostError,
+    ObjectFetchTimedOutError,
     ReferenceCountingAssertionError,
     ObjectReconstructionFailedError,
+    ObjectReconstructionFailedMaxAttemptsExceededError,
+    ObjectReconstructionFailedLineageEvictedError,
     OwnerDiedError,
     GetTimeoutError,
     AsyncioActorExit,

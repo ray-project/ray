@@ -171,8 +171,9 @@ cdef class TaskID(BaseID):
         return CTaskID.Size()
 
     @classmethod
-    def for_fake_task(cls):
-        return cls(CTaskID.ForFakeTask().Binary())
+    def for_fake_task(cls, job_id):
+        return cls(CTaskID.FromRandom(
+            CJobID.FromBinary(job_id.binary())).Binary())
 
     @classmethod
     def for_driver_task(cls, job_id):
@@ -211,6 +212,11 @@ cdef class NodeID(UniqueID):
     def __init__(self, id):
         check_id(id)
         self.data = CNodeID.FromBinary(<c_string>id)
+
+    @classmethod
+    def from_hex(cls, hex_id):
+        binary_id = CNodeID.FromHex(<c_string>hex_id).Binary()
+        return cls(binary_id)
 
     cdef CNodeID native(self):
         return <CNodeID>self.data
@@ -294,6 +300,10 @@ cdef class ActorID(BaseID):
 
     def size(self):
         return CActorID.Size()
+
+    @property
+    def job_id(self):
+        return JobID(self.data.JobId().Binary())
 
     def binary(self):
         return self.data.Binary()

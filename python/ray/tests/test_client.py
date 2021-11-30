@@ -205,6 +205,10 @@ def test_put_get(ray_start_regular_shared):
         assert not objectref == 1
         # Make sure it returns True when necessary as well.
         assert objectref == ClientObjectRef(objectref.id)
+        # Assert output is correct type.
+        list_put = ray.put([1, 2, 3])
+        assert isinstance(list_put, ClientObjectRef)
+        assert ray.get(list_put) == [1, 2, 3]
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -469,8 +473,11 @@ def test_stdout_log_stream(ray_start_regular_shared):
         time.sleep(1)
         print_on_stderr_and_stdout.remote("Hello world")
         time.sleep(1)
-        assert len(log_msgs) == 2
-        assert all((msg.find("Hello world") for msg in log_msgs))
+        num_hello = 0
+        for msg in log_msgs:
+            if "Hello world" in msg:
+                num_hello += 1
+        assert num_hello == 2, f"Invalid logs: {log_msgs}"
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
@@ -741,6 +748,26 @@ def test_wrapped_actor_creation(call_ray_start):
     import ray
     ray.init("ray://localhost:25552")
     run_wrapped_actor_creation()
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25553 --num-cpus 0"],
+    indirect=True)
+@pytest.mark.parametrize("use_client", [True, False])
+def test_init_requires_no_resources(call_ray_start, use_client):
+    import ray
+    if use_client:
+        address = call_ray_start
+        ray.init(address)
+    else:
+        ray.init("ray://localhost:25553")
+
+    @ray.remote(num_cpus=0)
+    def f():
+        pass
+
+    ray.get(f.remote())
 
 
 if __name__ == "__main__":

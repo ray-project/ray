@@ -34,7 +34,7 @@ def pg_tf_loss(
             of loss tensors.
     """
     # Pass the training data through our model to get distribution parameters.
-    dist_inputs, _ = model.from_batch(train_batch)
+    dist_inputs, _ = model(train_batch)
 
     # Create an action distribution object.
     action_dist = dist_class(dist_inputs, model)
@@ -51,6 +51,6 @@ def pg_tf_loss(
 # - PG loss function
 PGTFPolicy = build_tf_policy(
     name="PGTFPolicy",
-    get_default_config=lambda: ray.rllib.agents.pg.pg.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.pg.DEFAULT_CONFIG,
     postprocess_fn=post_process_advantages,
     loss_fn=pg_tf_loss)

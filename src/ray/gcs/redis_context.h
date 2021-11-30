@@ -15,7 +15,7 @@
 #pragma once
 
 #include <boost/asio.hpp>
-#include <boost/bind.hpp>
+#include <boost/bind/bind.hpp>
 #include <functional>
 #include <memory>
 #include <mutex>

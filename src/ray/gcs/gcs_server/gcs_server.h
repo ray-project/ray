@@ -19,16 +19,15 @@
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
-#include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
 #include "ray/gcs/gcs_server/gcs_resource_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/grpc_based_resource_broadcaster.h"
+#include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
-#include "ray/pubsub/publisher.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -48,6 +47,7 @@ struct GcsServerConfig {
   std::string node_ip_address;
   bool grpc_based_resource_broadcast = false;
   bool grpc_pubsub_enabled = false;
+  std::string log_dir;
 };
 
 class GcsNodeManager;
@@ -56,7 +56,7 @@ class GcsJobManager;
 class GcsWorkerManager;
 class GcsPlacementGroupManager;
 
-/// The GcsServer will take over all requests from ServiceBasedGcsClient and transparent
+/// The GcsServer will take over all requests from GcsClient and transparent
 /// transmit the command to the backend reliable storage for the time being.
 /// In the future, GCS server's main responsibility is to manage meta data
 /// and the management of actor creation.
@@ -107,9 +107,6 @@ class GcsServer {
   /// Initialize gcs placement group manager.
   void InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data);
 
-  /// Initialize gcs object manager.
-  void InitObjectManager(const GcsInitData &gcs_init_data);
-
   /// Initialize gcs worker manager.
   void InitGcsWorkerManager();
 
@@ -121,6 +118,9 @@ class GcsServer {
 
   /// Initialize KV manager.
   void InitKVManager();
+
+  /// Initializes PubSub handler.
+  void InitPubSubHandler();
 
   // Init RuntimeENv manager
   void InitRuntimeEnvManager();
@@ -146,7 +146,10 @@ class GcsServer {
   void CollectStats();
 
   /// Print debug info periodically.
-  void PrintDebugInfo();
+  std::string GetDebugState() const;
+
+  /// Dump the debug info to debug_state_gcs.txt.
+  void DumpDebugStateToFile() const;
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
@@ -189,9 +192,6 @@ class GcsServer {
   std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
   /// Heartbeat info handler and service.
   std::unique_ptr<rpc::HeartbeatInfoGrpcService> heartbeat_info_service_;
-  /// Object info handler and service.
-  std::unique_ptr<gcs::GcsObjectManager> gcs_object_manager_;
-  std::unique_ptr<rpc::ObjectInfoGrpcService> object_info_service_;
   /// Task info handler and service.
   std::unique_ptr<rpc::TaskInfoHandler> task_info_handler_;
   std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
@@ -211,14 +211,17 @@ class GcsServer {
   /// Global KV storage handler and service.
   std::unique_ptr<GcsInternalKVManager> kv_manager_;
   std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;
+  /// GCS PubSub handler and service.
+  std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
+  std::unique_ptr<rpc::InternalPubSubGrpcService> pubsub_service_;
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.
-  std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub_;
-  /// Grpc based pubsub.
-  std::shared_ptr<pubsub::Publisher> grpc_pubsub_publisher_;
+  std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Grpc based pubsub's periodical runner.
   PeriodicalRunner pubsub_periodical_runner_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
   /// The gcs table storage.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;

@@ -264,7 +264,6 @@ def test_put_get(shutdown_only):
         assert value_before == value_after
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="Failing on Windows")
 def test_wait_timing(shutdown_only):
     ray.init(num_cpus=2)
 
@@ -304,27 +303,44 @@ def test_ray_options(shutdown_only):
 
     @ray.remote(
         num_cpus=2, num_gpus=3, memory=150 * 2**20, resources={"custom1": 1})
-    def foo():
-        import time
-        # Sleep for a heartbeat period to ensure resources changing reported.
-        time.sleep(0.1)
-        return ray.available_resources()
+    def foo(expected_resources):
+        # Possibly wait until the available resources have been updated
+        # (there might be a delay due to heartbeats)
+        retries = 10
+        keys = ["CPU", "GPU", "custom1"]
+        while retries >= 0:
+            resources = ray.available_resources()
+            do_return = True
+            for key in keys:
+                if resources[key] != expected_resources[key]:
+                    print(key, resources[key], expected_resources[key])
+                    do_return = False
+                    break
+            if do_return:
+                return resources["memory"]
+            time.sleep(0.1)
+            retries -= 1
+        raise RuntimeError("Number of retries exceeded")
 
-    without_options = ray.get(foo.remote())
-    with_options = ray.get(
+    expected_resources_without_options = {
+        "CPU": 8.0,
+        "GPU": 7.0,
+        "custom1": 1.0
+    }
+    memory_available_without_options = ray.get(
+        foo.remote(expected_resources_without_options))
+
+    expected_resources_with_options = {"CPU": 7.0, "GPU": 6.0, "custom1": 1.5}
+    memory_available_with_options = ray.get(
         foo.options(
             num_cpus=3,
             num_gpus=4,
             memory=50 * 2**20,
             resources={
                 "custom1": 0.5
-            }).remote())
+            }).remote(expected_resources_with_options))
 
-    to_check = ["CPU", "GPU", "memory", "custom1"]
-    for key in to_check:
-        print(key, without_options[key], with_options[key])
-        assert without_options[key] != with_options[key], key
-    assert without_options != with_options
+    assert memory_available_without_options < memory_available_with_options
 
 
 @pytest.mark.skipif(client_test_enabled(), reason="internal api")
@@ -639,9 +655,8 @@ def test_args_named_and_star(ray_start_shared_local_modes):
     ray.get(remote_test_function.remote(local_method, actor_method))
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_oversized_function(ray_start_shared_local_modes):
-    bar = np.zeros(100 * 1024 * 1024)
+    bar = np.zeros(100 * 1024 * 125)
 
     @ray.remote
     class Actor:

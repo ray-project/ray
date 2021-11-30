@@ -46,12 +46,10 @@ void GcsJobManager::HandleAddJob(const rpc::AddJobRequest &request,
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
                      << ", driver pid = " << mutable_job_table_data.driver_pid();
     } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Hex(),
-                                         mutable_job_table_data.SerializeAsString(),
-                                         nullptr));
-      if (mutable_job_table_data.config().has_runtime_env()) {
+      RAY_CHECK_OK(gcs_publisher_->PublishJob(job_id, mutable_job_table_data, nullptr));
+      if (mutable_job_table_data.config().has_runtime_env_info()) {
         runtime_env_manager_.AddURIReference(
-            job_id.Hex(), mutable_job_table_data.config().runtime_env());
+            job_id.Hex(), mutable_job_table_data.config().runtime_env_info());
       }
       RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
                     << ", driver pid = " << mutable_job_table_data.driver_pid();
@@ -81,8 +79,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to mark job state, job id = " << job_id;
     } else {
-      RAY_CHECK_OK(gcs_pub_sub_->Publish(JOB_CHANNEL, job_id.Hex(),
-                                         job_table_data.SerializeAsString(), nullptr));
+      RAY_CHECK_OK(gcs_publisher_->PublishJob(job_id, job_table_data, nullptr));
       runtime_env_manager_.RemoveURIReference(job_id.Hex());
       ClearJobInfos(job_id);
       RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
@@ -159,8 +156,7 @@ void GcsJobManager::HandleReportJobError(const rpc::ReportJobErrorRequest &reque
                                          rpc::ReportJobErrorReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   auto job_id = JobID::FromBinary(request.job_error().job_id());
-  RAY_CHECK_OK(gcs_pub_sub_->Publish(ERROR_INFO_CHANNEL, job_id.Hex(),
-                                     request.job_error().SerializeAsString(), nullptr));
+  RAY_CHECK_OK(gcs_publisher_->PublishError(job_id.Hex(), request.job_error(), nullptr));
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 

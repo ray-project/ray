@@ -23,10 +23,11 @@ from ray.rllib.agents.dqn.dqn import calculate_rr_weights, \
 from ray.rllib.agents.dqn.learner_thread import LearnerThread
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.common import (STEPS_TRAINED_COUNTER,
+                                        STEPS_TRAINED_THIS_ITER_COUNTER,
                                         _get_global_vars, _get_shared_metrics)
 from ray.rllib.execution.concurrency_ops import Concurrently, Dequeue, Enqueue
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_buffer import ReplayActor
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import ReplayActor
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import UpdateTargetNetwork
@@ -54,6 +55,9 @@ APEX_DEFAULT_CONFIG = merge_dicts(
         "num_gpus": 1,
         "num_workers": 32,
         "buffer_size": 2000000,
+        # TODO(jungong) : add proper replay_buffer_config after
+        #     DistributedReplayBuffer type is supported.
+        "replay_buffer_config": None,
         "learning_starts": 50000,
         "train_batch_size": 512,
         "rollout_fragment_length": 50,
@@ -76,7 +80,7 @@ class OverrideDefaultResourceRequest:
     @classmethod
     @override(Trainable)
     def default_resource_request(cls, config):
-        cf = dict(cls._default_config, **config)
+        cf = dict(cls.get_default_config(), **config)
 
         eval_config = cf["evaluation_config"]
 
@@ -140,8 +144,11 @@ class UpdateWorkerWeights:
             metrics.counters["num_weight_syncs"] += 1
 
 
-def apex_execution_plan(workers: WorkerSet,
-                        config: dict) -> LocalIterator[dict]:
+def apex_execution_plan(workers: WorkerSet, config: dict,
+                        **kwargs) -> LocalIterator[dict]:
+    assert len(kwargs) == 0, (
+        "Apex execution_plan does NOT take any additional parameters")
+
     # Create a number of replay buffer actors.
     num_replay_buffer_shards = config["optimizer"]["num_replay_buffer_shards"]
     replay_actors = create_colocated(ReplayActor, [
@@ -168,6 +175,7 @@ def apex_execution_plan(workers: WorkerSet,
         metrics = _get_shared_metrics()
         # Manually update the steps trained counter since the learner thread
         # is executing outside the pipeline.
+        metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = count
         metrics.counters[STEPS_TRAINED_COUNTER] += count
         metrics.timers["learner_dequeue"] = learner_thread.queue_timer
         metrics.timers["learner_grad"] = learner_thread.grad_timer

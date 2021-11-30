@@ -29,6 +29,21 @@ py_test(
 )
 
 py_test(
+    name = "big_data_ingestion",
+    size = "small",
+    srcs = ["source/data/_examples/big_data_ingestion.py"],
+    tags = ["exclusive", "team:core", "py37"]
+)
+
+py_test(
+    name = "datasets_train",
+    size = "medium",
+    srcs = ["examples/datasets_train/datasets_train.py"],
+    tags = ["exclusive", "team:ml", "py37", "datasets_train"],
+    args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
+)
+
+py_test(
     name = "plot_hyperparameter",
     size = "small",
     srcs = ["examples/plot_hyperparameter.py"],

@@ -44,6 +44,9 @@ Single workflow management APIs
     # Cancel a workflow.
     workflow.cancel(workflow_id="workflow_id")
 
+    # Delete the workflow.
+    workflow.delete(workflow_id="workflow_id")
+
 Bulk workflow management APIs
 -----------------------------
 
@@ -100,7 +103,7 @@ Besides ``workflow.init()``, the storage URI can also be set via environment var
 If left unspecified, ``/tmp/ray/workflow_data`` will be used for temporary storage. This default setting *will only work for single-node Ray clusters*.
 
 
-Dependency Management
+Handling Dependencies
 ---------------------
 
 **Note: This feature is not yet implemented.**

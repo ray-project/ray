@@ -23,9 +23,9 @@
 namespace ray {
 
 absl::Mutex TaskSpecification::mutex_;
-std::unordered_map<SchedulingClassDescriptor, SchedulingClass>
+absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass>
     TaskSpecification::sched_cls_to_id_;
-std::unordered_map<SchedulingClass, SchedulingClassDescriptor>
+absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor>
     TaskSpecification::sched_id_to_cls_;
 int TaskSpecification::next_sched_id_;
 
@@ -37,7 +37,8 @@ SchedulingClassDescriptor &TaskSpecification::GetSchedulingClassDescriptor(
   return it->second;
 }
 
-SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_cls) {
+SchedulingClass TaskSpecification::GetSchedulingClass(
+    const SchedulingClassDescriptor &sched_cls) {
   SchedulingClass sched_cls_id;
   absl::MutexLock lock(&mutex_);
   auto it = sched_cls_to_id_.find(sched_cls);
@@ -52,7 +53,7 @@ SchedulingClass TaskSpecification::GetSchedulingClass(const ResourceSet &sched_c
                      << " types of tasks seen, this may reduce performance.";
     }
     sched_cls_to_id_[sched_cls] = sched_cls_id;
-    sched_id_to_cls_[sched_cls_id] = sched_cls;
+    sched_id_to_cls_.emplace(sched_cls_id, sched_cls);
   } else {
     sched_cls_id = it->second;
   }
@@ -92,10 +93,13 @@ void TaskSpecification::ComputeResources() {
   if (!IsActorTask()) {
     // There is no need to compute `SchedulingClass` for actor tasks since
     // the actor tasks need not be scheduled.
-
+    const auto &resource_set = GetRequiredResources();
+    const auto &function_descriptor = FunctionDescriptor();
+    auto depth = GetDepth();
+    auto sched_cls_desc =
+        SchedulingClassDescriptor(resource_set, function_descriptor, depth);
     // Map the scheduling class descriptor to an integer for performance.
-    auto sched_cls = GetRequiredPlacementResources();
-    sched_cls_id_ = GetSchedulingClass(sched_cls);
+    sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
   }
 }
 
@@ -132,18 +136,20 @@ ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
 
-rpc::RuntimeEnv TaskSpecification::RuntimeEnv() const { return message_->runtime_env(); }
+rpc::RuntimeEnvInfo TaskSpecification::RuntimeEnvInfo() const {
+  return message_->runtime_env_info();
+}
 
 std::string TaskSpecification::SerializedRuntimeEnv() const {
-  return message_->runtime_env().serialized_runtime_env();
+  return message_->runtime_env_info().serialized_runtime_env();
 }
 
 bool TaskSpecification::HasRuntimeEnv() const {
-  return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv() == "");
+  return !(SerializedRuntimeEnv() == "{}" || SerializedRuntimeEnv().empty());
 }
 
 int TaskSpecification::GetRuntimeEnvHash() const {
-  std::unordered_map<std::string, double> required_resource{};
+  absl::flat_hash_map<std::string, double> required_resource;
   if (RayConfig::instance().worker_resource_limits_enabled()) {
     required_resource = GetRequiredResources().GetResourceMap();
   }
@@ -240,6 +246,8 @@ std::string TaskSpecification::GetDebuggerBreakpoint() const {
   return message_->debugger_breakpoint();
 }
 
+int64_t TaskSpecification::GetDepth() const { return message_->depth(); }
+
 bool TaskSpecification::IsDriverTask() const {
   return message_->type() == TaskType::DRIVER_TASK;
 }
@@ -329,6 +337,11 @@ std::string TaskSpecification::ConcurrencyGroupName() const {
   return message_->concurrency_group_name();
 }
 
+bool TaskSpecification::ExecuteOutOfOrder() const {
+  return IsActorCreationTask() &&
+         message_->actor_creation_task_spec().execute_out_of_order();
+}
+
 bool TaskSpecification::IsAsyncioActor() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().is_asyncio();
@@ -360,7 +373,7 @@ std::string TaskSpecification::DebugString() const {
 
   stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
          << ", job_id=" << JobId() << ", num_args=" << NumArgs()
-         << ", num_returns=" << NumReturns();
+         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
@@ -374,6 +387,23 @@ std::string TaskSpecification::DebugString() const {
     stream << ", actor_task_spec={actor_id=" << ActorId()
            << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
            << "}";
+  }
+
+  // Print runtime env.
+  if (HasRuntimeEnv()) {
+    const auto &runtime_env_info = RuntimeEnvInfo();
+    stream << ", serialized_runtime_env=" << SerializedRuntimeEnv();
+    const auto &uris = runtime_env_info.uris();
+    if (uris.size() > 0) {
+      stream << ", runtime_env_uris=";
+      for (const auto &uri : uris) {
+        stream << uri << ":";
+      }
+      // Erase the last ":"
+      stream.seekp(-1, std::ios_base::end);
+    }
+    stream << ", runtime_env_eager_install="
+           << runtime_env_info.runtime_env_eager_install();
   }
 
   return stream.str();
@@ -395,7 +425,7 @@ std::string TaskSpecification::CallSiteString() const {
 
 WorkerCacheKey::WorkerCacheKey(
     const std::string serialized_runtime_env,
-    const std::unordered_map<std::string, double> required_resources)
+    const absl::flat_hash_map<std::string, double> &required_resources)
     : serialized_runtime_env(serialized_runtime_env),
       required_resources(std::move(required_resources)) {}
 

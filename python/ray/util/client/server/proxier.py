@@ -15,7 +15,6 @@ from typing import Callable, Dict, List, Optional, Tuple
 import ray
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
-from ray._raylet import connect_to_gcs
 import ray.core.generated.agent_manager_pb2 as agent_manager_pb2
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
@@ -29,7 +28,10 @@ from ray._private.client_mode_hook import disable_client_hook
 from ray._private.parameter import RayParams
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.services import ProcessInfo, start_ray_client_server
-from ray._private.utils import detect_fate_sharing_support
+from ray._private.tls_utils import add_port_to_grpc_server
+from ray._private.gcs_utils import GcsClient
+from ray._private.utils import (detect_fate_sharing_support,
+                                check_dashboard_dependencies_installed)
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -118,8 +120,8 @@ class ProxyManager():
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT))
 
-        self._runtime_env_channel = grpc.insecure_channel(
-            f"localhost:{runtime_env_agent_port}")
+        self._runtime_env_channel = ray._private.utils.init_grpc_channel(
+            f"127.0.0.1:{runtime_env_agent_port}")
         self._runtime_env_stub = runtime_env_agent_pb2_grpc.RuntimeEnvServiceStub(  # noqa: E501
             self._runtime_env_channel)
 
@@ -195,8 +197,8 @@ class ProxyManager():
             server = SpecificServer(
                 port=port,
                 process_handle_future=futures.Future(),
-                channel=grpc.insecure_channel(
-                    f"localhost:{port}", options=GRPC_OPTIONS))
+                channel=ray._private.utils.init_grpc_channel(
+                    f"127.0.0.1:{port}", options=GRPC_OPTIONS))
             self.servers[client_id] = server
             return server
 
@@ -206,7 +208,13 @@ class ProxyManager():
 
             Includes retry logic to handle the case when the agent is
             temporarily unreachable (e.g., hasn't been started up yet).
-            """
+        """
+        if not check_dashboard_dependencies_installed():
+            raise RuntimeError("Not all required Ray dependencies for the "
+                               "runtime_env feature were found on the "
+                               "cluster. To install the required "
+                               "dependencies, please run `pip install "
+                               "\"ray[default]\"` on all cluster nodes.")
         create_env_request = runtime_env_agent_pb2.CreateRuntimeEnvRequest(
             serialized_runtime_env=serialized_runtime_env,
             job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"))
@@ -275,6 +283,7 @@ class ProxyManager():
 
         proc = start_ray_client_server(
             self.redis_address,
+            self.node.node_ip_address,
             specific_server.port,
             stdout_file=output,
             stderr_file=error,
@@ -737,9 +746,9 @@ def serve_proxier(connection_str: str,
     # NOTE(edoakes): redis_address and redis_password should only be None in
     # tests.
     if redis_address is not None and redis_password is not None:
-        ip, port = redis_address.split(":")
-        gcs_client = connect_to_gcs(ip, int(port), redis_password)
-        ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+        gcs_cli = GcsClient.connect_to_gcs_by_redis_address(
+            redis_address, redis_password)
+        ray.experimental.internal_kv._initialize_internal_kv(gcs_cli)
 
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=CLIENT_SERVER_MAX_THREADS),
@@ -758,7 +767,7 @@ def serve_proxier(connection_str: str,
         data_servicer, server)
     ray_client_pb2_grpc.add_RayletLogStreamerServicer_to_server(
         logs_servicer, server)
-    server.add_insecure_port(connection_str)
+    add_port_to_grpc_server(server, connection_str)
     server.start()
     return ClientServerHandle(
         task_servicer=task_servicer,

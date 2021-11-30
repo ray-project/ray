@@ -13,17 +13,22 @@
 // limitations under the License.
 
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+
 #include "ray/common/ray_config.h"
 #include "ray/stats/stats.h"
+
+DEFINE_stats(placement_group_resource_persist_latency_ms,
+             "Time to persist placement resources to Redis.", (),
+             ({0.1, 1, 10, 100, 1000, 10000}, ), ray::stats::HISTOGRAM);
 
 namespace ray {
 namespace gcs {
 
 GcsResourceManager::GcsResourceManager(
-    instrumented_io_context &main_io_service, std::shared_ptr<gcs::GcsPubSub> gcs_pub_sub,
+    instrumented_io_context &main_io_service, std::shared_ptr<GcsPublisher> gcs_publisher,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage, bool redis_broadcast_enabled)
     : periodical_runner_(main_io_service),
-      gcs_pub_sub_(gcs_pub_sub),
+      gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
       redis_broadcast_enabled_(redis_broadcast_enabled),
       max_broadcasting_batch_size_(
@@ -57,7 +62,7 @@ void GcsResourceManager::HandleUpdateResources(
     const rpc::UpdateResourcesRequest &request, rpc::UpdateResourcesReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(INFO) << "Updating resources, node id = " << node_id;
+  RAY_LOG(DEBUG) << "Updating resources, node id = " << node_id;
   auto changed_resources = std::make_shared<std::unordered_map<std::string, double>>();
   for (const auto &entry : request.resources()) {
     changed_resources->emplace(entry.first, entry.second.resource_capacity());
@@ -80,17 +85,20 @@ void GcsResourceManager::HandleUpdateResources(
       (*resource_map.mutable_items())[entry.first].set_resource_capacity(entry.second);
     }
 
-    auto on_done = [this, node_id, changed_resources, reply,
-                    send_reply_callback](const Status &status) {
+    auto start = absl::GetCurrentTimeNanos();
+    auto on_done = [this, node_id, changed_resources, reply, send_reply_callback,
+                    start](const Status &status) {
+      auto end = absl::GetCurrentTimeNanos();
+      STATS_placement_group_resource_persist_latency_ms.Record(
+          absl::Nanoseconds(end - start) / absl::Milliseconds(1));
       RAY_CHECK_OK(status);
       rpc::NodeResourceChange node_resource_change;
       node_resource_change.set_node_id(node_id.Binary());
       node_resource_change.mutable_updated_resources()->insert(changed_resources->begin(),
                                                                changed_resources->end());
       if (redis_broadcast_enabled_) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                           node_resource_change.SerializeAsString(),
-                                           nullptr));
+        RAY_CHECK_OK(
+            gcs_publisher_->PublishNodeResource(node_id, node_resource_change, nullptr));
       } else {
         absl::MutexLock guard(&resource_buffer_mutex_);
         resources_buffer_proto_.add_batch()->mutable_change()->Swap(
@@ -144,9 +152,8 @@ void GcsResourceManager::HandleDeleteResources(
         node_resource_change.add_deleted_resources(resource_name);
       }
       if (redis_broadcast_enabled_) {
-        RAY_CHECK_OK(gcs_pub_sub_->Publish(NODE_RESOURCE_CHANNEL, node_id.Hex(),
-                                           node_resource_change.SerializeAsString(),
-                                           nullptr));
+        RAY_CHECK_OK(
+            gcs_publisher_->PublishNodeResource(node_id, node_resource_change, nullptr));
       } else {
         absl::MutexLock guard(&resource_buffer_mutex_);
         resources_buffer_proto_.add_batch()->mutable_change()->Swap(
@@ -233,10 +240,8 @@ void GcsResourceManager::HandleGetAllResourceUsage(
         aggregate_demand.set_num_infeasible_requests_queued(
             aggregate_demand.num_infeasible_requests_queued() +
             demand.num_infeasible_requests_queued());
-        if (RayConfig::instance().report_worker_backlog()) {
-          aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
-                                            demand.backlog_size());
-        }
+        aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
+                                          demand.backlog_size());
       }
 
       batch->add_batch()->CopyFrom(usage.second);
@@ -322,7 +327,7 @@ void GcsResourceManager::SetAvailableResources(const NodeID &node_id,
 
 void GcsResourceManager::UpdateResourceCapacity(
     const NodeID &node_id,
-    const std::unordered_map<std::string, double> &changed_resources) {
+    const absl::flat_hash_map<std::string, double> &changed_resources) {
   auto iter = cluster_scheduling_resources_.find(node_id);
   if (iter != cluster_scheduling_resources_.end()) {
     SchedulingResources &scheduling_resources = iter->second;
@@ -348,7 +353,7 @@ void GcsResourceManager::DeleteResources(
 void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   auto node_id = NodeID::FromBinary(node.node_id());
   if (!cluster_scheduling_resources_.contains(node_id)) {
-    std::unordered_map<std::string, double> resource_mapping(
+    absl::flat_hash_map<std::string, double> resource_mapping(
         node.resources_total().begin(), node.resources_total().end());
     // Update the cluster scheduling resources as new node is added.
     ResourceSet node_resources(resource_mapping);
@@ -422,8 +427,7 @@ void GcsResourceManager::SendBatchedResourceUsage() {
   rpc::ResourceUsageBatchData batch;
   GetResourceUsageBatchForBroadcast_Locked(batch);
   if (batch.ByteSizeLong() > 0) {
-    RAY_CHECK_OK(gcs_pub_sub_->Publish(RESOURCES_BATCH_CHANNEL, "",
-                                       batch.SerializeAsString(), nullptr));
+    RAY_CHECK_OK(gcs_publisher_->PublishResourceBatch(batch, nullptr));
     stats::OutboundHeartbeatSizeKB.Record(batch.ByteSizeLong() / 1024.0);
   }
 }
@@ -435,18 +439,19 @@ void GcsResourceManager::UpdatePlacementGroupLoad(
 
 std::string GcsResourceManager::DebugString() const {
   std::ostringstream stream;
-  stream << "GcsResourceManager: {GetResources request count: "
+  stream << "GcsResourceManager: "
+         << "\n- GetResources request count: "
          << counts_[CountType::GET_RESOURCES_REQUEST]
-         << ", GetAllAvailableResources request count"
+         << "\n- GetAllAvailableResources request count"
          << counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST]
-         << ", UpdateResources request count: "
+         << "\n- UpdateResources request count: "
          << counts_[CountType::UPDATE_RESOURCES_REQUEST]
-         << ", DeleteResources request count: "
+         << "\n- DeleteResources request count: "
          << counts_[CountType::DELETE_RESOURCES_REQUEST]
-         << ", ReportResourceUsage request count: "
+         << "\n- ReportResourceUsage request count: "
          << counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST]
-         << ", GetAllResourceUsage request count: "
-         << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST] << "}";
+         << "\n- GetAllResourceUsage request count: "
+         << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
   return stream.str();
 }
 

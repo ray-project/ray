@@ -141,9 +141,11 @@ test_python() {
       python/ray/tests/...
       -python/ray/serve:conda_env # runtime_env unsupported on Windows
       -python/ray/serve:test_api # segfault on windows? https://github.com/ray-project/ray/issues/12541
+      -python/ray/serve:test_cli # cli
       -python/ray/serve:test_router # timeout
       -python/ray/serve:test_handle # "fatal error" (?) https://github.com/ray-project/ray/pull/13695
       -python/ray/serve:test_controller_crashes # timeout
+      -python/ray/serve:test_standalone # timeout
       -python/ray/tests:test_actor_advanced # timeout
       -python/ray/tests:test_actor_failures # flaky
       -python/ray/tests:test_advanced_2
@@ -152,10 +154,6 @@ test_python() {
       -python/ray/tests:test_autoscaler_aws
       -python/ray/tests:test_component_failures
       -python/ray/tests:test_component_failures_3 # timeout
-      -python/ray/tests:test_basic_2  # hangs on shared cluster tests
-      -python/ray/tests:test_basic_2_client_mode
-      -python/ray/tests:test_basic_3  # timeout
-      -python/ray/tests:test_basic_3_client_mode
       -python/ray/tests:test_cli
       -python/ray/tests:test_client_init # timeout
       -python/ray/tests:test_command_runner # We don't support Autoscaler on Windows
@@ -171,6 +169,7 @@ test_python() {
       -python/ray/tests:test_multi_node
       -python/ray/tests:test_multi_node_2
       -python/ray/tests:test_multi_node_3
+      -python/ray/tests:test_multinode_failures_2
       -python/ray/tests:test_multiprocessing  # test_connect_to_ray() fails to connect to raylet
       -python/ray/tests:test_multiprocessing_client_mode  # timeout
       -python/ray/tests:test_node_manager
@@ -185,6 +184,7 @@ test_python() {
       -python/ray/tests:test_runtime_env_plugin # runtime_env not supported on Windows
       -python/ray/tests:test_runtime_env_env_vars # runtime_env not supported on Windows
       -python/ray/tests:test_runtime_env_complicated # conda install slow leading to timeout
+      -python/ray/tests:test_runtime_env_conda # conda not supported on Windows
       -python/ray/tests:test_stress  # timeout
       -python/ray/tests:test_stress_sharded  # timeout
       -python/ray/tests:test_k8s_operator_unit_tests
@@ -257,7 +257,9 @@ build_dashboard_front_end() {
       if [ -z "${BUILDKITE-}" ] || [[ "${OSTYPE}" != linux* ]]; then
         set +x  # suppress set -x since it'll get very noisy here
         . "${HOME}/.nvm/nvm.sh"
-        nvm use --silent node
+        NODE_VERSION="14"
+        nvm install $NODE_VERSION
+        nvm use --silent $NODE_VERSION
       fi
       install_npm_project
       yarn build
@@ -404,7 +406,7 @@ build_wheels() {
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the "${MOUNT_BAZEL_CACHE[@]}" part.
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-        quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
+        quay.io/pypa/manylinux2014_x86_64:2021-11-07-28723f3 /ray/python/build-wheel-manylinux2014.sh
       else
         rm -rf /ray-mount/*
         rm -rf /ray-mount/.whl || true
@@ -417,6 +419,10 @@ build_wheels() {
           quay.io/pypa/manylinux2014_x86_64 /ray/python/build-wheel-manylinux2014.sh
         cp -rT /ray-mount /ray # copy new files back here
         find . | grep whl # testing
+
+        # Sync the directory to buildkite artifacts
+        rm -rf /artifact-mount/.whl || true
+        cp -r .whl /artifact-mount/.whl
 
       validate_wheels_commit_str
       fi
@@ -469,7 +475,9 @@ lint_web() {
 
     if [ -z "${BUILDKITE-}" ]; then
       . "${HOME}/.nvm/nvm.sh"
-      nvm use --silent node
+      NODE_VERSION="14"
+      nvm install $NODE_VERSION
+      nvm use --silent $NODE_VERSION
     fi
 
     install_npm_project
@@ -504,7 +512,8 @@ _lint() {
     pushd "${WORKSPACE_DIR}"
       "${ROOT_DIR}"/install-llvm-binaries.sh
     popd
-    "${ROOT_DIR}"/check-git-clang-tidy-output.sh
+    # Disable clang-tidy until ergonomic issues are resolved.
+    # "${ROOT_DIR}"/check-git-clang-tidy-output.sh
   else
     { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
   fi
@@ -554,7 +563,7 @@ _check_job_triggers() {
 
   local variable_definitions
   # shellcheck disable=SC2031
-  variable_definitions=($(python "${ROOT_DIR}"/determine_tests_to_run.py))
+  variable_definitions=($(python3 "${ROOT_DIR}"/determine_tests_to_run.py))
   if [ 0 -lt "${#variable_definitions[@]}" ]; then
     local expression restore_shell_state=""
     if [ -o xtrace ]; then set +x; restore_shell_state="set -x;"; fi  # Disable set -x (noisy here)

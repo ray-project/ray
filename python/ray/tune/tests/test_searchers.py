@@ -23,6 +23,10 @@ def _invalid_objective(config):
         tune.report(float(config[metric]) or 0.1)
 
 
+def _multi_objective(config):
+    tune.report(a=config["a"] * 100, b=config["b"] * -100, c=config["c"])
+
+
 class InvalidValuesTest(unittest.TestCase):
     """
     Test searcher handling of invalid values (NaN, -inf, inf).
@@ -89,11 +93,19 @@ class InvalidValuesTest(unittest.TestCase):
 
         out = tune.run(
             _invalid_objective,
-            search_alg=BlendSearch(),
+            search_alg=BlendSearch(points_to_evaluate=[{
+                "report": 1.0
+            }, {
+                "report": 2.1
+            }, {
+                "report": 3.1
+            }, {
+                "report": 4.1
+            }]),
             config=self.config,
             metric="_metric",
             mode="max",
-            num_samples=8,
+            num_samples=16,
             reuse_actors=False)
 
         best_trial = out.best_trial
@@ -115,16 +127,25 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertLessEqual(best_trial.config["report"], 2.0)
 
     def testCFO(self):
+        self.skipTest("Broken in FLAML, reenable once "
+                      "https://github.com/microsoft/FLAML/pull/263 is merged")
         from ray.tune.suggest.flaml import CFO
 
         out = tune.run(
             _invalid_objective,
-            search_alg=CFO(),
+            search_alg=CFO(points_to_evaluate=[{
+                "report": 1.0
+            }, {
+                "report": 2.1
+            }, {
+                "report": 3.1
+            }, {
+                "report": 4.1
+            }]),
             config=self.config,
             metric="_metric",
             mode="max",
             num_samples=16,
-            max_concurrent_trials=8,
             reuse_actors=False)
 
         best_trial = out.best_trial
@@ -583,6 +604,54 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
             budget=100,
             parallel_num=4)
         self._restore(searcher)
+
+
+class MultiObjectiveTest(unittest.TestCase):
+    """
+    Test multi-objective optimization in searchers that support it.
+    """
+
+    def setUp(self):
+        self.config = {
+            "a": tune.uniform(0, 1),
+            "b": tune.uniform(0, 1),
+            "c": tune.uniform(0, 1)
+        }
+
+    def tearDown(self):
+        pass
+
+    @classmethod
+    def setUpClass(cls):
+        ray.init(num_cpus=4, num_gpus=0, include_dashboard=False)
+
+    @classmethod
+    def tearDownClass(cls):
+        ray.shutdown()
+
+    def testOptuna(self):
+        from ray.tune.suggest.optuna import OptunaSearch
+        from optuna.samplers import RandomSampler
+
+        np.random.seed(1000)
+
+        out = tune.run(
+            _multi_objective,
+            search_alg=OptunaSearch(
+                sampler=RandomSampler(seed=1234),
+                metric=["a", "b", "c"],
+                mode=["max", "min", "max"],
+            ),
+            config=self.config,
+            num_samples=16,
+            reuse_actors=False)
+
+        best_trial_a = out.get_best_trial("a", "max")
+        self.assertGreaterEqual(best_trial_a.config["a"], 0.8)
+        best_trial_b = out.get_best_trial("b", "min")
+        self.assertGreaterEqual(best_trial_b.config["b"], 0.8)
+        best_trial_c = out.get_best_trial("c", "max")
+        self.assertGreaterEqual(best_trial_c.config["c"], 0.8)
 
 
 if __name__ == "__main__":

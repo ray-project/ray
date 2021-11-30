@@ -15,6 +15,7 @@ from numbers import Real
 from typing import Dict
 from typing import List
 from typing import Optional
+from typing import Tuple
 
 from ray.autoscaler.node_provider import NodeProvider
 from ray._private.gcs_utils import PlacementGroupTableData
@@ -59,6 +60,20 @@ class ResourceDemandScheduler:
         self.max_workers = max_workers
         self.head_node_type = head_node_type
         self.upscaling_speed = upscaling_speed
+
+    def _get_head_and_workers(
+            self, nodes: List[NodeID]) -> Tuple[NodeID, List[NodeID]]:
+        """Returns the head node's id and the list of all worker node ids,
+        given a list `nodes` of all node ids in the cluster.
+        """
+        head_id, worker_ids = None, []
+        for node in nodes:
+            tags = self.provider.node_tags(node)
+            if tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD:
+                head_id = node
+            elif tags[TAG_RAY_NODE_KIND] == NODE_KIND_WORKER:
+                worker_ids.append(node)
+        return head_id, worker_ids
 
     def reset_config(self,
                      provider: NodeProvider,
@@ -116,7 +131,8 @@ class ResourceDemandScheduler:
         for node_type, config in self.node_types.items():
             max_of_type = config.get("max_workers", 0)
             node_resources = config["resources"]
-            if max_of_type > 0 and _fits(node_resources, bundle):
+            if (node_type == self.head_node_type or max_of_type > 0) and _fits(
+                    node_resources, bundle):
                 return True
         return False
 
@@ -160,7 +176,8 @@ class ResourceDemandScheduler:
         if self.is_legacy_yaml():
             # When using legacy yaml files we need to infer the head & worker
             # node resources from the static node resources from LoadMetrics.
-            self._infer_legacy_node_resources_if_needed(max_resources_by_ip)
+            self._infer_legacy_node_resources_if_needed(
+                nodes, max_resources_by_ip)
 
         self._update_node_resources_from_runtime(nodes, max_resources_by_ip)
 
@@ -264,8 +281,9 @@ class ResourceDemandScheduler:
         workers, it returns max(1, min_workers) worker nodes from which we
         later calculate the node resources.
         """
-        worker_nodes = self.provider.non_terminated_nodes(
-            tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        # Populate worker list.
+        _, worker_nodes = self._get_head_and_workers(nodes)
+
         if self.max_workers == 0:
             return {}
         elif sum(launching_nodes.values()) + len(worker_nodes) > 0:
@@ -331,22 +349,22 @@ class ResourceDemandScheduler:
                     self.node_resource_updated.add(node_type)
 
     def _infer_legacy_node_resources_if_needed(
-            self, max_resources_by_ip: Dict[NodeIP, ResourceDict]
+            self, nodes: List[NodeIP],
+            max_resources_by_ip: Dict[NodeIP, ResourceDict]
     ) -> (bool, Dict[NodeType, int]):
         """Infers node resources for legacy config files.
 
         Updates the resources of the head and worker node types in
         self.node_types.
         Args:
+            nodes: List of all node ids in the cluster
             max_resources_by_ip: Mapping from ip to static node resources.
         """
+        head_node, worker_nodes = self._get_head_and_workers(nodes)
         # We fill the head node resources only once.
         if not self.node_types[NODE_TYPE_LEGACY_HEAD]["resources"]:
             try:
-                head_ip = self.provider.internal_ip(
-                    self.provider.non_terminated_nodes({
-                        TAG_RAY_NODE_KIND: NODE_KIND_HEAD
-                    })[0])
+                head_ip = self.provider.internal_ip(head_node)
                 self.node_types[NODE_TYPE_LEGACY_HEAD]["resources"] = \
                     copy.deepcopy(max_resources_by_ip[head_ip])
             except (IndexError, KeyError):
@@ -355,8 +373,6 @@ class ResourceDemandScheduler:
         if not self.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]:
             # Set the node_types here in case we already launched a worker node
             # from which we can directly get the node_resources.
-            worker_nodes = self.provider.non_terminated_nodes(
-                tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
             worker_node_ips = [
                 self.provider.internal_ip(node_id) for node_id in worker_nodes
             ]
@@ -764,7 +780,11 @@ def _utilization_score(node_resources: ResourceDict,
             return None
 
     fittable = []
+    resource_types = set()
     for r in resources:
+        for k, v in r.items():
+            if v > 0:
+                resource_types.add(k)
         if _fits(remaining, r):
             fittable.append(r)
             _inplace_subtract(remaining, r)
@@ -772,12 +792,15 @@ def _utilization_score(node_resources: ResourceDict,
         return None
 
     util_by_resources = []
+    num_matching_resource_types = 0
     for k, v in node_resources.items():
         # Don't divide by zero.
         if v < 1:
             # Could test v == 0 on the nose, but v < 1 feels safer.
             # (Note that node resources are integers.)
             continue
+        if k in resource_types:
+            num_matching_resource_types += 1
         util = (v - remaining[k]) / v
         util_by_resources.append(v * (util**3))
 
@@ -785,9 +808,11 @@ def _utilization_score(node_resources: ResourceDict,
     if not util_by_resources:
         return None
 
-    # Prioritize using all resources first, then prioritize overall balance
+    # Prioritize matching multiple resource types first, then prioritize
+    # using all resources, then prioritize overall balance
     # of multiple resources.
-    return (min(util_by_resources), np.mean(util_by_resources))
+    return (num_matching_resource_types, min(util_by_resources),
+            np.mean(util_by_resources))
 
 
 def get_bin_pack_residual(node_resources: List[ResourceDict],
@@ -818,7 +843,16 @@ def get_bin_pack_residual(node_resources: List[ResourceDict],
     nodes = copy.deepcopy(node_resources)
     # List of nodes that cannot be used again due to strict spread.
     used = []
-    for demand in resource_demands:
+    # We order the resource demands in the following way:
+    # More complex demands first.
+    # Break ties: heavier demands first.
+    # Break ties: lexicographically (to ensure stable ordering).
+    for demand in sorted(
+            resource_demands,
+            key=lambda demand: (len(demand.values()),
+                                sum(demand.values()),
+                                sorted(demand.items())),
+            reverse=True):
         found = False
         node = None
         for i in range(len(nodes)):

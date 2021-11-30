@@ -24,18 +24,12 @@
 *ray*ObjectReference*
 # Others
 *ray*metrics*
-*opencensus*
 *ray*stats*
 *ray*rpc*
 *ray*gcs*
 *ray*CoreWorker*
 *ray*PeriodicalRunner*;
-*PyInit*
-*init_raylet*
-*Java*
-*JNI_*
+*PyInit__raylet*
+*Java_io_ray*
+_JNI_On*
 *ray*streaming*
-*aligned_free*
-*aligned_malloc*
-*absl*
-*grpc*

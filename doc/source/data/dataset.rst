@@ -1,11 +1,11 @@
 .. _datasets:
 
-Datasets: Flexible Distributed Data Loading
-===========================================
+Datasets: Distributed Data Loading and Compute
+==============================================
 
 .. tip::
 
-  Datasets is available as **alpha** in Ray 1.6+. Please file feature requests and bug reports on GitHub Issues or join the discussion on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
+  Datasets is available as **beta** in Ray 1.8+. Please file feature requests and bug reports on GitHub Issues or join the discussion on the `Ray Slack <https://forms.gle/9TSdDYUgxYs8SA9e8>`__.
 
 Ray Datasets are the standard way to load and exchange data in Ray libraries and applications. Datasets provide basic distributed data transformations such as ``map``, ``filter``, and ``repartition``, and are compatible with a variety of file formats, datasources, and distributed frameworks.
 
@@ -14,9 +14,42 @@ Ray Datasets are the standard way to load and exchange data in Ray libraries and
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
+Data Loading for ML Training
+----------------------------
+
+Ray Datasets are designed to load and preprocess data for distributed :ref:`ML training pipelines <train-docs>`. Compared to other loading solutions, Datasets is more flexible (e.g., can express higher-quality `per-epoch global shuffles <examples/big_data_ingestion.html>`__) and provides `higher overall performance <https://www.anyscale.com/blog/why-third-generation-ml-platforms-are-more-performant>`__.
+
+Datasets is not intended as a replacement for more general data processing systems. Its utility is as the last-mile bridge from ETL pipeline outputs to distributed applications and libraries in Ray:
+
+.. image:: dataset-loading-1.png
+   :width: 650px
+   :align: center
+
+..
+  https://docs.google.com/presentation/d/1l03C1-4jsujvEFZUM4JVNy8Ju8jnY5Lc_3q7MBWi2PQ/edit
+
+Ray-integrated DataFrame libraries can also be seamlessly used with Datasets, to enable running a full data to ML pipeline completely within Ray without requiring data to be materialized to external storage:
+
+.. image:: dataset-loading-2.png
+   :width: 650px
+   :align: center
+
+See the :ref:`ML preprocessing docs <datasets-ml-preprocessing>` for information on how to use Datasets as the last-mile bridge to model training and inference, and see :ref:`the Talks section <data-talks>` for more Datasets ML use cases and benchmarks.
+
+General Parallel Compute
+------------------------
+
+Beyond data loading, Datasets simplifies general purpose parallel GPU/CPU compute in Ray (e.g., for `GPU batch inference <dataset.html#transforming-datasets>`__). Datasets provides a higher level API for Ray tasks and actors in such embarassingly parallel compute situations, internally handling operations like batching, pipelining, and memory management.
+
+.. image:: dataset-compute-1.png
+   :width: 500px
+   :align: center
+
+Since it is built on Ray, Datasets can leverage the full functionality of Ray's distributed scheduler, e.g., using actors for optimizing setup time and GPU scheduling via the ``num_gpus`` argument.
+
 Concepts
 --------
-Ray Datasets implement `Distributed Arrow <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__ or a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data.
+Ray Datasets implement `Distributed Arrow <https://arrow.apache.org/>`__. A Dataset consists of a list of Ray object references to *blocks*. Each block holds a set of items in either an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`__ or a Python list (for Arrow incompatible objects). Having multiple blocks in a dataset allows for parallel transformation and ingest of the data (e.g., into :ref:`Ray Train <train-docs>` for ML training).
 
 The following figure visualizes a Dataset that has three Arrow table blocks, each block holding 1000 rows each:
 
@@ -117,16 +150,19 @@ Datasource Compatibility Matrices
      - ``ds.to_mars()``
      - (todo)
    * - Arrow Table Objects
-     - ``ds.to_arrow()``
+     - ``ds.to_arrow_refs()``
      - ✅
    * - Arrow Table Iterator
      - ``ds.iter_batches(batch_format="pyarrow")``
      - ✅
-   * - Pandas Dataframe Objects
+   * - Single Pandas Dataframe
      - ``ds.to_pandas()``
      - ✅
+   * - Pandas Dataframe Objects
+     - ``ds.to_pandas_refs()``
+     - ✅
    * - NumPy ndarray Objects
-     - ``ds.to_numpy()``
+     - ``ds.to_numpy_refs()``
      - ✅
    * - Pandas Dataframe Iterator
      - ``ds.iter_batches(batch_format="pandas")``
@@ -147,14 +183,14 @@ Creating Datasets
 
 .. tip::
 
-   Run ``pip install ray[data]`` to get started!
+   Run ``pip install "ray[data]"`` to get started!
 
 Get started by creating Datasets from synthetic data using ``ray.data.range()`` and ``ray.data.from_items()``. Datasets can hold either plain Python objects (schema is a Python type), or Arrow records (schema is Arrow).
 
 .. code-block:: python
 
     import ray
-    
+
     # Create a Dataset of Python objects.
     ds = ray.data.range(10000)
     # -> Dataset(num_blocks=200, num_rows=10000, schema=<class 'int'>)
@@ -170,11 +206,11 @@ Get started by creating Datasets from synthetic data using ``ray.data.range()`` 
     # -> Dataset(num_blocks=200, num_rows=10000, schema={col1: int64, col2: string})
 
     ds.show(5)
-    # -> ArrowRow({'col1': 0, 'col2': '0'})
-    # -> ArrowRow({'col1': 1, 'col2': '1'})
-    # -> ArrowRow({'col1': 2, 'col2': '2'})
-    # -> ArrowRow({'col1': 3, 'col2': '3'})
-    # -> ArrowRow({'col1': 4, 'col2': '4'})
+    # -> {'col1': 0, 'col2': '0'}
+    # -> {'col1': 1, 'col2': '1'}
+    # -> {'col1': 2, 'col2': '2'}
+    # -> {'col1': 3, 'col2': '3'}
+    # -> {'col1': 4, 'col2': '4'}
 
     ds.schema()
     # -> col1: int64
@@ -261,7 +297,7 @@ To take advantage of vectorized functions, use ``.map_batches()``. Note that you
         lambda df: df.applymap(lambda x: x * 2), batch_format="pandas")
     # -> Map Progress: 100%|████████████████████| 200/200 [00:00<00:00, 1927.62it/s]
     ds.take(5)
-    # -> [ArrowRow({'value': 0}), ArrowRow({'value': 2}), ...]
+    # -> [{'value': 0}, {'value': 2}, ...]
 
 By default, transformations are executed using Ray tasks. For transformations that require setup, specify ``compute="actors"`` and Ray will use an autoscaling actor pool to execute your transforms instead. The following is an end-to-end example of reading, transforming, and saving batch inference results using Datasets:
 
@@ -348,6 +384,15 @@ Datasets can read and write in parallel to `custom datasources <package-ref.html
 
     # Write to a custom datasource.
     ds.write_datasource(YourCustomDatasource(), **write_args)
+
+
+.. _data-talks:
+
+Talks and Materials
+-------------------
+
+- [slides] `Talk given at PyData 2021 <https://docs.google.com/presentation/d/1zANPlmrxQkjPU62I-p92oFO3rJrmjVhs73hL4YbM4C4>`_
+
 
 Contributing
 ------------

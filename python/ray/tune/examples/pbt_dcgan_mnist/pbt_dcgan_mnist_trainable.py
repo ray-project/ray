@@ -43,7 +43,7 @@ class PytorchTrainable(tune.Trainable):
             lr=config.get("lr", 0.01),
             betas=(beta1, 0.999))
         with FileLock(os.path.expanduser("~/.data.lock")):
-            self.dataloader = get_data_loader()
+            self.dataloader = get_data_loader(config.get("data_dir", "~/data"))
         self.mnist_model_ref = config["mnist_model_ref"]
 
     def step(self):
@@ -101,6 +101,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing")
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default="~/data/",
+        help="Set the path of the dataset.")
     args, _ = parser.parse_known_args()
     ray.init()
 
@@ -154,7 +159,8 @@ if __name__ == "__main__":
                 lambda spec: random.choice([0.0001, 0.0002, 0.0005])),
             "netD_lr": tune.sample_from(
                 lambda spec: random.choice([0.0001, 0.0002, 0.0005])),
-            "mnist_model_ref": mnist_model_ref
+            "mnist_model_ref": mnist_model_ref,
+            "data_dir": args.data_dir
         })
     # __tune_end__
 

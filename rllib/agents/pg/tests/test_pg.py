@@ -22,14 +22,14 @@ class TestPG(unittest.TestCase):
         ray.shutdown()
 
     def test_pg_compilation(self):
-        """Test whether a PGTrainer can be built with both frameworks."""
+        """Test whether a PGTrainer can be built with all frameworks."""
         config = pg.DEFAULT_CONFIG.copy()
         config["num_workers"] = 1
         config["rollout_fragment_length"] = 500
         num_iterations = 1
 
-        for _ in framework_iterator(config):
-            for env in ["FrozenLake-v0", "CartPole-v0"]:
+        for _ in framework_iterator(config, with_eager_tracing=True):
+            for env in ["FrozenLake-v1", "CartPole-v0"]:
                 trainer = pg.PGTrainer(config=config, env=env)
                 for i in range(num_iterations):
                     results = trainer.train()

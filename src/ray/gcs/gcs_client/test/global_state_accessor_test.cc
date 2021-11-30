@@ -54,7 +54,7 @@ class GlobalStateAccessorTest : public ::testing::Test {
     // Create GCS client.
     gcs::GcsClientOptions options(config.redis_address, config.redis_port,
                                   config.redis_password);
-    gcs_client_.reset(new gcs::ServiceBasedGcsClient(options));
+    gcs_client_.reset(new gcs::GcsClient(options));
     RAY_CHECK_OK(gcs_client_->Connect(*io_service_));
 
     // Create global state.
@@ -281,7 +281,7 @@ TEST_F(GlobalStateAccessorTest, TestPlacementGroupTable) {
 }  // namespace ray
 
 int main(int argc, char **argv) {
-  ray::RayLog::InstallFailureSignalHandler();
+  ray::RayLog::InstallFailureSignalHandler(argv[0]);
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog, argv[0],
                                          ray::RayLogLevel::INFO,

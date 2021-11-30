@@ -30,6 +30,10 @@ workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be exec
 
      * - Ray Version
        - Dask Version
+     * - ``1.9.0``
+       - ``2021.11.0``
+     * - ``1.8.0``
+       - ``2021.9.1``
      * - ``1.7.0``
        - ``2021.9.1``
      * - ``1.6.0``
@@ -84,10 +88,10 @@ In this case, there are two recommended setup.
 .. code-block:: bash
 
   # Head node. Set `num_cpus=0` to avoid tasks are being scheduled on a head node.
-  RAY_SCHEDULER_SPREAD_THRESHOLD=0.0 ray start --head --num-cpus=0
+  RAY_scheduler_spread_threshold=0.0 ray start --head --num-cpus=0
 
   # Worker node.
-  RAY_SCHEDULER_SPREAD_THRESHOLD=0.0 ray start --address=[head-node-address]
+  RAY_scheduler_spread_threshold=0.0 ray start --address=[head-node-address]
 
 Out-of-Core Data Processing
 ---------------------------
