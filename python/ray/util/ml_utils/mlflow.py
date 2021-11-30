@@ -1,7 +1,10 @@
-import abc
 import os
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mlflow.entities import Run
+    from mlflow.tracking import MlflowClient
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +70,7 @@ class MLflowLoggerUtil:
 
         # First check experiment_id.
         experiment_id = experiment_id if experiment_id is not None else \
-                                         os.environ.get(
-            "MLFLOW_EXPERIMENT_ID")
+            os.environ.get("MLFLOW_EXPERIMENT_ID")
         if experiment_id is not None:
             from mlflow.exceptions import MlflowException
             try:
@@ -82,8 +84,7 @@ class MLflowLoggerUtil:
 
         # Then check experiment_name.
         experiment_name = experiment_name if experiment_name is not None else \
-                                             os.environ.get(
-            "MLFLOW_EXPERIMENT_NAME")
+            os.environ.get("MLFLOW_EXPERIMENT_NAME")
         if experiment_name is not None and self._mlflow.get_experiment_by_name(
                 name=experiment_name):
             logger.debug(f"Experiment with provided name {experiment_name} "

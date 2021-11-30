@@ -174,8 +174,8 @@ def test_mlflow(ray_start_4_cpus, make_temp_dir):
         train.report(episode_reward_mean=6)
         return 1
 
-    callback = MLflowLoggerCallback(experiment_name="test_exp",
-                                    logdir=temp_dir)
+    callback = MLflowLoggerCallback(
+        experiment_name="test_exp", logdir=temp_dir)
     trainer = Trainer(config, num_workers=num_workers)
     trainer.start()
     trainer.run(train_func, config=params, callbacks=[callback])
@@ -193,20 +193,16 @@ def test_mlflow(ray_start_4_cpus, make_temp_dir):
     run = client.get_run(run_id)
 
     assert run.data.params == params
-    assert "episode_reward_mean" in run.data.metrics and run.data.metrics[
-        "episode_reward_mean"] == 6.0
-    assert TRAINING_ITERATION in run.data.metrics and run.data.metrics[
-        TRAINING_ITERATION] == 3.0
+    assert "episode_reward_mean" in run.data.metrics and \
+           run.data.metrics["episode_reward_mean"] == 6.0
+    assert TRAINING_ITERATION in run.data.metrics and \
+           run.data.metrics[TRAINING_ITERATION] == 3.0
 
-
-
-    metric_history = client.get_metric_history(run_id=run_id,
-                                               key="episode_reward_mean")
+    metric_history = client.get_metric_history(
+        run_id=run_id, key="episode_reward_mean")
 
     assert len(metric_history) == 3
     iterations = [metric.step for metric in metric_history]
     assert iterations == [1, 2, 3]
     rewards = [metric.value for metric in metric_history]
     assert rewards == [4, 5, 6]
-
-

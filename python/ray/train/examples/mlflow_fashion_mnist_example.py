@@ -15,8 +15,10 @@ def main(num_workers=2, use_gpu=False):
             "lr": 1e-3,
             "batch_size": 64,
             "epochs": 4
-        }, callbacks=[MLflowLoggerCallback(
-            experiment_name="train_fashion_mnist")])
+        },
+        callbacks=[
+            MLflowLoggerCallback(experiment_name="train_fashion_mnist")
+        ])
 
     print("Full losses for rank 0 worker: ", final_results)
 

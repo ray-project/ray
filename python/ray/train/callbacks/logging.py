@@ -262,7 +262,8 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
     def handle_result(self, results: List[Dict], **info):
         result = results[self._workers_to_log]
 
-        self.mlflow_util.log_metrics(metrics_to_log=result, step=result[TRAINING_ITERATION])
+        self.mlflow_util.log_metrics(
+            metrics_to_log=result, step=result[TRAINING_ITERATION])
 
     def finish_training(self, error: bool = False, **info):
         if self.save_artifact:
