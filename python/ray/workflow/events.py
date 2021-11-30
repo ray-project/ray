@@ -76,18 +76,18 @@ class Manager:
         logger.info("PONG")
         pass
 
-    async def start_event_listener(
-            self, step_id: str, outer_most_step_id: str, event_listener_type: EventListenerType,
-            args: List[Any], kwargs: Dict[str, Any]) -> _EventResult:
+    async def start_event_listener(self, step_id: str, outer_most_step_id: str,
+                                   event_listener_type: EventListenerType,
+                                   args: List[Any],
+                                   kwargs: Dict[str, Any]) -> _EventResult:
         event_listener = event_listener_type()
         result = await event_listener.poll_for_event(*args, **kwargs)
         return _EventResult(step_id, outer_most_step_id, result)
 
     async def register_workflow_dependency(
             self, waiting_workflow_id: str, event_step_id: str,
-            outer_most_step_id: str,
-            event_listener_type: EventListenerType, args: List[Any],
-            kwargs: Dict[str, Any]) -> None:
+            outer_most_step_id: str, event_listener_type: EventListenerType,
+            args: List[Any], kwargs: Dict[str, Any]) -> None:
         """Register that `workflow_id` depends on the step `event_data`'s result
         before it can continue to execute.
 
@@ -106,11 +106,16 @@ class Manager:
 
         if event_step_id not in self.events:
             self.events[event_step_id] = self.start_event_listener(
-                event_step_id, outer_most_step_id, event_listener_type, args, kwargs)
+                event_step_id, outer_most_step_id, event_listener_type, args,
+                kwargs)
             self.new_event_marker.set()
 
     async def commit_output(self, result: _EventResult):
-        await self.wf_storage.save_step_output_async(result.step_id, result.result, exception=None, outer_most_step_id=self.outer_most_step_id)
+        await self.wf_storage.save_step_output_async(
+            result.step_id,
+            result.result,
+            exception=None,
+            outer_most_step_id=self.outer_most_step_id)
 
     async def monitor_loop(self):
         while True:
