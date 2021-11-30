@@ -539,7 +539,7 @@ class _MultiAgentEnvState:
         observations = self.last_obs
         rewards = {}
         dones = {"__all__": self.last_dones["__all__"]}
-        infos = {"__common__": self.last_infos["__common__"]}
+        infos = {"__common__": self.last_infos.get("__common__")}
 
         # If episode is done, release everything we have.
         if dones["__all__"]:

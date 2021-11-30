@@ -827,7 +827,7 @@ def _process_observations(
                 raise ValueError(
                     "observe() must return a dict of agent observations")
 
-        common_infos = infos[env_id]["__common__"]
+        common_infos = infos[env_id].get("__common__", {})
         episode._set_last_info("__common__", common_infos)
 
         # For each agent in the environment.
