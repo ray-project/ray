@@ -8,7 +8,6 @@ from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
 from ray.rllib.utils.typing import EnvActionType, EnvID, EnvInfoDict, \
     EnvObsType, EnvType, MultiAgentDict, MultiEnvDict
 
-
 logger = logging.getLogger(__name__)
 
 

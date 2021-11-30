@@ -305,7 +305,6 @@ def _with_dummy_agent_id(env_id_to_values: Dict[EnvID, Any],
     return {k: {dummy_id: v} for (k, v) in env_id_to_values.items()}
 
 
-@DeveloperAPI
 def with_dummy_agent_id(env_id_to_values: Dict[EnvID, Any],
                         dummy_id: "AgentID" = _DUMMY_AGENT_ID) -> MultiEnvDict:
     return {k: {dummy_id: v} for (k, v) in env_id_to_values.items()}
