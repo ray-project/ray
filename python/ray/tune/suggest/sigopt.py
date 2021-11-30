@@ -222,9 +222,9 @@ class SigOptSearch(Searcher):
             # no automatic conversion of search space just yet
             return False
 
-        if metric and not self._metric:
+        if not self._metric:
             self._metric = metric
-        if mode and not self._mode:
+        if not self._mode:
             self._mode = mode
         self._setup_optimizer()
         return True
@@ -235,6 +235,11 @@ class SigOptSearch(Searcher):
         return True
 
     def suggest(self, trial_id: str):
+        # Required here and not in on __init__
+        # to make sure set_max_concurrency works correctly
+        if not self.experiment:
+            self._setup_optimizer()
+
         if self._max_concurrent:
             if len(self._live_trial_mapping) >= self._max_concurrent:
                 return None
