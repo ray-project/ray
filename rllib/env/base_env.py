@@ -80,6 +80,10 @@ class BaseEnv:
     """
 
     @staticmethod
+    @Deprecated(
+        old="ray.rllib.env.base_env.BaseEnv.to_base_env",
+        new="ray.rllib.env.base_env.convert_to_base_env",
+        error=False)
     def to_base_env(
             env: EnvType,
             make_env: Callable[[int], EnvType] = None,
@@ -617,3 +621,124 @@ class _MultiAgentEnvState:
         self.last_dones = {"__all__": False}
         self.last_infos = {}
         return self.last_obs
+
+
+def convert_to_base_env(
+        env: EnvType,
+        make_env: Callable[[int], EnvType] = None,
+        num_envs: int = 1,
+        remote_envs: bool = False,
+        remote_env_batch_wait_ms: int = 0,
+        policy_config: Optional[PartialTrainerConfigDict] = None,
+) -> "BaseEnv":
+    """Converts an RLlib-supported env into a BaseEnv object.
+
+    Supported types for the `env` arg are gym.Env, BaseEnv,
+    VectorEnv, MultiAgentEnv, ExternalEnv, or ExternalMultiAgentEnv.
+
+    The resulting BaseEnv is always vectorized (contains n
+    sub-environments) to support batched forward passes, where n may also
+    be 1. BaseEnv also supports async execution via the `poll` and
+    `send_actions` methods and thus supports external simulators.
+
+    TODO: Support gym3 environments, which are already vectorized.
+
+    Args:
+        env: An already existing environment of any supported env type
+            to convert/wrap into a BaseEnv. Supported types are gym.Env,
+            BaseEnv, VectorEnv, MultiAgentEnv, ExternalEnv, and
+            ExternalMultiAgentEnv.
+        make_env: A callable taking an int as input (which indicates the
+            number of individual sub-environments within the final
+            vectorized BaseEnv) and returning one individual
+            sub-environment.
+        num_envs: The number of sub-environments to create in the
+            resulting (vectorized) BaseEnv. The already existing `env`
+            will be one of the `num_envs`.
+        remote_envs: Whether each sub-env should be a @ray.remote actor.
+            You can set this behavior in your config via the
+            `remote_worker_envs=True` option.
+        remote_env_batch_wait_ms: The wait time (in ms) to poll remote
+            sub-environments for, if applicable. Only used if
+            `remote_envs` is True.
+        policy_config: Optional policy config dict.
+
+    Returns:
+        The resulting BaseEnv object.
+    """
+
+    from ray.rllib.env.remote_vector_env import RemoteBaseEnv
+    from ray.rllib.env.external_env import ExternalEnv, ExternalEnvWrapper
+    from ray.rllib.env.multi_agent_env import MultiAgentEnv, \
+        MultiAgentEnvWrapper
+    from ray.rllib.env.vector_env import VectorEnv, VectorEnvWrapper
+    if remote_envs and num_envs == 1:
+        raise ValueError("Remote envs only make sense to use if num_envs > 1 "
+                         "(i.e. vectorization is enabled).")
+
+    # Given `env` is already a BaseEnv -> Return as is.
+    if isinstance(env, BaseEnv):
+        return env
+
+    # `env` is not a BaseEnv yet -> Need to convert/vectorize.
+
+    # MultiAgentEnv (which is a gym.Env).
+    if isinstance(env, MultiAgentEnv):
+        # Sub-environments are ray.remote actors:
+        if remote_envs:
+            env = RemoteBaseEnv(
+                make_env,
+                num_envs,
+                multiagent=True,
+                remote_env_batch_wait_ms=remote_env_batch_wait_ms)
+        # Sub-environments are not ray.remote actors.
+        else:
+            env = MultiAgentEnvWrapper(
+                make_env=make_env, existing_envs=[env], num_envs=num_envs)
+    # ExternalEnv.
+    elif isinstance(env, ExternalEnv):
+        if num_envs != 1:
+            raise ValueError(
+                "External(MultiAgent)Env does not currently support "
+                "num_envs > 1. One way of solving this would be to "
+                "treat your Env as a MultiAgentEnv hosting only one "
+                "type of agent but with several copies.")
+        env = ExternalEnvWrapper(env)
+    # VectorEnv.
+    # Note that all BaseEnvs are also vectorized, but the user may want to
+    # define custom vectorization logic and thus implement a custom
+    # VectorEnv class.
+    elif isinstance(env, VectorEnv):
+        env = VectorEnvWrapper(env)
+    # Anything else: This usually implies that env is a gym.Env object.
+    else:
+        # Sub-environments are ray.remote actors:
+        if remote_envs:
+            # Determine, whether the already existing sub-env (could
+            # be a ray.actor) is multi-agent or not.
+            multiagent = ray.get(env._is_multi_agent.remote()) if \
+                hasattr(env, "_is_multi_agent") else False
+            env = RemoteBaseEnv(
+                make_env,
+                num_envs,
+                multiagent=multiagent,
+                remote_env_batch_wait_ms=remote_env_batch_wait_ms,
+                existing_envs=[env],
+            )
+        # Sub-environments are not ray.remote actors.
+        else:
+            # Convert gym.Env to VectorEnv ...
+            env = VectorEnv.vectorize_gym_envs(
+                make_env=make_env,
+                existing_envs=[env],
+                num_envs=num_envs,
+                action_space=env.action_space,
+                observation_space=env.observation_space,
+            )
+            # ... then the resulting VectorEnv to a BaseEnv.
+            env = VectorEnvWrapper(env)
+
+    # Make sure conversion went well.
+    assert isinstance(env, BaseEnv), env
+
+    return env
