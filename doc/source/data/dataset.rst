@@ -347,6 +347,7 @@ can be efficiently applied to a dataset using Pandas DataFrame UDFs and ``.map_b
 
 .. code-block:: python
 
+    # A Pandas DataFrame UDF for transforming the underlying blocks of a Dataset in parallel.
     def transform_batch(df: pd.DataFrame):
         # Drop nulls.
         df = df.dropna(subset=["feature_1"])
@@ -358,26 +359,28 @@ can be efficiently applied to a dataset using Pandas DataFrame UDFs and ``.map_b
         df.drop(columns="feature_2", inplace=True)
         # One-hot encoding.
         fruits = ["apple", "orange", "banana"]
-        for fruit in fruits:
-            df[f"fruit_{fruit}"] = df[fruit].map(
-                collections.defaultdict(int, **{fruit: 1}))
+        categories = ["cat_1", "cat_2", "cat_3"]
+        for category in categories:
+            df[f"category_{category}"] = df["category"].map(
+                collections.defaultdict(int, **{category: 1}))
         return df
 
+    # batch_format="pandas" tells Datasets to give our transformer Pandas DataFrames.
     ds = ds.map_batches(transform_batch, batch_format="pandas")
 
 Groupbys and aggregations
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Other preprocessing operations require global operations, such as groupbys and grouped/global aggregations.
+Other preprocessing operations require global operations, such as groupbys and grouped/global aggregations. Just like other transformations, grouped/global aggregations are executed *eagerly* and block until the aggregation has been computed.
 
 .. code-block:: python
 
-    ds = ray.data.from_items([
+    ds: ray.data.Dataset = ray.data.from_items([
         {"A": x % 3, "B": 2 * x, "C": 3 * x}
         for x in range(10)])
 
     # Group by the A column and calculate the per-group mean for B and C columns.
-    agg_ds = ds.groupby("A").mean(["B", "C"])
+    agg_ds: ray.data.Dataset = ds.groupby("A").mean(["B", "C"])
     agg_ds.to_pandas()
     # ->
     #    A  mean(B)  mean(C)
@@ -398,7 +401,7 @@ Other preprocessing operations require global operations, such as groupbys and g
     ds.aggregate(Mean("B"), Std("B", ddof=0), Mean("C"), Std("C", ddof=0))
     # -> {'mean(A)': 0.9, 'std(A)': 0.8306623862918076, 'mean(B)': 9.0, 'std(B)': 5.744562646538029}
 
-These aggregations can be combined with batch mapping to e.g. efficiently impute missing values with statistics and standard scale feature columns.
+These aggregations can be combined with batch mapping to transform a dataset using computed statiastics. For example, you can efficiently standardize feature columns and impute missing values with calculated statistics.
 
 .. code-block:: python
 
@@ -416,14 +419,12 @@ These aggregations can be combined with batch mapping to e.g. efficiently impute
 
     def batch_standard_scaler(df: pd.DataFrame):
         def column_standard_scaler(s: pd.Series):
-            if s.name == "label":
-                # Don't standard scale label column.
-                return s
             s_mean = stats[f"mean({s.name})"]
             s_std = stats[f"std({s.name})"]
             return (s - s_mean) / s_std
 
-        return df.transform(column_standard_scaler)
+        cols = df.columns.difference(["label"])
+        return df.loc[cols].transform(column_standard_scaler)
 
     ds = ds.map_batches(batch_standard_scaler, batch_format="pandas")
 
@@ -443,16 +444,23 @@ Randomly shuffling data is an important part of training machine learning models
 
     # Scales to terabytes of data with the same simple API.
     ds = ray.data.read_parquet("s3://ursa-labs-taxi-data")  # open, tabular, NYC taxi dataset
-    # -> Dataset(num_blocks=2000, num_rows=4000000000, schema={col1: int64, col2: string})
+    # -> Dataset(num_blocks=125, num_rows=1547741381, schema={
+    #        vendor_id: string, pickup_at: timestamp[us], dropoff_at: timestamp[us],
+    #        passenger_count: int8, trip_distance: float, ...})
     ds = ds.random_shuffle()
-    # -> Dataset(num_blocks=2000, num_rows=4000000000, schema={col1: int64, col2: string})
+    # -> Dataset(num_blocks=125, num_rows=1547741381, schema={
+    #        vendor_id: string, pickup_at: timestamp[us], dropoff_at: timestamp[us],
+    #        passenger_count: int8, trip_distance: float, ...})
 
-    # Per-epoch shuffling is as simple as changing where we shuffle.
+    # Per-epoch shuffling is as simple as changing where we invoke the shuffle:
+    #   - Before repeating => dataset is shuffled once.
+    #   - After repeating  => dataset is shuffled on every epoch.
     num_epochs = 20
-    # Shuffle once.
+    # Shuffle once, then repeat this once-shuffled dataset for num_epochs epochs.
     ds.random_shuffle().repeat(num_epochs)
-    # Shuffle every epoch.
-    ds.repeat(num_epochs).random_shuffle()
+    # Shuffle repeatedly, where each of the num_epochs datasets is shuffled into
+    # a different order.
+    ds.repeat(num_epochs).random_shuffle_each_window()
 
 See the `large-scale ML ingest example <examples/big_data_ingestion.html>`__ for an end-to-end example of per-epoch shuffled data loading for distributed training.
 
