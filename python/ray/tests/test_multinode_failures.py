@@ -21,8 +21,9 @@ def ray_start_workers_separate_multinode(request):
     # Start the Ray processes.
     cluster = Cluster()
     for _ in range(num_nodes):
-        cluster.add_node(num_cpus=num_initial_workers,
-                         resources={"custom": num_initial_workers})
+        cluster.add_node(
+            num_cpus=num_initial_workers,
+            resources={"custom": num_initial_workers})
     ray.init(address=cluster.address)
 
     yield num_nodes, num_initial_workers
