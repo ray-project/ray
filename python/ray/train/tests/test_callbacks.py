@@ -63,8 +63,6 @@ def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
               filename):
     if detailed:
         os.environ[ENABLE_DETAILED_AUTOFILLED_METRICS_ENV] = "1"
-    else:
-        os.environ.pop(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
 
     config = TestConfig()
 
@@ -85,12 +83,11 @@ def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
 
     if filename is None:
         # if None, use default value
-        callback = JsonLoggerCallback(
-            make_temp_dir, workers_to_log=workers_to_log)
+        callback = JsonLoggerCallback(workers_to_log=workers_to_log)
     else:
         callback = JsonLoggerCallback(
-            make_temp_dir, filename=filename, workers_to_log=workers_to_log)
-    trainer = Trainer(config, num_workers=num_workers)
+            filename=filename, workers_to_log=workers_to_log)
+    trainer = Trainer(config, num_workers=num_workers, logdir=make_temp_dir)
     trainer.start()
     trainer.run(train_func, callbacks=[callback])
     if filename is None:
@@ -122,6 +119,9 @@ def test_json(ray_start_4_cpus, make_temp_dir, workers_to_log, detailed,
             all(not any(key in worker for key in DETAILED_AUTOFILLED_KEYS)
                 for worker in element) for element in log)
 
+    os.environ.pop(ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0)
+    assert ENABLE_DETAILED_AUTOFILLED_METRICS_ENV not in os.environ
+
 
 def _validate_tbx_result(events_dir):
     events_file = list(glob.glob(f"{events_dir}/events*"))[0]
@@ -137,8 +137,6 @@ def _validate_tbx_result(events_dir):
     assert len(results["hello/world"]) == 1
 
 
-@pytest.mark.skipif(
-    summary_iterator is None, reason="tensorboard is not installed")
 def test_TBX(ray_start_4_cpus, make_temp_dir):
     config = TestConfig()
 
@@ -158,7 +156,6 @@ def test_TBX(ray_start_4_cpus, make_temp_dir):
     trainer.run(train_func, callbacks=[callback])
 
     _validate_tbx_result(temp_dir)
-
 
 def test_mlflow(ray_start_4_cpus, make_temp_dir):
     config = TestConfig()
@@ -206,3 +203,9 @@ def test_mlflow(ray_start_4_cpus, make_temp_dir):
     assert iterations == [1, 2, 3]
     rewards = [metric.value for metric in metric_history]
     assert rewards == [4, 5, 6]
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

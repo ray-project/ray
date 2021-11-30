@@ -817,7 +817,7 @@ This is very simple to do with Ray Datasets + Ray Train.
         # You should replace this with your training logic.
         dataset_pipeline_shard = ray.train.get_dataset_shard()
         # Infinitely long iterator of randomly shuffled dataset shards.
-        dataset_iterator = train_dataset_pipeline_shard.iter_datasets()
+        dataset_iterator = train_dataset_pipeline_shard.iter_epochs()
         for _ in range(config["num_epochs"]):
             # Single randomly shuffled dataset shard.
             train_dataset = next(dataset_iterator)

@@ -122,6 +122,8 @@ train.world_size
 
 .. autofunction:: ray.train.world_size
 
+.. _train-api-torch-utils:
+
 PyTorch Training Function Utilities
 -----------------------------------
 
