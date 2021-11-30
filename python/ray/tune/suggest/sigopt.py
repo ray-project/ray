@@ -46,7 +46,7 @@ class SigOptSearch(Searcher):
             based on the user's SigOpt plan. Defaults to 1.
             If this Searcher is used in a ``ConcurrencyLimiter``, the
             ``max_concurrent`` value passed to it will override the
-             value passed here.
+            value passed here.
         connection (Connection): An existing connection to SigOpt.
         experiment_id (str): Optional, if given will connect to an existing
             experiment. This allows for a more interactive experience with
