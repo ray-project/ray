@@ -28,6 +28,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/client_connection.h"
+#include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
@@ -405,6 +406,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param serialized_runtime_env_context The context of runtime env.
   /// \param allocated_instances_serialized_json The allocated resource instances
   //  json string.
+  /// \param runtime_env_info The raw runtime env info.
   /// \return The id of the process that we started if it's positive, otherwise it means
   /// we didn't start a process.
   Process StartWorkerProcess(
@@ -413,7 +415,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const std::vector<std::string> &dynamic_options = {},
       const int runtime_env_hash = 0,
       const std::string &serialized_runtime_env_context = "{}",
-      const std::string &allocated_instances_serialized_json = "{}");
+      const std::string &allocated_instances_serialized_json = "{}",
+      const rpc::RuntimeEnvInfo &runtime_env_info = rpc::RuntimeEnvInfo());
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -461,6 +464,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     rpc::WorkerType worker_type;
     /// The worker process instance.
     Process proc;
+    /// The runtime env Info.
+    rpc::RuntimeEnvInfo runtime_env_info;
   };
 
   struct TaskWaitingForWorkerInfo {
@@ -681,6 +686,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::function<double()> get_time_;
   /// Agent manager.
   std::shared_ptr<AgentManager> agent_manager_;
+
+  /// Manage all runtime env locally
+  RuntimeEnvManager runtime_env_manager_;
 
   /// Stats
   int64_t process_failed_job_config_missing_ = 0;

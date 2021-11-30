@@ -28,7 +28,6 @@
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet_client/raylet_client.h"
-#include "ray/common/runtime_env_manager.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -746,9 +745,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler {
 
   /// Managers all bundle-related operations.
   std::shared_ptr<PlacementGroupResourceManager> placement_group_resource_manager_;
-
-  /// Manage all runtime env locally
-  RuntimeEnvManager runtime_env_manager_;
 
   /// Next resource broadcast seq no. Non-incrementing sequence numbers
   /// indicate network issues (dropped/duplicated/ooo packets, etc).
