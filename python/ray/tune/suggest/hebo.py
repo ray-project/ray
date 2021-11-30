@@ -180,7 +180,6 @@ class HEBOSearch(Searcher):
 
     def set_max_concurrency(self, max_concurrent: int) -> bool:
         self._max_concurrent = max_concurrent
-        self._opt = None
         return True
 
     def _setup_optimizer(self):
