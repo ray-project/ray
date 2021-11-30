@@ -208,6 +208,7 @@ class DashboardHead:
             self.gcs_subscriber = GcsAioSubscriber(
                 channel=self.aiogrpc_gcs_channel)
             await self.gcs_subscriber.subscribe_error()
+            await self.gcs_subscriber.subscribe_logs()
 
         self.health_check_thread = GCSHealthCheckThread(gcs_address)
         self.health_check_thread.start()
