@@ -157,3 +157,6 @@ def test_TBX(ray_start_4_cpus, make_temp_dir):
     trainer.run(train_func, callbacks=[callback])
 
     _validate_tbx_result(temp_dir)
+
+
+def test_mlflow()
