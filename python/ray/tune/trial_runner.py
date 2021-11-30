@@ -1,11 +1,10 @@
-from typing import Any, List, Mapping, Optional, Union
-
 import click
 from datetime import datetime
 import json
 import logging
 import os
 import time
+from typing import Any, Dict, List, Mapping, Optional, Union
 import traceback
 import warnings
 
@@ -819,15 +818,14 @@ class TrialRunner:
             with warn_if_slow("process_failed_trial"):
                 self._process_trial_failure(failed_trial, error_msg=error_msg)
         else:
-            # TODO(ujvl): Consider combining get_next_available_trial and
-            #  fetch_result functionality so that we don't timeout on fetch.
-            trial = self.trial_executor.get_next_available_trial(
-                timeout=timeout)  # blocking
+            trial, results = (
+                self.trial_executor.get_next_available_trial_and_results(
+                    timeout=timeout))  # blocking
             if not trial:
                 return
             if trial.is_restoring:
                 with warn_if_slow("process_trial_restore"):
-                    self._process_trial_restore(trial)
+                    self._process_trial_restore(trial, results)
                 with warn_if_slow("callbacks.on_trial_restore"):
                     self._callbacks.on_trial_restore(
                         iteration=self._iteration,
@@ -835,7 +833,7 @@ class TrialRunner:
                         trial=trial)
             elif trial.is_saving:
                 with warn_if_slow("process_trial_save") as _profile:
-                    self._process_trial_save(trial)
+                    self._process_trial_save(trial, results)
                 with warn_if_slow("callbacks.on_trial_save"):
                     self._callbacks.on_trial_save(
                         iteration=self._iteration,
@@ -859,7 +857,7 @@ class TrialRunner:
 
             else:
                 with warn_if_slow("process_trial"):
-                    self._process_trial(trial)
+                    self._process_trial(trial, results)
 
             # `self._queued_trial_decisions` now contains a final decision
             # based on all results
@@ -869,7 +867,7 @@ class TrialRunner:
                 if final_decision:
                     self._execute_action(trial, final_decision)
 
-    def _process_trial(self, trial):
+    def _process_trial(self, trial, results: List[Dict]):
         """Processes a trial result.
 
         Fetches the trial's latest result and makes a scheduling decision
@@ -886,7 +884,6 @@ class TrialRunner:
             trial (Trial): Trial with a result ready to be processed.
         """
         try:
-            results = self.trial_executor.fetch_result(trial)
             with warn_if_slow(
                     "process_trial_results",
                     message="Processing trial results took {duration:.3f} s, "
@@ -1065,7 +1062,7 @@ class TrialRunner:
                     "environment variable to 1. Result: {}".format(
                         report_metric, location, result))
 
-    def _process_trial_save(self, trial):
+    def _process_trial_save(self, trial, results: List[Dict]):
         """Processes a trial save.
 
         Acts on the decision cached during the last `_process_trial` call.
@@ -1076,7 +1073,6 @@ class TrialRunner:
         logger.debug("Trial %s: Processing trial save.", trial)
         checkpoint_value = None
         try:
-            results = self.trial_executor.fetch_result(trial)
             checkpoint_value = results[-1]
         except Exception:
             logger.exception("Trial %s: Error processing result.", trial)
@@ -1106,7 +1102,7 @@ class TrialRunner:
         if decision and checkpoint_value:
             self._queue_decision(trial, decision)
 
-    def _process_trial_restore(self, trial):
+    def _process_trial_restore(self, trial, results: List[Dict]):
         """Processes a trial restore.
 
         Args:
@@ -1114,7 +1110,6 @@ class TrialRunner:
         """
         logger.debug("Trial %s: Processing trial restore.", trial)
         try:
-            self.trial_executor.fetch_result(trial)
             trial.on_restore()
             logger.debug("Trial %s: Restore processed successfully", trial)
             self.trial_executor.set_status(trial, Trial.RUNNING)

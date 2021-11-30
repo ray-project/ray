@@ -1,6 +1,7 @@
 # coding: utf-8
 import copy
 import inspect
+import warnings
 from collections import deque
 from functools import partial
 import logging
@@ -15,6 +16,7 @@ from typing import (
     Iterable,
     List,
     Optional,
+    Tuple,
 )
 
 import ray
@@ -695,10 +697,16 @@ class RayTrialExecutor(TrialExecutor):
                         return trial
         return None
 
-    def get_next_available_trial(
-            self, timeout: Optional[float] = None) -> Optional[Trial]:
+    def get_next_available_trial(self) -> Optional[Trial]:
+        warnings.warn("`get_next_available_trial` is being replaced by "
+                      "`get_next_available_trial_and_results`.")
+        return None
+
+    def get_next_available_trial_and_results(
+            self, timeout: Optional[float] = None
+    ) -> Tuple[Optional[Trial], Optional[List[Dict]]]:
         if not self._running:
-            return None
+            return None, None
         shuffled_results = list(self._running.keys())
         random.shuffle(shuffled_results)
 
@@ -709,7 +717,7 @@ class RayTrialExecutor(TrialExecutor):
         start = time.time()
         ready, _ = ray.wait(shuffled_results, timeout=timeout)
         if not ready:
-            return None
+            return None, None
         result_id = ready[0]
         wait_time = time.time() - start
         if wait_time > NONTRIVIAL_WAIT_TIME_THRESHOLD_S:
@@ -722,7 +730,8 @@ class RayTrialExecutor(TrialExecutor):
                     BOTTLENECK_WARN_PERIOD_S))
 
             self._last_nontrivial_wait = time.time()
-        return self._running[result_id]
+        trial = self._running.pop(result_id)
+        return trial, self._fetch_result(result_id)
 
     def fetch_result(self, trial) -> List[Dict]:
         """Fetches result list of the running trials.
@@ -735,8 +744,10 @@ class RayTrialExecutor(TrialExecutor):
             raise ValueError("Trial was not running.")
         self._running.pop(trial_future[0])
         with warn_if_slow("fetch_result"):
-            result = ray.get(trial_future[0], timeout=DEFAULT_GET_TIMEOUT)
+            return self._fetch_result(trial_future[-1])
 
+    def _fetch_result(self, trial_future) -> List[Dict]:
+        result = ray.get(trial_future, timeout=DEFAULT_GET_TIMEOUT)
         # For local mode
         if isinstance(result, _LocalWrapper):
             result = result.unwrap()
