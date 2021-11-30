@@ -803,8 +803,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Register this worker or driver to GCS.
   void RegisterToGcs();
 
-  /// Check if the raylet has failed. If so, shutdown.
-  void CheckForRayletFailure();
+  /// (WORKER mode only) Check if the raylet has failed. If so, shutdown.
+  void ExitIfParentRayletDies();
 
   /// Heartbeat for internal bookkeeping.
   void InternalHeartbeat();
