@@ -220,9 +220,3 @@ class Router:
                 kwargs=request_kwargs,
                 metadata=request_meta,
             ))
-
-    def get_in_flight_queries(self):
-        all_queries = []
-        for queries in self._replica_set.in_flight_queries.values():
-            all_queries += list(queries)
-        return all_queries

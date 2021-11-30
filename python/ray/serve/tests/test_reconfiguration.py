@@ -5,7 +5,7 @@ import ray
 
 
 def test_reconfiguration():
-    @serve.deployment(max_concurrent_queries=10)
+    @serve.deployment(max_concurrent_queries=10, num_replicas=3)
     class A:
         def __init__(self):
             self.state = None
@@ -22,7 +22,7 @@ def test_reconfiguration():
     A.options(version="1", user_config={"a": 1}).deploy()
     handle = A.get_handle()
     refs = []
-    for _ in range(20):
+    for _ in range(50):
         refs.append(handle.remote())
     A.options(version="1", user_config={"a": 2}).deploy()
     for ref in refs:

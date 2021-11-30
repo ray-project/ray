@@ -26,6 +26,7 @@ pyyaml
 redis >= 3.5.0, < 4.0.0
 requests
 smart_open
+aiorwlock
 
 ## setup.py extras
 dm_tree
