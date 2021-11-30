@@ -2210,8 +2210,8 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
   return status;
 }
 
-Status CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
-                                           std::shared_ptr<RayObject> *return_object) {
+bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
+                                         std::shared_ptr<RayObject> *return_object) {
   // TODO(swang): It would be better to evict the existing copy instad of
   // reusing it, to make sure it's consistent with the task re-execution.
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
@@ -2233,9 +2233,12 @@ Status CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
     RAY_LOG(DEBUG) << "Pinning existing return object " << return_id
                    << " owned by worker "
                    << WorkerID::FromBinary(owner_address.worker_id());
+    // Keep the object in scope until it's been pinned.
+    std::shared_ptr<RayObject> pinned_return_object = *return_object;
     local_raylet_client_->PinObjectIDs(
         owner_address, {return_id},
-        [return_id](const Status &status, const rpc::PinObjectIDsReply &reply) {
+        [return_id, pinned_return_object](const Status &status,
+                                          const rpc::PinObjectIDsReply &reply) {
           if (!status.ok()) {
             RAY_LOG(INFO) << "Failed to pin existing copy of the task return object "
                           << return_id
@@ -2243,14 +2246,14 @@ Status CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
                              "references to it.";
           }
         });
+    return true;
   } else {
     // Failed to get the existing copy of the return object. It must have been
     // evicted before we could pin it.
     // TODO(swang): We should allow the owner to retry this task instead of
     // immediately returning an error to the application.
+    return false;
   }
-
-  return status;
 }
 
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
