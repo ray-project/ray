@@ -225,17 +225,14 @@ class ArrowBlockAccessor(BlockAccessor):
 
     def to_numpy(self, column: str = None) -> np.ndarray:
         if column is None:
-            columns = self._table.column_names
-        else:
-            if column not in self._table.column_names:
-                raise ValueError(
-                    "Cannot find column {}, available columns: {}".format(
-                        column, self._table.column_names))
-            columns = [column]
-        arrays = [self._table[col].to_numpy() for col in columns]
-        if len(arrays) == 1:
-            return arrays[0]
-        return np.column_stack(arrays)
+            raise ValueError(
+                "`column` must be specified when calling .to_numpy() "
+                "on Arrow blocks.")
+        if column not in self._table.column_names:
+            raise ValueError(
+                f"Cannot find column {column}, available columns: "
+                f"{self._table.column_names}")
+        return self._table[column].to_numpy()
 
     def to_arrow(self) -> "pyarrow.Table":
         return self._table

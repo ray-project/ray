@@ -1235,20 +1235,24 @@ def test_to_pandas_refs(ray_start_regular_shared):
 
 
 def test_to_numpy(ray_start_regular_shared):
+    # Simple Dataset
+    ds = ray.data.range(10)
+    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
+    np.testing.assert_equal(arr, np.arange(0, 10))
+
     # Tensor Dataset
     ds = ray.data.range_tensor(10, parallelism=2)
     arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
-    np.testing.assert_equal(arr, np.expand_dims(np.arange(0, 10), 1))
+    np.testing.assert_equal(arr, np.arange(0, 10))
 
     # Table Dataset
     ds = ray.data.range_arrow(10)
     arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
     np.testing.assert_equal(arr, np.arange(0, 10))
 
-    # Simple Dataset
-    ds = ray.data.range(10)
-    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
-    np.testing.assert_equal(arr, np.arange(0, 10))
+    # Table Dataset requires column
+    with pytest.raises(ValueError):
+        ray.get(ds.to_numpy_refs())
 
 
 def test_to_arrow_refs(ray_start_regular_shared):
