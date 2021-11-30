@@ -57,6 +57,7 @@ python/.eggs
 *.so
 *.dylib
 *.dll
+python/ray/_raylet.pyd
 
 # Incremental linking files
 *.ilk
