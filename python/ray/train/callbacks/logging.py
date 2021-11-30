@@ -249,10 +249,8 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
             create_experiment_if_not_exists=True)
 
         if not success:
-            raise ValueError("No experiment_name or experiment_id passed, "
-                             "MLFLOW_EXPERIMENT_NAME env var is not "
-                             "set, and MLFLOW_EXPERIMENT_ID either "
-                             "is not set or does not exist. Please "
+            raise ValueError("No experiment_name or experiment_id passed in, "
+                             "Please "
                              "set one of these to use the "
                              "MLflowLoggerCallback.")
 
