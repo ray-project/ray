@@ -757,11 +757,7 @@ def test_max_call_tasks(ray_start_regular):
 #   3. After the normal task being reconstructed, we send a SIGTERM to the
 #      driver to make it offline and expects Ray collects the idle workers for
 #      the previous nomral task.
-@pytest.mark.parametrize(
-    "ray_start_regular", [{
-        "num_cpus": 2
-    }],
-    indirect=True)
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
 def test_whether_worker_leaked_when_task_finished_with_errors(
         ray_start_regular):
 

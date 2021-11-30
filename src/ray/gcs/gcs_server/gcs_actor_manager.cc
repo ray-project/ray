@@ -790,6 +790,12 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
     }
   }
 
+  if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
+    auto iter = registered_actors_.find(actor_id);
+    if (iter != registered_actors_.end()) {
+      gcs_actor_scheduler_->OnActorDestruction(iter->second);
+    }
+  }
   // Otherwise, try to reconstruct the actor that was already created or in the creation
   // process.
   ReconstructActor(actor_id, /*need_reschedule=*/need_reconstruct, death_cause.get());
