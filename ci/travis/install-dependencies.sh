@@ -360,7 +360,7 @@ install_dependencies() {
   fi
 
   # Additional Train test dependencies.
-  if [ "${TRAIN_TESTING-}" != 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+  if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     pip install -r "${WORKSPACE_DIR}"/python/requirements/ml/requirements_train.txt
   fi
 
