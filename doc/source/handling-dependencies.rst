@@ -58,6 +58,12 @@ Runtime Environments
 
 A **runtime environment** describes the dependencies your Ray application needs to run, including :ref:`files, packages, environment variables, and more <runtime-environments-api-ref>`.  It is installed dynamically on the cluster at runtime.
 
+.. note::
+
+    This is an emerging feature.
+    For production use, the best practice is to build your files and dependencies into a Docker image and specify the image in your :ref:`Cluster YAML Configuration<cluster-config>`.
+    This prevents potential intermittent issues caused by dynamically uploading/downloading files and downloading/installing packages.
+
 Runtime environments let you transition your Ray application from running on your local machine to running on a remote cluster, without any manual environment setup.
 
 ..
