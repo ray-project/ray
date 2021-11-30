@@ -49,8 +49,9 @@ class AutoscalingConfig(BaseModel):
     @validator("max_replicas")
     def max_replicas_greater_than_or_equal_to_min_replicas(cls, v, values):
         if "min_replicas" in values and v < values["min_replicas"]:
-            raise ValueError("max_replicas must be greater than"
-                             "or equal to min_replicas!")
+            raise ValueError(f"""max_replicas ({v}) must be greater than """
+                             f"""or equal to min_replicas """
+                             f"""({values["min_replicas"]})!""")
         return v
 
     # TODO(architkulkarni): implement below
