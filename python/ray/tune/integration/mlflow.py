@@ -142,6 +142,7 @@ class MLflowLoggerCallback(LoggerCallback):
         status = "FINISHED" if not failed else "FAILED"
         self.mlflow_util.end_run(run_id=run_id, status=status)
 
+
 @Deprecated
 class MLflowLogger(Logger):
     """MLflow logger using the deprecated Logger API.
@@ -306,17 +307,18 @@ class MLflowTrainableMixin:
         # Otherwise there might be race conditions when each worker tries to
         # create the same experiment.
         # For the mixin, the experiment must be created beforehand.
-        success = self.mlflow_util.setup_mlflow(tracking_uri=tracking_uri,
-                                      experiment_id=experiment_id,
-                                      experiment_name=experiment_name,
-                                      tracking_token=tracking_token,
-                                      create_experiment_if_not_exists=False)
+        success = self.mlflow_util.setup_mlflow(
+            tracking_uri=tracking_uri,
+            experiment_id=experiment_id,
+            experiment_name=experiment_name,
+            tracking_token=tracking_token,
+            create_experiment_if_not_exists=False)
         if not success:
             raise ValueError("No experiment with the given "
                              "name: {} or id: {} currently exists. Make "
                              "sure to first start the MLflow experiment "
                              "before calling tune.run.".format(
-                experiment_name, experiment_id))
+                                 experiment_name, experiment_id))
 
         self.mlflow_util.start_run(set_active=True)
 

@@ -1,36 +1,43 @@
 import abc
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 
 class TrainingCallback(metaclass=abc.ABCMeta):
     """Abstract Train callback class."""
 
-    def handle_result(self, results: List[Dict], **info):
+    def handle_result(self, results: List[Dict], step: int, **info):
         """Called every time train.report() is called.
 
         Args:
             results (List[Dict]): List of results from the training
                 function. Each value in the list corresponds to the output of
                 the training function from each worker.
+            step (int): The current training iteration.
             **info: kwargs dict for forward compatibility.
         """
         pass
 
-    def start_training(self, logdir: str, **info):
+    def start_training(self, logdir: str, config: Dict, **info):
         """Called once on training start.
 
         Args:
             logdir (str): Path to the file directory where logs
                 should be persisted.
+            config (Dict): The config dict passed into ``trainer.run()``.
             **info: kwargs dict for forward compatibility.
         """
         pass
 
-    def finish_training(self, error: bool = False, **info):
+    def finish_training(self,
+                        error: bool = False,
+                        run_dir: Optional[str] = None,
+                        **info):
         """Called once after training is over.
 
         Args:
             error (bool): If True, there was an exception during training.
+            run_dir (Optional[str]): The path to the directory for this
+                training run.
             **info: kwargs dict for forward compatibility.
         """
         pass

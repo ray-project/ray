@@ -263,7 +263,8 @@ class Trainer:
         finished_with_errors = False
 
         for callback in callbacks:
-            callback.start_training(logdir=self.latest_run_dir)
+            callback.start_training(
+                logdir=str(self.latest_run_dir), config=config)
 
         train_func = self._get_train_func(train_func, config)
 
@@ -278,15 +279,17 @@ class Trainer:
                 checkpoint_strategy=checkpoint_strategy,
                 run_dir=self.latest_run_dir,
             )
-            for intermediate_result in iterator:
+            for step, intermediate_result in enumerate(iterator):
                 for callback in callbacks:
-                    callback.handle_result(intermediate_result)
+                    callback.handle_result(intermediate_result, step=step)
 
             assert iterator.is_finished()
             return iterator.get_final_results()
         finally:
             for callback in callbacks:
-                callback.finish_training(error=finished_with_errors)
+                callback.finish_training(
+                    error=finished_with_errors,
+                    run_dir=str(self.latest_run_dir))
 
     def run_iterator(
             self,

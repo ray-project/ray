@@ -175,6 +175,92 @@ class TrainingSingleWorkerLoggingCallback(
         return worker_to_log
 
 
+class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
+    """MLflow Logger to automatically log Train results and config to MLflow.
+
+    MLflow (https://mlflow.org) Tracking is an open source library for
+    recording and querying experiments. This Ray Train callback
+    sends information (config parameters, training results & metrics,
+    and artifacts) to MLflow for automatic experiment tracking.
+
+    Args:
+        tracking_uri (Optional[str]): The tracking URI for where to manage
+            experiments and runs. This can either be a local file path or a
+            remote server. This arg gets passed directly to mlflow
+            initialization.
+        registry_uri (Optional[str]): The registry URI that gets passed
+            directly to mlflow initialization.
+        experiment_id (Optional[str]): The experiment id of an already
+            existing experiment. If not
+            passed in, experiment_name will be used.
+        experiment_name (Optional[str]): The experiment name to use for this
+            Train run.
+            If the experiment with the name already exists with MLflow,
+            it will be used. If not, a new experiment will be created with
+            this name.
+        tags (Optional[Dict]):  An optional dictionary of string keys and
+            values to set as tags on the run
+        save_artifact (bool): If set to True, automatically save the entire
+            contents of the Train local_dir as an artifact to the
+            corresponding run in MlFlow.
+        logdir (Optional[str]): Path to directory where the results file
+            should be. If None, will be set by the Trainer. If no tracking
+            uri or registry uri are passed in, the logdir will be used for
+            both.
+        worker_to_log (int): Worker index to log. By default, will log the
+            worker with index 0.
+    """
+
+    def __init__(self,
+                 tracking_uri: Optional[str] = None,
+                 registry_uri: Optional[str] = None,
+                 experiment_id: Optional[str] = None,
+                 experiment_name: Optional[str] = None,
+                 tags: Optional[Dict] = None,
+                 save_artifact: bool = False,
+                 logdir: Optional[str] = None,
+                 worker_to_log: int = 0):
+        super().__init__(logdir=logdir, worker_to_log=worker_to_log)
+
+        self.save_artifact = save_artifact
+        self.mlflow_util = MLflowLoggerUtil()
+
+        tracking_uri = tracking_uri if tracking_uri is not None else \
+            logdir
+        registry_uri = registry_uri if registry_uri is not None else logdir
+
+        self.tags = tags
+
+        success = self.mlflow_util.setup_mlflow(
+            tracking_uri=tracking_uri,
+            registry_uri=registry_uri,
+            experiment_id=experiment_id,
+            experiment_name=experiment_name,
+            create_experiment_if_not_exists=True)
+
+        if not success:
+            raise ValueError("No experiment_name or experiment_id passed, "
+                             "MLFLOW_EXPERIMENT_NAME env var is not "
+                             "set, and MLFLOW_EXPERIMENT_ID either "
+                             "is not set or does not exist. Please "
+                             "set one of these to use the "
+                             "MLflowLoggerCallback.")
+
+    def start_training(self, logdir: str, config: Dict, **info):
+        super().start_training(logdir=logdir, config=config, info=info)
+
+        self.mlflow_util.start_run(tags=self.tags, set_active=True)
+        self.mlflow_util.log_params(params_to_log=config)
+
+    def handle_result(self, results: List[Dict], step: int, **info):
+        result = results[self._workers_to_log]
+
+        self.mlflow_util.log_metrics(metrics_to_log=result, step=step)
+
+    def finish_training(self, error: bool = False, **info):
+        self.mlflow_util.end_run(status="FAILED" if error else "FINISHED")
+
+
 class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
     """Logs Train results in TensorboardX format.
 
@@ -188,71 +274,6 @@ class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
     VALID_SUMMARY_TYPES: Tuple[type] = (int, float, np.float32, np.float64,
                                         np.int32, np.int64)
     IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S, TRAINING_ITERATION}
-
-    def start_training(self, logdir: str, **info):
-        super().start_training(logdir, **info)
-
-        try:
-            from tensorboardX import SummaryWriter
-        except ImportError:
-            if log_once("tbx-install"):
-                warnings.warn(
-                    "pip install 'tensorboardX' to see TensorBoard files.")
-            raise
-
-        self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
-
-    def handle_result(self, results: List[Dict], **info):
-        result = results[self._workers_to_log]
-        step = result[TRAINING_ITERATION]
-        result = {k: v for k, v in result.items() if k not in self.IGNORE_KEYS}
-        flat_result = flatten_dict(result, delimiter="/")
-        path = ["ray", "train"]
-
-        # same logic as in ray.tune.logger.TBXLogger
-        for attr, value in flat_result.items():
-            full_attr = "/".join(path + [attr])
-            if (isinstance(value, self.VALID_SUMMARY_TYPES)
-                    and not np.isnan(value)):
-                self._file_writer.add_scalar(
-                    full_attr, value, global_step=step)
-            elif ((isinstance(value, list) and len(value) > 0)
-                  or (isinstance(value, np.ndarray) and value.size > 0)):
-
-                # Must be video
-                if isinstance(value, np.ndarray) and value.ndim == 5:
-                    self._file_writer.add_video(
-                        full_attr, value, global_step=step, fps=20)
-                    continue
-
-                try:
-                    self._file_writer.add_histogram(
-                        full_attr, value, global_step=step)
-                # In case TensorboardX still doesn't think it's a valid value
-                # (e.g. `[[]]`), warn and move on.
-                except (ValueError, TypeError):
-                    if log_once("invalid_tbx_value"):
-                        warnings.warn(
-                            "You are trying to log an invalid value ({}={}) "
-                            "via {}!".format(full_attr, value,
-                                             type(self).__name__))
-        self._file_writer.flush()
-
-    def finish_training(self, error: bool = False, **info):
-        self._file_writer.close()
-
-class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
-    """Logs Train results in to MLflow.
-
-    Args:
-        logdir (Optional[str]): Path to directory where the results file
-            should be. If None, will be set by the Trainer.
-        worker_to_log (int): Worker index to log. By default, will log the
-            worker with index 0.
-    """
-
-    def __init__(self):
-        self.mlflow_logger_util = MLflowLoggerUtil()
 
     def start_training(self, logdir: str, **info):
         super().start_training(logdir, **info)

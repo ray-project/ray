@@ -22,10 +22,12 @@ class MockTrial(
     def __str__(self):
         return self.trial_name
 
+
 class MockMLflowLoggerUtil(MLflowLoggerUtil):
     def save_artifacts(self, dir, run_id):
         self.artifact_saved = True
         self.artifact_info = {"dir": dir, "run_id": run_id}
+
 
 def clear_env_vars():
     if "MLFLOW_EXPERIMENT_NAME" in os.environ:
@@ -39,8 +41,8 @@ class MLflowTest(unittest.TestCase):
         self.tracking_uri = tempfile.mkdtemp()
         self.registry_uri = tempfile.mkdtemp()
 
-        client = MlflowClient(tracking_uri=self.tracking_uri,
-                              registry_uri=self.registry_uri)
+        client = MlflowClient(
+            tracking_uri=self.tracking_uri, registry_uri=self.registry_uri)
         client.create_experiment(name="existing_experiment")
         assert client.get_experiment_by_name(
             "existing_experiment").experiment_id == "0"
@@ -56,39 +58,40 @@ class MLflowTest(unittest.TestCase):
                          self.tracking_uri)
         self.assertEqual(logger.mlflow_util._mlflow.get_registry_uri(),
                          self.registry_uri)
-        self.assertListEqual([
-            e.name for e in logger.mlflow_util._mlflow.list_experiments()],
-                             ["existing_experiment", "test_exp"])
+        self.assertListEqual(
+            [e.name for e in logger.mlflow_util._mlflow.list_experiments()],
+            ["existing_experiment", "test_exp"])
         self.assertEqual(logger.mlflow_util.experiment_id, "1")
 
         # Check if client recognizes already existing experiment.
-        logger = MLflowLoggerCallback(experiment_name="existing_experiment",
-                                      tracking_uri=self.tracking_uri,
-                                      registry_uri=self.registry_uri)
+        logger = MLflowLoggerCallback(
+            experiment_name="existing_experiment",
+            tracking_uri=self.tracking_uri,
+            registry_uri=self.registry_uri)
         logger.setup()
         self.assertEqual(logger.mlflow_util.experiment_id, "0")
 
         # Pass in experiment name as env var.
         clear_env_vars()
         os.environ["MLFLOW_EXPERIMENT_NAME"] = "test_exp"
-        logger = MLflowLoggerCallback(tracking_uri=self.tracking_uri,
-                                      registry_uri=self.registry_uri)
+        logger = MLflowLoggerCallback(
+            tracking_uri=self.tracking_uri, registry_uri=self.registry_uri)
         logger.setup()
         self.assertEqual(logger.mlflow_util.experiment_id, "1")
 
         # Pass in existing experiment name as env var.
         clear_env_vars()
         os.environ["MLFLOW_EXPERIMENT_NAME"] = "existing_experiment"
-        logger = MLflowLoggerCallback(tracking_uri=self.tracking_uri,
-                                      registry_uri=self.registry_uri)
+        logger = MLflowLoggerCallback(
+            tracking_uri=self.tracking_uri, registry_uri=self.registry_uri)
         logger.setup()
         self.assertEqual(logger.mlflow_util.experiment_id, "0")
 
         # Pass in existing experiment id as env var.
         clear_env_vars()
         os.environ["MLFLOW_EXPERIMENT_ID"] = "0"
-        logger = MLflowLoggerCallback(tracking_uri=self.tracking_uri,
-                                      registry_uri=self.registry_uri)
+        logger = MLflowLoggerCallback(
+            tracking_uri=self.tracking_uri, registry_uri=self.registry_uri)
         logger.setup()
         self.assertEqual(logger.mlflow_util.experiment_id, "0")
 
@@ -97,16 +100,16 @@ class MLflowTest(unittest.TestCase):
         clear_env_vars()
         os.environ["MLFLOW_EXPERIMENT_ID"] = "500"
         with self.assertRaises(ValueError):
-            logger = MLflowLoggerCallback(tracking_uri=self.tracking_uri,
-                                          registry_uri=self.registry_uri)
+            logger = MLflowLoggerCallback(
+                tracking_uri=self.tracking_uri, registry_uri=self.registry_uri)
             logger.setup()
 
         # Experiment id env var should take precedence over name env var.
         clear_env_vars()
         os.environ["MLFLOW_EXPERIMENT_NAME"] = "test_exp"
         os.environ["MLFLOW_EXPERIMENT_ID"] = "0"
-        logger = MLflowLoggerCallback(tracking_uri=self.tracking_uri,
-                                      registry_uri=self.registry_uri)
+        logger = MLflowLoggerCallback(
+            tracking_uri=self.tracking_uri, registry_uri=self.registry_uri)
         logger.setup()
         self.assertEqual(logger.mlflow_util.experiment_id, "0")
 
@@ -115,9 +118,10 @@ class MLflowTest(unittest.TestCase):
         clear_env_vars()
         os.environ["MLFLOW_EXPERIMENT_NAME"] = "test_tags"
         os.environ["MLFLOW_EXPERIMENT_ID"] = "0"
-        logger = MLflowLoggerCallback(tracking_uri=self.tracking_uri,
-                                      registry_uri=self.registry_uri,
-                                      tags=tags)
+        logger = MLflowLoggerCallback(
+            tracking_uri=self.tracking_uri,
+            registry_uri=self.registry_uri,
+            tags=tags)
         logger.setup()
         self.assertEqual(logger.tags, tags)
 
@@ -175,8 +179,10 @@ class MLflowTest(unittest.TestCase):
         # Check that artifact is logged on termination.
         logger.on_trial_complete(0, [], trial)
         self.assertTrue(logger.mlflow_util.artifact_saved)
-        self.assertDictEqual(logger.mlflow_util.artifact_info, {"dir":
-                                                                    "artifact", "run_id": run.info.run_id})
+        self.assertDictEqual(logger.mlflow_util.artifact_info, {
+            "dir": "artifact",
+            "run_id": run.info.run_id
+        })
 
     def testMlFlowMixinConfig(self):
         clear_env_vars()
@@ -208,6 +214,7 @@ class MLflowTest(unittest.TestCase):
         trial_config["mlflow"]["experiment_name"] = "new_experiment"
         with self.assertRaises(ValueError):
             wrap_function(train_fn)(trial_config)
+
 
 if __name__ == "__main__":
     import pytest
