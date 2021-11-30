@@ -34,7 +34,7 @@ def set_kill_interval(request):
         },
         "kill_interval": kill_interval,
         "head_resources": {
-            "CPU": 1,
+            "CPU": 0,
         },
         "worker_node_types": {
             "cpu_node": {
@@ -125,7 +125,7 @@ def test_chaos_actor_retry(set_kill_interval):
     # assert_no_system_failure(p, 10)
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 class ShuffleStatusTracker:
     def __init__(self):
         self.num_map = 0
