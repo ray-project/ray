@@ -64,17 +64,26 @@ class MLflowLoggerUtil:
         self._mlflow.set_registry_uri(registry_uri)
 
         # First check experiment_id.
-        experiment_id = experiment_id or os.environ.get("MLFLOW_EXPERIMENT_ID")
-        if experiment_id and self._mlflow.get_experiment(experiment_id=experiment_id):
-            logger.debug(f"Experiment with provided id {experiment_id} "
-                         "exists. Setting that as the experiment.")
-            self.experiment_id = experiment_id
-            return True
+        experiment_id = experiment_id if experiment_id is not None else \
+                                         os.environ.get(
+            "MLFLOW_EXPERIMENT_ID")
+        if experiment_id is not None:
+            from mlflow.exceptions import MlflowException
+            try:
+                self._mlflow.get_experiment(experiment_id=experiment_id)
+                logger.debug(f"Experiment with provided id {experiment_id} "
+                             "exists. Setting that as the experiment.")
+                self.experiment_id = experiment_id
+                return True
+            except MlflowException:
+                pass
 
         # Then check experiment_name.
-        experiment_name = experiment_name or os.environ.get(
+        experiment_name = experiment_name if experiment_name is not None else \
+                                             os.environ.get(
             "MLFLOW_EXPERIMENT_NAME")
-        if experiment_name and self._mlflow.get_experiment_by_name(name=experiment_name):
+        if experiment_name is not None and self._mlflow.get_experiment_by_name(
+            name=experiment_name):
             logger.debug(f"Experiment with provided name {experiment_name} "
                          "exists. Setting that as the experiment.")
             self.experiment_id = self._mlflow.get_experiment_by_name(
@@ -118,19 +127,23 @@ class MLflowLoggerUtil:
 
         return new_dict
 
-    def start_run(self, run_name: Optional[str]=None, tags: Optional[
-        Dict]=None) -> "Run":
-        """Starts a new run and sets it as the active run.
+    def start_run(self, tags: Optional[
+        Dict]=None, set_active: bool = False) -> "Run":
+        """Starts a new run.
 
         Args:
-            run_name (Optional[str]): The name to use for the new run.
             tags (Optional[Dict]): Tags to set for the new run.
+            set_active (bool): Whether to set the new run as the active run.
+                Run creation will fail if an active run already exists.
 
         Returns:
             The newly created MLflow run.
         """
-        return self._mlflow.start_run(
-            experiment_id=self.experiment_id, run_name=run_name, tags=tags)
+        client = self._get_client()
+        run = client.create_run(experiment_id=self.experiment_id, tags=tags)
+        if set_active:
+            self._mlflow.start_run(run_id=run.info.run_id)
+        return run
 
     def _run_exists(self, run_id: str) -> bool:
         """Check if run with the provided id exists."""
@@ -163,8 +176,6 @@ class MLflowLoggerUtil:
             params_to_log (Dict): Dictionary of parameters to log.
             run_id (Optional[str]): The ID of the run to log to.
         """
-
-        params_to_log = self._parse_dict(params_to_log)
 
         if run_id and self._run_exists(run_id):
             client = self._get_client()

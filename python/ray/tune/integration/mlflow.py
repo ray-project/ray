@@ -7,6 +7,7 @@ from ray.tune.trainable import Trainable
 from ray.tune.logger import Logger, LoggerCallback
 from ray.tune.result import TRAINING_ITERATION, TIMESTEPS_TOTAL
 from ray.tune.trial import Trial
+from ray.util.annotations import Deprecated
 from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 
 logger = logging.getLogger(__name__)
@@ -88,10 +89,18 @@ class MLflowLoggerCallback(LoggerCallback):
 
     def setup(self, *args, **kwargs):
         # Setup the mlflow logging util.
-        self.mlflow_util.setup_mlflow(
+        success = self.mlflow_util.setup_mlflow(
             tracking_uri=self.tracking_uri,
             registry_uri=self.registry_uri,
             experiment_name=self.experiment_name)
+
+        if not success:
+            raise ValueError("No experiment_name passed, "
+                             "MLFLOW_EXPERIMENT_NAME env var is not "
+                             "set, and MLFLOW_EXPERIMENT_ID either "
+                             "is not set or does not exist. Please "
+                             "set one of these to use the "
+                             "MLflowLoggerCallback.")
 
         if self.tags is None:
             # Create empty dictionary for tags if not given explicitly
@@ -133,7 +142,7 @@ class MLflowLoggerCallback(LoggerCallback):
         status = "FINISHED" if not failed else "FAILED"
         self.mlflow_util.end_run(run_id=run_id, status=status)
 
-
+@Deprecated
 class MLflowLogger(Logger):
     """MLflow logger using the deprecated Logger API.
 
@@ -141,35 +150,10 @@ class MLflowLogger(Logger):
     or manually set the proper environment variables.
     """
 
-    _experiment_logger_cls = MLflowLoggerCallback
-
     def _init(self):
-        logger_config = self.config.pop("logger_config", {})
-        tracking_uri = logger_config.get("mlflow_tracking_uri")
-        registry_uri = logger_config.get("mlflow_registry_uri")
-
-        experiment_id = logger_config.get("mlflow_experiment_id")
-        # Set the experiment id as an environment variable
-        if experiment_id is not None:
-            os.environ["MLFLOW_EXPERIMENT_ID"] = str(experiment_id)
-
-        self._trial_experiment_logger = self._experiment_logger_cls(
-            tracking_uri, registry_uri)
-
-        self._trial_experiment_logger.setup()
-
-        self._trial_experiment_logger.log_trial_start(self.trial)
-
-    def on_result(self, result: Dict):
-        self._trial_experiment_logger.log_trial_result(
-            iteration=result.get(TRAINING_ITERATION),
-            trial=self.trial,
-            result=result)
-
-    def close(self):
-        self._trial_experiment_logger.log_trial_end(
-            trial=self.trial, failed=False)
-        del self._trial_experiment_logger
+        raise DeprecationWarning("The legacy MLflowLogger has been "
+                                 "deprecated. Use the MLflowLoggerCallback "
+                                 "instead.")
 
 
 def mlflow_mixin(func: Callable):
@@ -334,9 +318,7 @@ class MLflowTrainableMixin:
                              "before calling tune.run.".format(
                 experiment_name, experiment_id))
 
-        run_name = self.trial_name + "_" + self.trial_id
-        run_name = run_name.replace("/", "_")
-        self.mlflow_util.start_run(run_name=run_name)
+        self.mlflow_util.start_run(set_active=True)
 
     def stop(self):
         self.mlflow_util.end_run()
