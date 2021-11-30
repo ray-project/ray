@@ -34,7 +34,7 @@ Ray-integrated DataFrame libraries can also be seamlessly used with Datasets, to
    :width: 650px
    :align: center
 
-See :ref:`the Talks section <data-talks>` for more Dataset ML use cases and benchmarks.
+See the :ref:`ML preprocessing docs <datasets-ml-preprocessing>` for information on how to use Datasets as the last-mile bridge to model training and inference, and see :ref:`the Talks section <data-talks>` for more Datasets ML use cases and benchmarks.
 
 General Parallel Compute
 ------------------------
