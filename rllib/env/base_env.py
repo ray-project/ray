@@ -1,16 +1,16 @@
 from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING
 
 import ray
-from ray.rllib.env.external_env import ExternalEnv
-from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
-from ray.rllib.env.multi_agent_env import MultiAgentEnv
-from ray.rllib.env.vector_env import VectorEnv
-from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
+from ray.rllib.utils.annotations import DeveloperAPI, Deprecated, override, \
+    PublicAPI
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, \
     MultiEnvDict, PartialTrainerConfigDict
 
 if TYPE_CHECKING:
     from ray.rllib.models.preprocessors import Preprocessor
+    from ray.rllib.env.external_env import ExternalEnv
+    from ray.rllib.env.multi_agent_env import MultiAgentEnv
+    from ray.rllib.env.vector_env import VectorEnv
 
 ASYNC_RESET_RETURN = "async_reset_return"
 
@@ -124,7 +124,11 @@ class BaseEnv:
             The resulting BaseEnv object.
         """
 
-        from ray.rllib.env.remote_base_env import RemoteBaseEnv
+        from ray.rllib.env.remote_vector_env import RemoteBaseEnv
+        from ray.rllib.env.external_env import ExternalEnv, ExternalEnvWrapper
+        from ray.rllib.env.multi_agent_env import MultiAgentEnv, \
+            MultiAgentEnvWrapper
+        from ray.rllib.env.vector_env import VectorEnv, VectorEnvWrapper
         if remote_envs and num_envs == 1:
             raise ValueError(
                 "Remote envs only make sense to use if num_envs > 1 "
@@ -147,7 +151,7 @@ class BaseEnv:
                     remote_env_batch_wait_ms=remote_env_batch_wait_ms)
             # Sub-environments are not ray.remote actors.
             else:
-                env = _MultiAgentEnvToBaseEnv(
+                env = MultiAgentEnvWrapper(
                     make_env=make_env, existing_envs=[env], num_envs=num_envs)
         # ExternalEnv.
         elif isinstance(env, ExternalEnv):
@@ -157,13 +161,13 @@ class BaseEnv:
                     "num_envs > 1. One way of solving this would be to "
                     "treat your Env as a MultiAgentEnv hosting only one "
                     "type of agent but with several copies.")
-            env = _ExternalEnvToBaseEnv(env)
+            env = ExternalEnvWrapper(env)
         # VectorEnv.
         # Note that all BaseEnvs are also vectorized, but the user may want to
         # define custom vectorization logic and thus implement a custom
         # VectorEnv class.
         elif isinstance(env, VectorEnv):
-            env = _VectorEnvToBaseEnv(env)
+            env = VectorEnvWrapper(env)
         # Anything else: This usually implies that env is a gym.Env object.
         else:
             # Sub-environments are ray.remote actors:
@@ -190,7 +194,7 @@ class BaseEnv:
                     observation_space=env.observation_space,
                 )
                 # ... then the resulting VectorEnv to a BaseEnv.
-                env = _VectorEnvToBaseEnv(env)
+                env = VectorEnvWrapper(env)
 
         # Make sure conversion went well.
         assert isinstance(env, BaseEnv), env
@@ -290,18 +294,31 @@ class BaseEnv:
 _DUMMY_AGENT_ID = "agent0"
 
 
+@Deprecated(new="with_dummy_agent_id", error=False)
 def _with_dummy_agent_id(env_id_to_values: Dict[EnvID, Any],
                          dummy_id: "AgentID" = _DUMMY_AGENT_ID
                          ) -> MultiEnvDict:
     return {k: {dummy_id: v} for (k, v) in env_id_to_values.items()}
 
 
+@DeveloperAPI
+def with_dummy_agent_id(env_id_to_values: Dict[EnvID, Any],
+                        dummy_id: "AgentID" = _DUMMY_AGENT_ID) -> MultiEnvDict:
+    return {k: {dummy_id: v} for (k, v) in env_id_to_values.items()}
+
+
+@Deprecated(
+    old="ray.rllib.env.base_env._ExternalEnvToBaseEnv",
+    new="ray.rllib.env.external.ExternalEnvWrapper",
+    error=False)
 class _ExternalEnvToBaseEnv(BaseEnv):
     """Internal adapter of ExternalEnv to BaseEnv."""
 
     def __init__(self,
-                 external_env: ExternalEnv,
+                 external_env: "ExternalEnv",
                  preprocessor: "Preprocessor" = None):
+        from ray.rllib.env.external_multi_agent_env import \
+            ExternalMultiAgentEnv
         self.external_env = external_env
         self.prep = preprocessor
         self.multiagent = issubclass(type(external_env), ExternalMultiAgentEnv)
@@ -381,9 +398,10 @@ class _ExternalEnvToBaseEnv(BaseEnv):
                 _with_dummy_agent_id(off_policy_actions)
 
 
-@Deprecated(old="ray.rllib.env.base_env._VectorEnvToBaseEnv",
-            new="ray.rllib.env.multi_agent_env.VectorEnvWrapper",
-            error=False)
+@Deprecated(
+    old="ray.rllib.env.base_env._VectorEnvToBaseEnv",
+    new="ray.rllib.env.vector_env.VectorEnvWrapper",
+    error=False)
 class _VectorEnvToBaseEnv(BaseEnv):
     """Internal adapter of VectorEnv to BaseEnv.
 
@@ -392,7 +410,7 @@ class _VectorEnvToBaseEnv(BaseEnv):
     environments before calling send_actions().
     """
 
-    def __init__(self, vector_env: VectorEnv):
+    def __init__(self, vector_env: "VectorEnv"):
         self.vector_env = vector_env
         self.action_space = vector_env.action_space
         self.observation_space = vector_env.observation_space
@@ -443,9 +461,10 @@ class _VectorEnvToBaseEnv(BaseEnv):
         return self.vector_env.try_render_at(env_id)
 
 
-@Deprecated(old="ray.rllib.env.base_env._MultiAgentEnvToBaseEnv",
-            new="ray.rllib.env.multi_agent_env.MultiAgentEnvWrapper",
-            error=False)
+@Deprecated(
+    old="ray.rllib.env.base_env._MultiAgentEnvToBaseEnv",
+    new="ray.rllib.env.multi_agent_env.MultiAgentEnvWrapper",
+    error=False)
 class _MultiAgentEnvToBaseEnv(BaseEnv):
     """Internal adapter of MultiAgentEnv to BaseEnv.
 
@@ -453,7 +472,7 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
     """
 
     def __init__(self, make_env: Callable[[int], EnvType],
-                 existing_envs: List["MultiAgentEnv"], num_envs: int):
+                 existing_envs: "MultiAgentEnv", num_envs: int):
         """Wraps MultiAgentEnv(s) into the BaseEnv API.
 
         Args:
@@ -466,6 +485,7 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
                 total. This will include the given (already created)
                 `existing_envs`.
         """
+        from ray.rllib.env.multi_agent_env import MultiAgentEnv
         self.make_env = make_env
         self.envs = existing_envs
         self.num_envs = num_envs
@@ -527,11 +547,13 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
         return self.envs[env_id].render()
 
 
-@Deprecated(old="ray.rllib.env.base_env._MultiAgentEnvState",
-            new="ray.rllib.env.multi_agent_env._MultiAgentEnvState",
-            error=False)
+@Deprecated(
+    old="ray.rllib.env.base_env._MultiAgentEnvState",
+    new="ray.rllib.env.multi_agent_env._MultiAgentEnvState",
+    error=False)
 class _MultiAgentEnvState:
-    def __init__(self, env: MultiAgentEnv):
+    def __init__(self, env: "MultiAgentEnv"):
+        from ray.rllib.env.multi_agent_env import MultiAgentEnv
         assert isinstance(env, MultiAgentEnv)
         self.env = env
         self.initialized = False

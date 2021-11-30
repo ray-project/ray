@@ -219,7 +219,7 @@ class _VectorizedGymEnv(VectorEnv):
         return self.envs[index].render()
 
 
-class VectorEnvToBaseEnv(BaseEnv):
+class VectorEnvWrapper(BaseEnv):
     """Internal adapter of VectorEnv to BaseEnv.
 
     We assume the caller will always send the full vector of actions in each
@@ -240,7 +240,7 @@ class VectorEnvToBaseEnv(BaseEnv):
     @override(BaseEnv)
     def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
                             MultiEnvDict, MultiEnvDict]:
-        from ray.rllib.env.base_env import _with_dummy_agent_id
+        from ray.rllib.env.base_env import with_dummy_agent_id
         if self.new_obs is None:
             self.new_obs = self.vector_env.vector_reset()
         new_obs = dict(enumerate(self.new_obs))
@@ -251,10 +251,10 @@ class VectorEnvToBaseEnv(BaseEnv):
         self.cur_rewards = []
         self.cur_dones = []
         self.cur_infos = []
-        return _with_dummy_agent_id(new_obs), \
-            _with_dummy_agent_id(rewards), \
-            _with_dummy_agent_id(dones, "__all__"), \
-            _with_dummy_agent_id(infos), {}
+        return with_dummy_agent_id(new_obs), \
+            with_dummy_agent_id(rewards), \
+            with_dummy_agent_id(dones, "__all__"), \
+            with_dummy_agent_id(infos), {}
 
     @override(BaseEnv)
     def send_actions(self, action_dict: MultiEnvDict) -> None:
