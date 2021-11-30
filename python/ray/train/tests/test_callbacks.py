@@ -15,6 +15,7 @@ from ray.train.constants import (TRAINING_ITERATION, DETAILED_AUTOFILLED_KEYS,
 from ray.train.callbacks import JsonLoggerCallback, TBXLoggerCallback
 from ray.train.backend import BackendConfig, Backend
 from ray.train.worker_group import WorkerGroup
+from ray.train.callbacks.logging import MLflowLoggerCallback
 
 try:
     from tensorflow.python.summary.summary_iterator \
@@ -159,4 +160,24 @@ def test_TBX(ray_start_4_cpus, make_temp_dir):
     _validate_tbx_result(temp_dir)
 
 
-def test_mlflow()
+def test_mlflow(ray_start_4_cpus, make_temp_dir):
+    config = TestConfig()
+
+    temp_dir = make_temp_dir
+    num_workers = 4
+
+    def train_func():
+        train.report(episode_reward_mean=4)
+        train.report(episode_reward_mean=5)
+        train.report(
+            episode_reward_mean=6, score=[1, 2, 3], hello={"world": 1})
+        return 1
+
+    callback = MLflowLoggerCallback(logdir=temp_dir)
+    trainer = Trainer(config, num_workers=num_workers)
+    trainer.start()
+    trainer.run(train_func, callbacks=[callback])
+
+    
+
+

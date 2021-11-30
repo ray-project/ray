@@ -279,7 +279,7 @@ class Trainer:
                 checkpoint_strategy=checkpoint_strategy,
                 run_dir=self.latest_run_dir,
             )
-            for step, intermediate_result in enumerate(iterator):
+            for intermediate_result in iterator:
                 for callback in callbacks:
                     callback.handle_result(intermediate_result, step=step)
 

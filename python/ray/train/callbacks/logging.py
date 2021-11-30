@@ -222,20 +222,30 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
                  worker_to_log: int = 0):
         super().__init__(logdir=logdir, worker_to_log=worker_to_log)
 
+        self.tracking_uri = tracking_uri
+        self.registry_uri = registry_uri
+        self.experiment_id = experiment_id
+        self.experiment_name = experiment_name
+        self.tags = tags
+
         self.save_artifact = save_artifact
         self.mlflow_util = MLflowLoggerUtil()
 
-        tracking_uri = tracking_uri if tracking_uri is not None else \
-            logdir
-        registry_uri = registry_uri if registry_uri is not None else logdir
+    def start_training(self, logdir: str, config: Dict, **info):
+        super().start_training(logdir=logdir, config=config, info=info)
 
-        self.tags = tags
+        tracking_uri = self.tracking_uri if self.tracking_uri is not None \
+            else \
+            self.logdir
+        registry_uri = self.registry_uri if self.registry_uri is not None \
+            else \
+            self.logdir
 
         success = self.mlflow_util.setup_mlflow(
             tracking_uri=tracking_uri,
             registry_uri=registry_uri,
-            experiment_id=experiment_id,
-            experiment_name=experiment_name,
+            experiment_id=self.experiment_id,
+            experiment_name=self.experiment_name,
             create_experiment_if_not_exists=True)
 
         if not success:
@@ -246,16 +256,13 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
                              "set one of these to use the "
                              "MLflowLoggerCallback.")
 
-    def start_training(self, logdir: str, config: Dict, **info):
-        super().start_training(logdir=logdir, config=config, info=info)
-
         self.mlflow_util.start_run(tags=self.tags, set_active=True)
         self.mlflow_util.log_params(params_to_log=config)
 
-    def handle_result(self, results: List[Dict], step: int, **info):
+    def handle_result(self, results: List[Dict], **info):
         result = results[self._workers_to_log]
 
-        self.mlflow_util.log_metrics(metrics_to_log=result, step=step)
+        self.mlflow_util.log_metrics(metrics_to_log=result, step=result[TRAINING_ITERATION])
 
     def finish_training(self, error: bool = False, **info):
         self.mlflow_util.end_run(status="FAILED" if error else "FINISHED")

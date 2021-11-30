@@ -5,14 +5,13 @@ from typing import List, Dict, Optional
 class TrainingCallback(metaclass=abc.ABCMeta):
     """Abstract Train callback class."""
 
-    def handle_result(self, results: List[Dict], step: int, **info):
+    def handle_result(self, results: List[Dict], **info):
         """Called every time train.report() is called.
 
         Args:
             results (List[Dict]): List of results from the training
                 function. Each value in the list corresponds to the output of
                 the training function from each worker.
-            step (int): The current training iteration.
             **info: kwargs dict for forward compatibility.
         """
         pass
