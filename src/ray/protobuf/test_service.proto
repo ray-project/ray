@@ -23,10 +23,8 @@ message PingRequest {
 message PingReply {
 }
 
-message PingTimeoutRequest {
-}
-message PingTimeoutReply {
-}
+message PingTimeoutRequest {}
+message PingTimeoutReply {}
 
 service TestService {
   rpc Ping(PingRequest) returns (PingReply);
