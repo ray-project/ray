@@ -122,7 +122,6 @@ import ray.ray_constants as ray_constants
 from ray._private.async_compat import sync_to_async, get_new_event_loop
 from ray._private.client_mode_hook import disable_client_hook
 import ray._private.gcs_utils as gcs_utils
-from ray._private.runtime_env.validation import ParsedRuntimeEnv
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
 from ray._private.utils import decode
@@ -805,7 +804,13 @@ cdef CRayStatus task_execution_handler(
                 # https://docs.python.org/3/library/sys.html#sys.exit
                 return CRayStatus.IntentionalSystemExit()
             else:
-                logger.exception("SystemExit was raised from the worker")
+                msg = "SystemExit was raised from the worker."
+                # In K8s, SIGTERM likely means we hit memory limits, so print
+                # a more informative message there.
+                if "KUBERNETES_SERVICE_HOST" in os.environ:
+                    msg += (
+                        " The worker may have exceeded K8s pod memory limits.")
+                logger.exception(msg)
                 return CRayStatus.UnexpectedSystemExit()
 
     return CRayStatus.OK()
@@ -1464,13 +1469,11 @@ cdef class CoreWorker:
                     scheduling_strategy,
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env,
-                    runtime_env_uris,
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
             CRayFunction ray_function
             c_vector[unique_ptr[CTaskArg]] args_vector
-            c_vector[c_string] c_runtime_env_uris = runtime_env_uris
             c_vector[CObjectReference] return_refs
             CSchedulingStrategy c_scheduling_strategy
 
@@ -1491,8 +1494,7 @@ cdef class CoreWorker:
                 ray_function, args_vector, CTaskOptions(
                     name, num_returns, c_resources,
                     b"",
-                    serialized_runtime_env,
-                    c_runtime_env_uris),
+                    serialized_runtime_env),
                 max_retries, retry_exceptions,
                 c_scheduling_strategy,
                 debugger_breakpoint)
@@ -1514,7 +1516,6 @@ cdef class CoreWorker:
                      c_bool is_asyncio,
                      c_string extension_data,
                      c_string serialized_runtime_env,
-                     runtime_env_uris,
                      concurrency_groups_dict,
                      scheduling_strategy,
                      ):
@@ -1525,7 +1526,6 @@ cdef class CoreWorker:
             unordered_map[c_string, double] c_resources
             unordered_map[c_string, double] c_placement_resources
             CActorID c_actor_id
-            c_vector[c_string] c_runtime_env_uris = runtime_env_uris
             c_vector[CConcurrencyGroup] c_concurrency_groups
             CSchedulingStrategy c_scheduling_strategy
 
@@ -1553,8 +1553,10 @@ cdef class CoreWorker:
                         is_asyncio,
                         c_scheduling_strategy,
                         serialized_runtime_env,
-                        c_runtime_env_uris,
-                        c_concurrency_groups),
+                        c_concurrency_groups,
+                        # execute out of order for
+                        # async or threaded actors.
+                        is_asyncio or max_concurrency > 1),
                     extension_data,
                     &c_actor_id))
 
@@ -2029,18 +2031,19 @@ cdef class CoreWorker:
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorIsAsync())
 
-    def get_current_runtime_env(self) -> ParsedRuntimeEnv:
+    def get_current_runtime_env(self) -> str:
         # This should never change, so we can safely cache it to avoid ser/de
         if self.current_runtime_env is None:
             if self.is_driver:
                 job_config = self.get_job_config()
-                serialized_env = job_config.runtime_env.serialized_runtime_env
+                serialized_env = job_config.runtime_env_info \
+                                           .serialized_runtime_env
             else:
                 serialized_env = CCoreWorkerProcess.GetCoreWorker() \
-                        .GetWorkerContext().GetCurrentSerializedRuntimeEnv()
+                        .GetWorkerContext().GetCurrentSerializedRuntimeEnv() \
+                        .decode("utf-8")
 
-            self.current_runtime_env = ParsedRuntimeEnv.deserialize(
-                    serialized_env)
+            self.current_runtime_env = serialized_env
 
         return self.current_runtime_env
 

@@ -59,14 +59,12 @@ struct TaskOptions {
   TaskOptions(std::string name, int num_returns,
               std::unordered_map<std::string, double> &resources,
               const std::string &concurrency_group_name = "",
-              const std::string &serialized_runtime_env = "{}",
-              const std::vector<std::string> &runtime_env_uris = {})
+              const std::string &serialized_runtime_env = "{}")
       : name(name),
         num_returns(num_returns),
         resources(resources),
         concurrency_group_name(concurrency_group_name),
-        serialized_runtime_env(serialized_runtime_env),
-        runtime_env_uris(runtime_env_uris) {}
+        serialized_runtime_env(serialized_runtime_env) {}
 
   /// The name of this task.
   std::string name;
@@ -78,8 +76,6 @@ struct TaskOptions {
   std::string concurrency_group_name;
   // Runtime Env used by this task. Propagated to child actors and tasks.
   std::string serialized_runtime_env;
-  // URIs contained in the runtime_env.
-  std::vector<std::string> runtime_env_uris;
 };
 
 /// Options for actor creation tasks.
@@ -93,8 +89,8 @@ struct ActorCreationOptions {
       std::string &name, std::string &ray_namespace, bool is_asyncio,
       const rpc::SchedulingStrategy &scheduling_strategy = rpc::SchedulingStrategy(),
       const std::string &serialized_runtime_env = "{}",
-      const std::vector<std::string> &runtime_env_uris = {},
-      const std::vector<ConcurrencyGroup> &concurrency_groups = {})
+      const std::vector<ConcurrencyGroup> &concurrency_groups = {},
+      bool execute_out_of_order = false)
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -106,8 +102,8 @@ struct ActorCreationOptions {
         ray_namespace(ray_namespace),
         is_asyncio(is_asyncio),
         serialized_runtime_env(serialized_runtime_env),
-        runtime_env_uris(runtime_env_uris),
         concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()),
+        execute_out_of_order(execute_out_of_order),
         scheduling_strategy(scheduling_strategy){};
 
   /// Maximum number of times that the actor should be restarted if it dies
@@ -142,11 +138,11 @@ struct ActorCreationOptions {
   const bool is_asyncio = false;
   // Runtime Env used by this actor.  Propagated to child actors and tasks.
   std::string serialized_runtime_env;
-  // URIs contained in the runtime_env.
-  std::vector<std::string> runtime_env_uris;
   /// The actor concurrency groups to indicate how this actor perform its
   /// methods concurrently.
   const std::vector<ConcurrencyGroup> concurrency_groups;
+  /// Wether the actor execute tasks out of order.
+  const bool execute_out_of_order = false;
   // The strategy about how to schedule this actor.
   rpc::SchedulingStrategy scheduling_strategy;
 };

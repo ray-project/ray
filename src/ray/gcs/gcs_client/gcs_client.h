@@ -222,6 +222,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   // Gcs rpc client
   std::shared_ptr<rpc::GcsRpcClient> gcs_rpc_client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+  std::atomic<bool> disconnected_ = false;
 
   // The runner to run function periodically.
   std::unique_ptr<PeriodicalRunner> periodical_runner_;

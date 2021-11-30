@@ -11,8 +11,7 @@ from ray._private.client_mode_hook import client_mode_convert_function
 from ray._private.client_mode_hook import client_mode_should_convert
 from ray.util.placement_group import configure_placement_group_based_on_context
 import ray._private.signature
-from ray._private.runtime_env.validation import (
-    override_task_or_actor_runtime_env, ParsedRuntimeEnv)
+from ray._private.runtime_env.validation import ParsedRuntimeEnv
 from ray.util.tracing.tracing_helper import (_tracing_task_invocation,
                                              _inject_tracing_into_function)
 
@@ -112,7 +111,14 @@ class RemoteFunction:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        self._runtime_env = ParsedRuntimeEnv(runtime_env or {})
+        if runtime_env:
+            if isinstance(runtime_env, str):
+                self._runtime_env = runtime_env
+            else:
+                self._runtime_env = ParsedRuntimeEnv(runtime_env
+                                                     or {}).serialize()
+        else:
+            self._runtime_env = None
         self._placement_group = placement_group
         self._decorator = getattr(function, "__ray_invocation_decorator__",
                                   None)
@@ -174,13 +180,17 @@ class RemoteFunction:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        if runtime_env is not None:
-            new_runtime_env = ParsedRuntimeEnv(runtime_env)
+        if runtime_env:
+            if isinstance(runtime_env, str):
+                # Serialzed protobuf runtime env from Ray client.
+                new_runtime_env = runtime_env
+            else:
+                new_runtime_env = ParsedRuntimeEnv(runtime_env).serialize()
         else:
             # Keep the runtime_env as None.  In .remote(), we need to know if
             # runtime_env is None to know whether or not to fall back to the
             # runtime_env specified in the @ray.remote decorator.
-            new_runtime_env = runtime_env
+            new_runtime_env = None
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
@@ -327,16 +337,8 @@ class RemoteFunction:
                 placement_group, placement_group_bundle_index,
                 placement_group_capture_child_tasks)
 
-        if runtime_env and not isinstance(runtime_env, ParsedRuntimeEnv):
-            runtime_env = ParsedRuntimeEnv(runtime_env)
-        elif isinstance(runtime_env, ParsedRuntimeEnv):
-            pass
-        else:
+        if not runtime_env or runtime_env == "{}":
             runtime_env = self._runtime_env
-
-        parent_runtime_env = worker.core_worker.get_current_runtime_env()
-        parsed_runtime_env = override_task_or_actor_runtime_env(
-            runtime_env, parent_runtime_env)
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -354,8 +356,8 @@ class RemoteFunction:
             object_refs = worker.core_worker.submit_task(
                 self._language, self._function_descriptor, list_args, name,
                 num_returns, resources, max_retries, retry_exceptions,
-                scheduling_strategy, worker.debugger_breakpoint,
-                parsed_runtime_env.serialize(), parsed_runtime_env.get_uris())
+                scheduling_strategy,
+                worker.debugger_breakpoint, runtime_env or "{}")
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
             worker.debugger_breakpoint = b""

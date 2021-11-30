@@ -124,9 +124,10 @@ class TaskSpecBuilder {
         required_placement_resources.begin(), required_placement_resources.end());
     message_->set_debugger_breakpoint(debugger_breakpoint);
     message_->set_depth(depth);
-    message_->mutable_runtime_env()->set_serialized_runtime_env(serialized_runtime_env);
+    message_->mutable_runtime_env_info()->set_serialized_runtime_env(
+        serialized_runtime_env);
     for (const std::string &uri : runtime_env_uris) {
-      message_->mutable_runtime_env()->add_uris(uri);
+      message_->mutable_runtime_env_info()->add_uris(uri);
     }
     message_->set_concurrency_group_name(concurrency_group_name);
     return *this;
@@ -178,7 +179,7 @@ class TaskSpecBuilder {
       int max_concurrency = 1, bool is_detached = false, std::string name = "",
       std::string ray_namespace = "", bool is_asyncio = false,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      const std::string &extension_data = "",
+      const std::string &extension_data = "", bool execute_out_of_order = false,
       const rpc::SchedulingStrategy &scheduling_strategy = rpc::SchedulingStrategy()) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
@@ -205,6 +206,7 @@ class TaskSpecBuilder {
         *fd = item->GetMessage();
       }
     }
+    actor_creation_spec->set_execute_out_of_order(execute_out_of_order);
     message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
     return *this;
   }

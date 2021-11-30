@@ -864,24 +864,25 @@ std::string GcsPlacementGroupManager::DebugString() const {
     num_pgs += it.second.size();
   }
   std::ostringstream stream;
-  stream << "GcsPlacementGroupManager: {CreatePlacementGroup request count: "
+  stream << "GcsPlacementGroupManager: "
+         << "\n- CreatePlacementGroup request count: "
          << counts_[CountType::CREATE_PLACEMENT_GROUP_REQUEST]
-         << ", RemovePlacementGroup request count: "
+         << "\n- RemovePlacementGroup request count: "
          << counts_[CountType::REMOVE_PLACEMENT_GROUP_REQUEST]
-         << ", GetPlacementGroup request count: "
+         << "\n- GetPlacementGroup request count: "
          << counts_[CountType::GET_PLACEMENT_GROUP_REQUEST]
-         << ", GetAllPlacementGroup request count: "
+         << "\n- GetAllPlacementGroup request count: "
          << counts_[CountType::GET_ALL_PLACEMENT_GROUP_REQUEST]
-         << ", WaitPlacementGroupUntilReady request count: "
+         << "\n- WaitPlacementGroupUntilReady request count: "
          << counts_[CountType::WAIT_PLACEMENT_GROUP_UNTIL_READY_REQUEST]
-         << ", GetNamedPlacementGroup request count: "
+         << "\n- GetNamedPlacementGroup request count: "
          << counts_[CountType::GET_NAMED_PLACEMENT_GROUP_REQUEST]
-         << ", Scheduling pending placement group count: "
+         << "\n- Scheduling pending placement group count: "
          << counts_[CountType::SCHEDULING_PENDING_PLACEMENT_GROUP]
-         << ", Registered placement groups count: " << registered_placement_groups_.size()
-         << ", Named placement group count: " << num_pgs
-         << ", Pending placement groups count: " << pending_placement_groups_.size()
-         << "}";
+         << "\n- Registered placement groups count: "
+         << registered_placement_groups_.size()
+         << "\n- Named placement group count: " << num_pgs
+         << "\n- Pending placement groups count: " << pending_placement_groups_.size();
   return stream.str();
 }
 

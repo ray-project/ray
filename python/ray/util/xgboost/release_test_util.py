@@ -60,6 +60,17 @@ class TrackingCallback(TrainingCallback):
         put_queue(get_world_size())
 
 
+def get_parquet_files(path, num_files=0):
+    path = os.path.expanduser(path)
+    if not os.path.exists(path):
+        raise ValueError(f"Path does not exist: {path}")
+
+    files = sorted(glob.glob(f"{path}/**/*.parquet"))
+    while num_files > len(files):
+        files = files + files
+    return files[0:num_files]
+
+
 def train_ray(path,
               num_workers,
               num_boost_rounds,
@@ -69,15 +80,8 @@ def train_ray(path,
               ray_params=None,
               xgboost_params=None,
               **kwargs):
-    path = os.path.expanduser(path)
-    if not os.path.exists(path):
-        raise ValueError(f"Path does not exist: {path}")
-
-    if num_files:
-        files = sorted(glob.glob(f"{path}/**/*.parquet"))
-        while num_files > len(files):
-            files = files + files
-        path = files[0:num_files]
+    if not isinstance(path, list):
+        path = get_parquet_files(path, num_files=num_files)
 
     use_device_matrix = False
     if use_gpu:
