@@ -23,10 +23,10 @@ import ray._private.services
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
+from ray.core.generated import gcs_pb2
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
-from ray.core.generated import gcs_pb2
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsSubscriber
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsErrorSubscriber
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray.util.queue import Queue, _QueueActor, Empty
 from ray.scripts.scripts import main as ray_main
@@ -513,9 +513,9 @@ def get_non_head_nodes(cluster):
 def init_error_pubsub():
     """Initialize redis error info pub/sub"""
     if gcs_pubsub_enabled():
-        s = GcsSubscriber(
+        s = GcsErrorSubscriber(
             channel=ray.worker.global_worker.gcs_channel.channel())
-        s.subscribe_error()
+        s.subscribe()
     else:
         s = ray.worker.global_worker.redis_client.pubsub(
             ignore_subscribe_messages=True)
@@ -532,17 +532,11 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
     deadline = time.time() + timeout
     msgs = []
     while time.time() < deadline and len(msgs) < num:
-        if isinstance(subscriber, GcsSubscriber):
-            try:
-                _, error_data = subscriber.poll_error(timeout=deadline -
-                                                      time.time())
-            except grpc.RpcError as e:
-                # Failed to match error message before timeout.
-                if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
-                    logging.warning("get_error_message() timed out")
-                    return []
-                # Otherwise, the error is unexpected.
-                raise
+        if isinstance(subscriber, GcsErrorSubscriber):
+            _, error_data = subscriber.poll(timeout=deadline - time.time())
+            if not error_data:
+                # Timed out before any data is received.
+                break
         else:
             msg = subscriber.get_message()
             if msg is None:
