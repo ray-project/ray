@@ -45,17 +45,17 @@ class RayObject {
     Init(data, metadata, nested_refs, copy_data);
   }
 
-  /// Create a Ray error object. It uses msgpack for the serialization format now.
-  /// Ray error object consists of metadata that indicates the error code (check
+  /// Create an Ray error object. It uses msgpack for the serialization format now.
+  /// Ray error objects consist of metadata that indicates the error code (see
   /// rpc::ErrorType) and the serialized message pack that contains serialized
   /// rpc::RayErrorInfo as a body.
   ///
   /// NOTE: There's no reason to have outer-side message pack for serialization (it is
   /// tech debt).
-  /// TODO: Clean this up.
+  /// TODO(sang): Clean this up.
   ///
   /// NOTE: The deserialization side needs to have its own corresponding deserializer.
-  /// Look `serialization.py's def _deserialize_msgpack_data`.
+  /// See `serialization.py's def _deserialize_msgpack_data`.
   ///
   /// \param[in] error_type Error type.
   /// \param[in] ray_error_info The error information that this object body contains.
