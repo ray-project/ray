@@ -1,8 +1,7 @@
 import collections
 import random
 import heapq
-from typing import Dict, List, Union, Tuple, Any, TypeVar, Optional, \
-    TYPE_CHECKING
+from typing import Dict, List, Tuple, Any, TypeVar, Optional, TYPE_CHECKING
 
 import numpy as np
 
@@ -152,10 +151,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         if self._table.num_rows == 0:
             # If the pyarrow table is empty we may not have schema
             # so calling sort_indices() will raise an error.
-            return [
-                self._empty_table()
-                for _ in range(len(boundaries) + 1)
-            ]
+            return [self._empty_table() for _ in range(len(boundaries) + 1)]
 
         import pyarrow.compute as pac
 

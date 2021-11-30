@@ -1,5 +1,4 @@
-from typing import Dict, List, Union, Tuple, Any, TypeVar, Optional, \
-    TYPE_CHECKING
+from typing import Dict, List, Tuple, Any, TypeVar, Optional, TYPE_CHECKING
 
 import collections
 import numpy as np
@@ -67,7 +66,8 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
 
 # This is to be compatible with pyarrow.lib.schema
 # TODO (kfstorm): We need a format-independent way to represent schema.
-PandasBlockSchema = collections.namedtuple("PandasBlockSchema", ["names", "types"])
+PandasBlockSchema = collections.namedtuple("PandasBlockSchema",
+                                           ["names", "types"])
 
 
 class PandasBlockAccessor(TableBlockAccessor):

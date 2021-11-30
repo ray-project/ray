@@ -957,12 +957,13 @@ class Dataset(Generic[T]):
                                        and isinstance(on[0], str)):
                 raise ValueError(
                     "Can't aggregate on a column when using a simple Dataset; "
-                    "use a callable `on` argument or use an Arrow or Pandas Dataset "
-                    "instead of a simple Dataset.")
+                    "use a callable `on` argument or use an Arrow or Pandas"
+                    " Dataset instead of a simple Dataset.")
         return on
 
-    def _dataset_format(self) -> bool:
-        """Determine the format of the dataset. Possible values are: "arrow", "pandas", "simple".
+    def _dataset_format(self) -> str:
+        """Determine the format of the dataset. Possible values are: "arrow",
+        "pandas", "simple".
 
         This may block; if the schema is unknown, this will synchronously fetch
         the schema for the first block.
@@ -972,7 +973,8 @@ class Dataset(Generic[T]):
         schema = self.schema(fetch_if_missing=True)
         if schema is None:
             raise ValueError(
-                "Dataset is empty or cleared, can't determine the format of the dataset")
+                "Dataset is empty or cleared, can't determine the format of"
+                " the dataset")
 
         try:
             import pyarrow as pa
@@ -2156,10 +2158,10 @@ class Dataset(Generic[T]):
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
         """Convert this dataset into a single Pandas DataFrame.
 
-        This is only supported for datasets convertible to Arrow or Pandas records. An
-        error is raised if the number of records exceeds the provided limit.
-        Note that you can use ``.limit()`` on the dataset beforehand to
-        truncate the dataset manually.
+        This is only supported for datasets convertible to Arrow or Pandas
+        records. An error is raised if the number of records exceeds the
+        provided limit. Note that you can use ``.limit()`` on the dataset
+        beforehand to truncate the dataset manually.
 
         Time complexity: O(dataset size)
 
