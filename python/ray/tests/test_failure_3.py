@@ -23,21 +23,21 @@ def test_worker_exit_after_parent_raylet_dies(ray_start_cluster):
 
     @ray.remote(resources={"foo": 1})
     class Actor():
-        def getpid(self):
+        def get_worker_pid(self):
             return os.getpid()
 
-        def getppid(self):
-            return os.getppid()
+        def get_raylet_pid(self):
+            return int(os.environ["RAY_RAYLET_PID"])
 
     actor = Actor.remote()
-    pid = ray.get(actor.getpid.remote())
-    ppid = ray.get(actor.getppid.remote())
+    worker_pid = ray.get(actor.get_worker_pid.remote())
+    raylet_pid = ray.get(actor.get_raylet_pid.remote())
     # Kill the parent raylet.
-    os.kill(ppid, SIGKILL)
-    os.waitpid(ppid, 0)
-    wait_for_pid_to_exit(ppid)
+    os.kill(raylet_pid, SIGKILL)
+    os.waitpid(raylet_pid, 0)
+    wait_for_pid_to_exit(raylet_pid)
     # Make sure the worker process exits as well.
-    wait_for_pid_to_exit(pid)
+    wait_for_pid_to_exit(worker_pid)
 
 
 @pytest.mark.parametrize(
