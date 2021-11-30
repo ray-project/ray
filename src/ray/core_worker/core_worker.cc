@@ -236,7 +236,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   if (options_.worker_type == WorkerType::WORKER) {
     periodical_runner_.RunFnPeriodically(
-        [this] { CheckForRayletFailure(); },
+        [this] { ExitIfParentRayletDies(); },
         RayConfig::instance().raylet_death_check_interval_milliseconds());
   }
 
@@ -668,23 +668,17 @@ void CoreWorker::RegisterToGcs() {
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
 
-void CoreWorker::CheckForRayletFailure() {
-  auto env_pid = RayConfig::instance().RAYLET_PID();
-  bool should_shutdown = IsRayletFailed(env_pid);
+void CoreWorker::ExitIfParentRayletDies() {
+  RAY_CHECK(options_.worker_type == WorkerType::WORKER);
+  RAY_CHECK(!RayConfig::instance().RAYLET_PID().empty());
+  auto raylet_pid = static_cast<pid_t>(std::stoi(RayConfig::instance().RAYLET_PID()));
+  bool should_shutdown = !IsProcessAlive(raylet_pid);
   if (should_shutdown) {
     std::ostringstream stream;
     stream << "Shutting down the core worker because the local raylet failed. "
-           << "Check out the raylet.out log file.";
-    if (!env_pid.empty()) {
-      auto pid = static_cast<pid_t>(std::stoi(env_pid));
-      stream << " Raylet pid: " << pid;
-    }
+           << "Check out the raylet.out log file. Raylet pid: " << raylet_pid;
     RAY_LOG(WARNING) << stream.str();
-    if (options_.worker_type == WorkerType::WORKER) {
-      task_execution_service_.post([this]() { Shutdown(); }, "CoreWorker.Shutdown");
-    } else {
-      Shutdown();
-    }
+    task_execution_service_.post([this]() { Shutdown(); }, "CoreWorker.Shutdown");
   }
 }
 
@@ -1534,7 +1528,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       task_options.serialized_runtime_env);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions);
   TaskSpecification task_spec = builder.Build();
-  RAY_LOG(DEBUG) << "Submit task " << task_spec.DebugString();
+  RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
     returned_refs = ExecuteTaskLocalMode(task_spec);
@@ -1619,6 +1613,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
+  RAY_LOG(DEBUG) << "Submitting actor creation task " << task_spec.DebugString();
   if (options_.is_local_mode) {
     // TODO(suquark): Should we consider namespace in local mode? Currently
     // it looks like two actors with two different namespaces become the
@@ -1796,6 +1791,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
 
   // Submit task.
   TaskSpecification task_spec = builder.Build();
+  RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
   std::vector<rpc::ObjectReference> returned_refs;
   if (options_.is_local_mode) {
     returned_refs = ExecuteTaskLocalMode(task_spec, actor_id);

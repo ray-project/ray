@@ -28,7 +28,7 @@ import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher, \
-    GcsSubscriber
+    GcsErrorSubscriber
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
@@ -1266,7 +1266,7 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
     # gcs_subscriber.poll_error() will still be processed in the loop.
 
     # TODO: we should just subscribe to the errors for this specific job.
-    worker.gcs_subscriber.subscribe_error()
+    worker.gcs_error_subscriber.subscribe()
 
     try:
         if _internal_kv_initialized():
@@ -1281,7 +1281,7 @@ def listen_error_messages_from_gcs(worker, threads_stopped):
             if threads_stopped.is_set():
                 return
 
-            _, error_data = worker.gcs_subscriber.poll_error()
+            _, error_data = worker.gcs_error_subscriber.poll()
             if error_data is None:
                 continue
             if error_data.job_id not in [
@@ -1371,7 +1371,7 @@ def connect(node,
     if worker.gcs_pubsub_enabled:
         worker.gcs_publisher = GcsPublisher(
             channel=worker.gcs_channel.channel())
-        worker.gcs_subscriber = GcsSubscriber(
+        worker.gcs_error_subscriber = GcsErrorSubscriber(
             channel=worker.gcs_channel.channel())
 
     # Initialize some fields.
@@ -1575,8 +1575,8 @@ def disconnect(exiting_interpreter=False):
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
         worker.threads_stopped.set()
-        if hasattr(worker, "gcs_subscriber"):
-            worker.gcs_subscriber.close()
+        if hasattr(worker, "gcs_error_subscriber"):
+            worker.gcs_error_subscriber.close()
         if hasattr(worker, "import_thread"):
             worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
