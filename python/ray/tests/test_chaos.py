@@ -127,27 +127,24 @@ def test_chaos_actor_retry(ray_start_chaos_cluster):
 def test_chaos_defer(monkeypatch, ray_start_cluster):
     with monkeypatch.context() as m:
         m.setenv("RAY_grpc_based_resource_broadcast", "true")
-        # defer for 100s
+        # defer for 3s
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "NodeResourceInfoGcsService.grpc_client.UpdateResources"
-            "=100000000:100000000")
+            "NodeManagerService.grpc_client.PrepareBundleResources"
+            "=2000000:2000000")
         m.setenv("RAY_event_stats", "true")
         cluster = ray_start_cluster
-        cluster.add_node(num_cpus=16, object_store_memory=1e9)
+        cluster.add_node(num_cpus=1, object_store_memory=1e9)
         cluster.wait_for_nodes()
-        ray.init(address="auto") # this will connect to gpu nodes
-        cluster.add_node(num_cpus=16, num_gpus=1)
-
+        ray.init(address="auto")  # this will connect to gpu nodes
+        cluster.add_node(num_cpus=0, num_gpus=1)
         bundle = [{"GPU": 1}, {"CPU": 1}]
         pg = placement_group(bundle)
+        # PG will not be ready within 3s
+        with pytest.raises(ray.exceptions.GetTimeoutError):
+            ray.get(pg.ready(), timeout=1)
+        # it'll be ready eventually
         ray.get(pg.ready())
-
-        @ray.remote
-        def g():
-            return "g"
-
-        print(ray.get([g.options(placement_group=pg).remote()]))
 
 
 if __name__ == "__main__":
