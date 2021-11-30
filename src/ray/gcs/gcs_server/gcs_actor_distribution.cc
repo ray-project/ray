@@ -181,7 +181,6 @@ void GcsBasedActorScheduler::HandleWorkerLeaseReply(
           << actor->GetActorID()
           << " has been already cancelled. The response will be ignored. Job id = "
           << actor->GetActorID().JobId();
-      ResetActorWorkerAssignment(actor.get());
       return;
     }
 
@@ -193,6 +192,7 @@ void GcsBasedActorScheduler::HandleWorkerLeaseReply(
         // reschedule the actor, so it return directly here.
         RAY_LOG(DEBUG) << "Actor " << actor->GetActorID()
                        << " creation task has been cancelled.";
+        ResetActorWorkerAssignment(actor.get());
         return;
       }
       // Remove the actor from the leasing map as the reply is returned from the
