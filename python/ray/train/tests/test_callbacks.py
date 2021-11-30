@@ -157,6 +157,7 @@ def test_TBX(ray_start_4_cpus, make_temp_dir):
 
     _validate_tbx_result(temp_dir)
 
+
 def test_mlflow(ray_start_4_cpus, make_temp_dir):
     config = TestConfig()
 
@@ -203,6 +204,7 @@ def test_mlflow(ray_start_4_cpus, make_temp_dir):
     assert iterations == [1, 2, 3]
     rewards = [metric.value for metric in metric_history]
     assert rewards == [4, 5, 6]
+
 
 if __name__ == "__main__":
     import pytest
