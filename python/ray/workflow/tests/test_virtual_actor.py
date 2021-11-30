@@ -48,7 +48,9 @@ def init_virtual_actor(x):
 @pytest.mark.parametrize(
     "workflow_start_regular",
     [{
-        "num_cpus": 16  # We need more CPUs, otherwise 'create()' blocks 'get()'
+        # We need more CPUs, otherwise 'create()' blocks 'get()', and task
+        # execution suffers from worker capping.
+        "num_cpus": 16
     }],
     indirect=True)
 def test_readonly_actor(workflow_start_regular):
