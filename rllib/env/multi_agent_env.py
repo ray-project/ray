@@ -1,10 +1,10 @@
 import gym
-from typing import Callable, Dict, List, Tuple, Type, Union
+from typing import Callable, Dict, List, Tuple, Type, Optional, Union
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.annotations import ExperimentalAPI, override, PublicAPI
-from ray.rllib.utils.typing import AgentID, EnvType, MultiAgentDict, \
+from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, \
     MultiEnvDict
 
 # If the obs space is Dict type, look for the global state under this key.
@@ -225,7 +225,7 @@ class MultiAgentEnvWrapper(BaseEnv):
     """
 
     def __init__(self, make_env: Callable[[int], EnvType],
-                 existing_envs: List["MultiAgentEnv"], num_envs: int):
+                 existing_envs: MultiAgentEnv, num_envs: int):
         """Wraps MultiAgentEnv(s) into the BaseEnv API.
 
         Args:
@@ -277,6 +277,26 @@ class MultiAgentEnvWrapper(BaseEnv):
             if dones["__all__"]:
                 self.dones.add(env_id)
             self.env_states[env_id].observe(obs, rewards, dones, infos)
+
+    @override(BaseEnv)
+    def try_reset(self,
+                  env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
+        obs = self.env_states[env_id].reset()
+        assert isinstance(obs, dict), "Not a multi-agent obs"
+        if obs is not None and env_id in self.dones:
+            self.dones.remove(env_id)
+        return obs
+
+    @override(BaseEnv)
+    def get_sub_environments(self) -> List[EnvType]:
+        return [state.env for state in self.env_states]
+
+    @override(BaseEnv)
+    def try_render(self, env_id: Optional[EnvID] = None) -> None:
+        if env_id is None:
+            env_id = 0
+        assert isinstance(env_id, int)
+        return self.envs[env_id].render()
 
 
 class _MultiAgentEnvState:
