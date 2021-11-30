@@ -600,6 +600,7 @@ class RayTrialExecutor(TrialExecutor):
 
     def _find_item(self, dictionary, item):
         out = [rid for rid, t in dictionary.items() if t is item]
+        assert len(out) <= 1
         return out
 
     def stop_trial(self,
