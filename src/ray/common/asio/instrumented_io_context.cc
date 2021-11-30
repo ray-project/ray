@@ -91,9 +91,9 @@ void instrumented_io_context::post(std::function<void()> handler,
 
 void instrumented_io_context::post(std::function<void()> handler,
                                    std::shared_ptr<StatsHandle> stats_handle) {
-  size_t defer_ms = 0;
+  size_t defer_us = 0;
   if (stats_handle) {
-    defer_ms = ray::asio::testing::get_delay_ms(stats_handle->handler_name);
+    defer_us = ray::asio::testing::get_delay_us(stats_handle->handler_name);
   }
   if (RayConfig::instance().event_stats()) {
     // Reset the handle start time, so that we effectively measure the queueing
@@ -104,7 +104,7 @@ void instrumented_io_context::post(std::function<void()> handler,
       RecordExecution(handler, std::move(stats_handle));
     };
   }
-  if (defer_ms == 0) {
+  if (defer_us == 0) {
     return boost::asio::io_context::post(std::move(handler));
   } else {
     execute_after_us(*this, std::move(handler), defer_us);
