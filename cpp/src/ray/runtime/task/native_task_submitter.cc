@@ -60,7 +60,7 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
           bundle_id.first.Binary());
       placement_group_scheduling_strategy->set_placement_group_bundle_index(
           bundle_id.second);
-      placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(true);
+      placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
     }
     return_refs = core_worker.SubmitTask(BuildRayFunction(invocation), invocation.args,
                                          options, 1, false, scheduling_strategy, "");
@@ -94,7 +94,7 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
     placement_group_scheduling_strategy->set_placement_group_id(bundle_id.first.Binary());
     placement_group_scheduling_strategy->set_placement_group_bundle_index(
         bundle_id.second);
-    placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(true);
+    placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
   ray::core::ActorCreationOptions actor_options{create_options.max_restarts,
                                                 /*max_task_retries=*/0,
