@@ -356,8 +356,8 @@ class RemoteFunction:
             object_refs = worker.core_worker.submit_task(
                 self._language, self._function_descriptor, list_args, name,
                 num_returns, resources, max_retries, retry_exceptions,
-                scheduling_strategy,
-                worker.debugger_breakpoint, runtime_env or "{}")
+                scheduling_strategy, worker.debugger_breakpoint, runtime_env
+                or "{}")
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
             worker.debugger_breakpoint = b""

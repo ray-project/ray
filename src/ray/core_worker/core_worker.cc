@@ -1502,9 +1502,8 @@ void CoreWorker::BuildCommonTaskSpec(
   builder.SetCommonTaskSpec(
       task_id, name, function.GetLanguage(), function.GetFunctionDescriptor(), job_id,
       current_task_id, task_index, caller_id, address, num_returns, required_resources,
-      required_placement_resources,
-      debugger_breakpoint, depth, override_runtime_env, runtime_env_uris,
-      concurrency_group_name);
+      required_placement_resources, debugger_breakpoint, depth, override_runtime_env,
+      runtime_env_uris, concurrency_group_name);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -1533,9 +1532,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   BuildCommonTaskSpec(builder, worker_context_.GetCurrentJobID(), task_id, task_name,
                       worker_context_.GetCurrentTaskID(), next_task_index, GetCallerId(),
                       rpc_address_, function, args, task_options.num_returns,
-                      constrained_resources, required_resources,
-                      debugger_breakpoint, depth,
-                      task_options.serialized_runtime_env);
+                      constrained_resources, required_resources, debugger_breakpoint,
+                      depth, task_options.serialized_runtime_env);
   builder.SetNormalTaskSpec(max_retries, retry_exceptions, scheduling_strategy);
   TaskSpecification task_spec = builder.Build();
   RAY_LOG(DEBUG) << "Submitting normal task " << task_spec.DebugString();
