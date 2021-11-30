@@ -95,10 +95,15 @@ CORE_NIGHTLY_TESTS = {
         "shuffle_data_loader",
         "pipelined_training_50_gb",
         "pipelined_ingestion_1500_gb_15_windows",
+        "datasets_preprocess_ingest",
+        SmokeTest("datasets_ingest_train_infer"),
     ],
     "~/ray/release/nightly_tests/chaos_test.yaml": [
         "chaos_many_actors",
         "chaos_many_tasks_no_object_store",
+    ],
+    "~/ray/release/microbenchmark/microbenchmark.yaml": [
+        "microbenchmark",
     ],
 }
 
@@ -115,6 +120,31 @@ SERVE_NIGHTLY_TESTS = {
     ],
 }
 
+CORE_DAILY_TESTS = {
+    "~/ray/release/nightly_tests/nightly_tests.yaml": [
+        "dask_on_ray_large_scale_test_no_spilling",
+        "dask_on_ray_large_scale_test_spilling",
+        "pg_autoscaling_regression_test",
+        "threaded_actors_stress_test",
+        "stress_test_many_tasks",
+        "stress_test_dead_actors",
+        "many_nodes_actor_test",
+    ],
+    "~/ray/release/nightly_tests/chaos_test.yaml": [
+        "chaos_dask_on_ray_large_scale_test_no_spilling",
+        "chaos_dask_on_ray_large_scale_test_spilling",
+    ],
+}
+
+CORE_SCALABILITY_TESTS_DAILY = {
+    "~/ray/benchmarks/benchmark_tests.yaml": [
+        "many_actors",
+        "many_tasks",
+        "many_pgs",
+        "many_nodes",
+    ],
+}
+
 NIGHTLY_TESTS = {
     # "~/ray/release/horovod_tests/horovod_tests.yaml": [
     #     SmokeTest("horovod_test"),
@@ -123,13 +153,6 @@ NIGHTLY_TESTS = {
         "dask_xgboost_test",
         "modin_xgboost_test",
         "torch_tune_serve_test",
-    ],
-    "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        "dask_on_ray_large_scale_test_no_spilling",
-        "dask_on_ray_large_scale_test_spilling",
-        "pg_autoscaling_regression_test",
-        "threaded_actors_stress_test",
-        "many_nodes_actor_test",
     ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("actor_deaths"),
@@ -145,13 +168,6 @@ NIGHTLY_TESTS = {
         # SmokeTest("serve"),
         # SmokeTest("serve_failure"),
     ],
-    "~/ray/release/nightly_tests/chaos_test.yaml": [
-        "chaos_dask_on_ray_large_scale_test_no_spilling",
-        "chaos_dask_on_ray_large_scale_test_spilling",
-    ],
-    "~/ray/release/microbenchmark/microbenchmark.yaml": [
-        "microbenchmark",
-    ],
     "~/ray/release/sgd_tests/sgd_tests.yaml": [
         "sgd_gpu",
     ],
@@ -159,8 +175,8 @@ NIGHTLY_TESTS = {
         "aws_no_sync_down",
         "aws_ssh_sync",
         "aws_durable_upload",
-        # "aws_durable_upload_rllib_str",
-        # "aws_durable_upload_rllib_trainer",
+        "aws_durable_upload_rllib_str",
+        "aws_durable_upload_rllib_trainer",
         "gcp_k8s_durable_upload",
     ],
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
@@ -199,16 +215,6 @@ NIGHTLY_TESTS = {
 }
 
 WEEKLY_TESTS = {
-    "~/ray/benchmarks/benchmark_tests.yaml": [
-        "many_actors",
-        "many_tasks",
-        "many_pgs",
-        "many_nodes",
-    ],
-    "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        "stress_test_many_tasks",
-        "stress_test_dead_actors",
-    ],
     "~/ray/release/horovod_tests/horovod_tests.yaml": [
         "horovod_test",
     ],
@@ -261,6 +267,8 @@ USER_TESTS = {
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
     "serve-nightly": SERVE_NIGHTLY_TESTS,
+    "core-daily": CORE_DAILY_TESTS,
+    "core-scalability": CORE_SCALABILITY_TESTS_DAILY,
     "nightly": {
         **NIGHTLY_TESTS,
         **USER_TESTS

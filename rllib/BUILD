@@ -1222,6 +1222,13 @@ py_test(
 )
 
 py_test(
+    name = "policy/tests/test_rnn_sequencing",
+    tags = ["team:ml", "policy"],
+    size = "small",
+    srcs = ["policy/tests/test_rnn_sequencing.py"]
+)
+
+py_test(
     name = "policy/tests/test_sample_batch",
     tags = ["team:ml", "policy"],
     size = "small",
@@ -1485,6 +1492,13 @@ py_test(
     tags = ["team:ml", "tests_dir", "tests_dir_N"],
     size = "medium",
     srcs = ["tests/test_nested_observation_spaces.py"]
+)
+
+py_test(
+    name = "tests/test_nn_framework_import_errors",
+    tags = ["team:ml", "tests_dir", "tests_dir_N"],
+    size = "small",
+    srcs = ["tests/test_nn_framework_import_errors.py"]
 )
 
 py_test(
@@ -2710,8 +2724,16 @@ py_test(
 #
 # Tag: documentation
 #
-# NOTE: Add tests alphabetically into this list.
+# NOTE: Add tests alphabetically to this list.
 # --------------------------------------------------------------------
+
+py_test(
+    name = "examples/documentation/custom_gym_env",
+    main = "examples/documentation/custom_gym_env.py",
+    tags = ["team:ml", "documentation"],
+    size = "medium",
+    srcs = ["examples/documentation/custom_gym_env.py"],
+)
 
 py_test(
     name = "examples/documentation/rllib_in_60s",
@@ -2719,4 +2741,20 @@ py_test(
     tags = ["team:ml", "documentation"],
     size = "medium",
     srcs = ["examples/documentation/rllib_in_60s.py"],
+)
+
+py_test(
+    name = "examples/documentation/rllib_on_ray_readme",
+    main = "examples/documentation/rllib_on_ray_readme.py",
+    tags = ["team:ml", "documentation"],
+    size = "medium",
+    srcs = ["examples/documentation/rllib_on_ray_readme.py"],
+)
+
+py_test(
+    name = "examples/documentation/rllib_on_rllib_readme",
+    main = "examples/documentation/rllib_on_rllib_readme.py",
+    tags = ["team:ml", "documentation"],
+    size = "medium",
+    srcs = ["examples/documentation/rllib_on_rllib_readme.py"],
 )

@@ -37,6 +37,8 @@ class ImportThread:
         self.gcs_client = worker.gcs_client
         self.threads_stopped = threads_stopped
         self.imported_collision_identifiers = defaultdict(int)
+        # Keep track of the number of imports that we've imported.
+        self.num_imported = 0
 
     def start(self):
         """Start the import thread."""
@@ -56,16 +58,9 @@ class ImportThread:
         # import_pubsub_client.subscribe and before the call to
         # import_pubsub_client.listen will still be processed in the loop.
         import_pubsub_client.subscribe("__keyspace@0__:Exports")
-        # Keep track of the number of imports that we've imported.
-        num_imported = 0
 
         try:
-            # Get the exports that occurred before the call to subscribe.
-            export_keys = self.redis_client.lrange("Exports", 0, -1)
-            for key in export_keys:
-                num_imported += 1
-                self._process_key(key)
-
+            self._do_importing()
             while True:
                 # Exit if we received a signal that we should stop.
                 if self.threads_stopped.is_set():
@@ -75,21 +70,26 @@ class ImportThread:
                 if msg is None:
                     self.threads_stopped.wait(timeout=0.01)
                     continue
-
                 if msg["type"] == "subscribe":
                     continue
-                assert msg["data"] == b"rpush"
-                num_imports = self.redis_client.llen("Exports")
-                assert num_imports >= num_imported
-                for i in range(num_imported, num_imports):
-                    num_imported += 1
-                    key = self.redis_client.lindex("Exports", i)
-                    self._process_key(key)
+                self._do_importing()
         except (OSError, redis.exceptions.ConnectionError, grpc.RpcError) as e:
             logger.error(f"ImportThread: {e}")
         finally:
             # Close the pubsub client to avoid leaking file descriptors.
             import_pubsub_client.close()
+
+    def _do_importing(self):
+        while True:
+            export_key = ray._private.function_manager.make_export_key(
+                self.num_imported + 1)
+            key = self.gcs_client.internal_kv_get(
+                export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
+            if key is not None:
+                self._process_key(key)
+                self.num_imported += 1
+            else:
+                break
 
     def _get_import_info_for_collision_detection(self, key):
         """Retrieve the collision identifier, type, and name of the import."""

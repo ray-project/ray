@@ -14,8 +14,7 @@ from typing import Optional, Type
 
 from ray.rllib.agents.dqn.simple_q_tf_policy import SimpleQTFPolicy
 from ray.rllib.agents.dqn.simple_q_torch_policy import SimpleQTorchPolicy
-from ray.rllib.agents.trainer import with_common_config
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer import Trainer, with_common_config
 from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
@@ -24,8 +23,9 @@ from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import MultiGPUTrainOneStep, TrainOneStep, \
     UpdateTargetNetwork
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.utils.typing import TrainerConfigDict
+from ray.rllib.utils.typing import PartialTrainerConfigDict, TrainerConfigDict
 from ray.util.iter import LocalIterator
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ DEFAULT_CONFIG = with_common_config({
     # each worker will have a replay buffer of this size.
     "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
-        "type": "LocalReplayBuffer",
+        "type": "MultiAgentReplayBuffer",
         "capacity": 50000,
     },
     # Set this to True, if you want the contents of your buffer(s) to be
@@ -112,35 +112,59 @@ DEFAULT_CONFIG = with_common_config({
 # yapf: enable
 
 
-def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
-    """Policy class picker function. Class is chosen based on DL-framework.
+# TODO: Move into SimpleQ once all OffPolicyTrainers have been converted to
+#  sub-classing Trainer (instead of using `build_trainer`).
+def validate_config(config: TrainerConfigDict) -> None:
+    """Checks and updates the config based on settings.
 
-    Args:
-        config (TrainerConfigDict): The trainer's configuration dict.
-
-    Returns:
-        Optional[Type[Policy]]: The Policy class to use with SimpleQTrainer.
-            If None, use `default_policy` provided in build_trainer().
+    Rewrites rollout_fragment_length to take into account n_step
+    truncation.
     """
-    if config["framework"] == "torch":
-        return SimpleQTorchPolicy
+    if config["exploration_config"]["type"] == "ParameterNoise":
+        if config["batch_mode"] != "complete_episodes":
+            logger.warning(
+                "ParameterNoise Exploration requires `batch_mode` to be "
+                "'complete_episodes'. Setting batch_mode="
+                "complete_episodes.")
+            config["batch_mode"] = "complete_episodes"
+        if config.get("noisy", False):
+            raise ValueError(
+                "ParameterNoise Exploration and `noisy` network cannot be"
+                " used at the same time!")
+
+    # Update effective batch size to include n-step
+    adjusted_batch_size = max(config["rollout_fragment_length"],
+                              config.get("n_step", 1))
+    config["rollout_fragment_length"] = adjusted_batch_size
+
+    if config.get("prioritized_replay"):
+        if config["multiagent"]["replay_mode"] == "lockstep":
+            raise ValueError("Prioritized replay is not supported when "
+                             "replay_mode=lockstep.")
+        elif config["replay_sequence_length"] > 1:
+            raise ValueError("Prioritized replay is not supported when "
+                             "replay_sequence_length > 1.")
+    else:
+        if config.get("worker_side_prioritization"):
+            raise ValueError(
+                "Worker side prioritization is not supported when "
+                "prioritized_replay=False.")
+
+    # Multi-agent mode and multi-GPU optimizer.
+    if config["multiagent"]["policies"] and \
+            not config["simple_optimizer"]:
+        logger.info(
+            "In multi-agent mode, policies will be optimized sequentially"
+            " by the multi-GPU optimizer. Consider setting "
+            "simple_optimizer=True if this doesn't work for you.")
 
 
+# TODO: Move into SimpleQ once all OffPolicyTrainers have been converted to
+#  sub-classing Trainer (instead of using `build_trainer`).
 def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
                    **kwargs) -> LocalIterator[dict]:
-    """Execution plan of the Simple Q algorithm. Defines the distributed dataflow.
-
-    Args:
-        trainer (Trainer): The Trainer object creating the execution plan.
-        workers (WorkerSet): The WorkerSet for training the Polic(y/ies)
-            of the Trainer.
-        config (TrainerConfigDict): The trainer's configuration dict.
-
-    Returns:
-        LocalIterator[dict]: A local iterator over training metrics.
-    """
     assert "local_replay_buffer" in kwargs, (
-        "SimpleQ execution plan requires a local replay buffer.")
+        "GenericOffPolicy execution plan requires a local replay buffer.")
 
     local_replay_buffer = kwargs["local_replay_buffer"]
 
@@ -175,12 +199,30 @@ def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
     return StandardMetricsReporting(train_op, workers, config)
 
 
-# Build a child class of `Trainer`, which uses the framework specific Policy
-# determined in `get_policy_class()` above.
-SimpleQTrainer = build_trainer(
-    name="SimpleQTrainer",
-    default_policy=SimpleQTFPolicy,
-    get_policy_class=get_policy_class,
-    execution_plan=execution_plan,
-    default_config=DEFAULT_CONFIG,
-)
+class SimpleQTrainer(Trainer):
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
+
+    # TODO: Move GenericOffPolicyTraier's validate_config in here and
+    #  use SimpleQ as base for all off-policy trainers.
+    @override(Trainer)
+    def validate_config(self, config: PartialTrainerConfigDict) -> None:
+        super().validate_config(config)
+        validate_config(config)
+
+    @override(Trainer)
+    def get_default_policy_class(
+            self, config: TrainerConfigDict) -> Optional[Type[Policy]]:
+        if config["framework"] == "torch":
+            return SimpleQTorchPolicy
+        else:
+            return SimpleQTFPolicy
+
+    # TODO: Move GenericOffPolicyTraier's execution_plan in here and
+    #  use SimpleQ as base for all off-policy trainers.
+    @staticmethod
+    @override(Trainer)
+    def execution_plan(workers, config, **kwargs):
+        return execution_plan(workers, config, **kwargs)
