@@ -232,7 +232,15 @@ class ArrowBlockAccessor(BlockAccessor):
             raise ValueError(
                 f"Cannot find column {column}, available columns: "
                 f"{self._table.column_names}")
-        return self._table[column].to_numpy()
+        array = self._table[column]
+        if array.num_chunks > 1:
+            # TODO(ekl) combine fails since we can't concat
+            # ArrowTensorType?
+            array = array.combine_chunks()
+        else:
+            assert array.num_chunks == 1, array
+            array = array.chunk(0)
+        return array.to_numpy(zero_copy_only=False)
 
     def to_arrow(self) -> "pyarrow.Table":
         return self._table
