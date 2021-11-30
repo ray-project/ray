@@ -107,8 +107,8 @@ void instrumented_io_context::post(std::function<void()> handler,
   if (defer_us == 0) {
     return boost::asio::io_context::post(std::move(handler));
   } else {
-    RAY_LOG(DEBUG) << "Deferring " << stats_handle->handler_name
-                   << " by " << defer_us << "us";
+    RAY_LOG(DEBUG) << "Deferring " << stats_handle->handler_name << " by " << defer_us
+                   << "us";
     execute_after_us(*this, std::move(handler), defer_us);
   }
 }
