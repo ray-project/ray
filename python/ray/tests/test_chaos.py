@@ -9,6 +9,7 @@ import pytest
 import time
 
 from ray.data.impl.progress_bar import ProgressBar
+from ray.util.placement_group import placement_group
 from ray._private.test_utils import get_log_message
 
 
