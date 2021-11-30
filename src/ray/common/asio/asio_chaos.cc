@@ -52,7 +52,7 @@ class DelayManager {
     int64_t actual_delay = GenRandomDelay(it->second.first, it->second.second);
     if (actual_delay != 0) {
       RAY_LOG_EVERY_N(ERROR, 1000)
-          << "Delaying method " << name << " for " << actual_delay << "ms";
+          << "Delaying method " << name << " for " << actual_delay << "us";
     }
     return actual_delay;
   }

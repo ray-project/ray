@@ -129,13 +129,14 @@ def test_chaos_defer(monkeypatch, ray_start_cluster):
         m.setenv("RAY_grpc_based_resource_broadcast", "true")
         # defer for 100s
         m.setenv(
-            "RAY_testing_asio_delay_ms",
-            "NodeResourceInfoGcsService.grpc_client.UpdateResources=100000")
+            "RAY_testing_asio_delay_us",
+            "NodeResourceInfoGcsService.grpc_client.UpdateResources"
+            "=100000000:100000000")
         m.setenv("RAY_event_stats", "true")
         cluster = ray_start_cluster
         cluster.add_node(num_cpus=16, object_store_memory=1e9)
         cluster.wait_for_nodes()
-        ray.init(address="auto")
+        ray.init(address="auto") # this will connect to gpu nodes
         cluster.add_node(num_cpus=16, num_gpus=1)
 
         bundle = [{"GPU": 1}, {"CPU": 1}]
