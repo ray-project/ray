@@ -16,7 +16,7 @@ Many common preprocessing transformations, such as:
 - dropping nulls
 - one-hot encoding
 
-can be efficiently applied to a ``Dataset`` using Pandas DataFrame UDFs and ``.map_batches()``; this will do these transformations in parallel over the ``Dataset``'s blocks, and will allow you to apply vectorized Pandas operations to columns.
+can be efficiently applied to a ``Dataset`` using Pandas DataFrame UDFs and ``.map_batches()``; this will execute these transformations in parallel over the ``Dataset`` blocks, and allows you to apply vectorized Pandas operations to the block columns within the UDF.
 
 .. code-block:: python
 
@@ -31,14 +31,14 @@ can be efficiently applied to a ``Dataset`` using Pandas DataFrame UDFs and ``.m
         # Drop column.
         df.drop(columns="feature_2", inplace=True)
         # One-hot encoding.
-        fruits = ["apple", "orange", "banana"]
         categories = ["cat_1", "cat_2", "cat_3"]
         for category in categories:
             df[f"category_{category}"] = df["category"].map(
                 collections.defaultdict(int, **{category: 1}))
         return df
 
-    # batch_format="pandas" tells Datasets to give our transformer Pandas DataFrames.
+    # batch_format="pandas" tells Datasets to provide the transformer with blocks
+    # represented as Pandas DataFrames.
     ds = ds.map_batches(transform_batch, batch_format="pandas")
 
 Groupbys and aggregations
@@ -57,6 +57,7 @@ Other preprocessing operations require global operations, such as groupbys and g
     # -> Sort Sample: 100%|███████████████████████████████████████| 10/10 [00:01<00:00,  9.04it/s]
     # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 23.66it/s]
     # -> GroupBy Reduce: 100%|████████████████████████████████████| 10/10 [00:00<00:00, 937.21it/s]
+    # -> Dataset(num_blocks=10, num_rows=3, schema={})
     agg_ds.to_pandas()
     # ->
     #    A  mean(B)  mean(C)
@@ -91,6 +92,7 @@ These aggregations can be combined with batch mapping to transform a dataset usi
     b_mean = ds.mean("B")
     # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 4054.03it/s]
     # -> GroupBy Reduce: 100%|████████████████████████████████████| 1/1 [00:00<00:00, 359.22it/s]
+    # -> 9.0
 
     def impute_b(df: pd.DataFrame):
         df["B"].fillna(b_mean)
@@ -98,11 +100,13 @@ These aggregations can be combined with batch mapping to transform a dataset usi
 
     ds = ds.map_batches(impute_b, batch_format="pandas")
     # -> Map Progress: 100%|██████████████████████████████████████| 10/10 [00:00<00:00, 132.66it/s]
+    # -> Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: int64, C: int64})
 
     # Standard scaling of all feature columns.
     stats = ds.aggregate(Mean("B"), Std("B"), Mean("C"), Std("C"))
     # -> GroupBy Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 1260.99it/s]
     # -> GroupBy Reduce: 100%|████████████████████████████████████| 1/1 [00:00<00:00, 128.77it/s]
+    # -> {'mean(B)': 9.0, 'std(B)': 6.0553007081949835, 'mean(C)': 13.5, 'std(C)': 9.082951062292475}
 
     def batch_standard_scaler(df: pd.DataFrame):
         def column_standard_scaler(s: pd.Series):
@@ -110,11 +114,13 @@ These aggregations can be combined with batch mapping to transform a dataset usi
             s_std = stats[f"std({s.name})"]
             return (s - s_mean) / s_std
 
-        cols = df.columns.difference(["label"])
-        return df.loc[:, cols].transform(column_standard_scaler)
+        cols = df.columns.difference(["A"])
+        df.loc[:, cols] = df.loc[:, cols].transform(column_standard_scaler)
+        return df
 
     ds = ds.map_batches(batch_standard_scaler, batch_format="pandas")
     # -> Map Progress: 100%|██████████████████████████████████████| 10/10 [00:00<00:00, 144.79it/s]
+    # -> Dataset(num_blocks=10, num_rows=10, schema={A: int64, B: double, C: double})
 
 Random shuffle
 --------------
@@ -130,7 +136,7 @@ Randomly shuffling data is an important part of training machine learning models
     ds = ds.random_shuffle()
     # -> Shuffle Map: 100%|███████████████████████████████████████| 10/10 [00:00<00:00, 12.35it/s]
     # -> Shuffle Reduce: 100%|████████████████████████████████████| 10/10 [00:00<00:00, 45.54it/s]
-    # -> [6, 2, ..., 4]
+    # -> [7, 1, ..., 3]
 
     # Scales to terabytes of data with the same simple API.
     ds = ray.data.read_parquet("s3://ursa-labs-taxi-data")  # open, tabular, NYC taxi dataset
@@ -158,8 +164,8 @@ Randomly shuffling data is an important part of training machine learning models
     # -> Shuffle Reduce: 100%|████████████████████████████████████| 10/10 [00:00<00:00, 42.70it/s]
     # -> DatasetPipeline(num_windows=10, num_stages=1)
 
-    # Shuffle repeatedly, where each of the num_epochs datasets is shuffled into
-    # a different order.
+    # Shuffle repeatedly, where the original dataset is shuffled into a different
+    # order at the beginning of each epoch.
     ds.repeat(num_epochs).random_shuffle_each_window()
     # -> DatasetPipeline(num_windows=10, num_stages=2)
 
