@@ -23,6 +23,8 @@ python python/ray/tests/test_basic_2.py
 python python/ray/tests/test_basic_2_client_mode.py
 python python/ray/tests/test_basic_3.py 
 python python/ray/tests/test_basic_3_client_mode.py
+python python/ray/tests/test_basic_4.py
+python python/ray/tests/test_basic_4_client_mode.py
 python python/ray/tests/test_cli.py
 python python/ray/tests/test_client_init.py
 python python/ray/tests/test_command_runner.py
