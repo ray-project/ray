@@ -8,13 +8,14 @@ import ray.rllib.agents.ddpg as ddpg
 from ray.rllib.agents.ddpg.ddpg_torch_policy import ddpg_actor_critic_loss as \
     loss_torch
 from ray.rllib.agents.sac.tests.test_sac import SimpleEnv
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
+    MultiAgentReplayBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import fc, huber_loss, l2_loss, relu, sigmoid
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
-from ray.rllib.utils.torch_ops import convert_to_torch_tensor
+    check_train_results, framework_iterator
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -41,10 +42,11 @@ class TestDDPG(unittest.TestCase):
         num_iterations = 1
 
         # Test against all frameworks.
-        for _ in framework_iterator(config):
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
+        for _ in framework_iterator(config, with_eager_tracing=True):
+            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             for i in range(num_iterations):
                 results = trainer.train()
+                check_train_results(results)
                 print(results)
             check_compute_single_action(trainer)
             # Ensure apply_gradient_fn is being called and updating global_step
@@ -65,8 +67,8 @@ class TestDDPG(unittest.TestCase):
         config["exploration_config"]["random_timesteps"] = 100
 
         # Test against all frameworks.
-        for _ in framework_iterator(config):
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
+        for _ in framework_iterator(config, with_eager_tracing=True):
+            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             trainer.train()
             with TemporaryDirectory() as temp_dir:
                 checkpoint = trainer.save(temp_dir)
@@ -83,7 +85,7 @@ class TestDDPG(unittest.TestCase):
         for _ in framework_iterator(core_config):
             config = core_config.copy()
             # Default OUNoise setup.
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
+            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             # Setting explore=False should always return the same action.
             a_ = trainer.compute_single_action(obs, explore=False)
             self.assertEqual(trainer.get_policy().global_timestep, 1)
@@ -108,7 +110,7 @@ class TestDDPG(unittest.TestCase):
                 "initial_scale": 0.001,
                 "final_scale": 0.001,
             }
-            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v0")
+            trainer = ddpg.DDPGTrainer(config=config, env="Pendulum-v1")
             # ts=0 (get a deterministic action as per explore=False).
             deterministic_action = trainer.compute_single_action(
                 obs, explore=False)
@@ -288,8 +290,9 @@ class TestDDPG(unittest.TestCase):
 
             elif fw == "torch":
                 loss_torch(policy, policy.model, None, input_)
-                c, a, t = policy.critic_loss, policy.actor_loss, \
-                    policy.model.td_error
+                c, a, t = policy.get_tower_stats("critic_loss")[0], \
+                    policy.get_tower_stats("actor_loss")[0], \
+                    policy.get_tower_stats("td_error")[0]
                 # Check pure loss values.
                 check(c, expect_c)
                 check(a, expect_a)
@@ -371,7 +374,7 @@ class TestDDPG(unittest.TestCase):
                     tf_inputs.append(in_)
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = LocalReplayBuffer.get_instance_for_testing()
+                    buf = MultiAgentReplayBuffer.get_instance_for_testing()
                     buf._fake_batch = in_
                     trainer.train()
                     updated_weights = policy.get_weights()
@@ -391,7 +394,7 @@ class TestDDPG(unittest.TestCase):
                     in_ = tf_inputs[update_iteration]
                     # Set a fake-batch to use
                     # (instead of sampling from replay buffer).
-                    buf = LocalReplayBuffer.get_instance_for_testing()
+                    buf = MultiAgentReplayBuffer.get_instance_for_testing()
                     buf._fake_batch = in_
                     trainer.train()
                     # Compare updated model and target weights.

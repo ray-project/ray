@@ -45,7 +45,7 @@ async def _send_request_to_handle(handle, scope, receive, send):
         del scope["endpoint"]
 
     # NOTE(edoakes): it's important that we defer building the starlette
-    # request until it reaches the backend replica to avoid unnecessary
+    # request until it reaches the replica to avoid unnecessary
     # serialization cost, so we use a simple dataclass here.
     request = HTTPRequestWrapper(scope, http_body_bytes)
     # Perform a pickle here to improve latency. Stdlib pickle for simple
@@ -59,19 +59,29 @@ async def _send_request_to_handle(handle, scope, receive, send):
         try:
             result = await object_ref
             break
+        except RayTaskError as error:
+            error_message = "Task Error. Traceback: {}.".format(error)
+            await Response(
+                error_message, status_code=500).send(scope, receive, send)
+            return
         except RayActorError:
             logger.warning("Request failed due to replica failure. There are "
                            f"{MAX_REPLICA_FAILURE_RETRIES - retries} retries "
                            "remaining.")
             await asyncio.sleep(backoff_time_s)
-            backoff_time_s *= 2
+            # Be careful about the expotential backoff scaling here.
+            # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
+            # initial backoff time, while 2x scaling means 512x the initial.
+            backoff_time_s *= 1.5
             retries += 1
-
-    if isinstance(result, RayTaskError):
-        error_message = "Task Error. Traceback: {}.".format(result)
+    else:
+        error_message = ("Task failed with "
+                         f"{MAX_REPLICA_FAILURE_RETRIES} retries.")
         await Response(
             error_message, status_code=500).send(scope, receive, send)
-    elif isinstance(result, starlette.responses.Response):
+        return
+
+    if isinstance(result, starlette.responses.Response):
         await result(scope, receive, send)
     else:
         await Response(result).send(scope, receive, send)
@@ -259,8 +269,11 @@ class HTTPProxyActor:
                  port: int,
                  controller_name: str,
                  controller_namespace: str,
-                 http_middlewares: List[
-                     "starlette.middleware.Middleware"] = []):  # noqa: F821
+                 http_middlewares: Optional[List[
+                     "starlette.middleware.Middleware"]] = None):  # noqa: F821
+        if http_middlewares is None:
+            http_middlewares = []
+
         self.host = host
         self.port = port
 

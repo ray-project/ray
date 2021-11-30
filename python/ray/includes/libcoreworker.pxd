@@ -2,7 +2,7 @@
 # distutils: language = c++
 # cython: embedsignature = True
 
-from libc.stdint cimport int64_t
+from libc.stdint cimport int64_t, uint64_t
 from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr, unique_ptr
 from libcpp.pair cimport pair as c_pair
@@ -43,6 +43,7 @@ from ray.includes.common cimport (
     CGcsClientOptions,
     LocalMemoryBuffer,
     CJobConfig,
+    CConcurrencyGroup,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -177,7 +178,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_vector[CObjectReference] GetObjectRefs(
                 const c_vector[CObjectID] &object_ids) const
 
-        void PromoteObjectToPlasma(const CObjectID &object_id)
         void GetOwnershipInfo(const CObjectID &object_id,
                               CAddress *owner_address,
                               c_string *object_status)
@@ -254,6 +254,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         int64_t GetNumLeasesRequested() const
 
+        unordered_map[c_string, c_vector[uint64_t]] GetActorCallStats() const
+
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type
         CLanguage language
@@ -283,7 +285,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_vector[shared_ptr[CRayObject]] *returns,
             shared_ptr[LocalMemoryBuffer]
             &creation_task_exception_pb_bytes,
-            c_bool *is_application_level_error) nogil
+            c_bool *is_application_level_error,
+            const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
+            const c_string name_of_concurrency_group_to_execute) nogil
          ) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
@@ -311,6 +315,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool connect_on_start
         int runtime_env_hash
         int worker_shim_pid
+        int startup_token
 
     cdef cppclass CCoreWorkerProcess "ray::core::CoreWorkerProcess":
         @staticmethod

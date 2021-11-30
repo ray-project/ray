@@ -14,7 +14,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import flatten_space
-from ray.rllib.utils.torch_ops import one_hot
+from ray.rllib.utils.torch_utils import one_hot
 
 torch, nn = try_import_torch()
 
@@ -39,6 +39,9 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
             hasattr(obs_space, "original_space") else obs_space
         assert isinstance(self.original_space, (Dict, Tuple)), \
             "`obs_space.original_space` must be [Dict|Tuple]!"
+
+        self.processed_obs_space = self.original_space if \
+            model_config.get("_disable_preprocessor_api") else obs_space
 
         nn.Module.__init__(self)
         TorchModelV2.__init__(self, self.original_space, action_space,
@@ -140,8 +143,10 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
         if SampleBatch.OBS in input_dict and "obs_flat" in input_dict:
             orig_obs = input_dict[SampleBatch.OBS]
         else:
-            orig_obs = restore_original_dimensions(input_dict[SampleBatch.OBS],
-                                                   self.obs_space, "tf")
+            orig_obs = restore_original_dimensions(
+                input_dict[SampleBatch.OBS],
+                self.processed_obs_space,
+                tensorlib="torch")
         # Push image observations through our CNNs.
         outs = []
         for i, component in enumerate(tree.flatten(orig_obs)):

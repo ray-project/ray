@@ -79,7 +79,8 @@ def java_function(class_name, function_name):
         None,  # max_calls,
         None,  # max_retries,
         None,  # retry_exceptions,
-        None)  # runtime_env
+        None,  # runtime_env
+        None)  # placement_group
 
 
 @PublicAPI(stability="beta")

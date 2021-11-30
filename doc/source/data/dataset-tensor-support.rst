@@ -55,7 +55,7 @@ If you already have a Parquet dataset with columns containing serialized tensors
 
     # Write the dataset to Parquet. The tensor column will be written as an
     # array of opaque byte blobs.
-    ds = ray.data.from_pandas([ray.put(df)])
+    ds = ray.data.from_pandas([df])
     ds.write_parquet(path)
 
     # Read the Parquet files into a new Dataset, with the serialized tensors
@@ -85,7 +85,7 @@ If your serialized tensors don't fit the above constraints (e.g. they're stored 
 
     # Write the dataset to Parquet. The tensor column will be written as an
     # array of opaque byte blobs.
-    ds = ray.data.from_pandas([ray.put(df)])
+    ds = ray.data.from_pandas([df])
     ds.write_parquet(path)
 
     # Manually deserialize the tensor pickle bytes and cast to our tensor
@@ -212,7 +212,7 @@ If working with in-memory Pandas DataFrames that you want to analyze, manipulate
 
     # In addition to doing Pandas operations on the tensor column,
     # you can now put the DataFrame directly into a Dataset.
-    ds = ray.data.from_pandas([ray.put(df)])
+    ds = ray.data.from_pandas([df])
     # Internally, this column is represented with the corresponding
     # Arrow tensor extension type.
     print(ds.schema())
@@ -227,7 +227,7 @@ If working with in-memory Pandas DataFrames that you want to analyze, manipulate
     # -> one: int64
     #    two: extension<arrow.py_extension_type<ArrowTensorType>>
 
-    read_df = ray.get(read_ds.to_pandas())[0]
+    read_df = read_ds.to_pandas()
     print(read_df.dtypes)
     # -> one          int64
     #    two    TensorDtype

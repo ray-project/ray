@@ -708,6 +708,38 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertTrue(isinstance(ev.env, VideoMonitor))
         ev.stop()
 
+    def test_no_training(self):
+        class NoTrainingEnv(MockEnv):
+            def __init__(self, episode_length, training_enabled):
+                super(NoTrainingEnv, self).__init__(episode_length)
+                self.training_enabled = training_enabled
+
+            def step(self, action):
+                obs, rew, done, info = super(NoTrainingEnv, self).step(action)
+                return obs, rew, done, {
+                    **info, "training_enabled": self.training_enabled
+                }
+
+        ev = RolloutWorker(
+            env_creator=lambda _: NoTrainingEnv(10, True),
+            policy_spec=MockPolicy,
+            rollout_fragment_length=5,
+            batch_mode="complete_episodes")
+        batch = ev.sample()
+        self.assertEqual(batch.count, 10)
+        self.assertEqual(len(batch["obs"]), 10)
+        ev.stop()
+
+        ev = RolloutWorker(
+            env_creator=lambda _: NoTrainingEnv(10, False),
+            policy_spec=MockPolicy,
+            rollout_fragment_length=5,
+            batch_mode="complete_episodes")
+        batch = ev.sample()
+        self.assertTrue(isinstance(batch, MultiAgentBatch))
+        self.assertEqual(len(batch.policy_batches), 0)
+        ev.stop()
+
     def sample_and_flush(self, ev):
         time.sleep(2)
         ev.sample()

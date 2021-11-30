@@ -19,8 +19,8 @@ from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import apply_grad_clipping, FLOAT_MIN, \
-    huber_loss, sequence_mask
+from ray.rllib.utils.torch_utils import apply_grad_clipping, \
+    concat_multi_gpu_td_errors, FLOAT_MIN, huber_loss, sequence_mask
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -170,16 +170,20 @@ def r2d2_loss(policy: Policy, model, _,
         td_error = q_selected - target.reshape([B, T])[:, :-1].detach()
         td_error = td_error * seq_mask
         weights = weights.reshape([B, T])[:, :-1]
-        policy._total_loss = reduce_mean_valid(weights * huber_loss(td_error))
-        policy._td_error = torch.mean(td_error, dim=-1)
-        policy._loss_stats = {
-            "mean_q": reduce_mean_valid(q_selected),
-            "min_q": torch.min(q_selected),
-            "max_q": torch.max(q_selected),
-            "mean_td_error": reduce_mean_valid(td_error),
-        }
+        total_loss = reduce_mean_valid(weights * huber_loss(td_error))
 
-    return policy._total_loss
+        # Store values for stats function in model (tower), such that for
+        # multi-GPU, we do not override them during the parallel loss phase.
+        model.tower_stats["total_loss"] = total_loss
+        model.tower_stats["mean_q"] = reduce_mean_valid(q_selected)
+        model.tower_stats["min_q"] = torch.min(q_selected)
+        model.tower_stats["max_q"] = torch.max(q_selected)
+        model.tower_stats["mean_td_error"] = reduce_mean_valid(td_error)
+        # Store per time chunk (b/c we need only one mean
+        # prioritized replay weight per stored sequence).
+        model.tower_stats["td_error"] = torch.mean(td_error, dim=-1)
+
+    return total_loss
 
 
 def h_function(x, epsilon=1.0):
@@ -233,15 +237,23 @@ class ComputeTDErrorMixin:
             # Do forward pass on loss to update td error attribute
             r2d2_loss(self, self.model, None, input_dict)
 
-            return self._td_error
+            return self.model.tower_stats["td_error"]
 
         self.compute_td_error = compute_td_error
 
 
-def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
-    return dict({
+def build_q_stats(policy: Policy, batch: SampleBatch) -> Dict[str, TensorType]:
+
+    return {
         "cur_lr": policy.cur_lr,
-    }, **policy._loss_stats)
+        "total_loss": torch.mean(
+            torch.stack(policy.get_tower_stats("total_loss"))),
+        "mean_q": torch.mean(torch.stack(policy.get_tower_stats("mean_q"))),
+        "min_q": torch.mean(torch.stack(policy.get_tower_stats("min_q"))),
+        "max_q": torch.mean(torch.stack(policy.get_tower_stats("max_q"))),
+        "mean_td_error": torch.mean(
+            torch.stack(policy.get_tower_stats("mean_td_error"))),
+    }
 
 
 def setup_early_mixins(policy: Policy, obs_space, action_space,
@@ -272,14 +284,14 @@ R2D2TorchPolicy = build_policy_class(
     name="R2D2TorchPolicy",
     framework="torch",
     loss_fn=r2d2_loss,
-    get_default_config=lambda: ray.rllib.agents.dqn.r2d2.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.dqn.r2d2.R2D2_DEFAULT_CONFIG,
     make_model_and_action_dist=build_r2d2_model_and_distribution,
     action_distribution_fn=get_distribution_inputs_and_class,
     stats_fn=build_q_stats,
     postprocess_fn=postprocess_nstep_and_prio,
     optimizer_fn=adam_optimizer,
     extra_grad_process_fn=grad_process_and_td_error_fn,
-    extra_learn_fetches_fn=lambda policy: {"td_error": policy._td_error},
+    extra_learn_fetches_fn=concat_multi_gpu_td_errors,
     extra_action_out_fn=extra_action_out_fn,
     before_init=setup_early_mixins,
     before_loss_init=before_loss_init,

@@ -64,7 +64,7 @@ class ResourceRequest {
   /// List of predefined resources required by the task.
   std::vector<FixedPoint> predefined_resources;
   /// List of custom resources required by the task.
-  std::unordered_map<int64_t, FixedPoint> custom_resources;
+  absl::flat_hash_map<int64_t, FixedPoint> custom_resources;
   /// Whether this task requires object store memory.
   /// TODO(swang): This should be a quantity instead of a flag.
   bool requires_object_store_memory = false;
@@ -138,7 +138,7 @@ class TaskResourceInstances {
   /// Check whether there are no resource instances.
   bool IsEmpty() const;
   /// Returns human-readable string for these resources.
-  std::string DebugString() const;
+  [[nodiscard]] std::string DebugString(const StringIdMap &string_id_map) const;
 };
 
 /// Total and available capacities of each resource of a node.
@@ -189,14 +189,12 @@ class NodeResourceInstances {
   /// Returns if this equals another node resources.
   bool operator==(const NodeResourceInstances &other);
   /// Returns human-readable string for these resources.
-  std::string DebugString(StringIdMap string_to_int_map) const;
+  [[nodiscard]] std::string DebugString(StringIdMap string_to_int_map) const;
 };
 
 struct Node {
   Node(const NodeResources &resources)
       : last_reported_(resources), local_view_(resources) {}
-
-  void ResetLocalView() { local_view_ = last_reported_; }
 
   NodeResources *GetMutableLocalView() { return &local_view_; }
 
@@ -221,13 +219,13 @@ struct Node {
 /// \request Conversion result to a ResourceRequest data structure.
 NodeResources ResourceMapToNodeResources(
     StringIdMap &string_to_int_map,
-    const std::unordered_map<std::string, double> &resource_map_total,
-    const std::unordered_map<std::string, double> &resource_map_available);
+    const absl::flat_hash_map<std::string, double> &resource_map_total,
+    const absl::flat_hash_map<std::string, double> &resource_map_available);
 
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
     StringIdMap &string_to_int_map,
-    const std::unordered_map<std::string, double> &resource_map,
+    const absl::flat_hash_map<std::string, double> &resource_map,
     bool requires_object_store_memory);
 
 }  // namespace ray

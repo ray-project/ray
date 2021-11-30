@@ -16,16 +16,18 @@
 
 #include <chrono>
 #include <iterator>
+#include <memory>
 #include <mutex>
 #include <random>
 #include <sstream>
 #include <string>
 #include <thread>
-
 #include <unordered_map>
 
+#include "absl/random/random.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
+#include "ray/util/process.h"
 
 #ifdef _WIN32
 #include <process.h>  // to ensure getpid() on Windows
@@ -167,7 +169,7 @@ class InitShutdownRAII {
   /// \param shutdown_func The shutdown function.
   /// \param args The arguments for the init function.
   template <class InitFunc, class... Args>
-  InitShutdownRAII(InitFunc init_func, ShutdownFunc shutdown_func, Args &&... args)
+  InitShutdownRAII(InitFunc init_func, ShutdownFunc shutdown_func, Args &&...args)
       : shutdown_(shutdown_func) {
     init_func(args...);
   }
@@ -194,41 +196,16 @@ struct EnumClassHash {
 template <typename Key, typename T>
 using EnumUnorderedMap = std::unordered_map<Key, T, EnumClassHash>;
 
-namespace ray {
-namespace internal {
-inline __suppress_ubsan__("signed-integer-overflow") int64_t GenerateSeed() {
-  int64_t seed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-  // To increase the entropy, mix in a number of time samples instead of a single one.
-  // This avoids the possibility of duplicate seeds for many workers that start in
-  // close succession.
-  for (int i = 0; i < 128; i++) {
-    std::this_thread::sleep_for(std::chrono::microseconds(10));
-    seed += std::chrono::high_resolution_clock::now().time_since_epoch().count();
-  }
-  return seed;
-}
-}  // namespace internal
-}  // namespace ray
-
 /// A helper function to fill random bytes into the `data`.
 /// Warning: this is not fork-safe, we need to re-seed after that.
 template <typename T>
 void FillRandom(T *data) {
   RAY_CHECK(data != nullptr);
-  auto randomly_seeded_mersenne_twister = []() {
-    std::mt19937 seeded_engine(ray::internal::GenerateSeed());
-    return seeded_engine;
-  };
 
-  // NOTE(pcm): The right way to do this is to have one std::mt19937 per
-  // thread (using the thread_local keyword), but that's not supported on
-  // older versions of macOS (see https://stackoverflow.com/a/29929949)
-  static std::mutex random_engine_mutex;
-  std::lock_guard<std::mutex> lock(random_engine_mutex);
-  static std::mt19937 generator = randomly_seeded_mersenne_twister();
-  std::uniform_int_distribution<uint32_t> dist(0, std::numeric_limits<uint8_t>::max());
+  thread_local absl::BitGen generator;
   for (size_t i = 0; i < data->size(); i++) {
-    (*data)[i] = static_cast<uint8_t>(dist(generator));
+    (*data)[i] = static_cast<uint8_t>(
+        absl::Uniform(generator, 0, std::numeric_limits<uint8_t>::max()));
   }
 }
 
@@ -259,7 +236,7 @@ template <typename T>
 class ThreadPrivate {
  public:
   template <typename... Ts>
-  ThreadPrivate(Ts &&... ts) : t_(std::forward<Ts>(ts)...) {}
+  explicit ThreadPrivate(Ts &&...ts) : t_(std::forward<Ts>(ts)...) {}
 
   T &operator*() {
     ThreadCheck();
@@ -311,5 +288,53 @@ class ThreadPrivate {
   mutable std::thread::id id_;
   mutable std::mutex mutex_;
 };
+
+class ExponentialBackOff {
+ public:
+  ExponentialBackOff() = default;
+  ExponentialBackOff(const ExponentialBackOff &) = default;
+  ExponentialBackOff(ExponentialBackOff &&) = default;
+  ExponentialBackOff &operator=(const ExponentialBackOff &) = default;
+  ExponentialBackOff &operator=(ExponentialBackOff &&) = default;
+
+  /// Construct an exponential back off counter.
+  ///
+  /// \param[in] initial_value The start value for this counter
+  /// \param[in] multiplier The multiplier for this counter.
+  /// \param[in] max_value The maximum value for this counter. By default it's
+  ///    infinite double.
+  ExponentialBackOff(uint64_t initial_value, double multiplier,
+                     uint64_t max_value = std::numeric_limits<uint64_t>::max())
+      : curr_value_(initial_value),
+        initial_value_(initial_value),
+        max_value_(max_value),
+        multiplier_(multiplier) {
+    RAY_CHECK(multiplier > 0.0) << "Multiplier must be greater than 0";
+  }
+
+  uint64_t Next() {
+    auto ret = curr_value_;
+    curr_value_ = curr_value_ * multiplier_;
+    curr_value_ = std::min(curr_value_, max_value_);
+    return ret;
+  }
+
+  uint64_t Current() { return curr_value_; }
+
+  void Reset() { curr_value_ = initial_value_; }
+
+ private:
+  uint64_t curr_value_;
+  uint64_t initial_value_;
+  uint64_t max_value_;
+  double multiplier_;
+};
+
+/// Return true if the raylet is failed. This util function is only meant to be used by
+/// core worker modules.
+bool IsRayletFailed(const std::string &raylet_pid);
+
+/// Teriminate the process without cleaning up the resources.
+void QuickExit();
 
 }  // namespace ray

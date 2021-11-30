@@ -4,5 +4,5 @@ package io.ray.serve.poll;
 @FunctionalInterface
 public interface KeyListener {
 
-  void notifyChanged(Object object);
+  void notifyChanged(Object updatedObject);
 }

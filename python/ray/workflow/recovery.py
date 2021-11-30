@@ -51,8 +51,8 @@ def _recover_workflow_step(args: List[Any], kwargs: Dict[str, Any],
 
 
 def _construct_resume_workflow_from_step(
-        reader: workflow_storage.WorkflowStorage,
-        step_id: StepID) -> Union[Workflow, StepID]:
+        reader: workflow_storage.WorkflowStorage, step_id: StepID,
+        input_map: Dict[StepID, Any]) -> Union[Workflow, StepID]:
     """Try to construct a workflow (step) that recovers the workflow step.
     If the workflow step already has an output checkpointing file, we return
     the workflow step id instead.
@@ -60,6 +60,8 @@ def _construct_resume_workflow_from_step(
     Args:
         reader: The storage reader for inspecting the step.
         step_id: The ID of the step we want to recover.
+        input_map: This is a context storing the input which has been loaded.
+            This context is important for dedupe
 
     Returns:
         A workflow that recovers the step, or a ID of a step
@@ -70,8 +72,8 @@ def _construct_resume_workflow_from_step(
         # we already have the output
         return step_id
     if isinstance(result.output_step_id, str):
-        return _construct_resume_workflow_from_step(reader,
-                                                    result.output_step_id)
+        return _construct_resume_workflow_from_step(
+            reader, result.output_step_id, input_map)
     # output does not exists or not valid. try to reconstruct it.
     if not result.is_recoverable():
         raise WorkflowStepNotRecoverableError(step_id)
@@ -79,7 +81,14 @@ def _construct_resume_workflow_from_step(
     with serialization.objectref_cache():
         input_workflows = []
         for i, _step_id in enumerate(result.workflows):
-            r = _construct_resume_workflow_from_step(reader, _step_id)
+            # Check whether the step has been loaded or not to avoid
+            # duplication
+            if _step_id in input_map:
+                r = input_map[_step_id]
+            else:
+                r = _construct_resume_workflow_from_step(
+                    reader, _step_id, input_map)
+                input_map[_step_id] = r
             if isinstance(r, Workflow):
                 input_workflows.append(r)
             else:
@@ -90,14 +99,12 @@ def _construct_resume_workflow_from_step(
 
         args, kwargs = reader.load_step_args(step_id, input_workflows,
                                              workflow_refs)
-
-        recovery_workflow: Workflow = _recover_workflow_step.options(
-            max_retries=result.max_retries,
-            catch_exceptions=result.catch_exceptions,
-            **result.ray_options).step(args, kwargs, input_workflows,
-                                       workflow_refs)
+        step_options = result.step_options
+        recovery_workflow: Workflow = _recover_workflow_step.step(
+            args, kwargs, input_workflows, workflow_refs)
         recovery_workflow._step_id = step_id
-        recovery_workflow.data.step_type = result.step_type
+        # override step_options
+        recovery_workflow.data.step_options = step_options
         return recovery_workflow
 
 
@@ -119,15 +126,15 @@ def _resume_workflow_step_executor(workflow_id: str, step_id: "StepID",
     try:
         store = storage.create_storage(store_url)
         wf_store = workflow_storage.WorkflowStorage(workflow_id, store)
-        r = _construct_resume_workflow_from_step(wf_store, step_id)
+        r = _construct_resume_workflow_from_step(wf_store, step_id, {})
     except Exception as e:
         raise WorkflowNotResumableError(workflow_id) from e
 
     if isinstance(r, Workflow):
-        with workflow_context.workflow_step_context(workflow_id,
-                                                    store.storage_url):
-            from ray.workflow.step_executor import (execute_workflow)
-            result = execute_workflow(r, last_step_of_workflow=True)
+        with workflow_context.workflow_step_context(
+                workflow_id, store.storage_url, last_step_of_workflow=True):
+            from ray.workflow.step_executor import execute_workflow
+            result = execute_workflow(r)
             return result.persisted_output, result.volatile_output
     assert isinstance(r, StepID)
     return wf_store.load_step_output(r), None

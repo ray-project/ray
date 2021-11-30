@@ -18,7 +18,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import huber_loss, make_tf_callable
+from ray.rllib.utils.tf_utils import huber_loss, make_tf_callable
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 tf1, tf, tfv = try_import_tf()
@@ -181,7 +181,7 @@ def compute_q_values(policy: Policy,
                      explore,
                      is_training=None) -> TensorType:
     model_out, _ = model({
-        SampleBatch.CUR_OBS: obs,
+        SampleBatch.OBS: obs,
         "is_training": is_training
         if is_training is not None else policy._get_is_training_placeholder(),
     }, [], None)
@@ -207,7 +207,7 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
 # above.
 SimpleQTFPolicy: Type[DynamicTFPolicy] = build_tf_policy(
     name="SimpleQTFPolicy",
-    get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.dqn.simple_q.DEFAULT_CONFIG,
     make_model=build_q_models,
     action_distribution_fn=get_distribution_inputs_and_class,
     loss_fn=build_q_losses,

@@ -45,7 +45,7 @@ struct Mocker {
                               Language::PYTHON, function_descriptor, job_id,
                               TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1,
                               required_resources, required_placement_resources,
-                              std::make_pair(PlacementGroupID::Nil(), -1), true, "");
+                              std::make_pair(PlacementGroupID::Nil(), -1), true, "", 0);
     builder.SetActorCreationTaskSpec(actor_id, {}, max_restarts,
                                      /*max_task_retries=*/0, {}, 1, detached, name);
     return builder.Build();
@@ -85,7 +85,7 @@ struct Mocker {
 
   static BundleSpecification GenBundleCreation(
       const PlacementGroupID &placement_group_id, const int bundle_index,
-      std::unordered_map<std::string, double> &unit_resource) {
+      absl::flat_hash_map<std::string, double> &unit_resource) {
     rpc::Bundle bundle;
     auto mutable_bundle_id = bundle.mutable_bundle_id();
     mutable_bundle_id->set_bundle_index(bundle_index);

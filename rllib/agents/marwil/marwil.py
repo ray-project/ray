@@ -4,7 +4,8 @@ from ray.rllib.agents.trainer import with_common_config
 from ray.rllib.agents.trainer_template import build_trainer
 from ray.rllib.agents.marwil.marwil_tf_policy import MARWILTFPolicy
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
+from ray.rllib.execution.buffers.multi_agent_replay_buffer import \
+    MultiAgentReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.train_ops import TrainOneStep
@@ -90,8 +91,8 @@ def get_policy_class(config: TrainerConfigDict) -> Optional[Type[Policy]]:
         return MARWILTorchPolicy
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
     """Execution plan of the MARWIL/BC algorithm. Defines the distributed
     dataflow.
 
@@ -103,10 +104,13 @@ def execution_plan(workers: WorkerSet,
     Returns:
         LocalIterator[dict]: A local iterator over training metrics.
     """
+    assert len(kwargs) == 0, (
+        "Marwill execution_plan does NOT take any additional parameters")
+
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
-    replay_buffer = LocalReplayBuffer(
+    replay_buffer = MultiAgentReplayBuffer(
         learning_starts=config["learning_starts"],
-        buffer_size=config["replay_buffer_size"],
+        capacity=config["replay_buffer_size"],
         replay_batch_size=config["train_batch_size"],
         replay_sequence_length=1,
     )

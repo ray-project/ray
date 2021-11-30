@@ -1,3 +1,5 @@
+.. include:: rllib/we_are_hiring.rst
+
 RLlib Examples
 ==============
 
@@ -79,7 +81,7 @@ Custom- and Complex Models
    An example on how a model can use the trajectory view API to specify its own input.
 - `MobileNetV2 wrapping example model <https://github.com/ray-project/ray/blob/master/rllib/examples/mobilenet_v2_with_lstm.py>`__:
    Implementations of `tf.keras.applications.mobilenet_v2.MobileNetV2` and `torch.hub (mobilenet_v2)`-wrapping example models.
-- `Differentiable Neural Computer <https://github.com/ray-project/ray/blob/master/rllib/examples/neural_computer.py>`__:
+- `Differentiable Neural Computer <https://github.com/ray-project/ray/blob/master/rllib/examples/models/neural_computer.py>`__:
    Example of DeepMind's Differentiable Neural Computer for partially-observable environments.
 
 
@@ -117,10 +119,13 @@ Evaluation:
 
 Serving and Offline
 -------------------
-- `Offline RL with CQL <https://github.com/ray-project/ray/tree/master/rllib/examples/serving/offline_rl.py>`__:
+- `Offline RL with CQL <https://github.com/ray-project/ray/tree/master/rllib/examples/offline_rl.py>`__:
    Example showing how to run an offline RL training job using a historic-data json file.
 - :ref:`Serving RLlib models with Ray Serve <serve-rllib-tutorial>`: Example of using Ray Serve to serve RLlib models
    with HTTP and JSON interface. **This is the recommended way to expose RLlib for online serving use case**.
+- `Another example for using RLlib with Ray Serve <https://github.com/ray-project/ray/tree/master/rllib/examples/inference_and_serving/serve_and_rllib.py>`__
+   This script offers a simple workflow for 1) training a policy with RLlib first, 2) creating a new policy 3) restoring its weights from the trained
+   one and serving the new policy via Ray Serve.
 - `Unity3D client/server <https://github.com/ray-project/ray/tree/master/rllib/examples/serving/unity3d_server.py>`__:
    Example of how to setup n distributed Unity3D (compiled) games in the cloud that function as data collecting
    clients against a central RLlib Policy server learning how to play the game.
@@ -146,7 +151,7 @@ Multi-Agent and Hierarchical
    Example of different heuristic and learned policies competing against each other in rock-paper-scissors.
 - `Two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py>`__:
    Example of the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__.
-- `PettingZoo multi-agent example <https://github.com/ray-project/ray/blob/master/rllib/examples/pettingzoo_env.py>`__:
+- `PettingZoo multi-agent example <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/rllib_pistonball.py>`__:
    Example on how to use RLlib to learn in `PettingZoo <https://www.pettingzoo.ml>`__ multi-agent environments.
 - `PPO with centralized critic on two-step game <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__:
    Example of customizing PPO to leverage a centralized value function.

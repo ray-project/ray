@@ -51,7 +51,7 @@ def start_metrics_pusher(interval_s: float,
 
     timer = threading.Thread(target=send_forever)
     # Making this a daemon thread so it doesn't leak upon shutdown, and it
-    # doesn't need to block the backend worker's shutdown.
+    # doesn't need to block the replica's shutdown.
     timer.setDaemon(True)
     timer.start()
 
@@ -74,7 +74,7 @@ class InMemoryMetricsStore:
 
         Args:
             data_points(dict): dictionary containing the metrics values. The
-              key should be a string that uniquely identitify this time series
+              key should be a string that uniquely identifies this time series
               and to be used to perform aggregation.
             timestamp(float): the unix epoch timestamp the metrics are
               collected at.
@@ -98,6 +98,9 @@ class InMemoryMetricsStore:
             do_compact(bool): whether or not to delete the datapoints that's
               before `window_start_timestamp_s` to save memory. Default is
               true.
+        Returns:
+            The average of all the datapoints for the key on and after time
+            window_start_timestamp_s, or None if there are no such points.
         """
         datapoints = self.data[key]
 

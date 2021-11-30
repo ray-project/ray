@@ -104,11 +104,9 @@ class TaskSpecBuilder {
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       const BundleID &bundle_id, bool placement_group_capture_child_tasks,
-      const std::string &debugger_breakpoint,
+      const std::string &debugger_breakpoint, int64_t depth,
       const std::string &serialized_runtime_env = "{}",
       const std::vector<std::string> &runtime_env_uris = {},
-      const std::unordered_map<std::string, std::string> &override_environment_variables =
-          {},
       const std::string &concurrency_group_name = "") {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
@@ -130,14 +128,13 @@ class TaskSpecBuilder {
     message_->set_placement_group_capture_child_tasks(
         placement_group_capture_child_tasks);
     message_->set_debugger_breakpoint(debugger_breakpoint);
-    message_->mutable_runtime_env()->set_serialized_runtime_env(serialized_runtime_env);
+    message_->set_depth(depth);
+    message_->mutable_runtime_env_info()->set_serialized_runtime_env(
+        serialized_runtime_env);
     for (const std::string &uri : runtime_env_uris) {
-      message_->mutable_runtime_env()->add_uris(uri);
+      message_->mutable_runtime_env_info()->add_uris(uri);
     }
     message_->set_concurrency_group_name(concurrency_group_name);
-    for (const auto &env : override_environment_variables) {
-      (*message_->mutable_override_environment_variables())[env.first] = env.second;
-    }
     return *this;
   }
 
@@ -185,7 +182,7 @@ class TaskSpecBuilder {
       int max_concurrency = 1, bool is_detached = false, std::string name = "",
       std::string ray_namespace = "", bool is_asyncio = false,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      const std::string &extension_data = "") {
+      const std::string &extension_data = "", bool execute_out_of_order = false) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
@@ -211,6 +208,7 @@ class TaskSpecBuilder {
         *fd = item->GetMessage();
       }
     }
+    actor_creation_spec->set_execute_out_of_order(execute_out_of_order);
     return *this;
   }
 

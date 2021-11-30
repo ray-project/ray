@@ -10,7 +10,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import fc, one_hot, huber_loss
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 
 tf1, tf, tfv = try_import_tf()
 
@@ -34,13 +34,14 @@ class TestSimpleQ(unittest.TestCase):
 
         num_iterations = 2
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, with_eager_tracing=True):
             trainer = dqn.SimpleQTrainer(config=config, env="CartPole-v0")
             rw = trainer.workers.local_worker()
             for i in range(num_iterations):
                 sb = rw.sample()
                 assert sb.count == config["rollout_fragment_length"]
                 results = trainer.train()
+                check_train_results(results)
                 print(results)
 
             check_compute_single_action(trainer)

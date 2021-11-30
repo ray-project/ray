@@ -5,7 +5,7 @@ import logging
 import math
 # use cloudpickle instead of pickle to make BOHB obj
 # pickleable
-import cloudpickle
+from ray import cloudpickle
 from typing import Dict, List, Optional, Union
 
 from ray.tune.result import DEFAULT_METRIC
@@ -235,10 +235,10 @@ class TuneBOHB(Searcher):
 
     def on_pause(self, trial_id: str):
         self.paused.add(trial_id)
-        self.running.remove(trial_id)
+        self.running.discard(trial_id)
 
     def on_unpause(self, trial_id: str):
-        self.paused.remove(trial_id)
+        self.paused.discard(trial_id)
         self.running.add(trial_id)
 
     @staticmethod

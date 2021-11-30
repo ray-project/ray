@@ -49,6 +49,8 @@ typedef std::map<std::string, std::string, EnvironmentVariableLess> ProcessEnvir
 typedef int pid_t;
 #endif
 
+using StartupToken = int64_t;
+
 class ProcessFD;
 
 class Process {
@@ -99,6 +101,8 @@ class Process {
 // Get the Process ID of the parent process. If the parent process exits, the PID
 // will be 1 (this simulates POSIX getppid()).
 pid_t GetParentPID();
+
+pid_t GetPID();
 
 bool IsParentProcessAlive();
 

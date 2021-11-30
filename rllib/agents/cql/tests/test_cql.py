@@ -7,7 +7,7 @@ import ray
 import ray.rllib.agents.cql as cql
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -27,7 +27,7 @@ class TestCQL(unittest.TestCase):
 
         # Learns from a historic-data file.
         # To generate this data, first run:
-        # $ ./train.py --run=SAC --env=Pendulum-v0 \
+        # $ ./train.py --run=SAC --env=Pendulum-v1 \
         #   --stop='{"timesteps_total": 50000}' \
         #   --config='{"output": "/tmp/out"}'
         rllib_dir = Path(__file__).parent.parent.parent.parent
@@ -37,7 +37,7 @@ class TestCQL(unittest.TestCase):
                                               os.path.isfile(data_file)))
 
         config = cql.CQL_DEFAULT_CONFIG.copy()
-        config["env"] = "Pendulum-v0"
+        config["env"] = "Pendulum-v1"
         config["input"] = [data_file]
 
         # In the files, we use here for testing, actions have already
@@ -66,13 +66,16 @@ class TestCQL(unittest.TestCase):
         num_iterations = 4
 
         # Test for tf/torch frameworks.
-        for fw in framework_iterator(config):
+        for fw in framework_iterator(config, with_eager_tracing=True):
             trainer = cql.CQLTrainer(config=config)
             for i in range(num_iterations):
-                results = trainer.train().get("evaluation")
-                if results:
+                results = trainer.train()
+                check_train_results(results)
+                print(results)
+                eval_results = results.get("evaluation")
+                if eval_results:
                     print(f"iter={trainer.iteration} "
-                          f"R={results['episode_reward_mean']}")
+                          f"R={eval_results['episode_reward_mean']}")
 
             check_compute_single_action(trainer)
 
@@ -85,8 +88,8 @@ class TestCQL(unittest.TestCase):
             # Example on how to do evaluation on the trained Trainer
             # using the data from CQL's global replay buffer.
             # Get a sample (MultiAgentBatch -> SampleBatch).
-            from ray.rllib.agents.cql.cql import replay_buffer
-            batch = replay_buffer.replay().policy_batches["default_policy"]
+            batch = trainer.local_replay_buffer.replay().policy_batches[
+                "default_policy"]
 
             if fw == "torch":
                 obs = torch.from_numpy(batch["obs"])

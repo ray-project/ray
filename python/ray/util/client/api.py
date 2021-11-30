@@ -45,7 +45,7 @@ class ClientAPI:
         """put is the hook stub passed on to replace `ray.put`
 
         Args:
-            vals: The value or list of values to `put`.
+            val: The value to `put`.
             args: opaque arguments
             kwargs: opaque keyword arguments
         """

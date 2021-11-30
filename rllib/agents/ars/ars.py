@@ -16,8 +16,10 @@ from ray.rllib.agents.es.es import validate_config
 from ray.rllib.agents.es.es_tf_policy import rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.annotations import Deprecated, override
-from ray.rllib.utils.torch_ops import set_torch_seed
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.torch_utils import set_torch_seed
+from ray.rllib.utils.typing import TrainerConfigDict
 from ray.rllib.utils import FilterManager
 
 logger = logging.getLogger(__name__)
@@ -202,8 +204,10 @@ def get_policy_class(config):
 class ARSTrainer(Trainer):
     """Large-scale implementation of Augmented Random Search in Ray."""
 
-    _name = "ARS"
-    _default_config = DEFAULT_CONFIG
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
 
     @override(Trainer)
     def _init(self, config, env_creator):
@@ -244,7 +248,7 @@ class ARSTrainer(Trainer):
         return self.policy
 
     @override(Trainer)
-    def step(self):
+    def step_attempt(self):
         config = self.config
 
         theta = self.policy.get_flat_weights()

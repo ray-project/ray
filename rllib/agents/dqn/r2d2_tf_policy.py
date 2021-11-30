@@ -17,7 +17,7 @@ from ray.rllib.policy.tf_policy_template import build_tf_policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import LearningRateSchedule
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.tf_ops import huber_loss
+from ray.rllib.utils.tf_utils import huber_loss
 from ray.rllib.utils.typing import ModelInputDict, TensorType, \
     TrainerConfigDict
 
@@ -149,9 +149,13 @@ def r2d2_loss(policy: Policy, model, _,
         # Mask away also the burn-in sequence at the beginning.
         burn_in = policy.config["burn_in"]
         # Making sure, this works for both static graph and eager.
-        if burn_in > 0 and (config["framework"] == "tf" or burn_in < T):
-            seq_mask = tf.concat(
-                [tf.fill([B, burn_in], False), seq_mask[:, burn_in:]], axis=1)
+        if burn_in > 0:
+            seq_mask = tf.cond(
+                pred=tf.convert_to_tensor(burn_in, tf.int32) < T,
+                true_fn=lambda: tf.concat([tf.fill([B, burn_in], False),
+                                           seq_mask[:, burn_in:]], 1),
+                false_fn=lambda: seq_mask,
+            )
 
         def reduce_mean_valid(t):
             return tf.reduce_mean(tf.boolean_mask(t, seq_mask))
@@ -292,7 +296,7 @@ def before_loss_init(policy: Policy, obs_space: gym.spaces.Space,
 R2D2TFPolicy = build_tf_policy(
     name="R2D2TFPolicy",
     loss_fn=r2d2_loss,
-    get_default_config=lambda: ray.rllib.agents.dqn.r2d2.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.dqn.r2d2.R2D2_DEFAULT_CONFIG,
     postprocess_fn=postprocess_nstep_and_prio,
     stats_fn=build_q_stats,
     make_model=build_r2d2_model,

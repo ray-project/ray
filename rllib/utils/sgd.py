@@ -1,38 +1,17 @@
 """Utils for minibatch SGD across multiple RLlib policies."""
 
-import numpy as np
 import logging
-from collections import defaultdict
+import numpy as np
 import random
 
-from ray.rllib.evaluation.metrics import LEARNER_STATS_KEY
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch, \
     MultiAgentBatch
+from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 
 logger = logging.getLogger(__name__)
 
 
-def averaged(kv, axis=None):
-    """Average the value lists of a dictionary.
-
-    For non-scalar values, we simply pick the first value.
-
-    Args:
-        kv (dict): dictionary with values that are lists of floats.
-
-    Returns:
-        dictionary with single averaged float as values.
-    """
-    out = {}
-    for k, v in kv.items():
-        if v[0] is not None and not isinstance(v[0], dict):
-            out[k] = np.mean(v, axis=axis)
-        else:
-            out[k] = v[0]
-    return out
-
-
-def standardized(array):
+def standardized(array: np.ndarray):
     """Normalize the values in an array.
 
     Args:
@@ -107,8 +86,13 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
     if isinstance(samples, SampleBatch):
         samples = MultiAgentBatch({DEFAULT_POLICY_ID: samples}, samples.count)
 
-    fetches = defaultdict(dict)
-    for policy_id in policies.keys():
+    # Use LearnerInfoBuilder as a unified way to build the final
+    # results dict from `learn_on_loaded_batch` call(s).
+    # This makes sure results dicts always have the same structure
+    # no matter the setup (multi-GPU, multi-agent, minibatch SGD,
+    # tf vs torch).
+    learner_info_builder = LearnerInfoBuilder(num_devices=1)
+    for policy_id, policy in policies.items():
         if policy_id not in samples.policy_batches:
             continue
 
@@ -116,23 +100,24 @@ def do_minibatch_sgd(samples, policies, local_worker, num_sgd_iter,
         for field in standardize_fields:
             batch[field] = standardized(batch[field])
 
-        learner_stats = defaultdict(list)
-        model_stats = defaultdict(list)
-        custom_callbacks_stats = defaultdict(list)
+        # Check to make sure that the sgd_minibatch_size is not smaller
+        # than max_seq_len otherwise this will cause indexing errors while
+        # performing sgd when using a RNN or Attention model
+        if policy.is_recurrent() and \
+           policy.config["model"]["max_seq_len"] > sgd_minibatch_size:
+            raise ValueError("`sgd_minibatch_size` ({}) cannot be smaller than"
+                             "`max_seq_len` ({}).".format(
+                                 sgd_minibatch_size,
+                                 policy.config["model"]["max_seq_len"]))
 
         for i in range(num_sgd_iter):
             for minibatch in minibatches(batch, sgd_minibatch_size):
-                batch_fetches = (local_worker.learn_on_batch(
+                results = (local_worker.learn_on_batch(
                     MultiAgentBatch({
                         policy_id: minibatch
                     }, minibatch.count)))[policy_id]
-                for k, v in batch_fetches.get(LEARNER_STATS_KEY, {}).items():
-                    learner_stats[k].append(v)
-                for k, v in batch_fetches.get("model", {}).items():
-                    model_stats[k].append(v)
-                for k, v in batch_fetches.get("custom_metrics", {}).items():
-                    custom_callbacks_stats[k].append(v)
-        fetches[policy_id][LEARNER_STATS_KEY] = averaged(learner_stats)
-        fetches[policy_id]["model"] = averaged(model_stats)
-        fetches[policy_id]["custom_metrics"] = averaged(custom_callbacks_stats)
-    return fetches
+                learner_info_builder.add_learn_on_batch_results(
+                    results, policy_id)
+
+    learner_info = learner_info_builder.finalize()
+    return learner_info

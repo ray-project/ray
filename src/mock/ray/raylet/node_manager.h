@@ -67,6 +67,11 @@ class MockNodeManager : public NodeManager {
                rpc::RequestWorkerLeaseReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
+  MOCK_METHOD(void, HandleReportWorkerBacklog,
+              (const rpc::ReportWorkerBacklogRequest &request,
+               rpc::ReportWorkerBacklogReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
   MOCK_METHOD(void, HandleReturnWorker,
               (const rpc::ReturnWorkerRequest &request, rpc::ReturnWorkerReply *reply,
                rpc::SendReplyCallback send_reply_callback),

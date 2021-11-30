@@ -3,6 +3,7 @@ import pytest
 import ray
 import re
 from filelock import FileLock
+from pathlib import Path
 from ray._private.test_utils import run_string_as_driver, SignalActor
 from ray import workflow
 from ray.tests.conftest import *  # noqa
@@ -173,7 +174,7 @@ def test_get_named_step_output_running(workflow_start_regular, tmp_path):
     except Exception:
         v = None
     if v is not None:
-        assert 2 == 20
+        assert 2 == v
     assert 4 == ray.get(outer)
 
     inner = workflow.get_output("double-2", name="inner")
@@ -287,6 +288,38 @@ def test_wf_no_run():
 
     with pytest.raises(Exception):
         f.run()
+
+
+def test_dedupe_indirect(workflow_start_regular, tmp_path):
+    counter = Path(tmp_path) / "counter.txt"
+    lock = Path(tmp_path) / "lock.txt"
+    counter.write_text("0")
+
+    @workflow.step
+    def incr():
+        with FileLock(str(lock)):
+            c = int(counter.read_text())
+            c += 1
+            counter.write_text(f"{c}")
+
+    @workflow.step
+    def identity(a):
+        return a
+
+    @workflow.step
+    def join(*a):
+        return counter.read_text()
+
+    # Here a is passed to two steps and we need to ensure
+    # it's only executed once
+    a = incr.step()
+    i1 = identity.step(a)
+    i2 = identity.step(a)
+    assert "1" == join.step(i1, i2).run()
+    assert "2" == join.step(i1, i2).run()
+    # pass a multiple times
+    assert "3" == join.step(a, a, a, a).run()
+    assert "4" == join.step(a, a, a, a).run()
 
 
 if __name__ == "__main__":

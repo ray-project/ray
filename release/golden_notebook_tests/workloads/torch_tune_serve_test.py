@@ -10,14 +10,12 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from filelock import FileLock
 from ray import serve, tune
-from ray.tune.utils import force_on_current_node
+from ray.util.ml_utils.node import force_on_current_node
 from ray.util.sgd.torch import TorchTrainer, TrainingOperator
 from ray.util.sgd.torch.resnet import ResNet18
 from ray.util.sgd.utils import override
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import MNIST
-
-from utils.utils import is_anyscale_connect
 
 
 def load_mnist_data(train: bool, download: bool):
@@ -200,7 +198,7 @@ if __name__ == "__main__":
 
     addr = os.environ.get("RAY_ADDRESS")
     job_name = os.environ.get("RAY_JOB_NAME", "torch_tune_serve_test")
-    if is_anyscale_connect(addr):
+    if addr is not None and addr.startswith("anyscale://"):
         client = ray.init(address=addr, job_name=job_name)
     else:
         client = ray.init(address="auto")

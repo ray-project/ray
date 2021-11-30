@@ -9,8 +9,11 @@ from ray._private.gcs_utils import ErrorType
 from ray.exceptions import (
     RayError, PlasmaObjectNotAvailable, RayTaskError, RayActorError,
     TaskCancelledError, WorkerCrashedError, ObjectLostError,
-    ReferenceCountingAssertionError, OwnerDiedError,
-    ObjectReconstructionFailedError, RaySystemError, RuntimeEnvSetupError)
+    ObjectFetchTimedOutError, ReferenceCountingAssertionError, OwnerDiedError,
+    ObjectReconstructionFailedError,
+    ObjectReconstructionFailedMaxAttemptsExceededError,
+    ObjectReconstructionFailedLineageEvictedError, RaySystemError,
+    RuntimeEnvSetupError)
 from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
@@ -91,7 +94,7 @@ class SerializationContext:
             worker = ray.worker.global_worker
             worker.check_connected()
             obj, owner_address, object_status = (
-                worker.core_worker.serialize_and_promote_object_ref(obj))
+                worker.core_worker.serialize_object_ref(obj))
             return _object_ref_deserializer, \
                 (obj.binary(), obj.call_site(), owner_address, object_status)
 
@@ -227,6 +230,10 @@ class SerializationContext:
                 return ObjectLostError(object_ref.hex(),
                                        object_ref.owner_address(),
                                        object_ref.call_site())
+            elif error_type == ErrorType.Value("OBJECT_FETCH_TIMED_OUT"):
+                return ObjectFetchTimedOutError(object_ref.hex(),
+                                                object_ref.owner_address(),
+                                                object_ref.call_site())
             elif error_type == ErrorType.Value("OBJECT_DELETED"):
                 return ReferenceCountingAssertionError(
                     object_ref.hex(), object_ref.owner_address(),
@@ -237,6 +244,16 @@ class SerializationContext:
                                       object_ref.call_site())
             elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
                 return ObjectReconstructionFailedError(
+                    object_ref.hex(), object_ref.owner_address(),
+                    object_ref.call_site())
+            elif error_type == ErrorType.Value(
+                    "OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED"):
+                return ObjectReconstructionFailedMaxAttemptsExceededError(
+                    object_ref.hex(), object_ref.owner_address(),
+                    object_ref.call_site())
+            elif error_type == ErrorType.Value(
+                    "OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED"):
+                return ObjectReconstructionFailedLineageEvictedError(
                     object_ref.hex(), object_ref.owner_address(),
                     object_ref.call_site())
             elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):

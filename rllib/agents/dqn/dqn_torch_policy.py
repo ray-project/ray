@@ -19,7 +19,7 @@ from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.exploration.parameter_noise import ParameterNoise
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+from ray.rllib.utils.torch_utils import apply_grad_clipping, \
     concat_multi_gpu_td_errors, FLOAT_MIN, huber_loss, \
     reduce_mean_ignore_inf, softmax_cross_entropy_with_logits
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
@@ -121,7 +121,7 @@ class ComputeTDErrorMixin:
             # Do forward pass on loss to update td error attribute
             build_q_losses(self, self.model, None, input_dict)
 
-            return self.q_loss.td_error
+            return self.model.tower_stats["q_loss"].td_error
 
         self.compute_td_error = compute_td_error
 
@@ -204,20 +204,18 @@ def build_q_model_and_distribution(
 def get_distribution_inputs_and_class(
         policy: Policy,
         model: ModelV2,
-        obs_batch: TensorType,
+        input_dict: SampleBatch,
         *,
         explore: bool = True,
         is_training: bool = False,
         **kwargs) -> Tuple[TensorType, type, List[TensorType]]:
     q_vals = compute_q_values(
-        policy,
-        model, {"obs": obs_batch},
-        explore=explore,
-        is_training=is_training)
+        policy, model, input_dict, explore=explore, is_training=is_training)
     q_vals = q_vals[0] if isinstance(q_vals, tuple) else q_vals
 
-    policy.q_values = q_vals
-    return policy.q_values, TorchCategorical, []  # state-out
+    model.tower_stats["q_values"] = q_vals
+
+    return q_vals, TorchCategorical, []  # state-out
 
 
 def build_q_losses(policy: Policy, model, _,
@@ -286,19 +284,21 @@ def build_q_losses(policy: Policy, model, _,
         q_probs_tp1_best = torch.sum(
             q_probs_tp1 * torch.unsqueeze(q_tp1_best_one_hot_selection, -1), 1)
 
-    policy.q_loss = QLoss(
-        q_t_selected, q_logits_t_selected, q_tp1_best, q_probs_tp1_best,
-        train_batch[PRIO_WEIGHTS], train_batch[SampleBatch.REWARDS],
-        train_batch[SampleBatch.DONES].float(), config["gamma"],
-        config["n_step"], config["num_atoms"], config["v_min"],
-        config["v_max"])
+    q_loss = QLoss(q_t_selected, q_logits_t_selected, q_tp1_best,
+                   q_probs_tp1_best, train_batch[PRIO_WEIGHTS],
+                   train_batch[SampleBatch.REWARDS],
+                   train_batch[SampleBatch.DONES].float(), config["gamma"],
+                   config["n_step"], config["num_atoms"], config["v_min"],
+                   config["v_max"])
 
-    # Store td-error in model, such that for multi-GPU, we do not override
-    # them during the parallel loss phase. TD-error tensor in final stats
-    # can then be concatenated and retrieved for each individual batch item.
-    model.td_error = policy.q_loss.td_error
+    # Store values for stats function in model (tower), such that for
+    # multi-GPU, we do not override them during the parallel loss phase.
+    model.tower_stats["td_error"] = q_loss.td_error
+    # TD-error tensor in final stats
+    # will be concatenated and retrieved for each individual batch item.
+    model.tower_stats["q_loss"] = q_loss
 
-    return policy.q_loss.loss
+    return q_loss.loss
 
 
 def adam_optimizer(policy: Policy,
@@ -314,9 +314,16 @@ def adam_optimizer(policy: Policy,
 
 
 def build_q_stats(policy: Policy, batch) -> Dict[str, TensorType]:
-    return dict({
-        "cur_lr": policy.cur_lr,
-    }, **policy.q_loss.stats)
+    stats = {}
+    for stats_key in policy.model_gpu_towers[0].tower_stats[
+            "q_loss"].stats.keys():
+        stats[stats_key] = torch.mean(
+            torch.stack([
+                t.tower_stats["q_loss"].stats[stats_key].to(policy.device)
+                for t in policy.model_gpu_towers if "q_loss" in t.tower_stats
+            ]))
+    stats["cur_lr"] = policy.cur_lr
+    return stats
 
 
 def setup_early_mixins(policy: Policy, obs_space, action_space,
@@ -340,7 +347,6 @@ def compute_q_values(policy: Policy,
                      is_training: bool = False):
     config = policy.config
 
-    input_dict["is_training"] = is_training
     model_out, state = model(input_dict, state_batches or [], seq_lens)
 
     if config["num_atoms"] > 1:
@@ -385,7 +391,7 @@ def grad_process_and_td_error_fn(policy: Policy,
 
 def extra_action_out_fn(policy: Policy, input_dict, state_batches, model,
                         action_dist) -> Dict[str, TensorType]:
-    return {"q_values": policy.q_values}
+    return {"q_values": model.tower_stats["q_values"]}
 
 
 DQNTorchPolicy = build_policy_class(

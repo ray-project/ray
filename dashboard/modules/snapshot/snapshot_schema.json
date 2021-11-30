@@ -27,6 +27,12 @@
                 "[0-9a-f]*": {
                   "type": "object",
                   "properties": {
+                    "status": {
+                      "type": ["string", "null"]
+                    },
+                    "status_message": {
+                      "type": ["string", "null"]
+                    },
                     "isDead": {
                       "type": "boolean"
                     },
@@ -39,9 +45,6 @@
                     "config": {
                       "type": "object",
                       "properties": {
-                        "envVars": {
-                          "type": "object"
-                        },
                         "namespace": {
                           "type": "string"
                         },
@@ -53,7 +56,6 @@
                         }
                       },
                       "required": [
-                        "envVars",
                         "namespace",
                         "metadata",
                         "runtimeEnv"

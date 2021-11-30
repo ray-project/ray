@@ -29,10 +29,51 @@
 extern "C" {
 #include "ray/thirdparty/sha256.h"
 }
+namespace ray {
+typedef int SchedulingClass;
+
+struct SchedulingClassDescriptor {
+ public:
+  explicit SchedulingClassDescriptor(ResourceSet rs, FunctionDescriptor fd, int64_t d)
+      : resource_set(std::move(rs)), function_descriptor(std::move(fd)), depth(d) {}
+  ResourceSet resource_set;
+  FunctionDescriptor function_descriptor;
+  int64_t depth;
+
+  bool operator==(const SchedulingClassDescriptor &other) const {
+    return depth == other.depth && resource_set == other.resource_set &&
+           function_descriptor == other.function_descriptor;
+  }
+
+  std::string DebugString() const {
+    std::stringstream buffer;
+    buffer << "{"
+           << "depth=" << depth << " "
+           << "function_descriptor=" << function_descriptor->ToString() << " "
+           << "resource_set="
+           << "{";
+    for (const auto &pair : resource_set.GetResourceMap()) {
+      buffer << pair.first << " : " << pair.second << ", ";
+    }
+    buffer << "}}";
+    return buffer.str();
+  }
+};
+}  // namespace ray
+
+namespace std {
+template <>
+struct hash<ray::SchedulingClassDescriptor> {
+  size_t operator()(const ray::SchedulingClassDescriptor &sched_cls) const {
+    size_t hash = std::hash<ray::ResourceSet>()(sched_cls.resource_set);
+    hash ^= sched_cls.function_descriptor->Hash();
+    hash ^= sched_cls.depth;
+    return hash;
+  }
+};
+}  // namespace std
 
 namespace ray {
-typedef ResourceSet SchedulingClassDescriptor;
-typedef int SchedulingClass;
 
 /// ConcurrencyGroup is a group of actor methods that shares
 /// a executing thread pool.
@@ -43,6 +84,20 @@ struct ConcurrencyGroup {
   uint32_t max_concurrency;
   // Function descriptors of the actor methods in this group.
   std::vector<ray::FunctionDescriptor> function_descriptors;
+
+  ConcurrencyGroup() = default;
+
+  ConcurrencyGroup(const std::string &name, uint32_t max_concurrency,
+                   const std::vector<ray::FunctionDescriptor> &fds)
+      : name(name), max_concurrency(max_concurrency), function_descriptors(fds) {}
+
+  std::string GetName() const { return name; }
+
+  uint32_t GetMaxConcurrency() const { return max_concurrency; }
+
+  std::vector<ray::FunctionDescriptor> GetFunctionDescriptors() const {
+    return function_descriptors;
+  }
 };
 
 static inline rpc::ObjectReference GetReferenceForActorDummyObject(
@@ -100,7 +155,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ray::FunctionDescriptor FunctionDescriptor() const;
 
-  [[nodiscard]] rpc::RuntimeEnv RuntimeEnv() const;
+  [[nodiscard]] rpc::RuntimeEnvInfo RuntimeEnvInfo() const;
 
   std::string SerializedRuntimeEnv() const;
 
@@ -172,7 +227,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::string GetDebuggerBreakpoint() const;
 
-  std::unordered_map<std::string, std::string> OverrideEnvironmentVariables() const;
+  /// Return the depth of this task. The depth of a graph, is the number of
+  /// `f.remote()` calls from the driver.
+  /// \return The depth.
+  int64_t GetDepth() const;
 
   bool IsDriverTask() const;
 
@@ -233,7 +291,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static SchedulingClassDescriptor &GetSchedulingClassDescriptor(SchedulingClass id);
 
   // Compute a static key that represents the given resource shape.
-  static SchedulingClass GetSchedulingClass(const ResourceSet &sched_cls);
+  static SchedulingClass GetSchedulingClass(const SchedulingClassDescriptor &sched_cls);
 
   // Placement Group bundle that this task or actor creation is associated with.
   const BundleID PlacementGroupBundleId() const;
@@ -246,6 +304,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::string ConcurrencyGroupName() const;
 
+  bool ExecuteOutOfOrder() const;
+
  private:
   void ComputeResources();
 
@@ -256,15 +316,15 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// Field storing required placement resources. Initialized in constructor.
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
-  SchedulingClass sched_cls_id_;
+  SchedulingClass sched_cls_id_ = 0;
 
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.
   static absl::Mutex mutex_;
   /// Keep global static id mappings for SchedulingClass for performance.
-  static std::unordered_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
+  static absl::flat_hash_map<SchedulingClassDescriptor, SchedulingClass> sched_cls_to_id_
       GUARDED_BY(mutex_);
-  static std::unordered_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
+  static absl::flat_hash_map<SchedulingClass, SchedulingClassDescriptor> sched_id_to_cls_
       GUARDED_BY(mutex_);
   static int next_sched_id_ GUARDED_BY(mutex_);
 };
@@ -277,13 +337,10 @@ class WorkerCacheKey {
   /// Create a cache key with the given environment variable overrides and serialized
   /// runtime_env.
   ///
-  /// \param override_environment_variables The environment variable overrides set in this
   /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
   /// worker. \param required_resources The required resouce.
-  WorkerCacheKey(
-      const std::unordered_map<std::string, std::string> override_environment_variables,
-      const std::string serialized_runtime_env,
-      const std::unordered_map<std::string, double> required_resources);
+  WorkerCacheKey(const std::string serialized_runtime_env,
+                 const absl::flat_hash_map<std::string, double> &required_resources);
 
   bool operator==(const WorkerCacheKey &k) const;
 
@@ -295,8 +352,7 @@ class WorkerCacheKey {
 
   /// Get the hash for this worker's environment.
   ///
-  /// \return The hash of the override_environment_variables and the serialized
-  /// runtime_env.
+  /// \return The hash of the serialized runtime_env.
   std::size_t Hash() const;
 
   /// Get the int-valued hash for this worker's environment, useful for portability in
@@ -306,12 +362,10 @@ class WorkerCacheKey {
   int IntHash() const;
 
  private:
-  /// The environment variable overrides for this worker.
-  const std::unordered_map<std::string, std::string> override_environment_variables;
   /// The JSON-serialized runtime env for this worker.
   const std::string serialized_runtime_env;
   /// The required resources for this worker.
-  const std::unordered_map<std::string, double> required_resources;
+  const absl::flat_hash_map<std::string, double> required_resources;
   /// The cached hash of the worker's environment.  This is set to 0
   /// for unspecified or empty environments.
   mutable std::size_t hash_ = 0;

@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <boost/bind.hpp>
-
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -39,7 +37,8 @@ class ReferenceCounterInterface {
   virtual void AddLocalReference(const ObjectID &object_id,
                                  const std::string &call_site) = 0;
   virtual bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
-                                 const rpc::Address &owner_address) = 0;
+                                 const rpc::Address &owner_address,
+                                 bool foreign_owner_already_monitoring = false) = 0;
   virtual void AddOwnedObject(
       const ObjectID &object_id, const std::vector<ObjectID> &contained_ids,
       const rpc::Address &owner_address, const std::string &call_site,
@@ -60,8 +59,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   using ReferenceTableProto =
       ::google::protobuf::RepeatedPtrField<rpc::ObjectReferenceCount>;
   using ReferenceRemovedCallback = std::function<void(const ObjectID &)>;
+  // Returns the amount of lineage in bytes released.
   using LineageReleasedCallback =
-      std::function<void(const ObjectID &, std::vector<ObjectID> *)>;
+      std::function<int64_t(const ObjectID &, std::vector<ObjectID> *)>;
 
   ReferenceCounter(const rpc::WorkerAddress &rpc_address,
                    pubsub::PublisherInterface *object_info_publisher,
@@ -114,6 +114,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[out] deleted Any objects that are newly out of scope after this
   /// function call.
   void UpdateSubmittedTaskReferences(
+      const std::vector<ObjectID> return_ids,
       const std::vector<ObjectID> &argument_ids_to_add,
       const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
       std::vector<ObjectID> *deleted = nullptr) LOCKS_EXCLUDED(mutex_);
@@ -123,13 +124,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// have already incremented them when the task was first submitted.
   ///
   /// \param[in] argument_ids The arguments of the task to add references for.
-  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> &argument_ids)
+  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> return_ids,
+                                       const std::vector<ObjectID> &argument_ids)
       LOCKS_EXCLUDED(mutex_);
 
   /// Update object references that were given to a submitted task. The task
   /// may still be borrowing any object IDs that were contained in its
-  /// arguments. This should be called when inlined dependencies are inlined or
-  /// when the task finishes for plasma dependencies.
+  /// arguments. This should be called when the task finishes.
   ///
   /// \param[in] object_ids The object IDs to remove references for.
   /// \param[in] release_lineage Whether to decrement the arguments' lineage
@@ -141,21 +142,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// arguments. Some references in this table may still be borrowed by the
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
-  void UpdateFinishedTaskReferences(const std::vector<ObjectID> &argument_ids,
+  void UpdateFinishedTaskReferences(const std::vector<ObjectID> return_ids,
+                                    const std::vector<ObjectID> &argument_ids,
                                     bool release_lineage, const rpc::Address &worker_addr,
                                     const ReferenceTableProto &borrowed_refs,
                                     std::vector<ObjectID> *deleted)
-      LOCKS_EXCLUDED(mutex_);
-
-  /// Release the lineage ref count for this list of object IDs. An object's
-  /// lineage ref count is the number of tasks that depend on the object that
-  /// may be retried in the future (pending execution or finished but
-  /// retryable). If the object is direct (not stored in plasma), then its
-  /// lineage ref count is 0.
-  ///
-  /// \param[in] argument_ids The list of objects whose lineage ref counts we
-  /// should decrement.
-  void ReleaseLineageReferences(const std::vector<ObjectID> &argument_ids)
       LOCKS_EXCLUDED(mutex_);
 
   /// Add an object that we own. The object may depend on other objects.
@@ -209,7 +200,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// task ID (for non-actors) or the actor ID of the owner.
   /// \param[in] owner_address The owner's address.
   bool AddBorrowedObject(const ObjectID &object_id, const ObjectID &outer_id,
-                         const rpc::Address &owner_address) LOCKS_EXCLUDED(mutex_);
+                         const rpc::Address &owner_address,
+                         bool foreign_owner_already_monitoring = false)
+      LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner address of the given object.
   ///
@@ -470,6 +463,21 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddBorrowerAddress(const ObjectID &object_id, const rpc::Address &borrower_address)
       LOCKS_EXCLUDED(mutex_);
 
+  bool IsObjectReconstructable(const ObjectID &object_id, bool *lineage_evicted) const;
+
+  /// Evict lineage of objects that are still in scope. This evicts lineage in
+  /// FIFO order, based on when the ObjectRef was created.
+  ///
+  /// \param[in] min_bytes_to_evict The minimum number of bytes to evict.
+  int64_t EvictLineage(int64_t min_bytes_to_evict);
+
+  /// Whether the object is pending creation (the task that creates it is
+  /// scheduled/executing).
+  bool IsObjectPendingCreation(const ObjectID &object_id) const;
+
+  /// Release all local references which registered on this local.
+  void ReleaseAllLocalReferences();
+
  private:
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
@@ -483,9 +491,11 @@ class ReferenceCounter : public ReferenceCounterInterface,
         : call_site(call_site),
           object_size(object_size),
           owned_by_us(true),
+          foreign_owner_already_monitoring(false),
           owner_address(owner_address),
           pinned_at_raylet_id(pinned_at_raylet_id),
-          is_reconstructable(is_reconstructable) {}
+          is_reconstructable(is_reconstructable),
+          pending_creation(!pinned_at_raylet_id.has_value()) {}
 
     /// Constructor from a protobuf. This is assumed to be a message from
     /// another process, so the object defaults to not being owned by us.
@@ -545,6 +555,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// responsible for tracking the state of the task that creates the object
     /// (see task_manager.h).
     bool owned_by_us = false;
+    /// Whether the object was created with a foreign owner (i.e., _owner set).
+    /// In this case, the owner is already monitoring this reference with a
+    /// WaitForRefRemoved() call, and it is an error to return borrower
+    /// metadata to the parent of the current task.
+    /// See https://github.com/ray-project/ray/pull/19910 for more context.
+    bool foreign_owner_already_monitoring = false;
     /// The object's owner's address, if we know it. If this process is the
     /// owner, then this is added during creation of the Reference. If this is
     /// process is a borrower, the borrower must add the owner's address before
@@ -559,8 +575,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     absl::flat_hash_set<NodeID> locations;
     // Whether this object can be reconstructed via lineage. If false, then the
     // object's value will be pinned as long as it is referenced by any other
-    // object's lineage.
-    const bool is_reconstructable = false;
+    // object's lineage. This should be set to false if the object was created
+    // by ray.put(), a task that cannot be retried, or its lineage was evicted.
+    bool is_reconstructable = false;
 
     /// The local ref count for the ObjectID in the language frontend.
     size_t local_ref_count = 0;
@@ -614,6 +631,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// is inlined (not stored in plasma), then its lineage ref count is 0
     /// because any dependent task will already have the value of the object.
     size_t lineage_ref_count = 0;
+    /// Whether the lineage of this object was evicted due to memory pressure.
+    bool lineage_evicted = false;
     /// Whether this object has been spilled to external storage.
     bool spilled = false;
     /// For objects that have been spilled to external storage, the URL from which
@@ -623,6 +642,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// This will be Nil if the object has not been spilled or if it is spilled
     /// distributed external storage.
     NodeID spilled_node_id = NodeID::Nil();
+    /// Whether the task that creates this object is scheduled/executing.
+    bool pending_creation = false;
     /// Callback that will be called when this ObjectID no longer has
     /// references.
     std::function<void(const ObjectID &)> on_delete;
@@ -696,7 +717,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///   that contained it. We don't need this anymore because we already marked
   ///   that the borrowed ID contained another ID in the returned
   ///   borrowed_refs.
-  bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id,
+  bool GetAndClearLocalBorrowersInternal(const ObjectID &object_id, bool for_ref_removed,
                                          ReferenceTable *borrowed_refs)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -734,8 +755,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Helper method to add an object that we are borrowing. This is used when
   /// deserializing IDs from a task's arguments, or when deserializing an ID
   /// during ray.get().
+  ///
+  /// \param[in] foreign_owner_already_monitoring Whether to set the bit that an
+  ///            externally assigned owner is monitoring the lifetime of this
+  ///            object. This is the case for `ray.put(..., _owner=ZZZ)`.
   bool AddBorrowedObjectInternal(const ObjectID &object_id, const ObjectID &outer_id,
-                                 const rpc::Address &owner_address)
+                                 const rpc::Address &owner_address,
+                                 bool foreign_owner_already_monitoring)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Helper method to delete an entry from the reference map and run any necessary
@@ -745,8 +771,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
                                std::vector<ObjectID> *deleted)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Helper method to decrement the lineage ref count for a list of objects.
-  void ReleaseLineageReferencesInternal(const std::vector<ObjectID> &argument_ids)
+  /// Erase the Reference from the table. Assumes that the entry has no more
+  /// references, normal or lineage.
+  void EraseReference(ReferenceTable::iterator entry) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  /// Helper method to garbage-collect all out-of-scope References in the
+  /// lineage for this object.
+  int64_t ReleaseLineageReferences(ReferenceTable::iterator entry)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Add a new location for the given object. The owner must have the object ref in
@@ -755,6 +786,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] it The reference iterator for the object.
   /// \param[in] node_id The new object location to be added.
   void AddObjectLocationInternal(ReferenceTable::iterator it, const NodeID &node_id)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void UpdateObjectPendingCreation(const ObjectID &object_id, bool pending_creation)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Publish object locations to all subscribers.
@@ -773,6 +807,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void CleanupBorrowersOnRefRemoved(const ReferenceTable &new_borrower_refs,
                                     const ObjectID &object_id,
                                     const rpc::WorkerAddress &borrower_addr);
+
+  /// Decrease the local reference count for the ObjectID by one.
+  /// This method is internal and not thread-safe. mutex_ lock must be held before
+  /// calling this method.
+  void RemoveLocalReferenceInternal(const ObjectID &object_id,
+                                    std::vector<ObjectID> *deleted)
+      EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Address of our RPC server. This is used to determine whether we own a
   /// given object or not, by comparing our WorkerID with the WorkerID of the
@@ -808,6 +849,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// The callback to call once an object ID that we own is no longer in scope
   /// and it has no tasks that depend on it that may be retried in the future.
   /// The object's Reference will be erased after this callback.
+  // Returns the amount of lineage in bytes released.
   LineageReleasedCallback on_lineage_released_;
   /// Optional shutdown hook to call when all references have gone
   /// out of scope.
@@ -821,6 +863,18 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Object status subscriber. It is used to subscribe the ref removed information from
   /// other workers.
   pubsub::SubscriberInterface *object_info_subscriber_;
+
+  /// Objects that we own that are still in scope at the application level and
+  /// that may be reconstructed. These objects may have pinned lineage that
+  /// should be evicted on memory pressure. The queue is in FIFO order, based
+  /// on ObjectRef creation time.
+  std::list<ObjectID> reconstructable_owned_objects_ GUARDED_BY(mutex_);
+
+  /// We keep a FIFO queue of objects in scope so that we can choose lineage to
+  /// evict under memory pressure. This is an index from ObjectID to the
+  /// object's place in the queue.
+  absl::flat_hash_map<ObjectID, std::list<ObjectID>::iterator>
+      reconstructable_owned_objects_index_ GUARDED_BY(mutex_);
 };
 
 }  // namespace core

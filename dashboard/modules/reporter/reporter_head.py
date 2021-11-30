@@ -4,7 +4,6 @@ import yaml
 import os
 import aiohttp.web
 from aioredis.pubsub import Receiver
-from grpc.experimental import aio as aiogrpc
 
 import ray
 import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
@@ -16,6 +15,7 @@ from ray.autoscaler._private.util import (DEBUG_AUTOSCALING_STATUS,
                                           DEBUG_AUTOSCALING_ERROR)
 from ray.core.generated import reporter_pb2
 from ray.core.generated import reporter_pb2_grpc
+import ray.experimental.internal_kv as internal_kv
 from ray.dashboard.datacenter import DataSource
 
 logger = logging.getLogger(__name__)
@@ -38,8 +38,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
             options = (("grpc.enable_http_proxy", 0), )
-            channel = aiogrpc.insecure_channel(
-                f"{ip}:{ports[1]}", options=options)
+            channel = ray._private.utils.init_grpc_channel(
+                f"{ip}:{ports[1]}", options=options, asynchronous=True)
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
             self._stubs[ip] = stub
 
@@ -111,14 +111,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         autoscaler writes them there.
         """
 
-        aioredis_client = self._dashboard_head.aioredis_client
-        legacy_status = await aioredis_client.hget(
-            DEBUG_AUTOSCALING_STATUS_LEGACY, "value")
-        formatted_status_string = await aioredis_client.hget(
-            DEBUG_AUTOSCALING_STATUS, "value")
+        assert ray.experimental.internal_kv._internal_kv_initialized()
+        legacy_status = internal_kv._internal_kv_get(
+            DEBUG_AUTOSCALING_STATUS_LEGACY)
+        formatted_status_string = internal_kv._internal_kv_get(
+            DEBUG_AUTOSCALING_STATUS)
         formatted_status = json.loads(formatted_status_string.decode()
                                       ) if formatted_status_string else {}
-        error = await aioredis_client.hget(DEBUG_AUTOSCALING_ERROR, "value")
+        error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
         return dashboard_utils.rest_response(
             success=True,
             message="Got cluster status.",
@@ -129,6 +129,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
 
     async def run(self, server):
+        # TODO: redis-removal pubsub
         aioredis_client = self._dashboard_head.aioredis_client
         receiver = Receiver()
 

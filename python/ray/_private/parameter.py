@@ -72,8 +72,8 @@ class RayParams:
             be created.
         worker_path (str): The path of the source code that will be run by the
             worker.
-        setup_worker_path (str): The path of the Python file that will run
-            worker_setup_hook to set up the environment for the worker process.
+        setup_worker_path (str): The path of the Python file that will set up
+            the environment for the worker process.
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         include_dashboard: Boolean flag indicating whether to start the web
@@ -97,6 +97,8 @@ class RayParams:
             used by the raylet process.
         temp_dir (str): If provided, it will specify the root temporary
             directory for the Ray process.
+        runtime_env_dir_name (str): If provided, specifies the directory that
+            will be created in the session dir to hold runtime_env files.
         include_log_monitor (bool): If True, then start a log monitor to
             monitor the log files for all processes on this node and push their
             contents to Redis.
@@ -116,6 +118,7 @@ class RayParams:
         ray_debugger_external (bool): If true, make the Ray debugger for a
             worker available externally to the node it is running on. This will
             bind on 0.0.0.0 instead of localhost.
+        env_vars (dict): Override environment variables for the raylet.
     """
 
     def __init__(self,
@@ -158,6 +161,7 @@ class RayParams:
                  plasma_store_socket_name=None,
                  raylet_socket_name=None,
                  temp_dir=None,
+                 runtime_env_dir_name=None,
                  include_log_monitor=None,
                  autoscaling_config=None,
                  start_initial_python_workers_for_first_job=False,
@@ -168,7 +172,7 @@ class RayParams:
                  metrics_export_port=None,
                  tracing_startup_hook=None,
                  no_monitor=False,
-                 lru_evict=False):
+                 env_vars=None):
         self.object_ref_seed = object_ref_seed
         self.external_addresses = external_addresses
         self.redis_address = redis_address
@@ -206,6 +210,8 @@ class RayParams:
         self.plasma_store_socket_name = plasma_store_socket_name
         self.raylet_socket_name = raylet_socket_name
         self.temp_dir = temp_dir
+        self.runtime_env_dir_name = (
+            runtime_env_dir_name or ray_constants.DEFAULT_RUNTIME_ENV_DIR_NAME)
         self.include_log_monitor = include_log_monitor
         self.autoscaling_config = autoscaling_config
         self.metrics_agent_port = metrics_agent_port
@@ -215,17 +221,10 @@ class RayParams:
         self.start_initial_python_workers_for_first_job = (
             start_initial_python_workers_for_first_job)
         self.ray_debugger_external = ray_debugger_external
+        self.env_vars = env_vars
         self._system_config = _system_config or {}
         self._enable_object_reconstruction = enable_object_reconstruction
         self._check_usage()
-
-        # Set the internal config options for LRU eviction.
-        if lru_evict:
-            raise DeprecationWarning(
-                "The lru_evict flag is deprecated as Ray natively "
-                "supports object spilling. Please read "
-                "https://docs.ray.io/en/master/memory-management.html#object-spilling "  # noqa
-                "for more details.")
 
         # Set the internal config options for object reconstruction.
         if enable_object_reconstruction:
@@ -234,7 +233,6 @@ class RayParams:
                 self._system_config = dict()
             print(self._system_config)
             self._system_config["lineage_pinning_enabled"] = True
-            self._system_config["free_objects_period_milliseconds"] = -1
 
     def update(self, **kwargs):
         """Update the settings according to the keyword arguments.

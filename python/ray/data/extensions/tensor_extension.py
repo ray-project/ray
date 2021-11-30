@@ -125,7 +125,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
 
         >>> # In addition to doing Pandas operations on the tensor column,
         >>> # you can now put the DataFrame into a Dataset.
-        >>> ds = ray.data.from_pandas([ray.put(df)])
+        >>> ds = ray.data.from_pandas(df)
         >>> # Internally, this column is represented the corresponding
         >>> # Arrow tensor extension type.
         >>> ds.schema()
@@ -140,7 +140,7 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
         one: int64
         two: extension<arrow.py_extension_type<ArrowTensorType>>
 
-        >>> read_df = ray.get(read_ds.to_pandas())[0]
+        >>> read_df = ray.get(read_ds.to_pandas_refs())[0]
         >>> read_df.dtypes
         one          int64
         two    TensorDtype
@@ -407,7 +407,7 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
 
         >>> # In addition to doing Pandas operations on the tensor column,
         >>> # you can now put the DataFrame into a Dataset.
-        >>> ds = ray.data.from_pandas([ray.put(df)])
+        >>> ds = ray.data.from_pandas(df)
         >>> # Internally, this column is represented the corresponding
         >>> # Arrow tensor extension type.
         >>> ds.schema()
@@ -422,7 +422,7 @@ class TensorArray(pd.api.extensions.ExtensionArray, TensorOpsMixin):
         one: int64
         two: extension<arrow.py_extension_type<ArrowTensorType>>
 
-        >>> read_df = ray.get(read_ds.to_pandas())[0]
+        >>> read_df = ray.get(read_ds.to_pandas_refs())[0]
         >>> read_df.dtypes
         one          int64
         two    TensorDtype

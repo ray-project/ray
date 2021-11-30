@@ -348,7 +348,8 @@ class NCCLGroup(BaseGroup):
 
         def p2p_fn(tensor, comm, stream, peer):
             comm.send(
-                nccl_util.get_tensor_ptr(tensor),
+                nccl_util.get_tensor_ptr(tensor), send_options.n_elements
+                if send_options.n_elements > 0 else
                 nccl_util.get_tensor_n_elements(tensor),
                 nccl_util.get_nccl_tensor_dtype(tensor), peer, stream.ptr)
 
@@ -368,7 +369,8 @@ class NCCLGroup(BaseGroup):
 
         def p2p_fn(tensor, comm, stream, peer):
             comm.recv(
-                nccl_util.get_tensor_ptr(tensor),
+                nccl_util.get_tensor_ptr(tensor), recv_options.n_elements
+                if recv_options.n_elements > 0 else
                 nccl_util.get_tensor_n_elements(tensor),
                 nccl_util.get_nccl_tensor_dtype(tensor), peer, stream.ptr)
 
@@ -439,8 +441,6 @@ class NCCLGroup(BaseGroup):
                 with nccl_util.Device(device):
                     events[i].record(cupy.cuda.get_current_stream())
                     streams[i].wait_event(events[i])
-        else:
-            cupy.cuda.Stream.null.synchronize()
 
     def _get_nccl_p2p_communicator(self, comm_key, my_gpu_idx, peer_rank,
                                    peer_gpu_idx):

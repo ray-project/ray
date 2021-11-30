@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <memory>
 #include <utility>
 
 #include "ray/common/asio/instrumented_io_context.h"
@@ -212,17 +213,6 @@ class GcsTaskReconstructionTable
   JobID GetJobIdFromKey(const TaskID &key) override { return key.ActorId().JobId(); }
 };
 
-class GcsObjectTable : public GcsTableWithJobId<ObjectID, ObjectLocationInfo> {
- public:
-  explicit GcsObjectTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTableWithJobId(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::OBJECT);
-  }
-
- private:
-  JobID GetJobIdFromKey(const ObjectID &key) override { return key.TaskId().JobId(); }
-};
-
 class GcsNodeTable : public GcsTable<NodeID, GcsNodeInfo> {
  public:
   explicit GcsNodeTable(std::shared_ptr<StoreClient> store_client)
@@ -285,6 +275,26 @@ class GcsInternalConfigTable : public GcsTable<UniqueID, StoredConfig> {
 /// derive from this class and override class member variables.
 class GcsTableStorage {
  public:
+  explicit GcsTableStorage(std::shared_ptr<StoreClient> store_client)
+      : store_client_(std::move(store_client)) {
+    job_table_ = std::make_unique<GcsJobTable>(store_client_);
+    actor_table_ = std::make_unique<GcsActorTable>(store_client_);
+    placement_group_table_ = std::make_unique<GcsPlacementGroupTable>(store_client_);
+    task_table_ = std::make_unique<GcsTaskTable>(store_client_);
+    task_lease_table_ = std::make_unique<GcsTaskLeaseTable>(store_client_);
+    task_reconstruction_table_ =
+        std::make_unique<GcsTaskReconstructionTable>(store_client_);
+    node_table_ = std::make_unique<GcsNodeTable>(store_client_);
+    node_resource_table_ = std::make_unique<GcsNodeResourceTable>(store_client_);
+    placement_group_schedule_table_ =
+        std::make_unique<GcsPlacementGroupScheduleTable>(store_client_);
+    resource_usage_batch_table_ =
+        std::make_unique<GcsResourceUsageBatchTable>(store_client_);
+    profile_table_ = std::make_unique<GcsProfileTable>(store_client_);
+    worker_table_ = std::make_unique<GcsWorkerTable>(store_client_);
+    system_config_table_ = std::make_unique<GcsInternalConfigTable>(store_client_);
+  }
+
   GcsJobTable &JobTable() {
     RAY_CHECK(job_table_ != nullptr);
     return *job_table_;
@@ -313,11 +323,6 @@ class GcsTableStorage {
   GcsTaskReconstructionTable &TaskReconstructionTable() {
     RAY_CHECK(task_reconstruction_table_ != nullptr);
     return *task_reconstruction_table_;
-  }
-
-  GcsObjectTable &ObjectTable() {
-    RAY_CHECK(object_table_ != nullptr);
-    return *object_table_;
   }
 
   GcsNodeTable &NodeTable() {
@@ -368,7 +373,6 @@ class GcsTableStorage {
   std::unique_ptr<GcsTaskTable> task_table_;
   std::unique_ptr<GcsTaskLeaseTable> task_lease_table_;
   std::unique_ptr<GcsTaskReconstructionTable> task_reconstruction_table_;
-  std::unique_ptr<GcsObjectTable> object_table_;
   std::unique_ptr<GcsNodeTable> node_table_;
   std::unique_ptr<GcsNodeResourceTable> node_resource_table_;
   std::unique_ptr<GcsPlacementGroupScheduleTable> placement_group_schedule_table_;
@@ -383,26 +387,8 @@ class GcsTableStorage {
 /// that uses redis as storage.
 class RedisGcsTableStorage : public GcsTableStorage {
  public:
-  explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client) {
-    store_client_ = std::make_shared<RedisStoreClient>(redis_client);
-    job_table_.reset(new GcsJobTable(store_client_));
-    actor_table_.reset(new GcsActorTable(store_client_));
-    placement_group_table_.reset(new GcsPlacementGroupTable(store_client_));
-    task_table_.reset(new GcsTaskTable(store_client_));
-    task_lease_table_.reset(new GcsTaskLeaseTable(store_client_));
-    task_reconstruction_table_.reset(new GcsTaskReconstructionTable(store_client_));
-    object_table_.reset(new GcsObjectTable(store_client_));
-    node_table_.reset(new GcsNodeTable(store_client_));
-    node_resource_table_.reset(new GcsNodeResourceTable(store_client_));
-    placement_group_schedule_table_.reset(
-        new GcsPlacementGroupScheduleTable(store_client_));
-    placement_group_schedule_table_.reset(
-        new GcsPlacementGroupScheduleTable(store_client_));
-    resource_usage_batch_table_.reset(new GcsResourceUsageBatchTable(store_client_));
-    profile_table_.reset(new GcsProfileTable(store_client_));
-    worker_table_.reset(new GcsWorkerTable(store_client_));
-    system_config_table_.reset(new GcsInternalConfigTable(store_client_));
-  }
+  explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client)
+      : GcsTableStorage(std::make_shared<RedisStoreClient>(std::move(redis_client))) {}
 };
 
 /// \class InMemoryGcsTableStorage
@@ -410,24 +396,8 @@ class RedisGcsTableStorage : public GcsTableStorage {
 /// that uses memory as storage.
 class InMemoryGcsTableStorage : public GcsTableStorage {
  public:
-  explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service) {
-    store_client_ = std::make_shared<InMemoryStoreClient>(main_io_service);
-    job_table_.reset(new GcsJobTable(store_client_));
-    actor_table_.reset(new GcsActorTable(store_client_));
-    placement_group_table_.reset(new GcsPlacementGroupTable(store_client_));
-    task_table_.reset(new GcsTaskTable(store_client_));
-    task_lease_table_.reset(new GcsTaskLeaseTable(store_client_));
-    task_reconstruction_table_.reset(new GcsTaskReconstructionTable(store_client_));
-    object_table_.reset(new GcsObjectTable(store_client_));
-    node_table_.reset(new GcsNodeTable(store_client_));
-    node_resource_table_.reset(new GcsNodeResourceTable(store_client_));
-    placement_group_schedule_table_.reset(
-        new GcsPlacementGroupScheduleTable(store_client_));
-    resource_usage_batch_table_.reset(new GcsResourceUsageBatchTable(store_client_));
-    profile_table_.reset(new GcsProfileTable(store_client_));
-    worker_table_.reset(new GcsWorkerTable(store_client_));
-    system_config_table_.reset(new GcsInternalConfigTable(store_client_));
-  }
+  explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service)
+      : GcsTableStorage(std::make_shared<InMemoryStoreClient>(main_io_service)) {}
 };
 
 }  // namespace gcs

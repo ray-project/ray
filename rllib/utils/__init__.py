@@ -8,10 +8,11 @@ from ray.rllib.utils.filter_manager import FilterManager
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.numpy import sigmoid, softmax, relu, one_hot, fc, lstm, \
     SMALL_NUMBER, LARGE_INTEGER, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
+from ray.rllib.utils.pre_checks import check_env
 from ray.rllib.utils.schedules import LinearSchedule, PiecewiseSchedule, \
     PolynomialSchedule, ExponentialSchedule, ConstantSchedule
 from ray.rllib.utils.test_utils import check, check_compute_single_action, \
-    framework_iterator
+    check_train_results, framework_iterator
 from ray.tune.utils import merge_dicts, deep_update
 
 
@@ -76,7 +77,9 @@ force_tuple = partial(force_list, to_tuple=True)
 __all__ = [
     "add_mixins",
     "check",
+    "check_env",
     "check_compute_single_action",
+    "check_train_results",
     "deep_update",
     "deprecation_warning",
     "fc",

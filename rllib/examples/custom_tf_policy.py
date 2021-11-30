@@ -16,7 +16,7 @@ parser.add_argument("--num-cpus", type=int, default=0)
 
 
 def policy_gradient_loss(policy, model, dist_class, train_batch):
-    logits, _ = model.from_batch(train_batch)
+    logits, _ = model(train_batch)
     action_dist = dist_class(logits, model)
     return -tf.reduce_mean(
         action_dist.logp(train_batch["actions"]) * train_batch["returns"])

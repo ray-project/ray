@@ -8,32 +8,30 @@ import platform
 import re
 import shutil
 import time
-from typing import Callable, Dict, Sequence, Union
+from typing import Dict, Optional, Sequence, Union
 import uuid
 
 import ray
 import ray.cloudpickle as cloudpickle
-from ray.exceptions import GetTimeoutError
+from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.checkpoint_manager import Checkpoint, CheckpointManager
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
 # need because there are cyclic imports that may cause specific names to not
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
-from ray.tune.result import DEFAULT_RESULTS_DIR, DONE, TRAINING_ITERATION
-from ray.tune.resources import Resources, \
-    json_to_resources, resources_to_json
+from ray.tune.result import (DEFAULT_RESULTS_DIR, DONE, NODE_IP, PID,
+                             TRAINING_ITERATION, TRIAL_ID, DEBUG_METRICS)
+from ray.tune.resources import Resources
 from ray.tune.utils.placement_groups import PlacementGroupFactory, \
     resource_dict_to_pg_factory
 from ray.tune.utils.serialization import TuneFunctionEncoder
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
-from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 from ray._private.utils import binary_to_hex, hex_to_binary
 
 DEBUG_PRINT_INTERVAL = 5
-CHECKPOINT_DELETER_NODE_IP_GET_TIMEOUT = 15
 logger = logging.getLogger(__name__)
 
 
@@ -85,26 +83,9 @@ class ExportFormat:
 class CheckpointDeleter:
     """Checkpoint deleter callback for a runner."""
 
-    def __init__(self,
-                 trial_id,
-                 runner,
-                 node_ip,
-                 timeout: int = CHECKPOINT_DELETER_NODE_IP_GET_TIMEOUT):
+    def __init__(self, trial_id, runner):
         self.trial_id = trial_id
         self.runner = runner
-        self.node_ip = node_ip
-        self._runner_ip = None
-        self.timeout = timeout
-
-    @property
-    def runner_ip(self):
-        if not self._runner_ip:
-            try:
-                self._runner_ip = ray.get(
-                    self.runner.get_current_ip.remote(), timeout=self.timeout)
-            except GetTimeoutError:
-                pass
-        return self._runner_ip
 
     def __call__(self, checkpoint):
         """Requests checkpoint deletion asynchronously.
@@ -116,22 +97,25 @@ class CheckpointDeleter:
             return
 
         if checkpoint.storage == Checkpoint.PERSISTENT and checkpoint.value:
-            logger.debug("Trial %s: Deleting checkpoint %s", self.trial_id,
-                         checkpoint.value)
             checkpoint_path = checkpoint.value
 
+            logger.debug("Trial %s: Deleting checkpoint %s", self.trial_id,
+                         checkpoint_path)
+
+            # TODO(ujvl): Batch remote deletes.
+            # We first delete the remote checkpoint. If it is on the same
+            # node as the driver, it will also remove the local copy.
+            ray.get(self.runner.delete_checkpoint.remote(checkpoint_path))
+
             # Delete local copy, if any exists.
-            if self.runner_ip != self.node_ip and os.path.exists(
-                    checkpoint_path):
+            if os.path.exists(checkpoint_path):
                 try:
                     checkpoint_dir = TrainableUtil.find_checkpoint_dir(
                         checkpoint_path)
                     shutil.rmtree(checkpoint_dir)
                 except FileNotFoundError:
-                    logger.warning("Checkpoint dir not found during deletion.")
-
-            # TODO(ujvl): Batch remote deletes.
-            self.runner.delete_checkpoint.remote(checkpoint.value)
+                    logger.debug(
+                        "Local checkpoint dir not found during deletion.")
 
 
 class TrialInfo:
@@ -147,10 +131,7 @@ class TrialInfo:
     def __init__(self, trial: "Trial"):
         self._trial_name = str(trial)
         self._trial_id = trial.trial_id
-        if trial.uses_placement_groups:
-            self._trial_resources = trial.placement_group_factory
-        else:
-            self._trial_resources = trial.resources
+        self._trial_resources = trial.placement_group_factory
 
     @property
     def trial_name(self):
@@ -183,6 +164,22 @@ def create_logdir(dirname, local_dir):
     return logdir
 
 
+def _to_pg_factory(resources: Optional[Resources],
+                   placement_group_factory: Optional[PlacementGroupFactory]
+                   ) -> PlacementGroupFactory:
+    """Outputs resources requirement in the form of PGF.
+
+    In case that `placement_group_factory` is None, `resources` will be
+    converted to PGF. If this is unsuccessful, an error will be raised.
+
+    """
+    if not placement_group_factory:
+        if not resources:
+            resources = Resources(cpu=1, gpu=0)
+        placement_group_factory = resource_dict_to_pg_factory(resources)
+    return placement_group_factory
+
+
 @DeveloperAPI
 class Trial:
     """A trial object holds the state for one model training run.
@@ -193,6 +190,10 @@ class Trial:
     Trials start in the PENDING state, and transition to RUNNING once started.
     On error it transitions to ERROR, otherwise TERMINATED on success.
 
+    There are resources allocated to each trial. It's preferred that resources
+    are specified using PlacementGroupFactory, rather than through Resources,
+    which is being deprecated.
+
     Attributes:
         trainable_name (str): Name of the trainable object to be executed.
         config (dict): Provided configuration dictionary with evaluated params.
@@ -200,8 +201,7 @@ class Trial:
         local_dir (str): Local_dir as passed to tune.run.
         logdir (str): Directory where the trial logs are saved.
         evaluated_params (dict): Evaluated parameters by search algorithm,
-        experiment_tag (str): Identifying trial name to show in the console.
-        resources (Resources): Amount of resources that this trial will use.
+        experiment_tag (str): Identifying trial name to show in the console
         status (str): One of PENDING, RUNNING, PAUSED, TERMINATED, ERROR/
         error_file (str): Path to the errors that this trial has raised.
 
@@ -212,6 +212,7 @@ class Trial:
         "best_result",
         "param_config",
         "extra_arg",
+        "placement_group_factory",
     ]
 
     PENDING = "PENDING"
@@ -231,7 +232,7 @@ class Trial:
                  placement_group_factory=None,
                  stopping_criterion=None,
                  remote_checkpoint_dir=None,
-                 sync_to_cloud=None,
+                 sync_function_tpl=None,
                  checkpoint_freq=0,
                  checkpoint_at_end=False,
                  sync_on_checkpoint=True,
@@ -242,20 +243,27 @@ class Trial:
                  trial_name_creator=None,
                  trial_dirname_creator=None,
                  log_to_file=None,
-                 max_failures=0):
+                 max_failures=0,
+                 stub=False):
         """Initialize a new trial.
 
         The args here take the same meaning as the command line flags defined
         in ray.tune.config_parser.
         """
-        validate_trainable(trainable_name)
+        # If this is set, trainables are not validated or looked up.
+        # This can be used e.g. to initialize Trial objects from checkpoints
+        # without loading the trainable first.
+        self.stub = stub
+
+        if not self.stub:
+            validate_trainable(trainable_name)
         # Trial config
         self.trainable_name = trainable_name
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
         self.config = config or {}
         self.local_dir = local_dir  # This remains unexpanded for syncing.
 
-        #: Parameters that Tune varies across searches.
+        # Parameters that Tune varies across searches.
         self.evaluated_params = evaluated_params or {}
         self.experiment_tag = experiment_tag
         trainable_cls = self.get_trainable_cls()
@@ -273,20 +281,16 @@ class Trial:
                         "clear the `resources_per_trial` option.".format(
                             trainable_cls, default_resources))
 
-                # New way: Trainable returns a PlacementGroupFactory object.
                 if isinstance(default_resources, PlacementGroupFactory):
                     placement_group_factory = default_resources
                     resources = None
-                # Set placement group factory to None for backwards
-                # compatibility.
                 else:
                     placement_group_factory = None
                     resources = default_resources
         self.location = Location()
 
-        self.resources = resources or Resources(cpu=1, gpu=0)
-        self.placement_group_factory = placement_group_factory
-        self._setup_resources()
+        self.placement_group_factory = _to_pg_factory(resources,
+                                                      placement_group_factory)
 
         self.stopping_criterion = stopping_criterion or {}
 
@@ -299,7 +303,9 @@ class Trial:
         self.max_failures = max_failures
 
         # Local trial state that is updated during the run
-        self.last_result = {}
+        self._last_result = {}
+        self._default_result_or_future: Union[ray.ObjectRef, dict, None] = (
+            None)
         self.last_update_time = -float("inf")
 
         # stores in memory max/min/avg/last-n-avg/last result for each
@@ -328,7 +334,12 @@ class Trial:
             self.remote_checkpoint_dir_prefix = remote_checkpoint_dir
         else:
             self.remote_checkpoint_dir_prefix = None
-        self.sync_to_cloud = sync_to_cloud
+
+        if sync_function_tpl == "auto" or not isinstance(
+                sync_function_tpl, str):
+            sync_function_tpl = None
+        self.sync_function_tpl = sync_function_tpl
+
         self.checkpoint_freq = checkpoint_freq
         self.checkpoint_at_end = checkpoint_at_end
         self.keep_checkpoints_num = keep_checkpoints_num
@@ -336,8 +347,7 @@ class Trial:
         self.sync_on_checkpoint = sync_on_checkpoint
         self.checkpoint_manager = CheckpointManager(
             keep_checkpoints_num, checkpoint_score_attr,
-            CheckpointDeleter(self._trainable_name(), self.runner,
-                              self.node_ip))
+            CheckpointDeleter(self._trainable_name(), self.runner))
 
         # Restoration fields
         self.restore_path = restore_path
@@ -363,36 +373,51 @@ class Trial:
         self._state_json = None
         self._state_valid = False
 
-    def _setup_resources(self, log_always: bool = False):
-        """Set up resource and placement group requirements.
+    def _get_default_result_or_future(self) -> Optional[dict]:
+        """Calls ray.get on self._default_result_or_future and assigns back.
 
-        This will try to convert the resource request in ``self.resources``
-        to a placement group factory object. If this is unsuccessful,
-        placement groups will not be used.
-
-        Args:
-            log_always (bool): If True, this will always log a warning if
-                conversion from a resource dict to a placement group
-                definition was unsuccessful (e.g. when passing ``extra_``
-                requests).
-
-
+        Returns None in case of exceptions.
+        Will also set the trial location if runner is set.
         """
-        if not self.placement_group_factory and \
-           not int(os.getenv("TUNE_PLACEMENT_GROUP_AUTO_DISABLED", "0")):
+        if self._default_result_or_future and isinstance(
+                self._default_result_or_future, ray.ObjectRef):
             try:
-                self.placement_group_factory = resource_dict_to_pg_factory(
-                    self.resources)
-            except ValueError as exc:
-                if log_always or log_once("tune_pg_extra_resources"):
-                    logger.warning(exc)
-                self.placement_group_factory = None
+                self._default_result_or_future = ray.get(
+                    self._default_result_or_future)
+            except RayActorError:  # error during initialization
+                self._default_result_or_future = None
+        if self._default_result_or_future and self.runner:
+            self.set_location(
+                Location(
+                    self._default_result_or_future.get(NODE_IP),
+                    self._default_result_or_future.get(PID)))
+        return self._default_result_or_future
 
-        # Set placement group factory flag to True in Resources object.
-        if self.placement_group_factory:
-            resource_kwargs = self.resources._asdict()
-            resource_kwargs["has_placement_group"] = True
-            self.resources = Resources(**resource_kwargs)
+    @property
+    def last_result(self) -> dict:
+        # The logic in here is as follows:
+        # 1. If the trial has reported at least once, last_result would have
+        #    been set and therefore would not be empty. We can just return it.
+        # 2. If the trial has not reported at least once but we have the
+        #    future for the default results dict, (obtained through
+        #    Trainable.get_auto_filled_metrics), we get that future
+        #    and return it.
+        # 3. In the worst case where we have nothing, we just set the
+        #    trial_id and return that.
+        result = self._last_result
+        if not {k for k in result if k != TRIAL_ID}:
+            self._get_default_result_or_future()
+            result = self._default_result_or_future or result
+        result.setdefault(TRIAL_ID, self.trial_id)
+        return result
+
+    @last_result.setter
+    def last_result(self, val: dict):
+        self._last_result = val
+
+    @property
+    def has_reported_at_least_once(self) -> bool:
+        return bool(self._last_result)
 
     @property
     def node_ip(self):
@@ -426,8 +451,8 @@ class Trial:
         return os.path.join(self.remote_checkpoint_dir_prefix, logdir_name)
 
     @property
-    def uses_placement_groups(self):
-        return bool(self.placement_group_factory)
+    def uses_cloud_checkpointing(self):
+        return bool(self.remote_checkpoint_dir)
 
     def reset(self):
         # If there is `default_resource_request` associated with the trainable,
@@ -438,7 +463,6 @@ class Trial:
         trainable_cls = self.get_trainable_cls()
         clear_resources = (trainable_cls and
                            trainable_cls.default_resource_request(self.config))
-        resources = self.resources if not clear_resources else None
         placement_group_factory = (self.placement_group_factory
                                    if not clear_resources else None)
 
@@ -449,7 +473,7 @@ class Trial:
             local_dir=self.local_dir,
             evaluated_params=self.evaluated_params,
             experiment_tag=self.experiment_tag,
-            resources=resources,
+            resources=None,
             placement_group_factory=placement_group_factory,
             stopping_criterion=self.stopping_criterion,
             remote_checkpoint_dir=self.remote_checkpoint_dir,
@@ -474,8 +498,7 @@ class Trial:
             os.makedirs(self.logdir, exist_ok=True)
         self.invalidate_json_state()
 
-    def update_resources(
-            self, resources: Union[Dict, Callable, PlacementGroupFactory]):
+    def update_resources(self, resources: Union[Dict, PlacementGroupFactory]):
         """EXPERIMENTAL: Updates the resource requirements.
 
         Should only be called when the trial is not running.
@@ -486,12 +509,14 @@ class Trial:
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
 
+        placement_group_factory = None
         if isinstance(resources, PlacementGroupFactory):
-            self.placement_group_factory = resources
+            placement_group_factory = resources
         else:
-            self.resources = Resources(**resources)
+            resources = Resources(**resources)
 
-        self._setup_resources()
+        self.placement_group_factory = _to_pg_factory(resources,
+                                                      placement_group_factory)
 
         self.invalidate_json_state()
 
@@ -499,16 +524,19 @@ class Trial:
 
     def set_runner(self, runner):
         self.runner = runner
+        if runner:
+            # Do not block here, the result will be gotten when last_result
+            # property is accessed
+            self._default_result_or_future = (
+                runner.get_auto_filled_metrics.remote(debug_metrics_only=True))
         self.checkpoint_manager.delete = CheckpointDeleter(
-            self._trainable_name(), runner, self.node_ip)
+            self._trainable_name(), runner)
         # No need to invalidate state cache: runner is not stored in json
         # self.invalidate_json_state()
 
     def set_location(self, location):
         """Sets the location of the trial."""
         self.location = location
-        if self.checkpoint_manager.delete:
-            self.checkpoint_manager.delete.node_ip = self.node_ip
         # No need to invalidate state cache: location is not stored in json
         # self.invalidate_json_state()
 
@@ -599,15 +627,19 @@ class Trial:
         """
         return self.num_failures < self.max_failures or self.max_failures < 0
 
-    def update_last_result(self, result, terminate=False):
+    def update_last_result(self, result):
         if self.experiment_tag:
             result.update(experiment_tag=self.experiment_tag)
 
-        self.set_location(Location(result.get("node_ip"), result.get("pid")))
+        self.set_location(Location(result.get(NODE_IP), result.get(PID)))
         self.last_result = result
         self.last_update_time = time.time()
 
-        for metric, value in flatten_dict(result).items():
+        metric_result = self.last_result.copy()
+        for remove_metric in DEBUG_METRICS:
+            metric_result.pop(remove_metric, None)
+
+        for metric, value in flatten_dict(metric_result).items():
             if isinstance(value, Number):
                 if metric not in self.metric_analysis:
                     self.metric_analysis[metric] = {
@@ -643,6 +675,8 @@ class Trial:
         self.invalidate_json_state()
 
     def get_trainable_cls(self):
+        if self.stub:
+            return None
         return get_trainable_cls(self.trainable_name)
 
     def is_finished(self):
@@ -716,7 +750,6 @@ class Trial:
         Note this can only occur if the trial holds a PERSISTENT checkpoint.
         """
         state = self.__dict__.copy()
-        state["resources"] = resources_to_json(self.resources)
 
         for key in self._nonjson_fields:
             state[key] = binary_to_hex(cloudpickle.dumps(state.get(key)))
@@ -729,11 +762,11 @@ class Trial:
 
         state["_state_json"] = None
         state["_state_valid"] = False
+        state["_default_result_or_future"] = None
 
         return copy.deepcopy(state)
 
     def __setstate__(self, state):
-        state["resources"] = json_to_resources(state["resources"])
 
         if state["status"] == Trial.RUNNING:
             state["status"] = Trial.PENDING
@@ -741,7 +774,8 @@ class Trial:
             state[key] = cloudpickle.loads(hex_to_binary(state[key]))
 
         self.__dict__.update(state)
-        validate_trainable(self.trainable_name)
+        if not self.stub:
+            validate_trainable(self.trainable_name)
 
         # Avoid creating logdir in client mode for returned trial results,
         # since the dir might not be creatable locally. TODO(ekl) thsi is kind

@@ -11,6 +11,7 @@ from typing import Optional
 import ray.experimental.internal_kv as ray_kv
 from ray.serve.storage.kv_store_base import KVStoreBase
 from ray.serve.utils import logger
+from ray import ray_constants
 
 
 def get_storage_key(namespace: str, storage_key: str) -> str:
@@ -48,7 +49,11 @@ class RayInternalKVStore(KVStoreBase):
         if not isinstance(val, bytes):
             raise TypeError("val must be bytes, got: {}.".format(type(val)))
 
-        ray_kv._internal_kv_put(self.get_storage_key(key), val, overwrite=True)
+        ray_kv._internal_kv_put(
+            self.get_storage_key(key),
+            val,
+            overwrite=True,
+            namespace=ray_constants.KV_NAMESPACE_SERVE)
 
     def get(self, key: str) -> Optional[bytes]:
         """Get the value associated with the given key from the store.
@@ -62,7 +67,9 @@ class RayInternalKVStore(KVStoreBase):
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
 
-        return ray_kv._internal_kv_get(self.get_storage_key(key))
+        return ray_kv._internal_kv_get(
+            self.get_storage_key(key),
+            namespace=ray_constants.KV_NAMESPACE_SERVE)
 
     def delete(self, key: str):
         """Delete the value associated with the given key from the store.
@@ -73,7 +80,9 @@ class RayInternalKVStore(KVStoreBase):
 
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
-        return ray_kv._internal_kv_del(self.get_storage_key(key))
+        return ray_kv._internal_kv_del(
+            self.get_storage_key(key),
+            namespace=ray_constants.KV_NAMESPACE_SERVE)
 
 
 class RayLocalKVStore(KVStoreBase):
@@ -176,7 +185,7 @@ class RayS3KVStore(KVStoreBase):
 
     def __init__(
             self,
-            namepsace: str,
+            namespace: str,
             bucket="",
             prefix="",
             region_name="us-west-2",
@@ -184,9 +193,9 @@ class RayS3KVStore(KVStoreBase):
             aws_secret_access_key=None,
             aws_session_token=None,
     ):
-        self._namespace = namepsace
+        self._namespace = namespace
         self._bucket = bucket
-        self._prefix = prefix + "/" if prefix else ""
+        self._prefix = prefix
         if not boto3:
             raise ImportError(
                 "You tried to use S3KVstore client without boto3 installed."
@@ -199,7 +208,7 @@ class RayS3KVStore(KVStoreBase):
             aws_session_token=aws_session_token)
 
     def get_storage_key(self, key: str) -> str:
-        return f"{self._prefix}{self._namespace}-{key}"
+        return f"{self._prefix}/{self._namespace}-{key}"
 
     def put(self, key: str, val: bytes) -> bool:
         """Put the key-value pair into the store.

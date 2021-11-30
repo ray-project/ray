@@ -22,11 +22,11 @@ from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.examples.policy.random_policy import RandomPolicy
 from ray.rllib.execution.concurrency_ops import Concurrently
 from ray.rllib.execution.metric_ops import StandardMetricsReporting
-from ray.rllib.execution.replay_buffer import LocalReplayBuffer
 from ray.rllib.execution.replay_ops import Replay, StoreToReplayBuffer
 from ray.rllib.execution.rollout_ops import ParallelRollouts
 from ray.rllib.execution.train_ops import TrainOneStep
 from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.typing import TrainerConfigDict
 from ray.util.iter import LocalIterator
 
@@ -82,7 +82,11 @@ DEFAULT_CONFIG = with_common_config({
     # === Replay buffer ===
     # Size of the replay buffer. Note that if async_updates is set, then
     # each worker will have a replay buffer of this size.
-    "buffer_size": 50000,
+    "buffer_size": DEPRECATED_VALUE,
+    "replay_buffer_config": {
+        "type": "MultiAgentReplayBuffer",
+        "capacity": 50000,
+    },
     # The number of contiguous environment steps to replay at once. This may
     # be set to greater than 1 to support recurrent models.
     "replay_sequence_length": 1,
@@ -152,8 +156,8 @@ def validate_config(config: TrainerConfigDict) -> None:
                 "For SARSA strategy, batch_mode must be 'complete_episodes'")
 
 
-def execution_plan(workers: WorkerSet,
-                   config: TrainerConfigDict) -> LocalIterator[dict]:
+def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                   **kwargs) -> LocalIterator[dict]:
     """Execution plan of the SlateQ algorithm. Defines the distributed dataflow.
 
     Args:
@@ -164,14 +168,8 @@ def execution_plan(workers: WorkerSet,
     Returns:
         LocalIterator[dict]: A local iterator over training metrics.
     """
-    local_replay_buffer = LocalReplayBuffer(
-        num_shards=1,
-        learning_starts=config["learning_starts"],
-        buffer_size=config["buffer_size"],
-        replay_batch_size=config["train_batch_size"],
-        replay_mode=config["multiagent"]["replay_mode"],
-        replay_sequence_length=config["replay_sequence_length"],
-    )
+    assert "local_replay_buffer" in kwargs, (
+        "SlateQ execution plan requires a local replay buffer.")
 
     rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
@@ -179,12 +177,12 @@ def execution_plan(workers: WorkerSet,
     # (1) Generate rollouts and store them in our local replay buffer. Calling
     # next() on store_op drives this.
     store_op = rollouts.for_each(
-        StoreToReplayBuffer(local_buffer=local_replay_buffer))
+        StoreToReplayBuffer(local_buffer=kwargs["local_replay_buffer"]))
 
     # (2) Read and train on experiences from the replay buffer. Every batch
     # returned from the LocalReplay() iterator is passed to TrainOneStep to
     # take a SGD step.
-    replay_op = Replay(local_buffer=local_replay_buffer) \
+    replay_op = Replay(local_buffer=kwargs["local_replay_buffer"]) \
         .for_each(TrainOneStep(workers))
 
     if config["slateq_strategy"] != "RANDOM":

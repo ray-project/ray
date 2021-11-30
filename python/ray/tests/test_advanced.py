@@ -172,15 +172,20 @@ def test_running_function_on_all_workers(ray_start_regular):
     reason="Only tested in client/profiling build.")
 def test_profiling_api(ray_start_2_cpus):
     @ray.remote
-    def f():
+    def f(delay):
         with profiling.profile(
                 "custom_event", extra_data={"name": "custom name"}):
+            time.sleep(delay)
             pass
 
+    @ray.remote
+    def g(input_list):
+        # The argument input_list should be a list containing one object ref.
+        ray.wait([input_list[0]])
+
     ray.put(1)
-    object_ref = f.remote()
-    ray.wait([object_ref])
-    ray.get(object_ref)
+    x = f.remote(1)
+    ray.get([g.remote([x]), g.remote([x])])
 
     # Wait until all of the profiling information appears in the profile
     # table.
@@ -366,6 +371,7 @@ def test_illegal_api_calls(ray_start_regular):
 
 @pytest.mark.skipif(
     client_test_enabled(), reason="grpc interaction with releasing resources")
+@pytest.mark.skipif(sys.platform == "win32", reason="Time out on Windows")
 def test_multithreading(ray_start_2_cpus):
     # This test requires at least 2 CPUs to finish since the worker does not
     # release resources when joining the threads.

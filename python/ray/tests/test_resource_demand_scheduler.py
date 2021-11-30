@@ -1,5 +1,7 @@
 import pytest
 from datetime import datetime
+from dataclasses import asdict
+import json
 import time
 import yaml
 import tempfile
@@ -12,11 +14,11 @@ import ray
 import ray.ray_constants
 from ray.autoscaler._private.util import prepare_config, format_info_string
 from ray.tests.test_autoscaler import SMALL_CLUSTER, MOCK_DEFAULT_CONFIG, \
-    MULTI_WORKER_CLUSTER, TYPES_A, MockProvider, MockProcessRunner
+    MULTI_WORKER_CLUSTER, TYPES_A, MockProvider, MockProcessRunner, \
+    MockNodeInfoStub, mock_raylet_id, fill_in_raylet_ids, MockAutoscaler
 from ray.autoscaler._private.providers import (_NODE_PROVIDERS,
                                                _clear_provider_cache)
-from ray.autoscaler._private.autoscaler import StandardAutoscaler, \
-    AutoscalerSummary
+from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.load_metrics import LoadMetrics, \
     LoadMetricsSummary
 from ray.autoscaler._private.commands import get_or_create_head_node
@@ -46,24 +48,52 @@ def get_nodes_for(*a, **kw):
 
 def test_util_score():
     assert _utilization_score({"CPU": 64}, [{"TPU": 16}]) is None
-    assert _utilization_score({"GPU": 4}, [{"GPU": 2}]) == (0.5, 0.5)
+    assert _utilization_score({"GPU": 4}, [{"GPU": 2}]) == (1, 0.5, 0.5)
     assert _utilization_score({"GPU": 4}, [{"GPU": 1}, {"GPU": 1}]) == \
-        (0.5, 0.5)
-    assert _utilization_score({"GPU": 2}, [{"GPU": 2}]) == (2, 2)
-    assert _utilization_score({"GPU": 2}, [{"GPU": 1}, {"GPU": 1}]) == (2, 2)
-    assert _utilization_score({"GPU": 2, "TPU": 1}, [{"GPU": 2}]) == (0, 1)
-    assert _utilization_score({"CPU": 64}, [{"CPU": 64}]) == (64, 64)
-    assert _utilization_score({"CPU": 64}, [{"CPU": 32}]) == (8, 8)
+        (1, 0.5, 0.5)
+    assert _utilization_score({"GPU": 2}, [{"GPU": 2}]) == (1, 2, 2)
+    assert _utilization_score({
+        "GPU": 2
+    }, [{
+        "GPU": 1
+    }, {
+        "GPU": 1
+    }]) == (1, 2, 2)
+    assert _utilization_score({
+        "GPU": 1
+    }, [{
+        "GPU": 1,
+        "CPU": 1
+    }, {
+        "GPU": 1
+    }]) == (1, 1, 1)
+    assert _utilization_score({
+        "GPU": 1,
+        "CPU": 1
+    }, [{
+        "GPU": 1,
+        "CPU": 1
+    }, {
+        "GPU": 1
+    }]) == (2, 1, 1)
+    assert _utilization_score({"GPU": 2, "TPU": 1}, [{"GPU": 2}]) == (1, 0, 1)
+    assert _utilization_score({"CPU": 64}, [{"CPU": 64}]) == (1, 64, 64)
+    assert _utilization_score({"CPU": 64}, [{"CPU": 32}]) == (1, 8, 8)
     assert _utilization_score({"CPU": 64}, [{"CPU": 16}, {"CPU": 16}]) == \
-        (8, 8)
+        (1, 8, 8)
 
 
 def test_gpu_node_util_score():
     # Avoid scheduling CPU tasks on GPU node.
     assert _utilization_score({"GPU": 1, "CPU": 1}, [{"CPU": 1}]) is None
     assert _utilization_score({"GPU": 1, "CPU": 1}, [{"CPU": 1, "GPU": 1}]) \
-        == (1.0, 1.0)
-    assert _utilization_score({"GPU": 1, "CPU": 1}, [{"GPU": 1}]) == (0.0, 0.5)
+        == (2, 1.0, 1.0)
+    assert _utilization_score({
+        "GPU": 1,
+        "CPU": 1
+    }, [{
+        "GPU": 1
+    }]) == (1, 0.0, 0.5)
 
 
 def test_zero_resource():
@@ -197,7 +227,7 @@ def test_get_nodes_packing_heuristic():
     }] * 8) + ([{
         "CPU": 1
     }] * 64)) == {
-        "m4.16xlarge": 1,
+        "m4.4xlarge": 2,
         "p2.8xlarge": 1
     }
 
@@ -213,6 +243,47 @@ def test_get_nodes_packing_heuristic():
         }] * 8, strict_spread=True) == {
             "p2.xlarge": 8
         }
+
+
+def test_node_packing_gpu_cpu_bundles():
+    TYPES = {
+        "cpu": {
+            "resources": {
+                "CPU": 16,
+            },
+            "max_workers": 10,
+        },
+        "gpu": {
+            "resources": {
+                "CPU": 16,
+                "GPU": 1,
+            },
+            "max_workers": 10,
+        },
+    }
+    nodes = get_nodes_for(TYPES, {}, "cpu", 9999, ([{
+        "CPU": 1
+    }] * 30 + [{
+        "GPU": 1,
+        "CPU": 1
+    }]))
+    assert nodes == {"gpu": 1, "cpu": 1}
+
+    nodes = get_nodes_for(TYPES, {}, "cpu", 9999, ([{
+        "GPU": 1,
+        "CPU": 1
+    }] + [{
+        "CPU": 1
+    }] * 30))
+    assert nodes == {"gpu": 1, "cpu": 1}
+
+    nodes = get_nodes_for(TYPES, {}, "cpu", 9999, ([{
+        "GPU": 1,
+        "CPU": 1
+    }] + [{
+        "CPU": 1
+    }] * 15))
+    assert nodes == {"gpu": 1}
 
 
 def test_gpu_node_avoid_cpu_task():
@@ -630,13 +701,8 @@ def test_backlog_queue_impact_on_binpacking_time():
             "CPU": 1
         }])
     # If not for the max launch concurrency the next assert should be:
-    # {'m4.large': 4, 'm4.4xlarge': 2, 'm4.16xlarge': 15, 'p2.8xlarge': 125}.
-    assert to_launch == {
-        "m4.large": 4,
-        "m4.4xlarge": 2,
-        "m4.16xlarge": 5,
-        "p2.8xlarge": 5
-    }
+    # {'m4.16xlarge': 1, 'p2.8xlarge': 125, 'p2.xlarge': 1}
+    assert to_launch == {"m4.16xlarge": 1, "p2.8xlarge": 5, "p2.xlarge": 1}
 
     # Check the time it takes when there are 100 nodes available and the demand
     # requires another 75 nodes.
@@ -1127,9 +1193,11 @@ def test_handle_legacy_cluster_config_yaml():
         worker_ips = []
         for ip in ips:
             if ip == head_ip:
-                lm.update(ip, head_resources, head_resources, {})
+                lm.update(ip, mock_raylet_id(), head_resources, head_resources,
+                          {})
             else:
-                lm.update(ip, worker_resources, worker_resources, {})
+                lm.update(ip, mock_raylet_id(), worker_resources,
+                          worker_resources, {})
                 worker_ips.append(ip)
 
         assert not scheduler.node_types[NODE_TYPE_LEGACY_WORKER]["resources"]
@@ -1182,7 +1250,8 @@ class LoadMetricsTest(unittest.TestCase):
     def testResourceDemandVector(self):
         lm = LoadMetrics()
         lm.update(
-            "1.1.1.1", {"CPU": 2}, {"CPU": 1}, {},
+            "1.1.1.1",
+            mock_raylet_id(), {"CPU": 2}, {"CPU": 1}, {},
             waiting_bundles=[{
                 "GPU": 1
             }],
@@ -1208,12 +1277,13 @@ class LoadMetricsTest(unittest.TestCase):
                 bundles=([Bundle(unit_resources={"GPU": 2})] * 2)),
         ]
         lm.update(
-            "1.1.1.1", {}, {}, {},
+            "1.1.1.1",
+            mock_raylet_id(), {}, {}, {},
             pending_placement_groups=pending_placement_groups)
         assert lm.get_pending_placement_groups() == pending_placement_groups
 
     def testSummary(self):
-        lm = LoadMetrics(local_ip="1.1.1.1")
+        lm = LoadMetrics()
         assert lm.summary() is not None
         pending_placement_groups = [
             PlacementGroupTableData(
@@ -1227,6 +1297,7 @@ class LoadMetricsTest(unittest.TestCase):
         ]
         lm.update(
             "1.1.1.1",
+            mock_raylet_id(),
             {
                 "CPU": 64,
                 "memory": 1000 * 1024 * 1024,
@@ -1238,7 +1309,7 @@ class LoadMetricsTest(unittest.TestCase):
                 "object_store_memory": 1000 * 1024 * 1024,
             },
             {})
-        lm.update("1.1.1.2", {
+        lm.update("1.1.1.2", mock_raylet_id(), {
             "CPU": 64,
             "GPU": 8,
             "accelerator_type:V100": 1,
@@ -1247,7 +1318,7 @@ class LoadMetricsTest(unittest.TestCase):
             "GPU": 1,
             "accelerator_type:V100": 1,
         }, {})
-        lm.update("1.1.1.3", {
+        lm.update("1.1.1.3", mock_raylet_id(), {
             "CPU": 64,
             "GPU": 8,
             "accelerator_type:V100": 1
@@ -1257,7 +1328,8 @@ class LoadMetricsTest(unittest.TestCase):
             "accelerator_type:V100": 0.92
         }, {})
         lm.update(
-            "1.1.1.4", {"CPU": 2}, {"CPU": 2}, {},
+            "1.1.1.4",
+            mock_raylet_id(), {"CPU": 2}, {"CPU": 2}, {},
             waiting_bundles=[{
                 "GPU": 2
             }] * 10,
@@ -1274,8 +1346,6 @@ class LoadMetricsTest(unittest.TestCase):
         lm.set_resource_requests([{"CPU": 64}, {"GPU": 8}, {"GPU": 8}])
 
         summary = lm.summary()
-
-        assert summary.head_ip == "1.1.1.1"
 
         assert summary.usage["CPU"] == (190, 194)
         assert summary.usage["GPU"] == (15, 16)
@@ -1307,6 +1377,44 @@ class LoadMetricsTest(unittest.TestCase):
         # should ever have the same set of resources.
         assert len(summary.node_types) == 3, summary.node_types
 
+        # Ensure correct dict-conversion
+        summary_dict = asdict(summary)
+        assert summary_dict["usage"]["CPU"] == (190, 194)
+        assert summary_dict["usage"]["GPU"] == (15, 16)
+        assert summary_dict["usage"]["memory"] == (500 * 2**20, 1000 * 2**20)
+        assert summary_dict["usage"]["object_store_memory"] == \
+            (1000 * 2**20, 2000 * 2**20)
+        assert summary_dict["usage"]["accelerator_type:V100"][1] == 2, \
+            "Not comparing the usage value due to floating point error."
+
+        assert ({"GPU": 2}, 11) in summary_dict["resource_demand"]
+        assert ({"CPU": 16}, 1) in summary_dict["resource_demand"]
+        assert ({"CPU": 16, "GPU": 2}, 1) in summary_dict["resource_demand"]
+        assert len(summary_dict["resource_demand"]) == 3
+
+        assert ({
+            "bundles": [({
+                "GPU": 2
+            }, 2)],
+            "strategy": "PACK"
+        }, 2) in summary_dict["pg_demand"]
+        assert len(summary_dict["pg_demand"]) == 1
+
+        assert ({"GPU": 8}, 2) in summary_dict["request_demand"]
+        assert ({"CPU": 64}, 1) in summary_dict["request_demand"]
+        assert len(summary_dict["request_demand"]) == 2
+
+        assert len(summary_dict["node_types"]) == 3, summary_dict["node_types"]
+
+        # Ensure summary_dict is json-serializable
+        json.dumps(summary_dict)
+
+        # Backwards compatibility check: head_ip is correctly processed
+        # when included as an argument to LoadMetricsSummary.
+        summary_dict["head_ip"] = "1.1.1.1"
+        # No compatibility issue.
+        LoadMetricsSummary(**summary_dict)
+
 
 class AutoscalingTest(unittest.TestCase):
     def setUp(self):
@@ -1322,7 +1430,10 @@ class AutoscalingTest(unittest.TestCase):
         shutil.rmtree(self.tmpdir)
         ray.shutdown()
 
-    def waitForNodes(self, expected, comparison=None, tag_filters={}):
+    def waitForNodes(self, expected, comparison=None, tag_filters=None):
+        if tag_filters is None:
+            tag_filters = {}
+
         MAX_ITER = 50
         for i in range(MAX_ITER):
             n = len(self.provider.non_terminated_nodes(tag_filters))
@@ -1419,10 +1530,11 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
         }, 1)
         head_ip = self.provider.non_terminated_node_ips({})[0]
-        lm = LoadMetrics(local_ip=head_ip)
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             max_launch_batch=1,
             max_concurrent_launches=10,
@@ -1433,9 +1545,9 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(3)
 
         for ip in self.provider.non_terminated_node_ips({}):
-            lm.update(ip, {"CPU": 2}, {"CPU": 0}, {})
+            lm.update(ip, mock_raylet_id(), {"CPU": 2}, {"CPU": 0}, {})
 
-        lm.update(head_ip, {"CPU": 16}, {"CPU": 1}, {})
+        lm.update(head_ip, mock_raylet_id(), {"CPU": 16}, {"CPU": 1}, {})
         autoscaler.update()
 
         while True:
@@ -1449,7 +1561,9 @@ class AutoscalingTest(unittest.TestCase):
         runner.ready_to_run.clear()
 
         lm.update(
-            head_ip, {"CPU": 16}, {"CPU": 1}, {}, waiting_bundles=[{
+            head_ip,
+            mock_raylet_id(), {"CPU": 16}, {"CPU": 1}, {},
+            waiting_bundles=[{
                 "GPU": 1
             }])
 
@@ -1479,6 +1593,22 @@ class AutoscalingTest(unittest.TestCase):
 
         assert summary.failed_nodes == [("172.0.0.4", "m4.4xlarge")]
 
+        # Check dict conversion
+        summary_dict = asdict(summary)
+        assert summary_dict["active_nodes"]["m4.large"] == 2
+        assert summary_dict["active_nodes"]["empty_node"] == 1
+        assert len(
+            summary_dict["active_nodes"]) == 2, summary_dict["active_nodes"]
+
+        assert summary_dict["pending_nodes"] == [("172.0.0.3", "p2.xlarge",
+                                                  STATUS_WAITING_FOR_SSH)]
+        assert summary_dict["pending_launches"] == {"m4.16xlarge": 2}
+
+        assert summary_dict["failed_nodes"] == [("172.0.0.4", "m4.4xlarge")]
+
+        # Ensure summary is json-serializable
+        json.dumps(summary_dict)
+
         # Make sure we return something (and don't throw exceptions). Let's not
         # get bogged down with a full cli test here.
         assert len(autoscaler.info_string()) > 1
@@ -1495,9 +1625,10 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
-            LoadMetrics("172.0.0.0"),
+            LoadMetrics(),
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1521,9 +1652,10 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
-            LoadMetrics("172.0.0.0"),
+            LoadMetrics(),
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1549,10 +1681,11 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_USER_NODE_TYPE: "m4.4xlarge"
         }, 1)
         head_ip = self.provider.non_terminated_node_ips({})[0]
-        lm = LoadMetrics(head_ip)
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1580,7 +1713,8 @@ class AutoscalingTest(unittest.TestCase):
             "GPU_group_6c2506ac733bc37496295b02c4fad446": 0.0101
         }]
         lm.update(
-            head_ip, {"CPU": 16}, {"CPU": 16}, {},
+            head_ip,
+            mock_raylet_id(), {"CPU": 16}, {"CPU": 16}, {},
             infeasible_bundles=placement_group_resource_demands,
             waiting_bundles=[{
                 "GPU": 8
@@ -1617,10 +1751,11 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        lm = LoadMetrics("172.0.0.0")
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1649,6 +1784,7 @@ class AutoscalingTest(unittest.TestCase):
         # min workers.
         for node_id in self.provider.non_terminated_nodes({}):
             lm.last_used_time_by_ip[self.provider.internal_ip(node_id)] = -60
+        fill_in_raylet_ids(self.provider, lm)
         autoscaler.update()
         self.waitForNodes(3)
 
@@ -1664,7 +1800,7 @@ class AutoscalingTest(unittest.TestCase):
         assert cnt == 2
 
     def testScaleUpIgnoreUsed(self):
-        config = MULTI_WORKER_CLUSTER.copy()
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         # Commenting out this line causes the test case to fail?!?!
         config["min_workers"] = 0
         config["target_utilization_fraction"] = 1.0
@@ -1680,20 +1816,22 @@ class AutoscalingTest(unittest.TestCase):
         head_ip = self.provider.non_terminated_node_ips({})[0]
         self.provider.finish_starting_nodes()
         runner = MockProcessRunner()
-        lm = LoadMetrics(local_ip=head_ip)
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
         autoscaler.update()
         self.waitForNodes(1)
-        lm.update(head_ip, {"CPU": 4, "GPU": 1}, {}, {})
+        lm.update(head_ip, mock_raylet_id(), {"CPU": 4, "GPU": 1}, {}, {})
         self.waitForNodes(1)
 
         lm.update(
-            head_ip, {
+            head_ip,
+            mock_raylet_id(), {
                 "CPU": 4,
                 "GPU": 1
             }, {"GPU": 0}, {},
@@ -1705,7 +1843,7 @@ class AutoscalingTest(unittest.TestCase):
         assert self.provider.mock_nodes[1].node_type == "p2.xlarge"
 
     def testRequestBundlesAccountsForHeadNode(self):
-        config = MULTI_WORKER_CLUSTER.copy()
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["head_node_type"] = "p2.8xlarge"
         config["min_workers"] = 0
         config["max_workers"] = 50
@@ -1718,9 +1856,10 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE
         }, 1)
         runner = MockProcessRunner()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1744,7 +1883,7 @@ class AutoscalingTest(unittest.TestCase):
         assert self.provider.mock_nodes[1].node_type == "p2.8xlarge"
 
     def testRequestBundles(self):
-        config = MULTI_WORKER_CLUSTER.copy()
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["min_workers"] = 0
         config["max_workers"] = 50
         config_path = self.write_config(config)
@@ -1756,9 +1895,10 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
-            LoadMetrics("172.0.0.0"),
+            LoadMetrics(),
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1781,7 +1921,7 @@ class AutoscalingTest(unittest.TestCase):
         assert self.provider.mock_nodes[4].node_type == "m4.16xlarge"
 
     def testResourcePassing(self):
-        config = MULTI_WORKER_CLUSTER.copy()
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["min_workers"] = 0
         config["max_workers"] = 50
         config_path = self.write_config(config)
@@ -1793,9 +1933,10 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
-            LoadMetrics("172.0.0.0"),
+            LoadMetrics(),
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1812,7 +1953,7 @@ class AutoscalingTest(unittest.TestCase):
         assert self.provider.mock_nodes[2].node_type == "p2.8xlarge"
 
         # TODO (Alex): Autoscaler creates the node during one update then
-        # starts the updater in the enxt update. The sleep is largely
+        # starts the updater in the next update. The sleep is largely
         # unavoidable because the updater runs in its own thread and we have no
         # good way of ensuring that the commands are sent in time.
         autoscaler.update()
@@ -1827,7 +1968,7 @@ class AutoscalingTest(unittest.TestCase):
         runner.assert_has_call("172.0.0.2", "\"GPU\":8")
 
     def testScaleUpLoadMetrics(self):
-        config = MULTI_WORKER_CLUSTER.copy()
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["min_workers"] = 0
         config["max_workers"] = 50
         config_path = self.write_config(config)
@@ -1838,10 +1979,11 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        lm = LoadMetrics("172.0.0.0")
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1850,7 +1992,8 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(0, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         autoscaler.update()
         lm.update(
-            "1.2.3.4", {}, {}, {},
+            "1.2.3.4",
+            mock_raylet_id(), {}, {}, {},
             waiting_bundles=[{
                 "GPU": 1
             }],
@@ -1858,16 +2001,15 @@ class AutoscalingTest(unittest.TestCase):
                 "CPU": 16
             }])
         autoscaler.update()
-        self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        self.waitForNodes(1, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         nodes = {
             self.provider.mock_nodes[1].node_type,
-            self.provider.mock_nodes[2].node_type
         }
-        assert nodes == {"p2.xlarge", "m4.4xlarge"}
+        assert nodes == {"p2.xlarge"}
 
     def testCommandPassing(self):
         t = "custom"
-        config = MULTI_WORKER_CLUSTER.copy()
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["available_node_types"]["p2.8xlarge"][
             "worker_setup_commands"] = ["new_worker_setup_command"]
         config["available_node_types"]["p2.xlarge"][
@@ -1885,11 +2027,12 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        lm = LoadMetrics("172.0.0.0")
-        lm.update("172.0.0.0", {"CPU": 0}, {"CPU": 0}, {})
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        lm.update("172.0.0.0", mock_raylet_id(), {"CPU": 0}, {"CPU": 0}, {})
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1923,7 +2066,7 @@ class AutoscalingTest(unittest.TestCase):
                                    "init_cmd")
 
     def testDockerWorkers(self):
-        config = MULTI_WORKER_CLUSTER.copy()
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         config["available_node_types"]["p2.8xlarge"]["docker"] = {
             "worker_image": "p2.8x_image:latest",
             "worker_run_options": ["p2.8x-run-options"]
@@ -1947,9 +2090,10 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
-            LoadMetrics("172.0.0.0"),
+            LoadMetrics(),
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -1981,7 +2125,7 @@ class AutoscalingTest(unittest.TestCase):
         }])
         autoscaler.update()
         self.waitForNodes(5)
-        assert self.provider.mock_nodes[4].node_type == "m4.16xlarge"
+        assert self.provider.mock_nodes[4].node_type == "m4.large"
         autoscaler.update()
         sleep(0.1)
         runner.assert_has_call(self.provider.mock_nodes[2].internal_ip,
@@ -2027,9 +2171,11 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        autoscaler = MockAutoscaler(
             config_path,
-            LoadMetrics("172.0.0.0"),
+            lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -2040,11 +2186,12 @@ class AutoscalingTest(unittest.TestCase):
         config["available_node_types"]["m4.large"]["node_config"][
             "field_changed"] = 1
         config_path = self.write_config(config)
+        fill_in_raylet_ids(self.provider, lm)
         autoscaler.update()
         self.waitForNodes(0, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
     def testEmptyDocker(self):
-        config = MULTI_WORKER_CLUSTER.copy()
+        config = copy.deepcopy(MULTI_WORKER_CLUSTER)
         del config["docker"]
         config["min_workers"] = 0
         config["max_workers"] = 10
@@ -2056,9 +2203,10 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
-            LoadMetrics("172.0.0.0"),
+            LoadMetrics(),
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -2104,11 +2252,12 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        lm = LoadMetrics("172.0.0.0")
+        lm = LoadMetrics()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(3)])
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -2129,6 +2278,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.provider.mock_nodes[node_id].state = "unterminatable"
         lm.update(
             node_ip,
+            mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"], {},
             waiting_bundles=[{
@@ -2150,6 +2300,7 @@ class AutoscalingTest(unittest.TestCase):
         }])
         lm.update(
             node_ip,
+            mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"], {}, {},
             waiting_bundles=[{
                 "CPU": 0.2,
@@ -2159,6 +2310,7 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         lm.update(
             node_ip,
+            mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"], {},
             waiting_bundles=[{
@@ -2174,6 +2326,7 @@ class AutoscalingTest(unittest.TestCase):
             node_id].state == "unterminatable"
         lm.update(
             "172.0.0.2",
+            mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"], {},
             waiting_bundles=[{
@@ -2222,10 +2375,11 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        lm = LoadMetrics("172.0.0.0")
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -2245,6 +2399,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.provider.mock_nodes[node_id].state = "unterminatable"
         lm.update(
             node_ip,
+            mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"],
             config["available_node_types"]["def_worker"]["resources"], {},
             waiting_bundles=[{
@@ -2272,6 +2427,7 @@ class AutoscalingTest(unittest.TestCase):
         }] * 3)
         lm.update(
             node_ip,
+            mock_raylet_id(),
             config["available_node_types"]["def_worker"]["resources"], {}, {},
             waiting_bundles=[{
                 "CPU": 0.2,
@@ -2281,15 +2437,15 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(3, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         autoscaler.load_metrics.set_resource_requests([])
 
-        lm.update("172.0.0.2",
+        lm.update("172.0.0.2", mock_raylet_id(),
                   config["available_node_types"]["def_worker"]["resources"],
                   config["available_node_types"]["def_worker"]["resources"],
                   {})
-        lm.update("172.0.0.3",
+        lm.update("172.0.0.3", mock_raylet_id(),
                   config["available_node_types"]["def_worker"]["resources"],
                   config["available_node_types"]["def_worker"]["resources"],
                   {})
-        lm.update(node_ip,
+        lm.update(node_ip, mock_raylet_id(),
                   config["available_node_types"]["def_worker"]["resources"],
                   {}, {})
         print("============ Should scale down from here =============",
@@ -2335,10 +2491,11 @@ class AutoscalingTest(unittest.TestCase):
             TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
             TAG_RAY_USER_NODE_TYPE: "empty_node"
         }, 1)
-        lm = LoadMetrics("172.0.0.0")
-        autoscaler = StandardAutoscaler(
+        lm = LoadMetrics()
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
@@ -2389,14 +2546,16 @@ class AutoscalingTest(unittest.TestCase):
         runner = MockProcessRunner()
         runner.respond_to_call("json .Config.Env", ["[]" for i in range(2)])
         lm = LoadMetrics()
-        autoscaler = StandardAutoscaler(
+        autoscaler = MockAutoscaler(
             config_path,
             lm,
+            MockNodeInfoStub(),
             max_failures=0,
             process_runner=runner,
             update_interval_s=0)
         lm.update(
-            "127.0.0.0", {
+            "127.0.0.0",
+            mock_raylet_id(), {
                 "CPU": 2,
                 "GPU": 1
             }, {"CPU": 2}, {},
@@ -2411,7 +2570,8 @@ class AutoscalingTest(unittest.TestCase):
         # 1 head, 1 worker.
         self.waitForNodes(2)
         lm.update(
-            "127.0.0.0", {
+            "127.0.0.0",
+            mock_raylet_id(), {
                 "CPU": 2,
                 "GPU": 1
             }, {"CPU": 2}, {},
@@ -2436,7 +2596,6 @@ def format_pg(pg):
 
 def test_info_string():
     lm_summary = LoadMetricsSummary(
-        head_ip="0.0.0.0",
         usage={
             "CPU": (530.0, 544.0),
             "GPU": (2, 2),
@@ -2505,7 +2664,6 @@ Demands:
 
 def test_info_string_failed_node_cap():
     lm_summary = LoadMetricsSummary(
-        head_ip="0.0.0.0",
         usage={
             "CPU": (530.0, 544.0),
             "GPU": (2, 2),
