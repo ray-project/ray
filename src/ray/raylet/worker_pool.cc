@@ -31,6 +31,10 @@
 
 namespace {
 
+// Add this prefix because the worker setup token is just a counter which is easy to
+// duplicate with other ids.
+static const std::string kWorkerSetupTokenPrefix = "worker_startup_token:";
+
 // A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
     const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
@@ -427,7 +431,7 @@ Process WorkerPool::StartWorkerProcess(
       StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc,
                                 runtime_env_info});
   runtime_env_manager_.AddURIReference(
-      "worker_startup_token:" + std::to_string(worker_startup_token_counter_),
+      kWorkerSetupTokenPrefix + std::to_string(worker_startup_token_counter_),
       runtime_env_info);
   update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {
@@ -467,7 +471,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
                                           status, &found, &used, &task_id);
       }
       state.starting_worker_processes.erase(it);
-      runtime_env_manager_.RemoveURIReference("worker_startup_token:" +
+      runtime_env_manager_.RemoveURIReference(kWorkerSetupTokenPrefix +
                                               std::to_string(proc_startup_token));
       if (IsIOWorkerType(worker_type)) {
         // Mark the I/O worker as failed.
@@ -660,7 +664,7 @@ void WorkerPool::OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker)
     it->second.num_starting_workers--;
     if (it->second.num_starting_workers == 0) {
       state.starting_worker_processes.erase(it);
-      runtime_env_manager_.RemoveURIReference("worker_startup_token:" +
+      runtime_env_manager_.RemoveURIReference(kWorkerSetupTokenPrefix +
                                               std::to_string(worker_startup_token));
       // We may have slots to start more workers now.
       TryStartIOWorkers(worker->GetLanguage());
