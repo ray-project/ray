@@ -118,9 +118,10 @@ class WorkflowStorage:
         # In this case, there is no such step
         raise output_err
 
-    def save_step_output(self, step_id: StepID, ret: Union[Workflow, Any], *,
+    async def save_step_output_async(self, step_id: StepID, ret: Union[Workflow, Any], *,
                          exception: Optional[Exception],
-                         outer_most_step_id: StepID) -> None:
+                         outer_most_step_id: StepID
+    ):
         """When a workflow step returns,
         1. If the returned object is a workflow, this means we are a nested
            workflow. We save the output metadata that points to the workflow.
@@ -163,10 +164,25 @@ class WorkflowStorage:
                     self._key_step_exception(step_id), exception,
                     self._workflow_id, self._storage)
                 tasks.append(promise)
-                # tasks.append(
-                #     self._put(self._key_step_exception(step_id), exception))
 
-        asyncio_run(asyncio.gather(*tasks))
+        await asyncio.gather(*tasks)
+
+    def save_step_output(self, step_id: StepID, ret: Union[Workflow, Any], *,
+                         exception: Optional[Exception],
+                         outer_most_step_id: StepID) -> None:
+        """When a workflow step returns,
+        1. If the returned object is a workflow, this means we are a nested
+           workflow. We save the output metadata that points to the workflow.
+        2. Otherwise, checkpoint the output.
+
+        Args:
+            step_id: The ID of the workflow step. If it is an empty string,
+                it means we are in the workflow job driver process.
+            ret: The returned object from a workflow step.
+            exception: This step should throw exception.
+            outer_most_step_id: See WorkflowStepContext.
+        """
+        asyncio_run(self.save_step_output_async(step_id, ret, exception=exception, outer_most_step_id=outer_most_step_id))
 
     def load_step_func_body(self, step_id: StepID) -> Callable:
         """Load the function body of the workflow step.

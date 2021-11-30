@@ -8,6 +8,7 @@ from ray.workflow.common import (
     MANAGEMENT_ACTOR_NAMESPACE,
 )
 from ray.workflow.event_listener import EventListenerType, Event
+# from ray.workflow.workflow_storage import WorfklowStorage
 
 from typing import Any, Dict, List, Set
 
@@ -43,6 +44,7 @@ class _EventResult:
     An internal helper container to store the results of an event.
     """
     step_id: str
+    outer_most_step_id: str
     result: Event
 
 
@@ -52,6 +54,7 @@ _DUMMY_STEP_ID = "__workflow_internal_NEW_EVENT_REGISTERED"
 @ray.remote(num_cpus=0)
 class Manager:
     def __init__(self):
+        self.wf_storage: WorkflowStorage = None
         # Maps a workflow id to all of its dependencies.
         self.workflow_dependencies: Dict[str, Set[str]] = defaultdict(set)
         # The set of workflows which are waiting for an event to occur. This is
@@ -74,14 +77,15 @@ class Manager:
         pass
 
     async def start_event_listener(
-            self, step_id: str, event_listener_type: EventListenerType,
+            self, step_id: str, outer_most_step_id: str, event_listener_type: EventListenerType,
             args: List[Any], kwargs: Dict[str, Any]) -> _EventResult:
         event_listener = event_listener_type()
         result = await event_listener.poll_for_event(*args, **kwargs)
-        return _EventResult(step_id, result)
+        return _EventResult(step_id, outer_most_step_id, result)
 
     async def register_workflow_dependency(
             self, waiting_workflow_id: str, event_step_id: str,
+            outer_most_step_id: str,
             event_listener_type: EventListenerType, args: List[Any],
             kwargs: Dict[str, Any]) -> None:
         """Register that `workflow_id` depends on the step `event_data`'s result
@@ -102,12 +106,11 @@ class Manager:
 
         if event_step_id not in self.events:
             self.events[event_step_id] = self.start_event_listener(
-                event_step_id, event_listener_type, args, kwargs)
+                event_step_id, outer_most_step_id, event_listener_type, args, kwargs)
             self.new_event_marker.set()
 
-    async def commit_output(self, step_id: str, result: Any):
-        logger.info(f"COMMITTING OUTPUT OF STEP: {step_id} which is: {result}")
-        pass
+    async def commit_output(self, result: _EventResult):
+        await self.wf_storage.save_step_output_async(result.step_id, result.result, exception=None, outer_most_step_id=self.outer_most_step_id)
 
     async def monitor_loop(self):
         while True:
