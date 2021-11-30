@@ -219,7 +219,7 @@ class Trainer:
 
     def _is_tune_enabled(self):
         """Whether or not this Trainer is part of a Tune session."""
-        return tune is not None and tune.is_session_enabled()
+        return TUNE_INSTALLED and tune.is_session_enabled()
 
     def start(self, initialization_hook: Optional[Callable[[], None]] = None):
         """Starts the training execution service.

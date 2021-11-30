@@ -133,7 +133,7 @@ inline rpc::ErrorType GenErrorTypeFromDeathCause(
   if (death_cause->context_case() == ContextCase::kCreationTaskFailureContext) {
     return rpc::ErrorType::ACTOR_DIED;
   }
-  if (death_cause->context_case() == ContextCase::kRuntimeEnvSetupFailureContext) {
+  if (death_cause->context_case() == ContextCase::kRuntimeEnvFailedContext) {
     return rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED;
   }
   return rpc::ErrorType::ACTOR_DIED;
@@ -142,13 +142,39 @@ inline rpc::ErrorType GenErrorTypeFromDeathCause(
 inline const std::string &GetDeathCauseString(const rpc::ActorDeathCause *death_cause) {
   static absl::flat_hash_map<ContextCase, std::string> death_cause_string{
       {ContextCase::CONTEXT_NOT_SET, "CONTEXT_NOT_SET"},
+      {ContextCase::kRuntimeEnvFailedContext, "RuntimeEnvFailedContext"},
       {ContextCase::kCreationTaskFailureContext, "CreationTaskFailureContext"},
-      {ContextCase::kRuntimeEnvSetupFailureContext, "RuntimeEnvSetupFailureContext"}};
+      {ContextCase::kWorkerDiedContext, "WorkerDiedContext"},
+      {ContextCase::kNodeDiedContext, "NodeDiedContext"},
+      {ContextCase::kOwnerDiedContext, "OwnerDiedContext"},
+      {ContextCase::kKilledByAppContext, "KilledByAppContext"},
+      {ContextCase::kOutOfScopeContext, "OutOfScopeContext"}};
   ContextCase death_cause_case = ContextCase::CONTEXT_NOT_SET;
   if (death_cause != nullptr) {
     death_cause_case = death_cause->context_case();
   }
-  return death_cause_string.at(death_cause_case);
+  auto it = death_cause_string.find(death_cause_case);
+  RAY_CHECK(it != death_cause_string.end())
+      << "Given death cause case " << death_cause_case << " doesn't exist.";
+  return it->second;
+}
+
+/// Get the error information from the actor death cause.
+/// \param[in] death_cause The rpc message that contains the actos death information.
+/// \return RayErrorInfo that has propagated death cause. Nullptr if not sufficient
+/// information is provided.
+inline std::unique_ptr<rpc::RayErrorInfo> GetErrorInfoFromActorDeathCause(
+    const rpc::ActorDeathCause *death_cause) {
+  auto creation_task_exception = GetCreationTaskExceptionFromDeathCause(death_cause);
+  if (creation_task_exception == nullptr) {
+    return nullptr;
+  }
+  auto error_info = std::make_unique<rpc::RayErrorInfo>();
+  if (creation_task_exception != nullptr) {
+    // Shouldn't use Swap here because we don't own the pointer.
+    error_info->mutable_actor_init_failure()->CopyFrom(*creation_task_exception);
+  }
+  return error_info;
 }
 
 }  // namespace gcs

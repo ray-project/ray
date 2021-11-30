@@ -381,12 +381,14 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// scope or the owner has died.
   /// NOTE: This method can be called multiple times in out-of-order and should be
   /// idempotent.
-  void DestroyActor(const ActorID &actor_id,
-                    const rpc::ActorDeathCause *death_cause = nullptr);
+  ///
+  /// \param[in] actor_id The actor id to destroy.
+  /// \param[in] death_cause The reason why actor is destroyed.
+  void DestroyActor(const ActorID &actor_id, const rpc::ActorDeathCause &death_cause);
 
   /// Get unresolved actors that were submitted from the specified node.
-  absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerNode(
-      const NodeID &node_id) const;
+  absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>
+  GetUnresolvedActorsByOwnerNode(const NodeID &node_id) const;
 
   /// Get unresolved actors that were submitted from the specified worker.
   absl::flat_hash_set<ActorID> GetUnresolvedActorsByOwnerWorker(
@@ -401,10 +403,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param death_cause Context about why this actor is dead. Should only be set when
   /// need_reschedule=false.
   void ReconstructActor(const ActorID &actor_id, bool need_reschedule,
-                        const rpc::ActorDeathCause *death_cause = nullptr);
-
-  /// Reconstruct the specified actor and reschedule it.
-  void ReconstructActor(const ActorID &actor_id);
+                        const rpc::ActorDeathCause &death_cause);
 
   /// Remove the specified actor from `unresolved_actors_`.
   ///
