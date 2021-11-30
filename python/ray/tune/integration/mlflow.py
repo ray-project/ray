@@ -23,15 +23,12 @@ class MLflowLoggerCallback(LoggerCallback):
     Args:
         tracking_uri (str): The tracking URI for where to manage experiments
             and runs. This can either be a local file path or a remote server.
-            This arg gets passed directly to mlflow.tracking.MlflowClient
+            This arg gets passed directly to mlflow
             initialization. When using Tune in a multi-node setting, make sure
             to set this to a remote server and not a local file path.
         registry_uri (str): The registry URI that gets passed directly to
-            mlflow.tracking.MlflowClient initialization.
+            mlflow initialization.
         experiment_name (str): The experiment name to use for this Tune run.
-            If None is passed in here, the Logger will automatically then
-            check the MLFLOW_EXPERIMENT_ID and then the MLFLOW_EXPERIMENT_NAME
-            environment variables to determine the experiment name.
             If the experiment with the name already exists with MLflow,
             it will be reused. If not, a new experiment will be created with
             that name.
@@ -89,9 +86,8 @@ class MLflowLoggerCallback(LoggerCallback):
                            "setup on the server side and not on the client "
                            "side.")
 
-    def setup(self):
-
-        # Setup self.client, self.experiment_name, self.experiment_id.
+    def setup(self, *args, **kwargs):
+        # Setup the mlflow logging util.
         self.mlflow_util.setup_mlflow(
             tracking_uri=self.tracking_uri,
             registry_uri=self.registry_uri,
@@ -270,9 +266,6 @@ def mlflow_mixin(func: Callable):
                 }
             })
     """
-    # if _import_mlflow() is None:
-    #     raise RuntimeError("MLflow has not been installed. Please `pip "
-    #                        "install mlflow` to use the mlflow_mixin.")
     if ray.util.client.ray.is_connected():
         logger.warning("When using mlflow_mixin with Ray Client, "
                        "it is recommended to use a remote tracking "
@@ -324,11 +317,22 @@ class MLflowTrainableMixin:
 
         experiment_name = mlflow_config.pop("experiment_name", None)
 
-        self.mlflow_util.setup_mlflow(tracking_uri=tracking_uri,
+        # This initialization happens in each of the Trainables/workers.
+        # So we have to set `create_experiment_if_not_exists` to False.
+        # Otherwise there might be race conditions when each worker tries to
+        # create the same experiment.
+        # For the mixin, the experiment must be created beforehand.
+        success = self.mlflow_util.setup_mlflow(tracking_uri=tracking_uri,
                                       experiment_id=experiment_id,
                                       experiment_name=experiment_name,
                                       tracking_token=tracking_token,
                                       create_experiment_if_not_exists=False)
+        if not success:
+            raise ValueError("No experiment with the given "
+                             "name: {} or id: {} currently exists. Make "
+                             "sure to first start the MLflow experiment "
+                             "before calling tune.run.".format(
+                experiment_name, experiment_id))
 
         run_name = self.trial_name + "_" + self.trial_id
         run_name = run_name.replace("/", "_")
