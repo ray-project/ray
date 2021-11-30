@@ -38,8 +38,6 @@ class NodeLauncher(threading.Thread):
                      node_type: Optional[str]):
         if self.node_types:
             assert node_type, node_type
-        worker_filter = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
-        before = self.provider.non_terminated_nodes(tag_filters=worker_filter)
 
         # The `worker_nodes` field is deprecated in favor of per-node-type
         # node_configs. We allow it for backwards-compatibility.
@@ -76,9 +74,6 @@ class NodeLauncher(threading.Thread):
             # second create time 4 times.
             self.prom_metrics.worker_create_node_time.observe(launch_time)
         self.prom_metrics.started_nodes.inc(count)
-        after = self.provider.non_terminated_nodes(tag_filters=worker_filter)
-        if set(after).issubset(before):
-            self.log("No new nodes reported after node creation.")
 
     def run(self):
         while True:

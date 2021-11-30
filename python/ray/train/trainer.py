@@ -16,11 +16,15 @@ from ray.train.utils import RayDataset
 from ray.train.checkpoint import CheckpointStrategy, TuneCheckpointManager, \
     CheckpointManager
 from ray.train.constants import TUNE_INSTALLED, DEFAULT_RESULTS_DIR, \
-    TUNE_CHECKPOINT_FILE_NAME
+    TUNE_CHECKPOINT_FILE_NAME, ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, \
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV, \
+    TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV, TRAIN_ENABLE_WORKER_SPREAD_ENV
 
 # Ray Train should be usable even if Tune is not installed.
 from ray.train.utils import construct_path
 from ray.train.worker_group import WorkerGroup
+from ray.util import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 if TUNE_INSTALLED:
     from ray import tune
@@ -46,6 +50,14 @@ BACKEND_NAME_TO_CONFIG_CLS_NAME = {
     "torch": "TorchConfig"
 }
 
+# The environment variables that need to be propagated from the driver to the
+# `BackendExecutor` actor via runtime env.
+BACKEND_ENV_VARS = {
+    ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
+    ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV, TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
+    TRAIN_ENABLE_WORKER_SPREAD_ENV
+}
+
 
 # Import backend configurations dynamically since not all subdependencies
 # may be installed.
@@ -62,6 +74,7 @@ def get_backend_config_cls(backend_name) -> type:
     return config_cls
 
 
+@PublicAPI(stability="beta")
 class Trainer:
     """A class for enabling seamless distributed deep learning.
 
@@ -140,15 +153,23 @@ class Trainer:
                     "request a positive number of `GPU` in "
                     "`resources_per_worker.")
 
+        runtime_env = {
+            "env_vars": {
+                var_name: os.environ[var_name]
+                for var_name in BACKEND_ENV_VARS if var_name in os.environ
+            }
+        }
+
         remote_executor = ray.remote(num_cpus=0)(BackendExecutor)
 
-        self._backend_executor_actor = remote_executor.remote(
-            backend_config=self._backend_config,
-            num_workers=num_workers,
-            num_cpus_per_worker=num_cpus,
-            num_gpus_per_worker=num_gpus,
-            additional_resources_per_worker=resources_per_worker,
-            max_retries=max_retries)
+        self._backend_executor_actor = remote_executor.options(
+            runtime_env=runtime_env).remote(
+                backend_config=self._backend_config,
+                num_workers=num_workers,
+                num_cpus_per_worker=num_cpus,
+                num_gpus_per_worker=num_gpus,
+                additional_resources_per_worker=resources_per_worker,
+                max_retries=max_retries)
 
         if self._is_tune_enabled():
             self.checkpoint_manager = TuneCheckpointManager()
@@ -512,6 +533,7 @@ class Trainer:
         return TrainWorkerGroup(worker_group)
 
 
+@DeveloperAPI
 class TrainWorkerGroup:
     """A container for a group of Ray actors.
 
@@ -557,6 +579,7 @@ class TrainWorkerGroup:
         self._worker_group.shutdown(patience_s=patience_s)
 
 
+@DeveloperAPI
 class TrainingIterator:
     """An iterator over Train results. Returned by ``trainer.run_iterator``."""
 

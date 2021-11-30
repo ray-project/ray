@@ -706,6 +706,7 @@ class Node:
              self._node_ip_address,
              redis_log_files,
              self.get_resource_spec(),
+             self.get_session_dir_path(),
              port=self._ray_params.redis_port,
              redis_shard_ports=self._ray_params.redis_shard_ports,
              num_redis_shards=self._ray_params.num_redis_shards,

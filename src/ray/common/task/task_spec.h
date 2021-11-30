@@ -155,7 +155,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   ray::FunctionDescriptor FunctionDescriptor() const;
 
-  [[nodiscard]] rpc::RuntimeEnv RuntimeEnv() const;
+  [[nodiscard]] rpc::RuntimeEnvInfo RuntimeEnvInfo() const;
 
   std::string SerializedRuntimeEnv() const;
 
@@ -303,6 +303,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   std::vector<ConcurrencyGroup> ConcurrencyGroups() const;
 
   std::string ConcurrencyGroupName() const;
+
+  bool ExecuteOutOfOrder() const;
 
  private:
   void ComputeResources();

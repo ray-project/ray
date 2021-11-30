@@ -91,9 +91,9 @@ def train_func(config):
 
     results = []
 
-    train_dataset_iterator = train_dataset_pipeline_shard.iter_datasets()
+    train_dataset_iterator = train_dataset_pipeline_shard.iter_epochs()
     validation_dataset_iterator = \
-        validation_dataset_pipeline_shard.iter_datasets()
+        validation_dataset_pipeline_shard.iter_epochs()
 
     for _ in range(epochs):
         train_dataset = next(train_dataset_iterator)

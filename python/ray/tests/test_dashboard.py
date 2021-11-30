@@ -1,4 +1,3 @@
-import json
 import os
 import re
 import socket
@@ -10,7 +9,7 @@ import psutil
 import pytest
 import requests
 from ray._private.test_utils import (run_string_as_driver, wait_for_condition,
-                                     get_error_message)
+                                     get_error_message, get_log_batch)
 
 import ray
 from ray import ray_constants
@@ -164,9 +163,8 @@ def test_dashboard_agent_restart(set_agent_failure_env_var,
     the driver.
     """
     # Choose a duplicated port for the agent so that it will crash.
-    p = error_pubsub
     errors = get_error_message(
-        p, 1, ray_constants.DASHBOARD_AGENT_DIED_ERROR, timeout=10)
+        error_pubsub, 1, ray_constants.DASHBOARD_AGENT_DIED_ERROR, timeout=10)
     assert len(errors) == 1
     for e in errors:
         assert ("There are 3 possible problems "
@@ -174,21 +172,15 @@ def test_dashboard_agent_restart(set_agent_failure_env_var,
     # Make sure the agent process is not started anymore.
     cluster = ray_start_cluster_head
     wait_for_condition(lambda: search_agents(cluster) is None)
+
     # Make sure there's no spammy message for 5 seconds.
-    timeout = 5
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        msg = log_pubsub.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            continue
-        log_data = json.loads(ray._private.utils.decode(msg["data"]))
-        # Only autoscaler logs should be printed from the log channel.
-        is_autoscaler_log = log_data["pid"] == "autoscaler"
-        if not is_autoscaler_log:
-            raise AssertionError(
-                "There are spammy logs during Ray agent restart process."
-                f"Logs: {log_data['lines']}")
+    def matcher(log_batch):
+        return log_batch["pid"] != "autoscaler"
+
+    match = get_log_batch(log_pubsub, 1, timeout=5, matcher=matcher)
+    assert len(match) == 0, \
+        "There are spammy logs during Ray agent restart process. "\
+        f"Logs: {match}"
 
 
 if __name__ == "__main__":

@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 # Syncing period for syncing checkpoints between nodes or to cloud.
 SYNC_PERIOD = 300
 
+CLOUD_CHECKPOINTING_URL = (
+    "https://docs.ray.io/en/master/tune/user-guide.html#using-cloud-storage")
 _log_sync_warned = False
 _syncers = {}
 
@@ -508,8 +510,15 @@ class SyncerCallback(Callback):
             if not trial.uses_cloud_checkpointing:
                 if not os.path.exists(checkpoint.value):
                     raise TuneError("Trial {}: Checkpoint path {} not "
-                                    "found after successful sync down.".format(
-                                        trial, checkpoint.value))
+                                    "found after successful sync down. "
+                                    "Are you running on a Kubernetes or "
+                                    "managed cluster? rsync will not function "
+                                    "due to a lack of SSH functionality. "
+                                    "You'll need to use cloud-checkpointing "
+                                    "if that's the case, see instructions "
+                                    "here: {} .".format(
+                                        trial, checkpoint.value,
+                                        CLOUD_CHECKPOINTING_URL))
 
     def on_trial_start(self, iteration: int, trials: List["Trial"],
                        trial: "Trial", **info):
@@ -556,8 +565,8 @@ def detect_cluster_syncer(
 
     sync_config = sync_config or SyncConfig()
 
-    if bool(sync_config.upload_dir):
-        # No sync to driver for cloud checkpointing
+    if bool(sync_config.upload_dir) or sync_config.syncer is None:
+        # No sync to driver for cloud checkpointing or if manually disabled
         return False
 
     _syncer = sync_config.syncer

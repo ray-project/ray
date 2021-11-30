@@ -10,9 +10,8 @@
 
   run:
     timeout: 3600
-    prepare: python wait_cluster.py 10 600
+    prepare: python wait_cluster.py 10 600; python setup_chaos.py --no-start
     script: python chaos_test/test_chaos_basic.py --workload=tasks
-  stable: false
 
 - name: chaos_many_actors
   cluster:
@@ -21,9 +20,8 @@
 
   run:
     timeout: 3600
-    prepare: python wait_cluster.py 10 600
+    prepare: python wait_cluster.py 10 600; python setup_chaos.py --no-start
     script: python chaos_test/test_chaos_basic.py --workload=actors
-  stable: false
 
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
   cluster:

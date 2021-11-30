@@ -1,5 +1,6 @@
 import asyncio
 import os
+import pytest
 import sys
 import tempfile
 import time
@@ -105,20 +106,21 @@ def test_limit_concurrency(shutdown_only):
 
     # Some of the tasks will run since we relax the cap, but not all because it
     # should take exponentially long for the cap to be increased.
-    ready, not_ready = ray.wait(block_driver_refs, timeout=1, num_returns=20)
+    ready, not_ready = ray.wait(block_driver_refs, timeout=10, num_returns=20)
     assert len(not_ready) >= 1
 
     # Now the first instance of foo finishes, so the second starts to run.
     ray.get([block_task.release.remote() for _ in range(19)])
 
-    ready, not_ready = ray.wait(block_driver_refs, timeout=1, num_returns=20)
+    ready, not_ready = ray.wait(block_driver_refs, timeout=10, num_returns=20)
     assert len(not_ready) == 0
 
-    ready, not_ready = ray.wait(refs, num_returns=20, timeout=5)
+    ready, not_ready = ray.wait(refs, num_returns=20, timeout=15)
     assert len(ready) == 19
     assert len(not_ready) == 1
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Times out on windows.")
 def test_zero_cpu_scheduling(shutdown_only):
     ray.init(num_cpus=1)
 
@@ -181,4 +183,5 @@ def test_exponential_wait(shutdown_only):
 
 if __name__ == "__main__":
     import pytest
+    os.environ["RAY_worker_cap_enabled"] = "true"
     sys.exit(pytest.main(["-v", __file__]))

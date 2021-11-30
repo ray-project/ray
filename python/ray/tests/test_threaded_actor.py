@@ -277,15 +277,15 @@ def test_threaded_actor_integration_test_stress(ray_start_cluster_head,
     """
     Make sure there are not SIGSEGV, SIGBART, or other odd check failures.
     """
-    # Get logs for 20 seconds.
-    logs = test_utils.get_all_log_message(p, 100000)
+    # Get all logs for 20 seconds.
+    logs = test_utils.get_log_message(p, timeout=20)
     for log in logs:
-        assert "SIG" not in log, ("There's the segfault or SIGBART reported.")
+        assert "SIG" not in log, "There's the segfault or SIGBART reported."
         assert "Check failed" not in log, (
             "There's the check failure reported.")
 
     # Get error messages for 10 seconds.
-    errors = test_utils.get_error_message(e, 10000, timeout=10)
+    errors = test_utils.get_error_message(e, timeout=10)
     for error in errors:
         print(error)
         assert "You can ignore this message if" not in error.error_message, (
@@ -293,6 +293,5 @@ def test_threaded_actor_integration_test_stress(ray_start_cluster_head,
 
 
 if __name__ == "__main__":
-    import pytest
     # Test suite is timing out. Disable on windows for now.
     sys.exit(pytest.main(["-v", __file__]))

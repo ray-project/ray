@@ -151,25 +151,10 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
                          trial.status, status)
         trial.set_status(status)
         if status in [Trial.TERMINATED, Trial.ERROR]:
-            self.try_checkpoint_metadata(trial)
-
-    def try_checkpoint_metadata(self, trial: Trial) -> None:
-        """Checkpoints trial metadata.
-
-        Args:
-            trial (Trial): Trial to checkpoint.
-        """
-        if trial.checkpoint.storage == Checkpoint.MEMORY:
-            logger.debug("Trial %s: Not saving data for memory checkpoint.",
-                         trial)
-            return
-        try:
-            logger.debug("Trial %s: Saving trial metadata.", trial)
-            # Lazy cache trials
             self._trials_to_cache.add(trial)
-        except Exception:
-            logger.exception("Trial %s: Error checkpointing trial metadata.",
-                             trial)
+
+    def mark_trial_to_checkpoint(self, trial: Trial) -> None:
+        self._trials_to_cache.add(trial)
 
     def get_checkpoints(self) -> Dict[str, str]:
         """Returns a copy of mapping of the trial ID to pickled metadata."""
@@ -205,8 +190,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
     def stop_trial(self,
                    trial: Trial,
                    error: bool = False,
-                   error_msg: Optional[str] = None,
-                   destroy_pg_if_cannot_replace: bool = True) -> None:
+                   error_msg: Optional[str] = None) -> None:
         """Stops the trial.
 
         Stops this trial, releasing all allocating resources.
@@ -216,8 +200,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
-            destroy_pg_if_cannot_replace (bool): Whether the trial's placement
-            group should be destroyed if it cannot replace any staged ones.
 
         """
         pass

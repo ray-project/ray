@@ -1,15 +1,17 @@
+from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Union
 from collections import defaultdict
 from inspect import signature
+from copy import deepcopy
 import json
 import os
 import time
-from typing import Dict, List, Optional, Set, TYPE_CHECKING, Tuple, Union
 import uuid
 
 import ray
 from ray import ObjectRef, logger
 from ray.actor import ActorClass
 from ray.tune.resources import Resources
+from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.util.placement_group import PlacementGroup, get_placement_group, \
     placement_group, placement_group_table, remove_placement_group
 
@@ -47,6 +49,7 @@ def get_tune_pg_prefix():
     return _tune_pg_prefix
 
 
+@PublicAPI(stability="beta")
 class PlacementGroupFactory:
     """Wrapper class that creates placement groups for trials.
 
@@ -133,7 +136,8 @@ class PlacementGroupFactory:
             self._head_bundle_is_empty = False
 
         self._bundles = [{k: float(v)
-                          for k, v in bundle.items()} for bundle in bundles]
+                          for k, v in bundle.items() if v != 0}
+                         for bundle in bundles]
         self._strategy = strategy
         self._args = args
         self._kwargs = kwargs
@@ -153,9 +157,16 @@ class PlacementGroupFactory:
         return self._head_bundle_is_empty
 
     @property
+    @DeveloperAPI
     def head_cpus(self) -> float:
         return 0.0 if self._head_bundle_is_empty else self._bundles[0].get(
             "CPU", 0.0)
+
+    @property
+    @DeveloperAPI
+    def bundles(self) -> List[Dict[str, float]]:
+        """Returns a deep copy of resource bundles"""
+        return deepcopy(self._bundles)
 
     @property
     def required_resources(self) -> Dict[str, float]:
@@ -596,37 +607,17 @@ class PlacementGroupManager:
         self._ready[pgf].add(pg)
         return True
 
-    def return_pg(self,
-                  trial: "Trial",
-                  destroy_pg_if_cannot_replace: bool = True):
-        """Return pg, making it available for other trials to use.
-
-        If destroy_pg_if_cannot_replace is True, this will only return
-        a placement group if a staged placement group can be replaced
-        by it. If not, it will destroy the placement group.
+    def return_pg(self, trial: "Trial"):
+        """Return pg back to Core scheduling.
 
         Args:
             trial (Trial): Return placement group of this trial.
-
-        Returns:
-            Boolean indicating if the placement group was returned.
         """
-        pgf = trial.placement_group_factory
+
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
 
-        if destroy_pg_if_cannot_replace:
-            staged_pg = self._unstage_unused_pg(pgf)
-
-            # Could not replace
-            if not staged_pg:
-                self.remove_pg(pg)
-                return False
-
-            self.remove_pg(staged_pg)
-        self._ready[pgf].add(pg)
-
-        return True
+        self.remove_pg(pg)
 
     def _unstage_unused_pg(
             self, pgf: PlacementGroupFactory) -> Optional[PlacementGroup]:
