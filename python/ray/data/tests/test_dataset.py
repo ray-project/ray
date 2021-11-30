@@ -3464,6 +3464,19 @@ def test_sort_simple(ray_start_regular_shared):
     assert ds.count() == 0
 
 
+# TODO (kfstorm): Ideally, this test case should be enabled without condition.
+# But it's currently disabled because we don't want to change the behavior
+# when using arrow block format.
+@pytest.mark.skipif(
+    not ray.data.impl.util._enable_pandas_block(), reason="not implemented")
+def test_column_name_type_check(ray_start_regular_shared):
+    df = pd.DataFrame({"1": np.random.rand(10), "2": np.random.rand(10)})
+    ray.data.from_pandas(df)
+    df = pd.DataFrame({1: np.random.rand(10), 2: np.random.rand(10)})
+    with pytest.raises(ValueError):
+        ray.data.from_pandas(df)
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_random_shuffle(shutdown_only, pipelined):
     def range(n, parallelism=200):

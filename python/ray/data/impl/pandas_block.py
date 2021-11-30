@@ -90,8 +90,16 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def schema(self) -> Any:
         dtypes = self._table.dtypes
-        return PandasBlockSchema(
+        schema = PandasBlockSchema(
             names=dtypes.index.tolist(), types=dtypes.values.tolist())
+        # Column names with non-str types of a pandas DataFrame is not
+        # supported by Ray Dataset.
+        if any(not isinstance(name, str) for name in schema.names):
+            raise ValueError(
+                "A Pandas DataFrame with column names of non-str types"
+                " is not supported by Ray Dataset. Column names of this"
+                f" DataFrame: {schema.names!r}.")
+        return schema
 
     def to_pandas(self) -> "pandas.DataFrame":
         return self._table

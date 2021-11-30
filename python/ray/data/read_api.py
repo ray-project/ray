@@ -574,6 +574,11 @@ def from_pandas_refs(dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef[
     if isinstance(dfs, ray.ObjectRef):
         dfs = [dfs]
 
+    if _enable_pandas_block():
+        get_metadata = cached_remote_fn(_get_metadata)
+        metadata = [get_metadata.remote(df) for df in dfs]
+        return Dataset(BlockList(dfs, ray.get(metadata)), 0)
+
     df_to_block = cached_remote_fn(_df_to_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
@@ -658,11 +663,8 @@ def from_spark(df: "pyspark.sql.DataFrame",
 
 
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
-    if _enable_pandas_block():
-        block = df
-    else:
-        import pyarrow as pa
-        block = pa.table(df)
+    import pyarrow as pa
+    block = pa.table(df)
     return (block,
             BlockAccessor.for_block(block).get_metadata(input_files=None))
 
@@ -675,5 +677,6 @@ def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
             BlockAccessor.for_block(table).get_metadata(input_files=None))
 
 
-def _get_metadata(table: "pyarrow.Table") -> BlockMetadata:
+def _get_metadata(
+        table: Union["pyarrow.Table", "pandas.DataFrame"]) -> BlockMetadata:
     return BlockAccessor.for_block(table).get_metadata(input_files=None)
