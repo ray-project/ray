@@ -1663,7 +1663,7 @@ def local_dump(stream: bool = False,
     "--debug-state/--no-debug-state",
     is_flag=True,
     default=True,
-    help="Collect debug_state.txt from ray session dir")
+    help="Collect debug_state.txt from ray log dir")
 @click.option(
     "--pip/--no-pip",
     is_flag=True,

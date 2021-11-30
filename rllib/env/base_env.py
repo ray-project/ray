@@ -124,7 +124,7 @@ class BaseEnv:
             The resulting BaseEnv object.
         """
 
-        from ray.rllib.env.remote_vector_env import RemoteBaseEnv
+        from ray.rllib.env.remote_base_env import RemoteBaseEnv
         if remote_envs and num_envs == 1:
             raise ValueError(
                 "Remote envs only make sense to use if num_envs > 1 "
