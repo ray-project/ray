@@ -172,6 +172,8 @@ class CoreWorkerProcessImpl {
   /// The only core worker instance, if the number of workers is 1.
   std::shared_ptr<CoreWorker> global_worker_ GUARDED_BY(mutex_);
 
+  /// The core worker instance associated with the current thread.
+  /// Use weak_ptr here to avoid memory leak due to multi-threading.
   static thread_local std::weak_ptr<CoreWorker> thread_local_core_worker_;
 
   /// The worker ID of the global worker, if the number of workers is 1.
