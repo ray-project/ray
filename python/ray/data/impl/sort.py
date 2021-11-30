@@ -22,6 +22,7 @@ import numpy as np
 import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
+from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -56,11 +57,15 @@ def sample_boundaries(blocks: List[ObjectRef[Block]], key: SortKeyT,
     # The dataset is empty
     if len(samples) == 0:
         return [None] * (num_reducers - 1)
-    sample_items = np.concatenate(samples)
-    sample_items.sort()
+    builder = DelegatingArrowBlockBuilder()
+    for sample in samples:
+        builder.add_block(sample)
+    samples = builder.build()
+    sample_items = BlockAccessor.for_block(samples).to_numpy()
+    sample_items = np.sort(sample_items)
     ret = [
         np.quantile(sample_items, q, interpolation="nearest")
-        for q in np.arange(0, 1, 1 / num_reducers)
+        for q in np.linspace(0, 1, num_reducers)
     ]
     return ret[1:]
 
