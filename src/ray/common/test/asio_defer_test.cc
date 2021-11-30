@@ -20,7 +20,7 @@
 
 bool EnsureBelow(const std::string &method_name, int64_t min_val, int64_t max_val) {
   for (int i = 0; i < 1000; ++i) {
-    auto delay = ray::asio::testing::get_delay_ms(method_name);
+    auto delay = ray::asio::testing::get_delay_us(method_name);
     if (delay > max_val || delay < min_val) {
       RAY_LOG(ERROR) << "delay=" << delay;
       return false;
@@ -30,14 +30,14 @@ bool EnsureBelow(const std::string &method_name, int64_t min_val, int64_t max_va
 }
 
 TEST(AsioChaosTest, Basic) {
-  RayConfig::instance().testing_asio_delay_ms() = "method1=10:100,method2=20:30";
+  RayConfig::instance().testing_asio_delay_us() = "method1=10:100,method2=20:30";
   ray::asio::testing::init();
   ASSERT_TRUE(EnsureBelow("method1", 10, 100));
   ASSERT_TRUE(EnsureBelow("method2", 20, 30));
 }
 
 TEST(AsioChaosTest, WithGlobal) {
-  RayConfig::instance().testing_asio_delay_ms() = "method1=10:10,method2=20:30,*=100:200";
+  RayConfig::instance().testing_asio_delay_us() = "method1=10:10,method2=20:30,*=100:200";
   ray::asio::testing::init();
   ASSERT_TRUE(EnsureBelow("method1", 10, 10));
   ASSERT_TRUE(EnsureBelow("method2", 20, 30));
@@ -45,7 +45,7 @@ TEST(AsioChaosTest, WithGlobal) {
 }
 
 TEST(AsioChaosTest, Error) {
-  RayConfig::instance().testing_asio_delay_ms() = "method1=100:10,method2=20";
+  RayConfig::instance().testing_asio_delay_us() = "method1=100:10,method2=20";
   ray::asio::testing::init();
   ASSERT_TRUE(EnsureBelow("method1", 0, 0));
   ASSERT_TRUE(EnsureBelow("method2", 0, 0));

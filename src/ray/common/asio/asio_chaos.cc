@@ -33,7 +33,7 @@ namespace {
   should set up os environment to use this feature for testing purposes.
 
   To use this, simply do
-      export RAY_testing_asio_delay_ms="method1=10:10,method2=20:100"
+      export RAY_testing_asio_delay_us="method1=10:10,method2=20:100"
 
    The delay is a random number between the left and right of colon. If method equals '*',
    it will apply to all methods.
@@ -47,7 +47,7 @@ class DelayManager {
   int64_t GetMethodDelay(const std::string &name) const {
     auto it = delay_.find(name);
     if (it == delay_.end()) {
-      return GenRandomDelay(random_delay_ms_.first, random_delay_ms_.second);
+      return GenRandomDelay(random_delay_us_.first, random_delay_us_.second);
     }
     int64_t actual_delay = GenRandomDelay(it->second.first, it->second.second);
     if (actual_delay != 0) {
@@ -59,12 +59,12 @@ class DelayManager {
 
   void Init() {
     delay_.clear();
-    random_delay_ms_ = {0, 0};
-    auto delay_env = RayConfig::instance().testing_asio_delay_ms();
+    random_delay_us_ = {0, 0};
+    auto delay_env = RayConfig::instance().testing_asio_delay_us();
     if (delay_env.empty()) {
       return;
     }
-    RAY_LOG(ERROR) << "RAY_testing_asio_delay_ms is set to " << delay_env;
+    RAY_LOG(ERROR) << "RAY_testing_asio_delay_us is set to " << delay_env;
     std::vector<std::string_view> items = absl::StrSplit(delay_env, ",");
     for (const auto &item : items) {
       ParseItem(item);
@@ -77,55 +77,55 @@ class DelayManager {
     std::vector<std::string_view> item_val = absl::StrSplit(val, "=");
     if (item_val.size() != 2) {
       RAY_LOG(ERROR) << "Error in syntax: " << val
-                     << ", expected method=min_ms:max:ms. Skip this entry.";
+                     << ", expected method=min_us:max:ms. Skip this entry.";
     }
-    auto delay_ms = ParseVal(item_val[1]);
-    if (delay_ms) {
+    auto delay_us = ParseVal(item_val[1]);
+    if (delay_us) {
       if (item_val[0] == "*") {
-        random_delay_ms_ = *delay_ms;
+        random_delay_us_ = *delay_us;
       } else {
-        delay_[item_val[0]] = *delay_ms;
+        delay_[item_val[0]] = *delay_us;
       }
     }
   }
 
   std::optional<std::pair<int64_t, int64_t>> ParseVal(std::string_view val) {
-    std::vector<std::string_view> delay_str_ms = absl::StrSplit(val, ":");
-    if (delay_str_ms.size() != 2) {
+    std::vector<std::string_view> delay_str_us = absl::StrSplit(val, ":");
+    if (delay_str_us.size() != 2) {
       RAY_LOG(ERROR) << "Error in syntax: " << val
-                     << ", expected method=min_ms:max:ms. Skip this entry";
+                     << ", expected method=min_us:max:ms. Skip this entry";
       return std::nullopt;
     }
-    std::pair<int64_t, int64_t> delay_ms;
-    if (!absl::SimpleAtoi(delay_str_ms[0], &delay_ms.first) ||
-        !absl::SimpleAtoi(delay_str_ms[1], &delay_ms.second)) {
+    std::pair<int64_t, int64_t> delay_us;
+    if (!absl::SimpleAtoi(delay_str_us[0], &delay_us.first) ||
+        !absl::SimpleAtoi(delay_str_us[1], &delay_us.second)) {
       RAY_LOG(ERROR) << "Error in syntax: " << val
-                     << ", expected method=min_ms:max:ms. Skip this entry";
+                     << ", expected method=min_us:max:ms. Skip this entry";
       return std::nullopt;
     }
-    if (delay_ms.first > delay_ms.second) {
-      RAY_LOG(ERROR) << delay_ms.first << " is bigger than " << delay_ms.second
+    if (delay_us.first > delay_us.second) {
+      RAY_LOG(ERROR) << delay_us.first << " is bigger than " << delay_us.second
                      << ". Skip this entry.";
       return std::nullopt;
     }
-    return delay_ms;
+    return delay_us;
   }
 
-  int64_t GenRandomDelay(int64_t min_delay_ms, int64_t max_delay_ms) const {
-    if (min_delay_ms == max_delay_ms) {
-      return min_delay_ms;
+  int64_t GenRandomDelay(int64_t min_delay_us, int64_t max_delay_us) const {
+    if (min_delay_us == max_delay_us) {
+      return min_delay_us;
     }
-    return std::rand() % (max_delay_ms - min_delay_ms) + min_delay_ms;
+    return std::rand() % (max_delay_us - min_delay_us) + min_delay_us;
   }
 
   absl::flat_hash_map<std::string, std::pair<int64_t, int64_t>> delay_;
-  std::pair<int64_t, int64_t> random_delay_ms_ = {0, 0};
+  std::pair<int64_t, int64_t> random_delay_us_ = {0, 0};
 };
 
 static DelayManager _delay_manager;
 }  // namespace
 
-int64_t get_delay_ms(const std::string &name) {
+int64_t get_delay_us(const std::string &name) {
   return _delay_manager.GetMethodDelay(name);
 }
 

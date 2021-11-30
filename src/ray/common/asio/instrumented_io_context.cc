@@ -80,12 +80,12 @@ void instrumented_io_context::post(std::function<void()> handler,
       RecordExecution(handler, std::move(stats_handle));
     };
   }
-  auto defer_ms = ray::asio::testing::get_delay_ms(name);
-  if (defer_ms == 0) {
+  auto defer_us = ray::asio::testing::get_delay_us(name);
+  if (defer_us == 0) {
     boost::asio::io_context::post(std::move(handler));
   } else {
-    RAY_LOG(DEBUG) << "Deferring " << name << " by " << defer_ms << "ms";
-    execute_after(*this, std::move(handler), defer_ms);
+    RAY_LOG(DEBUG) << "Deferring " << name << " by " << defer_us << "us";
+    execute_after_us(*this, std::move(handler), defer_us);
   }
 }
 
@@ -107,7 +107,7 @@ void instrumented_io_context::post(std::function<void()> handler,
   if (defer_ms == 0) {
     return boost::asio::io_context::post(std::move(handler));
   } else {
-    execute_after(*this, std::move(handler), defer_ms);
+    execute_after_us(*this, std::move(handler), defer_us);
   }
 }
 
