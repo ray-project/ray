@@ -167,6 +167,7 @@ def test_background_tasks_with_max_calls(shutdown_only):
         gc.collect()
         wait_for_pid_to_exit(pid)
 
+
 def test_actor_killing(shutdown_only):
     # This is to test create and kill an actor immediately
     import ray

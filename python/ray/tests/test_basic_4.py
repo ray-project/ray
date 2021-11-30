@@ -17,6 +17,7 @@ import psutil
 
 logger = logging.getLogger(__name__)
 
+
 def test_actor_scheduling(shutdown_only):
     ray.init()
 
@@ -185,6 +186,7 @@ def test_job_id_consistency(ray_start_regular):
     ray.get(verify_job_id.remote(job_id, False))
     ray.get(verify_job_id.remote(job_id, True))
 
+
 def test_fair_queueing(shutdown_only):
     ray.init(
         num_cpus=1,
@@ -216,6 +218,7 @@ def test_fair_queueing(shutdown_only):
     ready, _ = ray.wait(
         [f.remote() for _ in range(1000)], timeout=timeout, num_returns=1000)
     assert len(ready) == 1000, len(ready)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vvv", __file__]))
