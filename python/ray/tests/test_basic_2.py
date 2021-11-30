@@ -502,6 +502,11 @@ def test_actor_pass_by_ref(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
+@pytest.mark.parametrize(
+    "ray_start_regular_shared", [{
+        "num_cpus": 3
+    }],
+    indirect=True)
 def test_actor_recursive(ray_start_regular_shared):
     @ray.remote
     class Actor:
