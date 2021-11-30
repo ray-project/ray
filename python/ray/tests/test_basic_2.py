@@ -241,9 +241,12 @@ def test_call_matrix(shutdown_only):
                     check(source_actor, dest_actor, is_large, out_of_band)
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 def test_actor_call_order(shutdown_only):
-    ray.init(num_cpus=4)
+    ray.init(
+        num_cpus=4,
+        _system_config={
+            "worker_lease_timeout_milliseconds": 6000,
+        })
 
     @ray.remote
     def small_value():
