@@ -135,7 +135,7 @@ class MLflowLoggerCallback(LoggerCallback):
 
         # Stop the run once trial finishes.
         status = "FINISHED" if not failed else "FAILED"
-        self.mlflow_utilterminate_run(run_id=run_id, status=status)
+        self.mlflow_util.end_run(run_id=run_id, status=status)
 
 
 class MLflowLogger(Logger):
@@ -316,46 +316,23 @@ class MLflowTrainableMixin:
                              "passed in. Make sure to include a `mlflow` "
                              "key in your `config` dict containing at "
                              "least a `tracking_uri`")
-        self._mlflow.set_tracking_uri(tracking_uri)
 
         # Set the tracking token if one is passed in.
         tracking_token = mlflow_config.pop("token", None)
-        if tracking_token is not None:
-            os.environ["MLFLOW_TRACKING_TOKEN"] = tracking_token
 
-        # First see if experiment_id is passed in.
         experiment_id = mlflow_config.pop("experiment_id", None)
-        if experiment_id is None or self._mlflow.get_experiment(
-                experiment_id) is None:
-            logger.debug("Either no experiment_id is passed in, or the "
-                         "experiment with the given id does not exist. "
-                         "Checking experiment_name")
-            # Check for name.
-            experiment_name = mlflow_config.pop("experiment_name", None)
-            if experiment_name is None:
-                raise ValueError(
-                    "MLflow mixin specified but no "
-                    "experiment_name or experiment_id has been "
-                    "passed in. Make sure to include a `mlflow` "
-                    "key in your `config` dict containing at "
-                    "least a `experiment_name` or `experiment_id` "
-                    "specification.")
-            experiment = self._mlflow.get_experiment_by_name(experiment_name)
-            if experiment is not None:
-                # Experiment with this name exists.
-                experiment_id = experiment.experiment_id
-            else:
-                raise ValueError("No experiment with the given "
-                                 "name: {} or id: {} currently exists. Make "
-                                 "sure to first start the MLflow experiment "
-                                 "before calling tune.run.".format(
-                                     experiment_name, experiment_id))
 
-        self.experiment_id = experiment_id
+        experiment_name = mlflow_config.pop("experiment_name", None)
+
+        self.mlflow_util.setup_mlflow(tracking_uri=tracking_uri,
+                                      experiment_id=experiment_id,
+                                      experiment_name=experiment_name,
+                                      tracking_token=tracking_token,
+                                      create_experiment_if_not_exists=False)
 
         run_name = self.trial_name + "_" + self.trial_id
         run_name = run_name.replace("/", "_")
-        self.mlflow_util.start_active_run(run_name=run_name)
+        self.mlflow_util.start_run(run_name=run_name)
 
     def stop(self):
-        self.mlflow_util.end_active_run()
+        self.mlflow_util.end_run()

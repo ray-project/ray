@@ -12,6 +12,7 @@ from ray.util.ml_utils.json import SafeFallbackEncoder
 from ray.train.callbacks import TrainingCallback
 from ray.train.constants import (RESULT_FILE_JSON, TRAINING_ITERATION,
                                  TIME_TOTAL_S, TIMESTAMP, PID)
+from ray.util.ml_utils.mlflow import MLflowLoggerUtil
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +188,71 @@ class TBXLoggerCallback(TrainingSingleWorkerLoggingCallback):
     VALID_SUMMARY_TYPES: Tuple[type] = (int, float, np.float32, np.float64,
                                         np.int32, np.int64)
     IGNORE_KEYS: Set[str] = {PID, TIMESTAMP, TIME_TOTAL_S, TRAINING_ITERATION}
+
+    def start_training(self, logdir: str, **info):
+        super().start_training(logdir, **info)
+
+        try:
+            from tensorboardX import SummaryWriter
+        except ImportError:
+            if log_once("tbx-install"):
+                warnings.warn(
+                    "pip install 'tensorboardX' to see TensorBoard files.")
+            raise
+
+        self._file_writer = SummaryWriter(self.logdir, flush_secs=30)
+
+    def handle_result(self, results: List[Dict], **info):
+        result = results[self._workers_to_log]
+        step = result[TRAINING_ITERATION]
+        result = {k: v for k, v in result.items() if k not in self.IGNORE_KEYS}
+        flat_result = flatten_dict(result, delimiter="/")
+        path = ["ray", "train"]
+
+        # same logic as in ray.tune.logger.TBXLogger
+        for attr, value in flat_result.items():
+            full_attr = "/".join(path + [attr])
+            if (isinstance(value, self.VALID_SUMMARY_TYPES)
+                    and not np.isnan(value)):
+                self._file_writer.add_scalar(
+                    full_attr, value, global_step=step)
+            elif ((isinstance(value, list) and len(value) > 0)
+                  or (isinstance(value, np.ndarray) and value.size > 0)):
+
+                # Must be video
+                if isinstance(value, np.ndarray) and value.ndim == 5:
+                    self._file_writer.add_video(
+                        full_attr, value, global_step=step, fps=20)
+                    continue
+
+                try:
+                    self._file_writer.add_histogram(
+                        full_attr, value, global_step=step)
+                # In case TensorboardX still doesn't think it's a valid value
+                # (e.g. `[[]]`), warn and move on.
+                except (ValueError, TypeError):
+                    if log_once("invalid_tbx_value"):
+                        warnings.warn(
+                            "You are trying to log an invalid value ({}={}) "
+                            "via {}!".format(full_attr, value,
+                                             type(self).__name__))
+        self._file_writer.flush()
+
+    def finish_training(self, error: bool = False, **info):
+        self._file_writer.close()
+
+class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
+    """Logs Train results in to MLflow.
+
+    Args:
+        logdir (Optional[str]): Path to directory where the results file
+            should be. If None, will be set by the Trainer.
+        worker_to_log (int): Worker index to log. By default, will log the
+            worker with index 0.
+    """
+
+    def __init__(self):
+        self.mlflow_logger_util = MLflowLoggerUtil()
 
     def start_training(self, logdir: str, **info):
         super().start_training(logdir, **info)

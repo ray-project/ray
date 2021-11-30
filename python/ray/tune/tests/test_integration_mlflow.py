@@ -46,72 +46,98 @@ class MockRun:
 
 MockExperiment = namedtuple("MockExperiment", ["name", "experiment_id"])
 
+class MockMLflowLoggerUtil:
+    def __init__(self):
+        self.experiments = [MockExperiment("existing_experiment", 0)]
 
-class MockMlflowClient:
-    def __init__(self, tracking_uri=None, registry_uri=None):
+    def setup_mlflow(self, tracking_uri: Optional[str] = None,
+                     registry_uri: Optional[str] = None,
+                     experiment_id: Optional[str] = None,
+                     experiment_name: Optional[str] = None,
+                     tracking_token=None,
+                     create_experiment_if_not_exists: bool = True,
+                     ):
         self.tracking_uri = tracking_uri
         self.registry_uri = registry_uri
-        self.experiments = [MockExperiment("existing_experiment", 0)]
-        self.runs = {0: []}
-        self.active_run = None
 
-    def set_tracking_uri(self, tracking_uri):
-        self.tracking_uri = tracking_uri
+        if experiment_id == 0 or experiment_name == "existing_experiment":
+            self.experiment_id = 0
 
-    def get_experiment_by_name(self, name):
-        try:
-            index = self.experiment_names.index(name)
-            return self.experiments[index]
-        except ValueError:
-            return None
+        if experiment_id != 0 and create_experiment_if_not_exists:
+            experiment_id = len(self.experiments)
+            self.experiments.append(MockExperiment(experiment_name, experiment_id))
+            self.experiment_id = 1
 
-    def get_experiment(self, experiment_id):
-        experiment_id = int(experiment_id)
-        try:
-            return self.experiments[experiment_id]
-        except IndexError:
-            return None
+    def start_run(self, run_name=None, tags=None):
 
-    def create_experiment(self, name):
-        experiment_id = len(self.experiments)
-        self.experiments.append(MockExperiment(name, experiment_id))
-        self.runs[experiment_id] = []
-        return experiment_id
 
-    def create_run(self, experiment_id, tags=None):
-        experiment_runs = self.runs[experiment_id]
-        run_id = (experiment_id, len(experiment_runs))
-        run = MockRun(run_id=run_id, tags=tags)
-        experiment_runs.append(run)
-        return run
 
-    def start_run(self, experiment_id, run_name):
-        # Creates new run and sets it as active.
-        run = self.create_run(experiment_id)
-        self.active_run = run
 
-    def get_mock_run(self, run_id):
-        return self.runs[run_id[0]][run_id[1]]
-
-    def log_param(self, run_id, key, value):
-        run = self.get_mock_run(run_id)
-        run.log_param(key, value)
-
-    def log_metric(self, run_id, key, value, step):
-        run = self.get_mock_run(run_id)
-        run.log_metric(key, value)
-
-    def log_artifacts(self, run_id, local_dir):
-        run = self.get_mock_run(run_id)
-        run.log_artifact(local_dir)
-
-    def set_terminated(self, run_id, status):
-        run = self.get_mock_run(run_id)
-        run.set_terminated(status)
-
-    @property
-    def experiment_names(self):
-        return [e.name for e in self.experiments]
+# class MockMlflowClient:
+#     def __init__(self, tracking_uri=None, registry_uri=None):
+#         self.tracking_uri = tracking_uri
+#         self.registry_uri = registry_uri
+#         self.experiments = [MockExperiment("existing_experiment", 0)]
+#         self.runs = {0: []}
+#         self.active_run = None
+#
+#     def set_tracking_uri(self, tracking_uri):
+#         self.tracking_uri = tracking_uri
+#
+#     def get_experiment_by_name(self, name):
+#         try:
+#             index = self.experiment_names.index(name)
+#             return self.experiments[index]
+#         except ValueError:
+#             return None
+#
+#     def get_experiment(self, experiment_id):
+#         experiment_id = int(experiment_id)
+#         try:
+#             return self.experiments[experiment_id]
+#         except IndexError:
+#             return None
+#
+#     def create_experiment(self, name):
+#         experiment_id = len(self.experiments)
+#         self.experiments.append(MockExperiment(name, experiment_id))
+#         self.runs[experiment_id] = []
+#         return experiment_id
+#
+#     def create_run(self, experiment_id, tags=None):
+#         experiment_runs = self.runs[experiment_id]
+#         run_id = (experiment_id, len(experiment_runs))
+#         run = MockRun(run_id=run_id, tags=tags)
+#         experiment_runs.append(run)
+#         return run
+#
+#     def start_run(self, experiment_id, run_name):
+#         # Creates new run and sets it as active.
+#         run = self.create_run(experiment_id)
+#         self.active_run = run
+#
+#     def get_mock_run(self, run_id):
+#         return self.runs[run_id[0]][run_id[1]]
+#
+#     def log_param(self, run_id, key, value):
+#         run = self.get_mock_run(run_id)
+#         run.log_param(key, value)
+#
+#     def log_metric(self, run_id, key, value, step):
+#         run = self.get_mock_run(run_id)
+#         run.log_metric(key, value)
+#
+#     def log_artifacts(self, run_id, local_dir):
+#         run = self.get_mock_run(run_id)
+#         run.log_artifact(local_dir)
+#
+#     def set_terminated(self, run_id, status):
+#         run = self.get_mock_run(run_id)
+#         run.set_terminated(status)
+#
+#     @property
+#     def experiment_names(self):
+#         return [e.name for e in self.experiments]
 
 
 def clear_env_vars():
@@ -122,7 +148,7 @@ def clear_env_vars():
 
 
 class MLflowTest(unittest.TestCase):
-    @patch("mlflow.tracking.MlflowClient", MockMlflowClient)
+    #@patch("mlflow.tracking.MlflowClient", MockMlflowClient)
     def testMlFlowLoggerCallbackConfig(self):
         # Explicitly pass in all args.
         logger = MLflowLoggerCallback(
@@ -196,7 +222,7 @@ class MLflowTest(unittest.TestCase):
         logger.setup()
         self.assertEqual(logger.tags, tags)
 
-    @patch("mlflow.tracking.MlflowClient", MockMlflowClient)
+    #@patch("mlflow.tracking.MlflowClient", MockMlflowClient)
     def testMlFlowLoggerLogging(self):
         clear_env_vars()
         trial_config = {"par1": 4, "par2": 9.0}
@@ -250,38 +276,37 @@ class MLflowTest(unittest.TestCase):
         self.assertTrue(mock_run.terminated)
         self.assertEqual(mock_run.status, "FINISHED")
 
-    @patch("mlflow.tracking.MlflowClient", MockMlflowClient)
+    #@patch("mlflow.tracking.MlflowClient", MockMlflowClient)
     def testMlFlowLegacyLoggerConfig(self):
-        mlflow = MockMlflowClient()
-        with patch.dict("sys.modules", mlflow=mlflow):
-            clear_env_vars()
-            trial_config = {"par1": 4, "par2": 9.0}
-            trial = MockTrial(trial_config, "trial1", 0, "artifact")
+        #mlflow = MockMlflowClient()
+        #with patch.dict("sys.modules", mlflow=mlflow):
+        clear_env_vars()
+        trial_config = {"par1": 4, "par2": 9.0}
+        trial = MockTrial(trial_config, "trial1", 0, "artifact")
 
-            # No experiment_id is passed in config, should raise an error.
-            with self.assertRaises(ValueError):
-                logger = MLflowLogger(trial_config, "/tmp", trial)
-
-            trial_config.update({
-                "logger_config": {
-                    "mlflow_tracking_uri": "test_tracking_uri",
-                    "mlflow_experiment_id": 0
-                }
-            })
-            trial = MockTrial(trial_config, "trial2", 1, "artifact")
+        # No experiment_id is passed in config, should raise an error.
+        with self.assertRaises(ValueError):
             logger = MLflowLogger(trial_config, "/tmp", trial)
 
-            experiment_logger = logger._trial_experiment_logger
-            client = experiment_logger.mlflow_util.client
-            self.assertEqual(client.tracking_uri, "test_tracking_uri")
-            # Check to make sure that a run was created on experiment_id 0.
-            self.assertEqual(len(client.runs[0]), 1)
-            mock_run = client.runs[0][0]
-            self.assertDictEqual(mock_run.tags, {"trial_name": "trial2"})
-            self.assertListEqual(mock_run.params, [{"par1": 4}, {"par2": 9}])
+        trial_config.update({
+            "logger_config": {
+                "mlflow_tracking_uri": "test_tracking_uri",
+                "mlflow_experiment_id": 0
+            }
+        })
+        trial = MockTrial(trial_config, "trial2", 1, "artifact")
+        logger = MLflowLogger(trial_config, "/tmp", trial)
 
-    @patch("ray.tune.integration.mlflow._import_mlflow",
-           lambda: MockMlflowClient())
+        experiment_logger = logger._trial_experiment_logger
+        client = experiment_logger.mlflow_util._get_client()
+        # Check to make sure that a run was created on experiment_id 0.
+        self.assertEqual(len(client.runs[0]), 1)
+        mock_run = client.runs[0][0]
+        self.assertDictEqual(mock_run.tags, {"trial_name": "trial2"})
+        self.assertListEqual(mock_run.params, [{"par1": 4}, {"par2": 9}])
+
+    # @patch("ray.tune.integration.mlflow._import_mlflow",
+    #        lambda: MockMlflowClient())
     def testMlFlowMixinConfig(self):
         clear_env_vars()
         trial_config = {"par1": 4, "par2": 9.0}
