@@ -42,6 +42,22 @@ To simplify Operator configuration, Ray provides a :ref:`a Helm chart <Ray-helm>
 Installing the Helm chart will create an Operator Deployment.
 The Operator manages autoscaling Ray clusters; each Ray node runs in its own K8s Pod.
 
+Handling dependencies
+---------------------
+
+In general, Ray expects each worker to have the same environment (i.e. the same working directory, the same available Python packages, and environment variables.)
+This is because a given task or actor may be arbitrarily scheduled on any available worker (which may be running on any node in the cluster.)
+
+There are a few ways to set up this environment.
+
+- You can build all your files and dependencies into a Docker image and specify this in your your :ref:`Cluster YAML Configuration<cluster-config>`.
+
+- You can also install packages using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference<cluster-configuration-setup-commands>`).
+
+- You can push files to the cluster using ``ray rsync_up`` (:ref:`reference<ray-rsync>`).
+
+Alternatively, you can specify your environment in Python at runtime using :ref:`Runtime Environments<runtime-environments>`.
+This also allows you to specify different environments per actor, per task, or per Ray Client connection, all on the same long-running Ray cluster.
 
 Autoscaling with Ray
 --------------------
