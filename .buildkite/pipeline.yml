@@ -222,6 +222,9 @@
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-post_wheel_build
       python/ray/serve/...
+    - bazel test --config=ci $(./scripts/bazel_export_options)
+      --test_tag_filters=team:serve
+      release/...
 
 - label: ":python: Minimal install"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
@@ -344,6 +347,7 @@
       -- //python/ray/tests/...
       -//python/ray/tests:test_failure_2
       -//python/ray/tests:test_job
+      -//python/ray/tests:test_autoscaler_drain_node_api
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=-kubernetes,client_tests,-flaky
       --test_env=RAY_CLIENT_MODE=1 --test_env=RAY_PROFILING=1
@@ -691,8 +695,15 @@
   conditions: ["RAY_CI_TRAIN_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
-    - SGD_TESTING=1 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
-    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-gpu_only python/ray/train/...
+    - TRAIN_TESTING=1 INSTALL_HOROVOD=1 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=-gpu_only,-tune python/ray/train/...
+
+- label: ":steam_locomotive: :octopus: Train + Tune tests and examples"
+  conditions: ["RAY_CI_TRAIN_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/travis/upload_build_info.sh; fi }; trap cleanup EXIT
+    - TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/travis/install-dependencies.sh
+    - bazel test --config=ci $(./scripts/bazel_export_options) --build_tests_only --test_tag_filters=tune,-gpu_only python/ray/train/...
 
 - label: ":octopus: SGD tests and examples"
   conditions: ["RAY_CI_SGD_AFFECTED"]

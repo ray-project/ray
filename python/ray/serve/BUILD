@@ -208,7 +208,7 @@ py_test(
 
 py_test(
     name = "test_standalone",
-    size = "medium",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -239,7 +239,7 @@ py_test(
 )
 
 py_test(
-    name = "test_warnings",
+    name = "test_logs",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],

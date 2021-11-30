@@ -64,7 +64,7 @@ DEFAULT_CONFIG = with_common_config({
     # each worker will have a replay buffer of this size.
     "buffer_size": DEPRECATED_VALUE,
     "replay_buffer_config": {
-        "type": "LocalReplayBuffer",
+        "type": "MultiAgentReplayBuffer",
         "capacity": 50000,
     },
     # Set this to True, if you want the contents of your buffer(s) to be

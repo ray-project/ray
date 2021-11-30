@@ -17,7 +17,10 @@ from typing import Optional, Sequence, Tuple, Any
 import uuid
 import grpc
 import warnings
-from grpc.experimental import aio as aiogrpc
+try:
+    from grpc import aio as aiogrpc
+except ImportError:
+    from grpc.experimental import aio as aiogrpc
 
 import inspect
 from inspect import signature

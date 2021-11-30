@@ -169,15 +169,12 @@ class TuneFailResumeGridTest(unittest.TestCase):
     class FailureInjectorCallback(Callback):
         """Adds random failure injection to the TrialExecutor."""
 
-        def __init__(self, steps=20):
-            self._step = 0
-            self.steps = steps
+        def __init__(self, num_trials=20):
+            self.num_trials = num_trials
 
-        def on_trial_start(self, trials, **info):
-            self._step += 1
-            if self._step >= self.steps:
-                print(f"Failing after step {self._step} with "
-                      f"{len(trials)} trials")
+        def on_step_end(self, trials, **kwargs):
+            if len(trials) == self.num_trials:
+                print(f"Failing after {self.num_trials} trials.")
                 raise RuntimeError
 
     class CheckStateCallback(Callback):
@@ -212,7 +209,9 @@ class TuneFailResumeGridTest(unittest.TestCase):
             if not self._checked and iteration >= self._check_after:
                 for trial in trials:
                     if trial.status == Trial.PENDING:
-                        assert trial.resources.cpu == self._expected_cpu
+                        assert (trial.
+                                placement_group_factory.required_resources.get(
+                                    "CPU", 0) == self._expected_cpu)
                 self._checked = True
 
     def setUp(self):

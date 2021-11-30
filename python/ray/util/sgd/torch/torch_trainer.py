@@ -11,7 +11,7 @@ import torch.distributed as dist
 
 import ray
 from ray.util import log_once
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 from ray.util.sgd.torch.worker_group import LocalWorkerGroup, \
     RemoteWorkerGroup, DeactivatedWorkerGroup
 from ray.util.sgd.utils import NUM_SAMPLES, BATCH_SIZE
@@ -48,7 +48,7 @@ def _remind_gpu_usage(use_gpu):
                     "enable GPU usage. ")
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class TorchTrainer:
     """Train a PyTorch model using distributed PyTorch.
 

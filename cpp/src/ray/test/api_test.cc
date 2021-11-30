@@ -299,22 +299,6 @@ TEST(RayApiTest, GetActorTest) {
   EXPECT_FALSE(ray::GetActor<Counter>("not_exist_actor"));
 }
 
-TEST(RayApiTest, GetGlobalActorTest) {
-  ray::ActorHandle<Counter> actor = ray::Actor(Counter::FactoryCreate)
-                                        .SetMaxRestarts(1)
-                                        .SetGlobalName("named_actor")
-                                        .Remote();
-  auto named_actor_obj = actor.Task(&Counter::Add).Remote(1);
-  EXPECT_EQ(1, *named_actor_obj.Get());
-
-  auto named_actor_handle_optional = ray::GetGlobalActor<Counter>("named_actor");
-  EXPECT_TRUE(named_actor_handle_optional);
-  auto &named_actor_handle = *named_actor_handle_optional;
-  auto named_actor_obj1 = named_actor_handle.Task(&Counter::Plus1).Remote(1);
-  EXPECT_EQ(2, *named_actor_obj1.Get());
-  EXPECT_FALSE(ray::GetGlobalActor<Counter>("not_exist_actor"));
-}
-
 TEST(RayApiTest, CompareWithFuture) {
   // future from a packaged_task
   std::packaged_task<int(int)> task(Plus1);
@@ -341,7 +325,7 @@ TEST(RayApiTest, CompareWithFuture) {
 
 TEST(RayApiTest, CreateAndRemovePlacementGroup) {
   std::vector<std::unordered_map<std::string, double>> bundles{{{"CPU", 1}}};
-  ray::PlacementGroupCreationOptions options1{false, "first_placement_group", bundles,
+  ray::PlacementGroupCreationOptions options1{"first_placement_group", bundles,
                                               ray::PlacementStrategy::PACK};
   auto first_placement_group = ray::CreatePlacementGroup(options1);
   EXPECT_TRUE(first_placement_group.Wait(10));

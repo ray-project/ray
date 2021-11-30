@@ -1,13 +1,9 @@
-.. admonition:: We're hiring!
-
-    The RLlib team at `Anyscale Inc. <https://anyscale.com>`__, the company behind Ray, is hiring interns and full-time **reinforcement learning engineers** to help advance and maintain RLlib.
-    If you have a background in ML/RL and are interested in making RLlib **the** industry-leading open-source RL library, `apply here today <https://jobs.lever.co/anyscale/186d9b8d-3fee-4e07-bb8e-49e85cf33d6b>`__.
-    We'd be thrilled to welcome you on the team!
+.. include:: we_are_hiring.rst
 
 .. _rllib-index:
 
-RLlib: Industry-Grade Reinforcement Learning with PyTorch and TensorFlow
-========================================================================
+RLlib: Industry-Grade Reinforcement Learning
+============================================
 
 .. figure:: ../images/rllib/rllib-index-header.svg
 
@@ -19,14 +15,22 @@ purely from offline (historic) datasets, or using externally
 connected simulators, RLlib offers a simple solution for each of your decision
 making needs.
 
-You **don't need** to be an **RL expert**, nor do you need to
-learn Ray or any of its other libraries in order to get started with RLlib.
-If you either have your problem defined and coded in python as an
-"`RL environment <https://github.com/openai/gym>`_" or are in possession of pre-recorded
-(historic) data to learn from, you should be up and running with RLlib in a day.
+You **don't need** to be an **RL expert** to use RLlib, nor do you need to learn Ray or any
+other of its libraries! If you either have your problem coded (in python) as an
+`RL environment <https://medium.com/distributed-computing-with-ray/anatomy-of-a-custom-environment-for-rllib-327157f269e5>`_
+or own lots of pre-recorded, historic behavioral data to learn from, you will be
+up and running in only a few days.
 
-RLlib is already used in production by industry leaders from many different verticals,
-such as manufacturing, logistics, finance, gaming, automakers, robotics, and lots of others.
+RLlib is already used in production by industry leaders in many different verticals, such as
+`climate control <https://www.anyscale.com/events/2021/06/23/applying-ray-and-rllib-to-real-life-industrial-use-cases>`_,
+`manufacturing and logistics <https://www.anyscale.com/events/2021/06/22/offline-rl-with-rllib>`_,
+`finance <https://www.anyscale.com/events/2021/06/22/a-24x-speedup-for-reinforcement-learning-with-rllib-+-ray>`_,
+`gaming <https://www.anyscale.com/events/2021/06/22/using-reinforcement-learning-to-optimize-iap-offer-recommendations-in-mobile-games>`_,
+`automobile <https://www.anyscale.com/events/2021/06/23/using-rllib-in-an-enterprise-scale-reinforcement-learning-solution>`_,
+`robotics <https://www.anyscale.com/events/2021/06/23/introducing-amazon-sagemaker-kubeflow-reinforcement-learning-pipelines-for>`_,
+`boat design <https://www.youtube.com/watch?v=cLCK13ryTpw>`_,
+and many others.
+
 
 RLlib in 60 seconds
 -------------------
@@ -46,7 +50,7 @@ PyTorch (or both as shown below):
     $ conda activate rllib
     $ pip install "ray[rllib]" tensorflow torch
 
-To be able to run our Atari examples we well, you should also install:
+To be able to run our Atari examples, you should also install:
 
 .. code-block:: bash
 
@@ -63,106 +67,17 @@ for a few training iterations, then perform a single evaluation loop
     :start-after: __rllib-in-60s-begin__
     :end-before: __rllib-in-60s-end__
 
+`See here for a simple example on how to write an action inference loop after training. <https://github.com/ray-project/ray/blob/master/rllib/examples/inference_and_serving/policy_inference_after_training.py>`_
+
 Feature Overview
 ----------------
 
-The following is a summary of RLlib's most striking features (for an in-depth overview, check out our `documentation <http://docs.ray.io/en/master/rllib.html>`_).
+The following is a summary of RLlib's most striking features.
+For an in-depth overview, check out our `documentation <http://docs.ray.io/en/latest/rllib/index.html>`_.
 
-In particular, RLlib offers and supports:
+Click on the images below to see an example script for each of the listed features:
 
-.. .. container:: clear-both
-
-..    .. container:: buttons-float-left
-
-..        .. image:: ../images/rllib/sigils/tf-and-torch.svg
-..            :width: 120
-
-.. container::
-
-    The most **popular deep-learning frameworks**: PyTorch and TensorFlow
-    (tf1.x/2.x static-graph/eager/traced).
-
-
-.. .. container:: clear-both
-
-..    .. container:: buttons-float-left
-
-..        .. image:: ../images/rllib/sigils/distributed-learning.svg
-..            :width: 120
-
-.. container::
-
-    **Highly distributed learning**: Our RLlib algorithms (such as our "PPO" or "IMPALA")
-    allow you to set the ``num_workers`` config parameter, such that your workloads can run
-    on 100s of CPUs/nodes thus parallelizing and speeding up learning.
-
-.. .. container:: clear-both
-
-..    .. container:: buttons-float-left
-
-..        .. image:: ../images/rllib/sigils/vectorized-envs.svg
-..            :width: 120
-
-.. container::
-
-    **Vectorized (batched) environments**: RLlib auto-vectorizes your (custom)
-    gym.Env classes such that RLlib environment workers can batch and thus
-    significantly speedup the action computing model forward passes.
-
-.. .. container:: clear-both
-
-..    .. container:: buttons-float-left
-
-..        .. image:: ../images/rllib/sigils/multi-agent.svg
-..            :width: 120
-
-.. container::
-
-    **Multi-agent RL** (MARL): Convert your (custom) gym.Env into a multi-agent one via a few simple steps and start training your agents in any of the following possible setups:
-    <br/>Cooperative with shared or separate policies and/or value functions.
-    <br/>Adversarial scenarios using self-play and league-based training.
-    <br/>Independent learning of neutral/co-existing agents.
-
-.. .. container:: clear-both
-
-..    .. container:: buttons-float-left
-
-..        .. image:: ../images/rllib/sigils/external-simulators.svg
-..            :width: 120
-
-.. container::
-
-    **External simulators** connecting to RLlib from the outside (e.g.
-    via http(s)): Don't have your simulation running as a gym.Env in python?
-    No problem, RLlib supports an external environment API and comes with a pluggable,
-    off-the-shelve client/server setup that allows you to run 100s of independent
-    simulators on the "outside" (e.g. a Windows cloud) connecting to a central RLlib
-    Policy-Server that learns and serves actions. Alternatively, actions can be computed
-    on the client side to save on network traffic.
-
-.. .. container:: clear-both
-
-..    .. container:: buttons-float-left
-
-..        .. image:: ../images/rllib/sigils/offline-rl.svg
-..            :width: 120
-
-.. container::
-
-    **Offline (batch) RL and imitation learning (behavior cloning)** using historic data:
-    If you don't have a simulator for your particular problem, but tons of historic data
-    recorded by a legacy (maybe non-RL/ML system), this branch of reinforcement learning
-    is for you! RLlib's comes with several offline RL algorithms (*CQL*, *MARWIL*, and *DQfD*),
-    allowing you to either purely behavior-clone the historic system (the one that recorded
-    your historic data) or learn how to improve over that system.
-
-
-In-Depth Documentation
-----------------------
-
-For an in-depth overview of RLlib and everything it has to offer, including
-hand-on tutorials of important industry use cases and workflows, head over to
-our `documentation pages <https://docs.ray.io/en/master/rllib.html>`_.
+.. include:: feature_overview.rst
 
 
 Customizations
@@ -181,6 +96,7 @@ RL (MARL) becomes an easy-to-use low-level primitive for our users.
 
 .. figure:: ../images/rllib/rllib-stack.svg
     :align: left
+    :width: 650
 
     **RLlib's API stack:** Built on top of Ray, RLlib offers off-the-shelf, highly distributed
     algorithms, policies, loss functions, and default models (including the option to
@@ -190,6 +106,3 @@ RL (MARL) becomes an easy-to-use low-level primitive for our users.
     which provides learning functionality and serves action queries. User customizations
     are realized via sub-classing the existing abstractions and - by overriding certain
     methods in those sub-classes - define custom behavior.
-
-
-To learn more, proceed to the `table of contents <rllib-toc.html>`__.

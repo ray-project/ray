@@ -688,12 +688,6 @@ def test_deploy_handle_validation(serve_instance):
 
 
 def test_init_args(serve_instance):
-    with pytest.raises(TypeError):
-
-        @serve.deployment(init_args=[1, 2, 3])
-        class BadInitArgs:
-            pass
-
     @serve.deployment(init_args=(1, 2, 3))
     class D:
         def __init__(self, *args):
@@ -840,7 +834,7 @@ def test_input_validation():
 
     with pytest.raises(TypeError):
 
-        @serve.deployment(init_args=[1, 2, 3])
+        @serve.deployment(init_args={1, 2, 3})
         class BadInitArgs:
             pass
 
@@ -1102,6 +1096,17 @@ def test_deploy_change_route_prefix(serve_instance):
 
     d.options(route_prefix="/new").deploy()
     wait_for_condition(check_switched)
+
+
+@pytest.mark.timeout(10, method="thread")
+def test_deploy_empty_bundle(serve_instance):
+    @serve.deployment(ray_actor_options={"num_cpus": 0})
+    class D:
+        def hello(self, _):
+            return "hello"
+
+    # This should succesfully terminate within the provided time-frame.
+    D.deploy()
 
 
 if __name__ == "__main__":
