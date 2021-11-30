@@ -428,7 +428,9 @@ class _MultiAgentEnvToBaseEnv(BaseEnv):
             assert isinstance(rewards, dict), "Not a multi-agent reward"
             assert isinstance(dones, dict), "Not a multi-agent return"
             assert isinstance(infos, dict), "Not a multi-agent info"
-            if set(infos).difference(set(obs)):
+            # Allow `__common__` entry in `infos` for data unrelated with any
+            # agent, but rather with the environment itself.
+            if set(infos).difference(set(obs) | {"__common__"}):
                 raise ValueError("Key set for infos must be a subset of obs: "
                                  "{} vs {}".format(infos.keys(), obs.keys()))
             if "__all__" not in dones:
