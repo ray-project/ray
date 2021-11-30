@@ -4,7 +4,8 @@ import threading
 import ray
 import ray._private.gcs_utils as gcs_utils
 from ray._private.gcs_pubsub import GcsPublisher, GcsErrorSubscriber, \
-    GcsLogSubscriber, GcsAioPublisher, GcsAioSubscriber
+    GcsLogSubscriber, GcsFunctionKeySubscriber, GcsAioPublisher, \
+    GcsAioSubscriber
 from ray.core.generated.gcs_pb2 import ErrorTableData
 import pytest
 
@@ -141,6 +142,34 @@ async def test_aio_publish_and_subscribe_logs(ray_start_regular):
     assert await subscriber.poll_logs() == log_batch
 
     await subscriber.close()
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "_system_config": {
+            "gcs_grpc_based_pubsub": True
+        }
+    }],
+    indirect=True)
+def test_publish_and_subscribe_function_keys(ray_start_regular):
+    address_info = ray_start_regular
+    redis = ray._private.services.create_redis_client(
+        address_info["redis_address"],
+        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+
+    gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
+
+    subscriber = GcsFunctionKeySubscriber(address=gcs_server_addr)
+    subscriber.subscribe()
+
+    publisher = GcsPublisher(address=gcs_server_addr)
+    publisher.publish_function_key(b"111")
+    publisher.publish_function_key(b"222")
+
+    assert subscriber.poll() == b"111"
+    assert subscriber.poll() == b"222"
+
+    subscriber.close()
 
 
 @pytest.mark.parametrize(
