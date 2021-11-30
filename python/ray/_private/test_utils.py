@@ -941,12 +941,16 @@ def get_and_run_node_killer(node_kill_interval_s,
 
     @ray.remote(num_cpus=0)
     class NodeKillerActor:
-        def __init__(self, head_node_id, node_kill_interval_s: float = 60):
+        def __init__(self,
+                     head_node_id,
+                     node_kill_interval_s: float = 60,
+                     max_nodes_to_kill: int = 2):
             self.node_kill_interval_s = node_kill_interval_s
             self.is_running = False
             self.head_node_id = head_node_id
             self.killed_nodes = set()
             self.done = asyncio.get_event_loop().create_future()
+            self.max_nodes_to_kill = max_nodes_to_kill
             # -- logger. --
             logging.basicConfig(level=logging.INFO)
 
@@ -989,6 +993,8 @@ def get_and_run_node_killer(node_kill_interval_s,
                         f"Killed node {node_id} at address: "
                         f"{node_to_kill_ip}, port: {node_to_kill_port}")
                     self.killed_nodes.add(node_id)
+                if len(self.killed_nodes) >= self.max_nodes_to_kill:
+                    break
                 await asyncio.sleep(self.node_kill_interval_s - sleep_interval)
 
             self.done.set_result(True)

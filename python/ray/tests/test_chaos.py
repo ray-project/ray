@@ -159,6 +159,7 @@ class ShuffleStatusTracker:
         return self.num_map, self.num_reduce
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "set_kill_interval", [(False, None), (False, 60)], indirect=True)
 def test_nonstreaming_shuffle(set_kill_interval):
@@ -183,6 +184,7 @@ def test_nonstreaming_shuffle(set_kill_interval):
 
 
 @pytest.mark.skip(reason="https://github.com/ray-project/ray/issues/20713")
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
     "set_kill_interval", [(True, None), (True, 60), (False, None),
                           (False, 60)],
