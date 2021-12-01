@@ -1,7 +1,12 @@
-# TODO(matt): Reformat script.
+# flake8: noqa: E501
 """
-Big Data Training
-=================
+Big data training with Ray Datasets and Pytorch
+===============================================
+
+This notebook includes an example workflow using
+`Ray Datasets <https://docs.ray.io/en/latest/data/dataset.html>`_ and
+`Pytorch <https://pytorch.org/>`_ for distributed data preprocessing, data transformation,
+and distributed deep ML training.
 """
 
 ###############################################################################
