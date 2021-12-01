@@ -200,13 +200,13 @@ def test_subscribe_two_channels(ray_start_regular):
             "task_name": "test task",
         })
 
-    t1.join(timeout=1)
-    assert not t1.is_alive()
-    assert len(errors) == num_messages
+    t1.join(timeout=10)
+    assert not t1.is_alive(), len(errors)
+    assert len(errors) == num_messages, len(errors)
 
-    t2.join(timeout=1)
-    assert not t2.is_alive()
-    assert len(logs) == num_messages
+    t2.join(timeout=10)
+    assert not t2.is_alive(), len(logs)
+    assert len(logs) == num_messages, len(logs)
 
     for i in range(0, num_messages):
         assert errors[i].error_message == f"error {i}"

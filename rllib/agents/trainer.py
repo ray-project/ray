@@ -664,6 +664,11 @@ class Trainer(Trainable):
         super().__init__(config, logger_creator, remote_checkpoint_dir,
                          sync_function_tpl)
 
+    @ExperimentalAPI
+    @classmethod
+    def get_default_config(cls) -> TrainerConfigDict:
+        return cls._default_config or COMMON_CONFIG
+
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
 
@@ -1732,11 +1737,6 @@ class Trainer(Trainable):
         logger.info("Synchronizing weights to workers.")
         weights = ray.put(self.workers.local_worker().save())
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
-
-    @ExperimentalAPI
-    @classmethod
-    def get_default_config(cls) -> TrainerConfigDict:
-        return cls._default_config or COMMON_CONFIG
 
     @classmethod
     @override(Trainable)
