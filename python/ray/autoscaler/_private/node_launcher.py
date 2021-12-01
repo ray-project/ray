@@ -1,6 +1,7 @@
 from typing import Any, Optional, Dict
 import copy
 import logging
+import operator
 import threading
 import time
 
@@ -21,6 +22,7 @@ class NodeLauncher(threading.Thread):
                  provider,
                  queue,
                  pending,
+                 event_summarizer,
                  prom_metrics=None,
                  node_types=None,
                  index=None,
@@ -32,6 +34,7 @@ class NodeLauncher(threading.Thread):
         self.provider = provider
         self.node_types = node_types
         self.index = str(index) if index is not None else ""
+        self.event_summarizer = event_summarizer
         super(NodeLauncher, self).__init__(*args, **kwargs)
 
     def _launch_node(self, config: Dict[str, Any], count: int,
@@ -84,6 +87,11 @@ class NodeLauncher(threading.Thread):
             except Exception:
                 self.prom_metrics.node_launch_exceptions.inc()
                 self.prom_metrics.failed_create_nodes.inc(count)
+                self.event_summarizer.add(
+                    "Failed to launch {} nodes of type " + node_type + ".",
+                    quantity=count,
+                    aggregate=operator.add
+                )
                 logger.exception("Launch failed")
             finally:
                 self.pending.dec(node_type, count)
