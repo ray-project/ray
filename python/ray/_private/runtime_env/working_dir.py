@@ -83,13 +83,16 @@ class WorkingDirManager:
             return
 
         logger.info(f"Setup working dir for {runtime_env.working_dir()}")
-        if runtime_env.working_dir().endswith(".zip"):
-            package_path = runtime_env.working_dir()
-            working_dir = package_path[:-4]
-            unzip_package(package_path, working_dir, True, False)
-        else:
+
+        try:
             working_dir = download_and_unpack_package(
                 runtime_env.working_dir(), self._resources_dir, logger=logger)
+        except ValueError:  # working_dir could a local file
+            package_path = Path(runtime_env.working_dir())
+            if package_path.suffix() == ".zip":
+                working_dir = str(package_path.with_suffix(""))
+                unzip_package(
+                    str(package_path), working_dir, True, True, logger=logger)
         context.command_prefix += [f"cd {working_dir}"]
 
         # Insert the working_dir as the first entry in PYTHONPATH. This is
