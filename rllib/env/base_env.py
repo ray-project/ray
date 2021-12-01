@@ -3,7 +3,7 @@ from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING
 import ray
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, \
-    MultiEnvDict, PartialTrainerConfigDict
+    MultiEnvDict
 
 if TYPE_CHECKING:
     from ray.rllib.models.preprocessors import Preprocessor
@@ -78,11 +78,12 @@ class BaseEnv:
         }
     """
 
-    def to_base_env(self,
-                    make_env: Callable[[int], EnvType] = None,
-                    num_envs: int = 1,
-                    remote_envs: bool = False,
-                    remote_env_batch_wait_ms: int = 0,
+    def to_base_env(
+            self,
+            make_env: Callable[[int], EnvType] = None,
+            num_envs: int = 1,
+            remote_envs: bool = False,
+            remote_env_batch_wait_ms: int = 0,
     ) -> "BaseEnv":
         """Converts an RLlib-supported env into a BaseEnv object.
 
