@@ -26,7 +26,7 @@ try:
             ]
             # Buckets: .01 seconds to 1000 seconds.
             # Used for autoscaler update time.
-            log_update_time_buckets = [-2, -1, 0, 1, 2, 3]
+            update_time_buckets = [.01, .1, 1, 10, 100, 1000]
             self.worker_create_node_time: Histogram = Histogram(
                 "worker_create_node_time_seconds",
                 "Worker launch time. This is the time it takes for a call to "
@@ -52,10 +52,10 @@ try:
                 "update_time",
                 "Autoscaler update time. This is the time for an autoscaler"
                 "update iteration to complete, measured on a log scale.",
-                unit="log_10(time / 1sec)",
+                unit="seconds",
                 namespace="autoscaler",
                 registry=self.registry,
-                buckets=log_update_time_buckets)
+                buckets=update_time_buckets)
             self.pending_nodes: Gauge = Gauge(
                 "pending_nodes",
                 "Number of nodes pending to be started.",
