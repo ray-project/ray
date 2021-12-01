@@ -229,6 +229,9 @@ class BaseEnv:
     def observation_space(self) -> gym.Space:
         """Returns the observation space for each environment.
 
+        Note: samples from the observation space need to be preprocessed into a
+            `MultiEnvDict` before being used by a policy.
+
         Returns:
             The observation space for each environment.
         """
@@ -238,6 +241,9 @@ class BaseEnv:
     @property
     def action_space(self) -> gym.Space:
         """Returns the action space for each environment.
+
+        Note: samples from the action space need to be preprocessed into a
+            `MultiEnvDict` before being passed to `send_actions`.
 
         Returns:
             The observation space for each environment.
