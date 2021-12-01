@@ -498,6 +498,9 @@ def create_test_step(
         }
     else:
         # Default retry logic
+        # Warning: Exit codes are currently not correctly propagated to
+        # buildkite! Thus, actual retry logic is currently implemented in
+        # the run_e2e.sh script!
         step_conf["retry"] = {
             "automatic": [
                 {

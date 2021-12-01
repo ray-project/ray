@@ -78,13 +78,11 @@ while [ "$RETRY_NUM" -le "$MAX_RETRIES" ]; do
   esac
 
   SLEEP_TIME=$((600 * RETRY_NUM))
-  echo "Retry count: ${RETRY_NUM}. Sleeping for ${SLEEP_TIME} seconds before retrying the run."
+  echo "Retry count: ${RETRY_NUM}/${MAX_RETRIES}. Sleeping for ${SLEEP_TIME} seconds before retrying the run."
   sleep ${SLEEP_TIME}
 
   RETRY_NUM=$((RETRY_NUM + 1))
 done
-
-echo OVER
 
 sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts || true
 echo "e2e command exited with exit code ${EXIT_CODE}"
