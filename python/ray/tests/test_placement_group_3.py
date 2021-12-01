@@ -14,7 +14,8 @@ import ray._private.gcs_utils as gcs_utils
 from ray.autoscaler._private.commands import debug_status
 from ray._private.test_utils import (
     generate_system_config_map, kill_actor_and_wait_for_failure,
-    run_string_as_driver, wait_for_condition, is_placement_group_removed)
+    run_string_as_driver, wait_for_condition, is_placement_group_removed,
+    convert_actor_state)
 from ray.exceptions import RaySystemError
 from ray._raylet import PlacementGroupID
 from ray.util.placement_group import (PlacementGroup, placement_group,
@@ -173,7 +174,8 @@ ray.shutdown()
     def assert_alive_num_actor(expected_num_actor):
         alive_num_actor = 0
         for actor_info in ray.state.actors().values():
-            if actor_info["State"] == gcs_utils.ActorTableData.ALIVE:
+            if actor_info["State"] == convert_actor_state(
+                    gcs_utils.ActorTableData.ALIVE):
                 alive_num_actor += 1
         return alive_num_actor == expected_num_actor
 
