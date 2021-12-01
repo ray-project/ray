@@ -2193,8 +2193,8 @@ def remote(*args, **kwargs):
         scheduling_strategy (str): Strategy about how to schedule
             a remote function or actor. Possible values are
             None for default scheduling strategy,
-            `"SPREAD"` for spread scheduling the task or actor
-            on a best effort basis.
+            `PlacementGroupSchedulingStrategy`
+            for placement group based scheduling.
     """
     worker = global_worker
 

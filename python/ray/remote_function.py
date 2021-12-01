@@ -311,31 +311,39 @@ class RemoteFunction:
 
         if (placement_group != "default") and (scheduling_strategy is
                                                not None):
-            raise ValueError("TODO(jjyao) better error message")
+            raise ValueError("Placement group should be specified through "
+                             "scheduling_strategy option. "
+                             "The placement_group option is deprecated.")
 
-        if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
-            placement_group = scheduling_strategy.placement_group
-            placement_group_bundle_index = \
-                scheduling_strategy.placement_group_bundle_index
-            placement_group_capture_child_tasks = \
-                scheduling_strategy.placement_group_capture_child_tasks
+        if scheduling_strategy is None or \
+                isinstance(scheduling_strategy,
+                           PlacementGroupSchedulingStrategy):
+            if isinstance(scheduling_strategy,
+                          PlacementGroupSchedulingStrategy):
+                placement_group = scheduling_strategy.placement_group
+                placement_group_bundle_index = \
+                    scheduling_strategy.placement_group_bundle_index
+                placement_group_capture_child_tasks = \
+                    scheduling_strategy.placement_group_capture_child_tasks
 
-        if placement_group_capture_child_tasks is None:
-            placement_group_capture_child_tasks = (
-                worker.should_capture_child_tasks_in_placement_group)
-        if placement_group == "default":
-            placement_group = self._placement_group
-        placement_group = configure_placement_group_based_on_context(
-            placement_group_capture_child_tasks,
-            placement_group_bundle_index,
-            resources,
-            {},  # no placement_resources for tasks
-            self._function_descriptor.function_name,
-            placement_group=placement_group)
-        if not placement_group.is_empty:
-            scheduling_strategy = PlacementGroupSchedulingStrategy(
-                placement_group, placement_group_bundle_index,
-                placement_group_capture_child_tasks)
+            if placement_group_capture_child_tasks is None:
+                placement_group_capture_child_tasks = (
+                    worker.should_capture_child_tasks_in_placement_group)
+            if placement_group == "default":
+                placement_group = self._placement_group
+            placement_group = configure_placement_group_based_on_context(
+                placement_group_capture_child_tasks,
+                placement_group_bundle_index,
+                resources,
+                {},  # no placement_resources for tasks
+                self._function_descriptor.function_name,
+                placement_group=placement_group)
+            if not placement_group.is_empty:
+                scheduling_strategy = PlacementGroupSchedulingStrategy(
+                    placement_group, placement_group_bundle_index,
+                    placement_group_capture_child_tasks)
+            else:
+                scheduling_strategy = None
 
         if not runtime_env or runtime_env == "{}":
             runtime_env = self._runtime_env

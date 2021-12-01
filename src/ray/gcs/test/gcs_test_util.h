@@ -44,8 +44,7 @@ struct Mocker {
     builder.SetCommonTaskSpec(task_id, name + ":" + function_descriptor->CallString(),
                               Language::PYTHON, function_descriptor, job_id,
                               TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1,
-                              required_resources, required_placement_resources,
-                              std::make_pair(PlacementGroupID::Nil(), -1), true, "", 0);
+                              required_resources, required_placement_resources, "", 0);
     builder.SetActorCreationTaskSpec(actor_id, {}, max_restarts,
                                      /*max_task_retries=*/0, {}, 1, detached, name);
     return builder.Build();

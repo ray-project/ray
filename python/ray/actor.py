@@ -599,20 +599,28 @@ class ActorClass:
                 share with its creator and will be deleted once its refcount
                 drops to zero, or "detached", which means the actor will live
                 as a global object independent of the creator.
-            placement_group: the placement group this actor belongs to,
+            placement_group: (This has been deprecated, please use
+                `PlacementGroupSchedulingStrategy` scheduling_strategy)
+                the placement group this actor belongs to,
                 or None if it doesn't belong to any group. Setting to "default"
                 autodetects the placement group based on the current setting of
                 placement_group_capture_child_tasks.
-            placement_group_bundle_index: the index of the bundle
+            placement_group_bundle_index: (This has been deprecated, please use
+                `PlacementGroupSchedulingStrategy` scheduling_strategy)
+                the index of the bundle
                 if the actor belongs to a placement group, which may be -1 to
                 specify any available bundle.
-            placement_group_capture_child_tasks: Whether or not children tasks
+            placement_group_capture_child_tasks: (This has been deprecated,
+                please use `PlacementGroupSchedulingStrategy`
+                scheduling_strategy)
+                Whether or not children tasks
                 of this actor should implicitly use the same placement group
                 as its parent. It is False by default.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
                 this actor or task and its children (see
                 :ref:`runtime-environments` for details).  This API is in beta
                 and may change before becoming stable.
+            scheduling_strategy: Strategy about how to schedule this actor.
 
         Returns:
             A handle to the newly created actor.

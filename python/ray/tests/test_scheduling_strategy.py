@@ -15,25 +15,61 @@ def test_placement_group_strategy(ray_start_cluster, connect_to_client):
     cluster.wait_for_nodes()
 
     ray.init(address=cluster.address)
-    pg = ray.util.placement_group(bundles=[{"CPU": 1, "GPU": 1}])
+    pg = ray.util.placement_group(bundles=[{
+        "CPU": 1,
+        "GPU": 1
+    }, {
+        "CPU": 1,
+        "GPU": 1
+    }])
     ray.get(pg.ready())
 
     with connect_to_client_or_not(connect_to_client):
 
         @ray.remote
-        def get_node_id():
+        def get_node_id_1():
             return ray.worker.global_worker.current_node_id
 
         worker_node_id = ray.get(
-            get_node_id.options(resources={
+            get_node_id_1.options(resources={
                 "worker": 1
             }).remote())
 
         assert ray.get(
-            get_node_id.options(
+            get_node_id_1.options(
                 num_cpus=1,
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
                     placement_group=pg)).remote()) == worker_node_id
+
+        @ray.remote(
+            num_cpus=1,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg))
+        def get_node_id_2():
+            return ray.worker.global_worker.current_node_id
+
+        assert ray.get(get_node_id_2.remote()) == worker_node_id
+
+        @ray.remote(
+            num_cpus=1,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg))
+        class Actor1():
+            def get_node_id(self):
+                return ray.worker.global_worker.current_node_id
+
+        actor1 = Actor1.remote()
+        assert ray.get(actor1.get_node_id.remote()) == worker_node_id
+
+        @ray.remote
+        class Actor2():
+            def get_node_id(self):
+                return ray.worker.global_worker.current_node_id
+
+        actor2 = Actor2.options(
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg)).remote()
+        assert ray.get(actor2.get_node_id.remote()) == worker_node_id
 
     with pytest.raises(ValueError):
 
