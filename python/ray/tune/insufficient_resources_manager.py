@@ -87,15 +87,24 @@ def _get_insufficient_resources_error_msg(trial: Trial) -> str:
 class InsufficientResourcesManager:
     """Insufficient resources manager.
 
-    Makes best effort guesses about if Tune loop is stuck due to infeasible
-    resources. If so, outputs usability message for users to act upon.
+    Makes best effort, conservative guesses about if Tune loop is stuck due to
+    infeasible resources. If so, outputs usability messages for users to
+    act upon.
     """
 
     def __init__(self):
+        # The information tracked across the life time of Tune loop.
         self._no_running_trials_since = -1
         self._last_trial_num = -1
 
     def on_no_available_trials(self, all_trials):
+        """Tracks information across the life of Tune loop and makes guesses
+        about if Tune loop is stuck due to infeasible resources.
+        If so, outputs certain warning messages.
+        The logic should be conservative, non-intrusive and informative.
+        For example, rate limiting is applied so that the message is not
+        spammy.
+        """
         # This is approximately saying we are not making progress.
         if len(all_trials) == self._last_trial_num:
             if self._no_running_trials_since == -1:
