@@ -54,7 +54,7 @@ class TaskPool(ComputeStrategy):
         if blocks.initial_num_blocks() == 0:
             return blocks
 
-        blocks = list(blocks.iter_blocks_with_metadata())
+        blocks = blocks.get_blocks_with_metadata()
         map_bar = ProgressBar("Map Progress", total=len(blocks))
 
         if context.block_splitting_enabled:
@@ -113,7 +113,7 @@ class ActorPool(ComputeStrategy):
               blocks: BlockList) -> BlockList:
         context = DatasetContext.get_current()
 
-        blocks_in = list(blocks.iter_blocks_with_metadata())
+        blocks_in = blocks.get_blocks_with_metadata()
         orig_num_blocks = len(blocks_in)
         results = []
         map_bar = ProgressBar("Map Progress", total=orig_num_blocks)

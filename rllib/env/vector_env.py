@@ -3,9 +3,10 @@ import gym
 import numpy as np
 from typing import Callable, List, Optional, Tuple
 
+from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
-from ray.rllib.utils.typing import EnvActionType, EnvInfoDict, \
-    EnvObsType, EnvType
+from ray.rllib.utils.typing import EnvActionType, EnvID, EnvInfoDict, \
+    EnvObsType, EnvType, MultiAgentDict, MultiEnvDict
 
 logger = logging.getLogger(__name__)
 
@@ -215,3 +216,65 @@ class _VectorizedGymEnv(VectorEnv):
         if index is None:
             index = 0
         return self.envs[index].render()
+
+
+class VectorEnvWrapper(BaseEnv):
+    """Internal adapter of VectorEnv to BaseEnv.
+
+    We assume the caller will always send the full vector of actions in each
+    call to send_actions(), and that they call reset_at() on all completed
+    environments before calling send_actions().
+    """
+
+    def __init__(self, vector_env: VectorEnv):
+        self.vector_env = vector_env
+        self.action_space = vector_env.action_space
+        self.observation_space = vector_env.observation_space
+        self.num_envs = vector_env.num_envs
+        self.new_obs = None  # lazily initialized
+        self.cur_rewards = [None for _ in range(self.num_envs)]
+        self.cur_dones = [False for _ in range(self.num_envs)]
+        self.cur_infos = [None for _ in range(self.num_envs)]
+
+    @override(BaseEnv)
+    def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
+                            MultiEnvDict, MultiEnvDict]:
+        from ray.rllib.env.base_env import with_dummy_agent_id
+        if self.new_obs is None:
+            self.new_obs = self.vector_env.vector_reset()
+        new_obs = dict(enumerate(self.new_obs))
+        rewards = dict(enumerate(self.cur_rewards))
+        dones = dict(enumerate(self.cur_dones))
+        infos = dict(enumerate(self.cur_infos))
+        self.new_obs = []
+        self.cur_rewards = []
+        self.cur_dones = []
+        self.cur_infos = []
+        return with_dummy_agent_id(new_obs), \
+            with_dummy_agent_id(rewards), \
+            with_dummy_agent_id(dones, "__all__"), \
+            with_dummy_agent_id(infos), {}
+
+    @override(BaseEnv)
+    def send_actions(self, action_dict: MultiEnvDict) -> None:
+        from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+        action_vector = [None] * self.num_envs
+        for i in range(self.num_envs):
+            action_vector[i] = action_dict[i][_DUMMY_AGENT_ID]
+        self.new_obs, self.cur_rewards, self.cur_dones, self.cur_infos = \
+            self.vector_env.vector_step(action_vector)
+
+    @override(BaseEnv)
+    def try_reset(self, env_id: Optional[EnvID] = None) -> MultiAgentDict:
+        from ray.rllib.env.base_env import _DUMMY_AGENT_ID
+        assert env_id is None or isinstance(env_id, int)
+        return {_DUMMY_AGENT_ID: self.vector_env.reset_at(env_id)}
+
+    @override(BaseEnv)
+    def get_sub_environments(self) -> List[EnvType]:
+        return self.vector_env.get_sub_environments()
+
+    @override(BaseEnv)
+    def try_render(self, env_id: Optional[EnvID] = None) -> None:
+        assert env_id is None or isinstance(env_id, int)
+        return self.vector_env.try_render_at(env_id)

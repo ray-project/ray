@@ -637,7 +637,7 @@ class Dataset(Generic[T]):
             new_splits.extend(new_splits_small)
             return new_splits
 
-        block_refs, metadata = zip(*self._blocks.iter_blocks_with_metadata())
+        block_refs, metadata = zip(*self._blocks.get_blocks_with_metadata())
         metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
 
         if locality_hints is None:
@@ -823,10 +823,10 @@ class Dataset(Generic[T]):
                 if context.block_splitting_enabled:
                     block_partitions.extend([
                         ray.put([(b, m)])
-                        for b, m in bl.iter_blocks_with_metadata()
+                        for b, m in bl.get_blocks_with_metadata()
                     ])
                 else:
-                    block_partitions.extend(bl.iter_blocks())
+                    block_partitions.extend(bl.get_blocks())
 
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
@@ -1470,7 +1470,7 @@ class Dataset(Generic[T]):
         return sum(
             ray.get([
                 get_num_rows.remote(block)
-                for block in self._blocks.iter_blocks()
+                for block in self._blocks.get_blocks()
             ]))
 
     def schema(self, fetch_if_missing: bool = False
@@ -1774,7 +1774,7 @@ class Dataset(Generic[T]):
             write_args: Additional write args to pass to the datasource.
         """
 
-        blocks, metadata = zip(*self._blocks.iter_blocks_with_metadata())
+        blocks, metadata = zip(*self._blocks.get_blocks_with_metadata())
         write_results = datasource.do_write(blocks, metadata, **write_args)
         progress = ProgressBar("Write Progress", len(write_results))
         try:
@@ -2069,7 +2069,7 @@ class Dataset(Generic[T]):
         # TODO(Clark): Give Dask a Pandas-esque schema via the Pyarrow schema,
         # once that's implemented.
         ddf = dd.from_delayed(
-            [block_to_df(block) for block in self._blocks.iter_blocks()])
+            [block_to_df(block) for block in self._blocks.get_blocks()])
         return ddf
 
     def to_mars(self) -> "mars.DataFrame":
@@ -2170,7 +2170,7 @@ class Dataset(Generic[T]):
 
         block_to_df = cached_remote_fn(_block_to_df)
         return [
-            block_to_df.remote(block) for block in self._blocks.iter_blocks()
+            block_to_df.remote(block) for block in self._blocks.get_blocks()
         ]
 
     def to_numpy_refs(self, *, column: Optional[str] = None
@@ -2191,11 +2191,10 @@ class Dataset(Generic[T]):
         Returns:
             A list of remote NumPy ndarrays created from this dataset.
         """
-
         block_to_ndarray = cached_remote_fn(_block_to_ndarray)
         return [
             block_to_ndarray.remote(block, column=column)
-            for block in self._blocks.iter_blocks()
+            for block in self._blocks.get_blocks()
         ]
 
     def to_arrow_refs(self) -> List[ObjectRef["pyarrow.Table"]]:
@@ -2210,7 +2209,7 @@ class Dataset(Generic[T]):
         Returns:
             A list of remote Arrow tables created from this dataset.
         """
-        blocks: List[ObjectRef[Block]] = list(self._blocks.iter_blocks())
+        blocks: List[ObjectRef[Block]] = self._blocks.get_blocks()
 
         if self._is_arrow_dataset():
             # Zero-copy path.
@@ -2364,7 +2363,7 @@ class Dataset(Generic[T]):
         Returns:
             A list of references to this dataset's blocks.
         """
-        return list(self._blocks.iter_blocks())
+        return self._blocks.get_blocks()
 
     def _move_blocks(self):
         blocks = self._blocks.copy()
@@ -2381,7 +2380,7 @@ class Dataset(Generic[T]):
         left_metadata = []
         right_blocks = []
         right_metadata = []
-        it = self._blocks.iter_blocks_with_metadata()
+        it = self._blocks.get_blocks_with_metadata()
         for b, m in it:
             if m.num_rows is None:
                 num_rows = ray.get(get_num_rows.remote(b))
@@ -2443,12 +2442,12 @@ class Dataset(Generic[T]):
     def _block_num_rows(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)
         return ray.get(
-            [get_num_rows.remote(b) for b in self._blocks.iter_blocks()])
+            [get_num_rows.remote(b) for b in self._blocks.get_blocks()])
 
     def _block_size_bytes(self) -> List[int]:
         get_size_bytes = cached_remote_fn(_get_size_bytes)
         return ray.get(
-            [get_size_bytes.remote(b) for b in self._blocks.iter_blocks()])
+            [get_size_bytes.remote(b) for b in self._blocks.get_blocks()])
 
     def _meta_count(self) -> Optional[int]:
         metadata = self._blocks.get_metadata()

@@ -47,13 +47,15 @@ class MetricsAgentClient {
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
-  VOID_RPC_CLIENT_METHOD(ReporterService, ReportMetrics, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(ReporterService, ReportMetrics, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Report open census protobuf metrics to metrics agent.
   ///
   /// \param[in] request The request message.
   /// \param[in] callback The callback function that handles reply.
-  VOID_RPC_CLIENT_METHOD(ReporterService, ReportOCMetrics, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(ReporterService, ReportOCMetrics, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
  private:
   /// The RPC client.

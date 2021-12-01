@@ -90,8 +90,7 @@ class NodeLauncher(threading.Thread):
                 self.event_summarizer.add(
                     "Failed to launch {} nodes of type " + node_type + ".",
                     quantity=count,
-                    aggregate=operator.add
-                )
+                    aggregate=operator.add)
                 logger.exception("Launch failed")
             finally:
                 self.pending.dec(node_type, count)

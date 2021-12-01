@@ -1279,11 +1279,12 @@ class AutoscalingTest(unittest.TestCase):
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
 
-        msg = 'Failed to launch 2 nodes of type ray-legacy-worker-node-type.'
+        msg = "Failed to launch 2 nodes of type ray-legacy-worker-node-type."
+
         def expected_message_logged():
             return msg in autoscaler.event_summarizer.summary()
-        self.waitFor(expected_message_logged)
 
+        self.waitFor(expected_message_logged)
 
     def testReadonlyNodeProvider(self):
         config = copy.deepcopy(SMALL_CLUSTER)
