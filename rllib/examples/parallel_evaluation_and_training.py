@@ -119,7 +119,8 @@ class AssertNumEvalEpisodesCallback(DefaultCallbacks):
                 # (train_batch_size).
                 else:
                     batch_size = trainer.config["train_batch_size"]
-                    assert abs(batch_size - num_timesteps_reported) <= 500
+                    assert abs(batch_size - num_timesteps_reported) <= 500, \
+                        (batch_size, num_timesteps_reported)
                 print("Number of run evaluation timesteps: "
                       f"{num_timesteps_reported} (ok)!")
 
