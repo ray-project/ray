@@ -47,20 +47,44 @@ RAY_TEST_BRANCH=${RAY_TEST_BRANCH-master}
 
 export RAY_REPO RAY_BRANCH RAY_VERSION RAY_WHEELS RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR
 
-# Disable this for now as it also affects manual retries
-# RETRY_COUNT=${BUILDKITE_RETRY_COUNT-0}
-# if [ $RETRY_COUNT -ge 1 ]; then
-#   SLEEP_TIME=$((600 * RETRY_COUNT))
-#   echo "Retry count: ${RETRY_COUNT}. Sleeping for ${SLEEP_TIME} seconds before retrying the run."
-#   sleep ${SLEEP_TIME}
-# fi
-
 pip install -q -r requirements.txt
 pip install -U boto3 botocore
 git clone -b "${RAY_TEST_BRANCH}" "${RAY_TEST_REPO}" ~/ray
 
-python e2e.py "$@"
-EXIT_CODE=$?
+RETRY_NUM=1
+MAX_RETRIES=${MAX_RETRIES-3}
+
+if [ "${BUILDKITE_RETRY_COUNT-0}" -ge 1 ]; then
+  echo "This is a manually triggered retry from the Buildkite web UI, so we set the number of infra retries to 1."
+  MAX_RETRIES=1
+fi
+
+while [ "$RETRY_NUM" -le "$MAX_RETRIES" ]; do
+  python e2e.py "$@"
+  EXIT_CODE=$?
+
+  case ${EXIT_CODE} in
+    0)
+    echo "Script finished successfully on try ${RETRY_NUM}"
+    break
+    ;;
+    7 | 9 | 10)
+    echo "Script failed on try ${RETRY_NUM} with exit code ${EXIT_CODE}, restarting."
+    ;;
+    *)
+    echo "Script failed on try ${RETRY_NUM} with exit code ${EXIT_CODE}, aborting."
+    break
+    ;;
+  esac
+
+  SLEEP_TIME=$((600 * RETRY_NUM))
+  echo "Retry count: ${RETRY_NUM}. Sleeping for ${SLEEP_TIME} seconds before retrying the run."
+  sleep ${SLEEP_TIME}
+
+  RETRY_NUM=$((RETRY_NUM + 1))
+done
+
+echo OVER
 
 sudo cp -rf /tmp/artifacts/* /tmp/ray_release_test_artifacts || true
 echo "e2e command exited with exit code ${EXIT_CODE}"
