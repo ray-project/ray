@@ -371,6 +371,10 @@ class AWSNodeProvider(NodeProvider):
         tag_specs = [{
             "ResourceType": "instance",
             "Tags": tag_pairs,
+        },
+        {
+            "ResourceType": "volume",
+            "Tags": [p for p in tag_pairs if p["Key"] != "Name"],
         }]
         user_tag_specs = conf.get("TagSpecifications", [])
         AWSNodeProvider._merge_tag_specs(tag_specs, user_tag_specs)
