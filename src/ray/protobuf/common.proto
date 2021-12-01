@@ -527,6 +527,8 @@ enum WorkerExitType {
   CREATION_TASK_ERROR = 4;
   // Worker killed by raylet if it has been idle for too long.
   IDLE_EXIT = 5;
+  // Worker killed because its node is dead.
+  NODE_DIED = 6;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

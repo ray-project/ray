@@ -228,8 +228,8 @@ GenericOffPolicyTrainer = build_trainer(
     # No Policy preference.
     default_policy=None,
     get_policy_class=None,
-    # Use SimpleQ's config and exec. plan as base for
-    # all other OffPolicy algos.
+    # Use SimpleQ's config + validation and DQN's exec. plan as base for
+    # all other off-policy algos.
     default_config=DEFAULT_CONFIG,
     validate_config=validate_config,
     execution_plan=DQNTrainer.execution_plan)
