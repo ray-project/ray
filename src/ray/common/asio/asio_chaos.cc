@@ -47,7 +47,8 @@ class DelayManager {
   int64_t GetMethodDelay(const std::string &name) const {
     auto it = delay_.find(name);
     if (it == delay_.end()) {
-      return GenRandomDelay(random_delay_us_.first, random_delay_us_.second);
+      return GenRandomDelay(default_delay_range_us_.first,
+                            default_delay_range_us_.second);
     }
     int64_t actual_delay = GenRandomDelay(it->second.first, it->second.second);
     if (actual_delay != 0) {
@@ -59,7 +60,7 @@ class DelayManager {
 
   void Init() {
     delay_.clear();
-    random_delay_us_ = {0, 0};
+    default_delay_range_us_ = {0, 0};
     auto delay_env = RayConfig::instance().testing_asio_delay_us();
     if (delay_env.empty()) {
       return;
@@ -76,13 +77,13 @@ class DelayManager {
   void ParseItem(std::string_view val) {
     std::vector<std::string_view> item_val = absl::StrSplit(val, "=");
     if (item_val.size() != 2) {
-      RAY_LOG(ERROR) << "Error in syntax: " << val
+      RAY_LOG(FATAL) << "Error in syntax: " << val
                      << ", expected method=min_us:max:ms. Skip this entry.";
     }
     auto delay_us = ParseVal(item_val[1]);
     if (delay_us) {
       if (item_val[0] == "*") {
-        random_delay_us_ = *delay_us;
+        default_delay_range_us_ = *delay_us;
       } else {
         delay_[item_val[0]] = *delay_us;
       }
@@ -92,19 +93,19 @@ class DelayManager {
   std::optional<std::pair<int64_t, int64_t>> ParseVal(std::string_view val) {
     std::vector<std::string_view> delay_str_us = absl::StrSplit(val, ":");
     if (delay_str_us.size() != 2) {
-      RAY_LOG(ERROR) << "Error in syntax: " << val
+      RAY_LOG(FATAL) << "Error in syntax: " << val
                      << ", expected method=min_us:max:ms. Skip this entry";
       return std::nullopt;
     }
     std::pair<int64_t, int64_t> delay_us;
     if (!absl::SimpleAtoi(delay_str_us[0], &delay_us.first) ||
         !absl::SimpleAtoi(delay_str_us[1], &delay_us.second)) {
-      RAY_LOG(ERROR) << "Error in syntax: " << val
+      RAY_LOG(FATAL) << "Error in syntax: " << val
                      << ", expected method=min_us:max:ms. Skip this entry";
       return std::nullopt;
     }
     if (delay_us.first > delay_us.second) {
-      RAY_LOG(ERROR) << delay_us.first << " is bigger than " << delay_us.second
+      RAY_LOG(FATAL) << delay_us.first << " is bigger than " << delay_us.second
                      << ". Skip this entry.";
       return std::nullopt;
     }
@@ -119,7 +120,7 @@ class DelayManager {
   }
 
   absl::flat_hash_map<std::string, std::pair<int64_t, int64_t>> delay_;
-  std::pair<int64_t, int64_t> random_delay_us_ = {0, 0};
+  std::pair<int64_t, int64_t> default_delay_range_us_ = {0, 0};
 };
 
 static DelayManager _delay_manager;

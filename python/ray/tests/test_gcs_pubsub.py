@@ -4,7 +4,8 @@ import threading
 import ray
 import ray._private.gcs_utils as gcs_utils
 from ray._private.gcs_pubsub import GcsPublisher, GcsErrorSubscriber, \
-    GcsLogSubscriber, GcsAioPublisher, GcsAioSubscriber
+    GcsLogSubscriber, GcsFunctionKeySubscriber, GcsAioPublisher, \
+    GcsAioSubscriber
 from ray.core.generated.gcs_pb2 import ErrorTableData
 import pytest
 
@@ -150,6 +151,34 @@ async def test_aio_publish_and_subscribe_logs(ray_start_regular):
         }
     }],
     indirect=True)
+def test_publish_and_subscribe_function_keys(ray_start_regular):
+    address_info = ray_start_regular
+    redis = ray._private.services.create_redis_client(
+        address_info["redis_address"],
+        password=ray.ray_constants.REDIS_DEFAULT_PASSWORD)
+
+    gcs_server_addr = gcs_utils.get_gcs_address_from_redis(redis)
+
+    subscriber = GcsFunctionKeySubscriber(address=gcs_server_addr)
+    subscriber.subscribe()
+
+    publisher = GcsPublisher(address=gcs_server_addr)
+    publisher.publish_function_key(b"111")
+    publisher.publish_function_key(b"222")
+
+    assert subscriber.poll() == b"111"
+    assert subscriber.poll() == b"222"
+
+    subscriber.close()
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{
+        "_system_config": {
+            "gcs_grpc_based_pubsub": True
+        }
+    }],
+    indirect=True)
 def test_subscribe_two_channels(ray_start_regular):
     """Tests concurrently subscribing to two channels work."""
 
@@ -200,13 +229,13 @@ def test_subscribe_two_channels(ray_start_regular):
             "task_name": "test task",
         })
 
-    t1.join(timeout=1)
-    assert not t1.is_alive()
-    assert len(errors) == num_messages
+    t1.join(timeout=10)
+    assert not t1.is_alive(), len(errors)
+    assert len(errors) == num_messages, len(errors)
 
-    t2.join(timeout=1)
-    assert not t2.is_alive()
-    assert len(logs) == num_messages
+    t2.join(timeout=10)
+    assert not t2.is_alive(), len(logs)
+    assert len(logs) == num_messages, len(logs)
 
     for i in range(0, num_messages):
         assert errors[i].error_message == f"error {i}"
