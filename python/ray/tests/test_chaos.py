@@ -4,12 +4,14 @@ import string
 
 import ray
 
-import numpy as np
 import pytest
 import time
 
+from ray.experimental import shuffle
+from ray.tests.conftest import _ray_start_chaos_cluster
 from ray.data.impl.progress_bar import ProgressBar
 from ray._private.test_utils import get_log_message
+from ray.exceptions import RayTaskError, ObjectLostError
 
 
 def assert_no_system_failure(p, timeout):
@@ -21,36 +23,53 @@ def assert_no_system_failure(p, timeout):
             "There's the check failure reported.")
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
-@pytest.mark.parametrize(
-    "ray_start_chaos_cluster", [{
-        "kill_interval": 5,
+@pytest.fixture
+def set_kill_interval(request):
+    lineage_reconstruction_enabled, kill_interval = request.param
+
+    request.param = {
+        "_system_config": {
+            "lineage_pinning_enabled": lineage_reconstruction_enabled,
+            "max_direct_call_object_size": 1000,
+        },
+        "kill_interval": kill_interval,
         "head_resources": {
-            "CPU": 0
+            "CPU": 0,
         },
         "worker_node_types": {
             "cpu_node": {
                 "resources": {
-                    "CPU": 4,
+                    "CPU": 2,
                 },
-                "node_config": {},
+                "node_config": {
+                    "object_store_memory": int(200e6),
+                },
                 "min_workers": 0,
                 "max_workers": 3,
             },
         },
-    }],
+    }
+    cluster_fixture = _ray_start_chaos_cluster(request)
+    for x in cluster_fixture:
+        yield (lineage_reconstruction_enabled, kill_interval, cluster_fixture)
+
+
+@pytest.mark.skip(
+    reason="Skip until https://github.com/ray-project/ray/issues/20706 "
+    "is fixed.")
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize(
+    "set_kill_interval", [(True, None), (True, 20), (False, None),
+                          (False, 20)],
     indirect=True)
-def test_chaos_task_retry(ray_start_chaos_cluster):
+def test_chaos_task_retry(set_kill_interval):
     # Chaos testing.
     @ray.remote(max_retries=-1)
     def task():
-        def generate_data(size_in_kb=10):
-            return np.zeros(1024 * size_in_kb, dtype=np.uint8)
-
         a = ""
         for _ in range(100000):
             a = a + random.choice(string.ascii_letters)
-        return generate_data(size_in_kb=50)
+        return
 
     @ray.remote(max_retries=-1)
     def invoke_nested_task():
@@ -74,35 +93,18 @@ def test_chaos_task_retry(ray_start_chaos_cluster):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
 @pytest.mark.parametrize(
-    "ray_start_chaos_cluster", [{
-        "kill_interval": 5,
-        "head_resources": {
-            "CPU": 0
-        },
-        "worker_node_types": {
-            "cpu_node": {
-                "resources": {
-                    "CPU": 4,
-                },
-                "node_config": {},
-                "min_workers": 0,
-                "max_workers": 4,
-            },
-        },
-    }],
+    "set_kill_interval", [(True, None), (True, 20), (False, None),
+                          (False, 20)],
     indirect=True)
-def test_chaos_actor_retry(ray_start_chaos_cluster):
+def test_chaos_actor_retry(set_kill_interval):
     # Chaos testing.
-    @ray.remote(num_cpus=1, max_restarts=-1, max_task_retries=-1)
+    @ray.remote(num_cpus=0.25, max_restarts=-1, max_task_retries=-1)
     class Actor:
         def __init__(self):
             self.letter_dict = set()
 
         def add(self, letter):
             self.letter_dict.add(letter)
-
-        def get(self):
-            return self.letter_dict
 
     NUM_CPUS = 16
     TOTAL_TASKS = 300
@@ -121,6 +123,93 @@ def test_chaos_actor_retry(ray_start_chaos_cluster):
     # TODO(sang): Currently, there are lots of SIGBART with
     # plasma client failures. Fix it.
     # assert_no_system_failure(p, 10)
+
+
+@ray.remote(num_cpus=0)
+class ShuffleStatusTracker:
+    def __init__(self):
+        self.num_map = 0
+        self.num_reduce = 0
+        self.map_refs = []
+        self.reduce_refs = []
+
+    def register_objectrefs(self, map_refs, reduce_refs):
+        self.map_refs = map_refs
+        self.reduce_refs = reduce_refs
+
+    def get_progress(self):
+        if self.map_refs:
+            ready, self.map_refs = ray.wait(
+                self.map_refs,
+                timeout=1,
+                num_returns=len(self.map_refs),
+                fetch_local=False)
+            if ready:
+                print("Still waiting on map refs", self.map_refs)
+            self.num_map += len(ready)
+        elif self.reduce_refs:
+            ready, self.reduce_refs = ray.wait(
+                self.reduce_refs,
+                timeout=1,
+                num_returns=len(self.reduce_refs),
+                fetch_local=False)
+            if ready:
+                print("Still waiting on reduce refs", self.reduce_refs)
+            self.num_reduce += len(ready)
+        return self.num_map, self.num_reduce
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize(
+    "set_kill_interval", [(False, None), (False, 60)], indirect=True)
+def test_nonstreaming_shuffle(set_kill_interval):
+    lineage_reconstruction_enabled, kill_interval, _ = set_kill_interval
+    try:
+        # Create our own tracker so that it gets scheduled onto the head node.
+        tracker = ShuffleStatusTracker.remote()
+        ray.get(tracker.get_progress.remote())
+        assert len(ray.nodes()) == 1, (
+            "Tracker actor may have been scheduled to remote node "
+            "and may get killed during the test")
+
+        shuffle.run(
+            ray_address="auto",
+            no_streaming=True,
+            num_partitions=200,
+            partition_size=1e6,
+            tracker=tracker)
+    except (RayTaskError, ObjectLostError):
+        assert kill_interval is not None
+        assert not lineage_reconstruction_enabled
+
+
+@pytest.mark.skip(reason="https://github.com/ray-project/ray/issues/20713")
+@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows.")
+@pytest.mark.parametrize(
+    "set_kill_interval", [(True, None), (True, 60), (False, None),
+                          (False, 60)],
+    indirect=True)
+def test_streaming_shuffle(set_kill_interval):
+    lineage_reconstruction_enabled, kill_interval, _ = set_kill_interval
+    try:
+        # Create our own tracker so that it gets scheduled onto the head node.
+        tracker = ShuffleStatusTracker.remote()
+        ray.get(tracker.get_progress.remote())
+        assert len(ray.nodes()) == 1, (
+            "Tracker actor may have been scheduled to remote node "
+            "and may get killed during the test")
+
+        shuffle.run(
+            ray_address="auto",
+            no_streaming=False,
+            num_partitions=200,
+            partition_size=1e6,
+            tracker=tracker)
+    except (RayTaskError, ObjectLostError):
+        assert kill_interval is not None
+
+        # TODO(swang): Enable this once we implement support ray.put.
+        # assert not lineage_reconstruction_enabled
 
 
 if __name__ == "__main__":

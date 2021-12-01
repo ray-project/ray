@@ -920,6 +920,17 @@ cc_test(
 )
 
 cc_test(
+    name = "concurrency_group_manager_test",
+    srcs = ["src/ray/core_worker/test/concurrency_group_manager_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":core_worker_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "actor_submit_queue_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/actor_submit_queue_test.cc"],
