@@ -5,8 +5,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pydantic
 from google.protobuf.json_format import MessageToDict
-from pydantic import BaseModel, NonNegativeFloat, PositiveInt, validator
-from pydantic.types import NonNegativeInt, PositiveFloat
+from pydantic import (BaseModel, NonNegativeFloat, PositiveFloat,
+                      NonNegativeInt, PositiveInt, validator)
 from ray.serve.constants import DEFAULT_HTTP_HOST, DEFAULT_HTTP_PORT
 from ray.serve.generated.serve_pb2 import (
     DeploymentConfig as DeploymentConfigProto, AutoscalingConfig as
