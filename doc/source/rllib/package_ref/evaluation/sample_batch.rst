@@ -7,11 +7,12 @@ SampleBatch (ray.rllib.policy.sample_batch.SampleBatch)
 -------------------------------------------------------
 
 Whether running in a single process or `large cluster <rllib-training.html#specifying-resources>`__,
-all data interchange in RLlib happens in the form of `SampleBatches <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__.
-Sample batches encode one or more fragments of a trajectory. Typically, a RolloutWorker collects batches of size
-``rollout_fragment_length``, and concatenates one or more of these batches (across different RolloutWorkers or
-from the same RolloutWorker in subsequent sampling steps) into a batch of size
-``train_batch_size``, which then serves as the input to a policy's ``learn_on_batch()`` method.
+all data interchange in RLlib happens in the form of :py:class:`~ray.rllib.policy.sample_batch.SampleBatch`es.
+They encode one or more fragments of a trajectory. Typically, one :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` collects batches of size
+``rollout_fragment_length``, and RLlib then concatenates one or more of these batches (across different
+:py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`s or
+from the same :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` in subsequent sampling steps) into a batch of size
+``train_batch_size``, which then serves as the input to a :py:class:`~ray.rllib.policy.policy.Policy`'s ``learn_on_batch()`` method.
 
 A typical sample batch looks something like the following when summarized.
 Since all values are kept in arrays, this allows for efficient encoding and transmission
@@ -37,7 +38,7 @@ MultiAgentBatch (ray.rllib.policy.sample_batch.MultiAgentBatch)
 ---------------------------------------------------------------
 
 In `multi-agent mode <rllib-concepts.html#policies-in-multi-agent>`__, several sample batches may be
-collected separately for each individual policy and are placed in a container object of type ``MultiAgentBatch``:
+collected separately for each individual policy and are placed in a container object of type :py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch`:
 
 .. autoclass:: ray.rllib.policy.sample_batch.MultiAgentBatch
     :members:
