@@ -228,12 +228,12 @@ class HEBOSearch(Searcher):
                               config: Dict, **spec) -> bool:
         if self._opt:
             return False
-        if not self._space:
-            space = self.convert_search_space(config)
-            self._space = space
-        if not self._metric:
+        space = self.convert_search_space(config)
+        self._space = space
+
+        if metric:
             self._metric = metric
-        if not self._mode:
+        if mode:
             self._mode = mode
 
         self._setup_optimizer()

@@ -222,10 +222,11 @@ class SigOptSearch(Searcher):
             # no automatic conversion of search space just yet
             return False
 
-        if not self._metric:
+        if metric:
             self._metric = metric
-        if not self._mode:
+        if mode:
             self._mode = mode
+
         self._setup_optimizer()
         return True
 
