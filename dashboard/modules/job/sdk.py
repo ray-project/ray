@@ -27,10 +27,17 @@ class ClusterInfo:
     address: str
     cookies: Optional[Dict[str, Any]]
     metadata: Optional[Dict[str, Any]]
+    headers: Optional[Dict[str, Any]]
 
 
 def get_job_submission_client_cluster_info(
-        address: str, create_cluster_if_needed: bool) -> ClusterInfo:
+        address: str,
+        # only used in importlib case in parse_cluster_info, but needed
+        # in function signature.
+        create_cluster_if_needed: bool,
+        cookies: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, Any]] = None) -> ClusterInfo:
     """Get address, cookies, and metadata used for JobSubmissionClient.
 
         Args:
@@ -46,20 +53,35 @@ def get_job_submission_client_cluster_info(
             for JobSubmissionClient to use.
         """
     return ClusterInfo(
-        address="http://" + address, cookies=None, metadata=None)
+        address="http://" + address,
+        cookies=cookies,
+        metadata=metadata,
+        headers=headers)
 
 
-def parse_cluster_info(address: str,
-                       create_cluster_if_needed: bool) -> ClusterInfo:
+def parse_cluster_info(
+        address: str,
+        create_cluster_if_needed: bool,
+        cookies: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, Any]] = None) -> ClusterInfo:
     module_string, inner_address = _split_address(address.rstrip("/"))
 
     # If user passes in a raw HTTP(S) address, just pass it through.
     if module_string == "http" or module_string == "https":
-        return ClusterInfo(address=address, cookies=None, metadata=None)
+        return ClusterInfo(
+            address=address,
+            cookies=cookies,
+            metadata=metadata,
+            headers=headers)
     # If user passes in a Ray address, convert it to HTTP.
     elif module_string == "ray":
         return get_job_submission_client_cluster_info(
-            inner_address, create_cluster_if_needed)
+            inner_address,
+            create_cluster_if_needed,
+            cookies=cookies,
+            metadata=metadata,
+            headers=headers)
     # Try to dynamically import the function to get cluster info.
     else:
         try:
@@ -73,27 +95,33 @@ def parse_cluster_info(address: str,
             "not have `get_job_submission_client_cluster_info`.")
 
         return module.get_job_submission_client_cluster_info(
-            inner_address, create_cluster_if_needed)
+            inner_address,
+            create_cluster_if_needed,
+            cookies=cookies,
+            metadata=metadata,
+            headers=headers)
 
 
 class JobSubmissionClient:
     def __init__(self,
                  address: str,
                  create_cluster_if_needed=False,
+                 cookies: Optional[Dict[str, Any]] = None,
+                 metadata: Optional[Dict[str, Any]] = None,
                  headers: Optional[Dict[str, Any]] = None):
         if requests is None:
             raise RuntimeError(
                 "The Ray jobs CLI & SDK require the ray[default] "
                 "installation: `pip install 'ray[default']``")
 
-        cluster_info = parse_cluster_info(address, create_cluster_if_needed)
+        cluster_info = parse_cluster_info(address, create_cluster_if_needed,
+                                          cookies, metadata, headers)
         self._address = cluster_info.address
         self._cookies = cluster_info.cookies
         self._default_metadata = cluster_info.metadata or {}
-
         # Headers used for all requests sent to job server, optional and only
         # needed for cases like authentication to remote cluster.
-        self._headers = headers
+        self._headers = cluster_info.headers
 
         self._check_connection_and_version()
 

@@ -321,10 +321,11 @@ def test_parse_cluster_info(address: str):
         assert parse_cluster_info(address, False) == ClusterInfo(
             address="http" + address[address.index("://"):],
             cookies=None,
-            metadata=None)
+            metadata=None,
+            headers=None)
     elif address.startswith("http") or address.startswith("https"):
         assert parse_cluster_info(address, False) == ClusterInfo(
-            address=address, cookies=None, metadata=None)
+            address=address, cookies=None, metadata=None, headers=None)
     else:
         with pytest.raises(RuntimeError):
             parse_cluster_info(address, False)
