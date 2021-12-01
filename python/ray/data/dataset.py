@@ -34,6 +34,7 @@ from ray.data.aggregate import AggregateFn, Sum, Max, Min, \
     Mean, Std
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.batcher import Batcher
+from ray.data.impl.stats import DatasetStats
 from ray.data.impl.compute import get_compute, cache_wrapper, \
     CallableClass
 from ray.data.impl.output_buffer import BlockOutputBuffer
@@ -71,7 +72,7 @@ class Dataset(Generic[T]):
     and simple repartition, but currently not aggregations and joins.
     """
 
-    def __init__(self, blocks: BlockList, epoch: int):
+    def __init__(self, blocks: BlockList, epoch: int, stats: DatasetStats):
         """Construct a Dataset (internal API).
 
         The constructor is not part of the Dataset API. Use the ``ray.data.*``
@@ -80,6 +81,7 @@ class Dataset(Generic[T]):
         self._blocks: BlockList = blocks
         self._uuid = uuid4().hex
         self._epoch = epoch
+        self._stats = stats
         assert isinstance(self._blocks, BlockList), self._blocks
 
     def map(self,
@@ -140,10 +142,12 @@ class Dataset(Generic[T]):
                 yield output_buffer.next()
 
         compute = get_compute(compute)
+        blocks = compute.apply(transform, ray_remote_args, self._blocks)
+        stats = DatasetStats(
+            stages={"map": [m.exec_stats for m in blocks.get_metadata()]},
+            parent=self._stats)
 
-        return Dataset(
-            compute.apply(transform, ray_remote_args, self._blocks),
-            self._epoch)
+        return Dataset(blocks, self._epoch, stats)
 
     def map_batches(self,
                     fn: Union[CallableClass, Callable[[BatchType], BatchType]],
@@ -2364,6 +2368,10 @@ class Dataset(Generic[T]):
             A list of references to this dataset's blocks.
         """
         return self._blocks.get_blocks()
+    
+    @DeveloperAPI
+    def stats(self) -> str:
+        return self._stats.summary_string()
 
     def _move_blocks(self):
         blocks = self._blocks.copy()

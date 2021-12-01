@@ -198,7 +198,8 @@ class RangeDatasource(Datasource[Union[ArrowRow, int]]):
                 num_rows=count,
                 size_bytes=8 * count,
                 schema=schema,
-                input_files=None)
+                input_files=None,
+                exec_stats=None)
             read_tasks.append(
                 ReadTask(
                     lambda i=i, count=count: [make_block(i, count)], meta))

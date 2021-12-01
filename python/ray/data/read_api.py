@@ -27,6 +27,7 @@ from ray.data.impl.arrow_block import ArrowRow, \
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList, BlockPartitionMetadata
 from ray.data.impl.remote_fn import cached_remote_fn
+from ray.data.impl.stats import DatasetStats
 from ray.data.impl.util import _get_spread_resources_iter
 
 T = TypeVar("T")
@@ -202,7 +203,7 @@ def read_datasource(datasource: Datasource[T],
     if metadata and metadata[0].schema is None:
         block_list.ensure_schema_for_first_block()
 
-    return Dataset(block_list, 0)
+    return Dataset(block_list, 0, DatasetStats(stages={"read": [m.exec_stats for m in metadata]}, parent=None))
 
 
 @PublicAPI(stability="beta")

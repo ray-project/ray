@@ -1,7 +1,8 @@
 from typing import TypeVar, Any, Union, Callable, List, Tuple
 
 import ray
-from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockPartition
+from ray.data.block import Block, BlockAccessor, BlockMetadata, \
+    BlockPartition, BlockExecStats
 from ray.data.context import DatasetContext
 from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
 from ray.data.impl.block_list import BlockList
@@ -37,12 +38,13 @@ def _map_block_split(block: Block, fn: Any,
 
 def _map_block_nosplit(block: Block, fn: Any,
                        input_files: List[str]) -> Tuple[Block, BlockMetadata]:
+    exec_stats = BlockExecStats()
     builder = DelegatingArrowBlockBuilder()
     for new_block in fn(block):
         builder.add_block(new_block)
     new_block = builder.build()
     accessor = BlockAccessor.for_block(new_block)
-    return new_block, accessor.get_metadata(input_files=input_files)
+    return new_block, accessor.get_metadata(input_files=input_files, exec_stats=exec_stats)
 
 
 class TaskPool(ComputeStrategy):
