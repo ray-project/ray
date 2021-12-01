@@ -671,6 +671,10 @@ class Trainer(Trainable):
 
             logger_creator = default_logger_creator
 
+        # Evaluation WorkerSet and metrics last returned by `self.evaluate()`.
+        self.evaluation_workers = None
+        self.evaluation_metrics = {}
+
         super().__init__(config, logger_creator, remote_checkpoint_dir,
                          sync_function_tpl)
 
@@ -779,8 +783,6 @@ class Trainer(Trainable):
                 self.workers, self.config, **self._kwargs_for_execution_plan())
 
         # Evaluation WorkerSet setup.
-        self.evaluation_workers = None
-        self.evaluation_metrics = {}
         # User would like to setup a separate evaluation worker set.
         if self.config.get("evaluation_num_workers", 0) > 0 or \
                 self.config.get("evaluation_interval"):
@@ -1151,6 +1153,9 @@ class Trainer(Trainable):
                     self.evaluation_workers.local_worker(),
                     self.evaluation_workers.remote_workers())
             metrics["timesteps_this_iter"] = num_ts_run
+
+        self.evaluation_metrics = metrics
+
         return {"evaluation": metrics}
 
     @DeveloperAPI

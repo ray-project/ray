@@ -100,7 +100,7 @@ class AssertEvalCallback(DefaultCallbacks):
                 num_timesteps_wanted = trainer.config["evaluation_duration"]
                 if num_timesteps_wanted != "auto":
                     delta = num_timesteps_wanted - num_timesteps_reported
-                    # Expected.
+                    # Expect roughly the same (desired // num-eval-workers).
                     assert abs(delta) < 20, \
                         (delta, num_timesteps_wanted, num_timesteps_reported)
                 print("Number of run evaluation timesteps: "

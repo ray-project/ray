@@ -729,14 +729,28 @@ Customized Evaluation During Training
 
 RLlib will report online training rewards, however in some cases you may want to compute
 rewards with different settings (e.g., with exploration turned off, or on a specific set
-of environment configurations). You can evaluate policies during training by setting
-the ``evaluation_interval`` config, and optionally also ``evaluation_num_episodes``,
-``evaluation_config``, ``evaluation_num_workers``, and ``custom_eval_function``
-(see `trainer.py <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__ for further documentation).
+of environment configurations). You can activate evaluating policies during training by setting
+the ``evaluation_interval`` to an int value (> 0) indicating every how many training calls
+an "evaluation step" is run.
+One such "evaluation step" runs over ``evaluation_duration`` episodes or timesteps, depending
+on the ``evaluation_duration_unit`` setting, which can be either "episodes" (default) or "timesteps".
 
-By default, exploration is left as-is within ``evaluation_config``.
-However, you can switch off any exploration behavior for the evaluation workers
-via:
+Normally, the evaluation step is run after the respective train step. For example, for
+``evaluation_interval=2``, the sequence of steps is: ``train, train, eval, train, train, eval, ...``.
+For ``evaluation_interval=1``, the sequence is: ``train, eval, train, eval, ...``.
+Before each evaluation step, weights from the main model are synchronized to all evaluation workers.
+However, it is possible to run evaluation parallel to training via the ``evaluation_parallel_to_training=True``
+config flag. In this case, both steps (train and eval) are run at the same time via threading.
+This can speed up the evaluation process significantly, but leads to a 1-iteration delay between reported
+training results and evaluation results (the evaluation results are "behind" as they use
+slightly outdated model weights).
+
+When in ``evaluation_parallel_to_training=True`` mode, a special setting: ``evaluation_duration=auto``
+can be used that causes the evaluation step to take roughly as long as the train step.
+
+The config key ``evaluation_config`` allows you to override any config keys only for
+the evaluation workers. For example, to switch off exploration in the evaluation steps,
+do:
 
 .. code-block:: python
 
@@ -751,6 +765,16 @@ via:
     Policy gradient algorithms are able to find the optimal
     policy, even if this is a stochastic one. Setting "explore=False" above
     will result in the evaluation workers not using this stochastic policy.
+
+Parallelism for the evaluation step is determined via the ``evaluation_num_workers``
+setting. Set this to higher values if you want the desired eval episodes or timesteps to
+run as much in parallel as possible. For example, if your ``evaluation_duration=10`` (``evaluation_duration_unit=episodes``)
+and ``evaluation_num_workers=10``, each eval worker only has to run 1 episode in each eval step.
+
+In case you would like to completely customize the evaluation step, set ``custom_eval_function`` in your
+config to a callable taking the Trainer object and a WorkerSet object (the evaluation WorkerSet)
+and returning a metrics dict. See `trainer.py <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__
+for further documentation.
 
 There is an end to end example of how to set up custom online evaluation in `custom_eval.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py>`__. Note that if you only want to eval your policy at the end of training, you can set ``evaluation_interval: N``, where ``N`` is the number of training iterations before stopping.
 
