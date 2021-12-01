@@ -356,7 +356,7 @@ def wait_for_event(event_listener_type: EventListenerType, *args,
         get_message.step(event_listener_type, *args, **kwargs))
 
 
-@PublicAPI
+@PublicAPI(stability="beta")
 def sleep(duration: float) -> Workflow[Event]:
     """
     A workfow that resolves after sleeping for a given duration.
@@ -476,6 +476,83 @@ def delete(workflow_id: str) -> None:
 
     wf_storage = get_workflow_storage(workflow_id)
     wf_storage.delete_workflow()
+
+
+WaitResult = Tuple[List[Any], List[Workflow]]
+
+
+@PublicAPI(stability="beta")
+def wait(workflows: List[Workflow],
+         num_returns: int = 1,
+         timeout: Optional[float] = None) -> Workflow[WaitResult]:
+    """Return a list of result of workflows that are ready and a list of
+    workflows that are pending.
+
+    Examples:
+        >>> tasks = [task.step() for _ in range(3)]
+        >>> wait_step = workflow.wait(tasks, num_returns=1)
+        >>> print(wait_step.run())
+        ([result_1], [<Workflow object>, <Workflow object>])
+
+        >>> tasks = [task.step() for _ in range(2)] + [forever.step()]
+        >>> wait_step = workflow.wait(tasks, num_returns=3, timeout=10)
+        >>> print(wait_step.run())
+        ([result_1, result_2], [<Workflow object>])
+
+    If timeout is set, the function returns either when the requested number of
+    workflows are ready or when the timeout is reached, whichever occurs first.
+    If it is not set, the function simply waits until that number of workflows
+    is ready and returns that exact number of workflows.
+
+    This method returns two lists. The first list consists of workflows
+    references that correspond to workflows that are ready. The second
+    list corresponds to the rest of the workflows (which may or may not be
+    ready).
+
+    Ordering of the input list of workflows is preserved. That is, if A
+    precedes B in the input list, and both are in the ready list, then A will
+    precede B in the ready list. This also holds true if A and B are both in
+    the remaining list.
+
+    This method will issue a warning if it's running inside an async context.
+
+    Args:
+        workflows (List[Workflow]): List of workflows that may
+            or may not be ready. Note that these workflows must be unique.
+        num_returns (int): The number of workflows that should be returned.
+        timeout (float): The maximum amount of time in seconds to wait before
+            returning.
+
+    Returns:
+        A list of ready workflow results that are ready and a list of the
+        remaining workflows.
+    """
+    from ray.workflow import serialization_context
+    from ray.workflow.common import WorkflowData
+    for w in workflows:
+        if not isinstance(w, Workflow):
+            raise TypeError("The input of workflow.wait should be a list "
+                            "of workflows.")
+    wait_inputs = serialization_context.make_workflow_inputs(workflows)
+    step_options = WorkflowStepRuntimeOptions.make(
+        step_type=StepType.WAIT,
+        # Pass the options through Ray options. "num_returns" conflicts with
+        # the "num_returns" for Ray remote functions, so we need to wrap it
+        # under "wait_options".
+        ray_options={
+            "wait_options": {
+                "num_returns": num_returns,
+                "timeout": timeout,
+            }
+        },
+    )
+    workflow_data = WorkflowData(
+        func_body=None,
+        inputs=wait_inputs,
+        step_options=step_options,
+        name="workflow.wait",
+        user_metadata={})
+    return Workflow(workflow_data)
 
 
 __all__ = ("step", "virtual_actor", "resume", "get_output", "get_actor",
