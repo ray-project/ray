@@ -69,13 +69,7 @@ parser.add_argument(
     help="Init Ray in local mode for easier debugging.")
 
 
-class AssertNumEvalEpisodesCallback(DefaultCallbacks):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Keep track of the number of timesteps that have not been reported
-        # yet in the evaluation metrics as they belong to an ongoing episode.
-        self.ts_not_reported_yet = 0
-
+class AssertEvalCallback(DefaultCallbacks):
     def on_train_result(self, *, trainer, result, **kwargs):
         # Make sure we always run exactly the given evaluation duration,
         # no matter what the other settings are (such as
@@ -101,26 +95,14 @@ class AssertNumEvalEpisodesCallback(DefaultCallbacks):
                       f"{num_episodes_done} (ok)!")
             # We count in timesteps.
             else:
-                num_timesteps_reported = sum(hist_stats["episode_lengths"])
-                num_timesteps_done = trainer.config["evaluation_duration"]
-                if num_timesteps_done != "auto":
-                    delta = num_timesteps_done - num_timesteps_reported
+                num_timesteps_reported = result["evaluation"][
+                    "timesteps_this_iter"]
+                num_timesteps_wanted = trainer.config["evaluation_duration"]
+                if num_timesteps_wanted != "auto":
+                    delta = num_timesteps_wanted - num_timesteps_reported
                     # Expected.
-                    if delta >= 0:
-                        self.ts_not_reported_yet += delta
-                    else:
-                        new_ts_not_reported_yet = \
-                            num_timesteps_done - \
-                            (num_timesteps_reported - self.overhang)
-                        assert new_ts_not_reported_yet >= 0
-                        self.ts_not_reported_yet = new_ts_not_reported_yet
-                # If auto-timesteps: Expect roughly the same number of
-                # timesteps as were done by the normal workers
-                # (train_batch_size).
-                else:
-                    batch_size = trainer.config["train_batch_size"]
-                    assert abs(batch_size - num_timesteps_reported) <= 500, \
-                        (batch_size, num_timesteps_reported)
+                    assert abs(delta) < 20, \
+                        (delta, num_timesteps_wanted, num_timesteps_reported)
                 print("Number of run evaluation timesteps: "
                       f"{num_timesteps_reported} (ok)!")
 
@@ -164,7 +146,7 @@ if __name__ == "__main__":
         # Use a custom callback that asserts that we are running the
         # configured exact number of episodes per evaluation OR - in auto
         # mode - run at least as many episodes as we have eval workers.
-        "callbacks": AssertNumEvalEpisodesCallback,
+        "callbacks": AssertEvalCallback,
     }
 
     stop = {

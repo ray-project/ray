@@ -2339,7 +2339,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/parallel_evaluation_and_training_auto_num_episodes_tf",
+    name = "examples/parallel_evaluation_and_training_auto_episodes_tf",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
@@ -2353,7 +2353,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-duration=211", "--evaluation-duration-unit=timesteps"]
+    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=211", "--evaluation-duration-unit=timesteps"]
 )
 
 py_test(
@@ -2362,7 +2362,7 @@ py_test(
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-duration=auto", "--evaluation-duration-unit=timesteps"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=auto", "--evaluation-duration-unit=timesteps"]
 )
 
 py_test(

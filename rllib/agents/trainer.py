@@ -4,6 +4,7 @@ from datetime import datetime
 import functools
 import gym
 import logging
+import math
 import numpy as np
 import os
 import pickle
@@ -809,14 +810,15 @@ class Trainer(Trainable):
             # Set `batch_mode=truncate_episodes` and set
             # `rollout_fragment_length` such that desired steps are divided
             # equally amongst workers or - in auto duration mode - set it
-            # to a reasonable small number.
+            # to a reasonable small number (10).
             else:
                 evaluation_config.update({
                     "batch_mode": "truncate_episodes",
                     "rollout_fragment_length": 10
-                    if self.config["evaluation_duration"] == "auto" else
-                    self.config["evaluation_duration"] //
-                    (self.config["evaluation_num_workers"] or 1),
+                    if self.config["evaluation_duration"] == "auto" else int(
+                        math.ceil(
+                            self.config["evaluation_duration"] /
+                            (self.config["evaluation_num_workers"] or 1))),
                 })
 
             logger.debug("using evaluation_config: {}".format(extra_config))
@@ -954,7 +956,7 @@ class Trainer(Trainable):
 
                         # Run at least one `evaluate()`, even if the training
                         # is very fast.
-                        def episodes_left_fn(remaining_duration):
+                        def duration_fn(remaining_duration):
                             # Training is done and we already ran at least one
                             # evaluation -> Nothing left to run.
                             if remaining_duration > 0 and \
@@ -973,7 +975,7 @@ class Trainer(Trainable):
                                            "rollout_fragment_length"]
 
                         evaluation_metrics = self.evaluate(
-                            episodes_left_fn=episodes_left_fn)
+                            duration_fn=duration_fn)
                     else:
                         evaluation_metrics = self.evaluate()
                     # Collect the training results from the future.
@@ -1057,11 +1059,14 @@ class Trainer(Trainable):
             # In "auto" mode (only for parallel eval + training): Run as long
             # as training lasts.
             unit = self.config["evaluation_duration_unit"]
+            eval_cfg = self.config["evaluation_config"]
+            rollout = eval_cfg["rollout_fragment_length"]
+            num_envs = eval_cfg["num_envs_per_worker"]
             duration = self.config["evaluation_duration"] if \
                 self.config["evaluation_duration"] != "auto" else \
                 (self.config["evaluation_num_workers"] or 1) * \
-                (1 if unit == "episodes" else
-                 self.config["evaluation_config"]["rollout_fragment_length"])
+                (1 if unit == "episodes" else rollout)
+            num_ts_run = 0
 
             # Default done-function returns True, whenever num episodes
             # have been completed.
@@ -1084,7 +1089,7 @@ class Trainer(Trainable):
                     # `rollout_fragment_length` is exactly the desired ts.
                     iters = duration if unit == "episodes" else 1
                     for _ in range(iters):
-                        self.workers.local_worker().sample()
+                        num_ts_run += len(self.workers.local_worker().sample())
                     metrics = collect_metrics(self.workers.local_worker())
                 except ValueError as e:
                     if "RolloutWorker has no `input_reader` object" in \
@@ -1103,10 +1108,14 @@ class Trainer(Trainable):
 
             # Evaluation worker set only has local worker.
             elif self.config["evaluation_num_workers"] == 0:
-                # TODO: explain
+                # If unit=episodes -> Run n times `sample()` (each sample
+                # produces exactly 1 episode).
+                # If unit=ts -> Run 1 `sample()` b/c the
+                # `rollout_fragment_length` is exactly the desired ts.
                 iters = duration if unit == "episodes" else 1
                 for _ in range(iters):
-                    self.evaluation_workers.local_worker().sample()
+                    num_ts_run += len(
+                        self.evaluation_workers.local_worker().sample())
 
             # Evaluation worker set has n remote workers.
             else:
@@ -1122,14 +1131,17 @@ class Trainer(Trainable):
                     batches = ray.get([
                         w.sample.remote() for i, w in enumerate(
                             self.evaluation_workers.remote_workers())
-                        if i < units_left_to_do
+                        if i * (1 if unit == "episodes" else rollout *
+                                num_envs) < units_left_to_do
                     ])
                     # 1 episode per returned batch.
                     if unit == "episodes":
                         num_units_done += len(batches)
                     # n timesteps per returned batch.
                     else:
-                        num_units_done += sum(len(b) for b in batches)
+                        ts = sum(len(b) for b in batches)
+                        num_ts_run += ts
+                        num_units_done += ts
 
                     logger.info(f"Ran round {round_} of parallel evaluation "
                                 f"({num_units_done}/{duration} {unit} done)")
@@ -1138,6 +1150,7 @@ class Trainer(Trainable):
                 metrics = collect_metrics(
                     self.evaluation_workers.local_worker(),
                     self.evaluation_workers.remote_workers())
+            metrics["timesteps_this_iter"] = num_ts_run
         return {"evaluation": metrics}
 
     @DeveloperAPI
