@@ -284,6 +284,9 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
           location_info, object_id,
           /*location_lookup_failed*/ !location_info.ref_removed());
       if (location_info.ref_removed()) {
+        RAY_LOG(ERROR)
+            << "Failed to get locations for " << object_id
+            << ", object already released by distributed reference counting protocol";
         mark_as_failed_(object_id, rpc::ErrorType::OBJECT_DELETED);
       }
     };
