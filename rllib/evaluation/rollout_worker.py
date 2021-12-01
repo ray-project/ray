@@ -636,7 +636,6 @@ class RolloutWorker(ParallelIteratorWorker):
                 num_envs=num_envs,
                 remote_envs=remote_worker_envs,
                 remote_env_batch_wait_ms=remote_env_batch_wait_ms,
-                policy_config=policy_config,
             )
 
         # `truncate_episodes`: Allow a batch to contain more than one episode
