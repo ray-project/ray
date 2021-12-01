@@ -13,13 +13,18 @@ class DatasetStats:
         self.number: int = 0 if not parent else parent.number + 1
         self.time_total_s: float = -1
 
+        # Iteration stats, filled out if the user iterates over the dataset.
+        self.iter_total_s: float = 0
+        self.iter_wait_s: float = 0
+        self.iter_process_s: float = 0
+
     def summary_string(self) -> str:
         out = ""
         if self.parent:
             out += self.parent.summary_string()
             out += "\n"
         for stage_name, metadata in self.stages.items():
-            out += "Stage {}: {}: ".format(self.number, stage_name)
+            out += "Stage {} {}: ".format(self.number, stage_name)
             out += self.summarize_blocks(metadata)
         return out
 
@@ -78,5 +83,14 @@ class DatasetStats:
                     min(node_counts.values()), max(node_counts.values()),
                     int(np.mean(list(node_counts.values()))),
                     len(node_counts)))
+
+        if self.iter_total_s or self.iter_wait_s or self.iter_process_s:
+            out += "\nOutput iterator time breakdown:\n"
+            out += "* Waiting for data fetch: {}\n".format(
+                fmt(self.iter_wait_s))
+            out += "* Processing fetched blocks: {}\n".format(
+                fmt(self.iter_process_s))
+            out += "* Total time: {}\n".format(
+                fmt(self.iter_total_s))
 
         return out
