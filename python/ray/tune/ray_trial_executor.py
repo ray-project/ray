@@ -839,13 +839,12 @@ class RayTrialExecutor(TrialExecutor):
         self._trial_just_finished_before = self._trial_just_finished
         self._trial_just_finished = False
 
-    def on_step_end(self, trials: List[Trial]) -> None:
+    def on_step_end(self, live_trials: List[Trial]) -> None:
         self._just_staged_trials.clear()
 
-        self._pg_manager.reconcile_placement_groups(trials)
+        self._pg_manager.reconcile_placement_groups(live_trials)
 
         self._pg_manager.cleanup()
-
 
     def save(self,
              trial,

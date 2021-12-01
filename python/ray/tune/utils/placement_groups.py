@@ -672,7 +672,7 @@ class PlacementGroupManager:
         return self._staging_futures and self._grace_period and time.time(
         ) <= self._latest_staging_start_time + self._grace_period
 
-    def reconcile_placement_groups(self, trials: List["Trial"]):
+    def reconcile_placement_groups(self, live_trials: List["Trial"]):
         """Reconcile placement groups to match requirements.
 
         This will loop through all trials and count their statuses by
@@ -692,7 +692,7 @@ class PlacementGroupManager:
 
         # Count number of expected placement groups
         pgf_expected: Dict[PlacementGroupFactory, int] = defaultdict(int)
-        for trial in trials:
+        for trial in live_trials:
             # Count in-use placement groups
             if trial in self._in_use_trials:
                 current_counts[trial.placement_group_factory] += 1

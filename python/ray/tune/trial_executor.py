@@ -264,16 +264,12 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """
         pass
 
-    def on_step_end(self, trials: List[Trial]) -> None:
+    def on_step_end(self, live_trials: List[Trial]) -> None:
         """A hook called after running one step of the trial event loop.
 
         Args:
-            trials (List[Trial]): The list of trials. Note, refrain from
-                providing TrialRunner directly here.
+            live_trials (List[Trial]): The list of live trials.
         """
-        pass
-
-    def force_reconcilation_on_next_step_end(self) -> None:
         pass
 
     def _may_warn_insufficient_resources(self, all_trials):
