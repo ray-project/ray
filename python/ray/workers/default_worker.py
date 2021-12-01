@@ -135,10 +135,11 @@ parser.add_argument(
     action="store_true",
     help="True if Ray debugger is made available externally.")
 parser.add_argument(
-    "--force-load-code-from-local",
-    default=False,
-    action="store_true",
-    help="If true, don't allow execute task by dynamic pickled function.")
+    "--load-code-mode",
+    required=False,
+    type=str,
+    default=None,
+    help="The load code mode for executing remote tasks.")
 
 if __name__ == "__main__":
     # NOTE(sang): For some reason, if we move the code below
@@ -175,8 +176,9 @@ if __name__ == "__main__":
     if raylet_ip_address is None:
         raylet_ip_address = args.node_ip_address
 
-    if args.force_load_code_from_local:
-        ray.worker.global_worker.set_force_load_code_from_local()
+    if args.load_code_mode:
+        ray.worker.global_worker.set_load_code_mode(
+            ray_constants.LoadCodeMode(args.load_code_mode))
 
     ray_params = RayParams(
         node_ip_address=args.node_ip_address,
@@ -188,7 +190,8 @@ if __name__ == "__main__":
         raylet_socket_name=args.raylet_name,
         temp_dir=args.temp_dir,
         metrics_agent_port=args.metrics_agent_port,
-        force_load_code_from_local=args.force_load_code_from_local,
+        load_code_mode=ray_constants.LoadCodeMode(args.load_code_mode)
+        if args.load_code_mode else None,
     )
 
     node = ray.node.Node(
@@ -216,7 +219,7 @@ if __name__ == "__main__":
             if os.path.isfile(p):
                 p = os.path.dirname(p)
             sys.path.insert(0, p)
-    if args.force_load_code_from_local:
+    if args.load_code_mode:
         load_code_from_local = True
     ray.worker.global_worker.set_load_code_from_local(load_code_from_local)
 

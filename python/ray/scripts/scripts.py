@@ -478,11 +478,11 @@ def debug(address):
     help="Make the Ray debugger available externally to the node. This is only"
     "safe to activate if the node is behind a firewall.")
 @click.option(
-    "--force-load-code-from-local",
-    is_flag=True,
+    "--load-code-mode",
     hidden=True,
-    default=False,
-    help="If true, don't allow execute task by dynamic pickled function.")
+    default=ray_constants.LoadCodeMode.HYBRID.value,
+    help="The load code mode for executing remote tasks. It should be one of "
+    f"{[e.value for e in ray_constants.LoadCodeMode]}")
 @add_click_options(logging_options)
 def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           object_manager_port, node_manager_port, gcs_server_port,
@@ -495,7 +495,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
           plasma_store_socket_name, raylet_socket_name, temp_dir,
           system_config, enable_object_reconstruction, metrics_export_port,
           no_monitor, tracing_startup_hook, ray_debugger_external,
-          force_load_code_from_local, log_style, log_color, verbose):
+          load_code_mode, log_style, log_color, verbose):
     """Start Ray processes manually on the local machine."""
     cli_logger.configure(log_style, log_color, verbose)
     if gcs_server_port and not head:
@@ -520,6 +520,10 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                         "json.loads. Try using a format like\n\n"
                         "    --resources='{\"CustomResource1\": 3, "
                         "\"CustomReseource2\": 2}'")
+
+    if load_code_mode not in [e.value for e in ray_constants.LoadCodeMode]:
+        raise Exception("The local code mode should be one of "
+                        f"{[e.value for e in ray_constants.LoadCodeMode]}")
 
     redirect_worker_output = None if not no_redirect_worker_output else True
     redirect_output = None if not no_redirect_output else True
@@ -555,7 +559,7 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
-        force_load_code_from_local=force_load_code_from_local)
+        load_code_mode=ray_constants.LoadCodeMode(load_code_mode))
     if head:
         # Use default if port is none, allocate an available port if port is 0
         if port is None:

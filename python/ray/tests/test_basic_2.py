@@ -767,9 +767,9 @@ def test_use_dynamic_function_and_class():
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
 @pytest.mark.parametrize(
-    "call_ray_start", ["ray start --head --force-load-code-from-local"],
+    "call_ray_start", ["ray start --head --load-code-mode=local-only"],
     indirect=True)
-def test_force_load_code_from_local(call_ray_start):
+def test_load_code_mode(call_ray_start):
     ray.init(address="auto")
 
     @ray.remote

@@ -1460,7 +1460,7 @@ def start_raylet(redis_address,
                  backup_count=0,
                  ray_debugger_external=False,
                  env_updates=None,
-                 force_load_code_from_local=False):
+                 load_code_mode=None):
     """Start a raylet, which is a combined local scheduler and object manager.
 
     Args:
@@ -1507,8 +1507,8 @@ def start_raylet(redis_address,
         ray_debugger_external (bool): True if the Ray debugger should be made
             available externally to this node.
         env_updates (dict): Environment variable overrides.
-        force_load_code_from_local(bool): If true, don't allow execute task by
-            dynamic pickled function.
+        load_code_mode(LoadCodeMode): The load code mode for executing remote
+            tasks.
 
     Returns:
         ProcessInfo for the process that was started.
@@ -1588,8 +1588,8 @@ def start_raylet(redis_address,
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
 
-    if force_load_code_from_local:
-        start_worker_command += ["--force-load-code-from-local"]
+    if load_code_mode:
+        start_worker_command += [f"--load-code-mode={load_code_mode.value}"]
 
     # If the object manager port is None, then use 0 to cause the object
     # manager to choose its own port.

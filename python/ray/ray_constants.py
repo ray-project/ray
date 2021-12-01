@@ -3,6 +3,7 @@
 import logging
 import math
 import os
+from enum import Enum
 
 logger = logging.getLogger(__name__)
 
@@ -295,3 +296,9 @@ KV_NAMESPACE_JOB = "job"
 KV_NAMESPACE_PACKAGE = None
 KV_NAMESPACE_SERVE = "serve"
 KV_NAMESPACE_FUNCTION_TABLE = "fun"
+
+
+class LoadCodeMode(Enum):
+    DYNAMIC_ONLY = "dynamic-only"
+    LOCAL_ONLY = "local-only"
+    HYBRID = "hybrid"

@@ -300,7 +300,8 @@ class FunctionActorManager:
                 # even if load_code_from_local is set True
                 if self._load_function_from_local(function_descriptor) is True:
                     return self._function_execution_info[function_id]
-                elif self._worker.force_load_code_from_local:
+                elif self._worker.load_code_mode == \
+                        ray_constants.LoadCodeMode.LOCAL_ONLY:
                     raise FunctionLoadingError(
                         "Failded to load function or class: "
                         f"{function_descriptor.repr}")

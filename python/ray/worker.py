@@ -131,7 +131,7 @@ class Worker:
         # running on.
         self.ray_debugger_external = False
         self._load_code_from_local = False
-        self._force_load_code_from_local = False
+        self._load_code_mode = ray_constants.LoadCodeMode.HYBRID
         # Used to toggle whether or not logs should be filtered to only those
         # produced in the same job.
         self.filter_logs_by_job = True
@@ -152,9 +152,9 @@ class Worker:
         return self._load_code_from_local
 
     @property
-    def force_load_code_from_local(self):
+    def load_code_mode(self):
         self.check_connected()
-        return self._force_load_code_from_local
+        return self._load_code_mode
 
     @property
     def current_job_id(self):
@@ -259,8 +259,8 @@ class Worker:
     def set_load_code_from_local(self, load_code_from_local):
         self._load_code_from_local = load_code_from_local
 
-    def set_force_load_code_from_local(self):
-        self._force_load_code_from_local = True
+    def set_load_code_mode(self, load_code_mode):
+        self._load_code_mode = load_code_mode
 
     def put_object(self, value, object_ref=None, owner_address=None):
         """Put value in the local object store with object reference `object_ref`.
@@ -1503,8 +1503,8 @@ def connect(node,
                        " and will be removed in the future.")
 
     # Start the import thread
-    if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE
-                    ) and not worker.force_load_code_from_local:
+    if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE) and \
+            worker.load_code_mode != ray_constants.LoadCodeMode.LOCAL_ONLY:
         worker.import_thread = import_thread.ImportThread(
             worker, mode, worker.threads_stopped)
         worker.import_thread.start()
