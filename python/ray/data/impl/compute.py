@@ -1,3 +1,4 @@
+import time
 from typing import TypeVar, Any, Union, Callable, List, Tuple
 
 import ray
@@ -38,13 +39,17 @@ def _map_block_split(block: Block, fn: Any,
 
 def _map_block_nosplit(block: Block, fn: Any,
                        input_files: List[str]) -> Tuple[Block, BlockMetadata]:
+    start_time, start_cpu = time.monotonic(), time.process_time()
     exec_stats = BlockExecStats()
     builder = DelegatingArrowBlockBuilder()
     for new_block in fn(block):
         builder.add_block(new_block)
     new_block = builder.build()
     accessor = BlockAccessor.for_block(new_block)
-    return new_block, accessor.get_metadata(input_files=input_files, exec_stats=exec_stats)
+    exec_stats.cpu_time_s = time.process_time() - start_cpu
+    exec_stats.wall_time_s = time.monotonic() - start_time
+    return new_block, accessor.get_metadata(
+        input_files=input_files, exec_stats=exec_stats)
 
 
 class TaskPool(ComputeStrategy):

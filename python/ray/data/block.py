@@ -55,8 +55,11 @@ class BlockExecStats:
         self.node_id = ray.runtime_context.get_runtime_context().node_id.hex()
 
     def __repr__(self):
-        return repr(
-            {"wall_time_s": self.wall_time_s, "cpu_time_s": self.cpu_time_s, "node_id": self.node_id})
+        return repr({
+            "wall_time_s": self.wall_time_s,
+            "cpu_time_s": self.cpu_time_s,
+            "node_id": self.node_id
+        })
 
 
 @DeveloperAPI
@@ -146,7 +149,8 @@ class BlockAccessor(Generic[T]):
         """Return the Python type or pyarrow schema of this block."""
         raise NotImplementedError
 
-    def get_metadata(self, input_files: List[str], exec_stats: Optional[BlockExecStats]) -> BlockMetadata:
+    def get_metadata(self, input_files: List[str],
+                     exec_stats: Optional[BlockExecStats]) -> BlockMetadata:
         """Create a metadata object from this block."""
         return BlockMetadata(
             num_rows=self.num_rows(),

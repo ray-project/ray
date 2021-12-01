@@ -203,7 +203,8 @@ def read_datasource(datasource: Datasource[T],
     if metadata and metadata[0].schema is None:
         block_list.ensure_schema_for_first_block()
 
-    return Dataset(block_list, 0, DatasetStats(stages={"read": [m.exec_stats for m in metadata]}, parent=None))
+    return Dataset(block_list, 0,
+                   DatasetStats(stages={"read": metadata}, parent=None))
 
 
 @PublicAPI(stability="beta")

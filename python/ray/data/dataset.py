@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import List, Any, Callable, Iterator, Iterable, Generic, \
     Dict, Optional, Union, TYPE_CHECKING, Tuple
 from uuid import uuid4
@@ -125,6 +126,7 @@ class Dataset(Generic[T]):
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
+        start_time = time.monotonic()
         fn = cache_wrapper(fn)
         context = DatasetContext.get_current()
 
@@ -144,9 +146,9 @@ class Dataset(Generic[T]):
         compute = get_compute(compute)
         blocks = compute.apply(transform, ray_remote_args, self._blocks)
         stats = DatasetStats(
-            stages={"map": [m.exec_stats for m in blocks.get_metadata()]},
-            parent=self._stats)
+            stages={"map": blocks.get_metadata()}, parent=self._stats)
 
+        stats.time_total_s = time.monotonic() - start_time
         return Dataset(blocks, self._epoch, stats)
 
     def map_batches(self,
@@ -2368,7 +2370,7 @@ class Dataset(Generic[T]):
             A list of references to this dataset's blocks.
         """
         return self._blocks.get_blocks()
-    
+
     @DeveloperAPI
     def stats(self) -> str:
         return self._stats.summary_string()
