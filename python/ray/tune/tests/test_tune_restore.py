@@ -169,15 +169,12 @@ class TuneFailResumeGridTest(unittest.TestCase):
     class FailureInjectorCallback(Callback):
         """Adds random failure injection to the TrialExecutor."""
 
-        def __init__(self, steps=20):
-            self._step = 0
-            self.steps = steps
+        def __init__(self, num_trials=20):
+            self.num_trials = num_trials
 
-        def on_trial_start(self, trials, **info):
-            self._step += 1
-            if self._step >= self.steps:
-                print(f"Failing after step {self._step} with "
-                      f"{len(trials)} trials")
+        def on_step_end(self, trials, **kwargs):
+            if len(trials) == self.num_trials:
+                print(f"Failing after {self.num_trials} trials.")
                 raise RuntimeError
 
     class CheckStateCallback(Callback):

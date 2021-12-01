@@ -190,8 +190,7 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
     def stop_trial(self,
                    trial: Trial,
                    error: bool = False,
-                   error_msg: Optional[str] = None,
-                   destroy_pg_if_cannot_replace: bool = True) -> None:
+                   error_msg: Optional[str] = None) -> None:
         """Stops the trial.
 
         Stops this trial, releasing all allocating resources.
@@ -201,8 +200,6 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         Args:
             error (bool): Whether to mark this trial as terminated in error.
             error_msg (str): Optional error message.
-            destroy_pg_if_cannot_replace (bool): Whether the trial's placement
-            group should be destroyed if it cannot replace any staged ones.
 
         """
         pass

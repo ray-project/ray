@@ -8,6 +8,7 @@ import java.io.RandomAccessFile;
 import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.SystemUtils;
 
@@ -61,7 +62,7 @@ public class BinaryFileUtil {
       // File does not exist.
       try (InputStream is = BinaryFileUtil.class.getResourceAsStream("/" + resourcePath)) {
         Preconditions.checkNotNull(is, "{} doesn't exist.", resourcePath);
-        Files.copy(is, Paths.get(tempFile.getCanonicalPath()));
+        Files.copy(is, Paths.get(tempFile.getCanonicalPath()), StandardCopyOption.REPLACE_EXISTING);
         if (!tempFile.renameTo(destFile)) {
           throw new RuntimeException(
               String.format(

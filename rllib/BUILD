@@ -1222,6 +1222,13 @@ py_test(
 )
 
 py_test(
+    name = "policy/tests/test_rnn_sequencing",
+    tags = ["team:ml", "policy"],
+    size = "small",
+    srcs = ["policy/tests/test_rnn_sequencing.py"]
+)
+
+py_test(
     name = "policy/tests/test_sample_batch",
     tags = ["team:ml", "policy"],
     size = "small",

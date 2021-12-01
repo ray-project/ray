@@ -18,7 +18,8 @@ from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
-from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
+from ray.rllib.env.base_env import BaseEnv, convert_to_base_env, \
+    ASYNC_RESET_RETURN
 from ray.rllib.env.wrappers.atari_wrappers import get_wrapper_by_cls, \
     MonitorEnv
 from ray.rllib.models.preprocessors import Preprocessor
@@ -235,7 +236,7 @@ class SyncSampler(SamplerInput):
             if tf_sess is not None:
                 deprecation_warning(old="tf_sess")
 
-        self.base_env = BaseEnv.to_base_env(env)
+        self.base_env = convert_to_base_env(env)
         self.rollout_fragment_length = rollout_fragment_length
         self.horizon = horizon
         self.extra_batches = queue.Queue()
@@ -384,7 +385,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             assert getattr(f, "is_concurrent", False), \
                 "Observation Filter must support concurrent updates."
 
-        self.base_env = BaseEnv.to_base_env(env)
+        self.base_env = convert_to_base_env(env)
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
         self.extra_batches = queue.Queue()
