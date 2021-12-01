@@ -17,6 +17,8 @@ option cc_enable_arenas = true;
 
 package ray.rpc;
 
+import "src/ray/protobuf/runtime_env_common.proto";
+
 option java_package = "io.ray.runtime.generated";
 
 // Language of a task or worker.
@@ -150,6 +152,13 @@ enum ErrorType {
   OBJECT_FETCH_TIMED_OUT = 14;
 }
 
+/// The information per ray error type.
+message RayErrorInfo {
+  oneof error {
+    RayException actor_init_failure = 1;
+  }
+}
+
 /// The task exception encapsulates all information about task
 /// execution execeptions.
 message RayException {
@@ -159,17 +168,6 @@ message RayException {
   bytes serialized_exception = 2;
   // The formatted exception string.
   string formatted_exception_string = 3;
-}
-
-/// The runtime environment describes all the runtime packages needed to
-/// run some task or actor.
-message RuntimeEnv {
-  /// The serialized runtime env passed from the user.
-  string serialized_runtime_env = 1;
-  /// URIs used in this runtime env. These will be used for reference counting.
-  repeated string uris = 2;
-  /// Indicates whether to install runtime env eagerly before the workers are leased.
-  bool runtime_env_eager_install = 3;
 }
 
 /// The task specification encapsulates all immutable information about the
@@ -228,7 +226,7 @@ message TaskSpec {
   // and "" if the task should not drop into the debugger.
   bytes debugger_breakpoint = 22;
   // Runtime environment for this task.
-  RuntimeEnv runtime_env = 23;
+  RuntimeEnvInfo runtime_env_info = 23;
   // The concurrency group name in which this task will be performed.
   string concurrency_group_name = 24;
   // Whether application-level errors (exceptions) should be retried.
@@ -529,6 +527,8 @@ enum WorkerExitType {
   CREATION_TASK_ERROR = 4;
   // Worker killed by raylet if it has been idle for too long.
   IDLE_EXIT = 5;
+  // Worker killed because its node is dead.
+  NODE_DIED = 6;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

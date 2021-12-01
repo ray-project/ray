@@ -14,7 +14,7 @@ from ray.autoscaler._private.util import DEBUG_AUTOSCALING_ERROR
 import ray._private.utils
 from ray.util.placement_group import placement_group
 import ray.ray_constants as ray_constants
-from ray.cluster_utils import Cluster
+from ray.cluster_utils import Cluster, cluster_not_supported
 from ray._private.test_utils import (init_error_pubsub, get_error_message,
                                      get_log_batch, Semaphore,
                                      wait_for_condition)
@@ -377,6 +377,7 @@ def test_serialized_id(ray_start_cluster):
     ray.get(get.remote([obj], True))
 
 
+@pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 @pytest.mark.parametrize("use_actors,node_failure",
                          [(False, False), (False, True), (True, False),
                           (True, True)])

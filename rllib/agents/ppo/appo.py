@@ -126,6 +126,7 @@ class APPOTrainer(impala.ImpalaTrainer):
     def _init(self, *args, **kwargs):
         raise NotImplementedError
 
+    @classmethod
     @override(Trainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
