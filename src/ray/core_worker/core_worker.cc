@@ -1756,6 +1756,7 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
 std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
     const ActorID &actor_id, const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args, const TaskOptions &task_options) {
+  absl::MutexLock lock(&actor_task_mutex_);
   /// Check whether backpressure may happen at the very beginning of submitting a task.
   if (direct_actor_submitter_->PendingTasksFull(actor_id)) {
     RAY_LOG(DEBUG) << "Back pressure occurred while submitting the task to " << actor_id

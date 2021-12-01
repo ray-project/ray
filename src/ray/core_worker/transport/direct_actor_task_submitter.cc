@@ -316,7 +316,7 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
     }
   }
 
-  // Do not hold mu_, because MarkPendingTaskFailed may call python from cpp,
+  // Do not hold mu_, because MarkTaskReturnObjectsFailed may call python from cpp,
   // and may cause deadlock with SubmitActorTask thread when aquire GIL.
   for (auto &task_spec : task_specs) {
     task_finisher_.MarkTaskReturnObjectsFailed(task_spec, rpc::ErrorType::ACTOR_DIED);

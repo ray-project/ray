@@ -1199,6 +1199,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   };
   TaskCounter task_counter_;
+
+  /// Used to guarantee that submitting actor task is thread safe.
+  /// NOTE(MissiontoMars,scv119): In particular, without this mutex,
+  /// the checking and increasing of backpressure pending calls counter
+  /// is not atomic, which may lead to under counting or over counting.
+  absl::Mutex actor_task_mutex_;
 };
 
 }  // namespace core
