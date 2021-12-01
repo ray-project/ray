@@ -382,11 +382,6 @@ class ResourceChangingScheduler(TrialScheduler):
                                          trial, new_resources))
         self._trials_to_reallocate = new_trials_to_reallocate
 
-        if any_resources_changed:
-            # force reconcilation to ensure resource changes
-            # are implemented right away
-            trial_runner.trial_executor.force_reconcilation_on_next_step_end()
-
         trial = self._base_scheduler.choose_trial_to_run(
             trial_runner, **kwargs)
         return trial
