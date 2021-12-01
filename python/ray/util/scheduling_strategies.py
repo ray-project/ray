@@ -6,10 +6,7 @@ from ray.util.placement_group import PlacementGroup
 class SchedulingStrategy(object):
     @staticmethod
     def from_dict(ss_dict: dict) -> "SchedulingStrategy":
-        if ss_dict["__class__"] == PlacementGroupSchedulingStrategy.__name__:
-            return PlacementGroupSchedulingStrategy.from_dict(ss_dict)
-        else:
-            return SpreadSchedulingStrategy.from_dict(ss_dict)
+        return PlacementGroupSchedulingStrategy.from_dict(ss_dict)
 
 
 @PublicAPI(stability="beta")
@@ -47,16 +44,3 @@ class PlacementGroupSchedulingStrategy(SchedulingStrategy):
             placement_group_capture_child_tasks=ss_dict[
                 "placement_group_capture_child_tasks"],
         )
-
-
-@PublicAPI(stability="beta")
-class SpreadSchedulingStrategy(SchedulingStrategy):
-    def to_dict(self) -> dict:
-        return {
-            "__class__": self.__class__.__name__,
-        }
-
-    @staticmethod
-    def from_dict(ss_dict: dict) -> "SpreadSchedulingStrategy":
-        assert ss_dict["__class__"] == SpreadSchedulingStrategy.__name__
-        return SpreadSchedulingStrategy()

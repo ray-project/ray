@@ -49,10 +49,6 @@ enum TaskType {
   DRIVER_TASK = 3;
 }
 
-// Spread scheduling on a best effort basis.
-message SpreadSchedulingStrategy {
-}
-
 message PlacementGroupSchedulingStrategy {
   // Placement group that is associated with this task.
   bytes placement_group_id = 1;
@@ -64,8 +60,7 @@ message PlacementGroupSchedulingStrategy {
 
 message SchedulingStrategy {
   oneof scheduling_strategy {
-    SpreadSchedulingStrategy spread_scheduling_strategy = 1;
-    PlacementGroupSchedulingStrategy placement_group_scheduling_strategy = 2;
+    PlacementGroupSchedulingStrategy placement_group_scheduling_strategy = 1;
   }
 }
 
