@@ -18,7 +18,6 @@
 
 use cxx::{let_cxx_string, CxxString, UniquePtr, SharedPtr};
 
-
 #[cxx::bridge(namespace = "ray")]
 mod ray_api_ffi {
     unsafe extern "C++" {

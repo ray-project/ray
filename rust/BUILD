@@ -24,7 +24,6 @@ rust_cxx_bridge(
     ],
 )
 
-
 cc_library(
     name = "ray_rs_sys",
     srcs = [],
@@ -36,7 +35,6 @@ cc_library(
         "@cxx.rs//:core",
     ],
 )
-
 
 cc_library(
     name = "ray_rs_include",
