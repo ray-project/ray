@@ -1446,7 +1446,7 @@ cdef class CoreWorker:
                 .mutable_placement_group_scheduling_strategy()
             c_placement_group_scheduling_strategy[0].set_placement_group_id(
                 python_scheduling_strategy
-                .placement_group.id.native().Binary())
+                .placement_group.id.binary())
             c_placement_group_scheduling_strategy[0] \
                 .set_placement_group_bundle_index(
                     python_scheduling_strategy.placement_group_bundle_index)

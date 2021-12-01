@@ -14,6 +14,7 @@ import uuid
 import inspect
 from ray.util.inspect import is_cython, is_class_method,\
     is_function_or_method, is_static_method
+from ray.util.scheduling_strategies import SchedulingStrategy
 import json
 import logging
 import threading
@@ -418,7 +419,12 @@ def set_task_options(task: ray_client_pb2.ClientTask,
     # placement group to a dict so that `options` can be passed to json.dumps.
     pg = options.get("placement_group", None)
     if pg and pg != "default":
-        options["placement_group"] = options["placement_group"].to_dict()
+        options["placement_group"] = pg.to_dict()
+
+    ss = options.get("scheduling_strategy", None)
+    if ss:
+        options["scheduling_strategy"] = ss.to_dict() if isinstance(
+            ss, SchedulingStrategy) else ss
 
     options_str = json.dumps(options)
     getattr(task, field).json_options = options_str

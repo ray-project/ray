@@ -215,6 +215,7 @@ py_test_module_list(
     "test_multi_tenancy.py",
     "test_scheduling.py",
     "test_scheduling_2.py",
+    "test_scheduling_strategy.py",
   ],
   size = "medium",
   extra_srcs = SRCS,

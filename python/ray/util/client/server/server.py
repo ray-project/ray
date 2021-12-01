@@ -36,6 +36,7 @@ from ray.util.client.server.server_stubs import current_server
 from ray.ray_constants import env_integer
 from ray.util.placement_group import PlacementGroup
 from ray._private.client_mode_hook import disable_client_hook
+from ray.util.scheduling_strategies import SchedulingStrategy
 from ray._private.tls_utils import add_port_to_grpc_server
 
 logger = logging.getLogger(__name__)
@@ -662,6 +663,10 @@ def decode_options(
         # Convert the dict to a PlacementGroup.
         opts["placement_group"] = PlacementGroup.from_dict(
             opts["placement_group"])
+
+    if isinstance(opts.get("scheduling_strategy", None), dict):
+        opts["scheduling_strategy"] = SchedulingStrategy.from_dict(
+            opts["scheduling_strategy"])
 
     return opts
 

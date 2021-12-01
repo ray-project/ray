@@ -608,7 +608,7 @@ class ActorClass:
                 specify any available bundle.
             placement_group_capture_child_tasks: Whether or not children tasks
                 of this actor should implicitly use the same placement group
-                as its parent. It is True by default.
+                as its parent. It is False by default.
             runtime_env (Dict[str, Any]): Specifies the runtime environment for
                 this actor or task and its children (see
                 :ref:`runtime-environments` for details).  This API is in beta
@@ -759,32 +759,40 @@ class ActorClass:
             creation_args = signature.flatten_args(function_signature, args,
                                                    kwargs)
 
+        scheduling_strategy = scheduling_strategy or meta.scheduling_strategy
         if (placement_group != "default") and (scheduling_strategy is
                                                not None):
-            raise ValueError("TODO(jjyao) better error message")
+            raise ValueError("Placement group should be specified through "
+                             "scheduling_strategy option. "
+                             "The placement_group option is deprecated.")
 
-        scheduling_strategy = scheduling_strategy or meta.scheduling_strategy
-        if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
-            placement_group = scheduling_strategy.placement_group
-            placement_group_bundle_index = \
-                scheduling_strategy.placement_group_bundle_index
-            placement_group_capture_child_tasks = \
-                scheduling_strategy.placement_group_capture_child_tasks
+        if scheduling_strategy is None or \
+                isinstance(scheduling_strategy,
+                           PlacementGroupSchedulingStrategy):
+            if isinstance(scheduling_strategy,
+                          PlacementGroupSchedulingStrategy):
+                placement_group = scheduling_strategy.placement_group
+                placement_group_bundle_index = \
+                    scheduling_strategy.placement_group_bundle_index
+                placement_group_capture_child_tasks = \
+                    scheduling_strategy.placement_group_capture_child_tasks
 
-        if placement_group_capture_child_tasks is None:
-            placement_group_capture_child_tasks = (
-                worker.should_capture_child_tasks_in_placement_group)
-        placement_group = configure_placement_group_based_on_context(
-            placement_group_capture_child_tasks,
-            placement_group_bundle_index,
-            resources,
-            actor_placement_resources,
-            meta.class_name,
-            placement_group=placement_group)
-        if not placement_group.is_empty:
-            scheduling_strategy = PlacementGroupSchedulingStrategy(
-                placement_group, placement_group_bundle_index,
-                placement_group_capture_child_tasks)
+            if placement_group_capture_child_tasks is None:
+                placement_group_capture_child_tasks = (
+                    worker.should_capture_child_tasks_in_placement_group)
+            placement_group = configure_placement_group_based_on_context(
+                placement_group_capture_child_tasks,
+                placement_group_bundle_index,
+                resources,
+                actor_placement_resources,
+                meta.class_name,
+                placement_group=placement_group)
+            if not placement_group.is_empty:
+                scheduling_strategy = PlacementGroupSchedulingStrategy(
+                    placement_group, placement_group_bundle_index,
+                    placement_group_capture_child_tasks)
+            else:
+                scheduling_strategy = None
 
         if runtime_env:
             if isinstance(runtime_env, str):
