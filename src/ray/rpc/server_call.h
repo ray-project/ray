@@ -162,7 +162,7 @@ class ServerCallImpl : public ServerCall {
   void HandleRequest() override {
     start_time_ = absl::GetCurrentTimeNanos();
     STATS_grpc_server_req_handling.Record(1.0, call_name_);
-    if(!RunFunc([this] { HandleRequestImpl(); })) {
+    if (!RunFunc([this] { HandleRequestImpl(); })) {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
       RAY_LOG(DEBUG) << "Handle service has been closed.";
@@ -217,9 +217,9 @@ class ServerCallImpl : public ServerCall {
   const ServerCallFactory &GetServerCallFactory() override { return factory_; }
 
  private:
-  bool RunFunc(std::function<void()> fn, const std::string& suffix = "") {
-    if(io_service_) {
-      if(io_service_->stopped()) {
+  bool RunFunc(std::function<void()> fn, const std::string &suffix = "") {
+    if (io_service_) {
+      if (io_service_->stopped()) {
         return false;
       } else {
         io_service_->post(std::move(fn), call_name_ + suffix);

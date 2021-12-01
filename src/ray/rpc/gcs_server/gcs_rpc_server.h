@@ -581,7 +581,7 @@ class InternalKVGcsServiceHandler {
 class InternalKVGrpcService : public GrpcService {
  public:
   InternalKVGrpcService(instrumented_io_context &io_service,
-                                 InternalKVGcsServiceHandler &handler)
+                        InternalKVGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler) {}
   InternalKVGrpcService(InternalKVGcsServiceHandler &handler)
       : service_handler_(handler) {}
