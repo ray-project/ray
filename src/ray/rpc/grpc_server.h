@@ -143,7 +143,10 @@ class GrpcService {
   /// \param[in] main_service The main event loop, to which service handler functions
   /// will be posted.
   explicit GrpcService(instrumented_io_context &main_service)
-      : main_service_(main_service) {}
+      : main_service_(&main_service) {}
+
+  /// Constructor. The callback will be called in the cq thread
+  GrpcService() : main_service_(nullptr) {}
 
   /// Destruct this gRPC service.
   virtual ~GrpcService() = default;
@@ -165,7 +168,7 @@ class GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) = 0;
 
   /// The main event loop, to which the service handler functions will be posted.
-  instrumented_io_context &main_service_;
+  instrumented_io_context *main_service_;
 
   friend class GrpcServer;
 };

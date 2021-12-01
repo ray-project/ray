@@ -138,7 +138,7 @@ class ServerCallImpl : public ServerCall {
   ServerCallImpl(
       const ServerCallFactory &factory, ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
-      instrumented_io_context &io_service, std::string call_name)
+      instrumented_io_context *io_service, std::string call_name)
       : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
@@ -162,9 +162,7 @@ class ServerCallImpl : public ServerCall {
   void HandleRequest() override {
     start_time_ = absl::GetCurrentTimeNanos();
     STATS_grpc_server_req_handling.Record(1.0, call_name_);
-    if (!io_service_.stopped()) {
-      io_service_.post([this] { HandleRequestImpl(); }, call_name_);
-    } else {
+    if(!RunFunc([this] { HandleRequestImpl(); })) {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
       RAY_LOG(DEBUG) << "Handle service has been closed.";
@@ -202,18 +200,16 @@ class ServerCallImpl : public ServerCall {
 
   void OnReplySent() override {
     STATS_grpc_server_req_finished.Record(1.0, call_name_);
-    if (send_reply_success_callback_ && !io_service_.stopped()) {
-      auto callback = std::move(send_reply_success_callback_);
-      io_service_.post([callback]() { callback(); }, call_name_ + ".success_callback");
+    if (send_reply_success_callback_) {
+      RAY_UNUSED(RunFunc(std::move(send_reply_success_callback_), ".success_callback"));
     }
     LogProcessTime();
   }
 
   void OnReplyFailed() override {
     STATS_grpc_server_req_finished.Record(1.0, call_name_);
-    if (send_reply_failure_callback_ && !io_service_.stopped()) {
-      auto callback = std::move(send_reply_failure_callback_);
-      io_service_.post([callback]() { callback(); }, call_name_ + ".failure_callback");
+    if (send_reply_failure_callback_) {
+      RAY_UNUSED(RunFunc(std::move(send_reply_failure_callback_), ".failure_callback"));
     }
     LogProcessTime();
   }
@@ -221,6 +217,18 @@ class ServerCallImpl : public ServerCall {
   const ServerCallFactory &GetServerCallFactory() override { return factory_; }
 
  private:
+  bool RunFunc(std::function<void()> fn, const std::string& suffix = "") {
+    if(io_service_) {
+      if(io_service_->stopped()) {
+        return false;
+      } else {
+        io_service_->post(std::move(fn), call_name_ + suffix);
+        return true;
+      }
+    }
+    fn();
+    return true;
+  }
   /// Log the duration this query used
   void LogProcessTime() {
     auto end_time = absl::GetCurrentTimeNanos();
@@ -257,7 +265,7 @@ class ServerCallImpl : public ServerCall {
   grpc::ServerAsyncResponseWriter<Reply> response_writer_;
 
   /// The event loop.
-  instrumented_io_context &io_service_;
+  instrumented_io_context *io_service_;
 
   /// The request message.
   Request request_;
@@ -320,7 +328,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      instrumented_io_context &io_service, std::string call_name, int64_t max_active_rpcs)
+      instrumented_io_context *io_service, std::string call_name, int64_t max_active_rpcs)
       : service_(service),
         request_call_function_(request_call_function),
         service_handler_(service_handler),
@@ -361,7 +369,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
   const std::unique_ptr<grpc::ServerCompletionQueue> &cq_;
 
   /// The event loop.
-  instrumented_io_context &io_service_;
+  instrumented_io_context *io_service_;
 
   /// Human-readable name for this RPC call.
   std::string call_name_;

@@ -580,9 +580,11 @@ class InternalKVGcsServiceHandler {
 
 class InternalKVGrpcService : public GrpcService {
  public:
-  explicit InternalKVGrpcService(instrumented_io_context &io_service,
+  InternalKVGrpcService(instrumented_io_context &io_service,
                                  InternalKVGcsServiceHandler &handler)
       : GrpcService(io_service), service_handler_(handler) {}
+  InternalKVGrpcService(InternalKVGcsServiceHandler &handler)
+      : service_handler_(handler) {}
 
  protected:
   grpc::Service &GetGrpcService() override { return service_; }
