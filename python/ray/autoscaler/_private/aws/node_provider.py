@@ -371,8 +371,7 @@ class AWSNodeProvider(NodeProvider):
         tag_specs = [{
             "ResourceType": "instance",
             "Tags": tag_pairs,
-        },
-        {
+        }, {
             "ResourceType": "volume",
             "Tags": [p for p in tag_pairs if p["Key"] != "Name"],
         }]
