@@ -226,7 +226,7 @@ class BaseEnv:
 
     @PublicAPI
     @property
-    def observation_space(self) -> gym.Space:
+    def observation_space(self) -> gym.spaces.Dict:
         """Returns the observation space for each environment.
 
         Note: samples from the observation space need to be preprocessed into a
@@ -249,6 +249,26 @@ class BaseEnv:
             The observation space for each environment.
         """
         raise NotImplementedError
+
+    def observation_space_contains(self, x: MultiEnvDict) -> bool:
+        self._space_contains(self.observation_space, x)
+
+    def action_space_contains(self, x: MultiEnvDict) -> bool:
+        return self._space_contains(self.action_space, x)
+
+    @staticmethod
+    def _space_contains(space, x: MultiEnvDict) -> bool:
+        # this removes the agent_id key and inner dicts
+        # in MultiEnvDicts
+        flattened_obs = {
+            env_id: list(obs.values())
+            for env_id, obs in x.items()
+        }
+        ret = True
+        for env_id in flattened_obs:
+            for obs in flattened_obs[env_id]:
+                ret = ret and space[env_id].contains(obs)
+        return ret
 
 
 # Fixed agent identifier when there is only the single agent in the env

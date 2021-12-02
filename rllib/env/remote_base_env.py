@@ -217,7 +217,7 @@ class RemoteBaseEnv(BaseEnv):
     @property
     @override(BaseEnv)
     @PublicAPI
-    def observation_space(self) -> gym.Space:
+    def observation_space(self) -> gym.spaces.Dict:
         return self._observation_space
 
     @property

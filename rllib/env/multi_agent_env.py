@@ -352,7 +352,7 @@ class MultiAgentEnvWrapper(BaseEnv):
         return self.envs[env_id].render()
 
     @property
-    def observation_space(self) -> gym.Space:
+    def observation_space(self) -> gym.spaces.Dict:
         space = {
             _id: env.observation_space
             for _id, env in enumerate(self.envs)

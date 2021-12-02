@@ -314,14 +314,6 @@ class VectorEnvWrapper(BaseEnv):
     @override(BaseEnv)
     def get_sub_environments(
             self, as_dict: bool = False) -> Union[List[EnvType], dict]:
-        """Return a reference to the underlying sub environments, if any.
-
-        Args:
-            as_dict: If True, return a dict mapping from env_id to env.
-
-        Returns:
-            List or dictionary of the underlying sub environments or [] / {}.
-        """
         if not as_dict:
             return self.vector_env.get_sub_environments()
         else:
@@ -337,19 +329,13 @@ class VectorEnvWrapper(BaseEnv):
         return self.vector_env.try_render_at(env_id)
 
     @property
-    def observation_space(self) -> gym.Space:
-        """Returns the observation space for each environment.
-
-        Returns:
-            The observation space for each environment.
-        """
-        return self.vector_env.observation_space
+    @override(BaseEnv)
+    @PublicAPI
+    def observation_space(self) -> gym.spaces.Dict:
+        return gym.spaces.Dict({0: self.vector_env.observation_space})
 
     @property
+    @override(BaseEnv)
+    @PublicAPI
     def action_space(self) -> gym.Space:
-        """Returns the action space for each environment.
-
-        Returns:
-            The action space for each environment.
-        """
-        return self.vector_env.action_space
+        return gym.spaces.Dict({0: self.vector_env.action_space})

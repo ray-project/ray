@@ -415,7 +415,7 @@ class ExternalEnvWrapper(BaseEnv):
                 with_dummy_agent_id(off_policy_actions)
 
     @property
-    def observation_space(self) -> gym.Space:
+    def observation_space(self) -> gym.spaces.Dict:
         return self._observation_space
 
     @property
