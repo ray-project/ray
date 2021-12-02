@@ -8,11 +8,11 @@ from typing import Dict, List, Optional
 import warnings
 
 import ray
-from ray.tune import PlacementGroupFactory
 from ray.tune.resources import Resources
 from ray.util.annotations import DeveloperAPI
-from ray.tune.trial import Trial, Checkpoint
 from ray.tune.cluster_info import is_ray_cluster
+from ray.tune.trial import Trial, Checkpoint
+from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
 
