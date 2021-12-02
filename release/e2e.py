@@ -286,7 +286,7 @@ RETRY_MULTIPLIER = 2
 
 class ExitCode(enum.Enum):
     # If you change these, also change the `retry` section
-    # in `build_pipeline.py`
+    # in `build_pipeline.py` and the `reason()` function in `run_e2e.sh`
     UNSPECIFIED = 2
     UNKNOWN = 3
     RUNTIME_ERROR = 4
