@@ -58,7 +58,7 @@ class DatasetStats:
     def summarize_iter(self) -> str:
         out = ""
         if self.iter_total_s or self.iter_wait_s or self.iter_process_s:
-            out += "\nOutput iterator time breakdown:\n"
+            out += "\nDataset iterator time breakdown:\n"
             out += "* In ray.wait(): {}\n".format(fmt(self.iter_wait_s))
             out += "* In format_batch(): {}\n".format(fmt(self.iter_process_s))
             out += "* In user code: {}\n".format(fmt(self.iter_user_s))
@@ -141,7 +141,7 @@ class DatasetPipelineStats:
             out += "== Pipeline Window {} ==\n".format(i)
             out += stats.summary_string(already_printed)
             out += "\n"
-        out += "=== Overall Pipeline Iterator Time Breakdown ===\n"
+        out += "##### Overall Pipeline Time Breakdown #####\n"
         # Drop the first sample since there's no pipelining there.
         wait_time_s = self.wait_time_s[1:]
         if wait_time_s:

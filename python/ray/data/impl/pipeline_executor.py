@@ -117,3 +117,6 @@ class PipelineSplitExecutorCoordinator:
         ret = self.cur_splits[split_index]
         self.cur_splits[split_index] = None
         return ret
+    
+    def get_stats(self):
+        return self.executor._pipeline._stats

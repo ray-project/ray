@@ -652,7 +652,7 @@ class Dataset(Generic[T]):
                 Dataset(
                     BlockList(
                         list(blocks), [metadata_mapping[b]
-                                       for b in blocks]), self._epoch)
+                                       for b in blocks]), self._epoch, self._stats)
                 for blocks in np.array_split(block_refs, n)
                 if not equal or len(blocks) > 0
             ], n)
