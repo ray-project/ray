@@ -335,7 +335,7 @@ class MBMPOTrainer(Trainer):
     See `mbmpo_[tf|torch]_policy.py` for the definition of the policy loss.
 
     Detailed documentation:
-    ttps://docs.ray.io/en/master/rllib-algorithms.html#mbmpo
+    https://docs.ray.io/en/master/rllib-algorithms.html#mbmpo
     """
 
     @classmethod
