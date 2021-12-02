@@ -210,12 +210,15 @@ class MockRayletClient : public WorkerLeaseInterface {
   // Trigger reply to RequestWorkerLease.
   bool GrantWorkerLease(const std::string &address, int port,
                         const NodeID &retry_at_raylet_id, bool cancel = false,
-                        std::string worker_id = std::string(), bool reject = false) {
+                        std::string worker_id = std::string(), bool reject = false,
+                        bool runtime_env_setup_failed = false) {
     rpc::RequestWorkerLeaseReply reply;
     if (cancel) {
       reply.set_canceled(true);
     } else if (reject) {
       reply.set_rejected(true);
+    } else if (runtime_env_setup_failed) {
+      reply.set_runtime_env_setup_failed(true);
     } else if (!retry_at_raylet_id.IsNil()) {
       reply.mutable_retry_at_raylet_address()->set_ip_address(address);
       reply.mutable_retry_at_raylet_address()->set_port(port);
@@ -235,6 +238,18 @@ class MockRayletClient : public WorkerLeaseInterface {
     } else {
       auto callback = callbacks.front();
       callback(Status::OK(), reply);
+      callbacks.pop_front();
+      return true;
+    }
+  }
+
+  bool FailWorkerLeaseDueToGrpcUnavailable() {
+    rpc::RequestWorkerLeaseReply reply;
+    if (callbacks.size() == 0) {
+      return false;
+    } else {
+      auto callback = callbacks.front();
+      callback(Status::GrpcUnavailable("unavailable"), reply);
       callbacks.pop_front();
       return true;
     }
@@ -630,6 +645,96 @@ TEST(DirectTaskTransportTest, TestHandleTaskFailure) {
   ASSERT_EQ(task_finisher->num_tasks_failed, 1);
   ASSERT_EQ(raylet_client->num_leases_canceled, 0);
   ASSERT_FALSE(raylet_client->ReplyCancelWorkerLease());
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
+  // would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
+TEST(DirectTaskTransportTest, TestHandleRuntimeEnvSetupFailed) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil(), 1, absl::nullopt, 2);
+
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  TaskSpecification task2 = BuildEmptyTaskSpec();
+  TaskSpecification task3 = BuildEmptyTaskSpec();
+
+  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+
+  // Fail task1 which will fail all the tasks
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("", 0, NodeID::Nil(), false, "", false,
+                                              /*runtime_env_setup_failed=*/true));
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 3);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+
+  // Fail task2
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("", 0, NodeID::Nil(), false, "", false,
+                                              /*runtime_env_setup_failed=*/true));
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 3);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+
+  // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
+  // would otherwise cause a memory leak.
+  ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
+}
+
+TEST(DirectTaskTransportTest, TestHandleSubmitterNodeDied) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
+      NodeID::Nil(), kLongTimeout, actor_creator, JobID::Nil(), 1, absl::nullopt, 2);
+
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  TaskSpecification task2 = BuildEmptyTaskSpec();
+  TaskSpecification task3 = BuildEmptyTaskSpec();
+
+  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
+  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
+  ASSERT_EQ(lease_policy->num_lease_policy_consults, 2);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+  ASSERT_EQ(raylet_client->num_workers_returned, 0);
+  ASSERT_EQ(raylet_client->reported_backlog_size, 0);
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+
+  // Fail task1 which will fail all the tasks
+  ASSERT_TRUE(raylet_client->FailWorkerLeaseDueToGrpcUnavailable());
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 3);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+
+  // Fail task2
+  ASSERT_TRUE(raylet_client->FailWorkerLeaseDueToGrpcUnavailable());
+  ASSERT_EQ(worker_client->callbacks.size(), 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 3);
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
   // would otherwise cause a memory leak.

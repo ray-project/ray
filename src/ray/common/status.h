@@ -252,7 +252,8 @@ class RAY_EXPORT Status {
   bool IsTransientObjectStoreFull() const {
     return code() == StatusCode::TransientObjectStoreFull;
   }
-  bool IsGrpcUnAvailable() const { return code() == StatusCode::GrpcUnavailable; }
+  bool IsGrpcUnavailable() const { return code() == StatusCode::GrpcUnavailable; }
+  bool IsGrpcUnknown() const { return code() == StatusCode::GrpcUnknown; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
