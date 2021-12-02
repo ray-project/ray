@@ -22,6 +22,7 @@ def record_timing(func):
             return result
         else:
             return func(*args, **kwargs)
+
     return wrapper
 
 

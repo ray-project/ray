@@ -1365,13 +1365,13 @@ class TrialRunner:
             # Only for TERMINATED trials. ERRORed trials might be retried.
             if trial.status == Trial.TERMINATED:
                 self._live_trials.remove(trial)
-            elif trial.status in (Trial.PAUSED, Trial.PENDING, Trial.PAUSED):
-                count = result.get(trial.pgf, 0)
-                result[trial.pgf] = count + 1
+            elif trial.status in (Trial.PAUSED, Trial.PENDING, Trial.RUNNING):
+                count = result.get(trial.placement_group_factory, 0)
+                result[trial.placement_group_factory] = count + 1
             elif trial.status == Trial.ERROR:
                 pass
             else:
-                raise ValueError("Unexpected trial status!")
+                raise ValueError(f"Unexpected trial status: {trial.status}")
         return result
 
     def __getstate__(self):
