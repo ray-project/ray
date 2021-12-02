@@ -72,7 +72,6 @@ class DatasetPipeline(Generic[T]):
         # This variable is shared across all pipelines descending from this.
         self._executed = _executed or [False]
         self._stats = DatasetPipelineStats()
-        self._coordinator = None
 
     def iter_batches(self,
                      *,
@@ -211,7 +210,6 @@ class DatasetPipeline(Generic[T]):
 
         coordinator = PipelineSplitExecutorCoordinator.remote(
             self, n, splitter, DatasetContext.get_current())
-        self._coordinator = coordinator
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True
@@ -583,8 +581,6 @@ class DatasetPipeline(Generic[T]):
 
     @DeveloperAPI
     def stats(self) -> str:
-        if self._coordinator:
-            self._stats = ray.get(self._coordinator.get_stats.remote())
         return self._stats.summary_string()
 
     @staticmethod
