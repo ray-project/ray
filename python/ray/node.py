@@ -68,11 +68,6 @@ class Node:
             connect_only (bool): If true, connect to the node without starting
                 new processes.
         """
-        import cProfile
-        import pstats
-
-        pr = cProfile.Profile()
-        pr.enable()
 
         if shutdown_at_exit:
             if connect_only:
@@ -243,9 +238,6 @@ class Node:
                 self._raylet_ip_address,
                 redis_password=self.redis_password))
             self._ray_params.node_manager_port = node_info.node_manager_port
-        pr.disable()
-        ps = pstats.Stats(pr)
-        ps.dump_stats(f"/tmp/ray_prof_stats.{os.getpid()}")
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
