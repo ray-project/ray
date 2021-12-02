@@ -19,7 +19,7 @@ from ray.rllib.policy.policy_template import build_policy_class
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import LearningRateSchedule
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import apply_grad_clipping, \
+from ray.rllib.utils.torch_utils import apply_grad_clipping, \
     concat_multi_gpu_td_errors, FLOAT_MIN, huber_loss, sequence_mask
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
@@ -284,7 +284,7 @@ R2D2TorchPolicy = build_policy_class(
     name="R2D2TorchPolicy",
     framework="torch",
     loss_fn=r2d2_loss,
-    get_default_config=lambda: ray.rllib.agents.dqn.r2d2.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.dqn.r2d2.R2D2_DEFAULT_CONFIG,
     make_model_and_action_dist=build_r2d2_model_and_distribution,
     action_distribution_fn=get_distribution_inputs_and_class,
     stats_fn=build_q_stats,

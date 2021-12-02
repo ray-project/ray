@@ -85,6 +85,7 @@ class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
       reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
     } else {
       reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+      reply.set_serialized_runtime_env_context("{\"dummy\":\"dummy\"}");
     }
     callback(Status::OK(), reply);
   };
@@ -343,6 +344,10 @@ class WorkerPoolTest : public ::testing::Test {
     StartMockAgent();
   }
 
+  virtual void TearDown() { AssertNoLeaks(); }
+
+  void AssertNoLeaks() { ASSERT_EQ(worker_pool_->pending_exit_idle_workers_.size(), 0); }
+
   ~WorkerPoolTest() {
     io_service_.stop();
     thread_io_service_->join();
@@ -447,7 +452,7 @@ static inline TaskSpecification ExampleTaskSpec(
     const ActorID actor_id = ActorID::Nil(), const Language &language = Language::PYTHON,
     const JobID &job_id = JOB_ID, const ActorID actor_creation_id = ActorID::Nil(),
     const std::vector<std::string> &dynamic_worker_options = {},
-    const TaskID &task_id = TaskID::ForFakeTask(),
+    const TaskID &task_id = TaskID::FromRandom(JobID::Nil()),
     const std::string serialized_runtime_env = "") {
   rpc::TaskSpec message;
   message.set_job_id(job_id.Binary());
@@ -467,7 +472,7 @@ static inline TaskSpecification ExampleTaskSpec(
   } else {
     message.set_type(TaskType::NORMAL_TASK);
   }
-  message.mutable_runtime_env()->set_serialized_runtime_env(serialized_runtime_env);
+  message.mutable_runtime_env_info()->set_serialized_runtime_env(serialized_runtime_env);
   return TaskSpecification(std::move(message));
 }
 
@@ -1228,15 +1233,97 @@ TEST_F(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers / 2);
 }
 
+TEST_F(WorkerPoolTest, TestWorkerCappingWithExitDelay) {
+  ///
+  /// When there are multiple workers in a worker process, and the worker process's Exit
+  /// reply is delayed, We shouldn't send more Exit requests to workers in this process
+  /// until we received all Exit replies form this process.
+  ///
+
+  ///
+  /// Register some idle Python and Java (w/ multi-worker enabled) workers
+  ///
+  std::vector<std::shared_ptr<WorkerInterface>> workers;
+  std::vector<Language> languages({Language::PYTHON, Language::JAVA});
+  for (int i = 0; i < POOL_SIZE_SOFT_LIMIT * 2; i++) {
+    for (const auto &language : languages) {
+      PopWorkerStatus status;
+      Process proc = worker_pool_->StartWorkerProcess(language, rpc::WorkerType::WORKER,
+                                                      JOB_ID, &status);
+      int workers_to_start =
+          language == Language::JAVA ? NUM_WORKERS_PER_PROCESS_JAVA : 1;
+      for (int j = 0; j < workers_to_start; j++) {
+        auto worker = worker_pool_->CreateWorker(Process(), language);
+        worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
+        workers.push_back(worker);
+        RAY_CHECK_OK(worker_pool_->RegisterWorker(worker, proc.GetId(), proc.GetId(),
+                                                  worker_pool_->GetStartupToken(proc),
+                                                  [](Status, int) {}));
+        worker_pool_->OnWorkerStarted(worker);
+        ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
+        worker_pool_->PushWorker(worker);
+      }
+    }
+  }
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
+
+  // 1000 ms has passed, so idle workers should be killed.
+  worker_pool_->SetCurrentTimeMs(1000);
+  worker_pool_->TryKillingIdleWorkers();
+
+  // Let's assume that all workers own objects, so they won't be killed.
+
+  // Due to the heavy load on this machine, some workers may reply Exit with a delay, so
+  // only a part of workers replied before the next round of killing.
+  std::vector<std::shared_ptr<WorkerInterface>> delayed_workers;
+  bool delay = false;
+  for (auto worker : workers) {
+    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
+    if (mock_rpc_client_it->second->callbacks_.size() == 0) {
+      // This worker is not being killed. Skip it.
+      continue;
+    }
+    if (!delay) {
+      ASSERT_TRUE(mock_rpc_client_it->second->ExitReplyFailed());
+    } else {
+      delayed_workers.push_back(worker);
+    }
+    delay = !delay;
+  }
+  // No workers are killed because they own objects.
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
+
+  // The second round of killing starts.
+  worker_pool_->SetCurrentTimeMs(2000);
+  worker_pool_->TryKillingIdleWorkers();
+
+  // Delayed workers reply first, then all workers reply the second time.
+  for (auto worker : delayed_workers) {
+    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
+    ASSERT_TRUE(mock_rpc_client_it->second->ExitReplyFailed());
+  }
+
+  for (auto worker : workers) {
+    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
+    if (mock_rpc_client_it->second->callbacks_.size() == 0) {
+      // This worker is not being killed. Skip it.
+      continue;
+    }
+    ASSERT_TRUE(mock_rpc_client_it->second->ExitReplyFailed());
+  }
+
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
+}
+
 TEST_F(WorkerPoolTest, PopWorkerWithRuntimeEnv) {
   ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
   auto actor_creation_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
-  const auto actor_creation_task_spec =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, actor_creation_id,
-                      {"XXX=YYY"}, TaskID::ForFakeTask(), "{\"uris\": \"XXX\"}");
-  const auto normal_task_spec =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
-                      {"XXX=YYY"}, TaskID::ForFakeTask(), "{\"uris\": \"XXX\"}");
+  const auto actor_creation_task_spec = ExampleTaskSpec(
+      ActorID::Nil(), Language::PYTHON, JOB_ID, actor_creation_id, {"XXX=YYY"},
+      TaskID::FromRandom(JobID::Nil()), R"({"uris": "XXX"})");
+  const auto normal_task_spec = ExampleTaskSpec(
+      ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(), {"XXX=YYY"},
+      TaskID::FromRandom(JobID::Nil()), R"({"uris": "XXX"})");
   const auto normal_task_spec_without_runtime_env =
       ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(), {});
   // Pop worker for actor creation task again.
@@ -1271,13 +1358,13 @@ TEST_F(WorkerPoolTest, CacheWorkersByRuntimeEnvHash) {
   auto actor_creation_id = ActorID::Of(JOB_ID, TaskID::ForDriverTask(JOB_ID), 1);
   const auto actor_creation_task_spec_1 = ExampleTaskSpec(
       ActorID::Nil(), Language::PYTHON, JOB_ID, actor_creation_id,
-      /*dynamic_options=*/{}, TaskID::ForFakeTask(), "mock_runtime_env_1");
+      /*dynamic_options=*/{}, TaskID::FromRandom(JobID::Nil()), "mock_runtime_env_1");
   const auto task_spec_1 = ExampleTaskSpec(
       ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
-      /*dynamic_options=*/{}, TaskID::ForFakeTask(), "mock_runtime_env_1");
+      /*dynamic_options=*/{}, TaskID::FromRandom(JobID::Nil()), "mock_runtime_env_1");
   const auto task_spec_2 = ExampleTaskSpec(
       ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(),
-      /*dynamic_options=*/{}, TaskID::ForFakeTask(), "mock_runtime_env_2");
+      /*dynamic_options=*/{}, TaskID::FromRandom(JobID::Nil()), "mock_runtime_env_2");
 
   const WorkerCacheKey env1 = {"mock_runtime_env_1", {}};
   const int runtime_env_hash_1 = env1.IntHash();
@@ -1425,7 +1512,7 @@ TEST_F(WorkerPoolTest, PopWorkerStatus) {
   // Create a task with bad runtime env.
   const auto task_spec_with_bad_runtime_env =
       ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id, ActorID::Nil(),
-                      {"XXX=YYY"}, TaskID::ForFakeTask(), BAD_RUNTIME_ENV);
+                      {"XXX=YYY"}, TaskID::FromRandom(JobID::Nil()), BAD_RUNTIME_ENV);
   popped_worker =
       worker_pool_->PopWorkerSync(task_spec_with_bad_runtime_env, true, &status);
   // PopWorker failed and the status is `RuntimeEnvCreationFailed`.
@@ -1433,9 +1520,9 @@ TEST_F(WorkerPoolTest, PopWorkerStatus) {
   ASSERT_EQ(status, PopWorkerStatus::RuntimeEnvCreationFailed);
 
   // Create a task with available runtime env.
-  const auto task_spec_with_runtime_env =
-      ExampleTaskSpec(ActorID::Nil(), Language::PYTHON, job_id, ActorID::Nil(),
-                      {"XXX=YYY"}, TaskID::ForFakeTask(), "{\"uris\": \"XXX\"}");
+  const auto task_spec_with_runtime_env = ExampleTaskSpec(
+      ActorID::Nil(), Language::PYTHON, job_id, ActorID::Nil(), {"XXX=YYY"},
+      TaskID::FromRandom(JobID::Nil()), R"({"uris": "XXX"})");
   popped_worker = worker_pool_->PopWorkerSync(task_spec_with_runtime_env, true, &status);
   // PopWorker success.
   ASSERT_NE(popped_worker, nullptr);

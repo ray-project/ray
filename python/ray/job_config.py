@@ -87,18 +87,35 @@ class JobConfig:
                 pb.metadata[k] = v
 
             parsed_env, eager_install = self._validate_runtime_env()
-            pb.runtime_env.uris[:] = parsed_env.get_uris()
-            pb.runtime_env.serialized_runtime_env = parsed_env.serialize()
-            pb.runtime_env.runtime_env_eager_install = eager_install
+            pb.runtime_env_info.uris[:] = parsed_env.get_uris()
+            pb.runtime_env_info.serialized_runtime_env = \
+                parsed_env.serialize()
+            pb.runtime_env_info.runtime_env_eager_install = eager_install
 
             self._cached_pb = pb
 
         return self._cached_pb
 
-    def get_runtime_env_uris(self):
-        """Get the uris of runtime environment"""
-        return self._validate_runtime_env()[0].get_uris()
+    def runtime_env_has_uris(self):
+        """Whether there are uris in runtime env or not"""
+        return self._validate_runtime_env()[
+            0].get_proto_runtime_env().has_uris()
 
     def get_serialized_runtime_env(self) -> str:
         """Return the JSON-serialized parsed runtime env dict"""
         return self._validate_runtime_env()[0].serialize()
+
+    @classmethod
+    def from_json(cls, job_config_json):
+        """
+        Generates a JobConfig object from json.
+        """
+        return cls(
+            num_java_workers_per_process=job_config_json.get(
+                "num_java_workers_per_process", 1),
+            jvm_options=job_config_json.get("jvm_options", None),
+            code_search_path=job_config_json.get("code_search_path", None),
+            runtime_env=job_config_json.get("runtime_env", None),
+            client_job=job_config_json.get("client_job", False),
+            metadata=job_config_json.get("metadata", None),
+            ray_namespace=job_config_json.get("ray_namespace", None))

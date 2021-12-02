@@ -1,8 +1,8 @@
 import copy
 import logging
 import os
+import re
 import sys
-from typing import Optional, List
 
 import yaml
 
@@ -20,7 +20,12 @@ import yaml
 
 
 class ReleaseTest:
-    def __init__(self, name: str, smoke_test: bool = False, retry: int = 0):
+    def __init__(
+            self,
+            name: str,
+            smoke_test: bool = False,
+            retry: int = 0,
+    ):
         self.name = name
         self.smoke_test = smoke_test
         self.retry = retry
@@ -47,24 +52,6 @@ class SmokeTest(ReleaseTest):
             name=name, smoke_test=True, retry=retry)
 
 
-class ConnectTest(ReleaseTest):
-    """Release Test that requires extra setup on the driver."""
-
-    def __init__(self,
-                 *args,
-                 setup_commands: Optional[List[str]] = None,
-                 requirements_file: Optional[str] = None,
-                 **kwargs):
-
-        # Commands to run on the driver before kicking off the test.
-        self.setup_commands = setup_commands if setup_commands else []
-
-        # Requirements to install on the driver before kicking off the test.
-        self.requirements_file = requirements_file
-
-        super().__init__(*args, **kwargs)
-
-
 CORE_NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/nightly_tests.yaml": [
         "shuffle_10gb",
@@ -87,14 +74,14 @@ CORE_NIGHTLY_TESTS = {
         # "non_streaming_shuffle_1tb_5000_partitions",
         "decision_tree_autoscaling",
         "decision_tree_autoscaling_20_runs",
-        "grpc_decision_tree_autoscaling_20_runs",
         "autoscaling_shuffle_1tb_1000_partitions",
         SmokeTest("stress_test_many_tasks"),
         SmokeTest("stress_test_dead_actors"),
         "shuffle_data_loader",
         "dask_on_ray_1tb_sort",
-        "many_nodes_actor_test",
-        "grpc_many_nodes_actor_test",
+        SmokeTest("threaded_actors_stress_test"),
+        "placement_group_performance_test",
+        "pg_long_running_performance_test",
     ],
     "~/ray/benchmarks/benchmark_tests.yaml": [
         "single_node",
@@ -108,6 +95,53 @@ CORE_NIGHTLY_TESTS = {
         "shuffle_data_loader",
         "pipelined_training_50_gb",
         "pipelined_ingestion_1500_gb_15_windows",
+        "datasets_preprocess_ingest",
+        SmokeTest("datasets_ingest_train_infer"),
+    ],
+    "~/ray/release/nightly_tests/chaos_test.yaml": [
+        "chaos_many_actors",
+        "chaos_many_tasks_no_object_store",
+    ],
+    "~/ray/release/microbenchmark/microbenchmark.yaml": [
+        "microbenchmark",
+    ],
+}
+
+SERVE_NIGHTLY_TESTS = {
+    "~/ray/release/long_running_tests/long_running_tests.yaml": [
+        SmokeTest("serve"),
+        SmokeTest("serve_failure"),
+    ],
+    "~/ray/release/serve_tests/serve_tests.yaml": [
+        "single_deployment_1k_noop_replica",
+        "multi_deployment_1k_noop_replica",
+        "serve_micro_benchmark",
+        "serve_cluster_fault_tolerance",
+    ],
+}
+
+CORE_DAILY_TESTS = {
+    "~/ray/release/nightly_tests/nightly_tests.yaml": [
+        "dask_on_ray_large_scale_test_no_spilling",
+        "dask_on_ray_large_scale_test_spilling",
+        "pg_autoscaling_regression_test",
+        "threaded_actors_stress_test",
+        "stress_test_many_tasks",
+        "stress_test_dead_actors",
+        "many_nodes_actor_test",
+    ],
+    "~/ray/release/nightly_tests/chaos_test.yaml": [
+        "chaos_dask_on_ray_large_scale_test_no_spilling",
+        "chaos_dask_on_ray_large_scale_test_spilling",
+    ],
+}
+
+CORE_SCALABILITY_TESTS_DAILY = {
+    "~/ray/benchmarks/benchmark_tests.yaml": [
+        "many_actors",
+        "many_tasks",
+        "many_pgs",
+        "many_nodes",
     ],
 }
 
@@ -119,11 +153,6 @@ NIGHTLY_TESTS = {
         "dask_xgboost_test",
         "modin_xgboost_test",
         "torch_tune_serve_test",
-    ],
-    "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        "dask_on_ray_large_scale_test_no_spilling",
-        "dask_on_ray_large_scale_test_spilling",
-        "pg_autoscaling_regression_test",
     ],
     "~/ray/release/long_running_tests/long_running_tests.yaml": [
         SmokeTest("actor_deaths"),
@@ -139,11 +168,16 @@ NIGHTLY_TESTS = {
         # SmokeTest("serve"),
         # SmokeTest("serve_failure"),
     ],
-    "~/ray/release/microbenchmark/microbenchmark.yaml": [
-        "microbenchmark",
-    ],
     "~/ray/release/sgd_tests/sgd_tests.yaml": [
         "sgd_gpu",
+    ],
+    "~/ray/release/tune_tests/cloud_tests/tune_cloud_tests.yaml": [
+        "aws_no_sync_down",
+        "aws_ssh_sync",
+        "aws_durable_upload",
+        "aws_durable_upload_rllib_str",
+        "aws_durable_upload_rllib_trainer",
+        "gcp_k8s_durable_upload",
     ],
     "~/ray/release/tune_tests/scalability_tests/tune_tests.yaml": [
         "bookkeeping_overhead",
@@ -168,35 +202,19 @@ NIGHTLY_TESTS = {
     "~/ray/release/rllib_tests/rllib_tests.yaml": [
         SmokeTest("learning_tests"),
         SmokeTest("stress_tests"),
+        "performance_tests",
         "multi_gpu_learning_tests",
         "multi_gpu_with_lstm_learning_tests",
         "multi_gpu_with_attention_learning_tests",
         # We'll have these as per-PR tests soon.
         # "example_scripts_on_gpu_tests",
     ],
-    "~/ray/release/serve_tests/serve_tests.yaml": [
-        "single_deployment_1k_noop_replica",
-        "multi_deployment_1k_noop_replica",
-        "serve_micro_benchmark",
-        "serve_cluster_fault_tolerance",
-    ],
     "~/ray/release/runtime_env_tests/runtime_env_tests.yaml": [
-        "rte_many_tasks_actors",
-        "wheel_urls",
+        "rte_many_tasks_actors", "wheel_urls", "rte_ray_client"
     ],
 }
 
 WEEKLY_TESTS = {
-    "~/ray/benchmarks/benchmark_tests.yaml": [
-        "many_actors",
-        "many_tasks",
-        "many_pgs",
-        "many_nodes",
-    ],
-    "~/ray/release/nightly_tests/nightly_tests.yaml": [
-        "stress_test_many_tasks",
-        "stress_test_dead_actors",
-    ],
     "~/ray/release/horovod_tests/horovod_tests.yaml": [
         "horovod_test",
     ],
@@ -229,13 +247,6 @@ WEEKLY_TESTS = {
     ],
 }
 
-MANUAL_TESTS = {
-    "~/ray/release/long_running_tests/long_running_tests.yaml": [
-        SmokeTest("serve"),
-        SmokeTest("serve_failure"),
-    ]
-}
-
 # This test suite holds "user" tests to test important user workflows
 # in a particular environment.
 # All workloads in this test suite should:
@@ -243,16 +254,26 @@ MANUAL_TESTS = {
 #   2. Use autoscaling/scale up (no wait_cluster.py)
 #   3. Use GPUs if applicable
 #   4. Have the `use_connect` flag set.
-USER_TESTS = {}
+USER_TESTS = {
+    "~/ray/release/ml_user_tests/ml_user_tests.yaml": [
+        "train_tensorflow_mnist_test", "train_torch_linear_test",
+        "ray_lightning_user_test_latest", "ray_lightning_user_test_master",
+        "horovod_user_test_latest", "horovod_user_test_master",
+        "xgboost_gpu_connect_latest", "xgboost_gpu_connect_master",
+        "tune_rllib_connect_test"
+    ]
+}
 
 SUITES = {
     "core-nightly": CORE_NIGHTLY_TESTS,
+    "serve-nightly": SERVE_NIGHTLY_TESTS,
+    "core-daily": CORE_DAILY_TESTS,
+    "core-scalability": CORE_SCALABILITY_TESTS_DAILY,
     "nightly": {
         **NIGHTLY_TESTS,
         **USER_TESTS
     },
     "weekly": WEEKLY_TESTS,
-    "manual": MANUAL_TESTS,
 }
 
 DEFAULT_STEP_TEMPLATE = {
@@ -436,6 +457,14 @@ def create_test_step(
         test_file: str,
         test_name: ReleaseTest,
 ):
+    custom_commit_str = "custom_wheels_url"
+    if ray_wheels:
+        # Extract commit from url
+        p = re.compile(r"([a-f0-9]{40})")
+        m = p.search(ray_wheels)
+        if m is not None:
+            custom_commit_str = m.group(1)
+
     ray_wheels_str = f" ({ray_wheels}) " if ray_wheels else ""
 
     logging.info(f"Creating step for {test_file}/{test_name}{ray_wheels_str}")
@@ -466,7 +495,7 @@ def create_test_step(
             }]
         }
 
-    step_conf["commands"] = [
+    step_conf["commands"] += [
         "pip install -q -r release/requirements.txt",
         "pip install -U boto3 botocore",
         f"git clone -b {ray_test_branch} {ray_test_repo} ~/ray", cmd,
@@ -474,17 +503,10 @@ def create_test_step(
         "|| true"
     ]
 
-    if isinstance(test_name, ConnectTest):
-        # Add driver side setup commands to the step.
-        pip_requirements_command = [f"pip install -U -r "
-                                    f"{test_name.requirements_file}"] if \
-            test_name.requirements_file else []
-        step_conf["commands"] = test_name.setup_commands \
-            + pip_requirements_command \
-            + step_conf["commands"]
-
-    step_conf["label"] = f"{ray_wheels_str}{test_name} ({ray_branch}) - " \
-                         f"{ray_test_branch}/{ray_test_repo}"
+    step_conf["label"] = (
+        f"{test_name} "
+        f"({custom_commit_str if ray_wheels_str else ray_branch}) - "
+        f"{ray_test_branch}/{ray_test_repo}")
     return step_conf
 
 

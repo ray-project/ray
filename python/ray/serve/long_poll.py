@@ -15,7 +15,9 @@ from ray.serve.utils import logger
 # that will slow down, or even block controller actor's event loop if near
 # its max_concurrency limit. Therefore we timeout a polling request after
 # a few seconds and let each client retry on their end.
-LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = 60
+# We randomly select a timeout within this range to avoid a "thundering herd"
+# when there are many clients subscribing at the same time.
+LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S = (30, 60)
 
 
 class LongPollNamespace(Enum):
@@ -120,9 +122,7 @@ class LongPollClient:
         if isinstance(updates, (ray.exceptions.RayTaskError)):
             if isinstance(updates.as_instanceof_cause(),
                           (asyncio.TimeoutError)):
-                logger.debug(
-                    f"LongPollClient polling timed out after "
-                    f"{LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S} secs. Retrying.")
+                logger.debug("LongPollClient polling timed out. Retrying.")
             else:
                 # Some error happened in the controller. It could be a bug or
                 # some undesired state.
@@ -222,7 +222,7 @@ class LongPollHost:
         done, not_done = await asyncio.wait(
             async_task_to_watched_keys.keys(),
             return_when=asyncio.FIRST_COMPLETED,
-            timeout=LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S)
+            timeout=random.uniform(*LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S))
 
         [task.cancel() for task in not_done]
 

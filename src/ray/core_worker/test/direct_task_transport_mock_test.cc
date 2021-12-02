@@ -43,7 +43,7 @@ class DirectTaskTransportTest : public ::testing::Test {
         std::make_shared<CoreWorkerMemoryStore>(), task_finisher,
         NodeID::Nil(), /* local_raylet_id */
         0,             /* lease_timeout_ms */
-        actor_creator);
+        actor_creator, JobID::Nil() /* job_id */);
   }
 
   TaskSpecification GetCreatingTaskSpec(const ActorID &actor_id) {
@@ -79,8 +79,8 @@ TEST_F(DirectTaskTransportTest, ActorCreationFail) {
   auto task_spec = GetCreatingTaskSpec(actor_id);
   EXPECT_CALL(*task_finisher, CompletePendingTask(_, _, _)).Times(0);
   EXPECT_CALL(*task_finisher,
-              PendingTaskFailed(task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED,
-                                _, _, true));
+              FailOrRetryPendingTask(task_spec.TaskId(),
+                                     rpc::ErrorType::ACTOR_CREATION_FAILED, _, _, true));
   rpc::ClientCallback<rpc::CreateActorReply> create_cb;
   EXPECT_CALL(*actor_creator, AsyncCreateActor(task_spec, _))
       .WillOnce(DoAll(SaveArg<1>(&create_cb), Return(Status::OK())));

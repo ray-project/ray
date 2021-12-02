@@ -16,8 +16,8 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray.actor import ActorHandle
-from ray.serve.common import BackendInfo, GoalId, ReplicaTag
-from ray.serve.config import (AutoscalingConfig, BackendConfig, HTTPOptions,
+from ray.serve.common import DeploymentInfo, GoalId, ReplicaTag
+from ray.serve.config import (AutoscalingConfig, DeploymentConfig, HTTPOptions,
                               ReplicaConfig)
 from ray.serve.constants import (DEFAULT_CHECKPOINT_PATH, HTTP_PROXY_TIMEOUT,
                                  SERVE_CONTROLLER_NAME, MAX_CACHED_HANDLES,
@@ -187,18 +187,19 @@ class Client:
             return False
 
     @_ensure_connected
-    def deploy(self,
-               name: str,
-               backend_def: Union[Callable, Type[Callable], str],
-               init_args: Tuple[Any],
-               init_kwargs: Dict[Any, Any],
-               ray_actor_options: Optional[Dict] = None,
-               config: Optional[Union[BackendConfig, Dict[str, Any]]] = None,
-               version: Optional[str] = None,
-               prev_version: Optional[str] = None,
-               route_prefix: Optional[str] = None,
-               url: str = "",
-               _blocking: Optional[bool] = True) -> Optional[GoalId]:
+    def deploy(
+            self,
+            name: str,
+            deployment_def: Union[Callable, Type[Callable], str],
+            init_args: Tuple[Any],
+            init_kwargs: Dict[Any, Any],
+            ray_actor_options: Optional[Dict] = None,
+            config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
+            version: Optional[str] = None,
+            prev_version: Optional[str] = None,
+            route_prefix: Optional[str] = None,
+            url: str = "",
+            _blocking: Optional[bool] = True) -> Optional[GoalId]:
         if config is None:
             config = {}
         if ray_actor_options is None:
@@ -212,23 +213,25 @@ class Client:
             ray_actor_options["runtime_env"] = curr_job_env
 
         replica_config = ReplicaConfig(
-            backend_def,
+            deployment_def,
             init_args=init_args,
             init_kwargs=init_kwargs,
             ray_actor_options=ray_actor_options)
 
         if isinstance(config, dict):
-            backend_config = BackendConfig.parse_obj(config)
-        elif isinstance(config, BackendConfig):
-            backend_config = config
+            deployment_config = DeploymentConfig.parse_obj(config)
+        elif isinstance(config, DeploymentConfig):
+            deployment_config = config
         else:
-            raise TypeError("config must be a BackendConfig or a dictionary.")
+            raise TypeError(
+                "config must be a DeploymentConfig or a dictionary.")
 
         goal_id, updating = ray.get(
-            self._controller.deploy.remote(
-                name, backend_config.to_proto_bytes(), replica_config, version,
-                prev_version, route_prefix,
-                ray.get_runtime_context().job_id))
+            self._controller.deploy.remote(name,
+                                           deployment_config.to_proto_bytes(),
+                                           replica_config, version,
+                                           prev_version, route_prefix,
+                                           ray.get_runtime_context().job_id))
 
         tag = f"component=serve deployment={name}"
 
@@ -255,11 +258,11 @@ class Client:
             ray.get(self._controller.delete_deployment.remote(name)))
 
     @_ensure_connected
-    def get_deployment_info(self, name: str) -> Tuple[BackendInfo, str]:
+    def get_deployment_info(self, name: str) -> Tuple[DeploymentInfo, str]:
         return ray.get(self._controller.get_deployment_info.remote(name))
 
     @_ensure_connected
-    def list_deployments(self) -> Dict[str, Tuple[BackendInfo, str]]:
+    def list_deployments(self) -> Dict[str, Tuple[DeploymentInfo, str]]:
         return ray.get(self._controller.list_deployments.remote())
 
     @_ensure_connected
@@ -468,8 +471,8 @@ def _connect() -> Client:
     If calling from the driver program, the Serve instance on this Ray cluster
     must first have been initialized using `serve.start(detached=True)`.
 
-    If called from within a backend, this will connect to the same Serve
-    instance that the backend is running in.
+    If called from within a replica, this will connect to the same Serve
+    instance that the replica is running in.
     """
 
     # Initialize ray if needed.
@@ -477,7 +480,7 @@ def _connect() -> Client:
     if not ray.is_initialized():
         ray.init(namespace="serve")
 
-    # When running inside of a backend, _INTERNAL_REPLICA_CONTEXT is set to
+    # When running inside of a replica, _INTERNAL_REPLICA_CONTEXT is set to
     # ensure that the correct instance is connected to.
     if _INTERNAL_REPLICA_CONTEXT is None:
         controller_name = SERVE_CONTROLLER_NAME
@@ -541,8 +544,9 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]):
     """Mark an ASGI application ingress for Serve.
 
     Args:
-        app (FastAPI,APIRouter,Starlette, etc): the app or router object serve
-            as ingress for this backend. It can be any ASGI compatible object.
+        app (FastAPI,APIRouter,Starlette,etc): the app or router object serve
+            as ingress for this deployment. It can be any ASGI compatible
+            object.
 
     Example:
     >>> app = FastAPI()
@@ -626,7 +630,7 @@ class Deployment:
     def __init__(self,
                  func_or_class: Callable,
                  name: str,
-                 config: BackendConfig,
+                 config: DeploymentConfig,
                  version: Optional[str] = None,
                  prev_version: Optional[str] = None,
                  init_args: Optional[Tuple[Any]] = None,
@@ -654,7 +658,7 @@ class Deployment:
             raise TypeError("version must be a string.")
         if not (prev_version is None or isinstance(prev_version, str)):
             raise TypeError("prev_version must be a string.")
-        if not (init_args is None or isinstance(init_args, tuple)):
+        if not (init_args is None or isinstance(init_args, (tuple, list))):
             raise TypeError("init_args must be a tuple.")
         if not (init_kwargs is None or isinstance(init_kwargs, dict)):
             raise TypeError("init_kwargs must be a dict.")
@@ -872,7 +876,7 @@ class Deployment:
         if ray_actor_options is None:
             ray_actor_options = self._ray_actor_options
 
-        if _autoscaling_config is None:
+        if _autoscaling_config is not None:
             new_config.autoscaling_config = _autoscaling_config
 
         if _graceful_shutdown_wait_loop_s is not None:
@@ -1021,7 +1025,7 @@ def deployment(
         raise ValueError("Manually setting num_replicas is not allowed when "
                          "_autoscaling_config is provided.")
 
-    config = BackendConfig()
+    config = DeploymentConfig()
     if num_replicas is not None:
         config.num_replicas = num_replicas
 
@@ -1079,20 +1083,21 @@ def get_deployment(name: str) -> Deployment:
         Deployment
     """
     try:
-        backend_info, route_prefix = _get_global_client().get_deployment_info(
-            name)
+        deployment_info, route_prefix = _get_global_client(
+        ).get_deployment_info(name)
     except KeyError:
         raise KeyError(f"Deployment {name} was not found. "
                        "Did you call Deployment.deploy()?")
     return Deployment(
-        cloudpickle.loads(backend_info.replica_config.serialized_backend_def),
+        cloudpickle.loads(
+            deployment_info.replica_config.serialized_deployment_def),
         name,
-        backend_info.backend_config,
-        version=backend_info.version,
-        init_args=backend_info.replica_config.init_args,
-        init_kwargs=backend_info.replica_config.init_kwargs,
+        deployment_info.deployment_config,
+        version=deployment_info.version,
+        init_args=deployment_info.replica_config.init_args,
+        init_kwargs=deployment_info.replica_config.init_kwargs,
         route_prefix=route_prefix,
-        ray_actor_options=backend_info.replica_config.ray_actor_options,
+        ray_actor_options=deployment_info.replica_config.ray_actor_options,
         _internal=True,
     )
 
@@ -1106,17 +1111,17 @@ def list_deployments() -> Dict[str, Deployment]:
     infos = _get_global_client().list_deployments()
 
     deployments = {}
-    for name, (backend_info, route_prefix) in infos.items():
+    for name, (deployment_info, route_prefix) in infos.items():
         deployments[name] = Deployment(
             cloudpickle.loads(
-                backend_info.replica_config.serialized_backend_def),
+                deployment_info.replica_config.serialized_deployment_def),
             name,
-            backend_info.backend_config,
-            version=backend_info.version,
-            init_args=backend_info.replica_config.init_args,
-            init_kwargs=backend_info.replica_config.init_kwargs,
+            deployment_info.deployment_config,
+            version=deployment_info.version,
+            init_args=deployment_info.replica_config.init_args,
+            init_kwargs=deployment_info.replica_config.init_kwargs,
             route_prefix=route_prefix,
-            ray_actor_options=backend_info.replica_config.ray_actor_options,
+            ray_actor_options=deployment_info.replica_config.ray_actor_options,
             _internal=True,
         )
 

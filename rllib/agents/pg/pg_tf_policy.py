@@ -51,6 +51,6 @@ def pg_tf_loss(
 # - PG loss function
 PGTFPolicy = build_tf_policy(
     name="PGTFPolicy",
-    get_default_config=lambda: ray.rllib.agents.pg.pg.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.pg.DEFAULT_CONFIG,
     postprocess_fn=post_process_advantages,
     loss_fn=pg_tf_loss)

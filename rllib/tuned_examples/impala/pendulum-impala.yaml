@@ -1,5 +1,5 @@
 pendulum-impala-tf:
-    env: Pendulum-v0
+    env: Pendulum-v1
     run: IMPALA
     stop:
         episode_reward_mean: -700

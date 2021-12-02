@@ -46,10 +46,7 @@ public class LongPollClient {
       new HashMap<>();
 
   static {
-    DESERIALIZERS.put(
-        LongPollNamespace.BACKEND_CONFIGS, body -> ServeProtoUtil.parseBackendConfig(body));
-    DESERIALIZERS.put(
-        LongPollNamespace.REPLICA_HANDLES, body -> ServeProtoUtil.parseEndpointSet(body));
+    DESERIALIZERS.put(LongPollNamespace.ROUTE_TABLE, body -> ServeProtoUtil.parseEndpointSet(body));
     DESERIALIZERS.put(
         LongPollNamespace.REPLICA_HANDLES,
         body -> {
@@ -89,7 +86,7 @@ public class LongPollClient {
                 }
               }
             },
-            "backend-poll-thread");
+            "ray-serve-long-poll-thread");
   }
 
   public void start() {

@@ -18,7 +18,7 @@
 #include "gtest/gtest.h"
 #include "ray/core_worker/actor_creator.h"
 #include "mock/ray/core_worker/task_manager.h"
-#include "mock/ray/gcs/gcs_client.h"
+#include "mock/ray/gcs/gcs_client/gcs_client.h"
 // clang-format on
 
 namespace ray {
@@ -83,9 +83,9 @@ TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   actor_task_submitter->AddActorQueueIfNotExists(actor_id);
   ASSERT_TRUE(actor_task_submitter->SubmitTask(task_spec).ok());
-  EXPECT_CALL(*task_finisher,
-              PendingTaskFailed(task_spec.TaskId(),
-                                rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, _, _, _));
+  EXPECT_CALL(*task_finisher, FailOrRetryPendingTask(
+                                  task_spec.TaskId(),
+                                  rpc::ErrorType::DEPENDENCY_RESOLUTION_FAILED, _, _, _));
   register_cb(Status::IOError(""));
 }
 
@@ -107,7 +107,7 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
   actor_task_submitter->AddActorQueueIfNotExists(actor_id);
   ASSERT_TRUE(actor_task_submitter->SubmitTask(task_spec).ok());
-  EXPECT_CALL(*task_finisher, PendingTaskFailed(_, _, _, _, _)).Times(0);
+  EXPECT_CALL(*task_finisher, FailOrRetryPendingTask(_, _, _, _, _)).Times(0);
   register_cb(Status::OK());
 }
 

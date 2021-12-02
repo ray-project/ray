@@ -4,6 +4,7 @@ from typing import Any, Callable, List, Iterator, Iterable, Generic, Union, \
     Optional, TYPE_CHECKING
 
 import ray
+from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset, T, U, BatchType
 from ray.data.impl.pipeline_executor import PipelineExecutor, \
     PipelineSplitExecutorCoordinator
@@ -197,7 +198,7 @@ class DatasetPipeline(Generic[T]):
                splitter: Callable[[Dataset], "DatasetPipeline[T]"]):
 
         coordinator = PipelineSplitExecutorCoordinator.remote(
-            self, n, splitter)
+            self, n, splitter, DatasetContext.get_current())
         if self._executed[0]:
             raise RuntimeError("Pipeline cannot be read multiple times.")
         self._executed[0] = True

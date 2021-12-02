@@ -26,7 +26,7 @@ namespace gcs {
 GcsActorScheduler::GcsActorScheduler(
     instrumented_io_context &io_context, GcsActorTable &gcs_actor_table,
     const GcsNodeManager &gcs_node_manager,
-    std::function<void(std::shared_ptr<GcsActor>)> schedule_failure_handler,
+    std::function<void(std::shared_ptr<GcsActor>, bool)> schedule_failure_handler,
     std::function<void(std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply)>
         schedule_success_handler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
@@ -51,7 +51,7 @@ void GcsActorScheduler::Schedule(std::shared_ptr<GcsActor> actor) {
   if (!node.has_value()) {
     // There are no available nodes to schedule the actor, so just trigger the failed
     // handler.
-    schedule_failure_handler_(std::move(actor));
+    schedule_failure_handler_(std::move(actor), /*runtime_env_setup_failed=*/false);
     return;
   }
 
@@ -229,6 +229,7 @@ void GcsActorScheduler::LeaseWorkerFromNode(std::shared_ptr<GcsActor> actor,
   // backlog in GCS.
   lease_client->RequestWorkerLease(
       actor->GetActorTableData().task_spec(),
+      RayConfig::instance().gcs_actor_scheduling_enabled(),
       [this, actor, node](const Status &status,
                           const rpc::RequestWorkerLeaseReply &reply) {
         HandleWorkerLeaseReply(actor, node, status, reply);
@@ -308,6 +309,17 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
                                         CreateActorOnWorker(actor, leased_worker);
                                       }));
   }
+}
+
+void GcsActorScheduler::OnRuntimeEnvSetupFailure(std::shared_ptr<GcsActor> actor,
+                                                 const NodeID &node_id) {
+  RAY_LOG(ERROR)
+      << "Failed to lease worker from node " << node_id << " for actor "
+      << actor->GetActorID() << "("
+      << actor->GetCreationTaskSpecification().FunctionDescriptor()->CallString() << ")"
+      << " as the runtime environment setup failed, job id = "
+      << actor->GetActorID().JobId();
+  schedule_failure_handler_(actor, /*runtime_env_setup_failed=*/true);
 }
 
 void GcsActorScheduler::CreateActorOnWorker(std::shared_ptr<GcsActor> actor,
@@ -422,6 +434,17 @@ bool GcsActorScheduler::KillActorOnWorker(const rpc::Address &worker_address,
   return true;
 }
 
+std::string GcsActorScheduler::DebugString() const {
+  std::ostringstream stream;
+  stream << "GcsActorScheduler: "
+         << "\n- node_to_actors_when_leasing_: " << node_to_actors_when_leasing_.size()
+         << "\n- node_to_workers_when_creating_: "
+         << node_to_workers_when_creating_.size()
+         << "\n- nodes_of_releasing_unused_workers_: "
+         << nodes_of_releasing_unused_workers_.size();
+  return stream.str();
+}
+
 NodeID RayletBasedActorScheduler::SelectNode(std::shared_ptr<GcsActor> actor) {
   // Select a node to lease worker for the actor.
   std::shared_ptr<rpc::GcsNodeInfo> node;
@@ -487,6 +510,13 @@ void RayletBasedActorScheduler::HandleWorkerLeaseReply(
     }
 
     if (status.ok()) {
+      // The runtime environment has failed by an unrecoverable error.
+      // We cannot create this actor anymore.
+      if (reply.runtime_env_setup_failed()) {
+        OnRuntimeEnvSetupFailure(actor, node_id);
+        return;
+      }
+
       if (reply.worker_address().raylet_id().empty() &&
           reply.retry_at_raylet_address().raylet_id().empty()) {
         // Actor creation task has been cancelled. It is triggered by `ray.kill`. If

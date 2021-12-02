@@ -22,6 +22,20 @@ namespace pub_internal {
 
 bool SubscriptionIndex::AddEntry(const std::string &key_id,
                                  const SubscriberID &subscriber_id) {
+  if (key_id.empty()) {
+    // This subscriber will subscribe to all entities in the channel.
+    if (!subscribers_to_key_id_.empty()) {
+      // Skip if the channel is already in per-entity subscription mode.
+      return false;
+    }
+    return subscribers_to_all_.insert(subscriber_id).second;
+  }
+
+  // Skip if the channel is already in all-entity subscription mode.
+  if (!subscribers_to_all_.empty()) {
+    return false;
+  }
+
   auto &subscribing_key_ids = subscribers_to_key_id_[subscriber_id];
   auto key_added = subscribing_key_ids.emplace(key_id).second;
   auto &subscriber_map = key_id_to_subscribers_[key_id];
@@ -33,6 +47,9 @@ bool SubscriptionIndex::AddEntry(const std::string &key_id,
 
 absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>
 SubscriptionIndex::GetSubscriberIdsByKeyId(const std::string &key_id) const {
+  if (!subscribers_to_all_.empty()) {
+    return subscribers_to_all_;
+  }
   auto it = key_id_to_subscribers_.find(key_id);
   if (it == key_id_to_subscribers_.end()) {
     return absl::nullopt;
@@ -41,15 +58,11 @@ SubscriptionIndex::GetSubscriberIdsByKeyId(const std::string &key_id) const {
       std::ref(it->second)};
 }
 
-bool SubscriptionIndex::HasKeyId(const std::string &key_id) const {
-  return key_id_to_subscribers_.contains(key_id);
-}
-
-bool SubscriptionIndex::HasSubscriber(const SubscriberID &subscriber_id) const {
-  return subscribers_to_key_id_.contains(subscriber_id);
-}
-
 bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
+  if (!subscribers_to_all_.empty()) {
+    return subscribers_to_all_.erase(subscriber_id) > 0;
+  }
+
   auto subscribing_message_it = subscribers_to_key_id_.find(subscriber_id);
   if (subscribing_message_it == subscribers_to_key_id_.end()) {
     return false;
@@ -74,6 +87,13 @@ bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
 
 bool SubscriptionIndex::EraseEntry(const std::string &key_id,
                                    const SubscriberID &subscriber_id) {
+  if (!subscribers_to_all_.empty()) {
+    if (!key_id.empty()) {
+      return false;
+    }
+    return subscribers_to_all_.erase(subscriber_id) > 0;
+  }
+
   // Erase keys from subscribers.
   auto subscribers_to_message_it = subscribers_to_key_id_.find(subscriber_id);
   if (subscribers_to_message_it == subscribers_to_key_id_.end()) {
@@ -108,12 +128,27 @@ bool SubscriptionIndex::EraseEntry(const std::string &key_id,
   return true;
 }
 
+bool SubscriptionIndex::HasKeyId(const std::string &key_id) const {
+  return key_id_to_subscribers_.contains(key_id);
+}
+
+bool SubscriptionIndex::HasSubscriber(const SubscriberID &subscriber_id) const {
+  if (subscribers_to_all_.contains(subscriber_id)) {
+    return true;
+  }
+  return subscribers_to_key_id_.contains(subscriber_id);
+}
+
 bool SubscriptionIndex::CheckNoLeaks() const {
   return key_id_to_subscribers_.size() == 0 && subscribers_to_key_id_.size() == 0;
 }
 
 bool Subscriber::ConnectToSubscriber(rpc::PubsubLongPollingReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
+  if (long_polling_connection_) {
+    // Flush the current subscriber poll with an empty reply.
+    PublishIfPossible(/*force_noop=*/true);
+  }
   if (!long_polling_connection_) {
     RAY_CHECK(reply != nullptr);
     RAY_CHECK(send_reply_callback != nullptr);
@@ -127,7 +162,7 @@ bool Subscriber::ConnectToSubscriber(rpc::PubsubLongPollingReply *reply,
 
 void Subscriber::QueueMessage(const rpc::PubMessage &pub_message, bool try_publish) {
   if (mailbox_.empty() || mailbox_.back()->pub_messages_size() >= publish_batch_size_) {
-    mailbox_.push_back(absl::make_unique<rpc::PubsubLongPollingReply>());
+    mailbox_.push(absl::make_unique<rpc::PubsubLongPollingReply>());
   }
 
   // Update the long polling reply.
@@ -140,30 +175,25 @@ void Subscriber::QueueMessage(const rpc::PubMessage &pub_message, bool try_publi
   }
 }
 
-bool Subscriber::PublishIfPossible(bool force) {
+bool Subscriber::PublishIfPossible(bool force_noop) {
   if (!long_polling_connection_) {
     return false;
   }
+  if (!force_noop && mailbox_.empty()) {
+    return false;
+  }
 
-  if (force || mailbox_.size() > 0) {
-    // If force publish is invoked, mailbox could be empty. We should always add a reply
-    // here because otherwise, there could be memory leak due to our grpc layer
-    // implementation.
-    if (mailbox_.empty()) {
-      mailbox_.push_back(absl::make_unique<rpc::PubsubLongPollingReply>());
-    }
-
+  if (!force_noop) {
     // Reply to the long polling subscriber. Swap the reply here to avoid extra copy.
     long_polling_connection_->reply->Swap(mailbox_.front().get());
-    long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
-
-    // Clean up & update metadata.
-    long_polling_connection_.reset(nullptr);
-    mailbox_.pop_front();
-    last_connection_update_time_ms_ = get_time_ms_();
-    return true;
+    mailbox_.pop();
   }
-  return false;
+  long_polling_connection_->send_reply_callback(Status::OK(), nullptr, nullptr);
+
+  // Clean up & update metadata.
+  long_polling_connection_.reset();
+  last_connection_update_time_ms_ = get_time_ms_();
+  return true;
 }
 
 bool Subscriber::CheckNoLeaks() const {
@@ -185,8 +215,9 @@ bool Subscriber::IsActiveConnectionTimedOut() const {
 void Publisher::ConnectToSubscriber(const SubscriberID &subscriber_id,
                                     rpc::PubsubLongPollingReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_id;
+  RAY_CHECK(reply != nullptr);
   RAY_CHECK(send_reply_callback != nullptr);
+  RAY_LOG(DEBUG) << "Long polling connection initiated by " << subscriber_id;
 
   absl::MutexLock lock(&mutex_);
   auto it = subscribers_.find(subscriber_id);
@@ -207,16 +238,16 @@ void Publisher::ConnectToSubscriber(const SubscriberID &subscriber_id,
 
 bool Publisher::RegisterSubscription(const rpc::ChannelType channel_type,
                                      const SubscriberID &subscriber_id,
-                                     const std::string &key_id) {
+                                     const std::optional<std::string> &key_id) {
   absl::MutexLock lock(&mutex_);
-  if (subscribers_.count(subscriber_id) == 0) {
+  if (!subscribers_.contains(subscriber_id)) {
     subscribers_.emplace(subscriber_id,
                          std::make_shared<pub_internal::Subscriber>(
                              get_time_ms_, subscriber_timeout_ms_, publish_batch_size_));
   }
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   RAY_CHECK(subscription_index_it != subscription_index_map_.end());
-  return subscription_index_it->second.AddEntry(key_id, subscriber_id);
+  return subscription_index_it->second.AddEntry(key_id.value_or(""), subscriber_id);
 }
 
 void Publisher::Publish(const rpc::PubMessage &pub_message) {
@@ -253,11 +284,11 @@ void Publisher::PublishFailure(const rpc::ChannelType channel_type,
 
 bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
                                        const SubscriberID &subscriber_id,
-                                       const std::string &key_id) {
+                                       const std::optional<std::string> &key_id) {
   absl::MutexLock lock(&mutex_);
   auto subscription_index_it = subscription_index_map_.find(channel_type);
   RAY_CHECK(subscription_index_it != subscription_index_map_.end());
-  return subscription_index_it->second.EraseEntry(key_id, subscriber_id);
+  return subscription_index_it->second.EraseEntry(key_id.value_or(""), subscriber_id);
 }
 
 bool Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {
@@ -279,7 +310,7 @@ int Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) {
   }
   auto &subscriber = it->second;
   // Remove the long polling connection because otherwise, there's memory leak.
-  subscriber->PublishIfPossible(/*force=*/true);
+  subscriber->PublishIfPossible(/*force_noop=*/true);
   subscribers_.erase(it);
   return erased;
 }
@@ -298,8 +329,8 @@ void Publisher::CheckDeadSubscribers() {
     if (disconnected) {
       dead_subscribers.push_back(it.first);
     } else if (active_connection_timed_out) {
-      // Refresh the long polling connection. The subscriber will send it again.
-      subscriber->PublishIfPossible(/*force*/ true);
+      // Refresh the long polling connection. The subscriber will poll again.
+      subscriber->PublishIfPossible(/*force_noop*/ true);
     }
   }
 

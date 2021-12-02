@@ -10,7 +10,8 @@ from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils import NullContextManager
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf, try_import_torch, \
     TensorType
 from ray.rllib.utils.spaces.repeated import Repeated
@@ -241,6 +242,11 @@ class ModelV2:
 
         with self.context():
             res = self.forward(restored, state or [], seq_lens)
+
+        if isinstance(input_dict, SampleBatch):
+            input_dict.accessed_keys = restored.accessed_keys - {"obs_flat"}
+            input_dict.deleted_keys = restored.deleted_keys
+            input_dict.added_keys = restored.added_keys - {"obs_flat"}
 
         if ((not isinstance(res, list) and not isinstance(res, tuple))
                 or len(res) != 2):

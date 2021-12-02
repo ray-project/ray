@@ -26,6 +26,7 @@ DOCKER_HUB_DESCRIPTION = {
                  "https://hub.docker.com/r/rayproject/ray"),
     "ray": "Official Docker Images for Ray, the distributed computing API.",
     "ray-ml": "Developer ready Docker Image for Ray.",
+    "ray-worker-container": "Internal Image for CI test",
 }
 
 PY_MATRIX = {
@@ -210,7 +211,8 @@ def _build_docker_image(image_name: str,
 
         labels = {
             "image-name": image_name,
-            "python-version": PY_MATRIX[py_version]
+            "python-version": PY_MATRIX[py_version],
+            "ray-commit": _get_commit_sha()
         }
         if image_type in CUDA_FULL:
             labels["cuda-version"] = CUDA_FULL[image_type]
@@ -437,6 +439,8 @@ def push_and_tag_images(py_versions: List[str],
                 tag_mapping[tag].append(tag)
 
         # If no device is specified, it should map to CPU image.
+        # For ray-ml image, if no device specified, it should map to GPU image.
+        # There is no CPU image for ray-ml.
         # "-gpu" tag should refer to the ML_CUDA_VERSION
         for old_tag in tag_mapping.keys():
             if "cpu" in old_tag:
@@ -449,6 +453,13 @@ def push_and_tag_images(py_versions: List[str],
                     old_str=f"-{ML_CUDA_VERSION}",
                     new_str="-gpu")
                 tag_mapping[old_tag].extend(new_tags)
+
+                if image_name == "ray-ml":
+                    new_tags = _create_new_tags(
+                        tag_mapping[old_tag],
+                        old_str=f"-{ML_CUDA_VERSION}",
+                        new_str="")
+                    tag_mapping[old_tag].extend(new_tags)
 
         # No Python version specified should refer to DEFAULT_PYTHON_VERSION
         for old_tag in tag_mapping.keys():
@@ -486,6 +497,10 @@ def push_and_tag_images(py_versions: List[str],
                         assert f"{date_tag}-gpu" in tag_mapping[old_tag]
                     else:
                         assert f"{sha_tag}-gpu" in tag_mapping[old_tag]
+
+                    if image_name == "ray-ml":
+                        assert "nightly" in tag_mapping[old_tag]
+                        assert f"{sha_tag}" in tag_mapping[old_tag]
 
         print(f"These tags will be created for {image_name}: ", tag_mapping)
 
@@ -623,7 +638,8 @@ if __name__ == "__main__":
         # If manually triggered, request user for branch and SHA value to use.
         _configure_human_version()
     if (build_type in {HUMAN, MERGE, BUILDKITE}
-            or _check_if_docker_files_modified()):
+            or _check_if_docker_files_modified()
+            or args.only_build_worker_container):
         DOCKER_CLIENT = docker.from_env()
         is_merge = build_type == MERGE
         # Buildkite is authenticated in the background.

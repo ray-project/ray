@@ -44,6 +44,8 @@ class WorkerContext {
 
   const std::string &GetCurrentSerializedRuntimeEnv() const LOCKS_EXCLUDED(mutex_);
 
+  std::shared_ptr<rpc::RuntimeEnv> GetCurrentRuntimeEnv() const LOCKS_EXCLUDED(mutex_);
+
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id);
 
@@ -82,6 +84,8 @@ class WorkerContext {
   // Returns the next put object index; used to calculate ObjectIDs for puts.
   ObjectIDIndexType GetNextPutIndex();
 
+  int64_t GetTaskDepth() const;
+
  protected:
   // allow unit test to set.
   bool current_actor_is_direct_call_ = false;
@@ -100,14 +104,16 @@ class WorkerContext {
   // Whether or not we should implicitly capture parent's placement group.
   bool placement_group_capture_child_tasks_ GUARDED_BY(mutex_);
   // The runtime env for the current actor or task.
-  rpc::RuntimeEnv runtime_env_ GUARDED_BY(mutex_);
+  std::shared_ptr<rpc::RuntimeEnv> runtime_env_ GUARDED_BY(mutex_);
+  // The runtime env info.
+  rpc::RuntimeEnvInfo runtime_env_info_ GUARDED_BY(mutex_);
   /// The id of the (main) thread that constructed this worker context.
   const boost::thread::id main_thread_id_;
   // To protect access to mutable members;
   mutable absl::Mutex mutex_;
 
  private:
-  static WorkerThreadContext &GetThreadContext();
+  WorkerThreadContext &GetThreadContext() const;
 
   /// Per-thread worker context.
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;

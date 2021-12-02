@@ -31,10 +31,10 @@ RAY_CONFIG(bool, event_stats, false)
 RAY_CONFIG(bool, legacy_scheduler_warnings, true)
 
 /// The interval of periodic event loop stats print.
-/// -1 means the feature is disabled. In this case, stats are only available to
-/// debug_state.txt for raylets.
+/// -1 means the feature is disabled. In this case, stats are available to
+/// debug_state_*.txt
 /// NOTE: This requires event_stats=1.
-RAY_CONFIG(int64_t, event_stats_print_interval_ms, 10000)
+RAY_CONFIG(int64_t, event_stats_print_interval_ms, 60000)
 
 /// In theory, this is used to detect Ray cookie mismatches.
 /// This magic number (hex for "RAY") is used instead of zero, rationale is
@@ -92,19 +92,41 @@ RAY_CONFIG(size_t, free_objects_batch_size, 100)
 
 RAY_CONFIG(bool, lineage_pinning_enabled, false)
 
+/// Maximum amount of lineage to keep in bytes. This includes the specs of all
+/// tasks that have previously already finished but that may be retried again.
+/// If we reach this limit, 50% of the current lineage will be evicted and
+/// objects that are still in scope will no longer be reconstructed if lost.
+/// Each task spec is on the order of 1KB but can be much larger if it has many
+/// inlined args.
+RAY_CONFIG(int64_t, max_lineage_bytes, 1024 * 1024 * 1024)
+
 /// Whether to re-populate plasma memory. This avoids memory allocation failures
 /// at runtime (SIGBUS errors creating new objects), however it will use more memory
 /// upfront and can slow down Ray startup.
 /// See also: https://github.com/ray-project/ray/issues/14182
 RAY_CONFIG(bool, preallocate_plasma_memory, false)
 
+// If true, we place a soft cap on the numer of scheduling classes, see
+// `worker_cap_initial_backoff_delay_ms`.
+RAY_CONFIG(bool, worker_cap_enabled, false)
+
+/// We place a soft cap on the number of tasks of a given scheduling class that
+/// can run at once to limit the total nubmer of worker processes. After the
+/// specified interval, the new task above that cap is allowed to run. The time
+/// before the next tasks (above the cap) are allowed to run increases
+/// exponentially. The soft cap is needed to prevent deadlock in the case where
+/// a task begins to execute and tries to `ray.get` another task of the same
+/// class.
+RAY_CONFIG(int64_t, worker_cap_initial_backoff_delay_ms, 1000)
+
+/// After reaching the worker cap, the backoff delay will grow exponentially,
+/// until it hits a maximum delay.
+RAY_CONFIG(int64_t, worker_cap_max_backoff_delay_ms, 1000 * 10)
+
 /// The fraction of resource utilization on a node after which the scheduler starts
 /// to prefer spreading tasks to other nodes. This balances between locality and
 /// even balancing of load. Low values (min 0.0) encourage more load spreading.
-RAY_CONFIG(float, scheduler_spread_threshold,
-           std::getenv("RAY_SCHEDULER_SPREAD_THRESHOLD") != nullptr
-               ? std::stof(std::getenv("RAY_SCHEDULER_SPREAD_THRESHOLD"))
-               : 0.5)
+RAY_CONFIG(float, scheduler_spread_threshold, 0.5);
 
 // The max allowed size in bytes of a return object from direct actor calls.
 // Objects larger than this size will be spilled/promoted to plasma.
@@ -150,6 +172,12 @@ RAY_CONFIG(int64_t, worker_fetch_request_size, 10000)
 /// user.
 RAY_CONFIG(int64_t, fetch_warn_timeout_milliseconds, 60000)
 
+/// How long to wait for a fetch before timing it out and throwing an error to
+/// the user. This error should only be seen if there is extreme pressure on
+/// the object directory, or if there is a bug in either object recovery or the
+/// object directory.
+RAY_CONFIG(int64_t, fetch_fail_timeout_milliseconds, 600000)
+
 /// Temporary workaround for https://github.com/ray-project/ray/pull/16402.
 RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
 
@@ -173,6 +201,9 @@ RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 100)
 /// The duration that we wait after the worker is launched before the
 /// starting_worker_timeout_callback() is called.
 RAY_CONFIG(int64_t, worker_register_timeout_seconds, 30)
+
+/// The maximum number of workers to iterate whenever we analyze the resources usage.
+RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128);
 
 /// Allow up to 5 seconds for connecting to Redis.
 RAY_CONFIG(int64_t, redis_db_connect_retries, 50)
@@ -200,7 +231,8 @@ RAY_CONFIG(uint64_t, object_manager_default_chunk_size, 5 * 1024 * 1024)
 
 /// The maximum number of outbound bytes to allow to be outstanding. This avoids
 /// excessive memory usage during object broadcast to many receivers.
-RAY_CONFIG(uint64_t, object_manager_max_bytes_in_flight, 2L * 1024 * 1024 * 1024)
+RAY_CONFIG(uint64_t, object_manager_max_bytes_in_flight,
+           ((uint64_t)2) * 1024 * 1024 * 1024)
 
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
@@ -217,6 +249,8 @@ RAY_CONFIG(uint32_t, object_store_get_max_ids_to_print_in_warning, 20)
 
 /// Number of threads used by rpc server in gcs server.
 RAY_CONFIG(uint32_t, gcs_server_rpc_server_thread_num, 1)
+/// Number of threads used by rpc server in gcs server.
+RAY_CONFIG(uint32_t, gcs_server_rpc_client_thread_num, 1)
 /// Allow up to 5 seconds for connecting to gcs service.
 /// Note: this only takes effect when gcs service is enabled.
 RAY_CONFIG(int64_t, gcs_service_connect_retries, 50)
@@ -230,22 +264,20 @@ RAY_CONFIG(uint32_t, gcs_lease_worker_retry_interval_ms, 200)
 /// Duration to wait between retries for creating actor in gcs server.
 RAY_CONFIG(uint32_t, gcs_create_actor_retry_interval_ms, 200)
 /// Exponential backoff params for gcs to retry creating a placement group
-RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_min_interval_ms, 200)
-RAY_CONFIG(uint32_t, gcs_create_placement_group_retry_max_interval_ms, 5000)
+RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_min_interval_ms, 100)
+RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
 RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5);
 /// Maximum number of destroyed actors in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
-/// The interval at which the gcs server will print debug info.
-RAY_CONFIG(int64_t, gcs_dump_debug_log_interval_minutes, 1)
 // The interval at which the gcs server will pull a new resource.
 RAY_CONFIG(int, gcs_resource_report_poll_period_ms, 100)
 // The number of concurrent polls to polls to GCS.
 RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 // Feature flag to use grpc instead of redis for resource broadcast.
 // TODO(ekl) broken as of https://github.com/ray-project/ray/issues/16858
-RAY_CONFIG(bool, grpc_based_resource_broadcast, false)
+RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 // Feature flag to enable grpc based pubsub in GCS.
 RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
 
@@ -420,9 +452,7 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 30000)
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
 
 /// Whether to enable GCS-based actor scheduling.
-RAY_CONFIG(bool, gcs_actor_scheduling_enabled,
-           std::getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") != nullptr &&
-               std::getenv("RAY_GCS_ACTOR_SCHEDULING_ENABLED") == std::string("true"))
+RAY_CONFIG(bool, gcs_actor_scheduling_enabled, false);
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 

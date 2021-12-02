@@ -14,8 +14,10 @@ from ray.rllib.agents.es.es_tf_policy import ESTFPolicy, rollout
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
-from ray.rllib.utils.annotations import Deprecated, override
-from ray.rllib.utils.torch_ops import set_torch_seed
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.torch_utils import set_torch_seed
+from ray.rllib.utils.typing import TrainerConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -217,8 +219,10 @@ def validate_config(config):
 class ESTrainer(Trainer):
     """Large-scale implementation of Evolution Strategies in Ray."""
 
-    _name = "ES"
-    _default_config = DEFAULT_CONFIG
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
 
     @override(Trainer)
     def _init(self, config, env_creator):
@@ -257,7 +261,7 @@ class ESTrainer(Trainer):
         return self.policy
 
     @override(Trainer)
-    def step(self):
+    def step_attempt(self):
         config = self.config
 
         theta = self.policy.get_flat_weights()

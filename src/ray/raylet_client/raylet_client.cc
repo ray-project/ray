@@ -64,7 +64,9 @@ Status raylet::RayletConnection::WriteMessage(MessageType type,
   std::unique_lock<std::mutex> guard(write_mutex_);
   int64_t length = fbb ? fbb->GetSize() : 0;
   uint8_t *bytes = fbb ? fbb->GetBufferPointer() : nullptr;
-  return conn_->WriteMessage(static_cast<int64_t>(type), length, bytes);
+  auto status = conn_->WriteMessage(static_cast<int64_t>(type), length, bytes);
+  ShutdownIfLocalRayletDisconnected(status);
+  return status;
 }
 
 Status raylet::RayletConnection::AtomicRequestReply(MessageType request_type,
@@ -73,7 +75,19 @@ Status raylet::RayletConnection::AtomicRequestReply(MessageType request_type,
                                                     flatbuffers::FlatBufferBuilder *fbb) {
   std::unique_lock<std::mutex> guard(mutex_);
   RAY_RETURN_NOT_OK(WriteMessage(request_type, fbb));
-  return conn_->ReadMessage(static_cast<int64_t>(reply_type), reply_message);
+  auto status = conn_->ReadMessage(static_cast<int64_t>(reply_type), reply_message);
+  ShutdownIfLocalRayletDisconnected(status);
+  return status;
+}
+
+void raylet::RayletConnection::ShutdownIfLocalRayletDisconnected(const Status &status) {
+  if (!status.ok() && IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+    RAY_LOG(WARNING) << "The connection is failed because the local raylet has been "
+                        "dead. Terminate the process. Status: "
+                     << status;
+    QuickExit();
+    RAY_LOG(FATAL) << "Unreachable.";
+  }
 }
 
 raylet::RayletClient::RayletClient(
@@ -284,7 +298,7 @@ Status raylet::RayletClient::FreeObjects(const std::vector<ObjectID> &object_ids
 }
 
 void raylet::RayletClient::RequestWorkerLease(
-    const rpc::TaskSpec &task_spec,
+    const rpc::TaskSpec &task_spec, bool grant_or_reject,
     const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
     const int64_t backlog_size) {
   google::protobuf::Arena arena;
@@ -296,6 +310,7 @@ void raylet::RayletClient::RequestWorkerLease(
   // used any more.
   request->unsafe_arena_set_allocated_resource_spec(
       const_cast<rpc::TaskSpec *>(&task_spec));
+  request->set_grant_or_reject(grant_or_reject);
   request->set_backlog_size(backlog_size);
   grpc_client_->RequestWorkerLease(*request, callback);
 }

@@ -16,7 +16,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_ops import concat_multi_gpu_td_errors, huber_loss
+from ray.rllib.utils.torch_utils import concat_multi_gpu_td_errors, huber_loss
 from ray.rllib.utils.typing import TensorType, TrainerConfigDict
 
 torch, nn = try_import_torch()
@@ -151,7 +151,7 @@ SimpleQTorchPolicy = build_policy_class(
     name="SimpleQPolicy",
     framework="torch",
     loss_fn=build_q_losses,
-    get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.dqn.simple_q.DEFAULT_CONFIG,
     stats_fn=stats_fn,
     extra_action_out_fn=extra_action_out_fn,
     after_init=setup_late_mixins,

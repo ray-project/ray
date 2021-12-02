@@ -1,11 +1,12 @@
 import functools
 import json
-from typing import Callable, Dict, Any
+from typing import Callable, Dict, Any, Optional
 
 from ray._private import signature
 from ray.workflow import serialization_context
 from ray.workflow.common import (Workflow, WorkflowData, StepType,
-                                 ensure_ray_initialized)
+                                 ensure_ray_initialized,
+                                 WorkflowStepRuntimeOptions)
 from ray.util.annotations import PublicAPI
 
 
@@ -14,15 +15,10 @@ class WorkflowStepFunction:
 
     def __init__(self,
                  func: Callable,
-                 max_retries=3,
-                 catch_exceptions=False,
-                 name=None,
-                 metadata=None,
-                 ray_options=None):
-        if not isinstance(max_retries, int) or max_retries < 1:
-            raise ValueError("max_retries should be greater or equal to 1.")
-        if ray_options is not None and not isinstance(ray_options, dict):
-            raise ValueError("ray_options must be a dict.")
+                 *,
+                 step_options: "WorkflowStepRuntimeOptions" = None,
+                 name: Optional[str] = None,
+                 metadata: Optional[Dict[str, Any]] = None):
         if metadata is not None:
             if not isinstance(metadata, dict):
                 raise ValueError("metadata must be a dict.")
@@ -33,11 +29,11 @@ class WorkflowStepFunction:
                     raise ValueError(
                         "metadata values must be JSON serializable, "
                         "however '{}' has a value whose {}.".format(k, e))
-
+        if step_options is None:
+            step_options = WorkflowStepRuntimeOptions.make(
+                step_type=StepType.FUNCTION)
         self._func = func
-        self._max_retries = max_retries
-        self._catch_exceptions = catch_exceptions
-        self._ray_options = ray_options or {}
+        self._step_options = step_options
         self._func_signature = signature.extract_signature(func)
         self._name = name or ""
         self._user_metadata = metadata or {}
@@ -55,11 +51,8 @@ class WorkflowStepFunction:
 
             workflow_data = WorkflowData(
                 func_body=self._func,
-                step_type=StepType.FUNCTION,
                 inputs=None,
-                max_retries=self._max_retries,
-                catch_exceptions=self._catch_exceptions,
-                ray_options=self._ray_options,
+                step_options=step_options,
                 name=self._name,
                 user_metadata=self._user_metadata)
             return Workflow(workflow_data, prepare_inputs)
@@ -78,6 +71,7 @@ class WorkflowStepFunction:
                 catch_exceptions: bool = False,
                 name: str = None,
                 metadata: Dict[str, Any] = None,
+                allow_inplace: bool = False,
                 **ray_options) -> "WorkflowStepFunction":
         """This function set how the step function is going to be executed.
 
@@ -94,11 +88,25 @@ class WorkflowStepFunction:
                 directly as the step id if possible, otherwise deduplicated by
                 appending .N suffixes.
             metadata: metadata to add to the step.
+            allow_inplace: Execute the workflow step inplace.
             **ray_options: All parameters in this fields will be passed
                 to ray remote function options.
 
         Returns:
             The step function itself.
         """
-        return WorkflowStepFunction(self._func, max_retries, catch_exceptions,
-                                    name, metadata, ray_options)
+        # TODO(suquark): The options seems drops items that we did not
+        # specify (e.g., the name become "None" if we did not pass
+        # name to the options). This does not seem correct to me.
+        step_options = WorkflowStepRuntimeOptions.make(
+            step_type=StepType.FUNCTION,
+            catch_exceptions=catch_exceptions,
+            max_retries=max_retries,
+            allow_inplace=allow_inplace,
+            ray_options=ray_options,
+        )
+        return WorkflowStepFunction(
+            self._func,
+            step_options=step_options,
+            name=name,
+            metadata=metadata)

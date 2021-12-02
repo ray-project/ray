@@ -1,5 +1,5 @@
 from typing import TypeVar, List, Generic, Iterator, Tuple, Any, Union, \
-    Optional, Callable, TYPE_CHECKING
+    Optional, TYPE_CHECKING
 
 import numpy as np
 
@@ -7,7 +7,10 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
     from ray.data.impl.block_builder import BlockBuilder
+    from ray.data.aggregate import AggregateFn
+    from ray.data.grouped_dataset import GroupKeyT
 
+from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
 from ray.data.impl.util import _check_pyarrow_version
 
@@ -21,6 +24,18 @@ AggType = TypeVar("AggType")
 # Block data can be accessed in a uniform way via ``BlockAccessors`` such as
 # ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
 Block = Union[List[T], "pyarrow.Table", bytes]
+
+# A list of block references pending computation by a single task. For example,
+# this may be the output of a task reading a file.
+BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
+
+# The metadata that describes the output of a BlockPartition. This has the
+# same type as the metadata that describes each block in the partition.
+BlockPartitionMetadata = "BlockMetadata"
+
+# TODO(ekl) replace this with just `BlockPartition` once block splitting is on
+# by default. When block splitting is off, the type is a plain block.
+MaybeBlockPartition = Union[Block, BlockPartition]
 
 
 @DeveloperAPI
@@ -155,10 +170,7 @@ class BlockAccessor(Generic[T]):
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key: Callable[[T], KeyType],
-                init: Callable[[KeyType], AggType],
-                accumulate: Callable[[KeyType, AggType, T], AggType]
-                ) -> Block[Tuple[KeyType, AggType]]:
+    def combine(self, key: "GroupKeyT", agg: "AggregateFn") -> Block[U]:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
@@ -171,9 +183,7 @@ class BlockAccessor(Generic[T]):
 
     @staticmethod
     def aggregate_combined_blocks(
-            blocks: List[Block[Tuple[KeyType, AggType]]],
-            merge: Callable[[KeyType, AggType, AggType], AggType],
-            finalize: Callable[[KeyType, AggType], U]
-    ) -> Tuple[Block[Tuple[KeyType, U]], BlockMetadata]:
+            blocks: List[Block], key: "GroupKeyT",
+            agg: "AggregateFn") -> Tuple[Block[U], BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError
