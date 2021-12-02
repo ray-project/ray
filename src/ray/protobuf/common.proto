@@ -150,6 +150,8 @@ enum ErrorType {
   // get thrown if an object appears to be created, but the requestor is not
   // able to fetch it after the configured timeout.
   OBJECT_FETCH_TIMED_OUT = 14;
+  // Indicates that a task failed because the submitter node (raylet) died unexpectedly.
+  SUBMITTER_NODE_DIED = 15;
 }
 
 /// The information per ray error type.

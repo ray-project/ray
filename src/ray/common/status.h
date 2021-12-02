@@ -101,6 +101,9 @@ enum class StatusCode : char {
   ObjectAlreadySealed = 23,
   ObjectStoreFull = 24,
   TransientObjectStoreFull = 25,
+  // grpc status
+  GrpcUnavailable = 26,
+  GrpcUnknown = 27,
 };
 
 #if defined(__clang__)
@@ -205,6 +208,14 @@ class RAY_EXPORT Status {
     return Status(StatusCode::TransientObjectStoreFull, msg);
   }
 
+  static Status GrpcUnavailable(const std::string &msg) {
+    return Status(StatusCode::GrpcUnavailable, msg);
+  }
+
+  static Status GrpcUnknown(const std::string &msg) {
+    return Status(StatusCode::GrpcUnknown, msg);
+  }
+
   static StatusCode StringToCode(const std::string &str);
 
   // Returns true iff the status indicates success.
@@ -241,6 +252,7 @@ class RAY_EXPORT Status {
   bool IsTransientObjectStoreFull() const {
     return code() == StatusCode::TransientObjectStoreFull;
   }
+  bool IsGrpcUnAvailable() const { return code() == StatusCode::GrpcUnavailable; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.

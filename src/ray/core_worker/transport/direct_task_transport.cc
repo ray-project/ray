@@ -553,8 +553,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             auto &task_queue = scheduling_key_entry.task_queue;
             while (!task_queue.empty()) {
               auto &task_spec = task_queue.front();
-              RAY_UNUSED(task_finisher_->MarkTaskReturnObjectsFailed(
-                  task_spec, rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED));
+              RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
+                  task_spec.TaskId(), rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED, nullptr));
               task_queue.pop_front();
             }
             if (scheduling_key_entry.CanDelete()) {
@@ -607,13 +607,21 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           RequestNewWorkerIfNeeded(scheduling_key);
 
         } else {
-          if (IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
-            RAY_LOG(WARNING)
-                << "The worker failed to receive a response from the local "
-                   "raylet because the raylet is crashed. Terminating the worker.";
-            QuickExit();
+          if (status.IsGrpcUnAvailable()) {
+            RAY_LOG(WARNING) << "The worker failed to receive a response from the local "
+                                "raylet because the raylet is unavailable (crashed).";
+            auto &task_queue = scheduling_key_entry.task_queue;
+            while (!task_queue.empty()) {
+              auto &task_spec = task_queue.front();
+              RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
+                  task_spec.TaskId(), rpc::ErrorType::SUBMITTER_NODE_DIED, &status));
+              task_queue.pop_front();
+            }
+            if (scheduling_key_entry.CanDelete()) {
+              scheduling_key_entries_.erase(scheduling_key);
+            }
           } else {
-            RAY_LOG(INFO)
+            RAY_LOG(WARNING)
                 << "The worker failed to receive a response from the local raylet, but "
                    "raylet is still alive. Try again on a local node. Error: "
                 << status;

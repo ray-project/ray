@@ -387,7 +387,14 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType e
   // loudly with ERROR here.
   RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
                  << rpc::ErrorType_Name(error_type);
-  const bool will_retry = RetryTaskIfPossible(task_id);
+  bool will_retry = false;
+  if (error_type == rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED) {
+    will_retry = false;
+  } else if (error_type == rpc::ErrorType::SUBMITTER_NODE_DIED) {
+    will_retry = false;
+  } else {
+    will_retry = RetryTaskIfPossible(task_id);
+  }
   const bool release_lineage = !will_retry;
   TaskSpecification spec;
   {
