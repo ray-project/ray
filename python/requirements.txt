@@ -26,7 +26,6 @@ pyyaml
 redis >= 3.5.0, < 4.0.0
 requests
 smart_open
-aiorwlock
 
 ## setup.py extras
 dm_tree
@@ -44,6 +43,7 @@ tensorboardX >= 1.9
 uvicorn
 dataclasses; python_version < '3.7'
 starlette
+aiorwlock
 
 # Requirements for running tests
 pyarrow==4.0.1
