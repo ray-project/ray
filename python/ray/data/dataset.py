@@ -26,7 +26,7 @@ import ray
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata, T, U, \
-    BlockPartition, BlockPartitionMetadata
+    BlockPartition, BlockPartitionMetadata, BlockExecStats
 from ray.data.context import DatasetContext
 from ray.data.datasource import (
     Datasource, CSVDatasource, JSONDatasource, NumpyDatasource,
@@ -1373,7 +1373,8 @@ class Dataset(Generic[T]):
             b1 = BlockAccessor.for_block(block1)
             result = b1.zip(block2)
             br = BlockAccessor.for_block(result)
-            return result, br.get_metadata(input_files=[])
+            return result, br.get_metadata(
+                input_files=[], exec_stats=BlockExecStats.TODO)
 
         do_zip_fn = cached_remote_fn(do_zip, num_returns=2)
 

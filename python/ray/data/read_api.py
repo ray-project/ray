@@ -63,7 +63,8 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
         block = builder.build()
         blocks.append(ray.put(block))
         metadata.append(
-            BlockAccessor.for_block(block).get_metadata(input_files=None))
+            BlockAccessor.for_block(block).get_metadata(
+                input_files=None, exec_stats=BlockExecStats.TODO))
         i += block_size
 
     return Dataset(BlockList(blocks, metadata), 0)
@@ -695,17 +696,18 @@ def from_spark(df: "pyspark.sql.DataFrame",
 def _df_to_block(df: "pandas.DataFrame") -> Block[ArrowRow]:
     import pyarrow as pa
     block = pa.table(df)
-    return (block,
-            BlockAccessor.for_block(block).get_metadata(input_files=None))
+    return (block, BlockAccessor.for_block(block).get_metadata(
+        input_files=None, exec_stats=BlockExecStats.TODO))
 
 
 def _ndarray_to_block(ndarray: np.ndarray) -> Block[np.ndarray]:
     import pyarrow as pa
     from ray.data.extensions import TensorArray
     table = pa.Table.from_pydict({"value": TensorArray(ndarray)})
-    return (table,
-            BlockAccessor.for_block(table).get_metadata(input_files=None))
+    return (table, BlockAccessor.for_block(table).get_metadata(
+        input_files=None, exec_stats=BlockExecStats.TODO))
 
 
 def _get_metadata(table: "pyarrow.Table") -> BlockMetadata:
-    return BlockAccessor.for_block(table).get_metadata(input_files=None)
+    return BlockAccessor.for_block(table).get_metadata(
+        input_files=None, exec_stats=BlockExecStats.TODO)
