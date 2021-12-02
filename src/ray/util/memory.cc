@@ -29,7 +29,7 @@ uint8_t *pointer_logical_and(const uint8_t *address, uintptr_t bits) {
 
 void parallel_memcopy(uint8_t *dst, const uint8_t *src, int64_t nbytes,
                       uintptr_t block_size, int num_threads) {
-  static boost::asio::thread_pool *threadpool = NULL;
+  static auto *const *threadpool = NULL;
   if (threadpool == NULL) {
     threadpool = new boost::asio::thread_pool(std::thread::hardware_concurrency());
   }
