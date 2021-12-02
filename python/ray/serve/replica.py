@@ -357,8 +357,8 @@ class RayServeReplica:
                 raise ValueError(
                     "deployment_def must be a class to use user_config")
             elif not hasattr(self.callable, RECONFIGURE_METHOD):
-                raise RayServeException("user_config specified but deployment " +
-                                        self.deployment_name + " missing " +
+                raise RayServeException("user_config specified but deployment "
+                                        + self.deployment_name + " missing " +
                                         RECONFIGURE_METHOD + " method")
             reconfigure_method = sync_to_async(
                 getattr(self.callable, RECONFIGURE_METHOD))
@@ -376,7 +376,8 @@ class RayServeReplica:
             result = await self.invoke_single(request)
             request_time_ms = (time.time() - request.tick_enter_replica) * 1000
             logger.debug("Replica {} finished request {} in {:.2f}ms".format(
-                self.replica_tag, request.metadata.request_id, request_time_ms))
+                self.replica_tag, request.metadata.request_id,
+                request_time_ms))
 
             # Returns a small object for router to track request status.
             return b"", result
