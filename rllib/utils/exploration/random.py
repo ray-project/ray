@@ -78,16 +78,20 @@ class Random(Exploration):
                 shape = component.shape or (1, )
 
                 if isinstance(component, Discrete):
-                    return tf.random.uniform(
-                        shape=(batch_size, ) + component.shape,
-                        maxval=component.n,
+                    return tf.cast(
+                        tf.random.uniform(
+                            shape=(batch_size, ) + component.shape,
+                            maxval=component.n,
+                            dtype=tf.int64),
                         dtype=component.dtype)
                 elif isinstance(component, MultiDiscrete):
                     return tf.concat(
                         [
-                            tf.random.uniform(
-                                shape=(batch_size, 1),
-                                maxval=n,
+                            tf.cast(
+                                tf.random.uniform(
+                                    shape=(batch_size, 1),
+                                    maxval=n,
+                                    dtype=tf.int64),
                                 dtype=component.dtype) for n in component.nvec
                         ],
                         axis=1)
