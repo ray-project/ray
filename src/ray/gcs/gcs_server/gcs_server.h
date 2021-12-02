@@ -19,7 +19,6 @@
 #include "ray/gcs/gcs_server/gcs_heartbeat_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
-#include "ray/gcs/gcs_server/gcs_object_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_report_poller.h"
@@ -48,6 +47,7 @@ struct GcsServerConfig {
   std::string node_ip_address;
   bool grpc_based_resource_broadcast = false;
   bool grpc_pubsub_enabled = false;
+  std::string log_dir;
 };
 
 class GcsNodeManager;
@@ -107,9 +107,6 @@ class GcsServer {
   /// Initialize gcs placement group manager.
   void InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data);
 
-  /// Initialize gcs object manager.
-  void InitObjectManager(const GcsInitData &gcs_init_data);
-
   /// Initialize gcs worker manager.
   void InitGcsWorkerManager();
 
@@ -149,7 +146,10 @@ class GcsServer {
   void CollectStats();
 
   /// Print debug info periodically.
-  void PrintDebugInfo();
+  std::string GetDebugState() const;
+
+  /// Dump the debug info to debug_state_gcs.txt.
+  void DumpDebugStateToFile() const;
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
@@ -192,9 +192,6 @@ class GcsServer {
   std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
   /// Heartbeat info handler and service.
   std::unique_ptr<rpc::HeartbeatInfoGrpcService> heartbeat_info_service_;
-  /// Object info handler and service.
-  std::unique_ptr<gcs::GcsObjectManager> gcs_object_manager_;
-  std::unique_ptr<rpc::ObjectInfoGrpcService> object_info_service_;
   /// Task info handler and service.
   std::unique_ptr<rpc::TaskInfoHandler> task_info_handler_;
   std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
@@ -223,6 +220,8 @@ class GcsServer {
   std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Grpc based pubsub's periodical runner.
   PeriodicalRunner pubsub_periodical_runner_;
+  /// The runner to run function periodically.
+  PeriodicalRunner periodical_runner_;
   /// The gcs table storage.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;

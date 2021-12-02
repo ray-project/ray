@@ -83,7 +83,7 @@ message DeploymentConfig {
   AutoscalingConfig autoscaling_config = 8;
 }
 
-// Backend language.
+// Deployment language.
 enum DeploymentLanguage {
   PYTHON = 0;
   JAVA = 1;
@@ -95,6 +95,8 @@ message RequestMetadata {
   string endpoint = 2;
 
   string call_method = 3;
+
+  map<string, string> context = 4;
 }
 
 message RequestWrapper {

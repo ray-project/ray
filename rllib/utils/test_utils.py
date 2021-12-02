@@ -7,13 +7,14 @@ import random
 import re
 import time
 import tree  # pip install dm_tree
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 import yaml
 
 import ray
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, \
     try_import_torch
-from ray.tune import run_experiments
+from ray.rllib.utils.typing import PartialTrainerConfigDict
+from ray.tune import CLIReporter, run_experiments
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
@@ -29,32 +30,37 @@ torch, _ = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-def framework_iterator(config=None,
-                       frameworks=("tf2", "tf", "tfe", "torch"),
-                       session=False,
-                       with_eager_tracing=False):
+def framework_iterator(
+        config: Optional[PartialTrainerConfigDict] = None,
+        frameworks: Sequence[str] = ("tf2", "tf", "tfe", "torch"),
+        session: bool = False,
+        with_eager_tracing: bool = False,
+        time_iterations: Optional[dict] = None,
+) -> Union[str, Tuple[str, Optional["tf1.Session"]]]:
     """An generator that allows for looping through n frameworks for testing.
 
     Provides the correct config entries ("framework") as well
     as the correct eager/non-eager contexts for tfe/tf.
 
     Args:
-        config (Optional[dict]): An optional config dict to alter in place
-            depending on the iteration.
-        frameworks (Tuple[str]): A list/tuple of the frameworks to be tested.
+        config: An optional config dict to alter in place depending on the
+            iteration.
+        frameworks: A list/tuple of the frameworks to be tested.
             Allowed are: "tf2", "tf", "tfe", "torch", and None.
-        session (bool): If True and only in the tf-case: Enter a tf.Session()
+        session: If True and only in the tf-case: Enter a tf.Session()
             and yield that as second return value (otherwise yield (fw, None)).
             Also sets a seed (42) on the session to make the test
             deterministic.
         with_eager_tracing: Include `eager_tracing=True` in the returned
             configs, when framework=[tfe|tf2].
+        time_iterations: If provided, will write to the given dict (by
+            framework key) the times in seconds that each (framework's)
+            iteration takes.
 
     Yields:
-        str: If enter_session is False:
-            The current framework ("tf2", "tf", "tfe", "torch") used.
-        Tuple(str, Union[None,tf.Session]: If enter_session is True:
-            A tuple of the current fw and the tf.Session if fw="tf".
+        If `session` is False: The current framework [tf2|tf|tfe|torch] used.
+        If `session` is True: A tuple consisting of the current framework
+        string and the tf1.Session (if fw="tf", otherwise None).
     """
     config = config or {}
     frameworks = [frameworks] if isinstance(frameworks, str) else \
@@ -94,8 +100,6 @@ def framework_iterator(config=None,
             sess.__enter__()
             tf1.set_random_seed(42)
 
-        print("framework={}".format(fw))
-
         config["framework"] = fw
 
         eager_ctx = None
@@ -112,11 +116,25 @@ def framework_iterator(config=None,
         if fw in ["tf2", "tfe"] and with_eager_tracing:
             for tracing in [True, False]:
                 config["eager_tracing"] = tracing
+                print(f"framework={fw} (eager-tracing={tracing})")
+                time_started = time.time()
                 yield fw if session is False else (fw, sess)
+                if time_iterations is not None:
+                    time_total = time.time() - time_started
+                    time_iterations[fw + ("+tracing" if tracing else "")] = \
+                        time_total
+                    print(f".. took {time_total}sec")
                 config["eager_tracing"] = False
         # Yield current framework + tf-session (if necessary).
         else:
+            print(f"framework={fw}")
+            time_started = time.time()
             yield fw if session is False else (fw, sess)
+            if time_iterations is not None:
+                time_total = time.time() - time_started
+                time_iterations[fw + ("+tracing" if tracing else "")] = \
+                    time_total
+                print(f".. took {time_total}sec")
 
         # Exit any context we may have entered.
         if eager_ctx:
@@ -279,11 +297,11 @@ def check_compute_single_action(trainer,
     """Tests different combinations of args for trainer.compute_single_action.
 
     Args:
-        trainer (Trainer): The Trainer object to test.
-        include_state (bool): Whether to include the initial state of the
-            Policy's Model in the `compute_single_action` call.
-        include_prev_action_reward (bool): Whether to include the prev-action
-            and -reward in the `compute_single_action` call.
+        trainer: The Trainer object to test.
+        include_state: Whether to include the initial state of the Policy's
+            Model in the `compute_single_action` call.
+        include_prev_action_reward: Whether to include the prev-action and
+            -reward in the `compute_single_action` call.
 
     Raises:
         ValueError: If anything unexpected happens.
@@ -404,8 +422,11 @@ def check_compute_single_action(trainer,
         if what is trainer:
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            worker_set = getattr(trainer, "workers",
-                                 getattr(trainer, "_workers", None))
+            worker_set = getattr(trainer, "workers")
+            # TODO: ES and ARS use `self._workers` instead of `self.workers` to
+            #  store their rollout worker set. Change to `self.workers`.
+            if worker_set is None:
+                worker_set = getattr(trainer, "_workers", None)
             assert worker_set
             if isinstance(worker_set, list):
                 obs_space = trainer.get_policy().observation_space
@@ -570,6 +591,8 @@ def run_learning_tests_from_yaml(
     experiments = {}
     # The results per experiment.
     checks = {}
+    # Metrics per experiment.
+    stats = {}
 
     start_time = time.monotonic()
 
@@ -582,14 +605,18 @@ def run_learning_tests_from_yaml(
         for k, e in tf_experiments.items():
             # If framework explicitly given, only test for that framework.
             # Some algos do not have both versions available.
-            if "framework" in e["config"]:
-                frameworks = [e["config"]["framework"]]
+            if "frameworks" in e:
+                frameworks = e["frameworks"]
             else:
+                # By default we don't run tf2, because tf2's multi-gpu support
+                # isn't complete yet.
                 frameworks = ["tf", "torch"]
-                e["config"]["framework"] = "tf"
+            # Pop frameworks key to not confuse Tune.
+            e.pop("frameworks", None)
 
-            e["stop"] = e["stop"] or {}
-            e["pass_criteria"] = e["pass_criteria"] or {}
+            e["stop"] = e["stop"] if "stop" in e else {}
+            e["pass_criteria"] = e[
+                "pass_criteria"] if "pass_criteria" in e else {}
 
             # For smoke-tests, we just run for n min.
             if smoke_test:
@@ -605,39 +632,30 @@ def run_learning_tests_from_yaml(
                 if min_reward is not None:
                     e["stop"]["episode_reward_mean"] = min_reward
 
-            keys = []
-            # Generate the torch copy of the experiment.
-            if len(frameworks) == 2:
-                e_torch = copy.deepcopy(e)
-                e_torch["config"]["framework"] = "torch"
-                keys.append(re.sub("^(\\w+)-", "\\1-tf-", k))
-                keys.append(re.sub("-tf-", "-torch-", keys[0]))
-                experiments[keys[0]] = e
-                experiments[keys[1]] = e_torch
-            # tf-only.
-            elif frameworks[0] == "tf":
-                keys.append(re.sub("^(\\w+)-", "\\1-tf-", k))
-                experiments[keys[0]] = e
-            # torch-only.
-            else:
-                keys.append(re.sub("^(\\w+)-", "\\1-torch-", k))
-                experiments[keys[0]] = e
+            # Generate `checks` dict for all experiments
+            # (tf, tf2 and/or torch).
+            for framework in frameworks:
+                k_ = k + "-" + framework
+                ec = copy.deepcopy(e)
+                ec["config"]["framework"] = framework
+                if framework == "tf2":
+                    ec["config"]["eager_tracing"] = True
 
-            # Generate `checks` dict for all experiments (tf and/or torch).
-            for k_ in keys:
-                e = experiments[k_]
                 checks[k_] = {
-                    "min_reward": e["pass_criteria"].get(
-                        "episode_reward_mean"),
-                    "min_throughput": e["pass_criteria"].get(
+                    "min_reward": ec["pass_criteria"].get(
+                        "episode_reward_mean", 0.0),
+                    "min_throughput": ec["pass_criteria"].get(
                         "timesteps_total", 0.0) /
-                    (e["stop"].get("time_total_s", 1.0) or 1.0),
-                    "time_total_s": e["stop"].get("time_total_s"),
+                    (ec["stop"].get("time_total_s", 1.0) or 1.0),
+                    "time_total_s": ec["stop"].get("time_total_s"),
                     "failures": 0,
                     "passed": False,
                 }
                 # This key would break tune.
-                e.pop("pass_criteria", None)
+                ec.pop("pass_criteria", None)
+
+                # One experiment to run.
+                experiments[k_] = ec
 
     # Print out the actual config.
     print("== Test config ==")
@@ -661,7 +679,23 @@ def run_learning_tests_from_yaml(
         print(f"Starting learning test iteration {i}...")
 
         # Run remaining experiments.
-        trials = run_experiments(experiments_to_run, resume=False, verbose=2)
+        trials = run_experiments(
+            experiments_to_run,
+            resume=False,
+            verbose=2,
+            progress_reporter=CLIReporter(
+                metric_columns={
+                    "training_iteration": "iter",
+                    "time_total_s": "time_total_s",
+                    "timesteps_total": "ts",
+                    "episodes_this_iter": "train_episodes",
+                    "episode_reward_mean": "reward_mean",
+                    "evaluation/episode_reward_mean": "eval_reward_mean",
+                },
+                sort_by_metric=True,
+                max_report_frequency=30,
+            ))
+
         all_trials.extend(trials)
 
         # Check each experiment for whether it passed.
@@ -717,10 +751,19 @@ def run_learning_tests_from_yaml(
                     for t in trials_for_experiment
                 ])
 
+                # TODO(jungong) : track trainer and env throughput separately.
                 throughput = timesteps_total / (total_time_s or 1.0)
-                desired_throughput = None
-                # TODO(Jun): Stop checking throughput for now.
+                # TODO(jungong) : enable throughput check again after
+                #   TD3_HalfCheetahBulletEnv is fixed and verified.
                 # desired_throughput = checks[experiment]["min_throughput"]
+                desired_throughput = None
+
+                # Record performance.
+                stats[experiment] = {
+                    "episode_reward_mean": float(episode_reward_mean),
+                    "throughput": (float(throughput)
+                                   if throughput is not None else 0.0),
+                }
 
                 print(f" ... Desired reward={desired_reward}; "
                       f"desired throughput={desired_throughput}")
@@ -746,9 +789,10 @@ def run_learning_tests_from_yaml(
 
     # Create results dict and write it to disk.
     result = {
-        "time_taken": time_taken,
+        "time_taken": float(time_taken),
         "trial_states": dict(Counter([trial.status for trial in all_trials])),
-        "last_update": time.time(),
+        "last_update": float(time.time()),
+        "stats": stats,
         "passed": [k for k, exp in checks.items() if exp["passed"]],
         "failures": {
             k: exp["failures"]

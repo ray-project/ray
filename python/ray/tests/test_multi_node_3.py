@@ -35,7 +35,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     # Test starting Ray with the object manager and node manager ports
     # specified.
     check_call_ray([
-        "start", "--head", "--object-manager-port", "12345",
+        "start", "--head", "--object-manager-port", "22345",
         "--node-manager-port", "54321", "--port", "0"
     ])
     check_call_ray(["stop"])
@@ -79,7 +79,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     # Test starting Ray with all arguments specified.
     check_call_ray([
         "start", "--head", "--redis-shard-ports", "6380,6381,6382",
-        "--object-manager-port", "12345", "--num-cpus", "2", "--num-gpus", "0",
+        "--object-manager-port", "22345", "--num-cpus", "2", "--num-gpus", "0",
         "--resources", "{\"Custom\": 1}", "--port", "0"
     ])
     check_call_ray(["stop"])
@@ -99,7 +99,7 @@ def test_calling_start_ray_head(call_ray_stop_only):
     blocked.poll()
     assert blocked.returncode is None
 
-    kill_process_by_name("raylet")
+    kill_process_by_name("raylet", SIGKILL=True)
     wait_for_children_of_pid_to_exit(blocked.pid, timeout=30)
     blocked.wait()
     assert blocked.returncode != 0, "ray start shouldn't return 0 on bad exit"

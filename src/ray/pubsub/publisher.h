@@ -16,6 +16,11 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <functional>
+#include <queue>
+#include <string>
+#include <string_view>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
@@ -33,7 +38,7 @@ using SubscriberID = UniqueID;
 
 namespace pub_internal {
 
-/// Index for subscribers, keyed by IDs.
+/// Per-channel index for subscribers and the entities they subscribe to.
 class SubscriptionIndex {
  public:
   SubscriptionIndex() = default;
@@ -51,23 +56,30 @@ class SubscriptionIndex {
   /// Returns whether the subscriber exists before the call.
   bool EraseSubscriber(const SubscriberID &subscriber_id);
 
-  /// Erases the object id and subscriber id from the index.
+  /// Erases the entity id and subscriber id from the index.
   bool EraseEntry(const std::string &key_id, const SubscriberID &subscriber_id);
 
-  /// Returns true if the object id exists in the index.
+  /// Test only.
+  /// Returns true if the entity id exists in the index.
+  /// Only checks entities that are explicitly subscribed.
   bool HasKeyId(const std::string &key_id) const;
 
-  /// Returns true if object id or subscriber id exists in the index.
+  /// Test only.
+  /// Returns true if the subscriber id exists in the index, including both per-entity
+  /// and all-entity subscribers.
   bool HasSubscriber(const SubscriberID &subscriber_id) const;
 
   /// Returns true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
 
  private:
-  // Mapping from message id -> subscribers.
+  // Collection of subscribers that subscribe to all entities of the channel.
+  absl::flat_hash_set<SubscriberID> subscribers_to_all_;
+  // Mapping from subscribed entity id -> subscribers.
   absl::flat_hash_map<std::string, absl::flat_hash_set<SubscriberID>>
       key_id_to_subscribers_;
-  // Mapping from subscribers -> message ids. Reverse index of key_id_to_subscribers_.
+  // Mapping from subscribers -> subscribed entity ids.
+  // Reverse index of key_id_to_subscribers_.
   absl::flat_hash_map<SubscriberID, absl::flat_hash_set<std::string>>
       subscribers_to_key_id_;
 };
@@ -111,10 +123,11 @@ class Subscriber {
 
   /// Publish all queued messages if possible.
   ///
-  /// \param force If true, we publish to the subscriber although there's no queued
-  /// message.
+  /// \param force_noop If true, reply to the subscriber with an empty message, regardless
+  /// of whethere there is any queued message. This is for cases where the current poll
+  /// might have been cancelled, or the subscriber might be dead.
   /// \return True if it publishes. False otherwise.
-  bool PublishIfPossible(bool force = false);
+  bool PublishIfPossible(bool force_noop = false);
 
   /// Testing only. Return true if there's no metadata remained in the private attribute.
   bool CheckNoLeaks() const;
@@ -133,7 +146,7 @@ class Subscriber {
   /// It becomes a nullptr whenever the long polling request is replied.
   std::unique_ptr<LongPollConnection> long_polling_connection_;
   /// Queued messages to publish.
-  std::list<std::unique_ptr<rpc::PubsubLongPollingReply>> mailbox_;
+  std::queue<std::unique_ptr<rpc::PubsubLongPollingReply>> mailbox_;
   /// Callback to get the current time.
   const std::function<double()> get_time_ms_;
   /// The time in which the connection is considered as timed out.
@@ -156,11 +169,12 @@ class PublisherInterface {
   ///
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
-  /// \param key_id The key_id that the subscriber is subscribing to.
+  /// \param key_id The key_id that the subscriber is subscribing to. std::nullopt if
+  /// subscribing to all.
   /// \return True if registration is new. False otherwise.
   virtual bool RegisterSubscription(const rpc::ChannelType channel_type,
                                     const SubscriberID &subscriber_id,
-                                    const std::string &key_id) = 0;
+                                    const std::optional<std::string> &key_id) = 0;
 
   /// Publish the given object id to subscribers.
   ///
@@ -181,11 +195,11 @@ class PublisherInterface {
   ///
   /// \param channel_type The type of the channel.
   /// \param subscriber_id The node id of the subscriber.
-  /// \param key_id The key_id of the subscriber.
+  /// \param key_id The key_id of the subscriber. std::nullopt if subscribing to all.
   /// \return True if erased. False otherwise.
   virtual bool UnregisterSubscription(const rpc::ChannelType channel_type,
                                       const SubscriberID &subscriber_id,
-                                      const std::string &key_id) = 0;
+                                      const std::optional<std::string> &key_id) = 0;
 };
 
 /// Protocol detail
@@ -250,7 +264,7 @@ class Publisher : public PublisherInterface {
   /// \return True if the registration is new. False otherwise.
   bool RegisterSubscription(const rpc::ChannelType channel_type,
                             const SubscriberID &subscriber_id,
-                            const std::string &key_id) override;
+                            const std::optional<std::string> &key_id) override;
 
   /// Publish the given object id to subscribers.
   ///
@@ -275,7 +289,7 @@ class Publisher : public PublisherInterface {
   /// \return True if erased. False otherwise.
   bool UnregisterSubscription(const rpc::ChannelType channel_type,
                               const SubscriberID &subscriber_id,
-                              const std::string &key_id) override;
+                              const std::optional<std::string> &key_id) override;
 
   /// Remove the subscriber. Once the subscriber is removed, messages won't be published
   /// to it anymore.

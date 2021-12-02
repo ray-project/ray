@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar, \
 
 import ray
 from ray import cloudpickle as pickle
-from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -39,7 +39,7 @@ from ray.rllib.utils.error import EnvError, ERR_MSG_NO_GPUS, \
 from ray.rllib.utils.filter import get_filter, Filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.sgd import do_minibatch_sgd
-from ray.rllib.utils.tf_ops import get_gpu_devices as get_tf_gpu_devices
+from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
 from ray.rllib.utils.tf_run_builder import TFRunBuilder
 from ray.rllib.utils.typing import AgentID, EnvConfigDict, EnvType, \
     ModelConfigDict, ModelGradients, ModelWeights, \
@@ -630,13 +630,12 @@ class RolloutWorker(ParallelIteratorWorker):
         # vectorized under the hood).
         else:
             # Always use vector env for consistency even if num_envs = 1.
-            self.async_env: BaseEnv = BaseEnv.to_base_env(
+            self.async_env: BaseEnv = convert_to_base_env(
                 self.env,
                 make_env=self.make_sub_env_fn,
                 num_envs=num_envs,
                 remote_envs=remote_worker_envs,
                 remote_env_batch_wait_ms=remote_env_batch_wait_ms,
-                policy_config=policy_config,
             )
 
         # `truncate_episodes`: Allow a batch to contain more than one episode

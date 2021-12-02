@@ -144,8 +144,6 @@ InvocationSpec BuildInvocationSpec1(TaskType task_type,
                                     const ActorID &actor) {
   InvocationSpec invocation_spec;
   invocation_spec.task_type = task_type;
-  invocation_spec.task_id =
-      TaskID::ForFakeTask();  // TODO(SongGuyang): make it from different task
   invocation_spec.remote_function_holder = remote_function_holder;
   invocation_spec.actor_id = actor;
   invocation_spec.args = TransformArgs(args);
@@ -201,8 +199,8 @@ void AbstractRayRuntime::RemoveLocalReference(const std::string &id) {
   }
 }
 
-std::string AbstractRayRuntime::GetActorId(bool global, const std::string &actor_name) {
-  auto actor_id = task_submitter_->GetActor(global, actor_name);
+std::string AbstractRayRuntime::GetActorId(const std::string &actor_name) {
+  auto actor_id = task_submitter_->GetActor(actor_name);
   if (actor_id.IsNil()) {
     return "";
   }
@@ -307,10 +305,8 @@ PlacementGroup AbstractRayRuntime::GetPlacementGroupById(const std::string &id) 
   return group;
 }
 
-PlacementGroup AbstractRayRuntime::GetPlacementGroup(const std::string &name,
-                                                     bool global) {
-  auto full_name = task_submitter_->GetFullName(global, name);
-  auto str_ptr = global_state_accessor_->GetPlacementGroupByName(full_name, "");
+PlacementGroup AbstractRayRuntime::GetPlacementGroup(const std::string &name) {
+  auto str_ptr = global_state_accessor_->GetPlacementGroupByName(name, "");
   if (str_ptr == nullptr) {
     return {};
   }

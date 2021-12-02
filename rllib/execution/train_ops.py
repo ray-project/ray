@@ -9,7 +9,8 @@ from ray.rllib.execution.common import \
     AGENT_STEPS_TRAINED_COUNTER, APPLY_GRADS_TIMER, COMPUTE_GRADS_TIMER, \
     LAST_TARGET_UPDATE_TS, LEARN_ON_BATCH_TIMER, \
     LOAD_BATCH_TIMER, NUM_TARGET_UPDATES, STEPS_SAMPLED_COUNTER, \
-    STEPS_TRAINED_COUNTER, WORKER_UPDATE_TIMER, _check_sample_batch_type, \
+    STEPS_TRAINED_COUNTER, STEPS_TRAINED_THIS_ITER_COUNTER, \
+    WORKER_UPDATE_TIMER, _check_sample_batch_type, \
     _get_global_vars, _get_shared_metrics
 from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID, \
     MultiAgentBatch
@@ -75,6 +76,7 @@ class TrainOneStep:
             metrics.info[LEARNER_INFO] = learner_info
             learn_timer.push_units_processed(batch.count)
         metrics.counters[STEPS_TRAINED_COUNTER] += batch.count
+        metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = batch.count
         if isinstance(batch, MultiAgentBatch):
             metrics.counters[
                 AGENT_STEPS_TRAINED_COUNTER] += batch.agent_steps()
@@ -209,6 +211,7 @@ class MultiGPUTrainOneStep:
         learn_timer.push_units_processed(samples.count)
 
         metrics.counters[STEPS_TRAINED_COUNTER] += samples.count
+        metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = samples.count
         metrics.counters[AGENT_STEPS_TRAINED_COUNTER] += samples.agent_steps()
         metrics.info[LEARNER_INFO] = learner_info
 
@@ -296,6 +299,7 @@ class ApplyGradients:
         gradients, count = item
         metrics = _get_shared_metrics()
         metrics.counters[STEPS_TRAINED_COUNTER] += count
+        metrics.counters[STEPS_TRAINED_THIS_ITER_COUNTER] = count
 
         apply_timer = metrics.timers[APPLY_GRADS_TIMER]
         with apply_timer:

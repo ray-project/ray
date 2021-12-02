@@ -15,14 +15,21 @@ from typing import Optional, Any, List, Dict
 from contextlib import redirect_stdout, redirect_stderr
 import yaml
 import logging
-import pytest
 import tempfile
+import grpc
+from grpc._channel import _InactiveRpcError
+import numpy as np
 
 import ray
 import ray._private.services
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
+from ray.core.generated import gcs_pb2
+from ray.core.generated import node_manager_pb2
+from ray.core.generated import node_manager_pb2_grpc
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsErrorSubscriber, \
+    GcsLogSubscriber
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray.util.queue import Queue, _QueueActor, Empty
 from ray.scripts.scripts import main as ray_main
@@ -232,7 +239,15 @@ def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
     return proc
 
 
+def convert_actor_state(state):
+    if not state:
+        return None
+    return (gcs_pb2.ActorTableData.ActorState.DESCRIPTOR.values_by_number[
+        state].name)
+
+
 def wait_for_num_actors(num_actors, state=None, timeout=10):
+    state = convert_actor_state(state)
     start_time = time.time()
     while time.time() - start_time < timeout:
         if len([
@@ -279,7 +294,8 @@ def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
     start = time.time()
     while time.time() - start <= timeout:
         actor_status = ray.state.actors(actor_id)
-        if actor_status["State"] == gcs_utils.ActorTableData.DEAD \
+        if actor_status["State"] == convert_actor_state(
+            gcs_utils.ActorTableData.DEAD) \
                 or actor_status["NumRestarts"] > current_num_restarts:
             return
         time.sleep(retry_interval_ms / 1000.0)
@@ -499,24 +515,38 @@ def get_non_head_nodes(cluster):
 
 def init_error_pubsub():
     """Initialize redis error info pub/sub"""
-    p = ray.worker.global_worker.redis_client.pubsub(
-        ignore_subscribe_messages=True)
-    error_pubsub_channel = gcs_utils.RAY_ERROR_PUBSUB_PATTERN
-    p.psubscribe(error_pubsub_channel)
-    return p
+    if gcs_pubsub_enabled():
+        s = GcsErrorSubscriber(
+            channel=ray.worker.global_worker.gcs_channel.channel())
+        s.subscribe()
+    else:
+        s = ray.worker.global_worker.redis_client.pubsub(
+            ignore_subscribe_messages=True)
+        s.psubscribe(gcs_utils.RAY_ERROR_PUBSUB_PATTERN)
+    return s
 
 
-def get_error_message(pub_sub, num, error_type=None, timeout=20):
-    """Get errors through pub/sub."""
-    start_time = time.time()
+def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
+    """Gets errors from GCS / Redis subscriber.
+
+    Returns maximum `num` error strings within `timeout`.
+    Only returns errors of `error_type` if specified.
+    """
+    deadline = time.time() + timeout
     msgs = []
-    while time.time() - start_time < timeout and len(msgs) < num:
-        msg = pub_sub.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            continue
-        pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
-        error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
+    while time.time() < deadline and len(msgs) < num:
+        if isinstance(subscriber, GcsErrorSubscriber):
+            _, error_data = subscriber.poll(timeout=deadline - time.time())
+            if not error_data:
+                # Timed out before any data is received.
+                break
+        else:
+            msg = subscriber.get_message()
+            if msg is None:
+                time.sleep(0.01)
+                continue
+            pubsub_msg = gcs_utils.PubSubMessage.FromString(msg["data"])
+            error_data = gcs_utils.ErrorTableData.FromString(pubsub_msg.data)
         if error_type is None or error_type == error_data.type:
             msgs.append(error_data)
         else:
@@ -527,47 +557,88 @@ def get_error_message(pub_sub, num, error_type=None, timeout=20):
 
 def init_log_pubsub():
     """Initialize redis error info pub/sub"""
-    p = ray.worker.global_worker.redis_client.pubsub(
-        ignore_subscribe_messages=True)
-    log_pubsub_channel = gcs_utils.LOG_FILE_CHANNEL
-    p.psubscribe(log_pubsub_channel)
-    return p
+    if gcs_pubsub_enabled():
+        s = GcsLogSubscriber(
+            channel=ray.worker.global_worker.gcs_channel.channel())
+        s.subscribe()
+    else:
+        s = ray.worker.global_worker.redis_client.pubsub(
+            ignore_subscribe_messages=True)
+        s.psubscribe(gcs_utils.LOG_FILE_CHANNEL)
+    return s
 
 
-def get_log_message(pub_sub,
-                    num: int,
+def get_log_message(subscriber,
+                    num: int = 1e6,
                     timeout: float = 20,
-                    job_id: Optional[str] = None) -> List[str]:
-    """Get errors through pub/sub."""
-    start_time = time.time()
+                    job_id: Optional[str] = None,
+                    matcher=None) -> List[str]:
+    """Gets log lines through GCS / Redis subscriber.
+
+    Returns maximum `num` lines of log messages, within `timeout`.
+
+    If `job_id` or `match` is specified, only returns log lines from `job_id`
+    or when `matcher` is true.
+    """
+    deadline = time.time() + timeout
     msgs = []
-    while time.time() - start_time < timeout and len(msgs) < num:
-        msg = pub_sub.get_message()
-        if msg is None:
-            time.sleep(0.01)
+    while time.time() < deadline and len(msgs) < num:
+        if isinstance(subscriber, GcsLogSubscriber):
+            logs_data = subscriber.poll(timeout=deadline - time.time())
+            if not logs_data:
+                # Timed out before any data is received.
+                break
+        else:
+            msg = subscriber.get_message()
+            if msg is None:
+                time.sleep(0.01)
+                continue
+            logs_data = json.loads(ray._private.utils.decode(msg["data"]))
+
+        if job_id and job_id != logs_data["job"]:
             continue
-        structured = json.loads(ray._private.utils.decode(msg["data"]))
-        if job_id and job_id != structured["job"]:
+        if matcher and all(not matcher(line) for line in logs_data["lines"]):
             continue
-        log_lines = structured["lines"]
-        msgs = log_lines
+        msgs.extend(logs_data["lines"])
 
     return msgs
 
 
-def get_all_log_message(pub_sub, num, timeout=20):
-    """Get errors through pub/sub."""
-    start_time = time.time()
-    msgs = []
-    while time.time() - start_time < timeout and len(msgs) < num:
-        msg = pub_sub.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            continue
-        log_lines = json.loads(ray._private.utils.decode(msg["data"]))["lines"]
-        msgs.extend(log_lines)
+def get_log_batch(subscriber,
+                  num: int,
+                  timeout: float = 20,
+                  job_id: Optional[str] = None,
+                  matcher=None) -> List[str]:
+    """Gets log batches through GCS / Redis subscriber.
 
-    return msgs
+    Returns maximum `num` batches of logs. Each batch is a dict that includes
+    metadata such as `pid`, `job_id`, and `lines` of log messages.
+
+    If `job_id` or `match` is specified, only returns log batches from `job_id`
+    or when `matcher` is true.
+    """
+    deadline = time.time() + timeout
+    batches = []
+    while time.time() < deadline and len(batches) < num:
+        if isinstance(subscriber, GcsLogSubscriber):
+            logs_data = subscriber.poll(timeout=deadline - time.time())
+            if not logs_data:
+                # Timed out before any data is received.
+                break
+        else:
+            msg = subscriber.get_message()
+            if msg is None:
+                time.sleep(0.01)
+                continue
+            logs_data = json.loads(ray._private.utils.decode(msg["data"]))
+
+        if job_id and job_id != logs_data["job"]:
+            continue
+        if matcher and not matcher(logs_data):
+            continue
+        batches.append(logs_data)
+
+    return batches
 
 
 def format_web_url(url):
@@ -852,6 +923,7 @@ def monitor_memory_usage(print_interval_s: int = 30,
 
 def setup_tls():
     """Sets up required environment variables for tls"""
+    import pytest
     if sys.platform == "darwin":
         pytest.skip("Cryptography doesn't install in Mac build pipeline")
     cert, key = generate_self_signed_tls_certs()
@@ -879,3 +951,116 @@ def teardown_tls(key_filepath, cert_filepath, temp_dir):
     del os.environ["RAY_TLS_SERVER_CERT"]
     del os.environ["RAY_TLS_SERVER_KEY"]
     del os.environ["RAY_TLS_CA_CERT"]
+
+
+def get_and_run_node_killer(node_kill_interval_s,
+                            namespace=None,
+                            lifetime=None,
+                            no_start=False):
+    assert ray.is_initialized(), (
+        "The API is only available when Ray is initialized.")
+
+    @ray.remote(num_cpus=0)
+    class NodeKillerActor:
+        def __init__(self,
+                     head_node_id,
+                     node_kill_interval_s: float = 60,
+                     max_nodes_to_kill: int = 2):
+            self.node_kill_interval_s = node_kill_interval_s
+            self.is_running = False
+            self.head_node_id = head_node_id
+            self.killed_nodes = set()
+            self.done = asyncio.get_event_loop().create_future()
+            self.max_nodes_to_kill = max_nodes_to_kill
+            # -- logger. --
+            logging.basicConfig(level=logging.INFO)
+
+        def ready(self):
+            pass
+
+        async def run(self):
+            self.is_running = True
+            while self.is_running:
+                node_to_kill_ip = None
+                node_to_kill_port = None
+                while node_to_kill_port is None and self.is_running:
+                    nodes = ray.nodes()
+                    alive_nodes = self._get_alive_nodes(nodes)
+                    for node in nodes:
+                        node_id = node["NodeID"]
+                        # make sure at least 1 worker node is alive.
+                        if (node["Alive"] and node_id != self.head_node_id
+                                and node_id not in self.killed_nodes
+                                and alive_nodes > 2):
+                            node_to_kill_ip = node["NodeManagerAddress"]
+                            node_to_kill_port = node["NodeManagerPort"]
+                            break
+                    # Give the cluster some time to start.
+                    await asyncio.sleep(0.1)
+
+                if not self.is_running:
+                    break
+
+                sleep_interval = np.random.rand() * self.node_kill_interval_s
+                time.sleep(sleep_interval)
+
+                if node_to_kill_port is not None:
+                    try:
+                        self._kill_raylet(
+                            node_to_kill_ip, node_to_kill_port, graceful=False)
+                    except Exception:
+                        pass
+                    logging.info(
+                        f"Killed node {node_id} at address: "
+                        f"{node_to_kill_ip}, port: {node_to_kill_port}")
+                    self.killed_nodes.add(node_id)
+                if len(self.killed_nodes) >= self.max_nodes_to_kill:
+                    break
+                await asyncio.sleep(self.node_kill_interval_s - sleep_interval)
+
+            self.done.set_result(True)
+
+        async def stop_run(self):
+            was_running = self.is_running
+            self.is_running = False
+            return was_running
+
+        async def get_total_killed_nodes(self):
+            """Get the total number of killed nodes"""
+            await self.done
+            return self.killed_nodes
+
+        def _kill_raylet(self, ip, port, graceful=False):
+            raylet_address = f"{ip}:{port}"
+            channel = grpc.insecure_channel(raylet_address)
+            stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+            try:
+                stub.ShutdownRaylet(
+                    node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+            except _InactiveRpcError:
+                assert not graceful
+
+        def _get_alive_nodes(self, nodes):
+            alive_nodes = 0
+            for node in nodes:
+                if node["Alive"]:
+                    alive_nodes += 1
+            return alive_nodes
+
+    head_node_ip = ray.worker.global_worker.node_ip_address
+    head_node_id = ray.worker.global_worker.current_node_id.hex()
+    # Schedule the actor on the current node.
+    node_killer = NodeKillerActor.options(
+        resources={
+            f"node:{head_node_ip}": 0.001
+        },
+        namespace=namespace,
+        name="node_killer",
+        lifetime=lifetime).remote(
+            head_node_id, node_kill_interval_s=node_kill_interval_s)
+    print("Waiting for node killer actor to be ready...")
+    ray.get(node_killer.ready.remote())
+    print("Node killer actor is ready now.")
+    if not no_start:
+        node_killer.run.remote()
+    return node_killer

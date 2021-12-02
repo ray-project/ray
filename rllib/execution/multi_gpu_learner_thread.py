@@ -3,7 +3,7 @@ from six.moves import queue
 import threading
 
 from ray.rllib.execution.learner_thread import LearnerThread
-from ray.rllib.execution.minibatch_buffer import MinibatchBuffer
+from ray.rllib.execution.buffers.minibatch_buffer import MinibatchBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning

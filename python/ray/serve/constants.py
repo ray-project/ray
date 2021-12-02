@@ -22,11 +22,6 @@ ASYNC_CONCURRENCY = int(1e6)
 # How often to call the control loop on the controller.
 CONTROL_LOOP_PERIOD_S = 0.1
 
-# Upon controller failure and recovery with running actor names,
-# we will update replica handles that halt all traffic to the cluster.
-# This constant indicates grace period to avoid controller thrashing.
-CONTROLLER_STARTUP_GRACE_PERIOD_S = 5
-
 #: Max time to wait for HTTP proxy in `serve.start()`.
 HTTP_PROXY_TIMEOUT = 60
 
@@ -52,8 +47,8 @@ DEFAULT_LATENCY_BUCKET_MS = [
     5000,
 ]
 
-#: Name of backend reconfiguration method implemented by user.
-BACKEND_RECONFIGURE_METHOD = "reconfigure"
+#: Name of deployment reconfiguration method implemented by user.
+RECONFIGURE_METHOD = "reconfigure"
 
 SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 

@@ -253,6 +253,13 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
               result = std::move(results[0]);
             }
             return result;
+          },
+          /*fail_pull_request=*/
+          [this](const ObjectID &object_id) {
+            rpc::ObjectReference ref;
+            ref.set_object_id(object_id.Binary());
+            MarkObjectsAsFailed(rpc::ErrorType::OBJECT_FETCH_TIMED_OUT, {ref},
+                                JobID::Nil());
           }),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
@@ -269,7 +276,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
           self_node_id_, config.node_manager_address, config.node_manager_port,
           RayConfig::instance().free_objects_batch_size(),
           RayConfig::instance().free_objects_period_milliseconds(), worker_pool_,
-          gcs_client_->Objects(), worker_rpc_pool_,
+          worker_rpc_pool_,
           /*max_io_workers*/ config.max_io_workers,
           /*min_spilling_size*/ config.min_spilling_size,
           /*is_external_storage_type_fs*/
@@ -291,12 +298,13 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
       local_gc_interval_ns_(RayConfig::instance().local_gc_interval_s() * 1e9),
       record_metrics_period_ms_(config.record_metrics_period_ms),
-      runtime_env_manager_([this](const std::string &uri, std::function<void(bool)> cb) {
-        if (RayConfig::instance().runtime_env_skip_local_gc()) {
-          return cb(true);
-        }
-        return agent_manager_->DeleteURIs({uri}, cb);
-      }),
+      runtime_env_manager_(
+          /*deleter=*/[this](const std::string &uri, std::function<void(bool)> cb) {
+            if (RayConfig::instance().runtime_env_skip_local_gc()) {
+              return cb(true);
+            }
+            return agent_manager_->DeleteURIs({uri}, cb);
+          }),
       next_resource_seq_no_(0) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   RAY_CHECK(RayConfig::instance().raylet_heartbeat_period_milliseconds() > 0);
@@ -354,6 +362,10 @@ NodeManager::NodeManager(instrumented_io_context &io_service, const NodeID &self
             self_node_id_, resource_names, nullptr));
       });
 
+  periodical_runner_.RunFnPeriodically(
+      [this]() { cluster_task_manager_->ScheduleAndDispatchTasks(); },
+      RayConfig::instance().worker_cap_initial_backoff_delay_ms());
+
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
@@ -408,6 +420,9 @@ ray::Status NodeManager::RegisterGcs() {
     const auto &resources_changed =
         [this](const rpc::NodeResourceChange &resource_notification) {
           auto id = NodeID::FromBinary(resource_notification.node_id());
+          if (id == self_node_id_) {
+            return;
+          }
           if (resource_notification.updated_resources_size() != 0) {
             ResourceSet resource_set(
                 MapFromProtobuf(resource_notification.updated_resources()));
@@ -534,12 +549,15 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(DEBUG) << "HandleJobStarted for job " << job_id;
+  RAY_LOG(INFO) << "New job has started. Job id " << job_id << " Driver pid "
+                << job_data.driver_pid() << " is dead: " << job_data.is_dead()
+                << " driver address: " << job_data.driver_ip_address();
   worker_pool_.HandleJobStarted(job_id, job_data.config());
   // NOTE: Technically `HandleJobStarted` isn't idempotent because we'll
   // increment the ref count multiple times. This is fine because
   // `HandleJobFinisehd` will also decrement the ref count multiple times.
-  runtime_env_manager_.AddURIReference(job_id.Hex(), job_data.config().runtime_env());
+  runtime_env_manager_.AddURIReference(job_id.Hex(),
+                                       job_data.config().runtime_env_info());
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
   // reschedule these tasks.
@@ -890,7 +908,16 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                                         const ResourceSet &createUpdatedResources) {
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from node id " << node_id
                  << " with created or updated resources: "
-                 << createUpdatedResources.ToString() << ". Updating resource map.";
+                 << createUpdatedResources.ToString() << ". Updating resource map."
+                 << " skip=" << (node_id == self_node_id_);
+
+  // Skip updating local node since local node always has the latest information.
+  // Updating local node could result in a inconsistence view in cluster resource
+  // scheduler which could make task hang.
+  if (node_id == self_node_id_) {
+    cluster_task_manager_->ScheduleAndDispatchTasks();
+    return;
+  }
 
   // Update local_available_resources_ and SchedulingResources
   for (const auto &resource_pair : createUpdatedResources.GetResourceMap()) {
@@ -900,11 +927,7 @@ void NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                                                         new_resource_capacity);
   }
   RAY_LOG(DEBUG) << "[ResourceCreateUpdated] Updated cluster_resource_map.";
-
-  if (node_id == self_node_id_) {
-    // The resource update is on the local node, check if we can reschedule tasks.
-    cluster_task_manager_->ScheduleAndDispatchTasks();
-  }
+  cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
 void NodeManager::ResourceDeleted(const NodeID &node_id,
@@ -916,7 +939,14 @@ void NodeManager::ResourceDeleted(const NodeID &node_id,
     }
     RAY_LOG(DEBUG) << "[ResourceDeleted] received callback from node id " << node_id
                    << " with deleted resources: " << oss.str()
-                   << ". Updating resource map.";
+                   << ". Updating resource map. skip=" << (node_id == self_node_id_);
+  }
+
+  // Skip updating local node since local node always has the latest information.
+  // Updating local node could result in a inconsistence view in cluster resource
+  // scheduler which could make task hang.
+  if (node_id == self_node_id_) {
+    return;
   }
 
   // Update local_available_resources_ and SchedulingResources
@@ -1185,9 +1215,9 @@ void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &
   cluster_task_manager_->ScheduleAndDispatchTasks();
 }
 
-void NodeManager::DisconnectClient(
-    const std::shared_ptr<ClientConnection> &client, rpc::WorkerExitType disconnect_type,
-    const std::shared_ptr<rpc::RayException> &creation_task_exception) {
+void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &client,
+                                   rpc::WorkerExitType disconnect_type,
+                                   const rpc::RayException *creation_task_exception) {
   RAY_LOG(INFO) << "NodeManager::DisconnectClient, disconnect_type=" << disconnect_type
                 << ", has creation task exception = "
                 << (creation_task_exception != nullptr);
@@ -1315,13 +1345,13 @@ void NodeManager::ProcessDisconnectClientMessage(
   const flatbuffers::Vector<uint8_t> *exception_pb =
       message->creation_task_exception_pb();
 
-  std::shared_ptr<rpc::RayException> creation_task_exception = nullptr;
+  std::unique_ptr<rpc::RayException> creation_task_exception = nullptr;
   if (exception_pb != nullptr) {
-    creation_task_exception = std::make_shared<rpc::RayException>();
+    creation_task_exception = std::make_unique<rpc::RayException>();
     creation_task_exception->ParseFromString(std::string(
         reinterpret_cast<const char *>(exception_pb->data()), exception_pb->size()));
   }
-  DisconnectClient(client, disconnect_type, creation_task_exception);
+  DisconnectClient(client, disconnect_type, creation_task_exception.get());
 }
 
 void NodeManager::ProcessFetchOrReconstructMessage(
@@ -1474,39 +1504,44 @@ void NodeManager::HandleUpdateResourceUsage(
     rpc::SendReplyCallback send_reply_callback) {
   rpc::ResourceUsageBroadcastData resource_usage_batch;
   resource_usage_batch.ParseFromString(request.serialized_resource_usage_batch());
-
-  if (resource_usage_batch.seq_no() != next_resource_seq_no_) {
+  // When next_resource_seq_no_ == 0 it means it just started.
+  // TODO: Fetch a snapshot from gcs for lightweight resource broadcasting
+  if (next_resource_seq_no_ != 0 &&
+      resource_usage_batch.seq_no() != next_resource_seq_no_) {
+    // TODO (Alex): Ideally we would be really robust, and potentially eagerly
+    // pull a full resource "snapshot" from gcs to make sure our state doesn't
+    // diverge from GCS.
     RAY_LOG(WARNING)
         << "Raylet may have missed a resource broadcast. This either means that GCS has "
            "restarted, the network is heavily congested and is dropping, reordering, or "
            "duplicating packets. Expected seq#: "
         << next_resource_seq_no_ << ", but got: " << resource_usage_batch.seq_no() << ".";
-    // TODO (Alex): Ideally we would be really robust, and potentially eagerly
-    // pull a full resource "snapshot" from gcs to make sure our state doesn't
-    // diverge from GCS.
+    if (resource_usage_batch.seq_no() < next_resource_seq_no_) {
+      RAY_LOG(WARNING) << "Discard the the resource update since local version is newer";
+      return;
+    }
   }
   next_resource_seq_no_ = resource_usage_batch.seq_no() + 1;
 
   for (const auto &resource_change_or_data : resource_usage_batch.batch()) {
     if (resource_change_or_data.has_data()) {
       const auto &resource_usage = resource_change_or_data.data();
-      const NodeID &node_id = NodeID::FromBinary(resource_usage.node_id());
-      if (node_id == self_node_id_) {
-        // Skip messages from self.
-        continue;
+      auto node_id = NodeID::FromBinary(resource_usage.node_id());
+      // Skip messages from self.
+      if (node_id != self_node_id_) {
+        UpdateResourceUsage(node_id, resource_usage);
       }
-      UpdateResourceUsage(node_id, resource_usage);
     } else if (resource_change_or_data.has_change()) {
       const auto &resource_notification = resource_change_or_data.change();
-      auto id = NodeID::FromBinary(resource_notification.node_id());
+      auto node_id = NodeID::FromBinary(resource_notification.node_id());
       if (resource_notification.updated_resources_size() != 0) {
         ResourceSet resource_set(
             MapFromProtobuf(resource_notification.updated_resources()));
-        ResourceCreateUpdated(id, resource_set);
+        ResourceCreateUpdated(node_id, resource_set);
       }
 
       if (resource_notification.deleted_resources_size() != 0) {
-        ResourceDeleted(id,
+        ResourceDeleted(node_id,
                         VectorFromProtobuf(resource_notification.deleted_resources()));
       }
     }
@@ -1546,7 +1581,7 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   RayTask task(task_message);
-  bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
+  const bool is_actor_creation_task = task.GetTaskSpecification().IsActorCreationTask();
   ActorID actor_id = ActorID::Nil();
   metrics_num_task_scheduled_ += 1;
 
@@ -1566,48 +1601,36 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
     worker_pool_.PrestartWorkers(task_spec, request.backlog_size(), available_cpus);
   }
 
-  if (!(RayConfig::instance().gcs_actor_scheduling_enabled() &&
-        task.GetTaskSpecification().IsActorCreationTask())) {
-    cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback);
-    return;
-  }
-
-  auto send_reply_callback_wrapper = [this, actor_id, reply, send_reply_callback](
+  auto send_reply_callback_wrapper = [this, is_actor_creation_task, actor_id, reply,
+                                      send_reply_callback](
                                          Status status, std::function<void()> success,
                                          std::function<void()> failure) {
-    if (!reply->rejected()) {
-      send_reply_callback(status, success, failure);
-      return;
+    // If resources are not enough due to normal tasks' preemption
+    // for GCS based actor scheduling, return a rejection
+    // with normal task resource usages so GCS can update
+    // its resource view of this raylet.
+    if (reply->rejected() && is_actor_creation_task) {
+      ResourceSet normal_task_resources =
+          cluster_task_manager_->CalcNormalTaskResources();
+      RAY_LOG(DEBUG) << "Reject leasing as the raylet has no enough resources."
+                     << " actor_id = " << actor_id
+                     << ", normal_task_resources = " << normal_task_resources.ToString()
+                     << ", local_resoruce_view = "
+                     << cluster_resource_scheduler_->GetLocalResourceViewString();
+      auto resources_data = reply->mutable_resources_data();
+      resources_data->set_node_id(self_node_id_.Binary());
+      resources_data->set_resources_normal_task_changed(true);
+      auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
+      normal_task_map = {normal_task_resources.GetResourceMap().begin(),
+                         normal_task_resources.GetResourceMap().end()};
+      resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
     }
 
-    // If the reqiured resource and normal task resource exceed available resource,
-    // reject it.
-    ResourceSet normal_task_resources = cluster_task_manager_->CalcNormalTaskResources();
-    RAY_LOG(DEBUG) << "Reject leasing as the raylet has no enough resources."
-                   << " actor_id = " << actor_id
-                   << ", normal_task_resources = " << normal_task_resources.ToString()
-                   << ", local_resoruce_view = "
-                   << cluster_resource_scheduler_->GetLocalResourceViewString();
-    auto resources_data = reply->mutable_resources_data();
-    resources_data->set_node_id(self_node_id_.Binary());
-    resources_data->set_resources_normal_task_changed(true);
-    auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
-    normal_task_map = {normal_task_resources.GetResourceMap().begin(),
-                       normal_task_resources.GetResourceMap().end()};
-    resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
-
-    send_reply_callback(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
+    send_reply_callback(status, success, failure);
   };
 
-  // If resources are not enough due to normal tasks' preemption, return a rejection with
-  // normal task resource usages.
-  if (!cluster_task_manager_->IsLocallySchedulable(task)) {
-    reply->set_rejected(true);
-    send_reply_callback_wrapper(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
-    return;
-  }
-
-  cluster_task_manager_->QueueAndScheduleTask(task, reply, send_reply_callback_wrapper);
+  cluster_task_manager_->QueueAndScheduleTask(task, request.grant_or_reject(), reply,
+                                              send_reply_callback_wrapper);
 }
 
 void NodeManager::HandlePrepareBundleResources(
@@ -1702,17 +1725,16 @@ void NodeManager::HandleShutdownRaylet(const rpc::ShutdownRayletRequest &request
                                        rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO)
       << "Shutdown RPC has received. Shutdown will happen after the RPC is replied.";
+  // Exit right away if it is not graceful.
+  if (!request.graceful()) {
+    std::_Exit(EXIT_SUCCESS);
+  }
   if (is_node_drained_) {
     RAY_LOG(INFO) << "Node already has received the shutdown request. The shutdown "
                      "request RPC is ignored.";
     return;
   }
-  auto graceful = request.graceful();
-  auto shutdown_after_reply = [graceful]() {
-    // Exit right away if it is not graceful.
-    if (!graceful) {
-      std::_Exit(EXIT_SUCCESS);
-    }
+  auto shutdown_after_reply = []() {
     // Note that the callback is posted to the io service after the shutdown GRPC request
     // is replied. Otherwise, the RPC might not be replied to GCS before it shutsdown
     // itself. Implementation note: When raylet is shutdown by ray stop, the CLI sends a
@@ -1720,7 +1742,7 @@ void NodeManager::HandleShutdownRaylet(const rpc::ShutdownRayletRequest &request
     // we raise a sigterm to itself so that it can re-use the same graceful shutdown code
     // path. The sigterm is handled in the entry point (raylet/main.cc)'s signal handler.
     auto signo = SIGTERM;
-    RAY_LOG(INFO) << "Sending a signal to itself. shutting down. graceful " << graceful
+    RAY_LOG(INFO) << "Sending a signal to itself. shutting down. "
                   << ". Signo: " << signo;
     // raise return 0 if succeeds. If it fails to gracefully shutdown, it kills itself
     // forcefully.
@@ -1930,7 +1952,7 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
     auto job_config = worker_pool_.GetJobConfig(job_id);
     RAY_CHECK(job_config);
     runtime_env_manager_.AddURIReference(actor_id.Hex(),
-                                         task.GetTaskSpecification().RuntimeEnv());
+                                         task.GetTaskSpecification().RuntimeEnvInfo());
   }
 }
 
@@ -2043,7 +2065,7 @@ void NodeManager::ProcessSubscribePlasmaReady(
 
 void NodeManager::DumpDebugState() const {
   std::fstream fs;
-  fs.open(initial_config_.session_dir + "/debug_state.txt",
+  fs.open(initial_config_.log_dir + "/debug_state.txt",
           std::fstream::out | std::fstream::trunc);
   fs << DebugString();
   fs.close();

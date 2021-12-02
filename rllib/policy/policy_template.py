@@ -10,11 +10,11 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
-from ray.rllib.utils import add_mixins, force_list, NullContextManager
+from ray.rllib.utils import add_mixins, NullContextManager
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch, try_import_jax
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.torch_ops import convert_to_non_torch_type
+from ray.rllib.utils.torch_utils import convert_to_non_torch_type
 from ray.rllib.utils.typing import ModelGradients, TensorType, \
     TrainerConfigDict
 
@@ -25,7 +25,7 @@ jax, _ = try_import_jax()
 torch, _ = try_import_torch()
 
 
-# TODO: (sven) Unify this with `build_tf_policy` as well.
+# TODO: Deprecate in favor of directly sub-classing from TorchPolicy.
 @DeveloperAPI
 def build_policy_class(
         name: str,
@@ -360,10 +360,6 @@ def build_policy_class(
                 optimizers = optimizer_fn(self, self.config)
             else:
                 optimizers = parent_cls.optimizer(self)
-            optimizers = force_list(optimizers)
-            if getattr(self, "exploration", None):
-                optimizers = self.exploration.get_exploration_optimizer(
-                    optimizers)
             return optimizers
 
         @override(parent_cls)
