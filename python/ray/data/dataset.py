@@ -1868,8 +1868,10 @@ class Dataset(Generic[T]):
             while batcher.has_batch():
                 process_start = time.monotonic()
                 result = format_batch(batcher.next_batch(), batch_format)
-                self._stats.iter_process_s += time.monotonic() - process_start
+                user_start = time.monotonic()
+                self._stats.iter_process_s += user_start - process_start
                 yield result
+                self._stats.iter_user_s += time.monotonic() - user_start
 
         block_window = []  # Handle empty sliding window gracefully.
         for block_window in _sliding_window(self._blocks.iter_blocks(),
@@ -1886,7 +1888,9 @@ class Dataset(Generic[T]):
 
         # Yield any remainder batches.
         if batcher.has_any() and not drop_last:
+            user_start = time.monotonic()
             yield format_batch(batcher.next_batch(), batch_format)
+            self._stats.iter_user_s += time.monotonic() - user_start
 
         self._stats.iter_total_s += time.monotonic() - time_start
 

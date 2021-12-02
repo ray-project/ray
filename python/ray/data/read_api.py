@@ -1,4 +1,5 @@
 import itertools
+import time
 import logging
 from typing import List, Any, Dict, Union, Optional, Tuple, Callable, \
     TypeVar, TYPE_CHECKING
@@ -16,7 +17,7 @@ import ray
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.data.block import Block, BlockAccessor, BlockMetadata, \
-    MaybeBlockPartition
+    MaybeBlockPartition, BlockExecStats, BlockPartitionMetadata
 from ray.data.context import DatasetContext
 from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource, RangeDatasource, \
@@ -25,7 +26,7 @@ from ray.data.datasource import Datasource, RangeDatasource, \
 from ray.data.impl.arrow_block import ArrowRow, \
     DelegatingArrowBlockBuilder
 from ray.data.impl.block_list import BlockList
-from ray.data.impl.lazy_block_list import LazyBlockList, BlockPartitionMetadata
+from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.remote_fn import cached_remote_fn
 from ray.data.impl.stats import DatasetStats
 from ray.data.impl.util import _get_spread_resources_iter
@@ -162,9 +163,38 @@ def read_datasource(datasource: Datasource[T],
     read_tasks = datasource.prepare_read(parallelism, **read_args)
     context = DatasetContext.get_current()
 
-    def remote_read(task: ReadTask) -> MaybeBlockPartition:
+    @ray.remote(num_cpus=0)
+    class StatsActor:
+        def __init__(self):
+            self.metadata = {}
+
+        def add(self, i, metadata):
+            self.metadata[i] = metadata
+
+        def get(self):
+            return self.metadata
+
+    stats_actor = StatsActor.remote()
+
+    def remote_read(i: int, task: ReadTask) -> MaybeBlockPartition:
         DatasetContext._set_current(context)
-        return task()
+        start_time, start_cpu = time.monotonic(), time.process_time()
+        exec_stats = BlockExecStats()
+
+        # Execute the read task.
+        block = task()
+
+        exec_stats.cpu_time_s = time.process_time() - start_cpu
+        exec_stats.wall_time_s = time.monotonic() - start_time
+        if context.block_splitting_enabled:
+            metadata = task.get_metadata()
+            metadata.exec_stats = exec_stats
+        else:
+            metadata = BlockAccessor.for_block(block).get_metadata(
+                input_files=task.get_metadata().input_files,
+                exec_stats=exec_stats)
+        stats_actor.add.remote(i, metadata)
+        return block
 
     if ray_remote_args is None:
         ray_remote_args = {}
@@ -189,12 +219,12 @@ def read_datasource(datasource: Datasource[T],
     calls: List[Callable[[], ObjectRef[MaybeBlockPartition]]] = []
     metadata: List[BlockPartitionMetadata] = []
 
-    for task in read_tasks:
+    for i, task in enumerate(read_tasks):
         calls.append(
-            lambda task=task,
+            lambda i=i, task=task,
             resources=next(resource_iter): remote_read.options(
                 **ray_remote_args,
-                resources=resources).remote(task))
+                resources=resources).remote(i, task))
         metadata.append(task.get_metadata())
 
     block_list = LazyBlockList(calls, metadata)
@@ -203,8 +233,10 @@ def read_datasource(datasource: Datasource[T],
     if metadata and metadata[0].schema is None:
         block_list.ensure_schema_for_first_block()
 
-    return Dataset(block_list, 0,
-                   DatasetStats(stages={"read": metadata}, parent=None))
+    return Dataset(
+        block_list, 0,
+        DatasetStats(
+            stages={"read": metadata}, parent=None, stats_actor=stats_actor))
 
 
 @PublicAPI(stability="beta")
