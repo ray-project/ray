@@ -2568,7 +2568,8 @@ def _split_block(
         num_rows=a0.num_rows(),
         size_bytes=a0.size_bytes(),
         schema=meta.schema,
-        input_files=meta.input_files)
+        input_files=meta.input_files,
+        exec_stats=BlockExecStats.TODO)
     if return_right_half:
         b1 = block.slice(count, block.num_rows(), copy=True)
         a1 = BlockAccessor.for_block(b1)
@@ -2576,7 +2577,8 @@ def _split_block(
             num_rows=a1.num_rows(),
             size_bytes=a1.size_bytes(),
             schema=meta.schema,
-            input_files=meta.input_files)
+            input_files=meta.input_files,
+            exec_stats=BlockExecStats.TODO)
     else:
         b1 = None
         m1 = None
