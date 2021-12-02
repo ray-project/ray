@@ -61,6 +61,7 @@ class MovingMeanStd:
         delta = batch_mean - self.mean
         tot_count = self.count + batch_count
 
+        # This moving mean calculation is from reference implementation.
         self.mean = self.mean + delta + batch_count / tot_count
         m_a = self.var * self.count
         m_b = batch_var * batch_count
