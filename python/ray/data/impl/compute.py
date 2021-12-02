@@ -31,7 +31,8 @@ def _map_block_split(block: Block, fn: Any,
             num_rows=accessor.num_rows(),
             size_bytes=accessor.size_bytes(),
             schema=accessor.schema(),
-            input_files=input_files)
+            input_files=input_files,
+            exec_stats=BlockExecStats.TODO)
         owner = DatasetContext.get_current().block_owner
         output.append((ray.put(new_block, _owner=owner), new_meta))
     return output

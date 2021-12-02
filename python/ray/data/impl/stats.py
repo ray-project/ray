@@ -25,7 +25,8 @@ class _DatasetStatsBuilder:
 
     def build(self, final_blocks: BlockList) -> "DatasetStats":
         stats = DatasetStats(
-            stages={self.stage_name: final_blocks.get_metadata()}, parent=self.parent)
+            stages={self.stage_name: final_blocks.get_metadata()},
+            parent=self.parent)
         stats.time_total_s = time.monotonic() - self.start_time
         return stats
 

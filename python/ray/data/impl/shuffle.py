@@ -5,7 +5,7 @@ from typing import TypeVar, List, Optional, Dict, Any
 import numpy as np
 
 import ray
-from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata, BlockExecStats
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
@@ -132,5 +132,5 @@ def _shuffle_reduce(*mapper_outputs: List[Block]) -> (Block, BlockMetadata):
         size_bytes=accessor.size_bytes(),
         schema=accessor.schema(),
         input_files=None,
-        exec_stats=None)  # TODO(ekl)
+        exec_stats=BlockExecStats.TODO)
     return new_block, new_metadata

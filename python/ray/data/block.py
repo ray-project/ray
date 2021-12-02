@@ -49,6 +49,9 @@ class BlockExecStats:
         node_id: A unique id for the node that computed this block.
     """
 
+    # TODO(ekl) fill in all uses of BlockExecStats.TODO.
+    TODO = None
+
     def __init__(self):
         self.wall_time_s: Optional[float] = None
         self.cpu_time_s: Optional[float] = None

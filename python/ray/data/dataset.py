@@ -366,7 +366,8 @@ class Dataset(Generic[T]):
 
         if shuffle:
             new_blocks = simple_shuffle(self._blocks, num_blocks)
-            return Dataset(new_blocks, self._epoch, self._stats.TODO("repartition"))
+            return Dataset(new_blocks, self._epoch,
+                           self._stats.TODO("repartition"))
 
         # Compute the (n-1) indices needed for an equal split of the data.
         count = self.count()
@@ -412,7 +413,9 @@ class Dataset(Generic[T]):
             new_blocks += empty_blocks
             new_metadata += empty_metadata
 
-        return Dataset(BlockList(new_blocks, new_metadata), self._epoch, self._stats.TODO("repartition"))
+        return Dataset(
+            BlockList(new_blocks, new_metadata), self._epoch,
+            self._stats.TODO("repartition"))
 
     def random_shuffle(
             self,
@@ -455,7 +458,8 @@ class Dataset(Generic[T]):
             random_shuffle=True,
             random_seed=seed,
             _spread_resource_prefix=_spread_resource_prefix)
-        return Dataset(new_blocks, self._epoch, self._stats.TODO("random_shuffle"))
+        return Dataset(new_blocks, self._epoch,
+                       self._stats.TODO("random_shuffle"))
 
     def split(self,
               n: int,
@@ -644,8 +648,8 @@ class Dataset(Generic[T]):
             return equalize([
                 Dataset(
                     BlockList(
-                        list(blocks), [metadata_mapping[b]
-                                       for b in blocks]), self._epoch, self._stats)
+                        list(blocks), [metadata_mapping[b] for b in blocks]),
+                    self._epoch, self._stats)
                 for blocks in np.array_split(block_refs, n)
                 if not equal or len(blocks) > 0
             ], n)
@@ -743,8 +747,8 @@ class Dataset(Generic[T]):
                 BlockList(
                     allocation_per_actor[actor],
                     [metadata_mapping[b]
-                     for b in allocation_per_actor[actor]]), self._epoch, self._stats)
-            for actor in locality_hints
+                     for b in allocation_per_actor[actor]]), self._epoch,
+                self._stats) for actor in locality_hints
         ], n)
 
     def split_at_indices(self, indices: List[int]) -> List["Dataset[T]"]:
@@ -840,7 +844,8 @@ class Dataset(Generic[T]):
                     "be shown again.".format(set(epochs), max_epoch))
                 _epoch_warned = True
         return Dataset(
-            LazyBlockList(calls, metadata, block_partitions), max_epoch, self._stats.TODO("union"))
+            LazyBlockList(calls, metadata, block_partitions), max_epoch,
+            self._stats.TODO("union"))
 
     def groupby(self, key: "GroupKeyT") -> "GroupedDataset[T]":
         """Group the dataset by the key function or column name (Experimental).
@@ -1328,7 +1333,9 @@ class Dataset(Generic[T]):
         # Handle empty dataset.
         if self.num_blocks() == 0:
             return self
-        return Dataset(sort_impl(self._blocks, key, descending), self._epoch, self._stats.TODO("sort"))
+        return Dataset(
+            sort_impl(self._blocks, key, descending), self._epoch,
+            self._stats.TODO("sort"))
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
@@ -1379,7 +1386,8 @@ class Dataset(Generic[T]):
 
         # TODO(ekl) it might be nice to have a progress bar here.
         metadata = ray.get(metadata)
-        return Dataset(BlockList(blocks, metadata), self._epoch, self._stats.TODO("zip"))
+        return Dataset(
+            BlockList(blocks, metadata), self._epoch, self._stats.TODO("zip"))
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
@@ -2426,17 +2434,21 @@ class Dataset(Generic[T]):
                 right_metadata.append(ray.get(m1))
             count += num_rows
 
-        left = Dataset(BlockList(left_blocks, left_metadata), self._epoch, self._stats.TODO("split"))
+        left = Dataset(
+            BlockList(left_blocks, left_metadata), self._epoch,
+            self._stats.TODO("split"))
         if return_right_half:
             right = Dataset(
-                BlockList(right_blocks, right_metadata), self._epoch, self._stats.TODO("split"))
+                BlockList(right_blocks, right_metadata), self._epoch,
+                self._stats.TODO("split"))
         else:
             right = None
         return left, right
 
     def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
         left, right = self._blocks.divide(block_idx)
-        return Dataset(left, self._epoch), Dataset(right, self._epoch, self._stats.TODO("split"))
+        return Dataset(left, self._epoch), Dataset(right, self._epoch,
+                                                   self._stats.TODO("split"))
 
     def __repr__(self) -> str:
         schema = self.schema()
