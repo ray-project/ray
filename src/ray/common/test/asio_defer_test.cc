@@ -43,10 +43,3 @@ TEST(AsioChaosTest, WithGlobal) {
   ASSERT_TRUE(EnsureBelow("method2", 20, 30));
   ASSERT_TRUE(EnsureBelow("others", 100, 200));
 }
-
-TEST(AsioChaosTest, Error) {
-  RayConfig::instance().testing_asio_delay_us() = "method1=100:10,method2=20";
-  ray::asio::testing::init();
-  ASSERT_TRUE(EnsureBelow("method1", 0, 0));
-  ASSERT_TRUE(EnsureBelow("method2", 0, 0));
-}

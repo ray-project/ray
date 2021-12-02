@@ -81,33 +81,28 @@ class DelayManager {
                      << ", expected method=min_us:max:ms. Skip this entry.";
     }
     auto delay_us = ParseVal(item_val[1]);
-    if (delay_us) {
-      if (item_val[0] == "*") {
-        default_delay_range_us_ = *delay_us;
-      } else {
-        delay_[item_val[0]] = *delay_us;
-      }
+    if (item_val[0] == "*") {
+      default_delay_range_us_ = delay_us;
+    } else {
+      delay_[item_val[0]] = delay_us;
     }
   }
 
-  std::optional<std::pair<int64_t, int64_t>> ParseVal(std::string_view val) {
+  std::pair<int64_t, int64_t> ParseVal(std::string_view val) {
     std::vector<std::string_view> delay_str_us = absl::StrSplit(val, ":");
     if (delay_str_us.size() != 2) {
       RAY_LOG(FATAL) << "Error in syntax: " << val
                      << ", expected method=min_us:max:ms. Skip this entry";
-      return std::nullopt;
     }
     std::pair<int64_t, int64_t> delay_us;
     if (!absl::SimpleAtoi(delay_str_us[0], &delay_us.first) ||
         !absl::SimpleAtoi(delay_str_us[1], &delay_us.second)) {
       RAY_LOG(FATAL) << "Error in syntax: " << val
                      << ", expected method=min_us:max:ms. Skip this entry";
-      return std::nullopt;
     }
     if (delay_us.first > delay_us.second) {
       RAY_LOG(FATAL) << delay_us.first << " is bigger than " << delay_us.second
                      << ". Skip this entry.";
-      return std::nullopt;
     }
     return delay_us;
   }
