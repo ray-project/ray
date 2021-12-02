@@ -18,6 +18,7 @@ S3_PACKAGE_URI = "s3://runtime-env-test/test_runtime_env.zip"
 GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 REMOTE_URIS = [HTTPS_PACKAGE_URI, S3_PACKAGE_URI]
 
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("remote_uri", REMOTE_URIS)
 @pytest.mark.parametrize("option", ["failure", "working_dir", "py_modules"])
