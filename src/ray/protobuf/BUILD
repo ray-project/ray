@@ -18,7 +18,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "common_py_proto",
-    deps = [":common_proto"],
+    protos = [":common_proto"],
 )
 
 proto_library(
@@ -44,7 +44,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "runtime_env_common_py_proto",
-    deps = [":runtime_env_common_proto"],
+    protos = [":runtime_env_common_proto"],
 )
 
 cc_proto_library(
@@ -54,7 +54,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "gcs_py_proto",
-    deps = [":gcs_proto"],
+    protos = [":gcs_proto"],
 )
 
 # Function and class dependencies.
@@ -65,7 +65,7 @@ proto_library(
 
 python_grpc_compile(
     name = "dependency_py_proto",
-    deps = [":dependency_proto"],
+    protos = [":dependency_proto"],
 )
 
 # Text logging.
@@ -81,7 +81,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "logging_py_proto",
-    deps = [":logging_proto"],
+    protos = [":logging_proto"],
 )
 
 proto_library(
@@ -100,7 +100,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "node_manager_py_proto",
-    deps = [":node_manager_proto"],
+    protos = [":node_manager_proto"],
 )
 
 proto_library(
@@ -119,7 +119,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "reporter_py_proto",
-    deps = [":reporter_proto"],
+    protos = [":reporter_proto"],
 )
 
 proto_library(
@@ -139,7 +139,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "gcs_service_py_proto",
-    deps = [":gcs_service_proto"],
+    protos = [":gcs_service_proto"],
 )
 
 proto_library(
@@ -158,7 +158,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "test_service_py_proto",
-    deps = [":test_service_proto"],
+    protos = [":test_service_proto"],
 )
 
 proto_library(
@@ -184,7 +184,7 @@ proto_library(
 
 python_grpc_compile(
     name = "core_worker_py_proto",
-    deps = [":core_worker_proto"],
+    protos = [":core_worker_proto"],
 )
 
 cc_proto_library(
@@ -214,7 +214,7 @@ cc_proto_library(
 
 python_grpc_compile(
     name = "event_py_proto",
-    deps = [":event_proto"],
+    protos = [":event_proto"],
 )
 
 # Job agent.
@@ -226,7 +226,7 @@ proto_library(
 
 python_grpc_compile(
     name = "job_agent_py_proto",
-    deps = [":job_agent_proto"],
+    protos = [":job_agent_proto"],
 )
 
 # Agent manager gRPC lib.
@@ -238,7 +238,7 @@ proto_library(
 
 python_grpc_compile(
     name = "agent_manager_py_proto",
-    deps = [":agent_manager_proto"],
+    protos = [":agent_manager_proto"],
 )
 
 cc_proto_library(
@@ -255,7 +255,7 @@ proto_library(
 
 python_grpc_compile(
     name = "ray_client_py_proto",
-    deps = [":ray_client_proto"],
+    protos = [":ray_client_proto"],
 )
 
 # Pubsub
@@ -287,7 +287,7 @@ proto_library(
 
 python_grpc_compile(
     name = "runtime_env_agent_py_proto",
-    deps = [":runtime_env_agent_proto"],
+    protos = [":runtime_env_agent_proto"],
 )
 
 cc_proto_library(
@@ -303,5 +303,5 @@ proto_library(
 
 python_grpc_compile(
     name = "serve_py_proto",
-    deps = [":serve_proto"],
+    protos = [":serve_proto"],
 )

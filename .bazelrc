@@ -9,6 +9,7 @@ build --action_env=PATH
 build --compilation_mode=opt
 # Using C++ 17 on all platforms.
 build:linux --cxxopt="-std=c++17"
+build:linux --define=use_fast_cpp_protos=true
 build:macos --cxxopt="-std=c++17"
 build:clang-cl --cxxopt="-std=c++17"
 build:msvc-cl --cxxopt="/std:c++17"

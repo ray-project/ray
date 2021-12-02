@@ -246,12 +246,18 @@ def ray_deps_setup():
         sha256 = "f8616dff15cb8aad6705af53c7caf7a5f1103b6aaf59c76b55995e179d47f89c",
     )
 
+    # auto_http_archive(
+    #     name = "rules_proto_grpc",
+    #     url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/a74fef39c5fe636580083545f76d1eab74f6450d.tar.gz",
+    #     sha256 = "2f6606151ec042e23396f07de9e7dcf6ca9a5db1d2b09f0cc93a7fc7f4008d1b",
+    # )
+    
     auto_http_archive(
         name = "rules_proto_grpc",
-        url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/a74fef39c5fe636580083545f76d1eab74f6450d.tar.gz",
-        sha256 = "2f6606151ec042e23396f07de9e7dcf6ca9a5db1d2b09f0cc93a7fc7f4008d1b",
+        url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/refs/tags/4.0.1.zip",
+        sha256 = "c68618bf6ce684a7be5f0399cdcd01cb1c0c163bb8c6939c92ea0fdc1f6ef142",
     )
-
+    
     auto_http_archive(
         name = "msgpack",
         build_file = True,
