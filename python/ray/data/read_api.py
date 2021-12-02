@@ -166,13 +166,15 @@ def read_datasource(datasource: Datasource[T],
     @ray.remote(num_cpus=0)
     class StatsActor:
         def __init__(self):
+            self.start_time = time.time()
             self.metadata = {}
 
         def add(self, i, metadata):
             self.metadata[i] = metadata
+            self.last_time = time.time()
 
         def get(self):
-            return self.metadata
+            return self.metadata, self.last_time - self.start_time
 
     stats_actor = StatsActor.remote()
 

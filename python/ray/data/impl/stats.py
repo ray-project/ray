@@ -36,7 +36,8 @@ class DatasetStats:
     def summary_string(self) -> str:
         if self.stats_actor:
             # XXX this is a super hack, clean it up
-            stats_map = ray.get(self.stats_actor.get.remote())
+            stats_map, self.time_total_s = ray.get(
+                self.stats_actor.get.remote())
             for i, metadata in stats_map.items():
                 self.stages["read"][i] = metadata
         out = ""
