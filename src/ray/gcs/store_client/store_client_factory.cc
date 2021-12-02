@@ -9,7 +9,7 @@ namespace gcs {
 
 std::unique_ptr<StoreClient> MakeStoreClient(std::shared_ptr<RedisClient> redis_client,
                                              instrumented_io_context &main_io_service) {
-  if (RayConfig::instance().gcs_storage_backend() == "legacy") {
+  if (RayConfig::instance().gcs_storage_backend() == "redis") {
     return std::make_unique<RedisStoreClient>(redis_client);
   } else if (RayConfig::instance().gcs_storage_backend() == "memory") {
     return std::make_unique<InMemoryStoreClient>(main_io_service);

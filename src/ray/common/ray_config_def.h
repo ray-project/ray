@@ -284,7 +284,7 @@ RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
 
 // Support legacy/redis/memory
-RAY_CONFIG(std::string, gcs_storage_backend, "legacy")
+RAY_CONFIG(std::string, gcs_storage_backend, "redis")
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
