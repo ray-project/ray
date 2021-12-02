@@ -581,6 +581,7 @@ class DatasetPipeline(Generic[T]):
 
     @DeveloperAPI
     def stats(self) -> str:
+        """Returns a string containing execution timing information."""
         return self._stats.summary_string()
 
     @staticmethod

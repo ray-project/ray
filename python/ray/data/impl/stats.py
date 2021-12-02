@@ -53,8 +53,12 @@ class DatasetStats:
     def child_builder(self, name: str) -> _DatasetStatsBuilder:
         return _DatasetStatsBuilder(name, self)
 
-    def TODO(self, name: str) -> "DatasetStats":
+    def child_TODO(self, name: str) -> "DatasetStats":
         return DatasetStats(stages={name + "_TODO": []}, parent=self)
+
+    @staticmethod
+    def TODO():
+        return DatasetStats(stages={"TODO": []}, parent=None)
 
     def summary_string(self, already_printed: Set[str] = None) -> str:
         if self.stats_actor:

@@ -67,7 +67,7 @@ def from_items(items: List[Any], *, parallelism: int = 200) -> Dataset[Any]:
                 input_files=None, exec_stats=BlockExecStats.TODO))
         i += block_size
 
-    return Dataset(BlockList(blocks, metadata), 0)
+    return Dataset(BlockList(blocks, metadata), 0, DatasetStats.TODO())
 
 
 @PublicAPI(stability="beta")
@@ -614,7 +614,8 @@ def from_pandas_refs(dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef[
 
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = zip(*res)
-    return Dataset(BlockList(blocks, ray.get(list(metadata))), 0)
+    return Dataset(
+        BlockList(blocks, ray.get(list(metadata))), 0, DatasetStats.TODO())
 
 
 def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
@@ -630,7 +631,8 @@ def from_numpy(ndarrays: List[ObjectRef[np.ndarray]]) -> Dataset[ArrowRow]:
 
     res = [ndarray_to_block.remote(ndarray) for ndarray in ndarrays]
     blocks, metadata = zip(*res)
-    return Dataset(BlockList(blocks, ray.get(list(metadata))), 0)
+    return Dataset(
+        BlockList(blocks, ray.get(list(metadata))), 0, DatasetStats.TODO())
 
 
 @PublicAPI(stability="beta")
@@ -670,7 +672,8 @@ def from_arrow_refs(
 
     get_metadata = cached_remote_fn(_get_metadata)
     metadata = [get_metadata.remote(t) for t in tables]
-    return Dataset(BlockList(tables, ray.get(metadata)), 0)
+    return Dataset(
+        BlockList(tables, ray.get(metadata)), 0, DatasetStats.TODO())
 
 
 @PublicAPI(stability="beta")

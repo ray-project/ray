@@ -367,7 +367,7 @@ class Dataset(Generic[T]):
         if shuffle:
             new_blocks = simple_shuffle(self._blocks, num_blocks)
             return Dataset(new_blocks, self._epoch,
-                           self._stats.TODO("repartition"))
+                           self._stats.child_TODO("repartition"))
 
         # Compute the (n-1) indices needed for an equal split of the data.
         count = self.count()
@@ -415,7 +415,7 @@ class Dataset(Generic[T]):
 
         return Dataset(
             BlockList(new_blocks, new_metadata), self._epoch,
-            self._stats.TODO("repartition"))
+            self._stats.child_TODO("repartition"))
 
     def random_shuffle(
             self,
@@ -459,7 +459,7 @@ class Dataset(Generic[T]):
             random_seed=seed,
             _spread_resource_prefix=_spread_resource_prefix)
         return Dataset(new_blocks, self._epoch,
-                       self._stats.TODO("random_shuffle"))
+                       self._stats.child_TODO("random_shuffle"))
 
     def split(self,
               n: int,
@@ -845,7 +845,7 @@ class Dataset(Generic[T]):
                 _epoch_warned = True
         return Dataset(
             LazyBlockList(calls, metadata, block_partitions), max_epoch,
-            self._stats.TODO("union"))
+            self._stats.child_TODO("union"))
 
     def groupby(self, key: "GroupKeyT") -> "GroupedDataset[T]":
         """Group the dataset by the key function or column name (Experimental).
@@ -1335,7 +1335,7 @@ class Dataset(Generic[T]):
             return self
         return Dataset(
             sort_impl(self._blocks, key, descending), self._epoch,
-            self._stats.TODO("sort"))
+            self._stats.child_TODO("sort"))
 
     def zip(self, other: "Dataset[U]") -> "Dataset[(T, U)]":
         """Zip this dataset with the elements of another.
@@ -1388,7 +1388,8 @@ class Dataset(Generic[T]):
         # TODO(ekl) it might be nice to have a progress bar here.
         metadata = ray.get(metadata)
         return Dataset(
-            BlockList(blocks, metadata), self._epoch, self._stats.TODO("zip"))
+            BlockList(blocks, metadata), self._epoch,
+            self._stats.child_TODO("zip"))
 
     def limit(self, limit: int) -> "Dataset[T]":
         """Limit the dataset to the first number of records specified.
@@ -2392,6 +2393,7 @@ class Dataset(Generic[T]):
 
     @DeveloperAPI
     def stats(self) -> str:
+        """Returns a string containing execution timing information."""
         return self._stats.summary_string()
 
     def _move_blocks(self):
@@ -2437,19 +2439,19 @@ class Dataset(Generic[T]):
 
         left = Dataset(
             BlockList(left_blocks, left_metadata), self._epoch,
-            self._stats.TODO("split"))
+            self._stats.child_TODO("split"))
         if return_right_half:
             right = Dataset(
                 BlockList(right_blocks, right_metadata), self._epoch,
-                self._stats.TODO("split"))
+                self._stats.child_TODO("split"))
         else:
             right = None
         return left, right
 
     def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
         left, right = self._blocks.divide(block_idx)
-        return Dataset(left, self._epoch), Dataset(right, self._epoch,
-                                                   self._stats.TODO("split"))
+        return Dataset(left, self._epoch), Dataset(
+            right, self._epoch, self._stats.child_TODO("split"))
 
     def __repr__(self) -> str:
         schema = self.schema()
