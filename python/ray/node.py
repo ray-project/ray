@@ -1290,7 +1290,8 @@ class Node:
                 logger.error(f"ERROR as {e}")
                 result = None
 
-            if result and (isinstance(result, bytes) or len(result) == len(key)):
+            if result and (isinstance(result, bytes)
+                           or len(result) == len(key)):
                 return result
             else:
                 logger.error(f"Fetched {key}=None from redis. Retrying.")
