@@ -28,7 +28,7 @@ import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher, \
-    GcsErrorSubscriber, GcsLogSubscriber
+    GcsErrorSubscriber, GcsLogSubscriber, GcsFunctionKeySubscriber
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
@@ -1386,6 +1386,8 @@ def connect(node,
             channel=worker.gcs_channel.channel())
         worker.gcs_log_subscriber = GcsLogSubscriber(
             channel=worker.gcs_channel.channel())
+        worker.gcs_function_key_subscriber = GcsFunctionKeySubscriber(
+            channel=worker.gcs_channel.channel())
 
     # Initialize some fields.
     if mode in (WORKER_MODE, RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
@@ -1589,6 +1591,7 @@ def disconnect(exiting_interpreter=False):
         # in this disconnect method.
         worker.threads_stopped.set()
         if worker.gcs_pubsub_enabled:
+            worker.gcs_function_key_subscriber.close()
             worker.gcs_error_subscriber.close()
             worker.gcs_log_subscriber.close()
         if hasattr(worker, "import_thread"):

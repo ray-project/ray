@@ -135,6 +135,43 @@ class VectorEnv:
     def get_unwrapped(self) -> List[EnvType]:
         return self.get_sub_environments()
 
+    @PublicAPI
+    def to_base_env(
+            self,
+            make_env: Callable[[int], EnvType] = None,
+            num_envs: int = 1,
+            remote_envs: bool = False,
+            remote_env_batch_wait_ms: int = 0,
+    ) -> "BaseEnv":
+        """Converts an RLlib MultiAgentEnv into a BaseEnv object.
+
+            The resulting BaseEnv is always vectorized (contains n
+            sub-environments) to support batched forward passes, where n may
+            also be 1. BaseEnv also supports async execution via the `poll` and
+            `send_actions` methods and thus supports external simulators.
+
+            Args:
+                make_env: A callable taking an int as input (which indicates
+                    the number of individual sub-environments within the final
+                    vectorized BaseEnv) and returning one individual
+                    sub-environment.
+                num_envs: The number of sub-environments to create in the
+                    resulting (vectorized) BaseEnv. The already existing `env`
+                    will be one of the `num_envs`.
+                remote_envs: Whether each sub-env should be a @ray.remote
+                    actor. You can set this behavior in your config via the
+                    `remote_worker_envs=True` option.
+                remote_env_batch_wait_ms: The wait time (in ms) to poll remote
+                    sub-environments for, if applicable. Only used if
+                    `remote_envs` is True.
+
+            Returns:
+                The resulting BaseEnv object.
+            """
+        del make_env, num_envs, remote_envs, remote_env_batch_wait_ms
+        env = VectorEnvWrapper(self)
+        return env
+
 
 class _VectorizedGymEnv(VectorEnv):
     """Internal wrapper to translate any gym.Envs into a VectorEnv object.
