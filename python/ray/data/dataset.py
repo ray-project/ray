@@ -294,7 +294,7 @@ class Dataset(Generic[T]):
                 yield output_buffer.next()
 
         compute = get_compute(compute)
-        blocks = compute.apply(transform, ray_remote_args, self._blocks),
+        blocks = compute.apply(transform, ray_remote_args, self._blocks)
         return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
     def filter(self,
@@ -335,7 +335,7 @@ class Dataset(Generic[T]):
             return [builder.build()]
 
         compute = get_compute(compute)
-        blocks = compute.apply(transform, ray_remote_args, self._blocks),
+        blocks = compute.apply(transform, ray_remote_args, self._blocks)
         return Dataset(blocks, self._epoch, stats_builder.build(blocks))
 
     def repartition(self, num_blocks: int, *,
