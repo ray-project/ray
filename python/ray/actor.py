@@ -9,7 +9,10 @@ from ray._private.runtime_env.validation import ParsedRuntimeEnv
 import ray.worker
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.scheduling_strategies import (
+    PlacementGroupSchedulingStrategy,
+    SchedulingStrategyT,
+)
 
 from ray import ActorClassID, Language
 from ray._raylet import PythonFunctionDescriptor
@@ -300,7 +303,7 @@ class ActorClassMetadata:
                  actor_creation_function_descriptor, class_id, max_restarts,
                  max_task_retries, num_cpus, num_gpus, memory,
                  object_store_memory, resources, accelerator_type, runtime_env,
-                 concurrency_groups, scheduling_strategy):
+                 concurrency_groups, scheduling_strategy: SchedulingStrategyT):
         self.language = language
         self.modified_class = modified_class
         self.actor_creation_function_descriptor = \
@@ -374,11 +377,11 @@ class ActorClass:
                         f"use '{self.__ray_metadata__.class_name}.remote()'.")
 
     @classmethod
-    def _ray_from_modified_class(cls, modified_class, class_id, max_restarts,
-                                 max_task_retries, num_cpus, num_gpus, memory,
-                                 object_store_memory, resources,
-                                 accelerator_type, runtime_env,
-                                 concurrency_groups, scheduling_strategy):
+    def _ray_from_modified_class(
+            cls, modified_class, class_id, max_restarts, max_task_retries,
+            num_cpus, num_gpus, memory, object_store_memory, resources,
+            accelerator_type, runtime_env, concurrency_groups,
+            scheduling_strategy: SchedulingStrategyT):
         for attribute in [
                 "remote",
                 "_remote",
@@ -567,7 +570,7 @@ class ActorClass:
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
-                scheduling_strategy=None):
+                scheduling_strategy: SchedulingStrategyT = None):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -1151,7 +1154,7 @@ def modify_class(cls):
 
 def make_actor(cls, num_cpus, num_gpus, memory, object_store_memory, resources,
                accelerator_type, max_restarts, max_task_retries, runtime_env,
-               concurrency_groups, scheduling_strategy):
+               concurrency_groups, scheduling_strategy: SchedulingStrategyT):
     Class = modify_class(cls)
     _inject_tracing_into_class(Class)
 

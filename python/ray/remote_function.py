@@ -4,7 +4,10 @@ import logging
 import uuid
 
 from ray import cloudpickle as pickle
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.scheduling_strategies import (
+    PlacementGroupSchedulingStrategy,
+    SchedulingStrategyT,
+)
 from ray._raylet import PythonFunctionDescriptor
 from ray import cross_language, Language
 from ray._private.client_mode_hook import client_mode_convert_function
@@ -78,7 +81,7 @@ class RemoteFunction:
                  num_gpus, memory, object_store_memory, resources,
                  accelerator_type, num_returns, max_calls, max_retries,
                  retry_exceptions, runtime_env, placement_group,
-                 scheduling_strategy):
+                 scheduling_strategy: SchedulingStrategyT):
         if inspect.iscoroutinefunction(function):
             raise ValueError("'async def' should not be used for remote "
                              "tasks. You can wrap the async function with "
@@ -158,7 +161,7 @@ class RemoteFunction:
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
                 name="",
-                scheduling_strategy=None):
+                scheduling_strategy: SchedulingStrategyT = None):
         """Configures and overrides the task invocation parameters.
 
         The arguments are the same as those that can be passed to

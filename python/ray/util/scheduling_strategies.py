@@ -1,3 +1,4 @@
+from typing import Union, Optional
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import PlacementGroup
 
@@ -52,9 +53,9 @@ class PlacementGroupSchedulingStrategy(SchedulingStrategy):
     """
 
     def __init__(self,
-                 placement_group,
-                 placement_group_bundle_index=-1,
-                 placement_group_capture_child_tasks=None):
+                 placement_group: Optional[PlacementGroup],
+                 placement_group_bundle_index: int = -1,
+                 placement_group_capture_child_tasks: Optional[bool] = None):
         self.placement_group = placement_group
         self.placement_group_bundle_index = placement_group_bundle_index
         self.placement_group_capture_child_tasks = \
@@ -84,3 +85,6 @@ class PlacementGroupSchedulingStrategy(SchedulingStrategy):
             placement_group_capture_child_tasks=ss_dict[
                 "placement_group_capture_child_tasks"],
         )
+
+
+SchedulingStrategyT = Union[None, PlacementGroupSchedulingStrategy]

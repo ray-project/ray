@@ -1450,7 +1450,10 @@ cdef class CoreWorker:
                     python_scheduling_strategy
                     .placement_group_capture_child_tasks)
         else:
-            raise TypeError(python_scheduling_strategy)
+            raise ValueError(
+                f"Invalid scheduling_strategy value "
+                f"{python_scheduling_strategy}. "
+                f"Valid values are [None | PlacementGroupSchedulingStrategy]")
 
     def submit_task(self,
                     Language language,

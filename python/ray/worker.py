@@ -27,6 +27,7 @@ import ray.remote_function
 import ray.serialization as serialization
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
+from ray.util.scheduling_strategies import SchedulingStrategyT
 from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsPublisher, \
     GcsErrorSubscriber, GcsLogSubscriber, GcsFunctionKeySubscriber
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
@@ -2038,7 +2039,7 @@ def make_decorator(num_returns=None,
                    worker=None,
                    retry_exceptions=None,
                    concurrency_groups=None,
-                   scheduling_strategy=None):
+                   scheduling_strategy: SchedulingStrategyT = None):
     def decorator(function_or_class):
         if (inspect.isfunction(function_or_class)
                 or is_cython(function_or_class)):
