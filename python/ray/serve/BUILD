@@ -49,6 +49,14 @@ py_test(
 )
 
 py_test(
+    name = "test_reconfiguration",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_http_state",
     size = "small",
     srcs = serve_tests_srcs,
@@ -392,14 +400,6 @@ py_test(
 
 py_test(
     name = "test_actor_executor",
-    size = "small",
-    srcs = pipeline_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_reconfiguration",
     size = "small",
     srcs = pipeline_tests_srcs,
     tags = ["exclusive", "team:serve"],
