@@ -433,5 +433,14 @@ def test_job_id_consistency(ray_start_regular):
     ray.get(verify_job_id.remote(job_id, True))
 
 
+def test_kv_multi_get(ray_start_regular):
+    gcs_cli = ray.ray.worker.global_worker.gcs_client
+    gcs_cli.internal_kv_put(b"1", b"2", True, namespace="A")
+    gcs_cli.internal_kv_put(b"3", b"4", True, namespace="A")
+    gcs_cli.internal_kv_put(b"5", b"6", True, namespace="A")
+    r = gcs_cli.internal_kv_multi_get([b"1", b"3", b"5", b"6"], namespace="A")
+    assert r == {b"1": b"2", b"3": b"4", b"5": b"6"}
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
