@@ -219,8 +219,6 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
             assert any(metric_name in full_name for full_name in metric_names)
 
         # Make sure metrics are recorded.
-        print(set(_METRICS) - set(metric_names))
-        # print(set(metric_names) - set(_METRICS))
         for metric in _METRICS:
             assert metric in metric_names, \
                 f"metric {metric} not in {metric_names}"
