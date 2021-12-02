@@ -60,26 +60,30 @@ if [ "${BUILDKITE_RETRY_COUNT-0}" -ge 1 ]; then
 fi
 
 while [ "$RETRY_NUM" -le "$MAX_RETRIES" ]; do
+  if [ "$RETRY_NUM" -gt 1 ]; then
+    SLEEP_TIME=$((600 * (RETRY_NUM - 1)))
+    echo "----------------------------------------"
+    echo "Retry count: ${RETRY_NUM}/${MAX_RETRIES}. Sleeping for ${SLEEP_TIME} seconds before retrying the run."
+    echo "----------------------------------------"
+    sleep ${SLEEP_TIME}
+  fi
+
   python e2e.py "$@"
   EXIT_CODE=$?
 
   case ${EXIT_CODE} in
     0)
-    echo "Script finished successfully on try ${RETRY_NUM}"
+    echo "Script finished successfully on try ${RETRY_NUM}/${MAX_RETRIES}"
     break
     ;;
     7 | 9 | 10)
-    echo "Script failed on try ${RETRY_NUM} with exit code ${EXIT_CODE}, restarting."
+    echo "Script failed on try ${RETRY_NUM}/${MAX_RETRIES} with exit code ${EXIT_CODE}."
     ;;
     *)
-    echo "Script failed on try ${RETRY_NUM} with exit code ${EXIT_CODE}, aborting."
+    echo "Script failed on try ${RETRY_NUM}/${MAX_RETRIES} with exit code ${EXIT_CODE}, aborting."
     break
     ;;
   esac
-
-  SLEEP_TIME=$((600 * RETRY_NUM))
-  echo "Retry count: ${RETRY_NUM}/${MAX_RETRIES}. Sleeping for ${SLEEP_TIME} seconds before retrying the run."
-  sleep ${SLEEP_TIME}
 
   RETRY_NUM=$((RETRY_NUM + 1))
 done
