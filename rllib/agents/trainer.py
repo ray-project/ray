@@ -664,6 +664,11 @@ class Trainer(Trainable):
         super().__init__(config, logger_creator, remote_checkpoint_dir,
                          sync_function_tpl)
 
+    @ExperimentalAPI
+    @classmethod
+    def get_default_config(cls) -> TrainerConfigDict:
+        return cls._default_config or COMMON_CONFIG
+
     @override(Trainable)
     def setup(self, config: PartialTrainerConfigDict):
 
@@ -1733,11 +1738,6 @@ class Trainer(Trainable):
         weights = ray.put(self.workers.local_worker().save())
         worker_set.foreach_worker(lambda w: w.restore(ray.get(weights)))
 
-    @ExperimentalAPI
-    @classmethod
-    def get_default_config(cls) -> TrainerConfigDict:
-        return cls._default_config or COMMON_CONFIG
-
     @classmethod
     @override(Trainable)
     def resource_help(cls, config: TrainerConfigDict) -> str:
@@ -1838,7 +1838,7 @@ class Trainer(Trainable):
         resolve_tf_settings()
 
     @ExperimentalAPI
-    def validate_config(self, config: PartialTrainerConfigDict) -> None:
+    def validate_config(self, config: TrainerConfigDict) -> None:
         """Validates a given config dict for this Trainer.
 
         Users should override this method to implement custom validation

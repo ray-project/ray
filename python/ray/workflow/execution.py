@@ -61,14 +61,18 @@ def run(entry_workflow: Workflow,
         except Exception:
             wf_exists = False
 
+        # "Is growing" means we could adding steps to the (top-level)
+        # workflow to grow the workflow dynamically at runtime.
+        is_growing = (step_type not in (StepType.FUNCTION, StepType.WAIT))
+
         # We only commit for
         #  - virtual actor tasks: it's dynamic tasks, so we always add
         #  - it's a new workflow
         # TODO (yic): follow up with force rerun
-        if step_type != StepType.FUNCTION or not wf_exists:
+        if is_growing or not wf_exists:
             commit_step(ws, "", entry_workflow, exception=None)
         workflow_manager = get_or_create_management_actor()
-        ignore_existing = (step_type != StepType.FUNCTION)
+        ignore_existing = is_growing
         # NOTE: It is important to 'ray.get' the returned output. This
         # ensures caller of 'run()' holds the reference to the workflow
         # result. Otherwise if the actor removes the reference of the
@@ -76,7 +80,7 @@ def run(entry_workflow: Workflow,
         result: "WorkflowExecutionResult" = ray.get(
             workflow_manager.run_or_resume.remote(workflow_id,
                                                   ignore_existing))
-        if step_type == StepType.FUNCTION:
+        if not is_growing:
             return flatten_workflow_output(workflow_id,
                                            result.persisted_output)
         else:
