@@ -1,9 +1,11 @@
 from typing import List, Optional, Dict, Set, Tuple
+import time
 import collections
 import numpy as np
 
 import ray
 from ray.data.block import BlockMetadata
+from ray.data.impl.block_list import BlockList
 
 
 def fmt(seconds: float) -> str:
@@ -13,6 +15,19 @@ def fmt(seconds: float) -> str:
         return str(round(seconds * 1000, 2)) + "ms"
     else:
         return str(round(seconds * 1000 * 1000, 2)) + "us"
+
+
+class _DatasetStatsBuilder:
+    def __init__(self, stage_name: str, parent: "DatasetStats"):
+        self.stage_name = stage_name
+        self.parent = parent
+        self.start_time = time.monotonic()
+
+    def build(self, final_blocks: BlockList) -> "DatasetStats":
+        stats = DatasetStats(
+            stages={self.stage_name: final_blocks.get_metadata()}, parent=self.parent)
+        stats.time_total_s = time.monotonic() - self.start_time
+        return stats
 
 
 class DatasetStats:
@@ -33,6 +48,12 @@ class DatasetStats:
         self.iter_process_s: float = 0
         self.iter_user_s: float = 0
         self.iter_total_s: float = 0
+
+    def child_builder(self, name: str) -> _DatasetStatsBuilder:
+        return _DatasetStatsBuilder(name, self)
+
+    def TODO(self, name: str) -> "DatasetStats":
+        return DatasetStats(stages={name + "_TODO": []}, parent=self)
 
     def summary_string(self, already_printed: Set[str] = None) -> str:
         if self.stats_actor:

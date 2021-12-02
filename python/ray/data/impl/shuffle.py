@@ -131,5 +131,6 @@ def _shuffle_reduce(*mapper_outputs: List[Block]) -> (Block, BlockMetadata):
         num_rows=accessor.num_rows(),
         size_bytes=accessor.size_bytes(),
         schema=accessor.schema(),
-        input_files=None)
+        input_files=None,
+        exec_stats=None)  # TODO(ekl)
     return new_block, new_metadata
