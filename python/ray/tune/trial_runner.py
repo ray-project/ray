@@ -31,6 +31,8 @@ from ray.tune.web_server import TuneServer
 from ray.tune.experiment import Experiment
 from ray.util.debug import log_once
 
+from ray.tune.utils.profiling import profile
+
 MAX_DEBUG_TRIALS = 20
 
 logger = logging.getLogger(__name__)
@@ -547,6 +549,7 @@ class TrialRunner:
             (fname.startswith("experiment_state") and fname.endswith(".json"))
             for fname in os.listdir(directory))
 
+    @profile
     def checkpoint(self, force=False):
         """Saves execution state to `self._local_checkpoint_dir`.
 
@@ -639,6 +642,7 @@ class TrialRunner:
                                                      for trial in self._trials)
         return trials_done and self._search_alg.is_finished()
 
+    @profile
     def step(self):
         """Runs one step of the trial event loop.
 
@@ -771,6 +775,7 @@ class TrialRunner:
         ]
         return delim.join(messages)
 
+    @profile
     def _stop_experiment_if_needed(self):
         """Stops all trials."""
         fail_fast = self._fail_fast and self._has_errored
@@ -808,6 +813,7 @@ class TrialRunner:
                 logger.debug("Running trial {}".format(trial))
         return trial
 
+    @profile
     def _process_events(self, timeout: Optional[float] = None):
         with warn_if_slow("get_next_failed_trial"):
             failed_trial = self.trial_executor.get_next_failed_trial()
@@ -869,6 +875,7 @@ class TrialRunner:
                 if final_decision:
                     self._execute_action(trial, final_decision)
 
+    @profile
     def _process_trial(self, trial):
         """Processes a trial result.
 
@@ -1065,6 +1072,7 @@ class TrialRunner:
                     "environment variable to 1. Result: {}".format(
                         report_metric, location, result))
 
+    @profile
     def _process_trial_save(self, trial):
         """Processes a trial save.
 
@@ -1106,6 +1114,7 @@ class TrialRunner:
         if decision and checkpoint_value:
             self._queue_decision(trial, decision)
 
+    @profile
     def _process_trial_restore(self, trial):
         """Processes a trial restore.
 
@@ -1126,6 +1135,7 @@ class TrialRunner:
                 raise
             self._process_trial_failure(trial, traceback.format_exc())
 
+    @profile
     def _process_trial_failure(self, trial, error_msg):
         """Handle trial failure.
 
@@ -1260,6 +1270,7 @@ class TrialRunner:
                 TrialRunnerWrapper(self, runner_whitelist_attr={"search_alg"}),
                 trial)
 
+    @profile
     def _update_trial_queue(self, blocking: bool = False,
                             timeout: int = 600) -> bool:
         """Adds next trials to queue if possible.
@@ -1357,6 +1368,7 @@ class TrialRunner:
         self.cleanup_trials()
         self.end_experiment_callbacks()
 
+    @profile
     def _reconcile_live_trials(self):
         """Loop through live trials and remove if terminated"""
         for trial in list(self._live_trials):

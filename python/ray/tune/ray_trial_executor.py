@@ -35,6 +35,8 @@ from ray.tune.utils import warn_if_slow
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
+from ray.tune.utils.profiling import profile
+
 logger = logging.getLogger(__name__)
 
 TUNE_STATE_REFRESH_PERIOD = 10  # Refresh resources every 10 s
@@ -106,6 +108,7 @@ class _TrialCleanup:
             force_cleanup = 0
         self._force_cleanup = force_cleanup
 
+    @profile
     def add(self, trial: Trial, actor: ActorHandle):
         """Adds a trial actor to be stopped.
 
@@ -124,6 +127,7 @@ class _TrialCleanup:
         if len(self._cleanup_map) > self.threshold:
             self.cleanup(partial=True)
 
+    @profile
     def cleanup(self, partial: bool = True):
         """Waits for cleanup to finish.
 
@@ -238,6 +242,7 @@ class RayTrialExecutor(TrialExecutor):
             self._cached_actor_pg = deque(maxlen=max_pending)
         self._pg_manager.set_max_staging(max_pending)
 
+    @profile
     def stage_and_update_status(self, trials: Iterable[Trial]):
         """Check and update statuses of scheduled placement groups.
 
@@ -265,6 +270,7 @@ class RayTrialExecutor(TrialExecutor):
 
         self._pg_manager.update_status()
 
+    @profile
     def get_staged_trial(self):
         """Get a trial whose placement group was successfully staged.
 
@@ -280,6 +286,7 @@ class RayTrialExecutor(TrialExecutor):
 
         return None
 
+    @profile
     def _setup_remote_runner(self, trial):
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
@@ -402,6 +409,7 @@ class RayTrialExecutor(TrialExecutor):
         with self._change_working_directory(trial):
             return full_actor_class.remote(**kwargs)
 
+    @profile
     def _train(self, trial):
         """Start one iteration of training and save remote id."""
 
@@ -557,6 +565,7 @@ class RayTrialExecutor(TrialExecutor):
         finally:
             trial.set_runner(None)
 
+    @profile
     def start_trial(self, trial: Trial) -> bool:
         """Starts the trial.
 
@@ -592,6 +601,7 @@ class RayTrialExecutor(TrialExecutor):
         out = [rid for rid, t in dictionary.items() if t is item]
         return out
 
+    @profile
     def stop_trial(self,
                    trial: Trial,
                    error: bool = False,
@@ -608,6 +618,7 @@ class RayTrialExecutor(TrialExecutor):
         """Continues the training of this trial."""
         self._train(trial)
 
+    @profile
     def reset_trial(self,
                     trial: Trial,
                     new_config: Dict,
@@ -649,10 +660,12 @@ class RayTrialExecutor(TrialExecutor):
                     return False
         return reset_val
 
+    @profile
     def get_running_trials(self) -> List[Trial]:
         """Returns the running trials."""
         return list(self._running.values())
 
+    @profile
     def get_alive_node_ips(self):
         now = time.time()
         if now - self._last_ip_refresh < self._refresh_period:
@@ -670,6 +683,7 @@ class RayTrialExecutor(TrialExecutor):
     def get_current_trial_ips(self):
         return {t.node_ip for t in self.get_running_trials()}
 
+    @profile
     def get_next_failed_trial(self) -> Optional[Trial]:
         """Gets the first trial found to be running on a node presumed dead.
 
@@ -685,6 +699,7 @@ class RayTrialExecutor(TrialExecutor):
                         return trial
         return None
 
+    @profile
     def get_next_available_trial(
             self, timeout: Optional[float] = None) -> Optional[Trial]:
         if not self._running:
@@ -714,6 +729,7 @@ class RayTrialExecutor(TrialExecutor):
             self._last_nontrivial_wait = time.time()
         return self._running[result_id]
 
+    @profile
     def fetch_result(self, trial) -> List[Dict]:
         """Fetches result list of the running trials.
 
@@ -776,6 +792,7 @@ class RayTrialExecutor(TrialExecutor):
         self._last_resource_refresh = time.time()
         self._resources_initialized = True
 
+    @profile
     def has_resources_for_trial(self, trial: Trial) -> bool:
         """Returns whether there are resources available for this trial.
 
@@ -844,6 +861,7 @@ class RayTrialExecutor(TrialExecutor):
     def force_reconcilation_on_next_step_end(self) -> None:
         self.last_pg_recon = -float("inf")
 
+    @profile
     def save(self,
              trial,
              storage=Checkpoint.PERSISTENT,
@@ -873,6 +891,7 @@ class RayTrialExecutor(TrialExecutor):
                 self._running[value] = trial
         return checkpoint
 
+    @profile
     def restore(self, trial, checkpoint=None, block=False) -> None:
         """Restores training state from a given model checkpoint.
 

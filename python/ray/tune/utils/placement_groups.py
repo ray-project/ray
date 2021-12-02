@@ -11,6 +11,7 @@ import ray
 from ray import ObjectRef, logger
 from ray.actor import ActorClass
 from ray.tune.resources import Resources
+from ray.tune.utils.profiling import profile
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.util.placement_group import PlacementGroup, get_placement_group, \
     placement_group, placement_group_table, remove_placement_group
@@ -316,6 +317,7 @@ class PlacementGroupManager:
     def set_max_staging(self, max_staging: int):
         self._max_staging = max_staging
 
+    @profile
     def remove_pg(self, pg: PlacementGroup):
         """Schedule placement group for (delayed) removal.
 
@@ -325,6 +327,7 @@ class PlacementGroupManager:
         """
         self._pgs_for_removal[pg] = time.time()
 
+    @profile
     def cleanup(self, force: bool = False):
         """Remove placement groups that are scheduled for removal.
 
@@ -351,6 +354,7 @@ class PlacementGroupManager:
                     pgf = self._unstaged_pg_pgf.pop(pg)
                     self._unstaged_pgf_pg[pgf].discard(pg)
 
+    @profile
     def cleanup_existing_pg(self, block: bool = False):
         """Clean up (remove) all existing placement groups.
 
@@ -389,6 +393,7 @@ class PlacementGroupManager:
 
                 time.sleep(0.1)
 
+    @profile
     def stage_trial_pg(self, trial: "Trial"):
         """Stage a trial placement group.
 
@@ -430,6 +435,7 @@ class PlacementGroupManager:
         """Return True if we can stage another placement group."""
         return len(self._staging_futures) < self._max_staging
 
+    @profile
     def update_status(self):
         """Update placement group status.
 
@@ -448,6 +454,7 @@ class PlacementGroupManager:
                 self._staging[ready_pgf].remove(ready_pg)
                 self._ready[ready_pgf].add(ready_pg)
 
+    @profile
     def get_full_actor_cls(self, trial: "Trial",
                            actor_cls: ActorClass) -> Optional[ActorClass]:
         """Get a fully configured actor class.
@@ -499,6 +506,7 @@ class PlacementGroupManager:
                 num_gpus=0,
                 resources={})
 
+    @profile
     def has_ready(self, trial: "Trial", update: bool = False) -> bool:
         """Return True if placement group for trial is ready.
 
@@ -517,6 +525,7 @@ class PlacementGroupManager:
     def trial_in_use(self, trial: "Trial"):
         return trial in self._in_use_trials
 
+    @profile
     def cache_trial_pg(self, trial: "Trial") -> Optional[PlacementGroup]:
         """Disassociated placement group from trial object.
 
@@ -561,6 +570,7 @@ class PlacementGroupManager:
         self._cached_pgs[pg] = trial.placement_group_factory
         return pg
 
+    @profile
     def assign_cached_pg(self, pg: PlacementGroup, trial: "Trial") -> bool:
         """Assign a cached pg to a trial."""
         pgf = self._cached_pgs.pop(pg)
@@ -579,6 +589,7 @@ class PlacementGroupManager:
     def clean_cached_pg(self, pg: PlacementGroup):
         self._cached_pgs.pop(pg)
 
+    @profile
     def return_or_clean_cached_pg(self, pg: PlacementGroup):
         """Return cached pg, making it available for other trials to use.
 
@@ -607,6 +618,7 @@ class PlacementGroupManager:
         self._ready[pgf].add(pg)
         return True
 
+    @profile
     def return_pg(self, trial: "Trial"):
         """Return pg back to Core scheduling.
 
@@ -672,6 +684,7 @@ class PlacementGroupManager:
         return self._staging_futures and self._grace_period and time.time(
         ) <= self._latest_staging_start_time + self._grace_period
 
+    @profile
     def reconcile_placement_groups(self, trials: List["Trial"]):
         """Reconcile placement groups to match requirements.
 
@@ -733,6 +746,7 @@ class PlacementGroupManager:
                 logger.debug(f"Adding an expected but previously unstaged "
                              f"placement group for factory {pgf}")
 
+    @profile
     def occupied_resources(self):
         """Return a dictionary of currently in-use resources."""
         resources = {"CPU": 0, "GPU": 0}
