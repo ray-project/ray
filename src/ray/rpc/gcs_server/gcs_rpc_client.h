@@ -267,6 +267,8 @@ class GcsRpcClient {
   /// Operations for kv (Get, Put, Del, Exists)
   VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVGet,
                              internal_kv_grpc_client_, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVMultiGet,
+                             internal_kv_grpc_client_, )
   VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVPut,
                              internal_kv_grpc_client_, )
   VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService, InternalKVDel,

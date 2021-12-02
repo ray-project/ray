@@ -478,7 +478,7 @@ service PlacementGroupInfoGcsService {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/* Please do not modify/remove/change the following messages to maintain
+/* Please do not modify/remove/change the following messages to mainatin
 backwards compatibility in autoscaler. This is necessary to make sure we can
 run autoscaler with any version of ray. For example, the K8s operator runs
 autoscaler in a separate pod, if the user upgrades the ray version on the head
@@ -514,6 +514,15 @@ message InternalKVGetRequest {
 message InternalKVGetReply {
   GcsStatus status = 1;
   bytes value = 2;
+}
+
+message InternalKVMultiGetRequest {
+  repeated bytes keys = 1;
+}
+
+message InternalKVMultiGetReply {
+  GcsStatus status = 1;
+  map<int32, bytes> values = 2;
 }
 
 message InternalKVPutRequest {
@@ -557,6 +566,7 @@ message InternalKVKeysReply {
 // Service for KV storage
 service InternalKVGcsService {
   rpc InternalKVGet(InternalKVGetRequest) returns (InternalKVGetReply);
+  rpc InternalKVMultiGet(InternalKVMultiGetRequest) returns (InternalKVMultiGetReply);
   rpc InternalKVPut(InternalKVPutRequest) returns (InternalKVPutReply);
   rpc InternalKVDel(InternalKVDelRequest) returns (InternalKVDelReply);
   rpc InternalKVExists(InternalKVExistsRequest) returns (InternalKVExistsReply);

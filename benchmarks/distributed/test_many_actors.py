@@ -13,7 +13,7 @@ else:
 
 def test_max_actors():
     # TODO (Alex): Dynamically set this based on number of cores
-    cpus_per_actor = 0.25
+    cpus_per_actor = 0.1
 
     @ray.remote(num_cpus=cpus_per_actor)
     class Actor:

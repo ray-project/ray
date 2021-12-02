@@ -68,6 +68,12 @@ class Node:
             connect_only (bool): If true, connect to the node without starting
                 new processes.
         """
+        import cProfile, pstats, io
+        from pstats import SortKey
+
+        pr = cProfile.Profile()
+        pr.enable()
+
         if shutdown_at_exit:
             if connect_only:
                 raise ValueError("'shutdown_at_exit' and 'connect_only' "
@@ -137,18 +143,7 @@ class Node:
         assert self.max_bytes >= 0
         assert self.backup_count >= 0
 
-        # Register the temp dir.
-        if head:
-            # date including microsecond
-            date_str = datetime.datetime.today().strftime(
-                "%Y-%m-%d_%H-%M-%S_%f")
-            self.session_name = f"session_{date_str}_{os.getpid()}"
-        else:
-            session_name = self._internal_kv_get_with_retry(
-                "session_name", ray_constants.KV_NAMESPACE_SESSION)
-            self.session_name = ray._private.utils.decode(session_name)
-
-        self._init_temp()
+        self._init_session()
 
         # If it is a head node, try validating if
         # external storage is configurable.
@@ -248,6 +243,9 @@ class Node:
                 self._raylet_ip_address,
                 redis_password=self.redis_password))
             self._ray_params.node_manager_port = node_info.node_manager_port
+        pr.disable()
+        ps = pstats.Stats(pr)
+        ps.dump_stats(f"/tmp/ray_prof_stats.{os.getpid()}")
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
@@ -266,25 +264,25 @@ class Node:
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
 
-    def _init_temp(self):
+    def _init_session(self):
         # Create a dictionary to store temp file index.
         self._incremental_dict = collections.defaultdict(lambda: 0)
 
         if self.head:
+            # date including microsecond
+            date_str = datetime.datetime.today().strftime(
+                "%Y-%m-%d_%H-%M-%S_%f")
+            self.session_name = f"session_{date_str}_{os.getpid()}"
             self._temp_dir = self._ray_params.temp_dir
-        else:
-            temp_dir = self._internal_kv_get_with_retry(
-                "temp_dir", ray_constants.KV_NAMESPACE_SESSION)
-            self._temp_dir = ray._private.utils.decode(temp_dir)
-
-        try_to_create_directory(self._temp_dir)
-
-        if self.head:
             self._session_dir = os.path.join(self._temp_dir, self.session_name)
         else:
-            session_dir = self._internal_kv_get_with_retry(
-                "session_dir", ray_constants.KV_NAMESPACE_SESSION)
-            self._session_dir = ray._private.utils.decode(session_dir)
+            ret = self._internal_kv_get_with_retry(
+                [b"temp_dir", b"session_dir", b"session_name"], ray_constants.KV_NAMESPACE_SESSION)
+            self._temp_dir = ray._private.utils.decode(ret[b"temp_dir"])
+            self._session_dir = ray._private.utils.decode(ret[b"session_dir"])
+            self.session_name = ray._private.utils.decode(ret[b"session_name"])
+
+        try_to_create_directory(self._temp_dir)
         session_symlink = os.path.join(self._temp_dir, SESSION_LATEST)
 
         # Send a warning message if the session exists.
@@ -1278,21 +1276,21 @@ class Node:
                                     namespace,
                                     num_retries=NUM_REDIS_GET_RETRIES):
         result = None
-        if isinstance(key, str):
-            key = key.encode()
+        logger.error("_internal_kv_get_with_retry")
         for i in range(num_retries):
             try:
-                result = self.get_gcs_client().internal_kv_get(key, namespace)
+                if isinstance(key, list):
+                    result = self.get_gcs_client().internal_kv_multi_get(key, namespace)
+                else:
+                    result = self.get_gcs_client().internal_kv_get(key, namespace)
             except Exception as e:
                 logger.error(f"ERROR as {e}")
                 result = None
 
-            if result is not None:
-                break
+            if result and (isinstance(result, str) or len(result) == len(key)):
+                return result
             else:
-                logger.debug(f"Fetched {key}=None from redis. Retrying.")
+                logger.error(f"Fetched {key}=None from redis. Retrying.")
                 time.sleep(2)
-        if not result:
-            raise RuntimeError(f"Could not read '{key}' from GCS (redis). "
-                               "Has redis started correctly on the head node?")
-        return result
+        raise RuntimeError(f"Could not read '{key}' from GCS (redis). "
+                           "Has redis started correctly on the head node?")
