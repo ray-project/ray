@@ -1351,7 +1351,7 @@ class TrialRunner:
         self._live_trials.discard(trial)
 
     def cleanup_trials(self):
-        self.trial_executor.cleanup(self.get_trials())
+        self.trial_executor.cleanup()
 
     def cleanup(self):
         """Cleanup trials and callbacks."""
