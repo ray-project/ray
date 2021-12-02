@@ -25,16 +25,18 @@ logger.setLevel(logging.INFO)
 @dataclasses.dataclass
 class ClusterInfo:
     address: str
-    cookies: Optional[Dict[str, Any]]
-    metadata: Optional[Dict[str, Any]]
-    headers: Optional[Dict[str, Any]]
+    cookies: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None
+    headers: Optional[Dict[str, Any]] = None
 
 
 def get_job_submission_client_cluster_info(
         address: str,
+        # For backwards compatibility
+        *,
         # only used in importlib case in parse_cluster_info, but needed
         # in function signature.
-        create_cluster_if_needed: bool,
+        create_cluster_if_needed: Optional[bool] = False,
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None) -> ClusterInfo:
@@ -61,7 +63,7 @@ def get_job_submission_client_cluster_info(
 
 def parse_cluster_info(
         address: str,
-        create_cluster_if_needed: bool,
+        create_cluster_if_needed: bool = False,
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None) -> ClusterInfo:
@@ -78,7 +80,7 @@ def parse_cluster_info(
     elif module_string == "ray":
         return get_job_submission_client_cluster_info(
             inner_address,
-            create_cluster_if_needed,
+            create_cluster_if_needed=create_cluster_if_needed,
             cookies=cookies,
             metadata=metadata,
             headers=headers)
@@ -96,7 +98,7 @@ def parse_cluster_info(
 
         return module.get_job_submission_client_cluster_info(
             inner_address,
-            create_cluster_if_needed,
+            create_cluster_if_needed=create_cluster_if_needed,
             cookies=cookies,
             metadata=metadata,
             headers=headers)
