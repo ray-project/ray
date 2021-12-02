@@ -50,7 +50,8 @@ class DatasetStats:
             if already_printed and self.dataset_uuid in already_printed:
                 out += "[execution cached]"
             else:
-                already_printed.add(self.dataset_uuid)
+                if already_printed is not None:
+                    already_printed.add(self.dataset_uuid)
                 out += self.summarize_blocks(metadata)
         out += self.summarize_iter()
         return out
