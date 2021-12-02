@@ -434,6 +434,17 @@ bool GcsActorScheduler::KillActorOnWorker(const rpc::Address &worker_address,
   return true;
 }
 
+std::string GcsActorScheduler::DebugString() const {
+  std::ostringstream stream;
+  stream << "GcsActorScheduler: "
+         << "\n- node_to_actors_when_leasing_: " << node_to_actors_when_leasing_.size()
+         << "\n- node_to_workers_when_creating_: "
+         << node_to_workers_when_creating_.size()
+         << "\n- nodes_of_releasing_unused_workers_: "
+         << nodes_of_releasing_unused_workers_.size();
+  return stream.str();
+}
+
 NodeID RayletBasedActorScheduler::SelectNode(std::shared_ptr<GcsActor> actor) {
   // Select a node to lease worker for the actor.
   std::shared_ptr<rpc::GcsNodeInfo> node;

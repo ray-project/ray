@@ -34,7 +34,14 @@ namespace core {
 /// by the SchedulingQueue to provide backpressure to clients.
 class BoundedExecutor {
  public:
-  BoundedExecutor(int max_concurrency);
+  static bool NeedDefaultExecutor(int32_t max_concurrency_in_default_group) {
+    //  Threaded actor mode only need a default executor when max_concurrency > 1.
+    return max_concurrency_in_default_group > 1;
+  }
+
+  explicit BoundedExecutor(int max_concurrency);
+
+  int32_t GetMaxConcurrency() const;
 
   /// Posts work to the pool, blocking if no free threads are available.
   void PostBlocking(std::function<void()> fn);
@@ -56,33 +63,6 @@ class BoundedExecutor {
   const int max_concurrency_;
   /// The underlying thread pool for running tasks.
   boost::asio::thread_pool pool_;
-};
-
-/// A manager that manages a set of thread pool. which will perform
-/// the methods defined in one concurrency group.
-class PoolManager final {
- public:
-  explicit PoolManager(const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-                       const int32_t default_group_max_concurrency = 1);
-
-  std::shared_ptr<BoundedExecutor> GetPool(const std::string &concurrency_group_name,
-                                           ray::FunctionDescriptor fd);
-
-  /// Stop and join the thread pools that the pool manager owns.
-  void Stop();
-
- private:
-  // Map from the name to their corresponding thread pools.
-  std::unordered_map<std::string, std::shared_ptr<BoundedExecutor>>
-      name_to_thread_pool_index_;
-
-  // Map from the FunctionDescriptors to their corresponding thread pools.
-  std::unordered_map<std::string, std::shared_ptr<BoundedExecutor>>
-      functions_to_thread_pool_index_;
-
-  // The thread pool for default concurrency group. It's nullptr if its max concurrency
-  // is 1.
-  std::shared_ptr<BoundedExecutor> default_thread_pool_ = nullptr;
 };
 
 }  // namespace core

@@ -1,3 +1,5 @@
+.. include:: we_are_hiring.rst
+
 .. _cluster-cloud:
 
 Launching Cloud Clusters

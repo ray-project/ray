@@ -23,6 +23,8 @@ from ray.tune.progress_reporter import (detect_reporter, ProgressReporter,
                                         JupyterNotebookReporter)
 from ray.tune.ray_trial_executor import RayTrialExecutor
 from ray.tune.registry import get_trainable_cls
+from ray.tune.schedulers import (PopulationBasedTraining,
+                                 PopulationBasedTrainingReplay)
 from ray.tune.stopper import Stopper
 from ray.tune.suggest import BasicVariantGenerator, SearchAlgorithm, \
     SearchGenerator
@@ -412,6 +414,13 @@ def run(
                 f"and faulty behavior, so the buffer length was forcibly set "
                 f"to 1 instead.")
         result_buffer_length = 1
+
+    if isinstance(scheduler,
+                  (PopulationBasedTraining,
+                   PopulationBasedTrainingReplay)) and not reuse_actors:
+        warnings.warn(
+            "Consider boosting PBT performance by enabling `reuse_actors` as "
+            "well as implementing `reset_config` for Trainable.")
 
     trial_executor = trial_executor or RayTrialExecutor(
         reuse_actors=reuse_actors, result_buffer_length=result_buffer_length)
