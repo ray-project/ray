@@ -495,7 +495,6 @@ def build(build_python, build_java, build_cpp):
     if bazel_version < SUPPORTED_BAZEL:
         logger.warning("Expected Bazel version {} but found {}".format(
             ".".join(map(str, SUPPORTED_BAZEL)), bazel_version_str))
-
     
     bazel_flags = ["--verbose_failures"]
     if BAZEL_LIMIT_CPUS:
