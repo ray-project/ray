@@ -1,10 +1,11 @@
-from gym.spaces import Discrete, Space
+from gym.spaces import Box, Discrete, Space
 import numpy as np
 from typing import List, Optional, Union
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
@@ -141,7 +142,7 @@ class RE3UpdateCallbacks():
     def on_learn_on_batch(
             self,
             *,
-            policy: "Policy",
+            policy: Policy,
             train_batch: SampleBatch,
             result: dict,
             **kwargs,

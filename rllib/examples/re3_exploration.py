@@ -24,6 +24,8 @@ if __name__ == "__main__":
 
     # Patch user given callbacks with RE3 callbacks for using RE3 exploration
     # strategy
+    # Not really needed, but for the demonstration purpose of chaining multiple
+    # callback classes together.
     class RE3Callbacks(RE3UpdateCallbacks, config["callbacks"]):
         pass
 
