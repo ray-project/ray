@@ -68,8 +68,8 @@ class Node:
             connect_only (bool): If true, connect to the node without starting
                 new processes.
         """
-        import cProfile, pstats, io
-        from pstats import SortKey
+        import cProfile
+        import pstats
 
         pr = cProfile.Profile()
         pr.enable()
@@ -277,7 +277,8 @@ class Node:
             self._session_dir = os.path.join(self._temp_dir, self.session_name)
         else:
             ret = self._internal_kv_get_with_retry(
-                [b"temp_dir", b"session_dir", b"session_name"], ray_constants.KV_NAMESPACE_SESSION)
+                [b"temp_dir", b"session_dir", b"session_name"],
+                ray_constants.KV_NAMESPACE_SESSION)
             self._temp_dir = ray._private.utils.decode(ret[b"temp_dir"])
             self._session_dir = ray._private.utils.decode(ret[b"session_dir"])
             self.session_name = ray._private.utils.decode(ret[b"session_name"])
@@ -1280,9 +1281,11 @@ class Node:
         for i in range(num_retries):
             try:
                 if isinstance(key, list):
-                    result = self.get_gcs_client().internal_kv_multi_get(key, namespace)
+                    result = self.get_gcs_client().internal_kv_multi_get(
+                        key, namespace)
                 else:
-                    result = self.get_gcs_client().internal_kv_get(key, namespace)
+                    result = self.get_gcs_client().internal_kv_get(
+                        key, namespace)
             except Exception as e:
                 logger.error(f"ERROR as {e}")
                 result = None

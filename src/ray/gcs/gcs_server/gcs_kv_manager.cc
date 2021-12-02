@@ -50,23 +50,22 @@ void GcsInternalKVManager::HandleInternalKVGet(
       }));
 }
 
-
 void GcsInternalKVManager::HandleInternalKVMultiGet(
     const rpc::InternalKVMultiGetRequest &request, rpc::InternalKVMultiGetReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   auto cnt = std::make_shared<size_t>(request.keys_size());
-  for(int i = 0; i < request.keys_size(); ++i) {
+  for (int i = 0; i < request.keys_size(); ++i) {
     std::vector<std::string> cmd = {"HGET", request.keys(i), "value"};
     RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
         cmd, [i, reply, send_reply_callback, cnt](auto redis_reply) {
-               if (!redis_reply->IsNil()) {
-                 (*reply->mutable_values())[i] = redis_reply->ReadAsString();
-               }
-               *cnt -= 1;
-               if(*cnt == 0) {
-                 GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-               }
-             }));
+          if (!redis_reply->IsNil()) {
+            (*reply->mutable_values())[i] = redis_reply->ReadAsString();
+          }
+          *cnt -= 1;
+          if (*cnt == 0) {
+            GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+          }
+        }));
   }
 }
 
