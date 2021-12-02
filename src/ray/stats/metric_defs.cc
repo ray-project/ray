@@ -225,6 +225,6 @@ DEFINE_stats(registered_placement_group, "Number of total registered placement g
 DEFINE_stats(infeasible_placement_group, "Number of total infeasible placement groups",
              (), (), ray::stats::GAUGE);
 
-} // namespace stats
+}  // namespace stats
 
-} // namespace ray
+}  // namespace ray
