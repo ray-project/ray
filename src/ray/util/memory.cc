@@ -50,14 +50,14 @@ void parallel_memcopy(uint8_t *dst, const uint8_t *src, int64_t nbytes,
 
   // Start all threads first and handle leftovers while threads run.
   for (int i = 0; i < num_threads; i++) {
-    boost::asio::post(*threadpool, std::bind(std::memcpy, dst + prefix + i * chunk_size,
-                                             left + i * chunk_size, chunk_size));
+    boost::asio::post(threadpool, std::bind(std::memcpy, dst + prefix + i * chunk_size,
+                                            left + i * chunk_size, chunk_size));
   }
 
   std::memcpy(dst, src, prefix);
   std::memcpy(dst + prefix + num_threads * chunk_size, right, suffix);
 
-  threadpool->join();
+  threadpool.join();
 }
 
 }  // namespace ray
