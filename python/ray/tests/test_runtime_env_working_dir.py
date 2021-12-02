@@ -46,7 +46,10 @@ def tmp_working_dir():
         yield tmp_dir
 
 
-@pytest.mark.parametrize("option", ["failure", "working_dir", "py_modules"])
+@pytest.mark.parametrize("option", [
+    "failure", "working_dir", "py_modules", "py_modules_path",
+    "working_dir_path"
+])
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
     """Tests the case where we lazily read files or import inside a task/actor.
@@ -62,11 +65,20 @@ def test_lazy_reads(start_cluster, tmp_working_dir, option: str):
             ray.init(address)
         elif option == "working_dir":
             ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+        elif option == "working_dir_path":
+            ray.init(
+                address, runtime_env={"working_dir": Path(tmp_working_dir)})
         elif option == "py_modules":
             ray.init(
                 address,
                 runtime_env={
                     "py_modules": [str(Path(tmp_working_dir) / "test_module")]
+                })
+        elif option == "py_modules_path":
+            ray.init(
+                address,
+                runtime_env={
+                    "py_modules": [Path(tmp_working_dir) / "test_module"]
                 })
 
     call_ray_init()
