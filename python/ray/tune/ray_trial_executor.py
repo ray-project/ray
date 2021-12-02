@@ -27,7 +27,7 @@ from ray.tune.logger import NoopLogger
 from ray.tune.result import TRIAL_INFO, STDOUT_FILE, STDERR_FILE
 from ray.tune.resources import Resources
 from ray.tune.utils.placement_groups import PlacementGroupManager, \
-    get_tune_pg_prefix
+    get_tune_pg_prefix, PlacementGroupFactory
 from ray.tune.utils.trainable import TrainableUtil
 from ray.tune.trial import Trial, Checkpoint, Location, TrialInfo
 from ray.tune.trial_executor import TrialExecutor
@@ -833,16 +833,17 @@ class RayTrialExecutor(TrialExecutor):
         else:
             return "Resources requested: ?"
 
-    def on_step_begin(self, trials: List[Trial]) -> None:
+    def on_step_begin(self) -> None:
         """Before step() is called, update the available resources."""
         self._update_avail_resources()
         self._trial_just_finished_before = self._trial_just_finished
         self._trial_just_finished = False
 
-    def on_step_end(self, live_trials: List[Trial]) -> None:
+    def on_step_end(
+            self, live_trial_number: Dict[PlacementGroupFactory, int]) -> None:
         self._just_staged_trials.clear()
 
-        self._pg_manager.reconcile_placement_groups(live_trials)
+        self._pg_manager.reconcile_placement_groups(live_trial_number)
 
         self._pg_manager.cleanup()
 
@@ -946,9 +947,9 @@ class RayTrialExecutor(TrialExecutor):
             self._update_avail_resources()
             return self._avail_resources.gpu > 0
 
-    def cleanup(self, trials: List[Trial]) -> None:
+    def cleanup(self) -> None:
         self._trial_cleanup.cleanup(partial=False)
-        self._pg_manager.reconcile_placement_groups(trials)
+        self._pg_manager.reconcile_placement_groups({})
         self._pg_manager.cleanup(force=True)
         self._pg_manager.cleanup_existing_pg(block=True)
 

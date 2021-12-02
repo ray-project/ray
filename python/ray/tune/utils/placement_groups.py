@@ -313,16 +313,22 @@ class PlacementGroupManager:
 
         self._max_staging = max_staging
 
+        # The following tracks the number of PGs for each type requested
+        # from Core so far.
+        self._requested_pg_number = {}
+
     def set_max_staging(self, max_staging: int):
         self._max_staging = max_staging
 
-    def remove_pg(self, pg: PlacementGroup):
+    def remove_pg(self, pgf: PlacementGroupFactory, pg: PlacementGroup):
         """Schedule placement group for (delayed) removal.
 
         Args:
             pg (PlacementGroup): Placement group object.
 
         """
+        assert pgf in self._requested_pg_number.keys()
+        self._requested_pg_number[pgf] -= 1
         self._pgs_for_removal[pg] = time.time()
 
     def cleanup(self, force: bool = False):
@@ -419,6 +425,8 @@ class PlacementGroupManager:
         else:
             # This creates the placement group
             pg = pgf(name=f"{self._prefix}{uuid.uuid4().hex[:8]}")
+            requested_pg_number = self._requested_pg_number.get(pgf, 0)
+            self._requested_pg_number[pgf] = requested_pg_number + 1
 
         self._staging[pgf].add(pg)
         self._staging_futures[pg.ready()] = (pgf, pg)
@@ -553,7 +561,7 @@ class PlacementGroupManager:
             return None
 
         if staged_pg:
-            self.remove_pg(staged_pg)
+            self.remove_pg(pgf, staged_pg)
 
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
@@ -599,11 +607,11 @@ class PlacementGroupManager:
 
         # Could not replace
         if not staged_pg:
-            self.remove_pg(pg)
+            self.remove_pg(pgf, pg)
             return False
 
         # Replace successful
-        self.remove_pg(staged_pg)
+        self.remove_pg(pgf, staged_pg)
         self._ready[pgf].add(pg)
         return True
 
@@ -617,7 +625,7 @@ class PlacementGroupManager:
         pg = self._in_use_trials.pop(trial)
         self._in_use_pgs.pop(pg)
 
-        self.remove_pg(pg)
+        self.remove_pg(trial.placement_group_factory, pg)
 
     def _unstage_unused_pg(
             self, pgf: PlacementGroupFactory) -> Optional[PlacementGroup]:
@@ -672,64 +680,37 @@ class PlacementGroupManager:
         return self._staging_futures and self._grace_period and time.time(
         ) <= self._latest_staging_start_time + self._grace_period
 
-    def reconcile_placement_groups(self, live_trials: List["Trial"]):
+    def reconcile_placement_groups(self,
+                                   expected: Dict[PlacementGroupFactory, int]):
         """Reconcile placement groups to match requirements.
 
-        This will loop through all trials and count their statuses by
-        placement group factory. This will make sure that only as many
-        placement groups are needed as there are trials left to run.
+        This will compare expected number of pgs with currently
+        requested number of pgs by placement group factory.
+        This will make sure that only as many are needed as
+        there are trials left to run.
 
         E.g. if PGF_A has 2 terminated, 1 errored, 2 paused, 1 running,
         and 3 pending trials, a total of 6 placement groups
         (paused+running+pending) should be in staging, use, or the cache.
 
         Args:
-            trials (List[Trial]): List of trials.
+            expected (Dict[PlacementGroupFactory, int]): expected number of
+                pgs per pgf.
 
         """
-        # Keep track of the currently tracked placement groups
-        current_counts: Dict[PlacementGroupFactory, int] = defaultdict(int)
-
-        # Count number of expected placement groups
-        pgf_expected: Dict[PlacementGroupFactory, int] = defaultdict(int)
-        for trial in live_trials:
-            # Count in-use placement groups
-            if trial in self._in_use_trials:
-                current_counts[trial.placement_group_factory] += 1
-
-            pgf_expected[trial.placement_group_factory] += \
-                1 if trial.status in ["PAUSED", "PENDING", "RUNNING"] else 0
-
-        # Ensure that unexpected placement groups are accounted for
-        for pgf in self._staging:
-            if pgf not in pgf_expected:
-                pgf_expected[pgf] = 0
-
-        for pgf in self._ready:
-            if pgf not in pgf_expected:
-                pgf_expected[pgf] = 0
-
-        # Count cached placement groups
-        for pg, pgf in self._cached_pgs.items():
-            current_counts[pgf] += 1
 
         # Compare current with expected
-        for pgf, expected in pgf_expected.items():
-            # Add staging and ready pgs
-            current_counts[pgf] += len(self._staging[pgf])
-            current_counts[pgf] += len(self._ready[pgf])
+        for pgf in self._requested_pg_number.keys():
 
-            while current_counts[pgf] > expected:
+            while self._requested_pg_number[pgf] > expected.get(pgf, 0):
                 pg = self._unstage_unused_pg(pgf)
                 if not pg:
                     break
                 logger.debug(f"Removing unneeded placement group {pg.id}")
-                self.remove_pg(pg)
-                current_counts[pgf] -= 1
+                self.remove_pg(pgf, pg)
 
-            while expected > current_counts[pgf]:
+            while self._requested_pg_number[pgf] < expected.get(pgf, 0):
                 self._stage_pgf_pg(pgf)
-                current_counts[pgf] += 1
                 logger.debug(f"Adding an expected but previously unstaged "
                              f"placement group for factory {pgf}")
 

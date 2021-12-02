@@ -8,6 +8,7 @@ from typing import Dict, List, Optional
 import warnings
 
 import ray
+from ray.tune import PlacementGroupFactory
 from ray.tune.resources import Resources
 from ray.util.annotations import DeveloperAPI
 from ray.tune.trial import Trial, Checkpoint
@@ -255,20 +256,18 @@ class TrialExecutor(metaclass=_WarnOnDirectInheritanceMeta):
         """Returns all running trials."""
         pass
 
-    def on_step_begin(self, trials: List[Trial]) -> None:
+    def on_step_begin(self) -> None:
         """A hook called before running one step of the trial event loop.
-
-        Args:
-            trials (List[Trial]): The list of trials. Note, refrain from
-                providing TrialRunner directly here.
         """
         pass
 
-    def on_step_end(self, live_trials: List[Trial]) -> None:
+    def on_step_end(
+            self, live_trial_number: Dict[PlacementGroupFactory, int]) -> None:
         """A hook called after running one step of the trial event loop.
 
         Args:
-            live_trials (List[Trial]): The list of live trials.
+            live_trial_number (Dict[PlacementGroupFactory, int]):
+                Live trial number (PENDING, PAUSED, RUNNING) keyed by pgf.
         """
         pass
 

@@ -1,5 +1,6 @@
-from typing import Any, List, Mapping, Optional, Union
+from typing import Any, Dict, List, Mapping, Optional, Union
 
+from collections import defaultdict
 import click
 from datetime import datetime
 import json
@@ -650,7 +651,7 @@ class TrialRunner:
         if self.is_finished():
             raise TuneError("Called step when all trials finished?")
         with warn_if_slow("on_step_begin"):
-            self.trial_executor.on_step_begin(self.get_trials())
+            self.trial_executor.on_step_begin()
         with warn_if_slow("callbacks.on_step_begin"):
             self._callbacks.on_step_begin(
                 iteration=self._iteration, trials=self._trials)
@@ -717,13 +718,13 @@ class TrialRunner:
 
             if self.is_finished():
                 self._server.shutdown()
+
+        live_trial_number_per_pgf = self._reconcile_live_trials()
         with warn_if_slow("on_step_end"):
-            self.trial_executor.on_step_end(self._live_trials)
+            self.trial_executor.on_step_end(live_trial_number_per_pgf)
         with warn_if_slow("callbacks.on_step_end"):
             self._callbacks.on_step_end(
                 iteration=self._iteration, trials=self._trials)
-
-        self._reconcile_live_trials()
 
     def get_trial(self, tid):
         trial = [t for t in self._trials if t.trial_id == tid]
@@ -1359,10 +1360,19 @@ class TrialRunner:
 
     def _reconcile_live_trials(self):
         """Loop through live trials and remove if terminated"""
+        result: Dict[PlacementGroupFactory, int] = defaultdict(int)
         for trial in list(self._live_trials):
             # Only for TERMINATED trials. ERRORed trials might be retried.
             if trial.status == Trial.TERMINATED:
                 self._live_trials.remove(trial)
+            elif trial.status in (Trial.PAUSED, Trial.PENDING, Trial.PAUSED):
+                count = result.get(trial.pgf, 0)
+                result[trial.pgf] = count + 1
+            elif trial.status == Trial.ERROR:
+                pass
+            else:
+                raise ValueError("Unexpected trial status!")
+        return result
 
     def __getstate__(self):
         """Gets state for trial.
