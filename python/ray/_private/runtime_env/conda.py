@@ -97,11 +97,10 @@ def get_conda_dict(runtime_env, resources_dir) -> Optional[Dict[Any, Any]]:
                 "pip": [f"-r {requirements_txt_path}"]
             }]
         }
-        file_lock_name = f"ray-{pip_hash_str}.lock"
-        with FileLock(os.path.join(resources_dir, file_lock_name)):
-            try_to_create_directory(resources_dir)
-            with open(requirements_txt_path, "w") as file:
-                file.write(requirements_txt)
+
+        try_to_create_directory(resources_dir)
+        with open(requirements_txt_path, "w") as file:
+            file.write(requirements_txt)
         return conda_dict
     return None
 

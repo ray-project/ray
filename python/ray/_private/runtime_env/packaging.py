@@ -1,5 +1,4 @@
 from enum import Enum
-from filelock import FileLock
 import hashlib
 import logging
 import os
@@ -415,77 +414,75 @@ def download_and_unpack_package(
     Will be written to a directory named {base_directory}/{uri}.
     """
     pkg_file = Path(_get_local_path(base_directory, pkg_uri))
-    with FileLock(str(pkg_file) + ".lock"):
-        if logger is None:
-            logger = default_logger
+    if logger is None:
+        logger = default_logger
 
-        logger.debug(f"Fetching package for URI: {pkg_uri}")
+    logger.debug(f"Fetching package for URI: {pkg_uri}")
 
-        local_dir = pkg_file.with_suffix("")
-        assert local_dir != pkg_file, "Invalid pkg_file!"
-        if local_dir.exists():
-            assert local_dir.is_dir(), f"{local_dir} is not a directory"
-        else:
-            protocol, pkg_name = parse_uri(pkg_uri)
-            if protocol == Protocol.GCS:
-                # Download package from the GCS.
-                code = _internal_kv_get(pkg_uri)
-                if code is None:
-                    raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
-                code = code or b""
-                pkg_file.write_bytes(code)
-                unzip_package(
-                    package_path=pkg_file,
-                    target_dir=local_dir,
-                    remove_top_level_directory=False,
-                    unlink_zip=True,
-                    logger=logger)
-            elif protocol in Protocol.remote_protocols():
-                # Download package from remote URI
-                tp = None
+    local_dir = pkg_file.with_suffix("")
+    assert local_dir != pkg_file, "Invalid pkg_file!"
+    if local_dir.exists():
+        assert local_dir.is_dir(), f"{local_dir} is not a directory"
+    else:
+        protocol, pkg_name = parse_uri(pkg_uri)
+        if protocol == Protocol.GCS:
+            # Download package from the GCS.
+            code = _internal_kv_get(pkg_uri)
+            if code is None:
+                raise IOError(f"Failed to fetch URI {pkg_uri} from GCS.")
+            code = code or b""
+            pkg_file.write_bytes(code)
+            unzip_package(
+                package_path=pkg_file,
+                target_dir=local_dir,
+                remove_top_level_directory=False,
+                unlink_zip=True,
+                logger=logger)
+        elif protocol in Protocol.remote_protocols():
+            # Download package from remote URI
+            tp = None
 
-                if protocol == Protocol.S3:
-                    try:
-                        from smart_open import open
-                        import boto3
-                    except ImportError:
-                        raise ImportError(
-                            "You must `pip install smart_open` and "
-                            "`pip install boto3` to fetch URIs in s3 "
-                            "bucket.")
-                    tp = {"client": boto3.client("s3")}
-                elif protocol == Protocol.GS:
-                    try:
-                        from smart_open import open
-                        from google.cloud import storage  # noqa: F401
-                    except ImportError:
-                        raise ImportError(
-                            "You must `pip install smart_open` and "
-                            "`pip install google-cloud-storage` "
-                            "to fetch URIs in Google Cloud Storage bucket.")
-                else:
-                    try:
-                        from smart_open import open
-                    except ImportError:
-                        raise ImportError(
-                            "You must `pip install smart_open` "
-                            f"to fetch {protocol.value.upper()} URIs.")
-
-                with open(pkg_uri, "rb", transport_params=tp) as package_zip:
-                    with open(pkg_file, "wb") as fin:
-                        fin.write(package_zip.read())
-
-                unzip_package(
-                    package_path=pkg_file,
-                    target_dir=local_dir,
-                    remove_top_level_directory=True,
-                    unlink_zip=True,
-                    logger=logger)
+            if protocol == Protocol.S3:
+                try:
+                    from smart_open import open
+                    import boto3
+                except ImportError:
+                    raise ImportError(
+                        "You must `pip install smart_open` and "
+                        "`pip install boto3` to fetch URIs in s3 "
+                        "bucket.")
+                tp = {"client": boto3.client("s3")}
+            elif protocol == Protocol.GS:
+                try:
+                    from smart_open import open
+                    from google.cloud import storage  # noqa: F401
+                except ImportError:
+                    raise ImportError(
+                        "You must `pip install smart_open` and "
+                        "`pip install google-cloud-storage` "
+                        "to fetch URIs in Google Cloud Storage bucket.")
             else:
-                raise NotImplementedError(
-                    f"Protocol {protocol} is not supported")
+                try:
+                    from smart_open import open
+                except ImportError:
+                    raise ImportError(
+                        "You must `pip install smart_open` "
+                        f"to fetch {protocol.value.upper()} URIs.")
 
-        return str(local_dir)
+            with open(pkg_uri, "rb", transport_params=tp) as package_zip:
+                with open(pkg_file, "wb") as fin:
+                    fin.write(package_zip.read())
+
+            unzip_package(
+                package_path=pkg_file,
+                target_dir=local_dir,
+                remove_top_level_directory=True,
+                unlink_zip=True,
+                logger=logger)
+        else:
+            raise NotImplementedError(f"Protocol {protocol} is not supported")
+
+    return str(local_dir)
 
 
 def get_top_level_dir_from_compressed_package(package_path: str):
@@ -592,13 +589,12 @@ def delete_package(pkg_uri: str, base_directory: str) -> bool:
 
     deleted = False
     path = Path(_get_local_path(base_directory, pkg_uri))
-    with FileLock(str(path) + ".lock"):
-        path = path.with_suffix("")
-        if path.exists():
-            if path.is_dir() and not path.is_symlink():
-                shutil.rmtree(str(path))
-            else:
-                path.unlink()
-            deleted = True
+    path = path.with_suffix("")
+    if path.exists():
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(str(path))
+        else:
+            path.unlink()
+        deleted = True
 
     return deleted
