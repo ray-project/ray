@@ -2,6 +2,7 @@ import sys
 import unittest
 from parameterized import parameterized
 
+import pytest
 import ray
 from ray.rllib.agents import ppo, sac
 from ray.rllib.utils.exploration.random_encoder import RE3UpdateCallbacks
@@ -63,5 +64,4 @@ class TestRE3(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     sys.exit(pytest.main(["-v", __file__]))

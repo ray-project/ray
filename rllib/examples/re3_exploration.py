@@ -21,7 +21,6 @@ if __name__ == "__main__":
     ray.init()
 
     config = sac.DEFAULT_CONFIG.copy()
-    beta_schedule = "linear_decay"
 
     # Patch user given callbacks with RE3 callbacks for using RE3 exploration
     # strategy

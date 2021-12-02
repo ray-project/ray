@@ -1,6 +1,6 @@
 from gym.spaces import Discrete, Space
 import numpy as np
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Union
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
@@ -19,13 +19,17 @@ tf1, tf, tfv = try_import_tf()
 class MovingMeanStd:
     """Track moving mean, std and count."""
 
-    def __init__(self, epsilon: float = 1e-4, shape: List[int] = []):
+    def __init__(self,
+                 epsilon: float = 1e-4,
+                 shape: Optional[List[int]] = None):
         """Initialize object.
 
         Args:
             epsilon (float): Initial count.
             shape (List[int]): Shape of the trackables mean and std.
         """
+        if not shape:
+            shape = []
         self.mean = np.zeros(shape, dtype=np.float32)
         self.var = np.ones(shape, dtype=np.float32)
         self.count = epsilon
@@ -46,7 +50,7 @@ class MovingMeanStd:
         return np.log(inputs / self.std + 1)
 
     def update_params(self, batch_mean: float, batch_var: float,
-                      batch_count: int) -> None:
+                      batch_count: float) -> None:
         """Update moving mean, std and count.
 
         Args:
@@ -144,6 +148,8 @@ class RE3UpdateCallbacks():
         # import Postprocessing here to avoid circular import issue
         from ray.rllib.evaluation.postprocessing import Postprocessing
 
+        super().on_learn_on_batch(
+            policy=policy, train_batch=train_batch, result=result, **kwargs)
         states_entropy = compute_states_entropy(
             train_batch[SampleBatch.OBS_EMBEDS], self.embeds_dim, self.k_nn)
         states_entropy = update_beta(
@@ -159,10 +165,10 @@ class RE3UpdateCallbacks():
                 train_batch[Postprocessing.ADVANTAGES] + states_entropy)
             train_batch[Postprocessing.VALUE_TARGETS] = (
                 train_batch[Postprocessing.VALUE_TARGETS] + states_entropy)
-        super().on_learn_on_batch(
-            policy=policy, train_batch=train_batch, result=result, **kwargs)
 
     def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
+        # TODO(gjoliver): Remove explicit _step tracking and pass
+        # trainer._iteration as a parameter to on_learn_on_batch() call.
         RE3UpdateCallbacks._step = result["training_iteration"]
         super().on_train_result(trainer=trainer, result=result, **kwargs)
 
@@ -181,6 +187,8 @@ class RE3(Exploration):
 
     The entropy of a state is considered as intrinsic reward and added to the
     environment's extrinsic reward for policy optimization.
+    Entropy is calculated per batch, it does not take the distribution of
+    the entire replay buffer into consideration.
     """
 
     def __init__(self,
@@ -201,7 +209,8 @@ class RE3(Exploration):
 
         Args:
             action_space (Space): The action space in which to explore.
-            framework (str): One of "tf" or "torch".
+            framework (str): Supports "tf", this implementation does not
+                support torch.
             model (ModelV2): The policy's model.
             embeds_dim (int): The dimensionality of the observation embedding
                 vectors in latent space.
@@ -227,6 +236,7 @@ class RE3(Exploration):
         Raises:
             ValueError: If the input framework is Torch.
         """
+        # TODO(gjoliver): Add supports for Pytorch.
         if framework == "torch":
             raise ValueError("This RE3 implementation does not support Torch.")
         super().__init__(
@@ -268,7 +278,7 @@ class RE3(Exploration):
 
         self.sub_exploration = sub_exploration
 
-        # Creates modules/layers inside the actual ModelV2.
+        # Creates ModelV2 embedding module / layers.
         self._encoder_net = ModelCatalog.get_model_v2(
             self.model.obs_space,
             self.action_space,
