@@ -174,12 +174,16 @@ cdef class MessagePackSerializer(object):
                 if python_deserializer is not None:
                     return python_deserializer(msgpack.loads(data))
                 raise Exception('Unrecognized ext type id: {}'.format(code))
+
+        gc_enabled = gc.isenabled()
         try:
-            gc.disable()  # Performance optimization for msgpack.
+            if gc_enabled:
+                gc.disable()  # Performance optimization for msgpack.
             return msgpack.loads(s, ext_hook=_ext_hook, raw=False,
                                  strict_map_key=False)
         finally:
-            gc.enable()
+            if gc_enabled:
+                gc.enable()
 
 
 @cython.boundscheck(False)
