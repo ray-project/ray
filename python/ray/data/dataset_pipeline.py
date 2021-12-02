@@ -9,6 +9,7 @@ from ray.data.dataset import Dataset, T, U, BatchType
 from ray.data.impl.pipeline_executor import PipelineExecutor, \
     PipelineSplitExecutorCoordinator
 from ray.data.impl import progress_bar
+from ray.data.impl.stats import DatasetPipelineStats
 from ray.util.annotations import PublicAPI, DeveloperAPI
 
 if TYPE_CHECKING:
@@ -70,6 +71,7 @@ class DatasetPipeline(Generic[T]):
         # Whether the pipeline execution has started.
         # This variable is shared across all pipelines descending from this.
         self._executed = _executed or [False]
+        self._stats = DatasetPipelineStats()
 
     def iter_batches(self,
                      *,
@@ -99,13 +101,22 @@ class DatasetPipeline(Generic[T]):
         """
 
         def gen_batches() -> Iterator[BatchType]:
+            time_start = time.monotonic()
+
             for ds in self.iter_datasets():
+                wait_start = time.monotonic()
                 for batch in ds.iter_batches(
                         prefetch_blocks=prefetch_blocks,
                         batch_size=batch_size,
                         batch_format=batch_format,
                         drop_last=drop_last):
+                    self._stats.iter_wait_s += time.monotonic() - wait_start
+                    user_start = time.monotonic()
                     yield batch
+                    wait_start = time.monotonic()
+                    self._stats.iter_user_s += wait_start - user_start
+
+            self._stats.iter_total_s += time.monotonic() - time_start
 
         return gen_batches()
 
@@ -567,6 +578,10 @@ class DatasetPipeline(Generic[T]):
     def foreach_dataset(self, *a, **kw) -> None:
         raise DeprecationWarning(
             "`foreach_dataset` has been renamed to `foreach_window`.")
+
+    @DeveloperAPI
+    def stats(self) -> str:
+        return self._stats.summary_string()
 
     @staticmethod
     def from_iterable(iterable: Iterable[Callable[[], Dataset[T]]],

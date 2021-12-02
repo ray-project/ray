@@ -83,6 +83,7 @@ class Dataset(Generic[T]):
         self._uuid = uuid4().hex
         self._epoch = epoch
         self._stats = stats
+        self._stats.dataset_uuid = self._uuid
         assert isinstance(self._blocks, BlockList), self._blocks
 
     def map(self,

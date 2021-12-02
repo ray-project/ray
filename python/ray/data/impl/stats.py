@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Set, Tuple
 import collections
 import numpy as np
 
@@ -24,6 +24,7 @@ class DatasetStats:
         self.stages: Dict[str, List[BlockMetadata]] = stages
         self.parent: Optional["DatasetStats"] = parent
         self.number: int = 0 if not parent else parent.number + 1
+        self.dataset_uuid: str = None
         self.time_total_s: float = -1
         self.stats_actor = stats_actor
 
@@ -33,7 +34,7 @@ class DatasetStats:
         self.iter_user_s: float = 0
         self.iter_total_s: float = 0
 
-    def summary_string(self) -> str:
+    def summary_string(self, already_printed: Set[str] = None) -> str:
         if self.stats_actor:
             # XXX this is a super hack, clean it up
             stats_map, self.time_total_s = ray.get(
@@ -42,11 +43,15 @@ class DatasetStats:
                 self.stages["read"][i] = metadata
         out = ""
         if self.parent:
-            out += self.parent.summary_string()
+            out += self.parent.summary_string(already_printed)
             out += "\n"
         for stage_name, metadata in self.stages.items():
             out += "Stage {} {}: ".format(self.number, stage_name)
-            out += self.summarize_blocks(metadata)
+            if already_printed and self.dataset_uuid in already_printed:
+                out += "[execution cached]"
+            else:
+                already_printed.add(self.dataset_uuid)
+                out += self.summarize_blocks(metadata)
         out += self.summarize_iter()
         return out
 
@@ -108,4 +113,43 @@ class DatasetStats:
                     int(np.mean(list(node_counts.values()))),
                     len(node_counts)))
 
+        return out
+
+
+class DatasetPipelineStats:
+    def __init__(self, *, max_history: int = 3):
+        self.max_history: int = max_history
+        self.history_buffer: List[Tuple[int, DatasetStats]] = []
+        self.count = 0
+        self.wait_time_s = []
+
+        # Iteration stats, filled out if the user iterates over the pipeline.
+        self.iter_wait_s: float = 0
+        self.iter_user_s: float = 0
+        self.iter_total_s: float = 0
+
+    def add(self, stats: DatasetStats) -> None:
+        self.history_buffer.append((self.count, stats))
+        if len(self.history_buffer) > self.max_history:
+            self.history_buffer.pop(0)
+        self.count += 1
+
+    def summary_string(self) -> str:
+        already_printed = set()
+        out = ""
+        for i, stats in self.history_buffer:
+            out += "== Pipeline Window {} ==\n".format(i)
+            out += stats.summary_string(already_printed)
+            out += "\n"
+        out += "=== Overall Pipeline Iterator Time Breakdown ===\n"
+        # Drop the first sample since there's no pipelining there.
+        wait_time_s = self.wait_time_s[1:]
+        if wait_time_s:
+            out += ("* Time stalled waiting for next dataset: "
+                    "{} min, {} max, {} mean, {} total\n".format(
+                        fmt(min(wait_time_s)), fmt(max(wait_time_s)),
+                        fmt(np.mean(wait_time_s)), fmt(sum(wait_time_s))))
+        out += "* Time in dataset iterator: {}\n".format(fmt(self.iter_wait_s))
+        out += "* Time in user code: {}\n".format(fmt(self.iter_user_s))
+        out += "* Total time: {}\n".format(fmt(self.iter_total_s))
         return out
