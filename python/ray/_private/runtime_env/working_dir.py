@@ -1,7 +1,6 @@
 import logging
 import os
 from typing import Any, Dict, Optional
-from pathlib import Path
 
 from ray._private.runtime_env.utils import RuntimeEnv
 from ray.experimental.internal_kv import _internal_kv_initialized
@@ -25,13 +24,10 @@ def upload_working_dir_if_needed(
     if working_dir is None:
         return runtime_env
 
-    if not isinstance(working_dir, str) and not isinstance(working_dir, Path):
+    if not isinstance(working_dir, str):
         raise TypeError(
-            "working_dir must be a string or Path (either a local path "
-            f"or remote URI), got {type(working_dir)}.")
-
-    if isinstance(working_dir, Path):
-        working_dir = str(working_dir)
+            "working_dir must be a string (either a local path or remote "
+            f"URI), got {type(working_dir)}.")
 
     # working_dir is already a URI -- just pass it through.
     try:
