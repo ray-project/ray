@@ -15,29 +15,7 @@
 #include "ray/object_manager/pull_manager.h"
 
 #include "ray/common/common_protocol.h"
-#include "ray/stats/stats.h"
-
-DEFINE_stats(num_bytes_available, "The total number of bytes available to pull objects.",
-             (), (), ray::stats::GAUGE);
-DEFINE_stats(num_bytes_being_pulled,
-             "The total number of bytes we are currently pulling.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_bytes_being_pulled_pinned,
-             "The total number of bytes for pinned objects.", (), (), ray::stats::GAUGE);
-DEFINE_stats(num_get_reqs, "Number of queued get requests.", (), (), ray::stats::GAUGE);
-DEFINE_stats(num_wait_reqs, "Number of queued wait requests.", (), (), ray::stats::GAUGE);
-DEFINE_stats(num_task_arg_reqs, "Number of queued task argument requests.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_pull_req_queued, "Number of queued pull requests for objects.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_active_pulls, "Number of active pull requests.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_active_pulls_pinned, "Number of pinned objects by active pull requests.",
-             (), (), ray::stats::GAUGE);
-DEFINE_stats(num_active_bundles, "Number of active bundle being pulled.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_retries_total, "Total number of pull retry in this node.", (), (),
-             ray::stats::GAUGE);
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 
@@ -763,32 +741,42 @@ int64_t PullManager::NextRequestBundleSize(const Queue &bundles,
   return bytes_needed_calculated;
 }
 
+void PullManager::RecordMetrics() const {
+  absl::MutexLock lock(&active_objects_mu_);
+  ray::stats::STATS_num_bytes_available.Record(num_bytes_available_);
+  ray::stats::STATS_num_bytes_being_pulled.Record(num_bytes_being_pulled_);
+  ray::stats::STATS_num_bytes_being_pulled_pinned.Record(pinned_objects_size_);
+  ray::stats::STATS_num_get_reqs.Record(get_request_bundles_.size());
+  ray::stats::STATS_num_wait_reqs.Record(wait_request_bundles_.size());
+  ray::stats::STATS_num_task_arg_reqs.Record(task_argument_bundles_.size());
+  ray::stats::STATS_num_pull_req_queued.Record(object_pull_requests_.size());
+  ray::stats::STATS_num_active_pulls.Record(active_object_pull_requests_.size());
+  ray::stats::STATS_num_active_pulls_pinned.Record(pinned_objects_.size());
+  ray::stats::STATS_num_active_bundles.Record(num_active_bundles_);
+  ray::stats::STATS_num_retries_total.Record(num_retries_total_);
+}
+
 std::string PullManager::DebugString() const {
   absl::MutexLock lock(&active_objects_mu_);
-  auto num_get_reqs = get_request_bundles_.size();
-  auto num_wait_reqs = wait_request_bundles_.size();
-  auto num_task_arg_reqs = task_argument_bundles_.size();
-  auto num_pull_req_queued = object_pull_requests_.size();
-  auto num_active_pulls = active_object_pull_requests_.size();
-  auto num_active_pulls_pinned = pinned_objects_.size();
-
   std::stringstream result;
   result << "PullManager:";
   result << "\n- num bytes available for pulled objects: " << num_bytes_available_;
   result << "\n- num bytes being pulled (all): " << num_bytes_being_pulled_;
   result << "\n- num bytes being pulled / pinned: " << pinned_objects_size_;
-  result << "\n- num get request bundles: " << num_get_reqs;
-  result << "\n- num wait request bundles: " << num_wait_reqs;
-  result << "\n- num task request bundles: " << num_task_arg_reqs;
+  result << "\n- num get request bundles: " << get_request_bundles_.size();
+  result << "\n- num wait request bundles: " << wait_request_bundles_.size();
+  result << "\n- num task request bundles: " << task_argument_bundles_.size();
   result << "\n- first get request bundle: "
          << BundleInfo(get_request_bundles_, highest_get_req_id_being_pulled_);
   result << "\n- first wait request bundle: "
          << BundleInfo(wait_request_bundles_, highest_wait_req_id_being_pulled_);
   result << "\n- first task request bundle: "
          << BundleInfo(task_argument_bundles_, highest_task_req_id_being_pulled_);
-  result << "\n- num objects queued: " << num_pull_req_queued;
-  result << "\n- num objects actively pulled (all): " << num_active_pulls;
-  result << "\n- num objects actively pulled / pinned: " << num_active_pulls_pinned;
+  result << "\n- num objects queued: " << object_pull_requests_.size();
+  ;
+  result << "\n- num objects actively pulled (all): "
+         << active_object_pull_requests_.size();
+  result << "\n- num objects actively pulled / pinned: " << pinned_objects_.size();
   result << "\n- num bundles being pulled: " << num_active_bundles_;
   result << "\n- num pull retries: " << num_retries_total_;
   result << "\n- max timeout seconds: " << max_timeout_;
@@ -813,19 +801,6 @@ std::string PullManager::DebugString() const {
       }
     }
   }
-
-  // Record Metrics.
-  STATS_num_bytes_available.Record(num_bytes_available_);
-  STATS_num_bytes_being_pulled.Record(num_bytes_being_pulled_);
-  STATS_num_bytes_being_pulled_pinned.Record(pinned_objects_size_);
-  STATS_num_get_reqs.Record(num_get_reqs);
-  STATS_num_wait_reqs.Record(num_wait_reqs);
-  STATS_num_task_arg_reqs.Record(num_task_arg_reqs);
-  STATS_num_pull_req_queued.Record(num_pull_req_queued);
-  STATS_num_active_pulls.Record(num_active_pulls);
-  STATS_num_active_pulls_pinned.Record(num_active_pulls_pinned);
-  STATS_num_active_bundles.Record(num_active_bundles_);
-  STATS_num_retries_total.Record(num_retries_total_);
   return result.str();
 }
 

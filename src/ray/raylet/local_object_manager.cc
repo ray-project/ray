@@ -15,23 +15,8 @@
 #include "ray/raylet/local_object_manager.h"
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
-
-DEFINE_stats(num_pinned_objects, "Number of locally pinned objects.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(pinned_objects_size_bytes, "Mumber of pinned object size in bytes.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_objects_pending_restore, "Number of pending restore requests.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_objects_pending_spill, "Number of pending spill requests.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(pending_spill_bytes, "Pending spill request in bytes.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(cumulative_spill_requests, "Cumulative number of spill requests.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(cumulative_restore_requests, "Cumulative number of restore requests.", (),
-             (), ray::stats::GAUGE);
 
 namespace ray {
 
@@ -508,21 +493,7 @@ void LocalObjectManager::FillObjectSpillingStats(rpc::GetNodeStatsReply *reply) 
   stats->set_object_store_bytes_primary_copy(pinned_objects_size_);
 }
 
-std::string LocalObjectManager::DebugString() const {
-  size_t num_pinned_objects = pinned_objects_.size();
-  size_t num_pending_restore_reqs = objects_pending_restore_.size();
-  size_t num_pending_spill_reqs = objects_pending_spill_.size();
-
-  std::stringstream result;
-  result << "LocalObjectManager:\n";
-  result << "- num pinned objects: " << num_pinned_objects << "\n";
-  result << "- pinned objects size: " << pinned_objects_size_ << "\n";
-  result << "- num objects pending restore: " << num_pending_restore_reqs << "\n";
-  result << "- num objects pending spill: " << num_pending_spill_reqs << "\n";
-  result << "- num bytes pending spill: " << num_bytes_pending_spill_ << "\n";
-  result << "- cumulative spill requests: " << spilled_objects_total_ << "\n";
-  result << "- cumulative restore requests: " << restored_objects_total_ << "\n";
-
+void LocalObjectManager::RecordMetrics() const {
   /// Record Metrics.
   if (spilled_bytes_total_ != 0 && spill_time_total_s_ != 0) {
     stats::SpillingBandwidthMB.Record(spilled_bytes_total_ / 1024 / 1024 /
@@ -532,13 +503,25 @@ std::string LocalObjectManager::DebugString() const {
     stats::RestoringBandwidthMB.Record(restored_bytes_total_ / 1024 / 1024 /
                                        restore_time_total_s_);
   }
-  STATS_num_pinned_objects.Record(num_pinned_objects);
-  STATS_pinned_objects_size_bytes.Record(pinned_objects_size_);
-  STATS_num_objects_pending_restore.Record(num_pending_restore_reqs);
-  STATS_num_objects_pending_spill.Record(num_pending_spill_reqs);
-  STATS_pending_spill_bytes.Record(num_bytes_pending_spill_);
-  STATS_cumulative_spill_requests.Record(spilled_objects_total_);
-  STATS_cumulative_restore_requests.Record(restored_objects_total_);
+  ray::stats::STATS_num_pinned_objects.Record(pinned_objects_.size());
+  ray::stats::STATS_pinned_objects_size_bytes.Record(pinned_objects_size_);
+  ray::stats::STATS_num_objects_pending_restore.Record(objects_pending_restore_.size());
+  ray::stats::STATS_num_objects_pending_spill.Record(objects_pending_spill_.size());
+  ray::stats::STATS_pending_spill_bytes.Record(num_bytes_pending_spill_);
+  ray::stats::STATS_cumulative_spill_requests.Record(spilled_objects_total_);
+  ray::stats::STATS_cumulative_restore_requests.Record(restored_objects_total_);
+}
+
+std::string LocalObjectManager::DebugString() const {
+  std::stringstream result;
+  result << "LocalObjectManager:\n";
+  result << "- num pinned objects: " << pinned_objects_.size() << "\n";
+  result << "- pinned objects size: " << pinned_objects_size_ << "\n";
+  result << "- num objects pending restore: " << objects_pending_restore_.size() << "\n";
+  result << "- num objects pending spill: " << objects_pending_spill_.size() << "\n";
+  result << "- num bytes pending spill: " << num_bytes_pending_spill_ << "\n";
+  result << "- cumulative spill requests: " << spilled_objects_total_ << "\n";
+  result << "- cumulative restore requests: " << restored_objects_total_ << "\n";
   return result.str();
 }
 

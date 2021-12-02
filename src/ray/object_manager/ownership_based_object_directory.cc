@@ -14,7 +14,7 @@
 
 #include "ray/object_manager/ownership_based_object_directory.h"
 
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 
 namespace ray {
 
@@ -29,8 +29,7 @@ OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
       object_location_subscriber_(object_location_subscriber),
       owner_client_pool_(owner_client_pool),
       kMaxObjectReportBatchSize(max_object_report_batch_size),
-      mark_as_failed_(mark_as_failed),
-      last_metrics_recorded_at_ms_(current_time_ms()) {}
+      mark_as_failed_(mark_as_failed) {}
 
 namespace {
 
@@ -537,7 +536,7 @@ void OwnershipBasedObjectDirectory::RecordMetrics(uint64_t duration_ms) {
   metrics_num_object_locations_removed_ = 0;
 }
 
-std::string OwnershipBasedObjectDirectory::DebugString() {
+std::string OwnershipBasedObjectDirectory::DebugString() const {
   std::stringstream result;
   result << std::fixed << std::setprecision(3);
   result << "OwnershipBasedObjectDirectory:";
@@ -552,12 +551,6 @@ std::string OwnershipBasedObjectDirectory::DebugString() {
          << metrics_num_object_locations_added_per_second_;
   result << "\n- num locations removed per second: "
          << metrics_num_object_locations_removed_per_second_;
-
-  /// RecordMetrics
-  uint64_t current_time = current_time_ms();
-  uint64_t duration_ms = current_time - last_metrics_recorded_at_ms_;
-  last_metrics_recorded_at_ms_ = current_time;
-  RecordMetrics(duration_ms);
   return result.str();
 }
 

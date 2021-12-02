@@ -124,10 +124,13 @@ class IObjectDirectory {
   virtual void ReportObjectRemoved(const ObjectID &object_id, const NodeID &node_id,
                                    const ObjectInfo &object_info) = 0;
 
+  /// Record metrics.
+  virtual void RecordMetrics(uint64_t duration_ms) = 0;
+
   /// Returns debug string for class.
   ///
   /// \return string.
-  virtual std::string DebugString() = 0;
+  virtual std::string DebugString() const = 0;
 };
 
 }  // namespace ray

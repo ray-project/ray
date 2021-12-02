@@ -77,9 +77,9 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   void ReportObjectRemoved(const ObjectID &object_id, const NodeID &node_id,
                            const ObjectInfo &object_info) override;
 
-  void RecordMetrics(uint64_t duration_ms);
+  void RecordMetrics(uint64_t duration_ms) override;
 
-  std::string DebugString() override;
+  std::string DebugString() const override;
 
  private:
   friend class OwnershipBasedObjectDirectoryTest;
@@ -169,9 +169,6 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   double metrics_num_object_location_updates_per_second_;
 
   uint64_t cum_metrics_num_object_location_updates_;
-
-  /// Last timestampe where the metrics were recorded.
-  uint64_t last_metrics_recorded_at_ms_;
 
   friend class OwnershipBasedObjectDirectoryTest;
 };

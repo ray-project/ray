@@ -17,56 +17,7 @@
 
 #include "ray/object_manager/plasma/stats_collector.h"
 
-#include "ray/stats/stats.h"
-
-DEFINE_stats(num_objects_spillable,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_bytes_spillable,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_objects_unsealed,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_bytes_unsealed,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_objects_in_use,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_bytes_in_use,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_objects_evictable,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_bytes_evictable,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_objects_created_by_worker,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_bytes_created_by_worker,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_objects_restored,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_bytes_restored,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_objects_received,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_bytes_received,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_objects_errored,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_bytes_errored,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
+#include "ray/stats/metric_defs.h"
 
 namespace plasma {
 
@@ -217,6 +168,27 @@ void ObjectStatsCollector::OnObjectRefDecreased(const LocalObject &obj) {
   }
 }
 
+void ObjectStatsCollector::RecordMetrics() const {
+  ray::stats::STATS_num_objects_by_state.Record(num_objects_spillable_, "Spillable");
+  ray::stats::STATS_num_object_bytes_by_state.Record(num_bytes_spillable_, "Spillable");
+  ray::stats::STATS_num_objects_by_state.Record(num_objects_unsealed_, "Unsealed");
+  ray::stats::STATS_num_object_bytes_by_state.Record(num_bytes_unsealed_, "Unsealed");
+  ray::stats::STATS_num_objects_by_state.Record(num_objects_in_use_, "InUse");
+  ray::stats::STATS_num_object_bytes_by_state.Record(num_bytes_in_use_, "InUse");
+  ray::stats::STATS_num_objects_by_state.Record(num_objects_evictable_, "Evictable");
+  ray::stats::STATS_num_object_bytes_by_state.Record(num_bytes_evictable_, "Evictable");
+
+  ray::stats::STATS_num_objects_by_type.Record(num_objects_created_by_worker_, "Primary");
+  ray::stats::STATS_num_object_bytes_by_type.Record(num_bytes_created_by_worker_,
+                                                    "Primary");
+  ray::stats::STATS_num_objects_by_type.Record(num_objects_restored_, "Restored");
+  ray::stats::STATS_num_object_bytes_by_type.Record(num_bytes_restored_, "Restored");
+  ray::stats::STATS_num_objects_by_type.Record(num_objects_received_, "Transferred");
+  ray::stats::STATS_num_object_bytes_by_type.Record(num_bytes_received_, "Transferred");
+  ray::stats::STATS_num_objects_by_type.Record(num_objects_errored_, "ErrorObject");
+  ray::stats::STATS_num_object_bytes_by_type.Record(num_bytes_errored_, "ErrorObject");
+}
+
 void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {
   buffer << "- objects spillable: " << num_objects_spillable_ << "\n";
   buffer << "- bytes spillable: " << num_bytes_spillable_ << "\n";
@@ -236,24 +208,6 @@ void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {
   buffer << "- bytes received: " << num_bytes_received_ << "\n";
   buffer << "- objects errored: " << num_objects_errored_ << "\n";
   buffer << "- bytes errored: " << num_bytes_errored_ << "\n";
-
-  // Record Metrics.
-  STATS_num_objects_spillable.Record(num_objects_spillable_);
-  STATS_num_bytes_spillable.Record(num_bytes_spillable_);
-  STATS_num_objects_unsealed.Record(num_objects_unsealed_);
-  STATS_num_bytes_unsealed.Record(num_bytes_unsealed_);
-  STATS_num_objects_in_use.Record(num_objects_in_use_);
-  STATS_num_bytes_in_use.Record(num_bytes_in_use_);
-  STATS_num_objects_evictable.Record(num_objects_evictable_);
-  STATS_num_bytes_evictable.Record(num_bytes_evictable_);
-  STATS_num_objects_created_by_worker.Record(num_objects_created_by_worker_);
-  STATS_num_bytes_created_by_worker.Record(num_bytes_created_by_worker_);
-  STATS_num_objects_restored.Record(num_objects_restored_);
-  STATS_num_bytes_restored.Record(num_bytes_restored_);
-  STATS_num_objects_received.Record(num_objects_received_);
-  STATS_num_bytes_received.Record(num_bytes_received_);
-  STATS_num_objects_errored.Record(num_objects_errored_);
-  STATS_num_bytes_errored.Record(num_bytes_errored_);
 }
 
 int64_t ObjectStatsCollector::GetNumBytesInUse() const { return num_bytes_in_use_; }

@@ -51,18 +51,11 @@
 #include "ray/object_manager/plasma/malloc.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/protocol.h"
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
 
 namespace ph = boost::placeholders;
 namespace fb = plasma::flatbuf;
-
-DEFINE_stats(num_pending_requests,
-             "The number of pending object creation requests in the queue.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_pending_bytes,
-             "The number of pending object creation requests in bytes.", (), (),
-             ray::stats::GAUGE);
 
 namespace plasma {
 namespace {
@@ -116,7 +109,7 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service, IAllocator &allo
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms > 0 && RayConfig::instance().event_stats()) {
-    PrintDebugDump();
+    PrintAndRecordDebugDump();
   }
 }
 
@@ -535,12 +528,21 @@ bool PlasmaStore::IsObjectSpillable(const ObjectID &object_id) {
   return entry->Sealed() && entry->GetRefCount() == 1;
 }
 
-void PlasmaStore::PrintDebugDump() const {
+void PlasmaStore::PrintAndRecordDebugDump() const {
   absl::MutexLock lock(&mutex_);
+  RecordMetrics();
   RAY_LOG(INFO) << GetDebugDump();
   stats_timer_ = execute_after(
-      io_context_, [this]() { PrintDebugDump(); },
+      io_context_, [this]() { PrintAndRecordDebugDump(); },
       RayConfig::instance().event_stats_print_interval_ms());
+}
+
+void PlasmaStore::RecordMetrics() const {
+  ray::stats::STATS_num_pending_creation_requests.Record(
+      create_request_queue_.NumPendingRequests());
+  ray::stats::STATS_num_pending_creation_bytes.Record(
+      create_request_queue_.NumPendingBytes());
+  object_lifecycle_mgr_.RecordMetrics();
 }
 
 std::string PlasmaStore::GetDebugDump() const {
@@ -550,14 +552,9 @@ std::string PlasmaStore::GetDebugDump() const {
          << (allocator_.GetFootprintLimit() / 1e9) << " GB\n";
   buffer << "- num bytes created total: "
          << object_lifecycle_mgr_.GetNumBytesCreatedTotal() << "\n";
-  auto num_pending_requests = create_request_queue_.NumPendingRequests();
-  auto num_pending_bytes = create_request_queue_.NumPendingBytes();
-  buffer << num_pending_requests << " pending objects of total size "
-         << num_pending_bytes / 1024 / 1024 << "MB\n";
-
-  // Record Metrics.
-  STATS_num_pending_requests.Record(num_pending_requests);
-  STATS_num_pending_bytes.Record(num_pending_bytes);
+  buffer << create_request_queue_.NumPendingRequests()
+         << " pending objects of total size "
+         << create_request_queue_.NumPendingBytes() / 1024 / 1024 << "MB\n";
   object_lifecycle_mgr_.GetDebugDump(buffer);
   return buffer.str();
 }

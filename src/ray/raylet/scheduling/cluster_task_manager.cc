@@ -18,43 +18,8 @@
 
 #include <boost/range/join.hpp>
 
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
-
-DEFINE_stats(num_waiting_for_resource,
-             "Number of tasks waiting for resources to be available.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_waiting_for_plasma_memory,
-             "Number of tasks waiting for additional object store memory.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_waiting_for_remote_node_resources,
-             "Number of tasks waiting for available resources from remote nodes.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_worker_not_started_by_job_config_not_exist,
-             "Number of tasks that have failed to be scheduled because workers were not "
-             "available due to missing job config.",
-             (), (), ray::stats::GAUGE);
-DEFINE_stats(num_worker_not_started_by_registration_timeout,
-             "Number of tasks that have failed to be scheduled because workers were not "
-             "available due to worker registration timeout.",
-             (), (), ray::stats::GAUGE);
-DEFINE_stats(num_worker_not_started_by_process_rate_limit,
-             "Number of tasks that have failed to be scheduled because workers were not "
-             "available due to rate limiting.",
-             (), (), ray::stats::GAUGE);
-DEFINE_stats(num_worker_waiting_for_workers,
-             "Number of tasks that are waiting for a worker process to be available.", (),
-             (), ray::stats::GAUGE);
-DEFINE_stats(num_cancelled_tasks, "Number of cancelled tasks.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_waitng_tasks,
-             "Number of tasks that are waiting for dependencies to be available locally.",
-             (), (), ray::stats::GAUGE);
-DEFINE_stats(num_executing_tasks, "Number of tasks that are executing.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_pinned_task_args,
-             "Number of task arguments that are pinned because they are used by tasks.",
-             (), (), ray::stats::GAUGE);
 
 namespace ray {
 namespace raylet {
@@ -91,8 +56,7 @@ ClusterTaskManager::ClusterTaskManager(
       get_time_ms_(get_time_ms),
       sched_cls_cap_enabled_(RayConfig::instance().worker_cap_enabled()),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
-      sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()),
-      metric_tasks_spilled_(0) {}
+      sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
 
 bool ClusterTaskManager::SchedulePendingTasks() {
   // Always try to schedule infeasible tasks in case they are now feasible.
@@ -974,7 +938,7 @@ bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
   return *any_pending;
 }
 
-std::string ClusterTaskManager::DebugStr() const {
+void ClusterTaskManager::UpdateDebugStates() const {
   auto accumulator =
       [](size_t state,
          const std::pair<int, std::deque<std::shared_ptr<internal::Work>>> &pair) {
@@ -986,11 +950,8 @@ std::string ClusterTaskManager::DebugStr() const {
   size_t num_worker_not_started_by_job_config_not_exist = 0;
   size_t num_worker_not_started_by_registration_timeout = 0;
   size_t num_worker_not_started_by_process_rate_limit = 0;
-  size_t num_worker_waiting_for_workers = 0;
+  size_t num_tasks_waiting_for_workers = 0;
   size_t num_cancelled_tasks = 0;
-  size_t num_waiting_tasks = waiting_tasks_index_.size();
-  size_t num_executing_tasks = executing_task_args_.size();
-  size_t num_pinned_task_args = pinned_task_arguments_.size();
 
   size_t num_infeasible_tasks = std::accumulate(
       infeasible_tasks_.begin(), infeasible_tasks_.end(), (size_t)0, accumulator);
@@ -1003,7 +964,7 @@ std::string ClusterTaskManager::DebugStr() const {
                                &num_worker_not_started_by_job_config_not_exist,
                                &num_worker_not_started_by_registration_timeout,
                                &num_worker_not_started_by_process_rate_limit,
-                               &num_worker_waiting_for_workers, &num_cancelled_tasks](
+                               &num_tasks_waiting_for_workers, &num_cancelled_tasks](
                                   size_t state,
                                   const std::pair<
                                       int, std::deque<std::shared_ptr<internal::Work>>>
@@ -1012,7 +973,7 @@ std::string ClusterTaskManager::DebugStr() const {
     for (auto work_it = work_queue.begin(); work_it != work_queue.end();) {
       const auto &work = *work_it++;
       if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
-        num_worker_waiting_for_workers += 1;
+        num_tasks_waiting_for_workers += 1;
       } else if (work->GetState() == internal::WorkStatus::CANCELLED) {
         num_cancelled_tasks += 1;
       } else if (work->GetUnscheduledCause() ==
@@ -1044,31 +1005,85 @@ std::string ClusterTaskManager::DebugStr() const {
       std::accumulate(tasks_to_dispatch_.begin(), tasks_to_dispatch_.end(), (size_t)0,
                       per_work_accumulator);
 
-  if (num_tasks_to_schedule + num_tasks_to_dispatch + num_infeasible_tasks > 1000) {
+  /// Update the internal states.
+  internal_stats_.num_waiting_for_resource = num_waiting_for_resource;
+  internal_stats_.num_waiting_for_plasma_memory = num_waiting_for_plasma_memory;
+  internal_stats_.num_waiting_for_remote_node_resources =
+      num_waiting_for_remote_node_resources;
+  internal_stats_.num_worker_not_started_by_job_config_not_exist =
+      num_worker_not_started_by_job_config_not_exist;
+  internal_stats_.num_worker_not_started_by_registration_timeout =
+      num_worker_not_started_by_registration_timeout;
+  internal_stats_.num_worker_not_started_by_process_rate_limit =
+      num_worker_not_started_by_process_rate_limit;
+  internal_stats_.num_tasks_waiting_for_workers = num_tasks_waiting_for_workers;
+  internal_stats_.num_cancelled_tasks = num_cancelled_tasks;
+  internal_stats_.num_infeasible_tasks = num_infeasible_tasks;
+  internal_stats_.num_tasks_to_schedule = num_tasks_to_schedule;
+  internal_stats_.num_tasks_to_dispatch = num_tasks_to_dispatch;
+}
+
+void ClusterTaskManager::RecordMetrics() const {
+  /// This method intentionally doesn't call UpdateDebugState() because
+  /// that function is expensive. UpdateDebugState is called by DebugStr method
+  /// and they are always periodically called by node manager.
+  stats::NumReceivedTasks.Record(internal_stats_.num_tasks_to_schedule);
+  stats::NumDispatchedTasks.Record(internal_stats_.num_tasks_to_dispatch);
+  stats::NumSpilledTasks.Record(internal_stats_.metric_tasks_spilled);
+  stats::NumInfeasibleSchedulingClasses.Record(infeasible_tasks_.size());
+  stats::NumInfeasibleTasks.Record(internal_stats_.num_infeasible_tasks);
+  ray::stats::STATS_num_waiting_for_resource.Record(
+      internal_stats_.num_waiting_for_resource);
+  ray::stats::STATS_num_waiting_for_plasma_memory.Record(
+      internal_stats_.num_waiting_for_plasma_memory);
+  ray::stats::STATS_num_waiting_for_remote_node_resources.Record(
+      internal_stats_.num_waiting_for_remote_node_resources);
+  ray::stats::STATS_num_worker_not_started_by_job_config_not_exist.Record(
+      internal_stats_.num_worker_not_started_by_job_config_not_exist);
+  ray::stats::STATS_num_worker_not_started_by_registration_timeout.Record(
+      internal_stats_.num_worker_not_started_by_registration_timeout);
+  ray::stats::STATS_num_worker_not_started_by_process_rate_limit.Record(
+      internal_stats_.num_worker_not_started_by_process_rate_limit);
+  ray::stats::STATS_num_tasks_waiting_for_workers.Record(
+      internal_stats_.num_tasks_waiting_for_workers);
+  ray::stats::STATS_num_cancelled_tasks.Record(internal_stats_.num_cancelled_tasks);
+  ray::stats::STATS_num_waitng_tasks.Record(waiting_tasks_index_.size());
+  ray::stats::STATS_num_executing_tasks.Record(executing_task_args_.size());
+  ray::stats::STATS_num_pinned_task_args.Record(pinned_task_arguments_.size());
+}
+
+std::string ClusterTaskManager::DebugStr() const {
+  UpdateDebugStates();
+  if (internal_stats_.num_tasks_to_schedule + internal_stats_.num_tasks_to_dispatch +
+          internal_stats_.num_infeasible_tasks >
+      1000) {
     RAY_LOG(WARNING)
         << "More than 1000 tasks are queued in this node. This can cause slow down.";
   }
 
   std::stringstream buffer;
   buffer << "========== Node: " << self_node_id_ << " =================\n";
-  buffer << "Infeasible queue length: " << num_infeasible_tasks << "\n";
-  buffer << "Schedule queue length: " << num_tasks_to_schedule << "\n";
-  buffer << "Dispatch queue length: " << num_tasks_to_dispatch << "\n";
-  buffer << "num_waiting_for_resource: " << num_waiting_for_resource << "\n";
-  buffer << "num_waiting_for_plasma_memory: " << num_waiting_for_plasma_memory << "\n";
+  buffer << "Infeasible queue length: " << internal_stats_.num_infeasible_tasks << "\n";
+  buffer << "Schedule queue length: " << internal_stats_.num_tasks_to_schedule << "\n";
+  buffer << "Dispatch queue length: " << internal_stats_.num_tasks_to_dispatch << "\n";
+  buffer << "num_waiting_for_resource: " << internal_stats_.num_waiting_for_resource
+         << "\n";
+  buffer << "num_waiting_for_plasma_memory: "
+         << internal_stats_.num_waiting_for_plasma_memory << "\n";
   buffer << "num_waiting_for_remote_node_resources: "
-         << num_waiting_for_remote_node_resources << "\n";
+         << internal_stats_.num_waiting_for_remote_node_resources << "\n";
   buffer << "num_worker_not_started_by_job_config_not_exist: "
-         << num_worker_not_started_by_job_config_not_exist << "\n";
+         << internal_stats_.num_worker_not_started_by_job_config_not_exist << "\n";
   buffer << "num_worker_not_started_by_registration_timeout: "
-         << num_worker_not_started_by_registration_timeout << "\n";
+         << internal_stats_.num_worker_not_started_by_registration_timeout << "\n";
   buffer << "num_worker_not_started_by_process_rate_limit: "
-         << num_worker_not_started_by_process_rate_limit << "\n";
-  buffer << "num_worker_waiting_for_workers: " << num_worker_waiting_for_workers << "\n";
-  buffer << "num_cancelled_tasks: " << num_cancelled_tasks << "\n";
-  buffer << "Waiting tasks size: " << num_waiting_tasks << "\n";
-  buffer << "Number of executing tasks: " << num_executing_tasks << "\n";
-  buffer << "Number of pinned task arguments: " << num_pinned_task_args << "\n";
+         << internal_stats_.num_worker_not_started_by_process_rate_limit << "\n";
+  buffer << "num_tasks_waiting_for_workers: "
+         << internal_stats_.num_tasks_waiting_for_workers << "\n";
+  buffer << "num_cancelled_tasks: " << internal_stats_.num_cancelled_tasks << "\n";
+  buffer << "Waiting tasks size: " << waiting_tasks_index_.size() << "\n";
+  buffer << "Number of executing tasks: " << executing_task_args_.size() << "\n";
+  buffer << "Number of pinned task arguments: " << pinned_task_arguments_.size() << "\n";
   buffer << "cluster_resource_scheduler state: "
          << cluster_resource_scheduler_->DebugString() << "\n";
   buffer << "Resource usage {\n";
@@ -1118,29 +1133,6 @@ std::string ClusterTaskManager::DebugStr() const {
   }
 
   buffer << "==================================================\n";
-
-  /// Record Metrics
-  stats::NumReceivedTasks.Record(num_tasks_to_schedule);
-  stats::NumDispatchedTasks.Record(num_tasks_to_dispatch);
-  stats::NumSpilledTasks.Record(metric_tasks_spilled_);
-  stats::NumInfeasibleSchedulingClasses.Record(infeasible_tasks_.size());
-  stats::NumInfeasibleTasks.Record(num_infeasible_tasks);
-  STATS_num_waiting_for_resource.Record(num_waiting_for_resource);
-  STATS_num_waiting_for_plasma_memory.Record(num_waiting_for_plasma_memory);
-  STATS_num_waiting_for_remote_node_resources.Record(
-      num_waiting_for_remote_node_resources);
-  STATS_num_worker_not_started_by_job_config_not_exist.Record(
-      num_worker_not_started_by_job_config_not_exist);
-  STATS_num_worker_not_started_by_registration_timeout.Record(
-      num_worker_not_started_by_registration_timeout);
-  STATS_num_worker_not_started_by_process_rate_limit.Record(
-      num_worker_not_started_by_process_rate_limit);
-  STATS_num_worker_waiting_for_workers.Record(num_worker_waiting_for_workers);
-  STATS_num_cancelled_tasks.Record(num_cancelled_tasks);
-  STATS_num_waitng_tasks.Record(num_waiting_tasks);
-  STATS_num_executing_tasks.Record(num_executing_tasks);
-  STATS_num_pinned_task_args.Record(num_pinned_task_args);
-
   return buffer.str();
 }
 
@@ -1266,7 +1258,7 @@ void ClusterTaskManager::Spillback(const NodeID &spillback_to,
     return;
   }
 
-  metric_tasks_spilled_++;
+  internal_stats_.metric_tasks_spilled++;
   const auto &task = work->task;
   const auto &task_spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;

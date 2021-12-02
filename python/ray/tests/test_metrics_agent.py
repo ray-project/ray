@@ -28,10 +28,6 @@ except ImportError:
 # TODO(Clark): Find ways to trigger commented out metrics in cluster setup.
 _METRICS = [
     "ray_gcs_latency_sum",
-    # "ray_local_available_resource",
-    # "ray_local_total_resource",
-    # "ray_live_actors",
-    # "ray_restarting_actors",
     "ray_object_store_available_memory",
     "ray_object_store_used_memory",
     "ray_object_store_num_local_objects",
@@ -63,7 +59,51 @@ _METRICS = [
     "ray_pending_placement_group",
     "ray_registered_placement_group",
     "ray_infeasible_placement_group",
-    "ray_placement_group_resource_persist_latency_ms_sum"
+    "ray_new_resource_creation_latency_ms_sum",
+    "ray_grpc_server_req_process_time_ms",
+    "ray_grpc_server_req_new_total",
+    "ray_grpc_server_req_handling_total",
+    "ray_grpc_server_req_finished_total",
+    "ray_num_chunks_received_total",
+    "ray_num_chunks_received_failed",
+    "ray_num_bytes_available",
+    "ray_num_bytes_being_pulled",
+    "ray_num_bytes_being_pulled_pinned",
+    "ray_num_get_reqs",
+    "ray_num_wait_reqs",
+    "ray_num_task_arg_reqs",
+    "ray_num_pull_req_queued",
+    "ray_num_active_pulls",
+    "ray_num_active_pulls_pinned",
+    "ray_num_active_bundles",
+    "ray_num_retries_total",
+    "ray_num_pushes_in_flight",
+    "ray_num_chunks_in_flight",
+    "ray_num_chunks_remainig",
+    "ray_num_waiting_for_resource",
+    "ray_num_waiting_for_plasma_memory",
+    "ray_num_waiting_for_remote_node_resources",
+    "ray_num_worker_not_started_by_job_config_not_exist",
+    "ray_num_worker_not_started_by_registration_timeout",
+    "ray_num_worker_not_started_by_process_rate_limit",
+    "ray_num_tasks_waiting_for_workers",
+    "ray_num_cancelled_tasks",
+    "ray_num_waitng_tasks",
+    "ray_num_executing_tasks",
+    "ray_num_pinned_task_args",
+    "ray_num_pinned_objects",
+    "ray_pinned_objects_size_bytes",
+    "ray_num_objects_pending_restore",
+    "ray_num_objects_pending_spill",
+    "ray_pending_spill_bytes",
+    "ray_cumulative_spill_requests",
+    "ray_cumulative_restore_requests",
+    "ray_num_objects_by_state",
+    "ray_num_object_bytes_by_state",
+    "ray_num_objects_by_type",
+    "ray_num_object_bytes_by_type",
+    "ray_num_pending_creation_requests",
+    "ray_num_pending_creation_bytes",
 ]
 
 # This list of metrics should be kept in sync with
@@ -87,7 +127,12 @@ def _setup_cluster_for_test(ray_start_cluster):
     NUM_NODES = 2
     cluster = ray_start_cluster
     # Add a head node.
-    cluster.add_node(_system_config={"metrics_report_interval_ms": 1000})
+    cluster.add_node(
+        _system_config={
+            "metrics_report_interval_ms": 1000,
+            "event_stats_print_interval_ms": 500,
+            "event_stats": True
+        })
     # Add worker nodes.
     [cluster.add_node() for _ in range(NUM_NODES - 1)]
     cluster.wait_for_nodes()
@@ -174,6 +219,8 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
             assert any(metric_name in full_name for full_name in metric_names)
 
         # Make sure metrics are recorded.
+        print(set(_METRICS) - set(metric_names))
+        # print(set(metric_names) - set(_METRICS))
         for metric in _METRICS:
             assert metric in metric_names, \
                 f"metric {metric} not in {metric_names}"

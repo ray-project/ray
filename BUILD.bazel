@@ -595,10 +595,12 @@ cc_library(
     name = "stats_metric",
     srcs = [
         "src/ray/stats/metric.cc",
+        "src/ray/stats/metric_defs.cc",
     ],
     hdrs = [
         "src/ray/stats/metric.h",
         "src/ray/stats/tag_defs.h",
+        "src/ray/stats/metric_defs.h",
     ],
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
@@ -624,7 +626,6 @@ cc_library(
     ],
     hdrs = [
         "src/ray/stats/metric.h",
-        "src/ray/stats/metric_defs.h",
         "src/ray/stats/metric_exporter.h",
         "src/ray/stats/metric_exporter_client.h",
         "src/ray/stats/stats.h",

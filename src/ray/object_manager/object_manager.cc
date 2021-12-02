@@ -17,23 +17,10 @@
 #include <chrono>
 
 #include "ray/common/common_protocol.h"
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
 
 namespace asio = boost::asio;
-
-DEFINE_stats(num_chunks_received_total, "Number object chunks received.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_chunks_received_failed,
-             "Number of object chunks failed to be transferred.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_chunks_received_failed_cancelled,
-             "Number of object chunks failed to be transferred due to pull cancellation.",
-             (), (), ray::stats::GAUGE);
-DEFINE_stats(num_chunks_received_failed_plasma_error,
-             "Number of object chunks failed to be transferred due to the lack of object "
-             "store memory.",
-             (), (), ray::stats::GAUGE);
 
 namespace ray {
 
@@ -858,18 +845,16 @@ std::shared_ptr<rpc::ObjectManagerClient> ObjectManager::GetRpcClient(
 }
 
 std::string ObjectManager::DebugString() const {
-  size_t num_local_objects = local_objects_.size();
-  size_t num_pull_reqs = pull_manager_->NumActiveRequests();
   std::stringstream result;
   result << "ObjectManager:";
-  result << "\n- num local objects: " << num_local_objects;
+  result << "\n- num local objects: " << local_objects_.size();
   result << "\n- available memory: " << config_.object_store_memory - used_memory_;
   result << "\n- used memory: " << used_memory_;
   result << "\n- fallback allocated memory: "
          << plasma::plasma_store_runner->GetFallbackAllocated();
   result << "\n- num active wait requests: " << active_wait_requests_.size();
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
-  result << "\n- num pull requests: " << num_pull_reqs;
+  result << "\n- num pull requests: " << pull_manager_->NumActiveRequests();
   result << "\n- num chunks received total: " << num_chunks_received_total_;
   result << "\n- num chunks received failed (all): " << num_chunks_received_total_failed_;
   result << "\n- num chunks received failed / cancelled: "
@@ -881,20 +866,25 @@ std::string ObjectManager::DebugString() const {
   result << "\n" << object_directory_->DebugString();
   result << "\n" << buffer_pool_.DebugString();
   result << "\n" << pull_manager_->DebugString();
+  return result.str();
+}
 
-  /// Record metrics.
+void ObjectManager::RecordMetrics() {
+  pull_manager_->RecordMetrics();
+  push_manager_->RecordMetrics();
   stats::ObjectStoreAvailableMemory().Record(config_.object_store_memory - used_memory_);
   stats::ObjectStoreUsedMemory().Record(used_memory_);
   stats::ObjectStoreFallbackMemory().Record(
       plasma::plasma_store_runner->GetFallbackAllocated());
-  stats::ObjectStoreLocalObjects().Record(num_local_objects);
-  stats::ObjectManagerPullRequests().Record(num_pull_reqs);
-  STATS_num_chunks_received_total.Record(num_chunks_received_total_);
-  STATS_num_chunks_received_failed.Record(num_chunks_received_total_failed_);
-  STATS_num_chunks_received_failed_cancelled.Record(num_chunks_received_cancelled_);
-  STATS_num_chunks_received_failed_plasma_error.Record(
-      num_chunks_received_failed_due_to_plasma_);
-  return result.str();
+  stats::ObjectStoreLocalObjects().Record(local_objects_.size());
+  stats::ObjectManagerPullRequests().Record(pull_manager_->NumActiveRequests());
+  ray::stats::STATS_num_chunks_received_total.Record(num_chunks_received_total_);
+  ray::stats::STATS_num_chunks_received_failed.Record(num_chunks_received_total_failed_,
+                                                      "Total");
+  ray::stats::STATS_num_chunks_received_failed.Record(num_chunks_received_cancelled_,
+                                                      "Cancelled");
+  ray::stats::STATS_num_chunks_received_failed.Record(
+      num_chunks_received_failed_due_to_plasma_, "PlasmaFull");
 }
 
 void ObjectManager::FillObjectStoreStats(rpc::GetNodeStatsReply *reply) const {

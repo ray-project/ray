@@ -15,15 +15,8 @@
 #include "ray/object_manager/push_manager.h"
 
 #include "ray/common/common_protocol.h"
-#include "ray/stats/stats.h"
+#include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
-
-DEFINE_stats(num_pushes_in_flight, "Number of object push requests in flight.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_chunks_in_flight, "Number of object chunks transfer in flight.", (), (),
-             ray::stats::GAUGE);
-DEFINE_stats(num_chunks_remainig, "Number of object chunks transfer remaining.", (), (),
-             ray::stats::GAUGE);
 
 namespace ray {
 
@@ -37,6 +30,7 @@ void PushManager::StartPush(const NodeID &dest_id, const ObjectID &obj_id,
     return;
   }
   RAY_CHECK(num_chunks > 0);
+  chunks_remaining_ += num_chunks;
   push_info_[push_id].reset(new PushState(num_chunks, send_chunk_fn));
   ScheduleRemainingPushes();
 }
@@ -44,6 +38,7 @@ void PushManager::StartPush(const NodeID &dest_id, const ObjectID &obj_id,
 void PushManager::OnChunkComplete(const NodeID &dest_id, const ObjectID &obj_id) {
   auto push_id = std::make_pair(dest_id, obj_id);
   chunks_in_flight_ -= 1;
+  chunks_remaining_ -= 1;
   if (--push_info_[push_id]->chunks_remaining <= 0) {
     push_info_.erase(push_id);
     RAY_LOG(DEBUG) << "Push for " << push_id.first << ", " << push_id.second
@@ -80,22 +75,19 @@ void PushManager::ScheduleRemainingPushes() {
   }
 }
 
-std::string PushManager::DebugString() const {
-  int64_t num_pushes_in_flight = NumPushesInFlight();
-  int64_t num_chunks_in_flight = NumChunksInFlight();
-  int64_t num_chunks_remainig = NumChunksRemaining();
+void PushManager::RecordMetrics() const {
+  ray::stats::STATS_num_pushes_in_flight.Record(NumPushesInFlight());
+  ray::stats::STATS_num_chunks_in_flight.Record(NumChunksInFlight());
+  ray::stats::STATS_num_chunks_remainig.Record(NumChunksRemaining());
+}
 
+std::string PushManager::DebugString() const {
   std::stringstream result;
   result << "PushManager:";
-  result << "\n- num pushes in flight: " << num_pushes_in_flight;
-  result << "\n- num chunks in flight: " << num_chunks_in_flight;
-  result << "\n- num chunks remaining: " << num_chunks_remainig;
+  result << "\n- num pushes in flight: " << NumPushesInFlight();
+  result << "\n- num chunks in flight: " << NumChunksInFlight();
+  result << "\n- num chunks remaining: " << NumChunksRemaining();
   result << "\n- max chunks allowed: " << max_chunks_in_flight_;
-
-  // Record metrics.
-  STATS_num_pushes_in_flight.Record(num_pushes_in_flight);
-  STATS_num_chunks_in_flight.Record(num_chunks_in_flight);
-  STATS_num_chunks_remainig.Record(num_chunks_remainig);
   return result.str();
 }
 
