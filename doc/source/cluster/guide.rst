@@ -56,7 +56,7 @@ There are a few ways to set up this environment.
 
 - You can push files to the cluster using ``ray rsync_up`` (:ref:`reference<ray-rsync>`).
 
-Alternatively, you can specify your environment in Python at runtime using :ref:`Runtime Environments<runtime-environments>`.
+Alternatively, you can specify your environment in Python using :ref:`Runtime Environments<runtime-environments>`.
 This also allows you to specify different environments per actor, per task, or per Ray Client connection, all on the same long-running Ray cluster.
 
 Autoscaling with Ray
