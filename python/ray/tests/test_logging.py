@@ -8,8 +8,8 @@ import pytest
 
 import ray
 from ray import ray_constants
-from ray._private.test_utils import (wait_for_condition, init_log_pubsub,
-                                     get_log_message)
+from ray._private.test_utils import (get_log_batch, wait_for_condition,
+                                     init_log_pubsub, get_log_message)
 
 
 def set_logging_config(max_bytes, backup_count):
@@ -183,6 +183,37 @@ def test_worker_id_names(shutdown_only):
         # There should be a "python-core-.*.log", "worker-.*.out",
         # and "worker-.*.err"
         assert count == 3
+
+
+def test_log_pid_with_hex_job_id(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4)
+
+    def submit_job():
+        # Connect a driver to the Ray cluster.
+        ray.init(address=cluster.address, ignore_reinit_error=True)
+        p = init_log_pubsub()
+        # It always prints the monitor messages.
+        logs = get_log_message(p, 1)
+
+        @ray.remote
+        def f():
+            print("remote func")
+
+        ray.get(f.remote())
+
+        def matcher(log_batch):
+            return log_batch["task_name"] == "f"
+
+        logs = get_log_batch(p, 1, matcher=matcher)
+        # It should logs with pid of hex job id instead of None
+        assert logs[0]["pid"] is not None
+        ray.shutdown()
+
+    # NOTE(xychu): loop ten times to make job id from 01000000 to 0a000000,
+    #              in order to trigger hex pattern
+    for _ in range(10):
+        submit_job()
 
 
 def test_log_monitor_backpressure(ray_start_cluster):
