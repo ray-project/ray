@@ -2190,8 +2190,8 @@ def remote(*args, **kwargs):
         retry_exceptions (bool): Only for *remote functions*. This specifies
             whether application-level errors should be retried
             up to max_retries times.
-        scheduling_strategy (str): Strategy about how to schedule
-            a remote function or actor. Possible values are
+        scheduling_strategy (SchedulingStrategy): Strategy about how to
+            schedule a remote function or actor. Possible values are
             None for default scheduling strategy,
             `PlacementGroupSchedulingStrategy`
             for placement group based scheduling.
