@@ -13,6 +13,7 @@ from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.suggest import BasicVariantGenerator
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
+from ray.tune.utils.mock import TrialStatusSnapshotTaker
 from ray.tune.utils.placement_groups import PlacementGroupFactory
 
 
@@ -179,7 +180,6 @@ class TrialRunnerTest(unittest.TestCase):
 
     def testResourceScheduler(self):
         ray.init(num_cpus=4, num_gpus=1)
-        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 1
@@ -187,28 +187,30 @@ class TrialRunnerTest(unittest.TestCase):
             "resources": Resources(cpu=1, gpu=1),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+
+        trial_status_snapshots = []
+        runner = TrialRunner(
+            callbacks=[TrialStatusSnapshotTaker(trial_status_snapshots)])
         for t in trials:
             runner.add_trial(t)
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[1].status, Trial.PENDING)
+        while not runner.is_finished():
+            runner.step()
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.TERMINATED)
-        self.assertEqual(trials[1].status, Trial.PENDING)
+        # No more than one running trial number at any given time.
+        for snapshot in trial_status_snapshots:
+            running_trial_num = 0
+            for trial_id in snapshot:
+                if snapshot[trial_id] == Trial.RUNNING:
+                    running_trial_num += 1
+            assert running_trial_num < 2
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.TERMINATED)
-        self.assertEqual(trials[1].status, Trial.RUNNING)
-
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.TERMINATED)
-        self.assertEqual(trials[1].status, Trial.TERMINATED)
+        last_snapshot = trial_status_snapshots[-1]
+        assert all(last_snapshot[trial_id] == Trial.TERMINATED
+                   for trial_id in last_snapshot)
 
     def testMultiStepRun(self):
         ray.init(num_cpus=4, num_gpus=2)
-        runner = TrialRunner()
         kwargs = {
             "stopping_criterion": {
                 "training_iteration": 5
@@ -216,24 +218,18 @@ class TrialRunnerTest(unittest.TestCase):
             "resources": Resources(cpu=1, gpu=1),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+        trial_status_snapshots = []
+        runner = TrialRunner(
+            callbacks=[TrialStatusSnapshotTaker(trial_status_snapshots)])
         for t in trials:
             runner.add_trial(t)
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[1].status, Trial.PENDING)
+        while not runner.is_finished():
+            runner.step()
 
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[1].status, Trial.RUNNING)
-
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[1].status, Trial.RUNNING)
-
-        runner.step()
-        self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(trials[1].status, Trial.RUNNING)
+        last_snapshot = trial_status_snapshots[-1]
+        assert all(last_snapshot[trial_id] == Trial.TERMINATED
+                   for trial_id in last_snapshot)
 
     def testMultiStepRun2(self):
         """Checks that runner.step throws when overstepping."""

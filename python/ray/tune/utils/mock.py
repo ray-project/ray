@@ -1,10 +1,10 @@
-import logging
-import os
-import time
-
-import numpy as np
+from collections import defaultdict
 import json
+import logging
+import numpy as np
+import os
 import random
+import time
 import uuid
 
 import ray._private.utils
@@ -155,3 +155,25 @@ class FailureInjectorCallback(Callback):
                                      "Retrying {} more times".format(
                                          str(failures),
                                          str(max_failures - failures)))
+
+
+class TrialStatusSnapshotTaker(Callback):
+    """Collects a sequence of statuses of trials as they progress.
+
+    If all trials keep previous status, no snapshot is taken.
+    """
+
+    def __init__(self, trial_status_snapshots):
+        self._trial_status_snapshots = trial_status_snapshots
+
+    def on_step_end(self, iteration, trials, **kwargs):
+        new_snapshot = defaultdict(str)
+        for trial in trials:
+            new_snapshot[trial.trial_id] = trial.status
+        if not new_snapshot:
+            # Don't add an empty snapshot.
+            return
+        if not self._trial_status_snapshots or any(
+                new_snapshot[trial_id] != self._trial_status_snapshots[-1].get(
+                    trial_id, "") for trial_id in new_snapshot.keys()):
+            self._trial_status_snapshots.append(new_snapshot)

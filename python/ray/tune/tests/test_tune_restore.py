@@ -37,7 +37,7 @@ from ray.tune.suggest.bohb import TuneBOHB
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.trial import Trial
 from ray.tune.utils import validate_save_restore
-from ray.tune.utils._mock_trainable import MyTrainableClass
+from ray.tune.utils.mock import MyTrainableClass
 
 
 class TuneRestoreTest(unittest.TestCase):

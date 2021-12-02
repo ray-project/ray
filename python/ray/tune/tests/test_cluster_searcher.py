@@ -11,8 +11,8 @@ from ray.cluster_utils import Cluster
 from ray.tune import register_trainable
 from ray.tune.trial import Trial
 from ray.tune.trial_runner import TrialRunner
-from ray.tune.utils.mock import (MockDurableTrainer, MockRemoteTrainer)
-from ray.tune.utils._mock_trainable import MyTrainableClass
+from ray.tune.utils.mock import (MockDurableTrainer, MockRemoteTrainer,
+                                 MyTrainableClass)
 
 
 def _start_new_cluster():
