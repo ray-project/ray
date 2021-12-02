@@ -1277,7 +1277,6 @@ class Node:
                                     namespace,
                                     num_retries=NUM_REDIS_GET_RETRIES):
         result = None
-        logger.error("_internal_kv_get_with_retry")
         for i in range(num_retries):
             try:
                 if isinstance(key, list):
@@ -1287,14 +1286,14 @@ class Node:
                     result = self.get_gcs_client().internal_kv_get(
                         key, namespace)
             except Exception as e:
-                logger.error(f"ERROR as {e}")
+                logger.debug(f"ERROR as {e}")
                 result = None
 
             if result and (isinstance(result, bytes)
                            or len(result) == len(key)):
                 return result
             else:
-                logger.error(f"Fetched {key}=None from redis. Retrying.")
+                logger.debug(f"Fetched {key}=None from redis. Retrying.")
                 time.sleep(2)
         raise RuntimeError(f"Could not read '{key}' from GCS (redis). "
                            "Has redis started correctly on the head node?")

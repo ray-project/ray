@@ -133,13 +133,13 @@ def _auto_reconnect(f):
                     raise
                 if e.code() in (grpc.StatusCode.UNAVAILABLE,
                                 grpc.StatusCode.UNKNOWN):
-                    logger.error(
+                    logger.debug(
                         "Failed to send request to gcs, reconnecting. "
                         f"Error {e}")
                     try:
                         self._connect()
                     except Exception:
-                        logger.error(f"Connecting to gcs failed. Error {e}")
+                        logger.debug(f"Connecting to gcs failed. Error {e}")
                     time.sleep(1)
                     remaining_retry -= 1
                     continue
@@ -228,7 +228,7 @@ class GcsClient:
     @_auto_reconnect
     def internal_kv_get(self, key: bytes,
                         namespace: Optional[str]) -> Optional[bytes]:
-        logger.error(f"internal_kv_get {key} {namespace}")
+        logger.debug(f"internal_kv_get {key} {namespace}")
         key = _make_key(namespace, key)
         req = gcs_service_pb2.InternalKVGetRequest(key=key)
         reply = self._kv_stub.InternalKVGet(req)
@@ -243,7 +243,7 @@ class GcsClient:
     @_auto_reconnect
     def internal_kv_multi_get(self, keys: List[bytes],
                               namespace: Optional[str]) -> Dict[bytes, bytes]:
-        logger.error(f"internal_kv_multi_get {keys} {namespace}")
+        logger.debug(f"internal_kv_multi_get {keys} {namespace}")
         req = gcs_service_pb2.InternalKVMultiGetRequest(
             keys=[_make_key(namespace, key) for key in keys])
         reply = self._kv_stub.InternalKVMultiGet(req)
@@ -256,7 +256,7 @@ class GcsClient:
     @_auto_reconnect
     def internal_kv_put(self, key: bytes, value: bytes, overwrite: bool,
                         namespace: Optional[str]) -> int:
-        logger.error(f"internal_kv_put {key} {value} {overwrite} {namespace}")
+        logger.debug(f"internal_kv_put {key} {value} {overwrite} {namespace}")
         key = _make_key(namespace, key)
         req = gcs_service_pb2.InternalKVPutRequest(
             key=key, value=value, overwrite=overwrite)
@@ -269,7 +269,7 @@ class GcsClient:
 
     @_auto_reconnect
     def internal_kv_del(self, key: bytes, namespace: Optional[str]) -> int:
-        logger.error(f"internal_kv_del {key} {namespace}")
+        logger.debug(f"internal_kv_del {key} {namespace}")
         key = _make_key(namespace, key)
         req = gcs_service_pb2.InternalKVDelRequest(key=key)
         reply = self._kv_stub.InternalKVDel(req)
@@ -281,7 +281,7 @@ class GcsClient:
 
     @_auto_reconnect
     def internal_kv_exists(self, key: bytes, namespace: Optional[str]) -> bool:
-        logger.error(f"internal_kv_exists {key} {namespace}")
+        logger.debug(f"internal_kv_exists {key} {namespace}")
         key = _make_key(namespace, key)
         req = gcs_service_pb2.InternalKVExistsRequest(key=key)
         reply = self._kv_stub.InternalKVExists(req)
@@ -294,7 +294,7 @@ class GcsClient:
     @_auto_reconnect
     def internal_kv_keys(self, prefix: bytes,
                          namespace: Optional[str]) -> List[bytes]:
-        logger.error(f"internal_kv_keys {prefix} {namespace}")
+        logger.debug(f"internal_kv_keys {prefix} {namespace}")
         prefix = _make_key(namespace, prefix)
         req = gcs_service_pb2.InternalKVKeysRequest(prefix=prefix)
         reply = self._kv_stub.InternalKVKeys(req)
