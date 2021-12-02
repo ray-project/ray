@@ -82,9 +82,18 @@ class ActorInfoAccessor {
   ///
   /// \param task_spec The specification for the actor creation task.
   /// \param callback Callback that will be called after the actor info is written to GCS.
+  /// \param timeout_ms RPC timeout ms. -1 means there's no timeout.
   /// \return Status
   virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
-                                    const StatusCallback &callback);
+                                    const StatusCallback &callback,
+                                    int64_t timeout_ms = -1);
+
+  /// Register actor to GCS synchronously.
+  ///
+  /// \param task_spec The specification for the actor creation task.
+  /// \return Status. Timedout if actor is not registered by the global
+  /// GCS timeout.
+  virtual Status SyncRegisterActor(const ray::TaskSpecification &task_spec);
 
   /// Kill actor via GCS asynchronously.
   ///

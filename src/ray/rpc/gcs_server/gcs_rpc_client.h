@@ -46,10 +46,14 @@ class Executor {
 };
 
 // Define a void GCS RPC client method.
+// Timeout can be configured in 3 levels; whole service, handler, and each call.
+// The priority of timeout is each call > handler > whole service
+// (the lower priority timeout is overwritten by the higher priority timeout).
 #define VOID_GCS_RPC_CLIENT_METHOD(SERVICE, METHOD, grpc_client, method_timeout_ms,    \
                                    SPECS)                                              \
   void METHOD(const METHOD##Request &request,                                          \
-              const ClientCallback<METHOD##Reply> &callback) SPECS {                   \
+              const ClientCallback<METHOD##Reply> &callback,                           \
+              const int64_t timeout_ms = method_timeout_ms) SPECS {                    \
     auto executor = new Executor(this);                                                \
     auto operation_callback = [this, request, callback, executor](                     \
                                   const ray::Status &status,                           \
@@ -66,9 +70,10 @@ class Executor {
         executor->Retry();                                                             \
       }                                                                                \
     };                                                                                 \
-    auto operation = [request, operation_callback](GcsRpcClient *gcs_rpc_client) {     \
+    auto operation = [request, operation_callback,                                     \
+                      timeout_ms](GcsRpcClient *gcs_rpc_client) {                      \
       RAY_UNUSED(INVOKE_RPC_CALL(SERVICE, METHOD, request, operation_callback,         \
-                                 gcs_rpc_client->grpc_client, method_timeout_ms));     \
+                                 gcs_rpc_client->grpc_client, timeout_ms));            \
     };                                                                                 \
     executor->Execute(operation);                                                      \
   }

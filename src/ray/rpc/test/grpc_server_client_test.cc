@@ -206,7 +206,7 @@ TEST_F(TestGrpcServerClientFixture, TestClientCallManagerTimeout) {
   grpc_client_.reset();
   client_call_manager_.reset();
   client_call_manager_.reset(new ClientCallManager(client_io_service_, /*num_thread=*/1,
-                                                   /*call_timeout_ms=*/100));
+                                                   /*call_timeout_ms=*/1));
   grpc_client_.reset(new GrpcClient<TestService>("127.0.0.1", grpc_server_->GetPort(),
                                                  *client_call_manager_));
   // Freeze server first, it won't reply any request.

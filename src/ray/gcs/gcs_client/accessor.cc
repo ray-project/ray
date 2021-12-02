@@ -209,7 +209,8 @@ Status ActorInfoAccessor::AsyncListNamedActors(
 }
 
 Status ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_spec,
-                                             const ray::gcs::StatusCallback &callback) {
+                                             const ray::gcs::StatusCallback &callback,
+                                             int64_t timeout_ms) {
   RAY_CHECK(task_spec.IsActorCreationTask() && callback);
   rpc::RegisterActorRequest request;
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
@@ -221,8 +222,21 @@ Status ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_
                 ? Status()
                 : Status(StatusCode(reply.status().code()), reply.status().message());
         callback(status);
-      });
+      },
+      timeout_ms);
   return Status::OK();
+}
+
+Status ActorInfoAccessor::SyncRegisterActor(const ray::TaskSpecification &task_spec) {
+  auto promise = std::make_shared<std::promise<Status>>();
+  int64_t timeout_ms =
+      absl::Seconds(RayConfig::instance().gcs_server_request_timeout_seconds()) /
+      absl::Milliseconds(1);
+  RAY_UNUSED(AsyncRegisterActor(
+      task_spec, [promise](const Status &status) { promise->set_value(status); },
+      timeout_ms));
+  auto future = promise->get_future();
+  return future.get();
 }
 
 Status ActorInfoAccessor::AsyncKillActor(const ActorID &actor_id, bool force_kill,
