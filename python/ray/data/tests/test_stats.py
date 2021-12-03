@@ -134,7 +134,7 @@ def test_dataset_pipeline_split_stats_basic(ray_start_regular_shared):
         for batch in split.iter_batches():
             pass
         return split.stats()
-    
+
     s0, s1 = pipe.split(2)
     stats = ray.get([consume.remote(s0), consume.remote(s1)])
     assert canonicalize(stats[0]) == """== Pipeline Window N ==
