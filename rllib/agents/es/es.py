@@ -213,18 +213,18 @@ class ESTrainer(Trainer):
         super().validate_config(config)
 
         if config["num_gpus"] > 1:
-            raise ValueError("`num_gpus` > 1 not yet supported for ES/ARS!")
+            raise ValueError("`num_gpus` > 1 not yet supported for ES!")
         if config["num_workers"] <= 0:
             raise ValueError("`num_workers` must be > 0 for ES!")
         if config["evaluation_config"]["num_envs_per_worker"] != 1:
             raise ValueError(
                 "`evaluation_config.num_envs_per_worker` must always be 1 for "
-                "ES/ARS! To parallelize evaluation, increase "
+                "ES! To parallelize evaluation, increase "
                 "`evaluation_num_workers` to > 1.")
         if config["evaluation_config"]["observation_filter"] != "NoFilter":
             raise ValueError(
                 "`evaluation_config.observation_filter` must always be "
-                "`NoFilter` for ES/ARS!")
+                "`NoFilter` for ES!")
 
     @override(Trainer)
     def _init(self, config, env_creator):
