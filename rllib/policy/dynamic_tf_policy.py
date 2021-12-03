@@ -316,8 +316,7 @@ class DynamicTFPolicy(TFPolicy):
                             self.model(self._input_dict)
                     else:
                         dist_inputs, self._state_out = self.model(
-                            self._input_dict, self._state_inputs,
-                            self._seq_lens)
+                            self._input_dict)
 
                 action_dist = dist_class(dist_inputs, self.model)
 
