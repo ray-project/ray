@@ -29,6 +29,9 @@ uint8_t *pointer_logical_and(const uint8_t *address, uintptr_t bits) {
 
 void parallel_memcopy(uint8_t *dst, const uint8_t *src, int64_t nbytes,
                       uintptr_t block_size, int num_threads) {
+  // The compiler generates an atomic operation to ensure the static local variable is
+  // initialized only once even with concurrent callers. Only one thread pool will be
+  // created.
   static auto &threadpool =
       *new boost::asio::thread_pool(std::thread::hardware_concurrency());
   uint8_t *left = pointer_logical_and(src + block_size - 1, ~(block_size - 1));
