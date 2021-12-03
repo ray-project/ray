@@ -406,7 +406,7 @@ class Dataset(Generic[T]):
                        if self._is_arrow_dataset() else SimpleBlockBuilder())
             empty_block = builder.build()
             empty_meta = BlockAccessor.for_block(empty_block).get_metadata(
-                input_files=None)
+                input_files=None, exec_stats=BlockExecStats.TODO)
             empty_blocks, empty_metadata = zip(*[(ray.put(empty_block),
                                                   empty_meta)
                                                  for _ in range(num_empties)])
@@ -2450,8 +2450,8 @@ class Dataset(Generic[T]):
 
     def _divide(self, block_idx: int) -> ("Dataset[T]", "Dataset[T]"):
         left, right = self._blocks.divide(block_idx)
-        return Dataset(left, self._epoch), Dataset(
-            right, self._epoch, self._stats.child_TODO("split"))
+        return Dataset(left, self._epoch, self._stats), Dataset(
+            right, self._epoch, self._stats)
 
     def __repr__(self) -> str:
         schema = self.schema()
