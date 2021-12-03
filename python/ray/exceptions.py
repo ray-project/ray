@@ -462,6 +462,15 @@ class ActorPlacementGroupRemoved(RayError):
                 "has been removed.")
 
 
+class PendingCallsLimitExceeded(RayError):
+    """Raised when the pending actor calls exceeds `max_pending_calls` option.
+
+    This exception could happen probably because the caller calls the callee
+    too frequently.
+    """
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -481,4 +490,5 @@ RAY_EXCEPTION_TYPES = [
     RuntimeEnvSetupError,
     TaskPlacementGroupRemoved,
     ActorPlacementGroupRemoved,
+    PendingCallsLimitExceeded,
 ]

@@ -236,7 +236,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   if (options_.worker_type == WorkerType::WORKER) {
     periodical_runner_.RunFnPeriodically(
-        [this] { CheckForRayletFailure(); },
+        [this] { ExitIfParentRayletDies(); },
         RayConfig::instance().raylet_death_check_interval_milliseconds());
   }
 
@@ -354,7 +354,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
       new CoreWorkerDirectActorTaskSubmitter(*core_worker_client_pool_, *memory_store_,
                                              *task_manager_, *actor_creator_,
-                                             on_excess_queueing));
+                                             on_excess_queueing, io_service_));
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     absl::optional<rpc::Address> addr;
@@ -668,23 +668,17 @@ void CoreWorker::RegisterToGcs() {
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
 
-void CoreWorker::CheckForRayletFailure() {
-  auto env_pid = RayConfig::instance().RAYLET_PID();
-  bool should_shutdown = IsRayletFailed(env_pid);
+void CoreWorker::ExitIfParentRayletDies() {
+  RAY_CHECK(options_.worker_type == WorkerType::WORKER);
+  RAY_CHECK(!RayConfig::instance().RAYLET_PID().empty());
+  auto raylet_pid = static_cast<pid_t>(std::stoi(RayConfig::instance().RAYLET_PID()));
+  bool should_shutdown = !IsProcessAlive(raylet_pid);
   if (should_shutdown) {
     std::ostringstream stream;
     stream << "Shutting down the core worker because the local raylet failed. "
-           << "Check out the raylet.out log file.";
-    if (!env_pid.empty()) {
-      auto pid = static_cast<pid_t>(std::stoi(env_pid));
-      stream << " Raylet pid: " << pid;
-    }
+           << "Check out the raylet.out log file. Raylet pid: " << raylet_pid;
     RAY_LOG(WARNING) << stream.str();
-    if (options_.worker_type == WorkerType::WORKER) {
-      task_execution_service_.post([this]() { Shutdown(); }, "CoreWorker.Shutdown");
-    } else {
-      Shutdown();
-    }
+    task_execution_service_.post([this]() { Shutdown(); }, "CoreWorker.Shutdown");
   }
 }
 
@@ -1594,6 +1588,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       /*actor_cursor=*/ObjectID::FromIndex(actor_creation_task_id, 1),
       function.GetLanguage(), function.GetFunctionDescriptor(), extension_data,
       actor_creation_options.max_task_retries, actor_name, ray_namespace,
+      actor_creation_options.max_pending_calls,
       actor_creation_options.execute_out_of_order);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
@@ -1752,9 +1747,17 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
   return status_future.get();
 }
 
-std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
+std::optional<std::vector<rpc::ObjectReference>> CoreWorker::SubmitActorTask(
     const ActorID &actor_id, const RayFunction &function,
     const std::vector<std::unique_ptr<TaskArg>> &args, const TaskOptions &task_options) {
+  absl::MutexLock lock(&actor_task_mutex_);
+  /// Check whether backpressure may happen at the very beginning of submitting a task.
+  if (direct_actor_submitter_->PendingTasksFull(actor_id)) {
+    RAY_LOG(DEBUG) << "Back pressure occurred while submitting the task to " << actor_id
+                   << ". " << direct_actor_submitter_->DebugString(actor_id);
+    return std::nullopt;
+  }
+
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
 
   // Add one for actor cursor object id for tasks.
@@ -1799,13 +1802,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTask(
   } else {
     returned_refs = task_manager_->AddPendingTask(
         rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
-    io_service_.post(
-        [this, task_spec]() {
-          RAY_UNUSED(direct_actor_submitter_->SubmitTask(task_spec));
-        },
-        "CoreWorker.SubmitActorTask");
+    RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
-  return returned_refs;
+  return {std::move(returned_refs)};
 }
 
 Status CoreWorker::CancelTask(const ObjectID &object_id, bool force_kill,

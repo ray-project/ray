@@ -22,6 +22,7 @@ import numpy as np
 import ray
 from ray.types import ObjectRef
 from ray.data.block import Block, BlockAccessor
+from ray.data.impl.arrow_block import DelegatingArrowBlockBuilder
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.progress_bar import ProgressBar
 from ray.data.impl.remote_fn import cached_remote_fn
@@ -40,6 +41,10 @@ def sample_boundaries(blocks: List[ObjectRef[Block]], key: SortKeyT,
     Return (num_reducers - 1) items in ascending order from the blocks that
     partition the domain into ranges with approximately equally many elements.
     """
+    # TODO(Clark): Support multiple boundary sampling keys.
+    if isinstance(key, list) and len(key) > 1:
+        raise ValueError("Multiple boundary sampling keys not supported.")
+
     n_samples = int(num_reducers * 10 / len(blocks))
 
     sample_block = cached_remote_fn(_sample_block)
@@ -56,11 +61,16 @@ def sample_boundaries(blocks: List[ObjectRef[Block]], key: SortKeyT,
     # The dataset is empty
     if len(samples) == 0:
         return [None] * (num_reducers - 1)
-    sample_items = np.concatenate(samples)
-    sample_items.sort()
+    builder = DelegatingArrowBlockBuilder()
+    for sample in samples:
+        builder.add_block(sample)
+    samples = builder.build()
+    column = key[0][0] if isinstance(key, list) else None
+    sample_items = BlockAccessor.for_block(samples).to_numpy(column)
+    sample_items = np.sort(sample_items)
     ret = [
         np.quantile(sample_items, q, interpolation="nearest")
-        for q in np.arange(0, 1, 1 / num_reducers)
+        for q in np.linspace(0, 1, num_reducers)
     ]
     return ret[1:]
 
@@ -109,8 +119,7 @@ def sort_impl(blocks: BlockList, key: SortKeyT,
     return BlockList(blocks, metadata)
 
 
-def _sample_block(block: Block[T], n_samples: int,
-                  key: SortKeyT) -> np.ndarray:
+def _sample_block(block: Block[T], n_samples: int, key: SortKeyT) -> Block[T]:
     return BlockAccessor.for_block(block).sample(n_samples, key)
 
 
