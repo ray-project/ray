@@ -23,7 +23,7 @@ if __name__ == "__main__":
         partial(RE3UpdateCallbacks, embeds_dim=128,
                 beta_schedule="linear_decay", k_nn=50),
     ])
-    config["env"] = "Pendulum-v1" #"LunarLanderContinuous-v2"
+    config["env"] = "LunarLanderContinuous-v2"
     config["seed"] = 12345
     # Add type as RE3 in the exploration_config parameter
     config["exploration_config"] = {

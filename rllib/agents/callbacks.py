@@ -10,7 +10,7 @@ from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.utils.deprecation import deprecation_warning
-from ray.rllib.utils.exploration.random_encoder import MovingMeanStd, RE3, \
+from ray.rllib.utils.exploration.random_encoder import MovingMeanStd, \
     compute_states_entropy, update_beta
 from ray.rllib.utils.typing import AgentID, PolicyID
 
