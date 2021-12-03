@@ -553,7 +553,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             auto &task_queue = scheduling_key_entry.task_queue;
             while (!task_queue.empty()) {
               auto &task_spec = task_queue.front();
-              RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
+              RAY_UNUSED(task_finisher_->FailPendingTask(
                   task_spec.TaskId(), rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED, nullptr));
               task_queue.pop_front();
             }
@@ -613,8 +613,8 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
             auto &task_queue = scheduling_key_entry.task_queue;
             while (!task_queue.empty()) {
               auto &task_spec = task_queue.front();
-              RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-                  task_spec.TaskId(), rpc::ErrorType::SUBMITTER_NODE_DIED, &status));
+              RAY_UNUSED(task_finisher_->FailPendingTask(
+                  task_spec.TaskId(), rpc::ErrorType::LOCAL_RAYLET_DIED, &status));
               task_queue.pop_front();
             }
             if (scheduling_key_entry.CanDelete()) {

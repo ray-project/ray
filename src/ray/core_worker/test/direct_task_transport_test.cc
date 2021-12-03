@@ -120,6 +120,13 @@ class MockTaskFinisher : public TaskFinisherInterface {
     return false;
   }
 
+  void FailPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
+                       const Status *status,
+                       const rpc::RayErrorInfo *ray_error_info = nullptr,
+                       bool mark_task_object_failed = true) override {
+    num_fail_pending_task_calls++;
+  }
+
   bool FailOrRetryPendingTask(const TaskID &task_id, rpc::ErrorType error_type,
                               const Status *status,
                               const rpc::RayErrorInfo *ray_error_info = nullptr,
@@ -150,6 +157,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
   int num_inlined_dependencies = 0;
   int num_contained_ids = 0;
   int num_task_retries_attempted = 0;
+  int num_fail_pending_task_calls = 0;
 };
 
 class MockRayletClient : public WorkerLeaseInterface {
@@ -682,14 +690,14 @@ TEST(DirectTaskTransportTest, TestHandleRuntimeEnvSetupFailed) {
   ASSERT_TRUE(raylet_client->GrantWorkerLease("", 0, NodeID::Nil(), false, "", false,
                                               /*runtime_env_setup_failed=*/true));
   ASSERT_EQ(worker_client->callbacks.size(), 0);
-  ASSERT_EQ(task_finisher->num_tasks_failed, 3);
+  ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // Fail task2
   ASSERT_TRUE(raylet_client->GrantWorkerLease("", 0, NodeID::Nil(), false, "", false,
                                               /*runtime_env_setup_failed=*/true));
   ASSERT_EQ(worker_client->callbacks.size(), 0);
-  ASSERT_EQ(task_finisher->num_tasks_failed, 3);
+  ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These
@@ -727,13 +735,13 @@ TEST(DirectTaskTransportTest, TestHandleSubmitterNodeDied) {
   // Fail task1 which will fail all the tasks
   ASSERT_TRUE(raylet_client->FailWorkerLeaseDueToGrpcUnavailable());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
-  ASSERT_EQ(task_finisher->num_tasks_failed, 3);
+  ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // Fail task2
   ASSERT_TRUE(raylet_client->FailWorkerLeaseDueToGrpcUnavailable());
   ASSERT_EQ(worker_client->callbacks.size(), 0);
-  ASSERT_EQ(task_finisher->num_tasks_failed, 3);
+  ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 3);
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap. These

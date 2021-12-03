@@ -196,11 +196,11 @@ class RayTaskError(RayError):
         return "\n".join(out)
 
 
-class SubmitterNodeDiedError(RayError):
-    """Indicates that the task submitter node died unexpectedly."""
+class LocalRayletDiedError(RayError):
+    """Indicates that the task's local raylet died unexpectedly."""
 
     def __str__(self):
-        return ("The task submitter node died unexpectedly. "
+        return ("The task's local raylet died unexpectedly. "
                 "Check raylet.out files for more information.")
 
 
@@ -471,5 +471,5 @@ RAY_EXCEPTION_TYPES = [
     GetTimeoutError,
     AsyncioActorExit,
     RuntimeEnvSetupError,
-    SubmitterNodeDiedError,
+    LocalRayletDiedError,
 ]
