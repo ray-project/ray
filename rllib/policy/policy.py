@@ -913,9 +913,9 @@ class Policy(metaclass=ABCMeta):
             Dict[str, TensorType]: The dummy batch containing all zero values.
         """
         ret = {}
-        for view_col, view_req in self.view_requirements.items(
-        ):  #TODO: actions/prev-actions? vv
-            if not self.config["_disable_preprocessor_api"] and view_col not in ["actions", "prev_actions"] and \
+        for view_col, view_req in self.view_requirements.items():
+            if not self.config["_disable_preprocessor_api"] and \
+                    view_col not in ["actions", "prev_actions"] and \
                     isinstance(view_req.space,
                                (gym.spaces.Dict, gym.spaces.Tuple)):
                 _, shape = ModelCatalog.get_action_shape(

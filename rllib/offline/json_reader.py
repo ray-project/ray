@@ -18,6 +18,7 @@ except ImportError:
 
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
+from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch, \
     SampleBatch
 from ray.rllib.utils.annotations import override, PublicAPI
@@ -256,7 +257,7 @@ class JsonReader(InputReader):
             policy = next(iter(self.ioctx.worker.policy_map.values()))
             for k, v in json_data.items():
                 json_data[k] = unpack_if_needed(v)
-            policy_json_data = _adjust_obs_actions_for_policy(
+            policy_json_data = self._adjust_obs_actions_for_policy(
                 json_data, policy)
             return SampleBatch(policy_json_data)
         elif data_type == "MultiAgentBatch":
@@ -266,7 +267,7 @@ class JsonReader(InputReader):
                 inner = {}
                 for k, v in policy_batch.items():
                     inner[k] = unpack_if_needed(v)
-                policy_json_data = _adjust_obs_actions_for_policy(
+                policy_json_data = self._adjust_obs_actions_for_policy(
                     inner, policy)
                 policy_batches[policy_id] = SampleBatch(policy_json_data)
             return MultiAgentBatch(policy_batches, json_data["count"])
@@ -291,7 +292,7 @@ class JsonReader(InputReader):
             if k not in json_data:
                 continue
             if k == SampleBatch.ACTIONS or \
-                v.data_col == SampleBatch.ACTIONS:
+                    v.data_col == SampleBatch.ACTIONS:
                 policy_json_data[k] = tree.map_structure_up_to(
                     policy.action_space_struct,
                     lambda comp: np.array(comp),
@@ -299,7 +300,7 @@ class JsonReader(InputReader):
                     check_types=False,
                 )
             elif k == SampleBatch.OBS or \
-                v.data_col == SampleBatch.OBS:
+                    v.data_col == SampleBatch.OBS:
                 policy_json_data[k] = tree.map_structure_up_to(
                     policy.observation_space_struct,
                     lambda comp: np.array(comp),
