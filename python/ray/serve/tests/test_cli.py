@@ -8,7 +8,7 @@ import pytest
 import requests
 
 from ray import serve
-
+from ray.tests.conftest import tmp_working_dir # noqa: F401, E501
 
 @pytest.fixture
 def ray_start_stop():
