@@ -20,8 +20,11 @@ if __name__ == "__main__":
     # Add a new RE3UpdateCallbacks
     config["callbacks"] = MultiCallbacks([
         config["callbacks"],
-        partial(RE3UpdateCallbacks, embeds_dim=128,
-                beta_schedule="linear_decay", k_nn=50),
+        partial(
+            RE3UpdateCallbacks,
+            embeds_dim=128,
+            beta_schedule="linear_decay",
+            k_nn=50),
     ])
     config["env"] = "LunarLanderContinuous-v2"
     config["seed"] = 12345
