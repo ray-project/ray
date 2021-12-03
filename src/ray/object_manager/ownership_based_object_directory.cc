@@ -290,10 +290,15 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
       const auto object_id = ObjectID::FromBinary(object_id_binary);
       rpc::WorkerObjectLocationsPubMessage location_info;
       if (!status.ok()) {
+        RAY_LOG(INFO) << "Worker " << worker_id << " failed to get the location for "
+                      << object_id << status.ToString();
         mark_as_failed_(object_id, rpc::ErrorType::OWNER_DIED);
       } else {
         // Owner is still alive but published a failure because the ref was
         // deleted.
+        RAY_LOG(INFO)
+            << "Worker " << worker_id << " failed to get the location for " << object_id
+            << ", object already released by distributed reference counting protocol";
         mark_as_failed_(object_id, rpc::ErrorType::OBJECT_DELETED);
       }
       // Location lookup can fail if the owner is reachable but no longer has a
@@ -427,11 +432,11 @@ ray::Status OwnershipBasedObjectDirectory::LookupLocations(
           bool pending_creation = false;
 
           if (!status.ok()) {
-            RAY_LOG(ERROR) << "Worker " << worker_id << " failed to get the location for "
-                           << object_id << status.ToString();
+            RAY_LOG(INFO) << "Worker " << worker_id << " failed to get the location for "
+                          << object_id << status.ToString();
             mark_as_failed_(object_id, rpc::ErrorType::OWNER_DIED);
           } else if (reply.object_location_info().ref_removed()) {
-            RAY_LOG(ERROR)
+            RAY_LOG(INFO)
                 << "Worker " << worker_id << " failed to get the location for "
                 << object_id
                 << ", object already released by distributed reference counting protocol";
