@@ -29,7 +29,6 @@ using rpc::ActorTableData;
 using rpc::ErrorTableData;
 using rpc::GcsNodeInfo;
 using rpc::JobTableData;
-using rpc::ObjectLocationInfo;
 using rpc::ObjectTableData;
 using rpc::PlacementGroupTableData;
 using rpc::ProfileTableData;

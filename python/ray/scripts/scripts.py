@@ -664,15 +664,13 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
             cli_logger.newline()
             cli_logger.print("Alternatively, use the following Python code:")
             with cli_logger.indented():
-                with cf.with_style("monokai") as c:
-                    cli_logger.print("{} ray", c.magenta("import"))
-                    cli_logger.print(
-                        "ray{}init(address{}{}{})", c.magenta("."),
-                        c.magenta("="), c.yellow("'auto'"),
-                        ", _redis_password{}{}".format(
-                            c.magenta("="),
-                            c.yellow("'" + redis_password + "'"))
-                        if redis_password else "")
+                cli_logger.print("{} ray", cf.magenta("import"))
+                cli_logger.print(
+                    "ray{}init(address{}{}{})", cf.magenta("."),
+                    cf.magenta("="), cf.yellow("'auto'"),
+                    ", _redis_password{}{}".format(
+                        cf.magenta("="), cf.yellow("'" + redis_password + "'"))
+                    if redis_password else "")
             cli_logger.newline()
             cli_logger.print("To connect to this Ray runtime from outside of "
                              "the cluster, for example to")
@@ -680,13 +678,11 @@ def start(node_ip_address, address, port, redis_password, redis_shard_ports,
                              "directly, use the following")
             cli_logger.print("Python code:")
             with cli_logger.indented():
-                with cf.with_style("monokai") as c:
-                    cli_logger.print("{} ray", c.magenta("import"))
-                    cli_logger.print(
-                        "ray{}init(address{}{})", c.magenta("."),
-                        c.magenta("="),
-                        c.yellow("'ray://<head_node_ip_address>:"
-                                 f"{ray_client_server_port}'"))
+                cli_logger.print("{} ray", cf.magenta("import"))
+                cli_logger.print(
+                    "ray{}init(address{}{})", cf.magenta("."), cf.magenta("="),
+                    cf.yellow("'ray://<head_node_ip_address>:"
+                              f"{ray_client_server_port}'"))
             cli_logger.newline()
             cli_logger.print(
                 cf.underlined("If connection fails, check your "
