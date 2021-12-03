@@ -13,7 +13,7 @@ import logging
 from typing import Type
 
 from ray.rllib.agents.trainer import COMMON_CONFIG, with_common_config
-from ray.rllib.agents.dqn.simple_q import SimpleQTrainer
+from ray.rllib.agents.dqn.dqn import DQNTrainer
 from ray.rllib.contrib.maddpg.maddpg_policy import MADDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
@@ -154,19 +154,19 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
     return MultiAgentBatch(policy_batches, train_batch_size)
 
 
-class MADDPGTrainer(SimpleQTrainer):
+class MADDPGTrainer(DQNTrainer):
     @classmethod
-    @override(SimpleQTrainer)
+    @override(DQNTrainer)
     def get_default_config(cls) -> TrainerConfigDict:
         return DEFAULT_CONFIG
 
+    @override(DQNTrainer)
     def validate_config(self, config: TrainerConfigDict) -> None:
         """Adds the `before_learn_on_batch` hook to the config.
 
         This hook is called explicitly prior to TrainOneStep() in the execution
         setups for DQN and APEX.
         """
-        super().validate_config(config)
 
         def f(batch, workers, config):
             policies = dict(workers.local_worker()
@@ -176,7 +176,7 @@ class MADDPGTrainer(SimpleQTrainer):
 
         config["before_learn_on_batch"] = f
 
-    @override(SimpleQTrainer)
+    @override(DQNTrainer)
     def get_default_policy_class(self,
                                  config: TrainerConfigDict) -> Type[Policy]:
         return MADDPGTFPolicy

@@ -182,7 +182,8 @@ class AlphaZeroTrainer(Trainer):
     def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
                        **kwargs) -> LocalIterator[dict]:
         assert len(kwargs) == 0, (
-            "Alpha zero execution_plan does NOT take any additional parameters")
+            "Alpha zero execution_plan does NOT take any additional parameters"
+        )
 
         rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
