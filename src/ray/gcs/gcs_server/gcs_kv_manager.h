@@ -15,10 +15,10 @@
 #pragma once
 #include <memory>
 
+#include "absl/containers/"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
-#include "absl/containers/"
 namespace ray {
 namespace gcs {
 
