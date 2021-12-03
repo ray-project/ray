@@ -16,16 +16,21 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import override
 import numpy as np
 
-class MyCallbacks(DefaultCallbacks):
 
+class MyCallbacks(DefaultCallbacks):
     @override(DefaultCallbacks)
-    def on_postprocess_trajectory(self, *, worker, episode, agent_id, 
-                                  policy_id, policies, postprocessed_batch, 
+    def on_postprocess_trajectory(self, *, worker, episode, agent_id,
+                                  policy_id, policies, postprocessed_batch,
                                   original_batches, **kwargs):
-        super().on_postprocess_trajectory(worker=worker, episode=episode, 
-            agent_id=agent_id, policy_id=policy_id, policies=policies, 
-            postprocessed_batch=postprocessed_batch, 
-            original_batches=original_batches, **kwargs)
+        super().on_postprocess_trajectory(
+            worker=worker,
+            episode=episode,
+            agent_id=agent_id,
+            policy_id=policy_id,
+            policies=policies,
+            postprocessed_batch=postprocessed_batch,
+            original_batches=original_batches,
+            **kwargs)
 
         if policies[policy_id].config.get("use_adapted_gae", False):
             policy = policies[policy_id]
@@ -58,14 +63,15 @@ class MyCallbacks(DefaultCallbacks):
             gamma = policy.config["gamma"]
             lambda_ = policy.config["lambda"]
 
-            vpred_t = np.concatenate(
-                [postprocessed_batch[SampleBatch.VF_PREDS],
-                np.array([last_r])])
-            delta_t = (postprocessed_batch[SampleBatch.REWARDS] + 
-                gamma**d_ts * vpred_t[1:] - vpred_t[:-1])
+            vpred_t = np.concatenate([
+                postprocessed_batch[SampleBatch.VF_PREDS],
+                np.array([last_r])
+            ])
+            delta_t = (postprocessed_batch[SampleBatch.REWARDS] +
+                       gamma**d_ts * vpred_t[1:] - vpred_t[:-1])
             # This formula for the advantage is an adaption of
-            # "Generalized Advantage Estimation" 
-            # (https://arxiv.org/abs/1506.02438) which accounts for time steps 
+            # "Generalized Advantage Estimation"
+            # (https://arxiv.org/abs/1506.02438) which accounts for time steps
             # of irregular length (see proposal here ).
             # NOTE: last time step delta is not required
             postprocessed_batch[Postprocessing.ADVANTAGES] = \
@@ -74,13 +80,13 @@ class MyCallbacks(DefaultCallbacks):
             postprocessed_batch[Postprocessing.VALUE_TARGETS] = (
                 postprocessed_batch[Postprocessing.ADVANTAGES] +
                 postprocessed_batch[SampleBatch.VF_PREDS]).astype(np.float32)
-            
+
             postprocessed_batch[Postprocessing.ADVANTAGES] = \
                 postprocessed_batch[Postprocessing.ADVANTAGES].astype(
                     np.float32)
 
 
-def generalized_discount_cumsum(x: np.ndarray, deltas: np.ndarray, 
+def generalized_discount_cumsum(x: np.ndarray, deltas: np.ndarray,
                                 gamma: float) -> np.ndarray:
     """Calculates the 'time-dependent' discounted cumulative sum over a 
     (reward) sequence `x`.
