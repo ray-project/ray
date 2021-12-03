@@ -8,7 +8,7 @@ from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package, delete_package, get_uri_for_directory,
-    parse_uri, Protocol, upload_package_if_needed)
+    parse_uri, Protocol, upload_package_if_needed, unzip_package)
 
 default_logger = logging.getLogger(__name__)
 
