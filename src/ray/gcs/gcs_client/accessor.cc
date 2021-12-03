@@ -195,14 +195,18 @@ Status ActorInfoAccessor::AsyncGetByName(
 
 Status ActorInfoAccessor::AsyncListNamedActors(
     bool all_namespaces, const std::string &ray_namespace,
-    const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback) {
+    const OptionalItemCallback<std::vector<rpc::NamedActorInfo>> &callback) {
   RAY_LOG(DEBUG) << "Listing actors";
   rpc::ListNamedActorsRequest request;
   request.set_all_namespaces(all_namespaces);
   request.set_ray_namespace(ray_namespace);
   client_impl_->GetGcsRpcClient().ListNamedActors(
       request, [callback](const Status &status, const rpc::ListNamedActorsReply &reply) {
-        callback(VectorFromProtobuf(reply.named_actors_list()));
+        if (!status.ok()) {
+          callback(status, boost::none);
+        } else {
+          callback(status, VectorFromProtobuf(reply.named_actors_list()));
+        }
         RAY_LOG(DEBUG) << "Finished getting named actor names, status = " << status;
       });
   return Status::OK();
@@ -1342,6 +1346,7 @@ Status InternalKVAccessor::AsyncInternalKVKeys(
 Status InternalKVAccessor::Put(const std::string &key, const std::string &value,
                                bool overwrite, bool &added) {
   std::promise<Status> ret_promise;
+  // SANG-TODO
   RAY_CHECK_OK(AsyncInternalKVPut(
       key, value, overwrite,
       [&ret_promise, &added](Status status, boost::optional<int> added_num) {
@@ -1354,6 +1359,7 @@ Status InternalKVAccessor::Put(const std::string &key, const std::string &value,
 Status InternalKVAccessor::Keys(const std::string &prefix,
                                 std::vector<std::string> &value) {
   std::promise<Status> ret_promise;
+  // SANG-TODO
   RAY_CHECK_OK(
       AsyncInternalKVKeys(prefix, [&ret_promise, &value](Status status, auto &values) {
         value = values.value_or(std::vector<std::string>());
@@ -1364,6 +1370,7 @@ Status InternalKVAccessor::Keys(const std::string &prefix,
 
 Status InternalKVAccessor::Get(const std::string &key, std::string &value) {
   std::promise<Status> ret_promise;
+  // SANG-TODO
   RAY_CHECK_OK(AsyncInternalKVGet(key, [&ret_promise, &value](Status status, auto &v) {
     if (v) {
       value = *v;
@@ -1375,6 +1382,7 @@ Status InternalKVAccessor::Get(const std::string &key, std::string &value) {
 
 Status InternalKVAccessor::Del(const std::string &key) {
   std::promise<Status> ret_promise;
+  // SANG-TODO
   RAY_CHECK_OK(AsyncInternalKVDel(
       key, [&ret_promise](Status status) { ret_promise.set_value(status); }));
   return ret_promise.get_future().get();
@@ -1382,6 +1390,7 @@ Status InternalKVAccessor::Del(const std::string &key) {
 
 Status InternalKVAccessor::Exists(const std::string &key, bool &exist) {
   std::promise<Status> ret_promise;
+  // SANG-TODO
   RAY_CHECK_OK(AsyncInternalKVExists(
       key, [&ret_promise, &exist](Status status, const boost::optional<bool> &value) {
         if (value) {

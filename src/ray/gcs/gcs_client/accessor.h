@@ -76,7 +76,7 @@ class ActorInfoAccessor {
   /// \return Status
   virtual Status AsyncListNamedActors(
       bool all_namespaces, const std::string &ray_namespace,
-      const ItemCallback<std::vector<rpc::NamedActorInfo>> &callback);
+      const OptionalItemCallback<std::vector<rpc::NamedActorInfo>> &callback);
 
   /// Register actor to GCS asynchronously.
   ///

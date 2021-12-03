@@ -76,6 +76,7 @@ void GlobalStateAccessor::Disconnect() {
 
 std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
   std::vector<std::string> job_table_data;
+  // SANG-TODO
   std::promise<bool> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
@@ -87,6 +88,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
 }
 
 JobID GlobalStateAccessor::GetNextJobID() {
+  // SANG-TODO
   std::promise<JobID> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
@@ -97,6 +99,7 @@ JobID GlobalStateAccessor::GetNextJobID() {
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
+  // SANG-TODO
   std::vector<std::string> node_table_data;
   std::promise<bool> promise;
   {
@@ -109,6 +112,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllProfileInfo() {
+  // SANG-TODO
   std::vector<std::string> profile_table_data;
   std::promise<bool> promise;
   {
@@ -123,6 +127,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllProfileInfo() {
 
 std::string GlobalStateAccessor::GetNodeResourceInfo(const NodeID &node_id) {
   rpc::ResourceMap node_resource_map;
+  // SANG-TODO
   std::promise<void> promise;
   auto on_done =
       [&node_resource_map, &promise](
@@ -147,6 +152,7 @@ std::string GlobalStateAccessor::GetNodeResourceInfo(const NodeID &node_id) {
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllAvailableResources() {
+  // SANG-TODO
   std::vector<std::string> available_resources;
   std::promise<bool> promise;
   {
@@ -160,6 +166,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllAvailableResources() {
 }
 
 std::unique_ptr<std::string> GlobalStateAccessor::GetAllResourceUsage() {
+  // SANG-TODO
   std::unique_ptr<std::string> resource_batch_data;
   std::promise<bool> promise;
   {
@@ -173,6 +180,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetAllResourceUsage() {
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
+  // SANG-TODO
   std::vector<std::string> actor_table_data;
   std::promise<bool> promise;
   {
@@ -185,6 +193,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllActorInfo() {
 }
 
 std::unique_ptr<std::string> GlobalStateAccessor::GetActorInfo(const ActorID &actor_id) {
+  // SANG-TODO
   std::unique_ptr<std::string> actor_table_data;
   std::promise<bool> promise;
   {
@@ -199,6 +208,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetActorInfo(const ActorID &ac
 
 std::unique_ptr<std::string> GlobalStateAccessor::GetWorkerInfo(
     const WorkerID &worker_id) {
+  // SANG-TODO
   std::unique_ptr<std::string> worker_table_data;
   std::promise<bool> promise;
   {
@@ -212,6 +222,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetWorkerInfo(
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllWorkerInfo() {
+  // SANG-TODO
   std::vector<std::string> worker_table_data;
   std::promise<bool> promise;
   {
@@ -224,6 +235,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllWorkerInfo() {
 }
 
 bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
+  // SANG-TODO
   auto data_ptr = std::make_shared<rpc::WorkerTableData>();
   data_ptr->ParseFromString(serialized_string);
   std::promise<bool> promise;
@@ -291,6 +303,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKV(const std::strin
 }
 
 std::string GlobalStateAccessor::GetSystemConfig() {
+  // SANG-TODO
   std::promise<std::string> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
@@ -312,6 +325,7 @@ std::string GlobalStateAccessor::GetSystemConfig() {
 
 ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(
     const std::string &node_ip_address, std::string *node_to_connect) {
+  // SANG-TODO
   auto start_ms = current_time_ms();
   while (true) {
     std::promise<std::pair<Status, std::vector<rpc::GcsNodeInfo>>> promise;
