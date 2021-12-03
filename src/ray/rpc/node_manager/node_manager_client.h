@@ -42,7 +42,8 @@ class NodeManagerClient {
   };
 
   /// Get current node stats.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetNodeStats, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetNodeStats, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   void GetNodeStats(const ClientCallback<GetNodeStatsReply> &callback) {
     GetNodeStatsRequest request;
@@ -71,55 +72,72 @@ class NodeManagerWorkerClient
   }
 
   /// Update cluster resource usage.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, UpdateResourceUsage, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, UpdateResourceUsage, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Request a resource report.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestResourceReport, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestResourceReport, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Request a worker lease.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestWorkerLease, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Report task backlog information
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, ReportWorkerBacklog, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, ReportWorkerBacklog, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Return a worker lease.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, ReturnWorker, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Release unused workers.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, ReleaseUnusedWorkers, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, ReleaseUnusedWorkers, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Shutdown the raylet gracefully.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, ShutdownRaylet, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, ShutdownRaylet, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Cancel a pending worker lease request.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, CancelWorkerLease, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, CancelWorkerLease, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Request prepare resources for an atomic placement group creation.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, PrepareBundleResources, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, PrepareBundleResources, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Request commit resources for an atomic placement group creation.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, CommitBundleResources, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, CommitBundleResources, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Return resource lease.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, CancelResourceReserve, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, CancelResourceReserve, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Notify the raylet to pin the provided object IDs.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, PinObjectIDs, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, PinObjectIDs, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Trigger global GC across the cluster.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, GlobalGC, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GlobalGC, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Ask the raylet to spill an object to external storage.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestObjectSpillage, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, RequestObjectSpillage, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Release unused bundles.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, ReleaseUnusedBundles, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, ReleaseUnusedBundles, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Get the system config from Raylet.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetSystemConfig, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetSystemConfig, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
   /// Get gcs server address.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetGcsServerAddress, grpc_client_, )
+  VOID_RPC_CLIENT_METHOD(NodeManagerService, GetGcsServerAddress, grpc_client_,
+                         /*method_timeout_ms*/ -1, )
 
  private:
   /// Constructor.

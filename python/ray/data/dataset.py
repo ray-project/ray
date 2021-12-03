@@ -2191,7 +2191,6 @@ class Dataset(Generic[T]):
         Returns:
             A list of remote NumPy ndarrays created from this dataset.
         """
-
         block_to_ndarray = cached_remote_fn(_block_to_ndarray)
         return [
             block_to_ndarray.remote(block, column=column)
