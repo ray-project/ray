@@ -51,7 +51,7 @@ try:
             self.update_time: Histogram = Histogram(
                 "update_time",
                 "Autoscaler update time. This is the time for an autoscaler "
-                "update iteration to complete, measured on a log scale.",
+                "update iteration to complete.",
                 unit="seconds",
                 namespace="autoscaler",
                 registry=self.registry,
