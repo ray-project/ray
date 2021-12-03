@@ -5,8 +5,7 @@ import weakref
 import ray.ray_constants as ray_constants
 import ray._raylet
 import ray._private.signature as signature
-from ray._private.runtime_env.validation import (
-    override_task_or_actor_runtime_env, ParsedRuntimeEnv)
+from ray._private.runtime_env.validation import ParsedRuntimeEnv
 import ray.worker
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
@@ -406,7 +405,13 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = ParsedRuntimeEnv(runtime_env or {})
+        if runtime_env:
+            if isinstance(runtime_env, str):
+                new_runtime_env = runtime_env
+            else:
+                new_runtime_env = ParsedRuntimeEnv(runtime_env).serialize()
+        else:
+            new_runtime_env = None
 
         self.__ray_metadata__ = ActorClassMetadata(
             Language.PYTHON, modified_class,
@@ -426,7 +431,13 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        new_runtime_env = ParsedRuntimeEnv(runtime_env or {})
+        if runtime_env:
+            if isinstance(runtime_env, str):
+                new_runtime_env = runtime_env
+            else:
+                new_runtime_env = ParsedRuntimeEnv(runtime_env).serialize()
+        else:
+            new_runtime_env = None
 
         self.__ray_metadata__ = ActorClassMetadata(
             language, None, actor_creation_function_descriptor, None,
@@ -468,7 +479,8 @@ class ActorClass:
                 placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                runtime_env=None):
+                runtime_env=None,
+                max_pending_calls=-1):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -492,13 +504,17 @@ class ActorClass:
         # Parse local pip/conda config files here. If we instead did it in
         # .remote(), it would get run in the Ray Client server, which runs on
         # a remote node where the files aren't available.
-        if runtime_env is not None:
-            new_runtime_env = ParsedRuntimeEnv(runtime_env)
+        if runtime_env:
+            if isinstance(runtime_env, str):
+                new_runtime_env = runtime_env
+            else:
+                new_runtime_env = ParsedRuntimeEnv(runtime_env
+                                                   or {}).serialize()
         else:
-            # Keep the runtime_env as None.  In .remote(), we need to know if
-            # runtime_env is None to know whether or not to fall back to the
+            # Keep the new_runtime_env as None.  In .remote(), we need to know
+            # if runtime_env is None to know whether or not to fall back to the
             # runtime_env specified in the @ray.remote decorator.
-            new_runtime_env = runtime_env
+            new_runtime_env = None
 
         class ActorOptionWrapper:
             def remote(self, *args, **kwargs):
@@ -521,7 +537,8 @@ class ActorClass:
                     placement_group_bundle_index=placement_group_bundle_index,
                     placement_group_capture_child_tasks=(
                         placement_group_capture_child_tasks),
-                    runtime_env=new_runtime_env)
+                    runtime_env=new_runtime_env,
+                    max_pending_calls=max_pending_calls)
 
         return ActorOptionWrapper()
 
@@ -544,7 +561,8 @@ class ActorClass:
                 placement_group="default",
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
-                runtime_env=None):
+                runtime_env=None,
+                max_pending_calls=-1):
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -590,6 +608,11 @@ class ActorClass:
                 this actor or task and its children (see
                 :ref:`runtime-environments` for details).  This API is in beta
                 and may change before becoming stable.
+            max_pending_calls (int): Set the max number of pending calls
+                allowed on the actor handle. When this value is exceeded,
+                PendingCallsLimitExceeded will be raised for further tasks.
+                Note that this limit is counted per handle. -1 means that the
+                number of pending calls is unlimited.
 
         Returns:
             A handle to the newly created actor.
@@ -635,7 +658,8 @@ class ActorClass:
                 placement_group_bundle_index=placement_group_bundle_index,
                 placement_group_capture_child_tasks=(
                     placement_group_capture_child_tasks),
-                runtime_env=runtime_env)
+                runtime_env=runtime_env,
+                max_pending_calls=max_pending_calls)
 
         worker = ray.worker.global_worker
         worker.check_connected()
@@ -746,16 +770,16 @@ class ActorClass:
             meta.class_name,
             placement_group=placement_group)
 
-        if runtime_env and not isinstance(runtime_env, ParsedRuntimeEnv):
-            runtime_env = ParsedRuntimeEnv(runtime_env)
-        elif isinstance(runtime_env, ParsedRuntimeEnv):
-            pass
+        if runtime_env:
+            if isinstance(runtime_env, str):
+                # Serialzed protobuf runtime env from Ray client.
+                new_runtime_env = runtime_env
+            elif isinstance(runtime_env, ParsedRuntimeEnv):
+                new_runtime_env = runtime_env.serialize()
+            else:
+                raise TypeError(f"Error runtime env type {type(runtime_env)}")
         else:
-            runtime_env = meta.runtime_env
-
-        parent_runtime_env = worker.core_worker.get_current_runtime_env()
-        parsed_runtime_env = override_task_or_actor_runtime_env(
-            runtime_env, parent_runtime_env)
+            new_runtime_env = meta.runtime_env
 
         concurrency_groups_dict = {}
         for cg_name in meta.concurrency_groups:
@@ -794,9 +818,9 @@ class ActorClass:
             placement_group_capture_child_tasks,
             # Store actor_method_cpu in actor handle's extension data.
             extension_data=str(actor_method_cpu),
-            serialized_runtime_env=parsed_runtime_env.serialize(),
-            runtime_env_uris=parsed_runtime_env.get_uris(),
-            concurrency_groups_dict=concurrency_groups_dict or dict())
+            serialized_runtime_env=new_runtime_env or "{}",
+            concurrency_groups_dict=concurrency_groups_dict or dict(),
+            max_pending_calls=max_pending_calls)
 
         actor_handle = ActorHandle(
             meta.language,

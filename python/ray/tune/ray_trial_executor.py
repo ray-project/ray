@@ -283,7 +283,7 @@ class RayTrialExecutor(TrialExecutor):
     def _setup_remote_runner(self, trial):
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
-        self.try_checkpoint_metadata(trial)
+        self._trials_to_cache.add(trial)
         logger_creator = partial(noop_logger_creator, logdir=trial.logdir)
 
         if self._reuse_actors and len(self._cached_actor_pg) > 0:
@@ -456,15 +456,11 @@ class RayTrialExecutor(TrialExecutor):
         trial_item = self._find_item(self._running, trial)
         assert len(trial_item) < 2, trial_item
 
-    def _start_trial(self, trial, checkpoint=None, train=True) -> bool:
+    def _start_trial(self, trial) -> bool:
         """Starts trial and restores last result if trial was paused.
 
         Args:
             trial (Trial): The trial to start.
-            checkpoint (Optional[Checkpoint]): The checkpoint to restore from.
-                If None, and no trial checkpoint exists, the trial is started
-                from the beginning.
-            train (bool): Whether or not to start training.
 
         Returns:
             True if trial was started successfully, False otherwise.
@@ -477,13 +473,13 @@ class RayTrialExecutor(TrialExecutor):
             return False
         trial.set_runner(runner)
         self._notify_trainable_of_new_resources_if_needed(trial)
-        self.restore(trial, checkpoint)
+        self.restore(trial, trial.checkpoint)
         self.set_status(trial, Trial.RUNNING)
 
         if trial in self._staged_trials:
             self._staged_trials.remove(trial)
 
-        if train and not trial.is_restoring:
+        if not trial.is_restoring:
             self._train(trial)
         return True
 
@@ -502,20 +498,12 @@ class RayTrialExecutor(TrialExecutor):
                         logger.exception(
                             "Trial %s: updating resources timed out.", trial)
 
-    def _stop_trial(self,
-                    trial: Trial,
-                    error=False,
-                    error_msg=None,
-                    destroy_pg_if_cannot_replace=True):
+    def _stop_trial(self, trial: Trial, error=False, error_msg=None):
         """Stops this trial.
 
         Stops this trial, releasing all allocating resources. If stopping the
         trial fails, the run will be marked as terminated in error, but no
         exception will be thrown.
-
-        If the placement group will be used right away
-        (destroy_pg_if_cannot_replace=False), we do not remove its placement
-        group (or a surrogate placement group).
 
         Args:
             error (bool): Whether to mark this trial as terminated in error.
@@ -555,8 +543,7 @@ class RayTrialExecutor(TrialExecutor):
                     logger.debug("Trial %s: Destroying actor.", trial)
 
                     # Try to return the placement group for other trials to use
-                    self._pg_manager.return_pg(trial,
-                                               destroy_pg_if_cannot_replace)
+                    self._pg_manager.return_pg(trial)
 
                     with self._change_working_directory(trial):
                         self._trial_cleanup.add(trial, actor=trial.runner)
@@ -570,26 +557,20 @@ class RayTrialExecutor(TrialExecutor):
         finally:
             trial.set_runner(None)
 
-    def start_trial(self,
-                    trial: Trial,
-                    checkpoint: Optional[Checkpoint] = None,
-                    train: bool = True) -> bool:
+    def start_trial(self, trial: Trial) -> bool:
         """Starts the trial.
 
         Will not return resources if trial repeatedly fails on start.
 
         Args:
             trial (Trial): Trial to be started.
-            checkpoint (Checkpoint): A Python object or path storing the state
-                of trial.
-            train (bool): Whether or not to start training.
 
         Returns:
             True if the remote runner has been started. False if trial was
                 not started (e.g. because of lacking resources/pending PG).
         """
         try:
-            return self._start_trial(trial, checkpoint, train=train)
+            return self._start_trial(trial)
         except AbortTrialExecution:
             logger.exception("Trial %s: Error starting runner, aborting!",
                              trial)
@@ -614,18 +595,9 @@ class RayTrialExecutor(TrialExecutor):
     def stop_trial(self,
                    trial: Trial,
                    error: bool = False,
-                   error_msg: Optional[str] = None,
-                   destroy_pg_if_cannot_replace: bool = True) -> None:
-        """Only returns resources if resources allocated.
-
-        If destroy_pg_if_cannot_replace is False, the Trial placement group
-        will not be removed if it can't replace any staging ones."""
+                   error_msg: Optional[str] = None) -> None:
         prior_status = trial.status
-        self._stop_trial(
-            trial,
-            error=error,
-            error_msg=error_msg,
-            destroy_pg_if_cannot_replace=destroy_pg_if_cannot_replace)
+        self._stop_trial(trial, error=error, error_msg=error_msg)
         if prior_status == Trial.RUNNING:
             logger.debug("Trial %s: Returning resources.", trial)
             out = self._find_item(self._running, trial)

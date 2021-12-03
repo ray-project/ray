@@ -44,6 +44,7 @@ constexpr char kPublicDNSServerIp[] = "8.8.8.8";
 constexpr int kPublicDNSServerPort = 53;
 
 constexpr char kEnvVarKeyJobId[] = "RAY_JOB_ID";
+constexpr char kEnvVarKeyRayletPid[] = "RAY_RAYLET_PID";
 
 /// for cross-langueage serialization
 constexpr int kMessagePackOffset = 9;

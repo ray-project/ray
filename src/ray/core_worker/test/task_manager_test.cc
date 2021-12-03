@@ -145,7 +145,7 @@ TEST_F(TaskManagerTest, TestTaskFailure) {
   ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
   auto error = rpc::ErrorType::WORKER_DIED;
-  manager_.PendingTaskFailed(spec.TaskId(), error);
+  manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   // Only the return object reference should remain.
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
@@ -210,7 +210,7 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
   auto error = rpc::ErrorType::WORKER_DIED;
   for (int i = 0; i < num_retries; i++) {
     RAY_LOG(INFO) << "Retry " << i;
-    manager_.PendingTaskFailed(spec.TaskId(), error);
+    manager_.FailOrRetryPendingTask(spec.TaskId(), error);
     ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
     ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
     ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 3);
@@ -219,7 +219,7 @@ TEST_F(TaskManagerTest, TestTaskReconstruction) {
     ASSERT_EQ(num_retries_, i + 1);
   }
 
-  manager_.PendingTaskFailed(spec.TaskId(), error);
+  manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   // Only the return object reference should remain.
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 1);
@@ -253,7 +253,7 @@ TEST_F(TaskManagerTest, TestTaskKill) {
 
   manager_.MarkTaskCanceled(spec.TaskId());
   auto error = rpc::ErrorType::TASK_CANCELLED;
-  manager_.PendingTaskFailed(spec.TaskId(), error);
+  manager_.FailOrRetryPendingTask(spec.TaskId(), error);
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(store_->Get({return_id}, 1, 0, ctx, false, &results));

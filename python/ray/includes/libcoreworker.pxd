@@ -95,6 +95,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CLanguage ActorLanguage() const
         CFunctionDescriptor ActorCreationTaskFunctionDescriptor() const
         c_string ExtensionData() const
+        int MaxPendingCalls() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
         void ConnectToRaylet()
