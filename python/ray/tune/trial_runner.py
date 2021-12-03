@@ -752,9 +752,7 @@ class TrialRunner:
         if trial.status != Trial.TERMINATED:
             self._live_trials.add(trial)
         with warn_if_slow("scheduler.on_trial_add"):
-            self._scheduler_alg.on_trial_add(
-                TrialRunnerWrapper(self, runner_whitelist_attr={"search_alg"}),
-                trial)
+            self._scheduler_alg.on_trial_add(TrialRunnerWrapper(self), trial)
         self.trial_executor.mark_trial_to_checkpoint(trial)
 
     def debug_string(self, delim="\n"):
@@ -1256,9 +1254,7 @@ class TrialRunner:
         self._live_trials.add(trial)
 
         with warn_if_slow("scheduler.on_trial_add"):
-            self._scheduler_alg.on_trial_add(
-                TrialRunnerWrapper(self, runner_whitelist_attr={"search_alg"}),
-                trial)
+            self._scheduler_alg.on_trial_add(TrialRunnerWrapper(self), trial)
 
     def _update_trial_queue(self, blocking: bool = False,
                             timeout: int = 600) -> bool:
