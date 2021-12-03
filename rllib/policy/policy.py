@@ -98,10 +98,13 @@ class Policy(metaclass=ABCMeta):
         """
         self.observation_space: gym.Space = observation_space
         self.action_space: gym.Space = action_space
-        # The base struct of the action space.
+        # The base struct of the observation/action spaces.
         # E.g. action-space = gym.spaces.Dict({"a": Discrete(2)}) ->
         # action_space_struct = {"a": Discrete(2)}
-        self.action_space_struct = get_base_struct_from_space(action_space)
+        self.observation_space_struct = get_base_struct_from_space(
+            self.observation_space)
+        self.action_space_struct = get_base_struct_from_space(
+            self.action_space)
 
         self.config: TrainerConfigDict = config
         self.framework = self.config.get("framework")
@@ -798,6 +801,8 @@ class Policy(metaclass=ABCMeta):
         actions, state_outs, extra_outs = \
             self.compute_actions_from_input_dict(
                 self._dummy_batch, explore=False)
+        # Fields that have not been accessed are not needed for action
+        # computations -> Tag them as `used_for_compute_actions=False`.
         for key, view_req in self.view_requirements.items():
             if key not in self._dummy_batch.accessed_keys:
                 view_req.used_for_compute_actions = False
@@ -908,7 +913,8 @@ class Policy(metaclass=ABCMeta):
             Dict[str, TensorType]: The dummy batch containing all zero values.
         """
         ret = {}
-        for view_col, view_req in self.view_requirements.items():#TODO: actions/prev-actions? vv
+        for view_col, view_req in self.view_requirements.items(
+        ):  #TODO: actions/prev-actions? vv
             if not self.config["_disable_preprocessor_api"] and view_col not in ["actions", "prev_actions"] and \
                     isinstance(view_req.space,
                                (gym.spaces.Dict, gym.spaces.Tuple)):

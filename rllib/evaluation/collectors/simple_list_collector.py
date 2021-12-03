@@ -160,12 +160,12 @@ class _AgentCollector:
         for k, v in values.items():
             if k not in self.buffers:
                 self._build_buffers(single_row=values)
-            # Do not flatten infos, state_out_ and actions.
+            # Do not flatten infos or state_out_ values.
             # Infos/state-outs may be structs that change from timestep to
-            # timestep. Actions - on the other hand - are already flattened
-            # in the sampler.
-            if k in [SampleBatch.INFOS, SampleBatch.ACTIONS
-                     ] or k.startswith("state_out_"):
+            # timestep.
+            if k in [
+                    SampleBatch.INFOS,  # SampleBatch.ACTIONS
+            ] or k.startswith("state_out_"):
                 self.buffers[k][0].append(v)
             # Flatten all other columns.
             else:
@@ -373,8 +373,9 @@ class _AgentCollector:
             # lists. These are monolithic items (infos is a dict that
             # should not be further split, same for state-out items, which
             # could be custom dicts as well).
-            if col in [SampleBatch.INFOS,# SampleBatch.ACTIONS
-                       ] or col.startswith("state_out_"):
+            if col in [
+                    SampleBatch.INFOS,  # SampleBatch.ACTIONS
+            ] or col.startswith("state_out_"):
                 self.buffers[col] = [[data for _ in range(shift)]]
             else:
                 self.buffers[col] = [[v for _ in range(shift)]

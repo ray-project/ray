@@ -519,9 +519,11 @@ class MultiActionDistribution(TFActionDistribution):
             split_x = tree.flatten(x)
 
         def map_(val, dist):
-            # Remove extra categorical dimension.
+            # Remove extra categorical dimension, if necessary.
             if isinstance(dist, Categorical):
-                val = tf.cast(tf.squeeze(val, axis=-1), tf.int32)
+                if len(val.shape) > 1:
+                    val = tf.squeeze(val, axis=-1)
+                val = tf.cast(val, tf.int32)
             return dist.logp(val)
 
         # Remove extra categorical dimension and take the logp of each

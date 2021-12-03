@@ -240,8 +240,8 @@ class DynamicTFPolicy(TFPolicy):
             self._input_dict, self._dummy_batch = \
                 self._get_input_dict_and_dummy_batch(
                     self.view_requirements, {})
-                    #dict({SampleBatch.ACTIONS: action_ph},
-                    #     **prev_action_ph))
+            #dict({SampleBatch.ACTIONS: action_ph},
+            #     **prev_action_ph))
             # Placeholder for (sampling steps) timestep (int).
             timestep = tf1.placeholder_with_default(
                 tf.zeros((), dtype=tf.int64), (), name="timestep")
@@ -563,7 +563,7 @@ class DynamicTFPolicy(TFPolicy):
                 if view_req.used_for_training:
                     # Create a +time-axis placeholder if the shift is not an
                     # int (range or list of ints).
-                    flatten = view_col not in [
+                    flatten = False if view_col in [SampleBatch.ACTIONS, SampleBatch.PREV_ACTIONS] else view_col not in [
                         SampleBatch.OBS, SampleBatch.NEXT_OBS] or \
                               not self.config["_disable_preprocessor_api"]
                     input_dict[view_col] = get_placeholder(
@@ -596,6 +596,11 @@ class DynamicTFPolicy(TFPolicy):
         actions, state_outs, extra_fetches = \
             self.compute_actions_from_input_dict(
                 self._dummy_batch, explore=False, timestep=0)
+        # Fields that have not been accessed are not needed for action
+        # computations -> Tag them as `used_for_compute_actions=False`.
+        for key, view_req in self.view_requirements.items():
+            if key not in self._dummy_batch.accessed_keys:
+                view_req.used_for_compute_actions = False
         for key, value in extra_fetches.items():
             self._dummy_batch[key] = value
             self._input_dict[key] = get_placeholder(value=value, name=key)
