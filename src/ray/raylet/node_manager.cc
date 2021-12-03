@@ -1636,11 +1636,16 @@ void NodeManager::HandleRequestWorkerLease(const rpc::RequestWorkerLeaseRequest 
 void NodeManager::HandlePrepareBundleResources(
     const rpc::PrepareBundleResourcesRequest &request,
     rpc::PrepareBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
-  auto bundle_spec = BundleSpecification(request.bundle_spec());
+  std::vector<BundleSpecification> bundle_specs;
+  for (int index = 0; index < request.bundle_specs_size(); index++) {
+    bundle_specs.emplace_back(BundleSpecification(request.bundle_specs(index))); 
+  }
+  if (RAY_LOG_ENABLED(DEBUG)) {
+
+  }
   RAY_LOG(DEBUG) << "Request to prepare bundle resources is received, "
                  << bundle_spec.DebugString();
-
-  auto prepared = placement_group_resource_manager_->PrepareBundle(bundle_spec);
+  auto prepared = placement_group_resource_manager_->PrepareBundle(bundle_specs);
   reply->set_success(prepared);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
