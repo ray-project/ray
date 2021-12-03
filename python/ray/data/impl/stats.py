@@ -98,17 +98,19 @@ class DatasetStats:
             len(exec_stats), len(blocks), round(self.time_total_s, 2))
 
         if exec_stats:
-            out += ("* Remote wall time: {} min, {} max, {} mean, {} total\n".format(
-                fmt(min([e.wall_time_s for e in exec_stats])),
-                fmt(max([e.wall_time_s for e in exec_stats])),
-                fmt(np.mean([e.wall_time_s for e in exec_stats])),
-                fmt(sum([e.wall_time_s for e in exec_stats]))))
+            out += ("* Remote wall time: {} min, {} max, {} mean, {} total\n".
+                    format(
+                        fmt(min([e.wall_time_s for e in exec_stats])),
+                        fmt(max([e.wall_time_s for e in exec_stats])),
+                        fmt(np.mean([e.wall_time_s for e in exec_stats])),
+                        fmt(sum([e.wall_time_s for e in exec_stats]))))
 
-            out += ("* Remote cpu time: {} min, {} max, {} mean, {} total\n".format(
-                fmt(min([e.cpu_time_s for e in exec_stats])),
-                fmt(max([e.cpu_time_s for e in exec_stats])),
-                fmt(np.mean([e.cpu_time_s for e in exec_stats])),
-                fmt(sum([e.cpu_time_s for e in exec_stats]))))
+            out += ("* Remote cpu time: {} min, {} max, {} mean, {} total\n".
+                    format(
+                        fmt(min([e.cpu_time_s for e in exec_stats])),
+                        fmt(max([e.cpu_time_s for e in exec_stats])),
+                        fmt(np.mean([e.cpu_time_s for e in exec_stats])),
+                        fmt(sum([e.cpu_time_s for e in exec_stats]))))
 
         output_num_rows = [
             m.num_rows for m in blocks if m.num_rows is not None
