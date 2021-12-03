@@ -29,15 +29,18 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_creator.h"
+#include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/actor_scheduling_queue.h"
+#include "ray/core_worker/transport/concurrency_group_manager.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/core_worker/transport/direct_actor_task_submitter.h"
 #include "ray/core_worker/transport/normal_scheduling_queue.h"
 #include "ray/core_worker/transport/out_of_order_actor_scheduling_queue.h"
+#include "ray/core_worker/transport/thread_pool.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
@@ -63,7 +66,7 @@ class CoreWorkerDirectTaskReceiver {
         task_handler_(task_handler),
         task_main_io_service_(main_io_service),
         task_done_(task_done),
-        pool_manager_(std::make_shared<PoolManager>()) {}
+        pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()) {}
 
   /// Initialize this receiver. This must be called prior to use.
   void Init(std::shared_ptr<rpc::CoreWorkerClientPool>, rpc::Address rpc_address,
@@ -129,7 +132,7 @@ class CoreWorkerDirectTaskReceiver {
   /// 0 indicates that the value is not set yet.
   int fiber_max_concurrency_ = 0;
   /// If concurrent calls are allowed, holds the pools for executing these tasks.
-  std::shared_ptr<PoolManager> pool_manager_;
+  std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager_;
   /// Whether this actor use asyncio for concurrency.
   bool is_asyncio_ = false;
   /// Whether this actor executes tasks out of order with respect to client submission

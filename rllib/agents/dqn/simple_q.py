@@ -141,7 +141,7 @@ def validate_config(config: TrainerConfigDict) -> None:
         if config["multiagent"]["replay_mode"] == "lockstep":
             raise ValueError("Prioritized replay is not supported when "
                              "replay_mode=lockstep.")
-        elif config["replay_sequence_length"] > 1:
+        elif config.get("replay_sequence_length", 0) > 1:
             raise ValueError("Prioritized replay is not supported when "
                              "replay_sequence_length > 1.")
     else:
@@ -208,7 +208,7 @@ class SimpleQTrainer(Trainer):
     # TODO: Move GenericOffPolicyTraier's validate_config in here and
     #  use SimpleQ as base for all off-policy trainers.
     @override(Trainer)
-    def validate_config(self, config: PartialTrainerConfigDict) -> None:
+    def validate_config(self, config: TrainerConfigDict) -> None:
         super().validate_config(config)
         validate_config(config)
 

@@ -1840,7 +1840,7 @@ class Trainer(Trainable):
         resolve_tf_settings()
 
     @ExperimentalAPI
-    def validate_config(self, config: PartialTrainerConfigDict) -> None:
+    def validate_config(self, config: TrainerConfigDict) -> None:
         """Validates a given config dict for this Trainer.
 
         Users should override this method to implement custom validation

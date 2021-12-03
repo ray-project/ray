@@ -98,20 +98,50 @@ message TaskTableData {
 message ActorDeathCause {
   oneof context {
     CreationTaskFailureContext creation_task_failure_context = 1;
-    RuntimeEnvSetupFailureContext runtime_env_setup_failure_context = 2;
+    ActorDeathRuntimeEnvFailedContext runtime_env_failed_context = 2;
+    ActorDeathWorkerDiedContext worker_died_context = 3;
+    ActorDeathNodeDiedContext node_died_context = 4;
+    ActorDeathOwnerDiedContext owner_died_context = 5;
+    ActorDeathKilledByApplicationContext killed_by_app_context = 6;
+    ActorDeathOutOfScopeContext out_of_scope_context = 7;
   }
 }
 // ---Actor death contexts start----
 
 // Indicates that this actor is marked as DEAD due to actor creation task failure.
+// TODO(sang): Refactor it to ActorInitError
 message CreationTaskFailureContext {
   // The exception thrown in creation task.
   RayException creation_task_exception = 1;
 }
 
 // Indicates that this actor is marked as DEAD due to runtime environment setup failure.
-message RuntimeEnvSetupFailureContext {
+message ActorDeathRuntimeEnvFailedContext {
   // TODO(sang,lixin) Get this error message from agent.
+  string error_message = 1;
+}
+
+message ActorDeathWorkerDiedContext {
+  string error_message = 1;
+}
+
+message ActorDeathNodeDiedContext {
+  string error_message = 1;
+}
+
+message ActorDeathOwnerDiedContext {
+  // The id of the dead owner.
+  bytes owner_id = 1;
+  string error_message = 2;
+  // The exit type of dead owner.
+  WorkerExitType owner_worker_exit_type = 3;
+}
+
+message ActorDeathKilledByApplicationContext {
+  string error_message = 1;
+}
+
+message ActorDeathOutOfScopeContext {
   string error_message = 1;
 }
 // ---Actor death contexts end----
@@ -180,7 +210,7 @@ message ActorTableData {
   // The actor's class name. This is necessary because the task spec's lifetime
   // is shorter than the ActorTableData.
   string class_name = 23;
-  // Will only be set when state=DEAD. Offers detailed context of why this actor is dead.
+  // Contains metadata about why the actor is dead.
   ActorDeathCause death_cause = 24;
 }
 
@@ -363,34 +393,6 @@ message ResourceMap {
 
 message StoredConfig {
   string config = 1;
-}
-
-message ObjectLocationInfo {
-  bytes object_id = 1;
-  repeated ObjectTableData locations = 2;
-  // For objects that have been spilled to external storage, the URL from which
-  // they can be retrieved.
-  string spilled_url = 3;
-  // The node id that spills the object to the disk.
-  // It will be Nil if it uses a distributed external storage.
-  bytes spilled_node_id = 4;
-  // The size of the object in bytes.
-  uint64 size = 5;
-}
-
-// A notification message about one object's locations being changed.
-message ObjectLocationChange {
-  bool is_add = 1;
-  // The node manager ID that this object appeared on or was evicted by.
-  bytes node_id = 2;
-  // The object has been spilled to this URL. This should be set xor the above
-  // fields are set.
-  string spilled_url = 3;
-  // The node id that spills the object to the disk.
-  // It will be Nil if it uses a distributed external storage.
-  bytes spilled_node_id = 4;
-  // The size of the object in bytes.
-  uint64 size = 5;
 }
 
 // A notification message about one node's resources being changed.

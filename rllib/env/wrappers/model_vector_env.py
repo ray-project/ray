@@ -4,7 +4,7 @@ from gym.spaces import Discrete
 from ray.rllib.utils.annotations import override
 from ray.rllib.env.vector_env import VectorEnv
 from ray.rllib.evaluation.rollout_worker import get_global_worker
-from ray.rllib.env.base_env import BaseEnv
+from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.utils.typing import EnvType
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ def model_vector_env(env: EnvType) -> BaseEnv:
             observation_space=env.observation_space,
             action_space=env.action_space,
         )
-    return BaseEnv.to_base_env(
+    return convert_to_base_env(
         env,
         make_env=worker.make_sub_env_fn,
         num_envs=worker.num_envs,
