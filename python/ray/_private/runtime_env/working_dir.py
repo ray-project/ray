@@ -8,7 +8,7 @@ from ray.experimental.internal_kv import _internal_kv_initialized
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     download_and_unpack_package, delete_package, get_uri_for_directory,
-    parse_uri, Protocol, upload_package_if_needed, unzip_package)
+    parse_uri, Protocol, upload_package_if_needed)
 
 default_logger = logging.getLogger(__name__)
 
@@ -94,13 +94,8 @@ class WorkingDirManager:
             return
 
         logger.info(f"Setup working dir for {runtime_env.working_dir()}")
-        if runtime_env.working_dir().endswith(".zip"):
-            package_path = runtime_env.working_dir()
-            working_dir = package_path[:-4]
-            unzip_package(package_path, working_dir, True, False)
-        else:
-            working_dir = download_and_unpack_package(
-                runtime_env.working_dir(), self._resources_dir, logger=logger)
+        working_dir = download_and_unpack_package(
+            runtime_env.working_dir(), self._resources_dir, logger=logger)
         context.command_prefix += [f"cd {working_dir}"]
 
         # Insert the working_dir as the first entry in PYTHONPATH. This is
