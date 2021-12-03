@@ -5,7 +5,6 @@ from typing import List, Optional, Union
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
-from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration
@@ -116,63 +115,6 @@ def compute_states_entropy(obs_embeds: np.ndarray, embed_dim: int,
     dist = np.linalg.norm(
         obs_embeds_[:, None, :] - obs_embeds_[None, :, :], axis=-1)
     return dist.argsort(axis=-1)[:, :k_nn][:, -1]
-
-
-class RE3UpdateCallbacks():
-    """Update input callbacks to mutate batch with states entropy rewards."""
-
-    _step = 0
-
-    def __init__(self,
-                 *args,
-                 embeds_dim: int = 128,
-                 k_nn: int = 50,
-                 beta: float = 0.1,
-                 rho: float = 0.0001,
-                 beta_schedule: str = "constant",
-                 **kwargs):
-        self.embeds_dim = embeds_dim
-        self.k_nn = k_nn
-        self.beta = beta
-        self.rho = rho
-        self.beta_schedule = beta_schedule
-        self._rms = MovingMeanStd()
-        super().__init__(*args, **kwargs)
-
-    def on_learn_on_batch(
-            self,
-            *,
-            policy: Policy,
-            train_batch: SampleBatch,
-            result: dict,
-            **kwargs,
-    ):
-        # import Postprocessing here to avoid circular import issue
-        from ray.rllib.evaluation.postprocessing import Postprocessing
-
-        super().on_learn_on_batch(
-            policy=policy, train_batch=train_batch, result=result, **kwargs)
-        states_entropy = compute_states_entropy(
-            train_batch[SampleBatch.OBS_EMBEDS], self.embeds_dim, self.k_nn)
-        states_entropy = update_beta(
-            self.beta_schedule, self.beta, self.rho,
-            RE3UpdateCallbacks._step) * np.reshape(
-                self._rms(states_entropy),
-                train_batch[SampleBatch.OBS_EMBEDS].shape[:-1],
-            )
-        train_batch[SampleBatch.REWARDS] = (
-            train_batch[SampleBatch.REWARDS] + states_entropy)
-        if Postprocessing.ADVANTAGES in train_batch:
-            train_batch[Postprocessing.ADVANTAGES] = (
-                train_batch[Postprocessing.ADVANTAGES] + states_entropy)
-            train_batch[Postprocessing.VALUE_TARGETS] = (
-                train_batch[Postprocessing.VALUE_TARGETS] + states_entropy)
-
-    def on_train_result(self, *, trainer, result: dict, **kwargs) -> None:
-        # TODO(gjoliver): Remove explicit _step tracking and pass
-        # trainer._iteration as a parameter to on_learn_on_batch() call.
-        RE3UpdateCallbacks._step = result["training_iteration"]
-        super().on_train_result(trainer=trainer, result=result, **kwargs)
 
 
 class RE3(Exploration):
