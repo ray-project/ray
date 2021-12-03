@@ -809,10 +809,13 @@ class Trainer(Trainable):
                     "rollout_fragment_length": 1,
                 })
             # Evaluation duration unit: timesteps.
-            # Set `batch_mode=truncate_episodes` and set
-            # `rollout_fragment_length` such that desired steps are divided
-            # equally amongst workers or - in auto duration mode - set it
-            # to a reasonable small number (10).
+            # - Set `batch_mode=truncate_episodes` so we don't perform rollouts
+            #   strictly along episode borders.
+            # Set `rollout_fragment_length` such that desired steps are divided
+            # equally amongst workers or - in "auto" duration mode - set it
+            # to a reasonably small number (10), such that a single `sample()`
+            # call doesn't take too much time so we can stop evaluation as soon
+            # as possible after the train step is completed.
             else:
                 evaluation_config.update({
                     "batch_mode": "truncate_episodes",
@@ -929,6 +932,24 @@ class Trainer(Trainable):
             and - if required - evaluation.
         """
 
+        def auto_duration_fn(unit, num_eval_workers, eval_cfg, num_units_done):
+            # Training is done and we already ran at least one
+            # evaluation -> Nothing left to run.
+            if num_units_done > 0 and \
+                    train_future.done():
+                return 0
+            # Count by episodes. -> Run n more
+            # (n=num eval workers).
+            elif unit == "episodes":
+                return num_eval_workers
+            # Count by timesteps. -> Run n*m*p more
+            # (n=num eval workers; m=rollout fragment length;
+            # p=num-envs-per-worker).
+            else:
+                return num_eval_workers * \
+                       eval_cfg["rollout_fragment_length"] * \
+                       eval_cfg["num_envs_per_worker"]
+
         # self._iteration gets incremented after this function returns,
         # meaning that e. g. the first time this function is called,
         # self._iteration will be 0.
@@ -956,28 +977,11 @@ class Trainer(Trainable):
                     if self.config["evaluation_duration"] == "auto":
                         unit = self.config["evaluation_duration_unit"]
 
-                        # Run at least one `evaluate()`, even if the training
-                        # is very fast.
-                        def duration_fn(remaining_duration):
-                            # Training is done and we already ran at least one
-                            # evaluation -> Nothing left to run.
-                            if remaining_duration > 0 and \
-                                    train_future.done():
-                                return 0
-                            # Count by episodes. -> Run n more
-                            # (n=num eval workers).
-                            elif unit == "episodes":
-                                return self.config["evaluation_num_workers"]
-                            # Count by ts. -> Run n*m more
-                            # (n=num eval workers; m=rollout fragment length).
-                            else:
-                                return self.config[
-                                           "evaluation_num_workers"] * \
-                                       self.config["evaluation_config"][
-                                           "rollout_fragment_length"]
-
                         evaluation_metrics = self.evaluate(
-                            duration_fn=duration_fn)
+                            duration_fn=functools.partial(
+                                auto_duration_fn, unit, self.config[
+                                    "evaluation_num_workers"], self.config[
+                                        "evaluation_config"]))
                     else:
                         evaluation_metrics = self.evaluate()
                     # Collect the training results from the future.

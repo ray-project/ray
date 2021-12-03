@@ -101,7 +101,7 @@ if __name__ == "__main__":
         "metrics_smoothing_episodes": 5,
         "evaluation_interval": 1,
         "evaluation_num_workers": 2,
-        "evaluation_num_episodes": 10,
+        "evaluation_duration": 10,
         "evaluation_parallel_to_training": True,
         "evaluation_config": {
             "input": "sampler",

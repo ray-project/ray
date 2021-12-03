@@ -729,33 +729,75 @@ Customized Evaluation During Training
 
 RLlib will report online training rewards, however in some cases you may want to compute
 rewards with different settings (e.g., with exploration turned off, or on a specific set
-of environment configurations). You can activate evaluating policies during training by setting
-the ``evaluation_interval`` to an int value (> 0) indicating every how many training calls
-an "evaluation step" is run.
-One such "evaluation step" runs over ``evaluation_duration`` episodes or timesteps, depending
+of environment configurations). You can activate evaluating policies during training (``Trainer.train()``) by setting
+the ``evaluation_interval`` to an int value (> 0) indicating every how many ``Trainer.train()``
+calls an "evaluation step" is run:
+
+.. code-block:: python
+
+    # Run one evaluation step on every 3rd `Trainer.train()` call.
+    {
+        "evaluation_interval": 3,
+    }
+
+
+One such evaluation step runs over ``evaluation_duration`` episodes or timesteps, depending
 on the ``evaluation_duration_unit`` setting, which can be either "episodes" (default) or "timesteps".
 
-Normally, the evaluation step is run after the respective train step. For example, for
+
+.. code-block:: python
+
+    # Every time we do run an evaluation step, run it for exactly 10 episodes.
+    {
+        "evaluation_duration": 10,
+        "evaluation_duration_unit": "episodes",
+    }
+    # Every time we do run an evaluation step, run it for close to 200 timesteps.
+    {
+        "evaluation_duration": 200,
+        "evaluation_duration_unit": "timesteps",
+    }
+
+
+Before each evaluation step, weights from the main model are synchronized to all evaluation workers.
+
+Normally, the evaluation step is run right after the respective train step. For example, for
 ``evaluation_interval=2``, the sequence of steps is: ``train, train, eval, train, train, eval, ...``.
 For ``evaluation_interval=1``, the sequence is: ``train, eval, train, eval, ...``.
-Before each evaluation step, weights from the main model are synchronized to all evaluation workers.
-However, it is possible to run evaluation parallel to training via the ``evaluation_parallel_to_training=True``
-config flag. In this case, both steps (train and eval) are run at the same time via threading.
+
+However, it is possible to run evaluation in parallel to training via the ``evaluation_parallel_to_training=True``
+config setting. In this case, both steps (train and eval) are run at the same time via threading.
 This can speed up the evaluation process significantly, but leads to a 1-iteration delay between reported
-training results and evaluation results (the evaluation results are "behind" as they use
-slightly outdated model weights).
+training results and evaluation results (the evaluation results are behind b/c they use slightly outdated
+model weights).
 
-When in ``evaluation_parallel_to_training=True`` mode, a special setting: ``evaluation_duration=auto``
-can be used that causes the evaluation step to take roughly as long as the train step.
+When running with the ``evaluation_parallel_to_training=True`` setting, a special "auto" value
+is supported for ``evaluation_duration``. This can be used to make the evaluation step take
+roughly as long as the train step:
 
-The config key ``evaluation_config`` allows you to override any config keys only for
+.. code-block:: python
+
+    # Run eval and train at the same time via threading and make sure they roughly
+    # take the same time, such that the next `Trainer.train()` call can execute
+    # immediately and not have to wait for a still ongoing (e.g. very long episode)
+    # evaluation step:
+    {
+        "evaluation_interval": 1,
+        "evaluation_parallel_to_training": True,
+        "evaluation_duration": "auto",  # automatically end evaluation when train step has finished
+        "evaluation_duration_unit": "timesteps",  # <- more fine grained than "episodes"
+    }
+
+
+The ``evaluation_config`` key allows you to override any config settings for
 the evaluation workers. For example, to switch off exploration in the evaluation steps,
 do:
 
 .. code-block:: python
 
     # Switching off exploration behavior for evaluation workers
-    # (see rllib/agents/trainer.py)
+    # (see rllib/agents/trainer.py). Use any keys in this sub-dict that are
+    # also supported in the main Trainer config.
     "evaluation_config": {
        "explore": False
     }
@@ -767,11 +809,12 @@ do:
     will result in the evaluation workers not using this stochastic policy.
 
 Parallelism for the evaluation step is determined via the ``evaluation_num_workers``
-setting. Set this to higher values if you want the desired eval episodes or timesteps to
-run as much in parallel as possible. For example, if your ``evaluation_duration=10`` (``evaluation_duration_unit=episodes``)
-and ``evaluation_num_workers=10``, each eval worker only has to run 1 episode in each eval step.
+setting. Set this to larger values if you want the desired evaluation episodes or timesteps to
+run as much in parallel as possible. For example, if your ``evaluation_duration=10``,
+``evaluation_duration_unit=episodes``, and ``evaluation_num_workers=10``, each eval worker
+only has to run 1 episode in each eval step.
 
-In case you would like to completely customize the evaluation step, set ``custom_eval_function`` in your
+In case you would like to entirely customize the evaluation step, set ``custom_eval_function`` in your
 config to a callable taking the Trainer object and a WorkerSet object (the evaluation WorkerSet)
 and returning a metrics dict. See `trainer.py <https://github.com/ray-project/ray/blob/master/rllib/agents/trainer.py>`__
 for further documentation.
