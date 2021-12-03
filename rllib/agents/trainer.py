@@ -784,27 +784,34 @@ class Trainer(Trainable):
 
         # Evaluation WorkerSet setup.
         # User would like to setup a separate evaluation worker set.
+
+        # Update with evaluation settings:
+        user_eval_config = copy.deepcopy(self.config["evaluation_config"])
+        # Merge user-provided eval config with the base config. This makes sure
+        # the eval config is always complete, no matter whether we have eval
+        # workers or perform evaluation on the (non-eval) local worker.
+        eval_config = merge_dicts(self.config, user_eval_config)
+        self.config["evaluation_config"] = eval_config
+
         if self.config.get("evaluation_num_workers", 0) > 0 or \
                 self.config.get("evaluation_interval"):
-            # Update env_config with evaluation settings:
-            extra_config = copy.deepcopy(self.config["evaluation_config"])
+            logger.debug(f"Using evaluation_config: {user_eval_config}.")
+
             # Assert that user has not unset "in_evaluation".
-            assert "in_evaluation" not in extra_config or \
-                extra_config["in_evaluation"] is True
-            # Merge user-provided eval config with the base config.
-            evaluation_config = merge_dicts(self.config, extra_config)
+            assert "in_evaluation" not in eval_config or \
+                eval_config["in_evaluation"] is True
             # Validate evaluation config.
-            self.validate_config(evaluation_config)
+            self.validate_config(eval_config)
 
             # Set the `in_evaluation` flag.
-            evaluation_config["in_evaluation"] = True
+            eval_config["in_evaluation"] = True
 
             # Evaluation duration unit: episodes.
             # Switch on `complete_episode` rollouts. Also, make sure
             # rollout fragments are short so we never have more than one
             # episode in one rollout.
-            if evaluation_config["evaluation_duration_unit"] == "episodes":
-                evaluation_config.update({
+            if eval_config["evaluation_duration_unit"] == "episodes":
+                eval_config.update({
                     "batch_mode": "complete_episodes",
                     "rollout_fragment_length": 1,
                 })
@@ -817,7 +824,7 @@ class Trainer(Trainable):
             # call doesn't take too much time so we can stop evaluation as soon
             # as possible after the train step is completed.
             else:
-                evaluation_config.update({
+                eval_config.update({
                     "batch_mode": "truncate_episodes",
                     "rollout_fragment_length": 10
                     if self.config["evaluation_duration"] == "auto" else int(
@@ -826,8 +833,7 @@ class Trainer(Trainable):
                             (self.config["evaluation_num_workers"] or 1))),
                 })
 
-            logger.debug("using evaluation_config: {}".format(extra_config))
-            self.config["evaluation_config"] = evaluation_config
+            self.config["evaluation_config"] = eval_config
 
             # Create a separate evaluation worker set for evaluation.
             # If evaluation_num_workers=0, use the evaluation set's local
@@ -837,7 +843,7 @@ class Trainer(Trainable):
                 env_creator=self.env_creator,
                 validate_env=None,
                 policy_class=self.get_default_policy_class(self.config),
-                config=evaluation_config,
+                config=eval_config,
                 num_workers=self.config["evaluation_num_workers"],
                 # Don't even create a local worker if num_workers > 0.
                 local_worker=False,
@@ -1061,6 +1067,18 @@ class Trainer(Trainable):
                 raise ValueError("Custom eval function must return "
                                  "dict of metrics, got {}.".format(metrics))
         else:
+            if self.evaluation_workers is None and \
+                    self.workers.local_worker().input_reader is None:
+                raise ValueError(
+                    "Cannot evaluate w/o an evaluation worker set in "
+                    "the Trainer or w/o an env on the local worker!\n"
+                    "Try one of the following:\n1) Set "
+                    "`evaluation_interval` >= 0 to force creating a "
+                    "separate evaluation worker set.\n2) Set "
+                    "`create_env_on_driver=True` to force the local "
+                    "(non-eval) worker to have an environment to "
+                    "evaluate on.")
+
             # How many episodes/timesteps do we need to run?
             # In "auto" mode (only for parallel eval + training): Run as long
             # as training lasts.
@@ -1088,29 +1106,14 @@ class Trainer(Trainable):
             # Do evaluation using the local worker. Expect error due to the
             # local worker not having an env.
             if self.evaluation_workers is None:
-                try:
-                    # If unit=episodes -> Run n times `sample()` (each sample
-                    # produces exactly 1 episode).
-                    # If unit=ts -> Run 1 `sample()` b/c the
-                    # `rollout_fragment_length` is exactly the desired ts.
-                    iters = duration if unit == "episodes" else 1
-                    for _ in range(iters):
-                        num_ts_run += len(self.workers.local_worker().sample())
-                    metrics = collect_metrics(self.workers.local_worker())
-                except ValueError as e:
-                    if "RolloutWorker has no `input_reader` object" in \
-                            e.args[0]:
-                        raise ValueError(
-                            "Cannot evaluate w/o an evaluation worker set in "
-                            "the Trainer or w/o an env on the local worker!\n"
-                            "Try one of the following:\n1) Set "
-                            "`evaluation_interval` >= 0 to force creating a "
-                            "separate evaluation worker set.\n2) Set "
-                            "`create_env_on_driver=True` to force the local "
-                            "(non-eval) worker to have an environment to "
-                            "evaluate on.")
-                    else:
-                        raise e
+                # If unit=episodes -> Run n times `sample()` (each sample
+                # produces exactly 1 episode).
+                # If unit=ts -> Run 1 `sample()` b/c the
+                # `rollout_fragment_length` is exactly the desired ts.
+                iters = duration if unit == "episodes" else 1
+                for _ in range(iters):
+                    num_ts_run += len(self.workers.local_worker().sample())
+                metrics = collect_metrics(self.workers.local_worker())
 
             # Evaluation worker set only has local worker.
             elif self.config["evaluation_num_workers"] == 0:
