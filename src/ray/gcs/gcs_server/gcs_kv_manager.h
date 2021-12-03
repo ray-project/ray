@@ -18,14 +18,15 @@
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
-
+#include "absl/containers/"
 namespace ray {
 namespace gcs {
 
 /// This implementation class of `InternalKVHandler`.
 class GcsInternalKVManager : public rpc::InternalKVHandler {
  public:
-  explicit GcsInternalKVManager(std::shared_ptr<RedisClient> redis_client);
+  explicit GcsInternalKVManager(std::shared_ptr<RedisClient> redis_client)
+      : redis_client_(redis_client) {}
 
   void HandleInternalKVGet(const rpc::InternalKVGetRequest &request,
                            rpc::InternalKVGetReply *reply,
@@ -53,15 +54,8 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
                             rpc::InternalKVKeysReply *reply,
                             rpc::SendReplyCallback send_reply_callback);
 
-  instrumented_io_context &GetEventLoop() { return io_service_; }
-
-  void Stop();
-
  private:
   std::shared_ptr<RedisClient> redis_client_;
-  // The io service used by internal kv
-  instrumented_io_context io_service_;
-  std::unique_ptr<std::thread> io_service_thread_;
 };
 
 }  // namespace gcs

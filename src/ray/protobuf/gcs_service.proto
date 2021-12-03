@@ -478,7 +478,7 @@ service PlacementGroupInfoGcsService {
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-/* Please do not modify/remove/change the following messages to mainatin
+/* Please do not modify/remove/change the following messages to maintain
 backwards compatibility in autoscaler. This is necessary to make sure we can
 run autoscaler with any version of ray. For example, the K8s operator runs
 autoscaler in a separate pod, if the user upgrades the ray version on the head

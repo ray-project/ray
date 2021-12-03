@@ -17,23 +17,6 @@
 namespace ray {
 namespace gcs {
 
-GcsInternalKVManager::GcsInternalKVManager(std::shared_ptr<RedisClient> redis_client)
-    : redis_client_(redis_client) {
-  io_service_thread_ = std::make_unique<std::thread>([this] {
-    SetThreadName("InternalKV");
-    /// The asio work to keep io_service_ alive.
-    boost::asio::io_service::work io_service_work_(io_service_);
-    io_service_.run();
-  });
-}
-
-void GcsInternalKVManager::Stop() {
-  io_service_.stop();
-  if (io_service_thread_->joinable()) {
-    io_service_thread_->join();
-  }
-}
-
 void GcsInternalKVManager::HandleInternalKVGet(
     const rpc::InternalKVGetRequest &request, rpc::InternalKVGetReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
@@ -53,7 +36,7 @@ void GcsInternalKVManager::HandleInternalKVGet(
 void GcsInternalKVManager::HandleInternalKVMultiGet(
     const rpc::InternalKVMultiGetRequest &request, rpc::InternalKVMultiGetReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto cnt = std::make_shared<std::atomic<int>>(request.keys_size());
+  auto cnt = std::make_shared<int>(request.keys_size());
   for (int i = 0; i < request.keys_size(); ++i) {
     std::vector<std::string> cmd = {"HGET", request.keys(i), "value"};
     RAY_CHECK_OK(redis_client_->GetPrimaryContext()->RunArgvAsync(
@@ -62,7 +45,6 @@ void GcsInternalKVManager::HandleInternalKVMultiGet(
             (*reply->mutable_values())[i] = redis_reply->ReadAsString();
           }
           --(*cnt);
-          RAY_LOG(ERROR) << "CNT=" << *cnt;
           if (*cnt == 0) {
             GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
           }
