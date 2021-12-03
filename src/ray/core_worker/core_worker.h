@@ -477,7 +477,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] args Arguments of this task.
   /// \param[in] task_options Options for this task.
   /// \return ObjectRefs returned by this task.
-  std::vector<rpc::ObjectReference> SubmitActorTask(
+  std::optional<std::vector<rpc::ObjectReference>> SubmitActorTask(
       const ActorID &actor_id, const RayFunction &function,
       const std::vector<std::unique_ptr<TaskArg>> &args, const TaskOptions &task_options);
 
@@ -1199,6 +1199,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   };
   TaskCounter task_counter_;
+
+  /// Used to guarantee that submitting actor task is thread safe.
+  /// NOTE(MissiontoMars,scv119): In particular, without this mutex,
+  /// the checking and increasing of backpressure pending calls counter
+  /// is not atomic, which may lead to under counting or over counting.
+  absl::Mutex actor_task_mutex_;
 };
 
 }  // namespace core

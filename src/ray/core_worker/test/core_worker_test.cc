@@ -208,8 +208,9 @@ int CoreWorkerTest::GetActorPid(const ActorID &actor_id,
   RayFunction func{Language::PYTHON,
                    FunctionDescriptorBuilder::BuildPython("GetWorkerPid", "", "", "")};
 
-  auto return_ids = ObjectRefsToIds(
-      CoreWorkerProcess::GetCoreWorker().SubmitActorTask(actor_id, func, args, options));
+  auto return_ids = ObjectRefsToIds(CoreWorkerProcess::GetCoreWorker()
+                                        .SubmitActorTask(actor_id, func, args, options)
+                                        .value());
 
   std::vector<std::shared_ptr<RayObject>> results;
   RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().Get(return_ids, -1, &results));
@@ -294,7 +295,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
                                              "MergeInputArgsAsOutput", "", "", ""));
 
       auto return_ids =
-          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
+          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
       ASSERT_EQ(return_ids.size(), 1);
 
       std::vector<std::shared_ptr<RayObject>> results;
@@ -337,7 +338,7 @@ void CoreWorkerTest::TestActorTask(std::unordered_map<std::string, double> &reso
     RayFunction func(Language::PYTHON, FunctionDescriptorBuilder::BuildPython(
                                            "MergeInputArgsAsOutput", "", "", ""));
     auto return_ids =
-        ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
+        ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
 
     ASSERT_EQ(return_ids.size(), 1);
 
@@ -400,7 +401,7 @@ void CoreWorkerTest::TestActorRestart(
                                              "MergeInputArgsAsOutput", "", "", ""));
 
       auto return_ids =
-          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
+          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
       ASSERT_EQ(return_ids.size(), 1);
       // Verify if it's expected data.
       std::vector<std::shared_ptr<RayObject>> results;
@@ -443,7 +444,7 @@ void CoreWorkerTest::TestActorFailure(
                                              "MergeInputArgsAsOutput", "", "", ""));
 
       auto return_ids =
-          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
+          ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
 
       ASSERT_EQ(return_ids.size(), 1);
       all_results.emplace_back(std::make_pair(return_ids[0], buffer1));
@@ -514,7 +515,7 @@ TEST_F(ZeroNodeTest, TestTaskSpecPerf) {
   ActorHandle actor_handle(ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 1),
                            TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
                            function.GetLanguage(), function.GetFunctionDescriptor(), "",
-                           0, "", "");
+                           0, "", "", -1);
 
   // Manually create `num_tasks` task specs, and for each of them create a
   // `PushTaskRequest`, this is to batch performance of TaskSpec
@@ -576,7 +577,7 @@ TEST_F(SingleNodeTest, TestDirectActorTaskSubmissionPerf) {
                                            "MergeInputArgsAsOutput", "", "", ""));
 
     auto return_ids =
-        ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options));
+        ObjectRefsToIds(driver.SubmitActorTask(actor_id, func, args, options).value());
     ASSERT_EQ(return_ids.size(), 1);
     object_ids.emplace_back(return_ids[0]);
   }
@@ -634,7 +635,7 @@ TEST_F(ZeroNodeTest, TestActorHandle) {
   ActorHandle original(
       ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0), TaskID::Nil(),
       rpc::Address(), job_id, ObjectID::FromRandom(), Language::PYTHON,
-      FunctionDescriptorBuilder::BuildPython("", "", "", ""), "", 0, "", "");
+      FunctionDescriptorBuilder::BuildPython("", "", "", ""), "", 0, "", "", -1);
   std::string output;
   original.Serialize(&output);
   ActorHandle deserialized(output);
