@@ -242,11 +242,6 @@ int64_t ClusterResourceScheduler::GetBestSchedulableNode(
     return best_node;
   }
 
-  // If the scheduling decision is made by gcs, we just return the local node.
-  if (actor_creation && RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    return local_node_id_;
-  }
-
   // TODO (Alex): Setting require_available == force_spillback is a hack in order to
   // remain bug compatible with the legacy scheduling algorithms.
   int64_t best_node_id = scheduling_policy_->HybridPolicy(

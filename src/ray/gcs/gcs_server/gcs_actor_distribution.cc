@@ -196,7 +196,7 @@ void GcsBasedActorScheduler::HandleWorkerLeaseReply(
 
     if (status.ok()) {
       if (reply.worker_address().raylet_id().empty() &&
-          reply.retry_at_raylet_address().raylet_id().empty()) {
+          reply.retry_at_raylet_address().raylet_id().empty() && !reply.rejected()) {
         // Actor creation task has been cancelled. It is triggered by `ray.kill`. If
         // the number of remaining restarts of the actor is not equal to 0, GCS will
         // reschedule the actor, so it return directly here.
