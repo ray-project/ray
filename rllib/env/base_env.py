@@ -161,7 +161,7 @@ class BaseEnv:
 
     @PublicAPI
     def try_reset(self,
-                  env_id: Optional[EnvID] = None) -> Optional[MultiAgentDict]:
+                  env_id: Optional[EnvID] = None) -> Optional[MultiEnvDict]:
         """Attempt to reset the sub-env with the given id or all sub-envs.
 
         If the environment does not support synchronous reset, None can be

@@ -970,7 +970,8 @@ def _process_observations(
                 resetted_obs: Dict[AgentID, EnvObsType] = all_agents_obs
             else:
                 del active_episodes[env_id]
-                resetted_obs: Dict[AgentID, EnvObsType] = base_env.try_reset(
+                resetted_obs: Dict[EnvID, Dict[AgentID, EnvObsType]] = \
+                    base_env.try_reset(
                     env_id)
             # Reset not supported, drop this env from the ready list.
             if resetted_obs is None:
@@ -982,6 +983,7 @@ def _process_observations(
             # If reset is async, we will get its result in some future poll.
             elif resetted_obs != ASYNC_RESET_RETURN:
                 new_episode: Episode = active_episodes[env_id]
+                resetted_obs = resetted_obs[env_id]
                 if observation_fn:
                     resetted_obs: Dict[AgentID, EnvObsType] = observation_fn(
                         agent_obs=resetted_obs,
