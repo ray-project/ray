@@ -272,7 +272,7 @@ class ModelV2:
         """
 
         input_dict = train_batch.copy()
-        input_dict["is_training"] = is_training
+        input_dict.set_training(is_training)
         states = []
         i = 0
         while "state_in_{}".format(i) in input_dict:

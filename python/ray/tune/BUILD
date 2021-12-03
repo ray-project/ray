@@ -319,6 +319,14 @@ py_test(
 )
 
 py_test(
+    name = "test_tune_restore_warm_start",
+    size = "large",
+    srcs = ["tests/test_tune_restore_warm_start.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive", "tests_dir_T"],
+)
+
+py_test(
     name = "test_tune_restore",
     size = "large",
     srcs = ["tests/test_tune_restore.py"],

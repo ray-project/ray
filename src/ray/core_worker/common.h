@@ -91,7 +91,7 @@ struct ActorCreationOptions {
       bool placement_group_capture_child_tasks = true,
       const std::string &serialized_runtime_env = "{}",
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      bool execute_out_of_order = false)
+      bool execute_out_of_order = false, int32_t max_pending_calls = -1)
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -106,7 +106,8 @@ struct ActorCreationOptions {
         placement_group_capture_child_tasks(placement_group_capture_child_tasks),
         serialized_runtime_env(serialized_runtime_env),
         concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()),
-        execute_out_of_order(execute_out_of_order){};
+        execute_out_of_order(execute_out_of_order),
+        max_pending_calls(max_pending_calls){};
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
@@ -152,6 +153,8 @@ struct ActorCreationOptions {
   const std::vector<ConcurrencyGroup> concurrency_groups;
   /// Wether the actor execute tasks out of order.
   const bool execute_out_of_order = false;
+  /// The maxmium actor call pending count.
+  const int max_pending_calls = -1;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;
