@@ -251,7 +251,7 @@ def ray_deps_setup():
         url = "https://github.com/rules-proto-grpc/rules_proto_grpc/archive/a74fef39c5fe636580083545f76d1eab74f6450d.tar.gz",
         sha256 = "2f6606151ec042e23396f07de9e7dcf6ca9a5db1d2b09f0cc93a7fc7f4008d1b",
     )
-    
+
     auto_http_archive(
         name = "msgpack",
         build_file = True,
