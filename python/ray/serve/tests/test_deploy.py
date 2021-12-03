@@ -5,7 +5,6 @@ import time
 
 from pydantic.error_wrappers import ValidationError
 import pytest
-import asyncio
 import requests
 
 import ray
@@ -566,6 +565,8 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
 
 
 def test_reconfigure_with_queries(serve_instance):
+    signal = SignalActor.remote()
+
     @serve.deployment(max_concurrent_queries=10, num_replicas=3)
     class A:
         def __init__(self):
@@ -575,7 +576,7 @@ def test_reconfigure_with_queries(serve_instance):
             self.state = config
 
         async def __call__(self):
-            await asyncio.sleep(10)
+            await signal.wait.remote()
             return self.state["a"]
 
     A.options(version="1", user_config={"a": 1}).deploy()
@@ -584,8 +585,13 @@ def test_reconfigure_with_queries(serve_instance):
     for _ in range(30):
         refs.append(handle.remote())
 
-    A.options(version="1", user_config={"a": 2}).deploy()
+    @ray.remote(num_cpus=0)
+    def reconfigure():
+        A.options(version="1", user_config={"a": 2}).deploy()
 
+    reconfigure_ref = reconfigure.remote()
+    signal.send.remote()
+    ray.get(reconfigure_ref)
     for ref in refs:
         assert ray.get(ref) == 1
     assert ray.get(handle.remote()) == 2
