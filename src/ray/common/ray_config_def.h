@@ -527,3 +527,6 @@ RAY_CONFIG(bool, USE_TLS, false)
 RAY_CONFIG(std::string, TLS_SERVER_CERT, "")
 RAY_CONFIG(std::string, TLS_SERVER_KEY, "")
 RAY_CONFIG(std::string, TLS_CA_CERT, "")
+
+/// The actor's default CPU requirement.
+RAY_CONFIG(uint32_t, default_actor_cpu, 0)

@@ -128,23 +128,20 @@ class GcsBasedActorScheduler : public GcsActorScheduler {
 
   /// Allocate a new actor worker assignment.
   ///
-  /// \param required_resources The resources that the worker required.
-  /// \param is_shared If the worker is shared by multiple actors or not.
   /// \param task_spec The specification of the task.
+  /// \param is_shared If the worker is shared by multiple actors or not.
   std::unique_ptr<GcsActorWorkerAssignment> AllocateNewActorWorkerAssignment(
-      const ResourceSet &required_resources, bool is_shared,
-      const TaskSpecification &task_spec);
+      const TaskSpecification &task_spec, bool is_shared);
 
   /// Allocate resources for the actor.
   ///
-  /// \param required_resources The resources to be allocated.
+  /// \param task_spec The specification of the task.
   /// \return ID of the node from which the resources are allocated.
-  NodeID AllocateResources(const ResourceSet &required_resources);
+  NodeID AllocateResources(const TaskSpecification &task_spec);
 
   NodeID GetHighestScoreNodeResource(const ResourceSet &required_resources) const;
 
-  void WarnResourceAllocationFailure(const TaskSpecification &task_spec,
-                                     const ResourceSet &required_resources) const;
+  void WarnResourceAllocationFailure(const TaskSpecification &task_spec) const;
 
   /// A rejected rely means resources were preempted by normal tasks. Then
   /// update the the cluster resource view and reschedule immediately.

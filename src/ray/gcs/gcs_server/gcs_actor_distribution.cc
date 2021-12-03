@@ -68,36 +68,40 @@ std::unique_ptr<GcsActorWorkerAssignment>
 GcsBasedActorScheduler::SelectOrAllocateActorWorkerAssignment(
     std::shared_ptr<GcsActor> actor, bool need_sole_actor_worker_assignment) {
   const auto &task_spec = actor->GetCreationTaskSpecification();
-  auto required_resources = task_spec.GetRequiredPlacementResources();
 
   // If the task needs a sole actor worker assignment then allocate a new one.
-  return AllocateNewActorWorkerAssignment(required_resources, /*is_shared=*/false,
-                                          task_spec);
+  return AllocateNewActorWorkerAssignment(task_spec, /*is_shared=*/false);
 
   // TODO(Chong-Li): code path for actors that do not need a sole assignment.
 }
 
 std::unique_ptr<GcsActorWorkerAssignment>
 GcsBasedActorScheduler::AllocateNewActorWorkerAssignment(
-    const ResourceSet &required_resources, bool is_shared,
-    const TaskSpecification &task_spec) {
+    const TaskSpecification &task_spec, bool is_shared) {
   // Allocate resources from cluster.
-  auto selected_node_id = AllocateResources(required_resources);
+  auto selected_node_id = AllocateResources(task_spec);
   if (selected_node_id.IsNil()) {
-    WarnResourceAllocationFailure(task_spec, required_resources);
+    WarnResourceAllocationFailure(task_spec);
     return nullptr;
   }
 
   // Create a new gcs actor worker assignment.
+  ResourceSet required_resources;
+  if (RayConfig::instance().default_actor_cpu() == 0) {
+    required_resources = task_spec.GetRequiredResources();
+  } else {
+    required_resources = task_spec.GetRequiredPlacementResources();
+  }
   auto gcs_actor_worker_assignment = std::make_unique<GcsActorWorkerAssignment>(
       selected_node_id, required_resources, is_shared);
 
   return gcs_actor_worker_assignment;
 }
 
-NodeID GcsBasedActorScheduler::AllocateResources(const ResourceSet &required_resources) {
+NodeID GcsBasedActorScheduler::AllocateResources(const TaskSpecification &task_spec) {
   auto selected_nodes =
-      gcs_resource_scheduler_->Schedule({required_resources}, SchedulingType::SPREAD)
+      gcs_resource_scheduler_
+          ->Schedule({task_spec.GetRequiredPlacementResources()}, SchedulingType::SPREAD)
           .second;
 
   if (selected_nodes.size() == 0) {
@@ -111,8 +115,13 @@ NodeID GcsBasedActorScheduler::AllocateResources(const ResourceSet &required_res
   auto selected_node_id = selected_nodes[0];
   if (!selected_node_id.IsNil()) {
     // Acquire the resources from the selected node.
-    RAY_CHECK(
-        gcs_resource_manager_->AcquireResources(selected_node_id, required_resources));
+    if (RayConfig::instance().default_actor_cpu() == 0) {
+      RAY_CHECK(gcs_resource_manager_->AcquireResources(
+          selected_node_id, task_spec.GetRequiredResources()));
+    } else {
+      RAY_CHECK(gcs_resource_manager_->AcquireResources(
+          selected_node_id, task_spec.GetRequiredPlacementResources()));
+    }
   }
 
   return selected_node_id;
@@ -139,7 +148,8 @@ NodeID GcsBasedActorScheduler::GetHighestScoreNodeResource(
 }
 
 void GcsBasedActorScheduler::WarnResourceAllocationFailure(
-    const TaskSpecification &task_spec, const ResourceSet &required_resources) const {
+    const TaskSpecification &task_spec) const {
+  const auto &required_resources = task_spec.GetRequiredPlacementResources();
   auto scheduling_node_id = GetHighestScoreNodeResource(required_resources);
   const SchedulingResources *scheduling_resource = nullptr;
   auto iter = gcs_resource_manager_->GetClusterResources().find(scheduling_node_id);
