@@ -37,7 +37,7 @@ from ray.tune.suggest.bohb import TuneBOHB
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.trial import Trial
 from ray.tune.utils import validate_save_restore
-from ray.tune.utils.mock import MyTrainableClass
+from ray.tune.utils.mock_trainable import MyTrainableClass
 
 
 class TuneRestoreTest(unittest.TestCase):
@@ -460,12 +460,10 @@ class TuneExampleTest(unittest.TestCase):
         validate_save_restore(TrainMNIST, use_object_store=True)
 
     def testHyperbandExample(self):
-        from ray.tune.examples.hyperband_example import MyTrainableClass
         validate_save_restore(MyTrainableClass)
         validate_save_restore(MyTrainableClass, use_object_store=True)
 
     def testAsyncHyperbandExample(self):
-        from ray.tune.utils.mock import MyTrainableClass
         validate_save_restore(MyTrainableClass)
         validate_save_restore(MyTrainableClass, use_object_store=True)
 
