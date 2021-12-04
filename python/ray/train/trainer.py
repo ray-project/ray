@@ -282,8 +282,7 @@ class Trainer:
 
         for callback in callbacks:
             callback.start_training(
-                logdir=str(self.latest_run_dir),
-                config=config if config else {})
+                logdir=str(self.latest_run_dir), config=config or {})
 
         train_func = self._get_train_func(train_func, config)
 

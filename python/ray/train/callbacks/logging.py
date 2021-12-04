@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class TrainingLogdirMixin:
-    def start_training(self, logdir: str, **info):
+    def start_training(self, logdir: str):
         if self._logdir:
             logdir_path = Path(self._logdir)
         else:
@@ -85,7 +85,7 @@ class TrainingSingleFileLoggingCallback(
         return logdir_path.joinpath(Path(filename))
 
     def start_training(self, logdir: str, **info):
-        super().start_training(logdir, **info)
+        super().start_training(logdir)
 
         if not self._filename:
             filename = self._default_filename
@@ -186,10 +186,12 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
     Args:
         tracking_uri (Optional[str]): The tracking URI for where to manage
             experiments and runs. This can either be a local file path or a
-            remote server. This arg gets passed directly to mlflow
-            initialization.
+            remote server. If None is passed in, the logdir of the trainer
+            will be used as the tracking URI.
+            This arg gets passed directly to mlflow initialization.
         registry_uri (Optional[str]): The registry URI that gets passed
-            directly to mlflow initialization.
+            directly to mlflow initialization. If None is passed in, the
+            logdir of the trainer will be used as the registry URI.
         experiment_id (Optional[str]): The experiment id of an already
             existing experiment. If not
             passed in, experiment_name will be used.
@@ -197,7 +199,8 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
             Train run.
             If the experiment with the name already exists with MLflow,
             it will be used. If not, a new experiment will be created with
-            this name.
+            this name. At least one of ``experiment_id`` or
+            ``experiment_name`` must be passed in.
         tags (Optional[Dict]):  An optional dictionary of string keys and
             values to set as tags on the run
         save_artifact (bool): If set to True, automatically save the entire
@@ -234,12 +237,8 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
     def start_training(self, logdir: str, config: Dict, **info):
         super().start_training(logdir=logdir, config=config, info=info)
 
-        tracking_uri = self.tracking_uri if self.tracking_uri is not None \
-            else \
-            str(self.logdir)
-        registry_uri = self.registry_uri if self.registry_uri is not None \
-            else \
-            str(self.logdir)
+        tracking_uri = self.tracking_uri or str(self.logdir)
+        registry_uri = self.registry_uri or str(self.logdir)
 
         success = self.mlflow_util.setup_mlflow(
             tracking_uri=tracking_uri,

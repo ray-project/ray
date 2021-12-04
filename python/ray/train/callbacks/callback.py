@@ -1,5 +1,5 @@
 import abc
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 
 class TrainingCallback(metaclass=abc.ABCMeta):
@@ -27,16 +27,11 @@ class TrainingCallback(metaclass=abc.ABCMeta):
         """
         pass
 
-    def finish_training(self,
-                        error: bool = False,
-                        run_dir: Optional[str] = None,
-                        **info):
+    def finish_training(self, error: bool = False, **info):
         """Called once after training is over.
 
         Args:
             error (bool): If True, there was an exception during training.
-            run_dir (Optional[str]): The path to the directory for this
-                training run.
             **info: kwargs dict for forward compatibility.
         """
         pass
