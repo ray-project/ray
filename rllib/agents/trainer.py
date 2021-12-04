@@ -787,6 +787,11 @@ class Trainer(Trainable):
 
         # Update with evaluation settings:
         user_eval_config = copy.deepcopy(self.config["evaluation_config"])
+
+        # Assert that user has not unset "in_evaluation".
+        assert "in_evaluation" not in user_eval_config or \
+               user_eval_config["in_evaluation"] is True
+
         # Merge user-provided eval config with the base config. This makes sure
         # the eval config is always complete, no matter whether we have eval
         # workers or perform evaluation on the (non-eval) local worker.
@@ -797,9 +802,6 @@ class Trainer(Trainable):
                 self.config.get("evaluation_interval"):
             logger.debug(f"Using evaluation_config: {user_eval_config}.")
 
-            # Assert that user has not unset "in_evaluation".
-            assert "in_evaluation" not in eval_config or \
-                eval_config["in_evaluation"] is True
             # Validate evaluation config.
             self.validate_config(eval_config)
 
