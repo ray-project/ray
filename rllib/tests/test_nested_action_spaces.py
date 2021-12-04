@@ -6,6 +6,7 @@ import unittest
 import ray
 from ray.rllib.agents.pg import PGTrainer, DEFAULT_CONFIG
 from ray.rllib.examples.env.random_env import RandomEnv
+from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.utils.test_utils import framework_iterator
 
 
@@ -60,10 +61,14 @@ class NestedActionSpacesTest(unittest.TestCase):
                     "config": {"action_space": action_space}
                 }
                 for flatten in [True, False]:
+                    print(f"A={action_space} flatten={flatten}")
                     config["_disable_action_flattening"] = not flatten
                     trainer = PGTrainer(config)
                     trainer.train()
                     trainer.stop()
 
-                    # Check output file.
-                    #TODO
+                    # Check actions in output file (whether properly flattened
+                    # or not).
+                    reader = JsonReader(inputs=config["output"])
+                    sample_batch = reader.next()
+                    print(sample_batch["actions"])
