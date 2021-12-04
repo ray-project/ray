@@ -49,7 +49,7 @@ DEFAULT_CONFIG = with_common_config({
     # metrics are already only reported for the lowest epsilon workers.
     "evaluation_interval": None,
     # Number of episodes to run per evaluation period.
-    "evaluation_num_episodes": 10,
+    "evaluation_duration": 10,
     # Switch to greedy actions in evaluation workers.
     "evaluation_config": {
         "explore": False,

@@ -194,7 +194,7 @@ def learn_test_multi_agent_plus_evaluate(algo):
 
         # Test rolling out n steps.
         result = os.popen(
-            "python {}/rollout.py --run={} "
+            "python {}/evaluate.py --run={} "
             "--steps=400 "
             "--out=\"{}/rollouts_n_steps.pkl\" --no-render \"{}\"".format(
                 rllib_dir, algo, tmp_dir, last_checkpoint)).read()[:-1]

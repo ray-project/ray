@@ -37,7 +37,7 @@ DEFAULT_CONFIG = with_common_config({
     # Evaluation interval
     "evaluation_interval": None,
     # Number of episodes to run per evaluation period.
-    "evaluation_num_episodes": 10,
+    "evaluation_duration": 10,
 
     # === Model ===
     # Apply a state preprocessor with spec given by the "model" config option
