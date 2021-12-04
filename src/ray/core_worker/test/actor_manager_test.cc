@@ -72,13 +72,12 @@ class MockGcsClient : public gcs::GcsClient {
 class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterface {
  public:
   MockDirectActorSubmitter() : CoreWorkerDirectActorTaskSubmitterInterface() {}
-  void AddActorQueueIfNotExists(const ActorID &actor_id, int32_t max_pending_calls,
+  void AddActorQueueIfNotExists(const ActorID &actor_id,
                                 bool execute_out_of_order = false) override {
-    AddActorQueueIfNotExists_(actor_id, max_pending_calls, execute_out_of_order);
+    AddActorQueueIfNotExists_(actor_id, execute_out_of_order);
   }
-  MOCK_METHOD3(AddActorQueueIfNotExists_,
-               void(const ActorID &actor_id, int32_t max_pending_calls,
-                    bool execute_out_of_order));
+  MOCK_METHOD2(AddActorQueueIfNotExists_,
+               void(const ActorID &actor_id, bool execute_out_of_order));
   MOCK_METHOD3(ConnectActor, void(const ActorID &actor_id, const rpc::Address &address,
                                   int64_t num_restarts));
   MOCK_METHOD4(DisconnectActor, void(const ActorID &actor_id, int64_t num_restarts,
@@ -147,8 +146,7 @@ class ActorManagerTest : public ::testing::Test {
 
     auto actor_handle = absl::make_unique<ActorHandle>(
         actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-        function.GetLanguage(), function.GetFunctionDescriptor(), "", 0, "", "", -1,
-        false);
+        function.GetLanguage(), function.GetFunctionDescriptor(), "", 0, "", "", false);
     EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
         .WillRepeatedly(testing::Return(true));
     actor_manager_->AddNewActorHandle(move(actor_handle), call_site, caller_address,
@@ -174,7 +172,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
                        FunctionDescriptorBuilder::BuildPython("", "", "", ""));
   auto actor_handle = absl::make_unique<ActorHandle>(
       actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0, "", "", -1, false);
+      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0, "", "", false);
   EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
       .WillRepeatedly(testing::Return(true));
 
@@ -187,7 +185,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
 
   auto actor_handle2 = absl::make_unique<ActorHandle>(
       actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0, "", "", -1, false);
+      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0, "", "", false);
   // Make sure the same actor id adding will return false.
   ASSERT_FALSE(actor_manager_->AddNewActorHandle(move(actor_handle2), call_site,
                                                  caller_address, false));
@@ -227,7 +225,7 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
                        FunctionDescriptorBuilder::BuildPython("", "", "", ""));
   auto actor_handle = absl::make_unique<ActorHandle>(
       actor_id, TaskID::Nil(), rpc::Address(), job_id, ObjectID::FromRandom(),
-      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0, "", "", -1, false);
+      function.GetLanguage(), function.GetFunctionDescriptor(), "", 0, "", "", false);
   EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
       .WillRepeatedly(testing::Return(true));
   ObjectID outer_object_id = ObjectID::Nil();
