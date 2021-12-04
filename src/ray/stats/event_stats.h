@@ -43,7 +43,7 @@ struct GlobalStats {
 /// A mutex wrapper around a handler stats struct.
 struct GuardedEventStats {
   // Stats for some handler.
-  EventStats stats;
+  EventStats stats GUARDED_BY(mutex);
 
   // The mutex protecting the reading and writing of these stats.
   // This mutex should be acquired with a reader lock before reading, and should be
@@ -54,7 +54,7 @@ struct GuardedEventStats {
 /// A mutex wrapper around a handler stats struct.
 struct GuardedGlobalStats {
   // Stats over all handlers.
-  GlobalStats stats;
+  GlobalStats stats GUARDED_BY(mutex);
 
   // The mutex protecting the reading and writing of these stats.
   // This mutex should be acquired with a reader lock before reading, and should be
@@ -167,4 +167,3 @@ class EventTracker {
   /// Protects access to the per-handler post stats table.
   mutable absl::Mutex mutex_;
 };
-
