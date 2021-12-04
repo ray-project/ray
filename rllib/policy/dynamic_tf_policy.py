@@ -230,18 +230,23 @@ class DynamicTFPolicy(TFPolicy):
                 self._get_input_dict_and_dummy_batch(
                     self.view_requirements, existing_inputs)
         else:
-            action_ph = ModelCatalog.get_action_placeholder(action_space)
-            prev_action_ph = {}
-            if SampleBatch.PREV_ACTIONS not in self.view_requirements:
-                prev_action_ph = {
-                    SampleBatch.PREV_ACTIONS: ModelCatalog.
-                    get_action_placeholder(action_space, "prev_action")
-                }
-            self._input_dict, self._dummy_batch = \
-                self._get_input_dict_and_dummy_batch(
-                    self.view_requirements,
-                    dict({SampleBatch.ACTIONS: action_ph},
-                         **prev_action_ph))
+            if self.config["_disable_action_flattening"] is False:
+                action_ph = ModelCatalog.get_action_placeholder(action_space)
+                prev_action_ph = {}
+                if SampleBatch.PREV_ACTIONS not in self.view_requirements:
+                    prev_action_ph = {
+                        SampleBatch.PREV_ACTIONS: ModelCatalog.
+                        get_action_placeholder(action_space, "prev_action")
+                    }
+                self._input_dict, self._dummy_batch = \
+                    self._get_input_dict_and_dummy_batch(
+                        self.view_requirements,
+                        dict({SampleBatch.ACTIONS: action_ph},
+                             **prev_action_ph))
+            else:
+                self._input_dict, self._dummy_batch = \
+                    self._get_input_dict_and_dummy_batch(
+                        self.view_requirements, {})
             # Placeholder for (sampling steps) timestep (int).
             timestep = tf1.placeholder_with_default(
                 tf.zeros((), dtype=tf.int64), (), name="timestep")
@@ -554,7 +559,7 @@ class DynamicTFPolicy(TFPolicy):
             # Skip action dist inputs placeholder (do later).
             elif view_col == SampleBatch.ACTION_DIST_INPUTS:
                 continue
-            # This is a tower, input placeholders already exist.
+            # This is a tower: Input placeholders already exist.
             elif view_col in existing_inputs:
                 input_dict[view_col] = existing_inputs[view_col]
             # All others.
@@ -563,9 +568,18 @@ class DynamicTFPolicy(TFPolicy):
                 if view_req.used_for_training:
                     # Create a +time-axis placeholder if the shift is not an
                     # int (range or list of ints).
-                    flatten = view_col not in [
-                        SampleBatch.OBS, SampleBatch.NEXT_OBS] or \
-                              not self.config["_disable_preprocessor_api"]
+                    # Do not flatten actions if action flattening disabled.
+                    if self.config["_disable_action_flattening"] and \
+                            view_col in [SampleBatch.ACTIONS,
+                                         SampleBatch.PREV_ACTIONS]:
+                        flatten = False
+                    # Do not flatten observations if no preprocessor API used.
+                    elif view_col in [SampleBatch.OBS, SampleBatch.NEXT_OBS] \
+                            and self.config["_disable_preprocessor_api"]:
+                        flatten = False
+                    # Flatten everything else.
+                    else:
+                        flatten = True
                     input_dict[view_col] = get_placeholder(
                         space=view_req.space,
                         name=view_col,

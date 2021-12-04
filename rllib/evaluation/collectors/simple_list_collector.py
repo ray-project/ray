@@ -160,12 +160,12 @@ class _AgentCollector:
         for k, v in values.items():
             if k not in self.buffers:
                 self._build_buffers(single_row=values)
-            # Do not flatten infos, state_out_ and actions.
+            # Do not flatten infos, state_out_ and (if configured) actions.
             # Infos/state-outs may be structs that change from timestep to
-            # timestep. Actions - on the other hand - are already flattened
-            # in the sampler.
-            if k in [SampleBatch.INFOS, SampleBatch.ACTIONS
-                     ] or k.startswith("state_out_"):
+            # timestep.
+            if k == SampleBatch.INFOS or k.startswith("state_out_") or \
+                    (k == SampleBatch.ACTIONS and
+                     not self.policy.config["_disable_action_flattening"]):
                 self.buffers[k][0].append(v)
             # Flatten all other columns.
             else:
