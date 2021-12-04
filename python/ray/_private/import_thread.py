@@ -89,7 +89,7 @@ class ImportThread:
     def _do_importing(self):
         while True:
             export_key = ray._private.function_manager.make_export_key(
-                self.num_imported + 1)
+                self.num_imported + 1, self._worker.current_job_id.binary())
             key = self.gcs_client.internal_kv_get(
                 export_key, ray_constants.KV_NAMESPACE_FUNCTION_TABLE)
             if key is not None:
@@ -172,10 +172,6 @@ class ImportThread:
             key, ["job_id", "function"])
 
         if self.worker.mode == ray.SCRIPT_MODE:
-            return
-
-        if ray_constants.ISOLATE_EXPORTS and \
-                job_id != self.worker.current_job_id.binary():
             return
 
         try:

@@ -37,9 +37,16 @@ FunctionExecutionInfo = namedtuple("FunctionExecutionInfo",
 logger = logging.getLogger(__name__)
 
 
-def make_export_key(pos):
+def make_exports_prefix(job_id: bytes) -> bytes:
+    if ray_constants.ISOLATE_EXPORTS:
+        return b"Exports:" + job_id
+    else:
+        return b"Exports"
+
+
+def make_export_key(pos: int, job_id: bytes) -> bytes:
     # big-endian for ordering in binary
-    return b"Exports:" + pos.to_bytes(8, "big")
+    return make_exports_prefix(job_id) + b":" + pos.to_bytes(8, "big")
 
 
 class FunctionActorManager:
@@ -150,16 +157,23 @@ class FunctionActorManager:
                                      self._worker.import_thread.num_imported)
             while True:
                 self._num_exported += 1
-                holder = make_export_key(self._num_exported)
+                holder = make_export_key(self._num_exported,
+                                         self._worker.current_job_id.binary())
                 # This step is atomic since internal kv is a single thread
                 # atomic db.
                 if self._worker.gcs_client.internal_kv_put(
                         holder, key, False, KV_NAMESPACE_FUNCTION_TABLE) > 0:
                     break
+<<<<<<< Updated upstream
         if self._worker.gcs_pubsub_enabled:
             self._worker.gcs_publisher.publish_function_key(key)
         else:
             self._worker.redis_client.lpush("Exports", "a")
+=======
+        # TODO(yic) Use gcs pubsub
+        self._worker.redis_client.lpush(
+            make_exports_prefix(self._worker.current_job_id.binary()), "a")
+>>>>>>> Stashed changes
 
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
@@ -217,14 +231,6 @@ class FunctionActorManager:
         ]
         (job_id_str, function_id_str, function_name, serialized_function,
          module, max_calls) = (vals.get(field) for field in fields)
-
-        if ray_constants.ISOLATE_EXPORTS and \
-                job_id_str != self._worker.current_job_id.binary():
-            # A worker only executes tasks from the assigned job.
-            # TODO(jjyao): If fetching unrelated remote functions
-            # becomes a perf issue, we can also consider having export
-            # queue per job.
-            return
 
         function_id = ray.FunctionID(function_id_str)
         job_id = ray.JobID(job_id_str)
