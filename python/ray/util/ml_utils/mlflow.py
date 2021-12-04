@@ -29,7 +29,7 @@ class MLflowLoggerUtil:
             experiment_name: Optional[str] = None,
             tracking_token=None,
             create_experiment_if_not_exists: bool = True,
-    ) -> bool:
+    ):
         """
         Sets up MLflow.
 
@@ -78,7 +78,7 @@ class MLflowLoggerUtil:
                 logger.debug(f"Experiment with provided id {experiment_id} "
                              "exists. Setting that as the experiment.")
                 self.experiment_id = experiment_id
-                return True
+                return
             except MlflowException:
                 pass
 
@@ -91,7 +91,7 @@ class MLflowLoggerUtil:
                          "exists. Setting that as the experiment.")
             self.experiment_id = self._mlflow.get_experiment_by_name(
                 experiment_name).experiment_id
-            return True
+            return
 
         # An experiment with the provided id or name does not exist.
         # Create a new experiment if applicable.
@@ -100,9 +100,19 @@ class MLflowLoggerUtil:
                          f"experiment with name: {experiment_name}")
             self.experiment_id = self._mlflow.create_experiment(
                 name=experiment_name)
-            return True
+            return
 
-        return False
+        if create_experiment_if_not_exists:
+            raise ValueError(f"Experiment with the provided experiment_id: "
+                             f"{experiment_id} does not exist and no "
+                             f"experiment_name provided. At least one of "
+                             f"these has to be provided.")
+        else:
+            raise ValueError(f"Experiment with the provided experiment_id: "
+                             f"{experiment_id} or experiment_name: "
+                             f"{experiment_name} does not exist. Please "
+                             f"create an MLflow experiment and provide "
+                             f"either its id or name.")
 
     def _parse_dict(self, dict_to_log: Dict) -> Dict:
         """Parses provided dict to convert all values to float.

@@ -240,18 +240,12 @@ class MLflowLoggerCallback(TrainingSingleWorkerLoggingCallback):
         tracking_uri = self.tracking_uri or str(self.logdir)
         registry_uri = self.registry_uri or str(self.logdir)
 
-        success = self.mlflow_util.setup_mlflow(
+        self.mlflow_util.setup_mlflow(
             tracking_uri=tracking_uri,
             registry_uri=registry_uri,
             experiment_id=self.experiment_id,
             experiment_name=self.experiment_name,
             create_experiment_if_not_exists=True)
-
-        if not success:
-            raise ValueError("No experiment_name or experiment_id passed in, "
-                             "Please "
-                             "set one of these to use the "
-                             "MLflowLoggerCallback.")
 
         self.mlflow_util.start_run(tags=self.tags, set_active=True)
         self.mlflow_util.log_params(params_to_log=config)

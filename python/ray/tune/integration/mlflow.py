@@ -88,18 +88,10 @@ class MLflowLoggerCallback(LoggerCallback):
 
     def setup(self, *args, **kwargs):
         # Setup the mlflow logging util.
-        success = self.mlflow_util.setup_mlflow(
+        self.mlflow_util.setup_mlflow(
             tracking_uri=self.tracking_uri,
             registry_uri=self.registry_uri,
             experiment_name=self.experiment_name)
-
-        if not success:
-            raise ValueError("No experiment_name passed, "
-                             "MLFLOW_EXPERIMENT_NAME env var is not "
-                             "set, and MLFLOW_EXPERIMENT_ID either "
-                             "is not set or does not exist. Please "
-                             "set one of these to use the "
-                             "MLflowLoggerCallback.")
 
         if self.tags is None:
             # Create empty dictionary for tags if not given explicitly
@@ -306,18 +298,12 @@ class MLflowTrainableMixin:
         # Otherwise there might be race conditions when each worker tries to
         # create the same experiment.
         # For the mixin, the experiment must be created beforehand.
-        success = self.mlflow_util.setup_mlflow(
+        self.mlflow_util.setup_mlflow(
             tracking_uri=tracking_uri,
             experiment_id=experiment_id,
             experiment_name=experiment_name,
             tracking_token=tracking_token,
             create_experiment_if_not_exists=False)
-        if not success:
-            raise ValueError("No experiment with the given "
-                             "name: {} or id: {} currently exists. Make "
-                             "sure to first start the MLflow experiment "
-                             "before calling tune.run.".format(
-                                 experiment_name, experiment_id))
 
         self.mlflow_util.start_run(set_active=True)
 
