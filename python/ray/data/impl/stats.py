@@ -36,6 +36,7 @@ class _DatasetStatsBuilder:
         stats.time_total_s = time.monotonic() - self.start_time
         return stats
 
+
 @ray.remote(num_cpus=0)
 class _StatsActor:
     """Actor holding stats for blocks created by LazyBlockList.
