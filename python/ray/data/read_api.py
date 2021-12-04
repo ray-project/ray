@@ -163,7 +163,7 @@ def read_datasource(datasource: Datasource[T],
 
     read_tasks = datasource.prepare_read(parallelism, **read_args)
     context = DatasetContext.get_current()
-    stats_actor = StatsActor.remote()
+    stats_actor = _StatsActor.remote()
 
     def remote_read(i: int, task: ReadTask) -> MaybeBlockPartition:
         DatasetContext._set_current(context)
