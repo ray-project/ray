@@ -252,7 +252,7 @@ class CondaManager:
     def delete_uri(self,
                    uri: str,
                    logger: Optional[logging.Logger] = default_logger) -> bool:
-        logger.error(f"Got request to delete URI {uri}")
+        logger.debug(f"Got request to delete URI {uri}")
         protocol, hash = parse_uri(uri)
         if protocol != Protocol.CONDA:
             raise ValueError(
