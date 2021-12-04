@@ -295,8 +295,7 @@ public class LocalModeTaskSubmitter implements TaskSubmitter {
     ActorCreationTaskSpec.Builder actorCreationTaskSpecBuilder =
         ActorCreationTaskSpec.newBuilder()
             .setActorId(ByteString.copyFrom(actorId.toByteBuffer()))
-            .setMaxConcurrency(options.maxConcurrency)
-            .setMaxPendingCalls(options.maxPendingCalls);
+            .setMaxConcurrency(options.maxConcurrency);
     appendConcurrencyGroupsBuilder(actorCreationTaskSpecBuilder, options);
     TaskSpec taskSpec =
         getTaskSpecBuilder(TaskType.ACTOR_CREATION_TASK, functionDescriptor, args)

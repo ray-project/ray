@@ -150,7 +150,6 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   uint64_t max_concurrency = 1;
   auto placement_options = std::make_pair(PlacementGroupID::Nil(), -1);
   std::vector<ConcurrencyGroup> concurrency_groups;
-  int32_t max_pending_calls = -1;
 
   if (actorCreationOptions) {
     auto java_name = (jstring)env->GetObjectField(actorCreationOptions,
@@ -215,8 +214,6 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
           return ray::ConcurrencyGroup{concurrency_group_name, max_concurrency,
                                        native_func_descriptors};
         });
-    max_pending_calls = static_cast<int32_t>(env->GetIntField(
-        actorCreationOptions, java_actor_creation_options_max_pending_calls));
   }
 
   // TODO(suquark): support passing namespace for Java. Currently
@@ -236,9 +233,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
       placement_options,
       /*placement_group_capture_child_tasks=*/true,
       /*serialized_runtime_env=*/"{}",
-      concurrency_groups,
-      /*execute_out_of_order*/ false,
-      max_pending_calls};
+      concurrency_groups};
   return actor_creation_options;
 }
 
@@ -353,21 +348,8 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
 
   auto return_refs = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
       actor_id, ray_function, task_args, task_options);
-  if (!return_refs.has_value()) {
-    std::stringstream ss;
-    ss << "The task " << ray_function.GetFunctionDescriptor()->ToString()
-       << " could not be submitted to " << actor_id;
-    ss << " because more than "
-       << CoreWorkerProcess::GetCoreWorker().GetActorHandle(actor_id)->MaxPendingCalls();
-    ss << " tasks are queued on the actor. This limit can be adjusted with the "
-          "`setMaxPendingCalls` actor option.";
-    env->ThrowNew(java_ray_pending_calls_limit_exceeded_exception_class,
-                  ss.str().c_str());
-    return nullptr;
-  }
-
   std::vector<ObjectID> return_ids;
-  for (const auto &ref : return_refs.value()) {
+  for (const auto &ref : return_refs) {
     return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
   }
 
