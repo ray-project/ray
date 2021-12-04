@@ -75,6 +75,10 @@ class PlacementGroupSchedulingStrategy(SchedulingStrategy):
                  placement_group: PlacementGroup,
                  placement_group_bundle_index: int = -1,
                  placement_group_capture_child_tasks: Optional[bool] = None):
+        if placement_group is None:
+            raise ValueError("placement_group needs to be an instance "
+                             "of PlacementGroup")
+
         self.placement_group = placement_group
         self.placement_group_bundle_index = placement_group_bundle_index
         self.placement_group_capture_child_tasks = \
@@ -95,10 +99,9 @@ class PlacementGroupSchedulingStrategy(SchedulingStrategy):
     def from_dict(ss_dict: dict) -> "PlacementGroupSchedulingStrategy":
         assert ss_dict[
             "__class__"] == PlacementGroupSchedulingStrategy.__name__
-        placement_group = ss_dict["placement_group"]
         return PlacementGroupSchedulingStrategy(
-            placement_group=PlacementGroup.from_dict(placement_group)
-            if isinstance(placement_group, dict) else placement_group,
+            placement_group=PlacementGroup.from_dict(
+                ss_dict["placement_group"]),
             placement_group_bundle_index=ss_dict[
                 "placement_group_bundle_index"],
             placement_group_capture_child_tasks=ss_dict[

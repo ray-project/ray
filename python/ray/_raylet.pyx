@@ -1433,6 +1433,7 @@ cdef class CoreWorker:
         cdef:
             CPlacementGroupSchedulingStrategy \
                 *c_placement_group_scheduling_strategy
+        assert python_scheduling_strategy is not None
         if python_scheduling_strategy == "DEFAULT" or \
                 isinstance(python_scheduling_strategy,
                            DefaultSchedulingStrategy):

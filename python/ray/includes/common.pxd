@@ -150,7 +150,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CPlacementStrategy "ray::core::PlacementStrategy":
         pass
-    cdef cppclass CDefaultSchedulingStrategy "ray::rpc::DefaultGroupSchedulingStrategy":  # noqa: E501
+    cdef cppclass CDefaultSchedulingStrategy "ray::rpc::DefaultSchedulingStrategy":  # noqa: E501
         CDefaultSchedulingStrategy()
     cdef cppclass CPlacementGroupSchedulingStrategy "ray::rpc::PlacementGroupSchedulingStrategy":  # noqa: E501
         CPlacementGroupSchedulingStrategy()

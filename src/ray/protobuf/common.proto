@@ -58,8 +58,7 @@ message PlacementGroupSchedulingStrategy {
   bool placement_group_capture_child_tasks = 3;
 }
 
-message DefaultSchedulingStrategy {
-}
+message DefaultSchedulingStrategy {}
 
 message SchedulingStrategy {
   oneof scheduling_strategy {

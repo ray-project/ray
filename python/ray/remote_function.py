@@ -238,7 +238,7 @@ class RemoteFunction:
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
                 name="",
-                scheduling_strategy=None):
+                scheduling_strategy: SchedulingStrategyT = None):
         """Submit the remote function for execution."""
 
         if client_mode_should_convert(auto_init=True):

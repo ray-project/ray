@@ -489,7 +489,7 @@ class ActorClass:
                 placement_group_bundle_index=-1,
                 placement_group_capture_child_tasks=None,
                 runtime_env=None,
-                scheduling_strategy=None):
+                scheduling_strategy: SchedulingStrategyT = None):
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -781,6 +781,10 @@ class ActorClass:
         if scheduling_strategy is None or \
                 isinstance(scheduling_strategy,
                            PlacementGroupSchedulingStrategy):
+            # TODO(jjyao) Clean this up once the
+            # placement_group option is removed.
+            # We should also consider pushing this logic down to c++
+            # so that it can be reused by all languages.
             if isinstance(scheduling_strategy,
                           PlacementGroupSchedulingStrategy):
                 placement_group = scheduling_strategy.placement_group
