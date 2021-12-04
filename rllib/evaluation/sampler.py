@@ -967,7 +967,8 @@ def _process_observations(
             # Horizon hit and we have a soft horizon (no hard env reset).
             if hit_horizon and soft_horizon:
                 episode.soft_reset()
-                resetted_obs: Dict[AgentID, EnvObsType] = all_agents_obs
+                resetted_obs: Dict[EnvID, Dict[AgentID, EnvObsType]] = \
+                    {env_id: all_agents_obs}
             else:
                 del active_episodes[env_id]
                 resetted_obs: Dict[EnvID, Dict[AgentID, EnvObsType]] = \
