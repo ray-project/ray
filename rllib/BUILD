@@ -1432,7 +1432,7 @@ py_test(
 py_test(
     name = "tests/test_gpus",
     tags = ["team:ml", "tests_dir", "tests_dir_G"],
-    size = "enormous",
+    size = "large",
     srcs = ["tests/test_gpus.py"]
 )
 
