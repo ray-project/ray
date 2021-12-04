@@ -164,16 +164,11 @@ class FunctionActorManager:
                 if self._worker.gcs_client.internal_kv_put(
                         holder, key, False, KV_NAMESPACE_FUNCTION_TABLE) > 0:
                     break
-<<<<<<< Updated upstream
         if self._worker.gcs_pubsub_enabled:
             self._worker.gcs_publisher.publish_function_key(key)
         else:
-            self._worker.redis_client.lpush("Exports", "a")
-=======
-        # TODO(yic) Use gcs pubsub
-        self._worker.redis_client.lpush(
-            make_exports_prefix(self._worker.current_job_id.binary()), "a")
->>>>>>> Stashed changes
+            self._worker.redis_client.lpush(
+                make_exports_prefix(self._worker.current_job_id.binary()), "a")
 
     def export(self, remote_function):
         """Pickle a remote function and export it to redis.
