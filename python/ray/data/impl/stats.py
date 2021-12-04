@@ -18,6 +18,12 @@ def fmt(seconds: float) -> str:
 
 
 class _DatasetStatsBuilder:
+    """Helper class for building dataset stats.
+
+    When this class is created, we record the start time. When build() is
+    called with the final blocks of the new dataset, the time delta is
+    saved as part of the stats."""
+
     def __init__(self, stage_name: str, parent: "DatasetStats"):
         self.stage_name = stage_name
         self.parent = parent
@@ -30,13 +36,47 @@ class _DatasetStatsBuilder:
         stats.time_total_s = time.monotonic() - self.start_time
         return stats
 
+@ray.remote(num_cpus=0)
+class _StatsActor:
+    """Actor holding stats for blocks created by LazyBlockList.
+
+    TODO(ekl) we should consider refactoring LazyBlockList so stats can be
+    extracted without using an out-of-band actor."""
+
+    def __init__(self):
+        self.start_time = time.time()
+        self.metadata = {}
+
+    def add(self, i, metadata):
+        self.metadata[i] = metadata
+        self.last_time = time.time()
+
+    def get(self):
+        return self.metadata, self.last_time - self.start_time
+
 
 class DatasetStats:
+    """Holds the execution times for a given Dataset.
+
+    This object contains a reference to the parent Dataset's stats as well,
+    but not the Dataset object itself, to allow its blocks to be dropped from
+    memory."""
+
     def __init__(self,
                  *,
                  stages: Dict[str, List[BlockMetadata]],
                  parent: Optional["DatasetStats"],
                  stats_actor=None):
+        """Create dataset stats.
+
+        Args:
+            stages: Dict of stages used to create this Dataset from the
+                previous one. Typically one entry, e.g., {"map": [...]}.
+            parent: Reference to parent Dataset's stats.
+            stats_actor: Reference to actor where stats should be pulled
+                from. This is only used for Datasets using LazyBlockList.
+        """
+
         self.stages: Dict[str, List[BlockMetadata]] = stages
         self.parent: Optional["DatasetStats"] = parent
         self.number: int = 0 if not parent else parent.number + 1
@@ -51,16 +91,21 @@ class DatasetStats:
         self.iter_total_s: float = 0
 
     def child_builder(self, name: str) -> _DatasetStatsBuilder:
+        """Start recording stats for an op of the given name (e.g., map)."""
         return _DatasetStatsBuilder(name, self)
 
     def child_TODO(self, name: str) -> "DatasetStats":
+        """Placeholder for child ops not yet instrumented."""
         return DatasetStats(stages={name + "_TODO": []}, parent=self)
 
     @staticmethod
     def TODO():
+        """Placeholder for ops not yet instrumented."""
         return DatasetStats(stages={"TODO": []}, parent=None)
 
     def summary_string(self, already_printed: Set[str] = None) -> str:
+        """Return a human-readable summary of this Dataset's stats."""
+
         if self.stats_actor:
             # XXX this is a super hack, clean it up
             stats_map, self.time_total_s = ray.get(
@@ -78,11 +123,11 @@ class DatasetStats:
             else:
                 if already_printed is not None:
                     already_printed.add(self.dataset_uuid)
-                out += self.summarize_blocks(metadata)
-        out += self.summarize_iter()
+                out += self._summarize_blocks(metadata)
+        out += self._summarize_iter()
         return out
 
-    def summarize_iter(self) -> str:
+    def _summarize_iter(self) -> str:
         out = ""
         if self.iter_total_s or self.iter_wait_s or self.iter_process_s:
             out += "\nDataset iterator time breakdown:\n"
@@ -92,7 +137,7 @@ class DatasetStats:
             out += "* Total time: {}\n".format(fmt(self.iter_total_s))
         return out
 
-    def summarize_blocks(self, blocks: List[BlockMetadata]) -> str:
+    def _summarize_blocks(self, blocks: List[BlockMetadata]) -> str:
         exec_stats = [m.exec_stats for m in blocks if m.exec_stats is not None]
         out = "{}/{} blocks executed in {}s\n".format(
             len(exec_stats), len(blocks), round(self.time_total_s, 2))
@@ -146,7 +191,14 @@ class DatasetStats:
 
 
 class DatasetPipelineStats:
+    """Holds the execution times for a pipeline of Datasets."""
+
     def __init__(self, *, max_history: int = 3):
+        """Create a dataset pipeline stats object.
+
+        Args:
+            max_history: The max number of dataset window stats to track.
+        """
         self.max_history: int = max_history
         self.history_buffer: List[Tuple[int, DatasetStats]] = []
         self.count = 0
@@ -158,12 +210,14 @@ class DatasetPipelineStats:
         self.iter_total_s: float = 0
 
     def add(self, stats: DatasetStats) -> None:
+        """Called to add stats for a newly computed window."""
         self.history_buffer.append((self.count, stats))
         if len(self.history_buffer) > self.max_history:
             self.history_buffer.pop(0)
         self.count += 1
 
     def summary_string(self) -> str:
+        """Return a human-readable summary of this pipeline's stats."""
         already_printed = set()
         out = ""
         for i, stats in self.history_buffer:

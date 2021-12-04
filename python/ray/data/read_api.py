@@ -28,7 +28,7 @@ from ray.data.impl.arrow_block import ArrowRow, \
 from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList
 from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.stats import DatasetStats
+from ray.data.impl.stats import DatasetStats, _StatsActor
 from ray.data.impl.util import _get_spread_resources_iter
 
 T = TypeVar("T")
@@ -163,20 +163,6 @@ def read_datasource(datasource: Datasource[T],
 
     read_tasks = datasource.prepare_read(parallelism, **read_args)
     context = DatasetContext.get_current()
-
-    @ray.remote(num_cpus=0)
-    class StatsActor:
-        def __init__(self):
-            self.start_time = time.time()
-            self.metadata = {}
-
-        def add(self, i, metadata):
-            self.metadata[i] = metadata
-            self.last_time = time.time()
-
-        def get(self):
-            return self.metadata, self.last_time - self.start_time
-
     stats_actor = StatsActor.remote()
 
     def remote_read(i: int, task: ReadTask) -> MaybeBlockPartition:
