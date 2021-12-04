@@ -209,7 +209,7 @@ class GcsServer {
   /// Placement Group info handler and service.
   std::unique_ptr<rpc::PlacementGroupInfoGrpcService> placement_group_info_service_;
   /// Global KV storage handler and service.
-  std::unique_ptr<rpc::InternalKVHandler> kv_manager_;
+  std::unique_ptr<GcsInternalKVManager> kv_manager_;
   std::unique_ptr<rpc::InternalKVGrpcService> kv_service_;
   /// GCS PubSub handler and service.
   std::unique_ptr<InternalPubSubHandler> pubsub_handler_;

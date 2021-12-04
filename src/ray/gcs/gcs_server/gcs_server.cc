@@ -401,7 +401,16 @@ void GcsServer::InitStatsHandler() {
 }
 
 void GcsServer::InitKVManager() {
-  kv_manager_ = std::make_unique<GcsRedisInternalKVManager>(redis_client_);
+  std::unique_ptr<InternalKVInterface> instance;
+  if(RayConfig::instance().gcs_storage() == "redis") {
+    instance = std::make_unique<RedisInternalKV>(redis_client_.get());
+  } else if(RayConfig::instance().gcs_storage() == "memory") {
+    instance = std::make_unique<MemoryInternalKV>(&main_service_);
+  } else {
+    RAY_LOG(FATAL) << "Unsupported gcs storage: " << RayConfig::instance().gcs_storage();
+  }
+
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_);
@@ -438,13 +447,10 @@ void GcsServer::InitRuntimeEnvManager() {
             cb(true);
           } else {
             auto uri = plugin_uri.substr(protocol_pos);
-            this->kv_manager_->InternalKVDelAsync(uri, [cb](int deleted_num) {
-              if (deleted_num == 0) {
-                cb(false);
-              } else {
-                cb(true);
-              }
-            });
+            this->kv_manager_->GetInstance().Del(
+                uri, [cb = std::move(cb)](bool deleted) {
+                       cb(false);
+                     });
           }
         }
       });
