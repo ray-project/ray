@@ -34,7 +34,26 @@ class SchedulingStrategy(object):
         Return:
             A scheduling strategy made from the data in the input dict.
         """
-        return PlacementGroupSchedulingStrategy.from_dict(ss_dict)
+        if ss_dict["__class__"] == PlacementGroupSchedulingStrategy.__name__:
+            return PlacementGroupSchedulingStrategy.from_dict(ss_dict)
+        else:
+            return DefaultSchedulingStrategy.from_dict(ss_dict)
+
+
+@PublicAPI(stability="beta")
+class DefaultSchedulingStrategy(SchedulingStrategy):
+    """The default hybrid scheduling strategy.
+    """
+
+    def to_dict(self) -> dict:
+        return {
+            "__class__": self.__class__.__name__,
+        }
+
+    @staticmethod
+    def from_dict(ss_dict: dict) -> "DefaultSchedulingStrategy":
+        assert ss_dict["__class__"] == DefaultSchedulingStrategy.__name__
+        return DefaultSchedulingStrategy()
 
 
 @PublicAPI(stability="beta")
@@ -53,7 +72,7 @@ class PlacementGroupSchedulingStrategy(SchedulingStrategy):
     """
 
     def __init__(self,
-                 placement_group: Optional[PlacementGroup],
+                 placement_group: PlacementGroup,
                  placement_group_bundle_index: int = -1,
                  placement_group_capture_child_tasks: Optional[bool] = None):
         self.placement_group = placement_group
@@ -87,4 +106,6 @@ class PlacementGroupSchedulingStrategy(SchedulingStrategy):
         )
 
 
-SchedulingStrategyT = Union[None, PlacementGroupSchedulingStrategy]
+SchedulingStrategyT = Union[None, str,  # Literal["DEFAULT"]
+                            DefaultSchedulingStrategy,
+                            PlacementGroupSchedulingStrategy]

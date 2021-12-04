@@ -10,6 +10,7 @@ import ray.worker
 from ray.util.annotations import PublicAPI
 from ray.util.placement_group import configure_placement_group_based_on_context
 from ray.util.scheduling_strategies import (
+    DefaultSchedulingStrategy,
     PlacementGroupSchedulingStrategy,
     SchedulingStrategyT,
 )
@@ -773,7 +774,7 @@ class ActorClass:
         scheduling_strategy = scheduling_strategy or meta.scheduling_strategy
         if (placement_group != "default") and (scheduling_strategy is
                                                not None):
-            raise ValueError("Placement group should be specified through "
+            raise ValueError("Placement groups should be specified via the "
                              "scheduling_strategy option. "
                              "The placement_group option is deprecated.")
 
@@ -803,7 +804,7 @@ class ActorClass:
                     placement_group, placement_group_bundle_index,
                     placement_group_capture_child_tasks)
             else:
-                scheduling_strategy = None
+                scheduling_strategy = DefaultSchedulingStrategy()
 
         if runtime_env:
             if isinstance(runtime_env, str):

@@ -45,7 +45,9 @@ struct Mocker {
                               Language::PYTHON, function_descriptor, job_id,
                               TaskID::Nil(), 0, TaskID::Nil(), owner_address, 1,
                               required_resources, required_placement_resources, "", 0);
-    builder.SetActorCreationTaskSpec(actor_id, {}, max_restarts,
+    rpc::SchedulingStrategy scheduling_strategy;
+    scheduling_strategy.mutable_default_scheduling_strategy();
+    builder.SetActorCreationTaskSpec(actor_id, {}, scheduling_strategy, max_restarts,
                                      /*max_task_retries=*/0, {}, 1, detached, name);
     return builder.Build();
   }

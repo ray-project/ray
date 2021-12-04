@@ -115,6 +115,7 @@ from ray.exceptions import (
 )
 from ray import external_storage
 from ray.util.scheduling_strategies import (
+    DefaultSchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
 import ray.ray_constants as ray_constants
@@ -1432,8 +1433,10 @@ cdef class CoreWorker:
         cdef:
             CPlacementGroupSchedulingStrategy \
                 *c_placement_group_scheduling_strategy
-        if python_scheduling_strategy is None:
-            c_scheduling_strategy[0].clear_scheduling_strategy()
+        if python_scheduling_strategy == "DEFAULT" or \
+                isinstance(python_scheduling_strategy,
+                           DefaultSchedulingStrategy):
+            c_scheduling_strategy[0].mutable_default_scheduling_strategy()
         elif isinstance(python_scheduling_strategy,
                         PlacementGroupSchedulingStrategy):
             c_placement_group_scheduling_strategy = \
@@ -1453,7 +1456,9 @@ cdef class CoreWorker:
             raise ValueError(
                 f"Invalid scheduling_strategy value "
                 f"{python_scheduling_strategy}. "
-                f"Valid values are [None | PlacementGroupSchedulingStrategy]")
+                f"Valid values are [\"DEFAULT\""
+                f" | DefaultSchedulingStrategy"
+                f" | PlacementGroupSchedulingStrategy]")
 
     def submit_task(self,
                     Language language,

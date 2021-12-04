@@ -81,16 +81,17 @@ struct TaskOptions {
 /// Options for actor creation tasks.
 struct ActorCreationOptions {
   ActorCreationOptions() {}
-  ActorCreationOptions(
-      int64_t max_restarts, int64_t max_task_retries, int max_concurrency,
-      const std::unordered_map<std::string, double> &resources,
-      const std::unordered_map<std::string, double> &placement_resources,
-      const std::vector<std::string> &dynamic_worker_options, bool is_detached,
-      std::string &name, std::string &ray_namespace, bool is_asyncio,
-      const rpc::SchedulingStrategy &scheduling_strategy = rpc::SchedulingStrategy(),
-      const std::string &serialized_runtime_env = "{}",
-      const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      bool execute_out_of_order = false)
+  ActorCreationOptions(int64_t max_restarts, int64_t max_task_retries,
+                       int max_concurrency,
+                       const std::unordered_map<std::string, double> &resources,
+                       const std::unordered_map<std::string, double> &placement_resources,
+                       const std::vector<std::string> &dynamic_worker_options,
+                       bool is_detached, std::string &name, std::string &ray_namespace,
+                       bool is_asyncio,
+                       const rpc::SchedulingStrategy &scheduling_strategy,
+                       const std::string &serialized_runtime_env = "{}",
+                       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
+                       bool execute_out_of_order = false)
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
