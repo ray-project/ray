@@ -53,6 +53,7 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
   } else {
     BundleID bundle_id = GetBundleID(call_options);
     rpc::SchedulingStrategy scheduling_strategy;
+    scheduling_strategy.mutable_default_scheduling_strategy();
     if (!bundle_id.first.IsNil()) {
       auto placement_group_scheduling_strategy =
           scheduling_strategy.mutable_placement_group_scheduling_strategy();
@@ -85,6 +86,7 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
   std::string ray_namespace = "";
   BundleID bundle_id = GetBundleID(create_options);
   rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
   if (!bundle_id.first.IsNil()) {
     auto placement_group_scheduling_strategy =
         scheduling_strategy.mutable_placement_group_scheduling_strategy();

@@ -220,6 +220,7 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
   // there is no use case.
   std::string ray_namespace = "";
   rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
   if (!placement_options.first.IsNil()) {
     auto placement_group_scheduling_strategy =
         scheduling_strategy.mutable_placement_group_scheduling_strategy();
@@ -306,6 +307,7 @@ JNIEXPORT jobject JNICALL Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSub
   auto placement_group_options = ToPlacementGroupOptions(env, callOptions);
 
   rpc::SchedulingStrategy scheduling_strategy;
+  scheduling_strategy.mutable_default_scheduling_strategy();
   if (!placement_group_options.first.IsNil()) {
     auto placement_group_scheduling_strategy =
         scheduling_strategy.mutable_placement_group_scheduling_strategy();
