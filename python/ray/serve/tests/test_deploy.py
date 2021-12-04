@@ -9,6 +9,7 @@ import requests
 
 import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.exceptions import RayTaskError
 from ray import serve
 from ray.serve.exceptions import RayServeException
 from ray.serve.utils import get_random_letters
@@ -1107,6 +1108,31 @@ def test_deploy_empty_bundle(serve_instance):
 
     # This should succesfully terminate within the provided time-frame.
     D.deploy()
+
+
+def test_deployment_error_handling(serve_instance):
+    @serve.deployment
+    def f():
+        pass
+
+    with pytest.raises(Exception) as exception_info:
+        # This is an invalid configuration since dynamic upload of working
+        # directories is not supported. The error this causes in the controller
+        # code should be caught and reported back to the `deploy` caller.
+
+        f.options(ray_actor_options={
+            "runtime_env": {
+                "working_dir": "."
+            }
+        }).deploy()
+
+    assert isinstance(exception_info.value, RayTaskError)
+
+    # This is the file where deployment exceptions should
+    # be caught. If this frame is not present in the stacktrace,
+    # the stacktrace is incomplete.
+    assert os.sep.join(("ray", "serve",
+                        "deployment_state.py")) in str(exception_info.value)
 
 
 if __name__ == "__main__":
