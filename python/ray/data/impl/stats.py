@@ -41,7 +41,7 @@ class DatasetStats:
         self.parent: Optional["DatasetStats"] = parent
         self.number: int = 0 if not parent else parent.number + 1
         self.dataset_uuid: str = None
-        self.time_total_s: float = -1
+        self.time_total_s: float = 0
         self.stats_actor = stats_actor
 
         # Iteration stats, filled out if the user iterates over the dataset.

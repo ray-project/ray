@@ -52,6 +52,7 @@ class BlockExecStats:
     # TODO(ekl) fill in all uses of BlockExecStats.TODO.
     TODO = None
 
+    # TODO(ekl) add a builder to fill these out in a simpler way.
     def __init__(self):
         self.wall_time_s: Optional[float] = None
         self.cpu_time_s: Optional[float] = None

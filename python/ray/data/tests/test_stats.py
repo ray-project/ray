@@ -8,9 +8,11 @@ from ray.tests.conftest import *  # noqa
 def canonicalize(stats: str) -> str:
     # Time expressions.
     s1 = re.sub("[0-9\.]+(ms|us|s)", "T", stats)
+    # Handle zero values specially so we can check for missing values.
+    s2 = re.sub(" [0]+(\.[0]+)?", " Z", s1)
     # Other numerics.
-    s2 = re.sub("[0-9]+(\.[0-9]+)?", "N", s1)
-    return s2
+    s3 = re.sub("[0-9]+(\.[0-9]+)?", "N", s2)
+    return s3
 
 
 def test_dataset_stats_basic(ray_start_regular_shared):
@@ -20,7 +22,7 @@ def test_dataset_stats_basic(ray_start_regular_shared):
     for batch in ds.iter_batches():
         pass
     stats = canonicalize(ds.stats())
-    assert stats == """Stage N read: N/N blocks executed in T
+    assert stats == """Stage Z read: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Output num rows: N min, N max, N mean, N total
@@ -58,7 +60,7 @@ def test_dataset_pipeline_stats_basic(ray_start_regular_shared):
         pass
     stats = canonicalize(pipe.stats())
     assert stats == """== Pipeline Window N ==
-Stage N read: N/N blocks executed in T
+Stage Z read: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Output num rows: N min, N max, N mean, N total
@@ -86,7 +88,7 @@ Dataset iterator time breakdown:
 * Total time: T
 
 == Pipeline Window N ==
-Stage N read: [execution cached]
+Stage Z read: [execution cached]
 Stage N map_batches: [execution cached]
 Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
@@ -102,7 +104,7 @@ Dataset iterator time breakdown:
 * Total time: T
 
 == Pipeline Window N ==
-Stage N read: [execution cached]
+Stage Z read: [execution cached]
 Stage N map_batches: [execution cached]
 Stage N map: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
@@ -137,8 +139,8 @@ def test_dataset_pipeline_split_stats_basic(ray_start_regular_shared):
 
     s0, s1 = pipe.split(2)
     stats = ray.get([consume.remote(s0), consume.remote(s1)])
-    assert canonicalize(stats[0]) == """== Pipeline Window N ==
-Stage N read: N/N blocks executed in T
+    assert canonicalize(stats[0]) == """== Pipeline Window Z ==
+Stage Z read: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Output num rows: N min, N max, N mean, N total
@@ -152,7 +154,7 @@ Dataset iterator time breakdown:
 * Total time: T
 
 == Pipeline Window N ==
-Stage N read: N/N blocks executed in T
+Stage Z read: N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Output num rows: N min, N max, N mean, N total
