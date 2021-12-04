@@ -49,7 +49,7 @@ class BlockExecStats:
         node_id: A unique id for the node that computed this block.
     """
 
-    # TODO(ekl) fill in all uses of BlockExecStats.TODO.
+    # Placeholder for block ops not yet instrumented.
     TODO = None
 
     # TODO(ekl) add a builder to fill these out in a simpler way.
