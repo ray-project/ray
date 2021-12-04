@@ -21,37 +21,93 @@
 namespace ray {
 namespace gcs {
 
-/// This implementation class of `InternalKVHandler`.
-class GcsInternalKVManager : public rpc::InternalKVHandler {
+
+class InternalKVInterface {
  public:
-  explicit GcsInternalKVManager(std::shared_ptr<RedisClient> redis_client)
+  virtual void Get(const std::string& key,
+                   std::function<void(std::optional<std::string>)> cb) = 0;
+
+  virtual void Put(const std::string& key,
+                   const std::string& value,
+                   bool overwrite,
+                   std::function<void(bool)> cb) = 0;
+
+  virtual void Del(const std::string& key, std::function<void(bool)> cb) = 0;
+
+  virtual void Exists(const std::string& key, std::function<void(bool)> cb) = 0;
+
+  virtual void Keys(const std::string& prefix, std::function<void(std::vector<std::string>)> cb) = 0;
+
+};
+
+class RedisInternalKV : public InternalKVInterface {
+ public:
+  RedisInternalKV(std::shared_ptr<RedisClient> redis_client)
       : redis_client_(redis_client) {}
 
-  void HandleInternalKVGet(const rpc::InternalKVGetRequest &request,
-                           rpc::InternalKVGetReply *reply,
-                           rpc::SendReplyCallback send_reply_callback);
+  void Get(const std::string& key, std::function<void(std::optional<std::string>)> cb) override;
 
-  void HandleInternalKVPut(const rpc::InternalKVPutRequest &request,
-                           rpc::InternalKVPutReply *reply,
-                           rpc::SendReplyCallback send_reply_callback);
+  void Put(const std::string& key, const std::string& value, bool overwrite, std::function<void(bool)> cb) override;
 
-  void HandleInternalKVDel(const rpc::InternalKVDelRequest &request,
-                           rpc::InternalKVDelReply *reply,
-                           rpc::SendReplyCallback send_reply_callback);
+  void Del(const std::string& key, std::function<void(bool)> cb) override;
 
-  void InternalKVDelAsync(const std::string &key, std::function<void(int)> cb);
+  void Exists(const std::string& key, std::function<void(bool)> cb) override;
 
-  void HandleInternalKVExists(const rpc::InternalKVExistsRequest &request,
-                              rpc::InternalKVExistsReply *reply,
-                              rpc::SendReplyCallback send_reply_callback);
+  void Keys(const std::string& prefix, std::function<void(std::vector<std::string>)> cb) override;
 
-  void HandleInternalKVKeys(const rpc::InternalKVKeysRequest &request,
-                            rpc::InternalKVKeysReply *reply,
-                            rpc::SendReplyCallback send_reply_callback);
 
  private:
   std::shared_ptr<RedisClient> redis_client_;
 };
+
+class MemoryInternalKV : public InternalKVInterface {
+ public:
+  void Get(const std::string& key, std::function<void(std::optional<std::string>)> cb) override;
+
+  void Put(const std::string& key, const std::string& value, bool overwrite, std::function<void(bool)> cb) override;
+
+  void Del(const std::string& key, std::function<void(bool)> cb) override;
+
+  void Exists(const std::string& key, std::function<void(bool)> cb) override;
+
+  void Keys(const std::string& prefix, std::function<void(std::vector<std::string>)> cb) override;
+ private:
+};
+
+
+/// This implementation class of `InternalKVHandler`.
+class GcsInternalKVManager : public rpc::InternalKVHandler {
+ public:
+  explicit GcsInternalKVManager(std::unique_ptr<InternalKVInterface> kv_instance)
+      : kv_instance_(std::move(kv_instance)) {}
+
+  void HandleInternalKVGet(const rpc::InternalKVGetRequest &request,
+                           rpc::InternalKVGetReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleInternalKVPut(const rpc::InternalKVPutRequest &request,
+                           rpc::InternalKVPutReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleInternalKVDel(const rpc::InternalKVDelRequest &request,
+                           rpc::InternalKVDelReply *reply,
+                           rpc::SendReplyCallback send_reply_callback) override;
+
+  void InternalKVDelAsync(const std::string &key, std::function<void(int)> cb) override;
+
+  void HandleInternalKVExists(const rpc::InternalKVExistsRequest &request,
+                              rpc::InternalKVExistsReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleInternalKVKeys(const rpc::InternalKVKeysRequest &request,
+                            rpc::InternalKVKeysReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
+ private:
+  std::unique_ptr<InternalKVInterface> kv_instance_;
+};
+
+
 
 }  // namespace gcs
 }  // namespace ray
