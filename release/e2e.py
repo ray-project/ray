@@ -285,6 +285,8 @@ RETRY_MULTIPLIER = 2
 
 
 class ExitCode(enum.Enum):
+    # If you change these, also change the `retry` section
+    # in `build_pipeline.py` and the `reason()` function in `run_e2e.sh`
     UNSPECIFIED = 2
     UNKNOWN = 3
     RUNTIME_ERROR = 4
@@ -1977,9 +1979,14 @@ def run_test_config(
         logger.info(f"Moving results dir {temp_dir} to persistent location "
                     f"{out_dir}")
 
-        shutil.rmtree(out_dir, ignore_errors=True)
-        shutil.copytree(temp_dir, out_dir)
-        logger.info(f"Dir contents: {os.listdir(out_dir)}")
+        try:
+            shutil.rmtree(out_dir, ignore_errors=True)
+            shutil.copytree(temp_dir, out_dir)
+            logger.info(f"Dir contents: {os.listdir(out_dir)}")
+        except Exception as e:
+            logger.error(
+                f"Ran into error when copying results dir to persistent "
+                f"location: {str(e)}")
 
     return result
 
@@ -2124,6 +2131,7 @@ def run_test(test_config_file: str,
             # catch these cases.
             exit_code = result.get("exit_code", ExitCode.UNSPECIFIED.value)
             logger.error(last_logs)
+            logger.info(f"Exiting with exit code {exit_code}")
             sys.exit(exit_code)
 
         return report_kwargs
