@@ -14,7 +14,8 @@ def _read_yaml(path: str):
         return yaml.safe_load(f)
 
 
-def _update_docker_compose(docker_compose_path: str, project_name: str) -> bool:
+def _update_docker_compose(docker_compose_path: str,
+                           project_name: str) -> bool:
     docker_compose_config = _read_yaml(docker_compose_path)
 
     cmd = ["up", "-d"]
@@ -25,12 +26,7 @@ def _update_docker_compose(docker_compose_path: str, project_name: str) -> bool:
         shutdown = True
     try:
         subprocess.check_output([
-            "docker",
-            "compose",
-            "-f",
-            docker_compose_path,
-            "-p",
-            project_name
+            "docker", "compose", "-f", docker_compose_path, "-p", project_name
         ] + cmd + [
             "--remove-orphans",
         ])
@@ -113,7 +109,8 @@ def monitor_docker(docker_compose_path: str,
         new_docker_config = _read_yaml(docker_compose_path)
         if new_docker_config != docker_config:
             # Update cluster
-            shutdown = _update_docker_compose(docker_compose_path, project_name)
+            shutdown = _update_docker_compose(docker_compose_path,
+                                              project_name)
 
             # Force status update
             next_update = time.monotonic() - 1.

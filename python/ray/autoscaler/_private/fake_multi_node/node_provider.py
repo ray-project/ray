@@ -2,6 +2,7 @@ import copy
 import json
 import logging
 import os
+import shutil
 from threading import RLock
 import time
 from types import ModuleType
@@ -47,9 +48,15 @@ DOCKER_NODE_SKELETON = {
 }
 
 DOCKER_HEAD_CMD = (
-    "bash -c \"sleep 1 "
-    "&& sudo chmod 777 {volume_dir} "
-    "&& RAY_FAKE_CLUSTER=1 ray start --head --port=6379 "
+    "bash -c \""
+    "sudo chmod 700 ~/.ssh && "
+    "sudo chmod 600 ~/.ssh/authorized_keys && "
+    "sudo chown ray:users ~/.ssh ~/.ssh/authorized_keys && "
+    "sudo apt update && sudo apt install -y openssh-server && "
+    "sudo service ssh start && "
+    "sleep 1 && "
+    "sudo chmod 777 {volume_dir} && "
+    "RAY_FAKE_CLUSTER=1 ray start --head --port=6379 "
     "--object-manager-port=8076 --dashboard-host 0.0.0.0 "
     "--autoscaling-config={autoscaling_config} "
     "--num-cpus {num_cpus} "
@@ -58,7 +65,13 @@ DOCKER_HEAD_CMD = (
     "&& sleep 1000000\"")
 
 DOCKER_WORKER_CMD = (
-    "bash -c \"sleep 1 && "
+    "bash -c \""
+    "sudo chmod 700 ~/.ssh && "
+    "sudo chmod 600 ~/.ssh/authorized_keys && "
+    "sudo chown ray:users ~/.ssh ~/.ssh/authorized_keys && "
+    "sudo apt update && sudo apt install -y openssh-server && "
+    "sudo service ssh start && "
+    "sleep 1 && "
     f"ray start --address={FAKE_HEAD_NODE_ID}:6379 "
     "--object-manager-port=8076 "
     "--num-cpus {num_cpus} "
@@ -78,11 +91,14 @@ def create_node_spec(head: bool,
                      volume_dir: Optional[str] = None,
                      status_path: Optional[str] = None,
                      docker_compose_path: Optional[str] = None,
-                     bootstrap_config_path: Optional[str] = None):
+                     bootstrap_config_path: Optional[str] = None,
+                     private_key_path: Optional[str] = None,
+                     public_key_path: Optional[str] = None):
     node_spec = copy.deepcopy(DOCKER_NODE_SKELETON)
     node_spec["image"] = docker_image
 
-    bootstrap_path_on_container = "/home/ray/ray_bootstrap_config.yaml"
+    bootstrap_cfg_path_on_container = "/home/ray/ray_bootstrap_config.yaml"
+    bootstrap_key_path_on_container = "/home/ray/ray_bootstrap_key.pem"
 
     resources = resources or {}
 
@@ -91,7 +107,7 @@ def create_node_spec(head: bool,
         num_gpus=num_gpus,
         resources=json.dumps(resources, indent=None),
         volume_dir=volume_dir,
-        autoscaling_config=bootstrap_path_on_container)
+        autoscaling_config=bootstrap_cfg_path_on_container)
 
     if head:
         node_spec["command"] = DOCKER_HEAD_CMD.format(**resources_kwargs)
@@ -99,7 +115,8 @@ def create_node_spec(head: bool,
         node_spec["volumes"] += [
             f"{status_path}:{status_path}",
             f"{docker_compose_path}:{docker_compose_path}",
-            f"{bootstrap_config_path}:{bootstrap_path_on_container}"
+            f"{bootstrap_config_path}:{bootstrap_cfg_path_on_container}",
+            f"{private_key_path}:{bootstrap_key_path_on_container}",
         ]
     else:
         node_spec["command"] = DOCKER_WORKER_CMD.format(**resources_kwargs)
@@ -108,6 +125,7 @@ def create_node_spec(head: bool,
     node_spec["volumes"] += [
         f"{mounted_cluster_dir}:/cluster/shared",
         f"{mounted_node_dir}:/cluster/node",
+        f"{public_key_path}:/home/ray/.ssh/authorized_keys",
     ]
 
     env_vars = env_vars or {}
@@ -161,6 +179,18 @@ class FakeMultiNodeProvider(NodeProvider):
             self._boostrap_config_path = os.path.join(self._volume_dir,
                                                       "bootstrap_config.yaml")
 
+            shutil.copy(
+                os.path.join(os.path.dirname(__file__), "bootstrap_key.pem"),
+                self._volume_dir)
+            shutil.copy(
+                os.path.join(os.path.dirname(__file__), "bootstrap_key.pub"),
+                self._volume_dir)
+
+            self._private_key_path = os.path.join(self._volume_dir,
+                                                  "bootstrap_key.pem")
+            self._public_key_path = os.path.join(self._volume_dir,
+                                                 "bootstrap_key.pub")
+
             self._docker_compose_config_path = os.path.join(
                 self._volume_dir, "docker-compose.yaml")
             self._docker_compose_config = None
@@ -210,7 +240,9 @@ class FakeMultiNodeProvider(NodeProvider):
             volume_dir=self._volume_dir,
             status_path=self._status_path,
             docker_compose_path=self._docker_compose_config_path,
-            bootstrap_config_path=self._boostrap_config_path)
+            bootstrap_config_path=self._boostrap_config_path,
+            public_key_path=self._public_key_path,
+            private_key_path=self._private_key_path)
 
     def _update_docker_compose_config(self):
         config = copy.deepcopy(DOCKER_COMPOSE_SKELETON)
