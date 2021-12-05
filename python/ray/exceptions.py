@@ -201,7 +201,7 @@ class LocalRayletDiedError(RayError):
 
     def __str__(self):
         return ("The task's local raylet died unexpectedly. "
-                "Check raylet.out files for more information.")
+                "Check raylet.out for more information.")
 
 
 class WorkerCrashedError(RayError):

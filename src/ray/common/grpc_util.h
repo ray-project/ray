@@ -108,10 +108,10 @@ inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
   } else if (grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
     return Status::GrpcUnavailable(GrpcStatusToRayStatusMessage(grpc_status));
   } else {
-    // TODO(jjyao) Use GrpcUnknown as the catch-all status for all
+    // TODO(jjyao) Use IOError as the catch-all status for all
     // the unhandled grpc status.
     // If needed, we can define a ray status for each grpc status in the future.
-    return Status::GrpcUnknown(GrpcStatusToRayStatusMessage(grpc_status));
+    return Status::IOError(GrpcStatusToRayStatusMessage(grpc_status));
   }
 }
 
