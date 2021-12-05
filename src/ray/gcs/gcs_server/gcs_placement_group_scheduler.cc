@@ -20,17 +20,18 @@
 namespace ray {
 namespace gcs {
 
-const std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>> &GenUnplacedBundlesMap(
+std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>> GenUnplacedBundlesMap(
                                                 const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
-                                                  const std::unordered_map<BundleID, NodeID> &selected_nodes) {
+                                                  const ScheduleMap &selected_nodes) {
   std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>> node_to_bundles;
   for (const auto &bundle: bundles) {
     const auto &bundle_id = bundle->BundleId();
-    RAY_CHECK(selected_nodes.find(bundle_id) != selected_nodes.end());
-    if (node_to_bundles.find(selected_nodes[bundle_id]) == node_to_bundles.end()) {
-      node_to_bundles[selected_nodes[bundle_id]] = {};
+    const auto &iter = selected_nodes.find(bundle_id);
+    RAY_CHECK(iter != selected_nodes.end());
+    if (node_to_bundles.find(iter->second) == node_to_bundles.end()) {
+      node_to_bundles[iter->second] = {};
     }
-    node_to_bundles[selected_nodes[bundle_id]].push_back(bundle);
+    node_to_bundles[iter->second].push_back(bundle);
   }
   return node_to_bundles;
 }
