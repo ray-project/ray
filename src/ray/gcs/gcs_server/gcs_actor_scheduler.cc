@@ -331,7 +331,7 @@ void GcsActorScheduler::HandleRequestWorkerLeaseCanceled(
     schedule_failure_handler_(actor, ActorSchedulingFailedType::RUNTIME_ENV_SETUP_FAILED);
     break;
   default:
-    schedule_failure_handler_(actor, ActorSchedulingFailedType::NOT_ENOUGH_RESOURCES);
+    schedule_failure_handler_(actor, ActorSchedulingFailedType::CANCELLED_ACTIVELY);
     break;
   }
 }

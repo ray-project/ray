@@ -40,8 +40,9 @@ class GcsActor;
 enum class ActorSchedulingFailedType {
   PLACEMENT_GROUP_REMOVED = 0,
   RUNTIME_ENV_SETUP_FAILED = 1,
-  NOT_ENOUGH_RESOURCES = 2,
-  ActorSchedulingFailedType_MAX = 3,
+  CANCELLED_ACTIVELY = 2,
+  NOT_ENOUGH_RESOURCES = 3,
+  ActorSchedulingFailedType_MAX = 4,
 };
 
 class GcsActorSchedulerInterface {

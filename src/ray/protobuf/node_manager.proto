@@ -57,7 +57,7 @@ message RequestWorkerLeaseReply {
     PLACEMENT_GROUP_REMOVED = 0;
     // Canceled because of the failure of the runtime env setup.
     RUNTIME_ENV_SETUP_FAILED = 1;
-    // Task canceled.
+    // Task canceled actively, for example, `ray.kill`.
     TASK_CANCELLED = 2;
   }
 
