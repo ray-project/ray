@@ -726,7 +726,7 @@ void LeaseStatusTracker::MarkPreparePhaseStarted(
     const NodeID &node_id, const std::vector<std::shared_ptr<const BundleSpecification>> &bundles) {
   for (const auto &bundle: bundles) {
     const auto &bundle_id = bundle->BundleId();
-    node_to_bundles_when_preparing_[node_id].emplace(bundle_id).second; 
+    node_to_bundles_when_preparing_[node_id].emplace(bundle_id); 
   }
 }
 

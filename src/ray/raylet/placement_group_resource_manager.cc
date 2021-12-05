@@ -44,13 +44,13 @@ NewPlacementGroupResourceManager::NewPlacementGroupResourceManager(
       update_resources_(update_resources),
       delete_resources_(delete_resources) {}
 
-bool NewPlacementGroupResourceManager::PrepareBundle(
+bool NewPlacementGroupResourceManager::PrepareBundles(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) {
 
   // Bundles that excluded bundles whose state is already committed.
-  std::vector<std::shared_ptr<BundleSpecification>> preparing_bundles;
+  std::vector<std::shared_ptr<const BundleSpecification>> preparing_bundles;
   for (const auto &bundle_spec: bundle_specs) {
-    auto iter = pg_bundles_.find(bundle_spec.BundleId());
+    auto iter = pg_bundles_.find(bundle_spec->BundleId());
     if (iter != pg_bundles_.end()) {
       if (iter->second->state_ == CommitState::COMMITTED) {
         // If the bundle state is already committed, it means that prepare request is just
@@ -60,23 +60,23 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
       } else {
         // If there was a bundle in prepare state, it already locked resources, we will
         // return bundle resources so that we can start from the prepare phase again.
-        ReturnBundle(bundle_spec);
+        ReturnBundle(*bundle_spec);
         preparing_bundles.emplace_back(bundle_spec);
       }
     } else {
       preparing_bundles.emplace_back(bundle_spec); 
     }
   }
-  if (preparing_bundles.size == 0) {
+  if (preparing_bundles.size() == 0) {
     RAY_LOG(DEBUG) << "All bundles have been prepared successfully before, will return directly";
     return true;
   }
 
-  std::vector<BundleSpecification> prepared_bundles;
+  std::vector<std::shared_ptr<const BundleSpecification>> prepared_bundles;
   for (const auto &bundle_spec: preparing_bundles) {
     auto resource_instances = std::make_shared<TaskResourceInstances>();
     bool allocated = cluster_resource_scheduler_->AllocateLocalTaskResources(
-        bundle_spec.GetRequiredResources().GetResourceMap(), resource_instances);
+        bundle_spec->GetRequiredResources().GetResourceMap(), resource_instances);
     if (!allocated) {
       // Terminated the preparation phase and return bundles that have been successfully prepared before directly
       // once we found one request resource failed bundle.
@@ -85,9 +85,9 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
   
     auto bundle_state =
       std::make_shared<BundleTransactionState>(CommitState::PREPARED, resource_instances);
-    pg_bundles_[bundle_spec.BundleId()] = bundle_state;
-    bundle_spec_map_.emplace(bundle_spec.BundleId(), std::make_shared<BundleSpecification>(
-                                                        bundle_spec.GetMessage()));
+    pg_bundles_[bundle_spec->BundleId()] = bundle_state;
+    bundle_spec_map_.emplace(bundle_spec->BundleId(), std::make_shared<BundleSpecification>(
+                                                        bundle_spec->GetMessage()));
     prepared_bundles.emplace_back(bundle_spec);
   }
 
@@ -95,7 +95,7 @@ bool NewPlacementGroupResourceManager::PrepareBundle(
     RAY_LOG(DEBUG) << "There are one or more bundles request resource failed, will release the requested resources before.";
     for (const auto &bundle: prepared_bundles) {
       // `ReturnBundle` will return resource, erase from `pg_bundles_` and `bundle_spec_map_`.
-      ReturnBundle(bundle);
+      ReturnBundle(*bundle);
     }
     return false;
   }

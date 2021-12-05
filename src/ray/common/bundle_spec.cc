@@ -129,7 +129,7 @@ std::string GetOriginalResourceName(const std::string &resource) {
 std::string GenDebugInfoForBundles(const std::vector<std::shared_ptr<const BundleSpecification>> &bundles) {
   std::ostringstream debug_info;
   for (const auto &bundle: bundles) {
-    debug_info << "{" << bundle->BundleId() << ":" << bundle->DebugString() << "},";
+    debug_info << "{" << bundle->DebugString() << "},";
   }
   return debug_info.str();
 };

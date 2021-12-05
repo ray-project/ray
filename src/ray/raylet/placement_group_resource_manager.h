@@ -98,7 +98,7 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
 
   virtual ~NewPlacementGroupResourceManager() = default;
 
-  bool PrepareBundles(const std::vector<const BundleSpecification> &bundle_specs);
+  bool PrepareBundles(const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs);
 
   void CommitBundle(const BundleSpecification &bundle_spec);
 
