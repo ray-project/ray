@@ -62,7 +62,11 @@ def train_epoch(dataset, model, device, criterion, optimizer):
     num_total = 0
     running_loss = 0.0
 
+    start = time.time()
+    total_time = 0
+    total_train_time = 0
     for i, (inputs, labels) in enumerate(dataset):
+        train_start = time.time()
         inputs = inputs.to(device)
         labels = labels.to(device)
 
@@ -82,8 +86,14 @@ def train_epoch(dataset, model, device, criterion, optimizer):
 
         # Save loss to plot
         running_loss += loss.item()
+
+        train_time = time.time() - train_start
+        total_time = time.time() - start
+        total_train_time += train_time
         if i % 100 == 0:
             print(f"training batch [{i}] loss: {loss.item()}")
+            print(f"time breakdown per_batch_time: [{total_time / (i + 1)}]")
+            print(f"per_batch_train_time {total_train_time / (i + 1) }")
 
     return (running_loss, num_correct, num_total)
 
@@ -116,7 +126,6 @@ def test_epoch(dataset, model, device, criterion):
 
 
 def train_func(config):
-    is_distributed = config.get("is_distributed", False)
     use_gpu = config["use_gpu"]
     num_epochs = config["num_epochs"]
     batch_size = config["batch_size"]
@@ -153,7 +162,9 @@ def train_func(config):
 
     print("Starting training...")
     for epoch in range(num_epochs):
+        start = time.time()
         train_dataset = next(train_dataset_epoch_iterator)
+        print(f"epoch load time {time.time() - start}")
 
         train_torch_dataset = train_dataset.to_torch(
             label_column="label", batch_size=batch_size)
@@ -185,11 +196,8 @@ def train_func(config):
         return None
 
 
-def create_dataset_pipeline(files, num_workers, epochs, num_windows):
+def create_dataset_pipeline(files, epochs, num_windows):
     if num_windows > 1:
-        num_rows = ray.data.read_parquet(
-            files, _spread_resource_prefix="node:").count(
-            )  # This should only read Parquet metadata.
         file_splits = np.array_split(files, num_windows)
 
         class Windower:
@@ -209,10 +217,6 @@ def create_dataset_pipeline(files, num_workers, epochs, num_windows):
                     list(split), _spread_resource_prefix="node:")
 
         pipe = DatasetPipeline.from_iterable(Windower())
-        split_indices = [
-            i * num_rows // num_windows // num_workers
-            for i in range(1, num_workers)
-        ]
         pipe = pipe.random_shuffle_each_window(_spread_resource_prefix="node:")
     else:
         ds = ray.data.read_parquet(files, _spread_resource_prefix="node:")
@@ -257,7 +261,7 @@ if __name__ == "__main__":
     num_epochs = args.num_epochs
     num_windows = args.num_windows
 
-    BATCH_SIZE = 5000
+    BATCH_SIZE = 50000
     NUM_HIDDEN = 50
     NUM_LAYERS = 3
     DROPOUT_EVERY = 5
@@ -280,11 +284,10 @@ if __name__ == "__main__":
     if smoke_test:
         # Only read a single file.
         files = files[:1]
-        train_dataset_pipeline = create_dataset_pipeline(
-            files, num_workers, num_epochs, 1)
+        train_dataset_pipeline = create_dataset_pipeline(files, num_epochs, 1)
     else:
         train_dataset_pipeline = create_dataset_pipeline(
-            files, num_workers, num_epochs, num_windows)
+            files, num_epochs, num_windows)
 
     datasets = {
         "train_dataset": train_dataset_pipeline,
