@@ -73,7 +73,7 @@ class Gen2NodeProvider(NodeProvider):
                     cli_logger.error(msg)
                     logger.exception(msg)
 
-                    logger.debug("reiniting clients and waiting few seconds")
+                    logger.info("reiniting clients and waiting few seconds")
                     args[0]._init()
                     time.sleep(1)
 
@@ -87,11 +87,11 @@ class Gen2NodeProvider(NodeProvider):
 
         def decorated_func(*args, **kwargs):
             name = func.__name__
-            logger.debug(
+            logger.info(
                 f"Enter {name} from {inspect.stack()[0][3]} {inspect.stack()[1][3]}  {inspect.stack()[2][3]} with args: {args} and kwargs {kwargs}")
             try:
                 result = func(*args, **kwargs)
-                logger.debug(
+                logger.info(
                     f"Leave {name} from {inspect.stack()[1][3]} with result {result}, entered with args: {args}")
             except:
                 cli_logger.error(f"Error in {name}")
@@ -149,12 +149,12 @@ class Gen2NodeProvider(NodeProvider):
 
         with self.lock:
             # retry search few times in case node misteriously dissapeared
-            logger.debug(f'in non_terminated_nodes')
+            logger.info(f'in non_terminated_nodes')
             NT_RETRIES = 20
             missing_nodes = []
             retry = 0
             while retry < NT_RETRIES:
-                retry > 0 and logger.debug(
+                retry > 0 and logger.info(
                     f'nt_retry #{retry}, self.global_search_service.search with query {query}')
                 retry += 1
                 result = self.global_search_service.search(
@@ -174,7 +174,7 @@ class Gen2NodeProvider(NodeProvider):
 
                     # TODO: should be special case here in case of cache_stopped_nodes?
                     if node['doc']['status'] not in ['pending', 'starting', 'running']:
-                        logger.debug(
+                        logger.info(
                             f"{node['resource_id']} status {node['doc']['status']} not in ['pending', 'starting', 'running'], skipping")
                         continue
 
@@ -233,7 +233,7 @@ class Gen2NodeProvider(NodeProvider):
                     # nodes shouldn't dissapear too frequently. if happened, most likely it is a glitch in search, retry
                     # save currently missing nodes
                     if missing_nodes and sorted(prev_nodes_keys - found_nodes.keys()) != missing_nodes:
-                        logger.debug(
+                        logger.info(
                             f'missing nodes detected in previous retry don\'t match currently missing nodes')
                         # TODO: Is there a chance for infinite loop here?
                         retry = 0
@@ -246,7 +246,7 @@ class Gen2NodeProvider(NodeProvider):
                     time.sleep(3)
                     continue
                 else:
-                    logger.debug("found nodes not missing any perviously cached nodes")
+                    logger.info("found nodes not missing any perviously cached nodes")
                     missing_nodes = []
 
                     bad_tags = False
@@ -361,6 +361,7 @@ class Gen2NodeProvider(NodeProvider):
 
         return node['doc']['network_interfaces'][0].get('primary_ipv4_address')
 
+    @log_in_out
     def _global_tagging_with_retries(self, resource_crn, f_name, tags=None):
         e = None
         resource_model = {'resource_id': resource_crn}
@@ -432,7 +433,7 @@ class Gen2NodeProvider(NodeProvider):
                     f"failed to tag node {node_id} with tags {new_tags}, raising error")
                 raise
 
-            logger.debug(f"attached {new_tags}")
+            logger.info(f"attached {new_tags}")
 
             # 3. check that status is been updated and detach old statuses
             if 'ray-node-status' in tags.keys():
@@ -445,7 +446,7 @@ class Gen2NodeProvider(NodeProvider):
                     logger.error("failed to detach old status tags")
                     raise
 
-                logger.debug(f"detached {tags_to_detach}")
+                logger.info(f"detached {tags_to_detach}")
                 time.sleep(1)
 
             return {}
@@ -465,7 +466,7 @@ class Gen2NodeProvider(NodeProvider):
 
         TODO: consider to use gen2 template file instead of generating dict
         """
-        logger.debug("Creating new VM instance {}".format(name))
+        logger.info("Creating new VM instance {}".format(name))
 
         security_group_identity_model = {'id': base_config['security_group_id']}
         subnet_identity_model = {'id': base_config['subnet_id']}
@@ -528,7 +529,7 @@ class Gen2NodeProvider(NodeProvider):
 
         floating_ip_name = '{}-{}'.format(RAY_RECYCLABLE, uuid4().hex[:4])
 
-        logger.debug('Creating floating IP {}'.format(floating_ip_name))
+        logger.info('Creating floating IP {}'.format(floating_ip_name))
         floating_ip_prototype = {}
         floating_ip_prototype['name'] = floating_ip_name
         floating_ip_prototype['zone'] = {
@@ -545,7 +546,7 @@ class Gen2NodeProvider(NodeProvider):
         fip = fip_data['address']
         fip_id = fip_data['id']
 
-        logger.debug('Attaching floating IP {} to VM instance {}'.format(
+        logger.info('Attaching floating IP {} to VM instance {}'.format(
             fip, instance['id']))
 
         # we need to check if floating ip is not attached already. if not, attach it to instance
@@ -553,7 +554,7 @@ class Gen2NodeProvider(NodeProvider):
 
         if instance_primary_ni['primary_ipv4_address'] and instance_primary_ni['id'] == fip_id:
             # floating ip already attached. do nothing
-            logger.debug('Floating IP {} already attached to eth0'.format(fip))
+            logger.info('Floating IP {} already attached to eth0'.format(fip))
         else:
             self.ibm_vpc_client.add_instance_network_interface_floating_ip(
                 instance['id'], instance['network_interfaces'][0]['id'], fip_id)
@@ -639,7 +640,7 @@ class Gen2NodeProvider(NodeProvider):
                 f"failed to tag node {instance['id']} with tags {new_tags}, raising error")
             raise
 
-        logger.debug(f"attached {new_tags}")
+        logger.info(f"attached {new_tags}")
 
         return {instance['id']: instance}
 
@@ -689,7 +690,7 @@ class Gen2NodeProvider(NodeProvider):
             return all_created_nodes
 
     def _delete_node(self, resource_id):
-        logger.debug(f'in _delete_node with id {resource_id}')
+        logger.info(f'in _delete_node with id {resource_id}')
         try:
             floating_ips = []
 
