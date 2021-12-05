@@ -979,7 +979,8 @@ void GcsActorManager::OnActorSchedulingFailed(
     return;
   }
   if (failed_type == ActorSchedulingFailedType::CANCELLED_ACTIVELY) {
-    // Return directly if the actor was canceled actively as we've already done the recreate and destroy operation when we killed the actor.
+    // Return directly if the actor was canceled actively as we've already done the
+    // recreate and destroy operation when we killed the actor.
     return;
   }
 
