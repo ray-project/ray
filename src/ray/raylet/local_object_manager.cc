@@ -96,6 +96,9 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
 
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "Unpinning object " << object_id;
+  if (!objects_waiting_for_free_.erase(object_id)) {
+    return;
+  }
   // The object should be in one of these stats. pinned, spilling, or spilled.
   RAY_CHECK((pinned_objects_.count(object_id) > 0) ||
             (spilled_objects_url_.count(object_id) > 0) ||
@@ -114,7 +117,6 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id) {
       free_objects_period_ms_ == 0) {
     FlushFreeObjects();
   }
-  objects_waiting_for_free_.erase(object_id);
 }
 
 void LocalObjectManager::FlushFreeObjects() {
