@@ -57,7 +57,7 @@ int TestSetupUtil::StartUpRedisServer(const int &port) {
   std::vector<std::string> cmdargs({program, "--loglevel", "warning"});
   cmdargs.insert(cmdargs.end(), {"--port", std::to_string(actual_port)});
   RAY_LOG(INFO) << "Start redis command is: " << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs, true).second);
+  RAY_CHECK(!Process::Spawn(GetNewStartupToken(), cmdargs, true).second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   return actual_port;
 }
@@ -103,7 +103,8 @@ std::string TestSetupUtil::StartGcsServer(const std::string &redis_address) {
        "--config_list=" +
            absl::Base64Escape(R"({"object_timeout_milliseconds": 2000})")});
   RAY_LOG(INFO) << "Start gcs server command: " << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs, true, gcs_server_socket_name + ".pid").second);
+  RAY_CHECK(!Process::Spawn(GetNewStartupToken(), cmdargs, true,
+                            gcs_server_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   RAY_LOG(INFO) << "GCS server started.";
   return gcs_server_socket_name;
@@ -133,7 +134,8 @@ std::string TestSetupUtil::StartRaylet(const std::string &node_ip_address,
                               raylet_socket_name, std::to_string(port)}),
        "--object_store_memory=10000000"});
   RAY_LOG(DEBUG) << "Raylet Start command: " << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs, true, raylet_socket_name + ".pid").second);
+  RAY_CHECK(!Process::Spawn(GetNewStartupToken(), cmdargs, true,
+                            raylet_socket_name + ".pid").second);
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
   *store_socket_name = plasma_store_socket_name;
   return raylet_socket_name;
@@ -182,7 +184,10 @@ void KillProcessBySocketName(std::string socket_name) {
     pid_t pid = -1;
     pidfile >> pid;
     RAY_CHECK(pid != -1);
-    Process::FromPid(pid).Kill();
+    // The FromPidAndToken interface assumes the token is known
+    // Here we are killing the process, so no checks that need the token
+    // are needed, and we can use -1
+    Process::FromPidAndToken(pid, -1).Kill();
   }
   ASSERT_EQ(unlink(pidfile_path.c_str()), 0);
 }

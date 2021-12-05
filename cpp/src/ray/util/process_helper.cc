@@ -35,15 +35,17 @@ void ProcessHelper::StartRayNode(const int redis_port, const std::string redis_p
     cmdargs.insert(cmdargs.end(), head_args.begin(), head_args.end());
   }
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs, true).second);
+  StartupToken token = GetNewStartupToken();
+  RAY_CHECK(!Process::Spawn(token, cmdargs, true).second);
   std::this_thread::sleep_for(std::chrono::seconds(5));
   return;
 }
 
 void ProcessHelper::StopRayNode() {
   std::vector<std::string> cmdargs({"ray", "stop"});
+  StartupToken token = GetNewStartupToken();
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
-  RAY_CHECK(!Process::Spawn(cmdargs, true).second);
+  RAY_CHECK(!Process::Spawn(token, cmdargs, true).second);
   std::this_thread::sleep_for(std::chrono::seconds(3));
   return;
 }

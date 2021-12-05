@@ -337,10 +337,17 @@ Process &Process::operator=(Process other) {
   return *this;
 }
 
-Process::Process(pid_t pid) { p_ = std::make_shared<ProcessFD>(pid); }
+Process::Process(pid_t pid, StartupToken token) :
+  _startup_token(token)
+{
+  p_ = std::make_shared<ProcessFD>(pid);
+}
 
-Process::Process(const char *argv[], void *io_service, std::error_code &ec, bool decouple,
-                 const ProcessEnvironment &env) {
+Process::Process(StartupToken token, const char *argv[], void *io_service,
+                 std::error_code &ec, bool decouple,
+                 const ProcessEnvironment &env) :
+  _startup_token(token)
+{
   (void)io_service;
   ProcessFD procfd = ProcessFD::spawnvpe(argv, ec, decouple, env);
   if (!ec) {
@@ -356,7 +363,7 @@ std::error_code Process::Call(const std::vector<std::string> &args,
   }
   argv.push_back(NULL);
   std::error_code ec;
-  Process proc(&*argv.begin(), NULL, ec, true, env);
+  Process proc((StartupToken)-1, &*argv.begin(), NULL, ec, true, env);
   if (!ec) {
     int return_code = proc.Wait();
     if (return_code != 0) {
@@ -367,26 +374,29 @@ std::error_code Process::Call(const std::vector<std::string> &args,
 }
 
 Process Process::CreateNewDummy() {
-  pid_t pid = -1;
-  Process result(pid);
+  Process result((pid_t)-1, (StartupToken)-1);
   return result;
 }
 
-Process Process::FromPid(pid_t pid) {
+Process Process::FromPidAndToken(pid_t pid, StartupToken token) {
   RAY_DCHECK(pid >= 0);
-  Process result(pid);
+  RAY_DCHECK(token >= 0);
+  Process result(pid, token);
   return result;
 }
 
 const void *Process::Get() const { return p_ ? &*p_ : NULL; }
 
-pid_t Process::GetId() const { return p_ ? p_->GetId() : -1; }
+StartupToken Process::GetId() const { return _startup_token; }
+
+pid_t Process::GetProcPID() const { return p_ ? p_->GetId() : -1; }
 
 bool Process::IsNull() const { return !p_; }
 
-bool Process::IsValid() const { return GetId() != -1; }
+bool Process::IsValid() const { return (GetId() != -1 && GetProcPID() != -1); }
 
-std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string> &args,
+std::pair<Process, std::error_code> Process::Spawn(StartupToken token,
+                                                   const std::vector<std::string> &args,
                                                    bool decouple,
                                                    const std::string &pid_file,
                                                    const ProcessEnvironment &env) {
@@ -396,10 +406,10 @@ std::pair<Process, std::error_code> Process::Spawn(const std::vector<std::string
   }
   argv.push_back(NULL);
   std::error_code error;
-  Process proc(&*argv.begin(), NULL, error, decouple, env);
+  Process proc(token, &*argv.begin(), NULL, error, decouple, env);
   if (!error && !pid_file.empty()) {
     std::ofstream file(pid_file, std::ios_base::out | std::ios_base::trunc);
-    file << proc.GetId() << std::endl;
+    file << proc.GetProcPID() << std::endl;
     RAY_CHECK(file.good());
   }
   return std::make_pair(std::move(proc), error);
@@ -577,6 +587,11 @@ pid_t GetPID() {
 #endif
 }
 
+// A global atomic counter
+std::atomic<StartupToken> _startup_token_global {0};
+
+StartupToken GetNewStartupToken() { return _startup_token_global++; }
+
 bool IsParentProcessAlive() { return GetParentPID() != 1; }
 
 bool IsProcessAlive(pid_t pid) {
@@ -608,7 +623,7 @@ bool equal_to<ray::Process>::operator()(const ray::Process &x,
   return !x.IsNull()
              ? !y.IsNull()
                    ? x.IsValid()
-                         ? y.IsValid() ? equal_to<pid_t>()(x.GetId(), y.GetId()) : false
+                         ? y.IsValid() ? equal_to<StartupToken>()(x.GetId(), y.GetId()) : false
                      : y.IsValid() ? false
                                    : equal_to<void const *>()(x.Get(), y.Get())
                    : false
@@ -617,7 +632,7 @@ bool equal_to<ray::Process>::operator()(const ray::Process &x,
 
 size_t hash<ray::Process>::operator()(const ray::Process &value) const {
   using namespace ray;
-  return !value.IsNull() ? value.IsValid() ? hash<pid_t>()(value.GetId())
+  return !value.IsNull() ? value.IsValid() ? hash<StartupToken>()(value.GetId())
                                            : hash<void const *>()(value.Get())
                          : size_t();
 }

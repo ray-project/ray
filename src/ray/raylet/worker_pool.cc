@@ -67,8 +67,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service, const NodeID node_id
                        const std::string &native_library_path,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external, const std::function<double()> get_time)
-    : worker_startup_token_counter_(0),
-      io_service_(&io_service),
+    : io_service_(&io_service),
       node_id_(node_id),
       node_address_(node_address),
       num_workers_soft_limit_(num_workers_soft_limit),
@@ -175,10 +174,6 @@ void WorkerPool::PopWorkerCallbackInternal(const PopWorkerCallback &callback,
   }
 }
 
-void WorkerPool::update_worker_startup_token_counter() {
-  worker_startup_token_counter_ += 1;
-}
-
 Process WorkerPool::StartWorkerProcess(
     const Language &language, const rpc::WorkerType worker_type, const JobID &job_id,
     PopWorkerStatus *status, const std::vector<std::string> &dynamic_options,
@@ -218,9 +213,13 @@ Process WorkerPool::StartWorkerProcess(
     process_failed_rate_limited_++;
     return Process();
   }
+  // From here we are committed to starting a new process
+  StartupToken worker_startup_token_counter_ = GetNewStartupToken();
+
   // Either there are no workers pending registration or the worker start is being forced.
-  RAY_LOG(DEBUG) << "Starting new worker process, current pool has " << state.idle.size()
-                 << " workers";
+  RAY_LOG(DEBUG) << "Starting new worker process "
+                 << worker_startup_token_counter_ << ", current pool has "
+                 << state.idle.size() << " workers";
 
   int workers_to_start = 1;
   if (dynamic_options.empty()) {
@@ -406,19 +405,18 @@ Process WorkerPool::StartWorkerProcess(
 
   // Start a process and measure the startup time.
   auto start = std::chrono::high_resolution_clock::now();
-  Process proc = StartProcess(worker_command_args, env);
+  Process proc = StartProcess(worker_startup_token_counter_, worker_command_args, env);
   auto end = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
   stats::ProcessStartupTimeMs.Record(duration.count());
   stats::NumWorkersStarted.Record(1);
   RAY_LOG(INFO) << "Started worker process of " << workers_to_start
-                << " worker(s) with pid " << proc.GetId();
+                << " worker(s) with id " << proc.GetId() << ", pid " << proc.GetProcPID();
   MonitorStartingWorkerProcess(proc, worker_startup_token_counter_, language,
                                worker_type);
   state.starting_worker_processes.emplace(
-      worker_startup_token_counter_,
+      proc.GetId(),
       StartingWorkerProcessInfo{workers_to_start, workers_to_start, worker_type, proc});
-  update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {
     auto &io_worker_state = GetIOWorkerStateFromWorkerType(worker_type, state);
     io_worker_state.num_starting_io_workers++;
@@ -468,11 +466,11 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
   });
 }
 
-Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_args,
+Process WorkerPool::StartProcess(StartupToken token,
+                                 const std::vector<std::string> &worker_command_args,
                                  const ProcessEnvironment &env) {
   if (RAY_LOG_ENABLED(DEBUG)) {
     std::string debug_info;
-    debug_info.append("Starting worker process with command:");
     for (const auto &arg : worker_command_args) {
       debug_info.append(" ").append(arg);
     }
@@ -489,7 +487,8 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
       debug_info.pop_back();
     }
     debug_info.append(".");
-    RAY_LOG(DEBUG) << debug_info;
+    RAY_LOG(DEBUG) << "Starting worker process " << token << " with command:"
+                   << debug_info;
   }
 
   // Launch the process to create the worker.
@@ -500,7 +499,8 @@ Process WorkerPool::StartProcess(const std::vector<std::string> &worker_command_
   }
   argv.push_back(NULL);
 
-  Process child(argv.data(), io_service_, ec, /*decouple=*/false, env);
+  Process child(token, argv.data(), io_service_, ec,
+                /*decouple=*/false, env);
   if (!child.IsValid() || ec) {
     // errorcode 24: Too many files. This is caused by ulimit.
     if (ec.value() == 24) {
@@ -596,9 +596,11 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     send_reply_callback(status, /*port=*/0);
     return status;
   }
-  auto shim_process = Process::FromPid(worker_shim_pid);
+
+  // These two processes will share the same worker_startup_token
+  auto shim_process = Process::FromPidAndToken(worker_shim_pid, worker_startup_token);
   worker->SetShimProcess(shim_process);
-  auto process = Process::FromPid(pid);
+  auto process = Process::FromPidAndToken(pid, worker_startup_token);
   worker->SetProcess(process);
 
   // The port that this worker's gRPC server should listen on. 0 if the worker
@@ -610,7 +612,7 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     return status;
   }
   RAY_LOG(DEBUG) << "Registering worker " << worker->WorkerId() << " with pid " << pid
-                 << ", port: " << port
+                 << ", token " << worker_startup_token << ", port: " << port
                  << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
   worker->SetAssignedPort(port);
 

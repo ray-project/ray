@@ -73,7 +73,7 @@ void AgentManager::StartAgent() {
   env.insert({"RESTART_COUNT", std::to_string(agent_restart_count_)});
   env.insert({"MAX_RESTART_COUNT",
               std::to_string(RayConfig::instance().agent_max_restart_count())});
-  Process child(argv.data(), nullptr, ec, false, env);
+  Process child(GetNewStartupToken(), argv.data(), nullptr, ec, false, env);
   if (!child.IsValid() || ec) {
     // The worker failed to start. This is a fatal error.
     RAY_LOG(FATAL) << "Failed to start agent with return value " << ec << ": "

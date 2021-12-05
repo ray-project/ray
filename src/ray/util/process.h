@@ -56,8 +56,9 @@ class ProcessFD;
 class Process {
  protected:
   std::shared_ptr<ProcessFD> p_;
+  StartupToken _startup_token;
 
-  explicit Process(pid_t pid);
+  explicit Process(pid_t pid, StartupToken token);
 
  public:
   ~Process();
@@ -73,14 +74,18 @@ class Process {
   /// \param[in] decouple True iff the parent will not wait for the child to exit.
   /// \param[in] env Additional environment variables to be set on this process besides
   /// the environment variables of the parent process.
-  explicit Process(const char *argv[], void *io_service, std::error_code &ec,
-                   bool decouple = false, const ProcessEnvironment &env = {});
+  explicit Process(StartupToken token, const char *argv[], void *io_service,
+                   std::error_code &ec, bool decouple = false,
+                   const ProcessEnvironment &env = {});
   /// Convenience function to run the given command line and wait for it to finish.
   static std::error_code Call(const std::vector<std::string> &args,
                               const ProcessEnvironment &env = {});
   static Process CreateNewDummy();
-  static Process FromPid(pid_t pid);
-  pid_t GetId() const;
+  static Process FromPidAndToken(pid_t pid, StartupToken token);
+
+  StartupToken GetId() const;
+  pid_t GetProcPID() const;
+
   /// Returns an opaque pointer or handle to the underlying process object.
   /// Implementation detail, used only for identity testing. Do not dereference.
   const void *Get() const;
@@ -89,9 +94,10 @@ class Process {
   /// Forcefully kills the process. Unsafe for unowned processes.
   void Kill();
   /// Convenience function to start a process in the background.
-  /// \param pid_file A file to write the PID of the spawned process in.
+  /// \param pid_file A file to write the PID, startup_token of the spawned
+  ///  process in.
   static std::pair<Process, std::error_code> Spawn(
-      const std::vector<std::string> &args, bool decouple,
+      StartupToken token, const std::vector<std::string> &args, bool decouple,
       const std::string &pid_file = std::string(), const ProcessEnvironment &env = {});
   /// Waits for process to terminate. Not supported for unowned processes.
   /// \return The process's exit code. Returns 0 for a dummy process, -1 for a null one.
@@ -100,9 +106,14 @@ class Process {
 
 // Get the Process ID of the parent process. If the parent process exits, the PID
 // will be 1 (this simulates POSIX getppid()).
-pid_t GetParentPID();
+//pid_t GetParentPID();
 
 pid_t GetPID();
+
+/// Gloabl startup token variable. Every call increments it by one.
+/// Used as a process identifier, espcecially in worker_pool.cc
+/// state.starting_worker_processes
+StartupToken GetNewStartupToken();
 
 bool IsParentProcessAlive();
 
