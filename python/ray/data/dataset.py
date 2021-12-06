@@ -2147,7 +2147,7 @@ class Dataset(Generic[T]):
         if self.count() > limit:
             raise ValueError(
                 "The dataset has more than the given limit of {} records. "
-                "Use ds.limit(N).to_pandas()."format(limit))
+                "Use ds.limit(N).to_pandas().".format(limit))
         blocks = self.get_internal_block_refs()
         output = DelegatingArrowBlockBuilder()
         for block in blocks:
