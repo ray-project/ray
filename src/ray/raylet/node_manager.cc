@@ -556,7 +556,8 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
   // NOTE: Technically `HandleJobStarted` isn't idempotent because we'll
   // increment the ref count multiple times. This is fine because
   // `HandleJobFinisehd` will also decrement the ref count multiple times.
-  runtime_env_manager_.AddURIReference(job_id.Hex(), job_data.config().runtime_env());
+  runtime_env_manager_.AddURIReference(job_id.Hex(),
+                                       job_data.config().runtime_env_info());
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
   // reschedule these tasks.
@@ -1724,17 +1725,16 @@ void NodeManager::HandleShutdownRaylet(const rpc::ShutdownRayletRequest &request
                                        rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO)
       << "Shutdown RPC has received. Shutdown will happen after the RPC is replied.";
+  // Exit right away if it is not graceful.
+  if (!request.graceful()) {
+    std::_Exit(EXIT_SUCCESS);
+  }
   if (is_node_drained_) {
     RAY_LOG(INFO) << "Node already has received the shutdown request. The shutdown "
                      "request RPC is ignored.";
     return;
   }
-  auto graceful = request.graceful();
-  auto shutdown_after_reply = [graceful]() {
-    // Exit right away if it is not graceful.
-    if (!graceful) {
-      std::_Exit(EXIT_SUCCESS);
-    }
+  auto shutdown_after_reply = []() {
     // Note that the callback is posted to the io service after the shutdown GRPC request
     // is replied. Otherwise, the RPC might not be replied to GCS before it shutsdown
     // itself. Implementation note: When raylet is shutdown by ray stop, the CLI sends a
@@ -1742,7 +1742,7 @@ void NodeManager::HandleShutdownRaylet(const rpc::ShutdownRayletRequest &request
     // we raise a sigterm to itself so that it can re-use the same graceful shutdown code
     // path. The sigterm is handled in the entry point (raylet/main.cc)'s signal handler.
     auto signo = SIGTERM;
-    RAY_LOG(INFO) << "Sending a signal to itself. shutting down. graceful " << graceful
+    RAY_LOG(INFO) << "Sending a signal to itself. shutting down. "
                   << ". Signo: " << signo;
     // raise return 0 if succeeds. If it fails to gracefully shutdown, it kills itself
     // forcefully.
@@ -1952,7 +1952,7 @@ void NodeManager::FinishAssignedActorCreationTask(WorkerInterface &worker,
     auto job_config = worker_pool_.GetJobConfig(job_id);
     RAY_CHECK(job_config);
     runtime_env_manager_.AddURIReference(actor_id.Hex(),
-                                         task.GetTaskSpecification().RuntimeEnv());
+                                         task.GetTaskSpecification().RuntimeEnvInfo());
   }
 }
 
@@ -2065,7 +2065,7 @@ void NodeManager::ProcessSubscribePlasmaReady(
 
 void NodeManager::DumpDebugState() const {
   std::fstream fs;
-  fs.open(initial_config_.session_dir + "/debug_state.txt",
+  fs.open(initial_config_.log_dir + "/debug_state.txt",
           std::fstream::out | std::fstream::trunc);
   fs << DebugString();
   fs.close();

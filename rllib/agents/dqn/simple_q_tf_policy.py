@@ -180,11 +180,10 @@ def compute_q_values(policy: Policy,
                      obs: TensorType,
                      explore,
                      is_training=None) -> TensorType:
-    model_out, _ = model({
-        SampleBatch.OBS: obs,
-        "is_training": is_training
-        if is_training is not None else policy._get_is_training_placeholder(),
-    }, [], None)
+    _is_training = (is_training if is_training is not None else
+                    policy._get_is_training_placeholder())
+    model_out, _ = model(
+        SampleBatch(obs=obs, _is_training=_is_training), [], None)
 
     return model_out
 
@@ -207,7 +206,7 @@ def setup_late_mixins(policy: Policy, obs_space: gym.spaces.Space,
 # above.
 SimpleQTFPolicy: Type[DynamicTFPolicy] = build_tf_policy(
     name="SimpleQTFPolicy",
-    get_default_config=lambda: ray.rllib.agents.dqn.dqn.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.agents.dqn.simple_q.DEFAULT_CONFIG,
     make_model=build_q_models,
     action_distribution_fn=get_distribution_inputs_and_class,
     loss_fn=build_q_losses,

@@ -106,16 +106,16 @@ def test_limit_concurrency(shutdown_only):
 
     # Some of the tasks will run since we relax the cap, but not all because it
     # should take exponentially long for the cap to be increased.
-    ready, not_ready = ray.wait(block_driver_refs, timeout=1, num_returns=20)
+    ready, not_ready = ray.wait(block_driver_refs, timeout=10, num_returns=20)
     assert len(not_ready) >= 1
 
     # Now the first instance of foo finishes, so the second starts to run.
     ray.get([block_task.release.remote() for _ in range(19)])
 
-    ready, not_ready = ray.wait(block_driver_refs, timeout=1, num_returns=20)
+    ready, not_ready = ray.wait(block_driver_refs, timeout=10, num_returns=20)
     assert len(not_ready) == 0
 
-    ready, not_ready = ray.wait(refs, num_returns=20, timeout=5)
+    ready, not_ready = ray.wait(refs, num_returns=20, timeout=15)
     assert len(ready) == 19
     assert len(not_ready) == 1
 

@@ -39,6 +39,39 @@ def maybe_pipeline(ds, enabled):
         return ds
 
 
+# Tests that we don't block on exponential rampup when doing bulk reads.
+# https://github.com/ray-project/ray/issues/20625
+@pytest.mark.parametrize("block_split", [False, True])
+def test_bulk_lazy_eval_split_mode(shutdown_only, block_split, tmp_path):
+    ray.init(num_cpus=8)
+    ctx = ray.data.context.DatasetContext.get_current()
+
+    class SlowCSVDatasource(CSVDatasource):
+        def _read_stream(self, f: "pa.NativeFile", path: str, **reader_args):
+            for block in CSVDatasource._read_stream(self, f, path,
+                                                    **reader_args):
+                time.sleep(3)
+                yield block
+
+    try:
+        original = ctx.block_splitting_enabled
+
+        ray.data.range(8, parallelism=8).write_csv(str(tmp_path))
+        ctx.block_splitting_enabled = True
+        ds = ray.data.read_datasource(
+            SlowCSVDatasource(), parallelism=8, paths=str(tmp_path))
+
+        start = time.time()
+        ds.map(lambda x: x)
+        delta = time.time() - start
+
+        print("full read time", delta)
+        # Should run in ~3 seconds. It takes >9 seconds if bulk read is broken.
+        assert delta < 8, delta
+    finally:
+        ctx.block_splitting_enabled = original
+
+
 @pytest.mark.parametrize("pipelined", [False, True])
 def test_basic_actors(shutdown_only, pipelined):
     ray.init(num_cpus=2)
@@ -1201,7 +1234,12 @@ def test_to_pandas_refs(ray_start_regular_shared):
     assert df.equals(dfds)
 
 
-def test_to_numpy(ray_start_regular_shared):
+def test_to_numpy_refs(ray_start_regular_shared):
+    # Simple Dataset
+    ds = ray.data.range(10)
+    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
+    np.testing.assert_equal(arr, np.arange(0, 10))
+
     # Tensor Dataset
     ds = ray.data.range_tensor(10, parallelism=2)
     arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
@@ -1212,10 +1250,9 @@ def test_to_numpy(ray_start_regular_shared):
     arr = np.concatenate(ray.get(ds.to_numpy_refs(column="value")))
     np.testing.assert_equal(arr, np.arange(0, 10))
 
-    # Simple Dataset
-    ds = ray.data.range(10)
-    arr = np.concatenate(ray.get(ds.to_numpy_refs()))
-    np.testing.assert_equal(arr, np.arange(0, 10))
+    # Table Dataset requires column
+    with pytest.raises(ValueError):
+        ray.get(ds.to_numpy_refs())
 
 
 def test_to_arrow_refs(ray_start_regular_shared):
@@ -1689,7 +1726,7 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.iter_blocks_with_metadata():
+    for block, meta in ds2._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
     if fs is None:
         shutil.rmtree(path)
@@ -2130,7 +2167,7 @@ def test_split_hints(ray_start_regular_shared):
         """
         num_blocks = len(block_node_ids)
         ds = ray.data.range(num_blocks, parallelism=num_blocks)
-        blocks = list(ds._blocks.iter_blocks())
+        blocks = ds._blocks.get_blocks()
         assert len(block_node_ids) == len(blocks)
         actors = [Actor.remote() for i in range(len(actor_node_ids))]
         with patch("ray.experimental.get_object_locations") as location_mock:
@@ -2156,7 +2193,7 @@ def test_split_hints(ray_start_regular_shared):
                 for i in range(len(actors)):
                     assert {blocks[j]
                             for j in expected_split_result[i]} == set(
-                                datasets[i]._blocks.iter_blocks())
+                                datasets[i]._blocks.get_blocks())
 
     assert_split_assignment(["node2", "node1", "node1"], ["node1", "node2"],
                             [[1, 2], [0]])
@@ -2394,7 +2431,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._blocks.iter_blocks_with_metadata():
+    for block, meta in ds._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
@@ -2515,7 +2552,7 @@ def test_zipped_json_read(ray_start_regular_shared, tmp_path):
     dsdf = ds.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._blocks.iter_blocks_with_metadata():
+    for block, meta in ds._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes()
 
     # Directory and file, two files.
@@ -2594,7 +2631,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.iter_blocks_with_metadata():
+    for block, meta in ds2._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     if fs is None:
@@ -2611,7 +2648,7 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.iter_blocks_with_metadata():
+    for block, meta in ds2._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
@@ -2703,7 +2740,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._blocks.iter_blocks_with_metadata():
+    for block, meta in ds._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, parallelism=2.
@@ -2834,7 +2871,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.iter_blocks_with_metadata():
+    for block, meta in ds2._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Two blocks.
@@ -2846,7 +2883,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._blocks.iter_blocks_with_metadata():
+    for block, meta in ds2._blocks.get_blocks_with_metadata():
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
@@ -2898,7 +2935,7 @@ def test_groupby_arrow(ray_start_regular_shared):
     assert agg_ds.count() == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
     # Test aggregation name conflict.
     xs = list(range(100))
@@ -2926,7 +2963,7 @@ def test_groupby_agg_name_conflict(ray_start_regular_shared, num_parts):
          {"A": 2, "foo": 50.0, "foo_2": 50.0}]
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_arrow_count(ray_start_regular_shared, num_parts):
     # Test built-in count aggregation
     seed = int(time.time())
@@ -2944,7 +2981,7 @@ def test_groupby_arrow_count(ray_start_regular_shared, num_parts):
          {"A": 2, "count()": 33}]
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_arrow_sum(ray_start_regular_shared, num_parts):
     # Test built-in sum aggregation
     seed = int(time.time())
@@ -2968,7 +3005,7 @@ def test_groupby_arrow_sum(ray_start_regular_shared, num_parts):
         "value") == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_arrow_min(ray_start_regular_shared, num_parts):
     # Test built-in min aggregation
     seed = int(time.time())
@@ -2992,7 +3029,7 @@ def test_groupby_arrow_min(ray_start_regular_shared, num_parts):
         ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).min("value")
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_arrow_max(ray_start_regular_shared, num_parts):
     # Test built-in max aggregation
     seed = int(time.time())
@@ -3016,7 +3053,7 @@ def test_groupby_arrow_max(ray_start_regular_shared, num_parts):
         ray.data.range_arrow(10).filter(lambda r: r["value"] > 10).max("value")
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_arrow_mean(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation
     seed = int(time.time())
@@ -3041,7 +3078,7 @@ def test_groupby_arrow_mean(ray_start_regular_shared, num_parts):
             "value")
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
     # Test built-in std aggregation
     seed = int(time.time())
@@ -3078,7 +3115,7 @@ def test_groupby_arrow_std(ray_start_regular_shared, num_parts):
     assert ray.data.from_pandas(pd.DataFrame({"A": [3]})).std("A") == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_arrow_multicolumn(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation on multiple columns
     seed = int(time.time())
@@ -3159,7 +3196,7 @@ def test_groupby_agg_bad_on(ray_start_regular_shared):
         ray.data.from_items(xs).mean("A")
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_arrow_multi_agg(ray_start_regular_shared, num_parts):
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_arrow_multi_agg with: {seed}")
@@ -3255,7 +3292,7 @@ def test_groupby_simple(ray_start_regular_shared):
     assert agg_ds.count() == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_simple_count(ray_start_regular_shared, num_parts):
     # Test built-in count aggregation
     seed = int(time.time())
@@ -3270,7 +3307,7 @@ def test_groupby_simple_count(ray_start_regular_shared, num_parts):
                                                                           33)]
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     # Test built-in sum aggregation
     seed = int(time.time())
@@ -3288,7 +3325,7 @@ def test_groupby_simple_sum(ray_start_regular_shared, num_parts):
     assert ray.data.range(10).filter(lambda r: r > 10).sum() == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_simple_min(ray_start_regular_shared, num_parts):
     # Test built-in min aggregation
     seed = int(time.time())
@@ -3306,7 +3343,7 @@ def test_groupby_simple_min(ray_start_regular_shared, num_parts):
         ray.data.range(10).filter(lambda r: r > 10).min()
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_simple_max(ray_start_regular_shared, num_parts):
     # Test built-in max aggregation
     seed = int(time.time())
@@ -3325,7 +3362,7 @@ def test_groupby_simple_max(ray_start_regular_shared, num_parts):
         ray.data.range(10).filter(lambda r: r > 10).max()
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation
     seed = int(time.time())
@@ -3344,7 +3381,7 @@ def test_groupby_simple_mean(ray_start_regular_shared, num_parts):
         ray.data.range(10).filter(lambda r: r > 10).mean()
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_simple_std(ray_start_regular_shared, num_parts):
     # Test built-in std aggregation
     seed = int(time.time())
@@ -3387,7 +3424,7 @@ def test_groupby_simple_std(ray_start_regular_shared, num_parts):
     assert ray.data.from_items([3]).std() == 0
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_simple_multilambda(ray_start_regular_shared, num_parts):
     # Test built-in mean aggregation
     seed = int(time.time())
@@ -3413,7 +3450,7 @@ def test_groupby_simple_multilambda(ray_start_regular_shared, num_parts):
             .mean([lambda x: x[0], lambda x: x[1]])
 
 
-@pytest.mark.parametrize("num_parts", [1, 10, 100])
+@pytest.mark.parametrize("num_parts", [1, 15, 100])
 def test_groupby_simple_multi_agg(ray_start_regular_shared, num_parts):
     seed = int(time.time())
     print(f"Seeding RNG for test_groupby_simple_multi_agg with: {seed}")
@@ -3679,8 +3716,8 @@ def test_sort_arrow_with_empty_blocks(ray_start_regular):
     # Test empty dataset.
     ds = ray.data.range_arrow(10).filter(lambda r: r["value"] > 10)
     assert len(
-        ray.data.impl.sort.sample_boundaries(
-            list(ds._blocks.iter_blocks()), "value", 3)) == 2
+        ray.data.impl.sort.sample_boundaries(ds._blocks.get_blocks(), "value",
+                                             3)) == 2
     assert ds.sort("value").count() == 0
 
 

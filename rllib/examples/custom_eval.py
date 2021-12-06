@@ -181,7 +181,7 @@ if __name__ == "__main__":
         "evaluation_interval": 1,
 
         # Run 10 episodes each time evaluation runs.
-        "evaluation_num_episodes": 10,
+        "evaluation_duration": 10,
 
         # Override the env config for evaluation.
         "evaluation_config": {

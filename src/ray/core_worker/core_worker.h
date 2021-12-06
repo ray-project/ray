@@ -760,6 +760,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::unordered_map<std::string, std::vector<uint64_t>> GetActorCallStats() const;
 
  private:
+  static rpc::RuntimeEnv OverrideRuntimeEnv(
+      const rpc::RuntimeEnv &child, const std::shared_ptr<rpc::RuntimeEnv> parent);
+
+  /// The following tests will use `OverrideRuntimeEnv` function.
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestPyModulesInherit);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestOverridePyModules);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestWorkingDirInherit);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestWorkingDirOverride);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaInherit);
+  FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
+
+  std::string OverrideTaskOrActorRuntimeEnv(
+      const std::string &serialized_runtime_env,
+      std::vector<std::string> *runtime_env_uris /* output */);
+
   void BuildCommonTaskSpec(
       TaskSpecBuilder &builder, const JobID &job_id, const TaskID &task_id,
       const std::string &name, const TaskID &current_task_id, uint64_t task_index,
@@ -770,7 +786,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const BundleID &bundle_id, bool placement_group_capture_child_tasks,
       const std::string &debugger_breakpoint, int64_t depth,
       const std::string &serialized_runtime_env,
-      const std::vector<std::string> &runtime_env_uris,
       const std::string &concurrency_group_name = "");
   void SetCurrentTaskId(const TaskID &task_id);
 
@@ -788,8 +803,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Register this worker or driver to GCS.
   void RegisterToGcs();
 
-  /// Check if the raylet has failed. If so, shutdown.
-  void CheckForRayletFailure();
+  /// (WORKER mode only) Check if the raylet has failed. If so, shutdown.
+  void ExitIfParentRayletDies();
 
   /// Heartbeat for internal bookkeeping.
   void InternalHeartbeat();
@@ -1150,6 +1165,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   friend class CoreWorkerTest;
 
   std::unique_ptr<rpc::JobConfig> job_config_;
+
+  std::shared_ptr<rpc::RuntimeEnv> job_runtime_env_;
 
   /// Simple container for per function task counters. The counters will be
   /// keyed by the function name in task spec.

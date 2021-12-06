@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import pickle
-import traceback
 import inspect
 from typing import Any, Callable, Optional, Tuple, Dict
 import time
@@ -26,7 +25,7 @@ from ray.serve.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
 )
 from ray.serve.version import DeploymentVersion
-from ray.exceptions import RayTaskError
+from ray.serve.utils import wrap_to_ray_error
 
 logger = _get_logger()
 
@@ -159,19 +158,6 @@ def create_replica_wrapper(name: str, serialized_deployment_def: bytes):
 
     RayServeWrappedReplica.__name__ = name
     return RayServeWrappedReplica
-
-
-def wrap_to_ray_error(function_name: str,
-                      exception: Exception) -> RayTaskError:
-    """Utility method to wrap exceptions in user code."""
-
-    try:
-        # Raise and catch so we can access traceback.format_exc()
-        raise exception
-    except Exception as e:
-        traceback_str = ray._private.utils.format_error_message(
-            traceback.format_exc())
-        return ray.exceptions.RayTaskError(function_name, traceback_str, e)
 
 
 class RayServeReplica:
