@@ -1,31 +1,25 @@
-# flake8: noqa
 import argparse
-import os
+import collections
 import json
+import os
 import sys
-import time
+import timeit
 from typing import Tuple
 
 import boto3
-import dask
-import dask.dataframe as dd
 import mlflow
 import pandas as pd
-import ray
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from dask_ml.compose import ColumnTransformer
-from dask_ml.model_selection import train_test_split
-from dask_ml.preprocessing import OneHotEncoder
-from dask_ml.preprocessing import StandardScaler
-from ray import train
-from ray.train import Trainer
-from ray.train import TrainingCallback
-from ray.train.callbacks import TBXLoggerCallback
-from ray.util.dask import ray_dask_get
 from torch.nn.parallel import DistributedDataParallel
-from torch.utils.tensorboard import SummaryWriter
+
+import ray
+from ray import train
+from ray.data.aggregate import Mean, Std
+from ray.data.dataset_pipeline import DatasetPipeline
+from ray.train import Trainer, TrainingCallback
+from ray.train.callbacks import TBXLoggerCallback
 
 
 # TODO(amogkam): Upstream this into Ray Train.
@@ -53,100 +47,175 @@ class MLflowCallback(TrainingCallback):
         mlflow.log_artifacts(self.logdir)
 
 
-def read_dask_dataframe(path: str) -> "dask.DataFrame":
+def read_dataset(path: str) -> ray.data.Dataset:
     print(f"reading data from {path}")
-    dataset = ray.data.read_parquet(path, _spread_resource_prefix="node:")
-    print(f"total data size: {dataset.size_bytes()}")
-    return dataset.random_shuffle(
-        _spread_resource_prefix="node:").to_dask().reset_index()
+    return ray.data.read_parquet(path, _spread_resource_prefix="node:") \
+        .repartition(400) \
+        .random_shuffle(_spread_resource_prefix="node:")
 
 
 class DataPreprocessor:
+    """A Datasets-based preprocessor that fits scalers/encoders to the training
+    dataset and transforms the training, testing, and inference datasets using
+    those fitted scalers/encoders.
+    """
+
     def __init__(self):
-        self.column_transformer = None
-        self.scaler = None
+        # List of present fruits, used for one-hot encoding of fruit column.
+        self.fruits = None
+        # Mean and stddev stats used for standard scaling of the feature
+        # columns.
+        self.standard_stats = None
 
-    def preprocess_train_data(self, df: "dask.DataFrame"
-                              ) -> Tuple["dask.DataFrame", "dask.DataFrame"]:
-        return self._preprocess(df, False)
+    def preprocess_train_data(self, ds: ray.data.Dataset
+                              ) -> Tuple[ray.data.Dataset, ray.data.Dataset]:
+        print("\n\nPreprocessing training dataset.\n")
+        return self._preprocess(ds, False)
 
-    def preprocess_inference_data(
-            self,
-            df: "dask.DataFrame") -> Tuple["dask.DataFrame", "dask.DataFrame"]:
+    def preprocess_inference_data(self,
+                                  df: ray.data.Dataset) -> ray.data.Dataset:
+        print("\n\nPreprocessing inference dataset.\n")
         return self._preprocess(df, True)[0]
 
-    def _preprocess(self, df: "dask.DataFrame", inferencing: bool
-                    ) -> Tuple["dask.DataFrame", "dask.DataFrame"]:
-        df = df.loc[:, df.columns != "index"]
-        # remove nulls and/or NaNs scalably with dask
-        print(f"step1: drop nulls from rows")
-        df = df.dropna(subset=["nullable_feature"])
+    def _preprocess(self, ds: ray.data.Dataset, inferencing: bool
+                    ) -> Tuple[ray.data.Dataset, ray.data.Dataset]:
+        print(
+            "\nStep 1: Dropping nulls, creating new_col, updating feature_1\n")
 
-        print(f"step2: creating new_col and updatingfeature_1")
-        df["new_col"] = (
-            df["feature_1"] - 2 * df["feature_2"] + df["feature_3"]) / 3.
-        df["feature_1"] = 2. * df["feature_1"] + 0.1
-        # TODO: this doesn't work with more than 1 parquet file
-        # df['mean_by_fruit'] = df.groupby('fruit')['feature_1'].transform('mean')
+        def batch_transformer(df: pd.DataFrame):
+            # Disable chained assignment warning.
+            pd.options.mode.chained_assignment = None
 
-        print(f"step3: one-hot encoding fruit")
-        df = df.astype({"fruit": "category"})
-        df = df.categorize()
-        df.persist()
+            # Drop nulls.
+            df = df.dropna(subset=["nullable_feature"])
+
+            # Add new column.
+            df["new_col"] = (
+                df["feature_1"] - 2 * df["feature_2"] + df["feature_3"]) / 3.
+
+            # Transform column.
+            df["feature_1"] = 2. * df["feature_1"] + 0.1
+
+            return df
+
+        ds = ds.map_batches(batch_transformer, batch_format="pandas")
+
+        print("\nStep 2: Precalculating fruit-grouped mean for new column and "
+              "for one-hot encoding (latter only uses fruit groups)\n")
+        fruit_means = {
+            r["fruit"]: r["mean(feature_1)"]
+            for r in ds.groupby("fruit").mean("feature_1").take_all()
+        }
+
+        print("\nStep 3: Create mean_by_fruit as mean of feature_1 groupby "
+              "fruit; one-hot encode fruit column\n")
 
         if inferencing:
-            assert self.column_transformer is not None
-            df_fruits = self.column_transformer.transform(df)
+            assert self.fruits is not None
         else:
-            assert self.column_transformer is None
-            self.column_transformer = ColumnTransformer(
-                [("one-hot", OneHotEncoder(sparse=False), ["fruit"])])
-            df_fruits = self.column_transformer.fit_transform(df)
+            assert self.fruits is None
+            self.fruits = list(fruit_means.keys())
 
-        df_data = df.loc[:, (df.columns != "label") & (df.columns != "fruit")]
-        df_data = dd.concat([df_data, df_fruits], axis=1)
+        fruit_one_hots = {
+            fruit: collections.defaultdict(int, fruit=1)
+            for fruit in self.fruits
+        }
 
-        assert df_data.isnull().sum().sum().compute(
-        ) == 0, "There are nulls or Nans in the data!"
+        def batch_transformer(df: pd.DataFrame):
+            # Add column containing the feature_1-mean of the fruit groups.
+            df["mean_by_fruit"] = df["fruit"].map(fruit_means)
+
+            # One-hot encode the fruit column.
+            for fruit, one_hot in fruit_one_hots.items():
+                df[f"fruit_{fruit}"] = df["fruit"].map(one_hot)
+
+            # Drop the fruit column, which is no longer needed.
+            df.drop(columns="fruit", inplace=True)
+
+            return df
+
+        ds = ds.map_batches(batch_transformer, batch_format="pandas")
 
         if inferencing:
-            print(f"step4: standardrize inference dataset")
-            assert self.scaler is not None
-            df_data_inference = self.scaler.transform(df_data)
-            return df_data_inference, None
+            print("\nStep 4: Standardize inference dataset\n")
+            assert self.standard_stats is not None
         else:
-            print(f"step4: standardrize train dataset")
-            df_labels = df.loc[:, df.columns == "label"]
-            df_data_train, df_data_test, df_label_train, df_label_test = train_test_split(
-                df_data, df_labels)
-            df_data_train.persist()
-            assert self.scaler is None
-            self.scaler = StandardScaler(
-            )  # this just turns col values to z-scores
-            df_data_train = self.scaler.fit_transform(df_data_train)
-            df_data_test = self.scaler.transform(df_data_test)
-            df_train = dd.concat([df_data_train, df_label_train], axis=1)
-            df_test = dd.concat([df_data_test, df_label_test], axis=1)
-            return df_train, df_test
+            assert self.standard_stats is None
+
+            print("\nStep 4a: Split training dataset into train-test split\n")
+
+            # Split into train/test datasets.
+            split_index = int(0.9 * ds.count())
+            # Split into 90% training set, 10% test set.
+            train_ds, test_ds = ds.split_at_indices([split_index])
+
+            print("\nStep 4b: Precalculate training dataset stats for "
+                  "standard scaling\n")
+            # Calculate stats needed for standard scaling feature columns.
+            feature_columns = [
+                col for col in train_ds.schema().names if col != "label"
+            ]
+            standard_aggs = [
+                agg(on=col) for col in feature_columns for agg in (Mean, Std)
+            ]
+            self.standard_stats = train_ds.aggregate(*standard_aggs)
+            print("\nStep 4c: Standardize training dataset\n")
+
+        # Standard scaling of feature columns.
+        standard_stats = self.standard_stats
+
+        def batch_standard_scaler(df: pd.DataFrame):
+            def column_standard_scaler(s: pd.Series):
+                if s.name == "label":
+                    # Don't scale the label column.
+                    return s
+                s_mean = standard_stats[f"mean({s.name})"]
+                s_std = standard_stats[f"std({s.name})"]
+                return (s - s_mean) / s_std
+
+            return df.transform(column_standard_scaler)
+
+        if inferencing:
+            # Apply standard scaling to inference dataset.
+            inference_ds = ds.map_batches(
+                batch_standard_scaler, batch_format="pandas")
+            return inference_ds, None
+        else:
+            # Apply standard scaling to both training dataset and test dataset.
+            train_ds = train_ds.map_batches(
+                batch_standard_scaler, batch_format="pandas")
+            test_ds = test_ds.map_batches(
+                batch_standard_scaler, batch_format="pandas")
+            return train_ds, test_ds
 
 
 def inference(dataset, model_cls: type, batch_size: int, result_path: str,
               use_gpu: bool):
     print("inferencing...")
     num_gpus = 1 if use_gpu else 0
-    dataset.map_batches(model_cls, compute="actors", batch_size=batch_size, num_gpus=num_gpus, num_cpus=0). \
-        write_parquet(result_path)
+    dataset \
+        .map_batches(
+            model_cls,
+            compute="actors",
+            batch_size=batch_size,
+            num_gpus=num_gpus,
+            num_cpus=0) \
+        .write_parquet(result_path)
 
 
 """
 TODO: Define neural network code in pytorch
 P0:
-1) can take arguments to change size of net arbitrarily so we can stress test against distributed training on cluster
-2) has a network (nn.module?), optimizer, and loss function for binary classification
-3) has some semblence of regularization (ie: via dropout) so that this artificially gigantic net doesn't just overfit horrendously
-4) works well with pytorch dataset we'll create from Ray data .to_torch_dataset()
+1. can take arguments to change size of net arbitrarily so we can stress test
+   against distributed training on cluster
+2. has a network (nn.module?), optimizer, and loss function for binary
+   classification
+3. has some semblence of regularization (ie: via dropout) so that this
+   artificially gigantic net doesn't just overfit horrendously
+4. works well with pytorch dataset we'll create from Ray data
+   .to_torch_dataset()
 P1:
-1) also tracks AUC for training, testing sets and records to tensorboard to
+1. also tracks AUC for training, testing sets and records to tensorboard to
 """
 
 
@@ -175,8 +244,6 @@ class Net(nn.Module):
 
             self.add_module(f"fc_{i}", layer)
             self.add_module(f"relu_{i}", relu)
-            # self.register_parameter(name=f"fc_{i}", param=getattr(self, f"fc_{i}"))
-            # self.register_parameter(name=f"relu_{i}", param=getattr(self, f"relu_{i}"))
 
         self.fc_output = nn.Linear(num_hidden, 1)
 
@@ -192,17 +259,6 @@ class Net(nn.Module):
 
         x = self.fc_output(x)
         return x
-
-
-"""
-TODO: training loop for NN
-P0 Requirements:
-1) should iterate through epochs, inner loop per batch
-2) should keep running total of accuracy, loss (training & test) and record those to tensorboard
-3) should perform windowing / shuffling per epoch
-P1:
-1) use Ray Tune for tuning / checkpointing
-"""
 
 
 def train_epoch(dataset, model, device, criterion, optimizer):
@@ -264,7 +320,6 @@ def test_epoch(dataset, model, device, criterion):
 
 
 def train_func(config):
-    is_distributed = config.get("is_distributed", False)
     use_gpu = config["use_gpu"]
     num_epochs = config["num_epochs"]
     batch_size = config["batch_size"]
@@ -277,36 +332,16 @@ def train_func(config):
     print("Defining model, loss, and optimizer...")
 
     # Setup device.
-    if is_distributed:
-        device = torch.device(f"cuda:{train.local_rank()}" if use_gpu
-                              and torch.cuda.is_available() else "cpu")
-    else:
-        device = torch.device("cuda:0" if use_gpu
-                              and torch.cuda.is_available() else "cpu")
+    device = torch.device(f"cuda:{train.local_rank()}"
+                          if use_gpu and torch.cuda.is_available() else "cpu")
     print(f"Device: {device}")
 
     # Setup data.
-    if is_distributed:
-        train_dataset_pipeline = train.get_dataset_shard("train_dataset")
-        train_dataset_epoch_iterator = train_dataset_pipeline.iter_epochs()
-        test_dataset = train.get_dataset_shard("test_dataset")
-    else:
-        train_dataset_epoch_iterator = config["train_dataset"].iter_epochs()
-        test_dataset = config["test_dataset"]
+    train_dataset_pipeline = train.get_dataset_shard("train_dataset")
+    train_dataset_epoch_iterator = train_dataset_pipeline.iter_epochs()
+    test_dataset = train.get_dataset_shard("test_dataset")
     test_torch_dataset = test_dataset.to_torch(
         label_column="label", batch_size=batch_size)
-
-    # Setup Tensorboard and MLflow.
-    if is_distributed:
-        # Setup is done through Callback.
-        pass
-    else:
-        writer = SummaryWriter()
-        mlflow.start_run()
-        mlflow_config = config.copy()
-        mlflow_config.pop("test_dataset")
-        mlflow_config.pop("train_dataset")
-        mlflow.log_params(mlflow_config)
 
     net = Net(
         n_layers=num_layers,
@@ -317,8 +352,7 @@ def train_func(config):
     ).to(device)
     print(net.parameters)
 
-    if is_distributed:
-        net = DistributedDataParallel(net)
+    net = train.torch.prepare_model(net)
 
     criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(net.parameters(), weight_decay=0.0001)
@@ -333,61 +367,48 @@ def train_func(config):
         train_running_loss, train_num_correct, train_num_total = train_epoch(
             train_torch_dataset, net, device, criterion, optimizer)
         train_acc = train_num_correct / train_num_total
-        print(
-            f"epoch [{epoch + 1}]: training accuracy: {train_num_correct} / {train_num_total} = {train_acc:.4f}"
-        )
+        print(f"epoch [{epoch + 1}]: training accuracy: "
+              f"{train_num_correct} / {train_num_total} = {train_acc:.4f}")
 
         test_running_loss, test_num_correct, test_num_total = test_epoch(
             test_torch_dataset, net, device, criterion)
         test_acc = test_num_correct / test_num_total
-        print(
-            f"epoch [{epoch + 1}]: testing accuracy: {test_num_correct} / {test_num_total} = {test_acc:.4f}"
-        )
+        print(f"epoch [{epoch + 1}]: testing accuracy: "
+              f"{test_num_correct} / {test_num_total} = {test_acc:.4f}")
 
         # Record and log stats.
-        if is_distributed:
-            train.report(
-                train_acc=train_acc,
-                train_loss=train_running_loss,
-                test_acc=test_acc,
-                test_loss=test_running_loss)
-        else:
-            writer.add_scalar("Accuracy/train", train_acc, epoch)
-            writer.add_scalar("Loss/train", train_running_loss, epoch)
-            writer.add_scalar("Accuracy/test", test_acc, epoch)
-            writer.add_scalar("Loss/test", test_running_loss, epoch)
-            writer.flush()
-
-            mlflow.log_metrics({
-                "train_acc": train_acc,
-                "train_loss": train_running_loss,
-                "test_acc": test_acc,
-                "test_loss": test_running_loss
-            })
+        train.report(
+            train_acc=train_acc,
+            train_loss=train_running_loss,
+            test_acc=test_acc,
+            test_loss=test_running_loss)
 
         # Checkpoint model.
-        if is_distributed:
-            import copy
-            model_copy = copy.deepcopy(net.module)
-            train.save_checkpoint(
-                model_state_dict=model_copy.cpu().state_dict())
-        else:
-            torch.save(net.state_dict(), f"models/model-epoch-{epoch}.torch")
+        module = (net.module
+                  if isinstance(net, DistributedDataParallel) else net)
+        train.save_checkpoint(model_state_dict=module.state_dict())
 
-    # Shutdown Tensorboard and MLflow.
-    if is_distributed:
-        pass
-    else:
-        writer.close()
-        # mlflow.end_run()
+    if train.world_rank() == 0:
+        return module.cpu()
 
-    if is_distributed:
-        if train.world_rank() == 0:
-            return net.module.cpu()
-        else:
-            return None
-    else:
-        return net
+
+@ray.remote
+class TrainingWorker:
+    def __init__(self, rank: int, shard: DatasetPipeline, batch_size: int):
+        self.rank = rank
+        self.shard = shard
+        self.batch_size = batch_size
+
+    def train(self):
+        for epoch, training_dataset in enumerate(self.shard.iter_datasets()):
+            # Following code emulates epoch based SGD training.
+            print(f"Training... worker: {self.rank}, epoch: {epoch}")
+            for i, _ in enumerate(
+                    training_dataset.to_torch(
+                        batch_size=self.batch_size, label_column="label")):
+                if i % 10000 == 0:
+                    print(f"epoch: {epoch}, worker: {self.rank},"
+                          f" processing batch: {i}")
 
 
 if __name__ == "__main__":
@@ -406,18 +427,18 @@ if __name__ == "__main__":
         "--address",
         required=False,
         type=str,
-        help="The address to use for Ray. `auto` if running through `ray submit"
-    )
+        help=("The address to use for Ray. `auto` if running through "
+              "`ray submit`"))
     parser.add_argument(
         "--num-workers",
         default=1,
         type=int,
-        help="If > 1, number of Ray workers to use for distributed training")
+        help="The number of Ray workers to use for distributed training")
     parser.add_argument(
         "--large-dataset",
         action="store_true",
         default=False,
-        help="Use 500GB dataset")
+        help="Use 100GB dataset")
     parser.add_argument(
         "--use-gpu",
         action="store_true",
@@ -428,6 +449,11 @@ if __name__ == "__main__":
         action="store_true",
         help="Whether to use mlflow model registry. If set, a local MLflow "
         "tracking server is expected to have already been started.")
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="Use dummy trainer to debug dataset performance")
 
     args = parser.parse_args()
     smoke_test = args.smoke_test
@@ -440,10 +466,9 @@ if __name__ == "__main__":
     if large_dataset:
         assert use_s3, "--large-dataset requires --use-s3 to be set."
 
-    start_time = time.time()
+    e2e_start_time = timeit.default_timer()
 
     ray.init(address=address)
-    dask.config.set(scheduler=ray_dask_get)
 
     # Setup MLflow.
 
@@ -462,15 +487,20 @@ if __name__ == "__main__":
 
     if use_s3:
         # Check if s3 data is populated.
-        BUCKET_NAME = 'cuj-big-data'
-        FOLDER_NAME = 'big-data/' if large_dataset else 'data/'
-        s3_resource = boto3.resource('s3')
+        BUCKET_NAME = "cuj-big-data"
+        FOLDER_NAME = "100GB/" if large_dataset else "data/"
+        s3_resource = boto3.resource("s3")
         bucket = s3_resource.Bucket(BUCKET_NAME)
         count = bucket.objects.filter(Prefix=FOLDER_NAME)
         if len(list(count)) == 0:
             print("please run `python make_and_upload_dataset.py` first")
             sys.exit(1)
-        data_path = "s3://cuj-big-data/big-data/" if large_dataset else "s3://cuj-big-data/data/"
+        # cuj-big-data/big-data stats
+        # 156 files, 3_120_000_000 rows and 501_748_803_387 bytes
+        # cuj-big-data/100GB stats
+        # 33 files, 660_000_000 rows and 106_139_169_947 bytes
+        data_path = ("s3://cuj-big-data/100GB/"
+                     if large_dataset else "s3://cuj-big-data/data/")
         inference_path = "s3://cuj-big-data/inference/"
         inference_output_path = "s3://cuj-big-data/output/"
     else:
@@ -492,16 +522,15 @@ if __name__ == "__main__":
                                       "data_00000.parquet.snappy")
 
     preprocessor = DataPreprocessor()
-    train_df, test_df = preprocessor.preprocess_train_data(
-        read_dask_dataframe(data_path))
+    train_dataset, test_dataset = preprocessor.preprocess_train_data(
+        read_dataset(data_path))
 
-    num_columns = len(train_df.columns)
-    num_features = num_columns - 1  # remove label column
+    preprocessing_end_time = timeit.default_timer()
+    print("Preprocessing time (s): ", preprocessing_end_time - e2e_start_time)
 
-    train_dataset = ray.data.from_dask(train_df)
-    test_dataset = ray.data.from_dask(test_df)
-    del train_df
-    del test_df
+    num_columns = len(train_dataset.schema().names)
+    # remove label column and internal Arrow column.
+    num_features = num_columns - 2
 
     NUM_EPOCHS = 2
     BATCH_SIZE = 512
@@ -510,9 +539,27 @@ if __name__ == "__main__":
     DROPOUT_EVERY = 5
     DROPOUT_PROB = 0.2
 
+    if args.debug:
+        num_gpus = 1 if use_gpu else 0
+        shards = train_dataset.repeat(NUM_EPOCHS) \
+            .random_shuffle_each_window(_spread_resource_prefix="node:") \
+            .split(num_workers)
+        del train_dataset
+
+        training_workers = [
+            TrainingWorker.options(num_gpus=num_gpus, num_cpus=0).remote(
+                rank, shard, BATCH_SIZE) for rank, shard in enumerate(shards)
+        ]
+        ray.get([worker.train.remote() for worker in training_workers])
+
+        e2e_end_time = timeit.default_timer()
+        total_time = e2e_end_time - e2e_start_time
+        print(f"Job finished in {total_time} seconds.")
+        exit()
+
     # Random global shuffle
-    train_dataset_pipeline = train_dataset.repeat().random_shuffle_each_window(
-        _spread_resource_prefix="node:")
+    train_dataset_pipeline = train_dataset.repeat() \
+        .random_shuffle_each_window(_spread_resource_prefix="node:")
     del train_dataset
 
     datasets = {
@@ -520,58 +567,43 @@ if __name__ == "__main__":
         "test_dataset": test_dataset
     }
 
-    if num_workers <= 1:
-        config = {
-            "use_gpu": use_gpu,
-            "num_epochs": NUM_EPOCHS,
-            "batch_size": BATCH_SIZE,
-            "num_hidden": NUM_HIDDEN,
-            "num_layers": NUM_LAYERS,
-            "dropout_every": DROPOUT_EVERY,
-            "dropout_prob": DROPOUT_PROB,
-            "num_features": num_features,
-        }
+    config = {
+        "use_gpu": use_gpu,
+        "num_epochs": NUM_EPOCHS,
+        "batch_size": BATCH_SIZE,
+        "num_hidden": NUM_HIDDEN,
+        "num_layers": NUM_LAYERS,
+        "dropout_every": DROPOUT_EVERY,
+        "dropout_prob": DROPOUT_PROB,
+        "num_features": num_features
+    }
 
-        config.update(datasets)
+    # Create 2 callbacks: one for Tensorboard Logging and one for MLflow
+    # logging. Pass these into Trainer, and all results that are
+    # reported by ``train.report()`` will be logged to these 2 places.
+    # TODO: TBXLoggerCallback should create nonexistent logdir
+    #       and should also create 1 directory per file.
+    callbacks = [TBXLoggerCallback(logdir="/tmp"), MLflowCallback(config)]
 
-        model = train_func(config=config)
+    # Remove CPU resource so Datasets can be scheduled.
+    resources_per_worker = {"CPU": 0, "GPU": 1} if use_gpu else None
 
-    else:
-        config = {
-            "is_distributed": True,
-            "use_gpu": use_gpu,
-            "num_epochs": NUM_EPOCHS,
-            "batch_size": BATCH_SIZE,
-            "num_hidden": NUM_HIDDEN,
-            "num_layers": NUM_LAYERS,
-            "dropout_every": DROPOUT_EVERY,
-            "dropout_prob": DROPOUT_PROB,
-            "num_features": num_features
-        }
+    trainer = Trainer(
+        backend="torch",
+        num_workers=num_workers,
+        use_gpu=use_gpu,
+        resources_per_worker=resources_per_worker)
+    trainer.start()
+    results = trainer.run(
+        train_func=train_func,
+        config=config,
+        callbacks=callbacks,
+        dataset=datasets)
+    model = results[0]
+    trainer.shutdown()
 
-        # Create 2 callbacks: one for Tensorboard Logging and one for MLflow
-        # logging. Pass these into Trainer, and all results that are
-        # reported by ``train.report()`` will be logged to these 2 places.
-        # TODO: TBXLoggerCallback should create nonexistent logdir
-        #       and should also create 1 directory per file.
-        callbacks = [TBXLoggerCallback(logdir="/tmp"), MLflowCallback(config)]
-
-        trainer = Trainer(
-            backend="torch",
-            num_workers=num_workers,
-            use_gpu=use_gpu,
-            resources_per_worker={
-                "CPU": 0,
-                "GPU": 1
-            })
-        trainer.start()
-        results = trainer.run(
-            train_func=train_func,
-            config=config,
-            callbacks=callbacks,
-            dataset=datasets)
-        model = results[0]
-        trainer.shutdown()
+    training_end_time = timeit.default_timer()
+    print("Training time (s): ", training_end_time - preprocessing_end_time)
 
     if args.mlflow_register_model:
         mlflow.pytorch.log_model(
@@ -589,6 +621,7 @@ if __name__ == "__main__":
         def load_model_func():
             model_uri = f"models:/torch_model/{latest_version}"
             return mlflow.pytorch.load_model(model_uri)
+
     else:
         state_dict = model.state_dict()
 
@@ -619,15 +652,17 @@ if __name__ == "__main__":
                 self.device)
             return pd.DataFrame(self.model(tensor).cpu().detach().numpy())
 
-    inference_df = preprocessor.preprocess_inference_data(
-        read_dask_dataframe(inference_path))
-    inference_dataset = ray.data.from_dask(inference_df)
+    inference_dataset = preprocessor.preprocess_inference_data(
+        read_dataset(inference_path))
     inference(inference_dataset, BatchInferModel(load_model_func), 100,
               inference_output_path, use_gpu)
 
-    end_time = time.time()
+    e2e_end_time = timeit.default_timer()
+    print("Inference time (s): ", e2e_end_time - training_end_time)
 
-    total_time = end_time - start_time
+    total_time = e2e_end_time - e2e_start_time
+    print("Total time (s): ", e2e_end_time - e2e_start_time)
+
     print(f"Job finished in {total_time} seconds.")
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as f:
         f.write(json.dumps({"time": total_time, "success": 1}))

@@ -57,6 +57,18 @@ python_grpc_compile(
     deps = [":gcs_proto"],
 )
 
+# Function and class dependencies.
+proto_library(
+    name = "dependency_proto",
+    srcs = ["dependency.proto"],
+)
+
+python_grpc_compile(
+    name = "dependency_py_proto",
+    deps = [":dependency_proto"],
+)
+
+# Text logging.
 proto_library(
     name = "logging_proto",
     srcs = ["logging.proto"],
@@ -252,6 +264,7 @@ proto_library(
     srcs = ["pubsub.proto"],
     deps = [
         ":common_proto",
+        ":dependency_proto",
         ":gcs_proto",
         ":logging_proto",
     ],
