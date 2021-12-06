@@ -293,6 +293,50 @@ def test_replicas_delayed_startup():
     assert new_num_replicas == 123
 
 
+@pytest.mark.parametrize("delay_s", [30.0, 0.0])
+def test_fluctuating_ongoing_requests(delay_s):
+    """
+    Simulates a workload that switches between too many and too few
+    ongoing requests.
+    """
+
+    config = AutoscalingConfig(
+        min_replicas=1,
+        max_replicas=10,
+        target_num_ongoing_requests_per_replica=50,
+        upscale_delay_s=delay_s,
+        downscale_delay_s=delay_s)
+
+    policy = BasicAutoscalingPolicy(config)
+
+    wait_periods = int(delay_s / CONTROL_LOOP_PERIOD_S)
+
+    if delay_s > 0:
+        assert wait_periods > 1
+
+    underload_requests, overload_requests = [20, 20], [100]
+    trials = 1000
+
+    new_num_replicas = None
+    for trial in range(trials):
+        if trial % 2 == 0:
+            new_num_replicas = policy.get_decision_num_replicas(
+                current_num_ongoing_requests=overload_requests,
+                curr_target_num_replicas=1)
+            if delay_s > 0:
+                assert new_num_replicas == 1, trial
+            else:
+                assert new_num_replicas == 2, trial
+        else:
+            new_num_replicas = policy.get_decision_num_replicas(
+                current_num_ongoing_requests=underload_requests,
+                curr_target_num_replicas=2)
+            if delay_s > 0:
+                assert new_num_replicas == 2, trial
+            else:
+                assert new_num_replicas == 1, trial
+
+
 if __name__ == "__main__":
     import sys
     import pytest
