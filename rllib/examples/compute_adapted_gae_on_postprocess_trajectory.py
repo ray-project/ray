@@ -1,12 +1,12 @@
 """
-Adapted (time-dependent) GAE for PPO algorithm can be activated by setting 
-use_adapted_gae=True in the policy config. Additionally, it is required that 
+Adapted (time-dependent) GAE for PPO algorithm can be activated by setting
+use_adapted_gae=True in the policy config. Additionally, it is required that
 "callbacks" include the custom callback class in the Trainer's config.
-Furthermore, the env must return in its info dictionary a key-value pair of 
+Furthermore, the env must return in its info dictionary a key-value pair of
 the form "d_ts": ... where the value is the length (time) of recent agent step.
 
-This adapted, time-dependent computation of advantages may be useful in cases 
-where agent's actions take various times and thus time steps are not 
+This adapted, time-dependent computation of advantages may be useful in cases
+where agent's actions take various times and thus time steps are not
 equidistant (https://docdro.id/400TvlR)
 """
 
@@ -88,25 +88,25 @@ class MyCallbacks(DefaultCallbacks):
 
 def generalized_discount_cumsum(x: np.ndarray, deltas: np.ndarray,
                                 gamma: float) -> np.ndarray:
-    """Calculates the 'time-dependent' discounted cumulative sum over a 
+    """Calculates the 'time-dependent' discounted cumulative sum over a
     (reward) sequence `x`.
 
     Recursive equations:
 
     y[t] - gamma**deltas[t+1]*y[t+1] = x[t]
 
-    reversed(y)[t] - gamma**reversed(deltas)[t-1]*reversed(y)[t-1] = 
+    reversed(y)[t] - gamma**reversed(deltas)[t-1]*reversed(y)[t-1] =
     reversed(x)[t]
 
     Args:
         x (np.ndarray): A sequence of rewards or one-step TD residuals.
-        deltas (np.ndarray): A sequence of time step deltas (length of time 
+        deltas (np.ndarray): A sequence of time step deltas (length of time
             steps).
         gamma (float): The discount factor gamma.
 
     Returns:
-        np.ndarray: The sequence containing the 'time-dependent' discounted 
-            cumulative sums for each individual element in `x` till the end of 
+        np.ndarray: The sequence containing the 'time-dependent' discounted
+            cumulative sums for each individual element in `x` till the end of
             the trajectory.
 
     Examples:
