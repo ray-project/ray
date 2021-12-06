@@ -309,9 +309,8 @@ def test_fluctuating_ongoing_requests(delay_s):
 
     policy = BasicAutoscalingPolicy(config)
 
-    wait_periods = int(delay_s / CONTROL_LOOP_PERIOD_S)
-
     if delay_s > 0:
+        wait_periods = int(delay_s / CONTROL_LOOP_PERIOD_S)
         assert wait_periods > 1
 
     underload_requests, overload_requests = [20, 20], [100]
@@ -335,6 +334,53 @@ def test_fluctuating_ongoing_requests(delay_s):
                 assert new_num_replicas == 2, trial
             else:
                 assert new_num_replicas == 1, trial
+
+
+@pytest.mark.parametrize("ongoing_requests", [[7, 1, 8, 4], [8, 1, 8, 4],
+                                              [6, 1, 8, 4], [0, 1, 8, 4]])
+def test_imbalanced_replicas(ongoing_requests):
+    config = AutoscalingConfig(
+        min_replicas=1,
+        max_replicas=10,
+        target_num_ongoing_requests_per_replica=5,
+        upscale_delay_s=0.0,
+        downscale_delay_s=0.0)
+
+    policy = BasicAutoscalingPolicy(config)
+    
+    # Check that as long as the average number of ongoing requests equals
+    # the target_num_ongoing_requests_per_replica, the number of replicas
+    # stays the same
+    if (sum(ongoing_requests) / len(ongoing_requests) ==
+            config.target_num_ongoing_requests_per_replica):
+        new_num_replicas = policy.get_decision_num_replicas(
+            current_num_ongoing_requests=ongoing_requests,
+            curr_target_num_replicas=4)
+        assert new_num_replicas == 4
+    
+    # Check downscaling behavior when average number of requests
+    # is lower than target_num_ongoing_requests_per_replica
+    elif (sum(ongoing_requests) / len(ongoing_requests) <
+            config.target_num_ongoing_requests_per_replica):
+        new_num_replicas = policy.get_decision_num_replicas(
+            current_num_ongoing_requests=ongoing_requests,
+            curr_target_num_replicas=4)
+        
+        if config.target_num_ongoing_requests_per_replica - sum(ongoing_requests) / len(ongoing_requests) <= 1:
+            # Autoscaling uses a ceiling operator, which means a slightly low
+            # current_num_ongoing_requests value is insufficient to downscale
+            assert new_num_replicas == 4
+        else:
+            assert new_num_replicas == 3
+    
+    # Check upscaling behavior when average number of requests
+    # is higher than target_num_ongoing_requests_per_replica
+    else:
+        new_num_replicas = policy.get_decision_num_replicas(
+            current_num_ongoing_requests=ongoing_requests,
+            curr_target_num_replicas=4)
+        assert new_num_replicas == 5
+
 
 
 if __name__ == "__main__":
