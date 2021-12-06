@@ -3,7 +3,7 @@ from collections import deque
 import logging
 import random
 import threading
-from typing import Tuple
+from typing import Optional, Tuple
 
 import grpc
 try:
@@ -14,6 +14,7 @@ except ImportError:
 import ray._private.gcs_utils as gcs_utils
 import ray._private.logging_utils as logging_utils
 from ray.core.generated.gcs_pb2 import ErrorTableData
+from ray.core.generated import dependency_pb2
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import pubsub_pb2
@@ -60,6 +61,14 @@ class _PublisherBase:
                     log_json))
         ])
 
+    @staticmethod
+    def _create_function_key_request(key: bytes):
+        return gcs_service_pb2.GcsPublishRequest(pub_messages=[
+            pubsub_pb2.PubMessage(
+                channel_type=pubsub_pb2.RAY_PYTHON_FUNCTION_CHANNEL,
+                python_function_message=dependency_pb2.PythonFunction(key=key))
+        ])
+
 
 class _SubscriberBase:
     def __init__(self):
@@ -101,6 +110,13 @@ class _SubscriberBase:
         msg = queue.popleft()
         return logging_utils.log_batch_proto_to_dict(msg.log_batch_message)
 
+    @staticmethod
+    def _pop_function_key(queue):
+        if len(queue) == 0:
+            return None
+        msg = queue.popleft()
+        return msg.python_function_message.key
+
 
 class GcsPublisher(_PublisherBase):
     """Publisher to GCS."""
@@ -127,6 +143,11 @@ class GcsPublisher(_PublisherBase):
     def publish_logs(self, log_batch: dict) -> None:
         """Publishes logs to GCS."""
         req = self._create_log_request(log_batch)
+        self._stub.GcsPublish(req)
+
+    def publish_function_key(self, key: bytes) -> None:
+        """Publishes function key to GCS."""
+        req = self._create_function_key_request(key)
         self._stub.GcsPublish(req)
 
 
@@ -216,6 +237,8 @@ class _SyncSubscriber(_SubscriberBase):
         """Closes the subscriber and its active subscription."""
 
         # Mark close to terminate inflight polling and prevent future requests.
+        if self._close.is_set():
+            return
         self._close.set()
         req = self._unsubscribe_request(channels=[self._channel])
         try:
@@ -281,7 +304,7 @@ class GcsLogSubscriber(_SyncSubscriber):
     ):
         super().__init__(pubsub_pb2.RAY_LOG_CHANNEL, address, channel)
 
-    def poll(self, timeout=None) -> Tuple[bytes, ErrorTableData]:
+    def poll(self, timeout=None) -> Optional[dict]:
         """Polls for new log messages.
 
         Returns:
@@ -291,6 +314,41 @@ class GcsLogSubscriber(_SyncSubscriber):
         with self._lock:
             self._poll_locked(timeout=timeout)
             return self._pop_log_batch(self._queue)
+
+
+class GcsFunctionKeySubscriber(_SyncSubscriber):
+    """Subscriber to function（and actor class) dependency keys. Thread safe.
+
+    Usage example:
+        subscriber = GcsFunctionKeySubscriber()
+        # Subscribe to the function key channel.
+        subscriber.subscribe()
+        ...
+        while running:
+            key = subscriber.poll()
+            ......
+        # Unsubscribe from the function key channel.
+        subscriber.close()
+    """
+
+    def __init__(
+            self,
+            address: str = None,
+            channel: grpc.Channel = None,
+    ):
+        super().__init__(pubsub_pb2.RAY_PYTHON_FUNCTION_CHANNEL, address,
+                         channel)
+
+    def poll(self, timeout=None) -> Optional[bytes]:
+        """Polls for new function key messages.
+
+        Returns:
+            A byte string of function key.
+            None if polling times out or subscriber closed.
+        """
+        with self._lock:
+            self._poll_locked(timeout=timeout)
+            return self._pop_function_key(self._queue)
 
 
 class GcsAioPublisher(_PublisherBase):

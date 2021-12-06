@@ -1,8 +1,10 @@
 import logging
+from typing import Type
 
 from ray.rllib.agents import with_common_config
 from ray.rllib.agents.callbacks import DefaultCallbacks
-from ray.rllib.agents.trainer_template import build_trainer
+from ray.rllib.agents.trainer import Trainer
+from ray.rllib.evaluation.worker_set import WorkerSet
 from ray.rllib.execution.replay_ops import SimpleReplayBuffer, Replay, \
     StoreToReplayBuffer, WaitUntilTimestepsElapsed
 from ray.rllib.execution.rollout_ops import ParallelRollouts, ConcatBatches
@@ -12,8 +14,12 @@ from ray.rllib.execution.metric_ops import StandardMetricsReporting
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
+from ray.rllib.policy.policy import Policy
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import TrainerConfigDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.util.iter import LocalIterator
 
 from ray.rllib.contrib.alpha_zero.core.alpha_zero_policy import AlphaZeroPolicy
 from ray.rllib.contrib.alpha_zero.core.mcts import MCTS
@@ -160,43 +166,51 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
                          _env_creator)
 
 
-def execution_plan(workers, config, **kwargs):
-    assert len(kwargs) == 0, (
-        "Alpha zero execution_plan does NOT take any additional parameters")
+class AlphaZeroTrainer(Trainer):
+    @classmethod
+    @override(Trainer)
+    def get_default_config(cls) -> TrainerConfigDict:
+        return DEFAULT_CONFIG
 
-    rollouts = ParallelRollouts(workers, mode="bulk_sync")
+    @override(Trainer)
+    def get_default_policy_class(self, config: TrainerConfigDict) -> \
+            Type[Policy]:
+        return AlphaZeroPolicyWrapperClass
 
-    if config["simple_optimizer"]:
-        train_op = rollouts.combine(
-            ConcatBatches(
-                min_batch_size=config["train_batch_size"],
-                count_steps_by=config["multiagent"]["count_steps_by"],
-            )).for_each(
-                TrainOneStep(workers, num_sgd_iter=config["num_sgd_iter"]))
-    else:
-        replay_buffer = SimpleReplayBuffer(config["buffer_size"])
+    @staticmethod
+    @override(Trainer)
+    def execution_plan(workers: WorkerSet, config: TrainerConfigDict,
+                       **kwargs) -> LocalIterator[dict]:
+        assert len(kwargs) == 0, (
+            "Alpha zero execution_plan does NOT take any additional parameters"
+        )
 
-        store_op = rollouts \
-            .for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
+        rollouts = ParallelRollouts(workers, mode="bulk_sync")
 
-        replay_op = Replay(local_buffer=replay_buffer) \
-            .filter(WaitUntilTimestepsElapsed(config["learning_starts"])) \
-            .combine(
-            ConcatBatches(
-                min_batch_size=config["train_batch_size"],
-                count_steps_by=config["multiagent"]["count_steps_by"],
-            )) \
-            .for_each(TrainOneStep(
-                workers, num_sgd_iter=config["num_sgd_iter"]))
+        if config["simple_optimizer"]:
+            train_op = rollouts.combine(
+                ConcatBatches(
+                    min_batch_size=config["train_batch_size"],
+                    count_steps_by=config["multiagent"]["count_steps_by"],
+                )).for_each(
+                    TrainOneStep(workers, num_sgd_iter=config["num_sgd_iter"]))
+        else:
+            replay_buffer = SimpleReplayBuffer(config["buffer_size"])
 
-        train_op = Concurrently(
-            [store_op, replay_op], mode="round_robin", output_indexes=[1])
+            store_op = rollouts \
+                .for_each(StoreToReplayBuffer(local_buffer=replay_buffer))
 
-    return StandardMetricsReporting(train_op, workers, config)
+            replay_op = Replay(local_buffer=replay_buffer) \
+                .filter(WaitUntilTimestepsElapsed(config["learning_starts"])) \
+                .combine(
+                ConcatBatches(
+                    min_batch_size=config["train_batch_size"],
+                    count_steps_by=config["multiagent"]["count_steps_by"],
+                )) \
+                .for_each(TrainOneStep(
+                    workers, num_sgd_iter=config["num_sgd_iter"]))
 
+            train_op = Concurrently(
+                [store_op, replay_op], mode="round_robin", output_indexes=[1])
 
-AlphaZeroTrainer = build_trainer(
-    name="AlphaZero",
-    default_config=DEFAULT_CONFIG,
-    default_policy=AlphaZeroPolicyWrapperClass,
-    execution_plan=execution_plan)
+        return StandardMetricsReporting(train_op, workers, config)

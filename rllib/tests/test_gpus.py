@@ -12,7 +12,7 @@ torch, _ = try_import_torch()
 class TestGPUs(unittest.TestCase):
     def test_gpus_in_non_local_mode(self):
         # Non-local mode.
-        ray.init(num_cpus=8)
+        ray.init()
 
         actual_gpus = torch.cuda.device_count()
         print(f"Actual GPUs found (by torch): {actual_gpus}")
@@ -74,7 +74,7 @@ class TestGPUs(unittest.TestCase):
 
     def test_gpus_in_local_mode(self):
         # Local mode.
-        ray.init(num_gpus=8, local_mode=True)
+        ray.init(local_mode=True)
 
         actual_gpus_available = torch.cuda.device_count()
 
