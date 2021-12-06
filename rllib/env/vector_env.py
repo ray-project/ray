@@ -335,3 +335,21 @@ class VectorEnvWrapper(BaseEnv):
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
         assert env_id is None or isinstance(env_id, int)
         return self.vector_env.try_render_at(env_id)
+
+    @property
+    def observation_space(self) -> gym.Space:
+        """Returns the observation space for each environment.
+
+        Returns:
+            The observation space for each environment.
+        """
+        return self.vector_env.observation_space
+
+    @property
+    def action_space(self) -> gym.Space:
+        """Returns the action space for each environment.
+
+        Returns:
+            The action space for each environment.
+        """
+        return self.vector_env.action_space
