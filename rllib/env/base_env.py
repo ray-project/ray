@@ -173,10 +173,10 @@ class BaseEnv:
                 the entire Env (i.e. all sub-environments).
 
         Note: A MultiAgentDict is returned when using the deprecated wrapper
-            classes such as `ray.rllib.env.base_env._MultiAgentEnvToBaseEnv,
-            however for consistency with the poll() method, a MultiEnvDict is
-            returned from the new wrapper classes, such as
-            ray.rllib.env.multi_agent_env.MultiAgentEnvWrapper
+        classes such as `ray.rllib.env.base_env._MultiAgentEnvToBaseEnv,
+        however for consistency with the poll() method, a MultiEnvDict is
+        returned from the new wrapper classes, such as
+        ray.rllib.env.multi_agent_env.MultiAgentEnvWrapper
 
         Returns:
             The reset (multi-agent) observation dict. None if reset is not
