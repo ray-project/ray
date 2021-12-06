@@ -3465,10 +3465,11 @@ def test_sort_simple(ray_start_regular_shared):
 
 
 # TODO (kfstorm): Ideally, this test case should be enabled without condition.
-# But it's currently disabled because we don't want to change the behavior
-# when using arrow block format.
+# But it has to be disabled when pandas block format is disabled because we
+# don't want to change the behavior when using only arrow block format.
 @pytest.mark.skipif(
-    not ray.data.impl.util._enable_pandas_block(), reason="not implemented")
+    not ray.data.context.DatasetContext.get_current().enable_pandas_block,
+    reason="not implemented")
 def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "2": np.random.rand(10)})
     ray.data.from_pandas(df)

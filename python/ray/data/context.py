@@ -2,6 +2,7 @@ from typing import Optional
 import threading
 
 import ray
+from ray.ray_constants import env_bool
 from ray.util.annotations import DeveloperAPI
 
 # The context singleton on this process.
@@ -10,6 +11,9 @@ _context_lock = threading.Lock()
 
 # The max target block size in bytes for reads and transformations.
 DEFAULT_TARGET_MAX_BLOCK_SIZE = 500 * 1024 * 1024
+
+# Whether pandas block format is enabled.
+DEFAULT_ENABLE_PANDAS_BLOCK = env_bool("RAY_DATA_PANDAS_BLOCK_FORMAT", True)
 
 
 @DeveloperAPI
@@ -20,11 +24,16 @@ class DatasetContext:
     from the driver and remote workers via DatasetContext.get_current().
     """
 
-    def __init__(self, block_owner: ray.actor.ActorHandle,
-                 target_max_block_size: int):
+    def __init__(
+            self,
+            block_owner: ray.actor.ActorHandle,
+            target_max_block_size: int,
+            enable_pandas_block: bool,
+    ):
         """Private constructor (use get_current() instead)."""
         self.block_owner = block_owner
         self.target_max_block_size = target_max_block_size
+        self.enable_pandas_block = enable_pandas_block
 
     @staticmethod
     def get_current() -> "DatasetContext":
@@ -39,7 +48,10 @@ class DatasetContext:
 
             if _default_context is None:
                 _default_context = DatasetContext(
-                    None, DEFAULT_TARGET_MAX_BLOCK_SIZE)
+                    None,
+                    DEFAULT_TARGET_MAX_BLOCK_SIZE,
+                    DEFAULT_ENABLE_PANDAS_BLOCK,
+                )
 
             if _default_context.block_owner is None:
                 owner = _DesignatedBlockOwner.options(

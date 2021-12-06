@@ -27,8 +27,7 @@ from ray.data.impl.block_list import BlockList
 from ray.data.impl.lazy_block_list import LazyBlockList, BlockPartition, \
     BlockPartitionMetadata
 from ray.data.impl.remote_fn import cached_remote_fn
-from ray.data.impl.util import _enable_pandas_block, \
-    _get_spread_resources_iter
+from ray.data.impl.util import _get_spread_resources_iter
 
 T = TypeVar("T")
 
@@ -574,7 +573,8 @@ def from_pandas_refs(dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef[
     if isinstance(dfs, ray.ObjectRef):
         dfs = [dfs]
 
-    if _enable_pandas_block():
+    context = DatasetContext.get_current()
+    if context.enable_pandas_block:
         get_metadata = cached_remote_fn(_get_metadata)
         metadata = [get_metadata.remote(df) for df in dfs]
         return Dataset(BlockList(dfs, ray.get(metadata)), 0)

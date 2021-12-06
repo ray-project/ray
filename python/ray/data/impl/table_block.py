@@ -222,7 +222,7 @@ class TableBlockAccessor(BlockAccessor):
     def sample(self, n_samples: int, key: SortKeyT) -> Any:
         if key is None or callable(key):
             raise NotImplementedError(
-                "Table sort key must be a column name, was: {}".format(key))
+                f"Table sort key must be a column name, was: {key}")
         if self.num_rows() == 0:
             # If the pyarrow table is empty we may not have schema
             # so calling table.select() will raise an error.

@@ -31,7 +31,6 @@ class PandasRow(TableRow):
     def __getitem__(self, key: str) -> Any:
         assert isinstance(key, str)
         col = self._row[key]
-        print(col)
         if len(col) == 0:
             return None
         item = col.iloc[0]

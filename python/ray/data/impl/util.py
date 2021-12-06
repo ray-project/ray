@@ -99,10 +99,3 @@ def _filtered_resources(nodes: List[Dict[str, Any]], include_prefix: str,
     ]
     # Ensure stable ordering of unique resources.
     return sorted(set(resources))
-
-
-def _enable_pandas_block():
-    """This is a temporary workaround to only enable pandas block format when
-    running tests. This function will be updated or deleted later.
-    """
-    return bool(os.environ.get("RAY_DATA_PANDAS_BLOCK_FORMAT"))
