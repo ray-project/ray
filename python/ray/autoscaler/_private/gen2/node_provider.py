@@ -369,6 +369,7 @@ class Gen2NodeProvider(NodeProvider):
             if fip:
                 return fip[0]['address']
 
+    @log_in_out
     def internal_ip(self, node_id):
         node = self._get_cached_node(node_id)
 
@@ -379,6 +380,8 @@ class Gen2NodeProvider(NodeProvider):
                 node = self._get_node(node_id)
         except Exception:
             node = self._get_node(node_id)
+
+        logger.info(f'in internal_ip, returning ip for node {node}')
 
         return node['doc']['network_interfaces'][0].get('primary_ipv4_address')
 
