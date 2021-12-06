@@ -24,22 +24,50 @@ namespace ray {
 namespace gcs {
 
 
+/// \class InternalKVInterface
+/// The interface for internal kv implementation. Ideally we should merge this
+/// with store client, but due to compatibility issue, we keep them separated
+/// right now.
 class InternalKVInterface {
  public:
+  /// Get the value associated with `key`
+  ///
+  /// \param key The key to fetch
+  /// \param cb Callback function.
   virtual void Get(const std::string& key,
                    std::function<void(std::optional<std::string>)> cb) = 0;
 
+  /// Associate key with value.
+  ///
+  /// \param key The key for the pair
+  /// \param value The value for the pair
+  /// \param overwrite If the key has existed before this op, nothing will happen
+  ///    unless `overwrite` is set to be true.
+  /// \param cb Callback function.
   virtual void Put(const std::string& key,
                    const std::string& value,
                    bool overwrite,
                    std::function<void(bool)> cb) = 0;
 
+  /// Delete the key from the store
+  ///
+  /// \param key The key to be deleted
+  /// \param cb Callback function.
   virtual void Del(const std::string& key, std::function<void(bool)> cb) = 0;
 
+  /// Check whether the key exists in the store
+  ///
+  /// \param key The key to be checked.
+  /// \param cb Callback function.
   virtual void Exists(const std::string& key, std::function<void(bool)> cb) = 0;
 
+  /// Get the keys for a given prefix.
+  ///
+  /// \param prefix The prefix to be scaned.
+  /// \param cb Callback function.
   virtual void Keys(const std::string& prefix, std::function<void(std::vector<std::string>)> cb) = 0;
 
+  virtual ~InternalKVInterface() {};
 };
 
 
