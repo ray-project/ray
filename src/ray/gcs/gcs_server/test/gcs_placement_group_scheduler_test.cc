@@ -374,7 +374,6 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestStrictPackStrategyBalancedScheduling)
     ++node_select_count[node_index];
     node_commit_count[node_index] += 2;
     ASSERT_TRUE(raylet_clients_[node_index]->GrantPrepareBundleResources());
-    ASSERT_TRUE(raylet_clients_[node_index]->GrantPrepareBundleResources());
     WaitPendingDone(raylet_clients_[node_index]->commit_callbacks, 2);
     ASSERT_TRUE(raylet_clients_[node_index]->GrantCommitBundleResources());
     ASSERT_TRUE(raylet_clients_[node_index]->GrantCommitBundleResources());
