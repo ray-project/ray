@@ -610,6 +610,10 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
           if (status.IsGrpcUnavailable()) {
             RAY_LOG(WARNING) << "The worker failed to receive a response from the local "
                                 "raylet because the raylet is unavailable (crashed).";
+            if (worker_type_ == WorkerType::WORKER) {
+              QuickExit();
+            }
+            RAY_CHECK(worker_type_ == WorkerType::DRIVER);
             auto &task_queue = scheduling_key_entry.task_queue;
             while (!task_queue.empty()) {
               auto &task_spec = task_queue.front();
