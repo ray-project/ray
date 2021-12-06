@@ -162,7 +162,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     ASSERT_EQ(1, raylet_clients_[0]->num_lease_requested);
     ASSERT_EQ(1, raylet_clients_[0]->lease_callbacks.size());
     ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
-    // TODO(@clay4444): It should be updated to 1 after we make the commit request batched.
+    // TODO(@clay4444): It should be updated to 1 after we make the commit request
+    // batched.
     WaitPendingDone(raylet_clients_[0]->commit_callbacks, 2);
     ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
     ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());

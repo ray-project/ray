@@ -1638,10 +1638,12 @@ void NodeManager::HandlePrepareBundleResources(
     rpc::PrepareBundleResourcesReply *reply, rpc::SendReplyCallback send_reply_callback) {
   std::vector<std::shared_ptr<const BundleSpecification>> bundle_specs;
   for (int index = 0; index < request.bundle_specs_size(); index++) {
-    bundle_specs.emplace_back(std::make_shared<BundleSpecification>(request.bundle_specs(index))); 
+    bundle_specs.emplace_back(
+        std::make_shared<BundleSpecification>(request.bundle_specs(index)));
   }
   if (RAY_LOG_ENABLED(DEBUG)) {
-    RAY_LOG(DEBUG) << "Request to prepare resources for bundles: " << GenDebugInfoForBundles(bundle_specs);
+    RAY_LOG(DEBUG) << "Request to prepare resources for bundles: "
+                   << GenDebugInfoForBundles(bundle_specs);
   }
   auto prepared = placement_group_resource_manager_->PrepareBundles(bundle_specs);
   reply->set_success(prepared);

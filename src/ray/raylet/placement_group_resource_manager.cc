@@ -46,17 +46,17 @@ NewPlacementGroupResourceManager::NewPlacementGroupResourceManager(
 
 bool NewPlacementGroupResourceManager::PrepareBundles(
     const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) {
-
   // Bundles that excluded bundles whose state is already committed.
   std::vector<std::shared_ptr<const BundleSpecification>> preparing_bundles;
-  for (const auto &bundle_spec: bundle_specs) {
+  for (const auto &bundle_spec : bundle_specs) {
     auto iter = pg_bundles_.find(bundle_spec->BundleId());
     if (iter != pg_bundles_.end()) {
       if (iter->second->state_ == CommitState::COMMITTED) {
         // If the bundle state is already committed, it means that prepare request is just
         // stale.
-        RAY_LOG(DEBUG) << "Duplicate prepare bundle request, skip it directly. This should "
-                          "only happen when GCS restarts.";
+        RAY_LOG(DEBUG)
+            << "Duplicate prepare bundle request, skip it directly. This should "
+               "only happen when GCS restarts.";
       } else {
         // If there was a bundle in prepare state, it already locked resources, we will
         // return bundle resources so that we can start from the prepare phase again.
@@ -64,37 +64,41 @@ bool NewPlacementGroupResourceManager::PrepareBundles(
         preparing_bundles.emplace_back(bundle_spec);
       }
     } else {
-      preparing_bundles.emplace_back(bundle_spec); 
+      preparing_bundles.emplace_back(bundle_spec);
     }
   }
   if (preparing_bundles.size() == 0) {
-    RAY_LOG(DEBUG) << "All bundles have been prepared successfully before, will return directly";
+    RAY_LOG(DEBUG)
+        << "All bundles have been prepared successfully before, will return directly";
     return true;
   }
 
   std::vector<std::shared_ptr<const BundleSpecification>> prepared_bundles;
-  for (const auto &bundle_spec: preparing_bundles) {
+  for (const auto &bundle_spec : preparing_bundles) {
     auto resource_instances = std::make_shared<TaskResourceInstances>();
     bool allocated = cluster_resource_scheduler_->AllocateLocalTaskResources(
         bundle_spec->GetRequiredResources().GetResourceMap(), resource_instances);
     if (!allocated) {
-      // Terminated the preparation phase and return bundles that have been successfully prepared before directly
-      // once we found one request resource failed bundle.
+      // Terminated the preparation phase and return bundles that have been successfully
+      // prepared before directly once we found one request resource failed bundle.
       break;
     }
-  
-    auto bundle_state =
-      std::make_shared<BundleTransactionState>(CommitState::PREPARED, resource_instances);
+
+    auto bundle_state = std::make_shared<BundleTransactionState>(CommitState::PREPARED,
+                                                                 resource_instances);
     pg_bundles_[bundle_spec->BundleId()] = bundle_state;
-    bundle_spec_map_.emplace(bundle_spec->BundleId(), std::make_shared<BundleSpecification>(
-                                                        bundle_spec->GetMessage()));
+    bundle_spec_map_.emplace(
+        bundle_spec->BundleId(),
+        std::make_shared<BundleSpecification>(bundle_spec->GetMessage()));
     prepared_bundles.emplace_back(bundle_spec);
   }
 
   if (prepared_bundles.size() != preparing_bundles.size()) {
-    RAY_LOG(DEBUG) << "There are one or more bundles request resource failed, will release the requested resources before.";
-    for (const auto &bundle: prepared_bundles) {
-      // `ReturnBundle` will return resource, erase from `pg_bundles_` and `bundle_spec_map_`.
+    RAY_LOG(DEBUG) << "There are one or more bundles request resource failed, will "
+                      "release the requested resources before.";
+    for (const auto &bundle : prepared_bundles) {
+      // `ReturnBundle` will return resource, erase from `pg_bundles_` and
+      // `bundle_spec_map_`.
       ReturnBundle(*bundle);
     }
     return false;
@@ -187,7 +191,7 @@ void NewPlacementGroupResourceManager::ReturnBundle(
   // Erase from `bundle_spec_map_`.
   const auto &iter = bundle_spec_map_.find(bundle_spec.BundleId());
   if (iter != bundle_spec_map_.end()) {
-    bundle_spec_map_.erase(iter); 
+    bundle_spec_map_.erase(iter);
   }
   delete_resources_(deleted);
 }

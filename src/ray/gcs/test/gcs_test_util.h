@@ -91,13 +91,13 @@ struct Mocker {
       rpc::Bundle bundle;
       auto mutable_bundle_id = bundle.mutable_bundle_id();
       // The bundle index is start from 1.
-      mutable_bundle_id->set_bundle_index(i+1);
+      mutable_bundle_id->set_bundle_index(i + 1);
       mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
       auto mutable_unit_resources = bundle.mutable_unit_resources();
       for (auto &resource : unit_resource) {
         mutable_unit_resources->insert({resource.first, resource.second});
       }
-      bundle_specs.emplace_back(std::make_shared<BundleSpecification>(bundle)); 
+      bundle_specs.emplace_back(std::make_shared<BundleSpecification>(bundle));
     }
     return bundle_specs;
   }

@@ -207,8 +207,9 @@ class LeaseStatusTracker {
   ///
   /// \param node_id Id of a node to which prepare request will be sent.
   /// \param bundles Bundles that will be supposed to schedule.
-  void MarkPreparePhaseStarted(const NodeID &node_id,
-                               const std::vector<std::shared_ptr<const BundleSpecification>> &bundles);
+  void MarkPreparePhaseStarted(
+      const NodeID &node_id,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundles);
 
   /// Indicate the tracker that all prepare requests are returned.
   ///
@@ -217,7 +218,8 @@ class LeaseStatusTracker {
   /// \param status Status of the prepare response.
   /// \return void
   void MarkPrepareRequestReturned(
-      const NodeID &node_id, const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
+      const NodeID &node_id,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
       const Status &status);
 
   /// Used to know if all prepare requests are returned.

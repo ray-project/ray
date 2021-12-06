@@ -54,7 +54,8 @@ class PlacementGroupResourceManager {
   /// one of 2PC, it will not convert placement group resource(like CPU -> CPU_group_i).
   ///
   /// \param bundle_specs: Specification of bundle whose resources will be prepared.
-  virtual bool PrepareBundles(const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) = 0;
+  virtual bool PrepareBundles(
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs) = 0;
 
   /// Convert the required resources to placement group resources(like CPU ->
   /// CPU_group_i). This is phase two of 2PC.
@@ -98,7 +99,8 @@ class NewPlacementGroupResourceManager : public PlacementGroupResourceManager {
 
   virtual ~NewPlacementGroupResourceManager() = default;
 
-  bool PrepareBundles(const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs);
+  bool PrepareBundles(
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs);
 
   void CommitBundle(const BundleSpecification &bundle_spec);
 

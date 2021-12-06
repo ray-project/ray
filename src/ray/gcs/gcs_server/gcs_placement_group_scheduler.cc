@@ -20,11 +20,13 @@
 namespace ray {
 namespace gcs {
 
-std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>> GenUnplacedBundlesMap(
-                                                const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
-                                                  const ScheduleMap &selected_nodes) {
-  std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>> node_to_bundles;
-  for (const auto &bundle: bundles) {
+std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+GenUnplacedBundlesMap(
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
+    const ScheduleMap &selected_nodes) {
+  std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
+      node_to_bundles;
+  for (const auto &bundle : bundles) {
     const auto &bundle_id = bundle->BundleId();
     const auto &iter = selected_nodes.find(bundle_id);
     RAY_CHECK(iter != selected_nodes.end());
@@ -184,11 +186,11 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   RAY_CHECK(placement_group_leasing_in_progress_
                 .emplace(placement_group->GetPlacementGroupID(), lease_status_tracker)
                 .second);
-  
+
   const auto &pending_bundles = GenUnplacedBundlesMap(bundles, selected_nodes);
-  for (const auto &node_to_bundles: pending_bundles) {
+  for (const auto &node_to_bundles : pending_bundles) {
     const auto &node_id = node_to_bundles.first;
-    const auto &bundles = node_to_bundles.second; 
+    const auto &bundles = node_to_bundles.second;
     lease_status_tracker->MarkPreparePhaseStarted(node_id, bundles);
     // TODO(sang): The callback might not be called at all if nodes are dead. We should
     // handle this case properly.
@@ -203,7 +205,6 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                        }
                      });
   }
-
 }
 
 void GcsPlacementGroupScheduler::DestroyPlacementGroupBundleResourcesIfExists(
@@ -241,7 +242,8 @@ void GcsPlacementGroupScheduler::PrepareResources(
   const auto lease_client = GetLeaseClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
   if (RAY_LOG_ENABLED(DEBUG)) {
-    RAY_LOG(DEBUG) << "Preparing resource from node " << node_id << " for bundles: " << GenDebugInfoForBundles(bundles);
+    RAY_LOG(DEBUG) << "Preparing resource from node " << node_id
+                   << " for bundles: " << GenDebugInfoForBundles(bundles);
   }
 
   lease_client->PrepareBundleResources(
@@ -252,10 +254,10 @@ void GcsPlacementGroupScheduler::PrepareResources(
         if (RAY_LOG_ENABLED(DEBUG)) {
           if (result.ok()) {
             RAY_LOG(DEBUG) << "Finished leasing resource from " << node_id
-                          << " for bundles: " << GenDebugInfoForBundles(bundles);
+                           << " for bundles: " << GenDebugInfoForBundles(bundles);
           } else {
             RAY_LOG(DEBUG) << "Failed to lease resource from " << node_id
-                          << " for bundles: " << GenDebugInfoForBundles(bundles);
+                           << " for bundles: " << GenDebugInfoForBundles(bundles);
           }
         }
         callback(result);
@@ -724,21 +726,23 @@ LeaseStatusTracker::LeaseStatusTracker(
 }
 
 void LeaseStatusTracker::MarkPreparePhaseStarted(
-    const NodeID &node_id, const std::vector<std::shared_ptr<const BundleSpecification>> &bundles) {
-  for (const auto &bundle: bundles) {
+    const NodeID &node_id,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundles) {
+  for (const auto &bundle : bundles) {
     const auto &bundle_id = bundle->BundleId();
-    node_to_bundles_when_preparing_[node_id].emplace(bundle_id); 
+    node_to_bundles_when_preparing_[node_id].emplace(bundle_id);
   }
 }
 
 void LeaseStatusTracker::MarkPrepareRequestReturned(
-    const NodeID &node_id, const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
+    const NodeID &node_id,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
     const Status &status) {
   RAY_CHECK(prepare_request_returned_count_ <= bundles_to_schedule_.size());
   auto leasing_bundles = node_to_bundles_when_preparing_.find(node_id);
   RAY_CHECK(leasing_bundles != node_to_bundles_when_preparing_.end());
 
-  for (const auto &bundle: bundles) {
+  for (const auto &bundle : bundles) {
     auto bundle_iter = leasing_bundles->second.find(bundle->BundleId());
     RAY_CHECK(bundle_iter != leasing_bundles->second.end());
 

@@ -109,6 +109,7 @@ bool IsBundleIndex(const std::string &resource, const PlacementGroupID &group_id
 std::string GetOriginalResourceName(const std::string &resource);
 
 /// Generate universal debug info from a set of bundles.
-std::string GenDebugInfoForBundles(const std::vector<std::shared_ptr<const BundleSpecification>> &bundles);
+std::string GenDebugInfoForBundles(
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundles);
 
 }  // namespace ray
