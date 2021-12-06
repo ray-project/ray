@@ -89,7 +89,7 @@ inline grpc::Status RayStatusToGrpcStatus(const Status &ray_status) {
 
 inline std::string GrpcStatusToRayStatusMessage(const grpc::Status &grpc_status) {
   return absl::StrCat("RPC Error message: ", grpc_status.error_message(),
-                      " RPC Error details: ", grpc_status.error_details());
+                      "; RPC Error details: ", grpc_status.error_details());
 }
 
 /// Helper function that converts a gRPC status to ray status.
