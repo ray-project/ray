@@ -165,7 +165,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator())
 
-    def testReproductibility(self):
+    def testReproducibility(self):
         config = self.config.copy()
         config.pop("func")
 
@@ -212,7 +212,7 @@ class SearchSpaceTest(unittest.TestCase):
                 assertDictAlmostEqual(seed_new[0], seed_new[i])
                 assertDictAlmostEqual(seed_new[0], generator_new[i])
 
-    def testReproductibilityBasicVariantGenerator(self):
+    def testReproducibilityBasicVariantGenerator(self):
         config = self.config.copy()
         config.pop("func")
         from ray.tune.suggest.basic_variant import BasicVariantGenerator

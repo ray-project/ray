@@ -75,9 +75,10 @@ class _TrialIterator:
             on the size of the grid search.
         start (int): index at which to start counting trials.
         random_state (int | np.random.Generator | np.random.RandomState):
-            Seed or numpy random generator to use for reproductible results.
+            Seed or numpy random generator to use for reproducible results.
             If None (default), will use the global numpy random generator
-            (``np.random``).
+            (``np.random``). Please note that full reproducibility cannot
+            be guaranteed in a distributed enviroment.
     """
 
     def __init__(self,
@@ -192,9 +193,10 @@ class BasicVariantGenerator(SearchAlgorithm):
             Ray Tune will sample new random parameters in each grid search
             condition.
         random_state (int | np.random.Generator | np.random.RandomState):
-            Seed or numpy random generator to use for reproductible results.
+            Seed or numpy random generator to use for reproducible results.
             If None (default), will use the global numpy random generator
-            (``np.random``).
+            (``np.random``). Please note that full reproducibility cannot
+            be guaranteed in a distributed enviroment.
 
 
     Example:
