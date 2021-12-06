@@ -1,6 +1,7 @@
 from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING,\
     Union
 
+import gym
 import ray
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiAgentDict, \
