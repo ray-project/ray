@@ -277,7 +277,7 @@ class VectorEnvWrapper(BaseEnv):
         }
 
         act_space = {
-            _id: env.observation_space
+            _id: env.action_space
             for _id, env in enumerate(self.vector_env.get_sub_environments())
         }
         self._observation_space = gym.spaces.Dict(obs_space)

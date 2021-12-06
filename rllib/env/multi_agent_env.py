@@ -352,6 +352,8 @@ class MultiAgentEnvWrapper(BaseEnv):
         return self.envs[env_id].render()
 
     @property
+    @override(BaseEnv)
+    @PublicAPI
     def observation_space(self) -> gym.spaces.Dict:
         space = {
             _id: env.observation_space
@@ -360,6 +362,8 @@ class MultiAgentEnvWrapper(BaseEnv):
         return gym.spaces.Dict(space)
 
     @property
+    @override(BaseEnv)
+    @PublicAPI
     def action_space(self) -> gym.Space:
         space = {_id: env.action_space for _id, env in enumerate(self.envs)}
         return gym.spaces.Dict(space)
