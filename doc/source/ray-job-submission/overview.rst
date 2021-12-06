@@ -64,11 +64,14 @@ We can put this file in a local directory of your choice, with filename "script.
 
 .. code-block:: bash
 
-    export RAY_RUNTIME_ENV_LOCAL_DEV_MODE="1"  # If you're using locally build version of ray
-
    ❯ ray start --head
     Local node IP: 127.0.0.1
     INFO services.py:1360 -- View the Ray dashboard at http://127.0.0.1:8265
+
+.. note::
+
+    If you're building from ray source instead of any pre-built or nightly wheels, please set extra environment variable if you want to use runtime environment features.
+    :code:`export RAY_RUNTIME_ENV_LOCAL_DEV_MODE="1"`
 
 Ray Job APIs
 ------------
