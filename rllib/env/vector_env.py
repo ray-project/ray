@@ -273,14 +273,12 @@ class VectorEnvWrapper(BaseEnv):
 
         obs_space = {
             _id: env.observation_space
-            for _id, env in enumerate(
-            self.vector_env.get_sub_environments())
+            for _id, env in enumerate(self.vector_env.get_sub_environments())
         }
 
         act_space = {
             _id: env.observation_space
-            for _id, env in enumerate(
-                self.vector_env.get_sub_environments())
+            for _id, env in enumerate(self.vector_env.get_sub_environments())
         }
         self._observation_space = gym.spaces.Dict(obs_space)
         self._action_space = gym.spaces.Dict(act_space)
