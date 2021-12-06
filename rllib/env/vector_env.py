@@ -1,7 +1,7 @@
 import logging
 import gym
 import numpy as np
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.utils.annotations import Deprecated, override, PublicAPI
@@ -312,8 +312,24 @@ class VectorEnvWrapper(BaseEnv):
         }
 
     @override(BaseEnv)
-    def get_sub_environments(self) -> List[EnvType]:
-        return self.vector_env.get_sub_environments()
+    def get_sub_environments(
+            self, as_dict: bool = False) -> Union[List[EnvType], dict]:
+        """Return a reference to the underlying sub environments, if any.
+
+        Args:
+            as_dict: If True, return a dict mapping from env_id to env.
+
+        Returns:
+            List or dictionary of the underlying sub environments or [] / {}.
+        """
+        if not as_dict:
+            return self.vector_env.get_sub_environments()
+        else:
+            return {
+                _id: env
+                for _id, env in enumerate(
+                    self.vector_env.get_sub_environments())
+            }
 
     @override(BaseEnv)
     def try_render(self, env_id: Optional[EnvID] = None) -> None:

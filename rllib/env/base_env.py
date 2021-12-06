@@ -185,12 +185,18 @@ class BaseEnv:
         return None
 
     @PublicAPI
-    def get_sub_environments(self) -> List[EnvType]:
+    def get_sub_environments(
+            self, as_dict: bool = False) -> Union[List[EnvType], dict]:
         """Return a reference to the underlying sub environments, if any.
 
+        Args:
+            as_dict: If True, return a dict mapping from env_id to env.
+
         Returns:
-            List of the underlying sub environments or [].
+            List or dictionary of the underlying sub environments or [] / {}.
         """
+        if as_dict:
+            return {}
         return []
 
     @PublicAPI
@@ -217,6 +223,26 @@ class BaseEnv:
     @Deprecated(new="get_sub_environments", error=False)
     def get_unwrapped(self) -> List[EnvType]:
         return self.get_sub_environments()
+
+    @PublicAPI
+    @property
+    def observation_space(self) -> gym.Space:
+        """Returns the observation space for each environment.
+
+        Returns:
+            The observation space for each environment.
+        """
+        raise NotImplementedError
+
+    @PublicAPI
+    @property
+    def action_space(self) -> gym.Space:
+        """Returns the action space for each environment.
+
+        Returns:
+            The observation space for each environment.
+        """
+        raise NotImplementedError
 
 
 # Fixed agent identifier when there is only the single agent in the env
