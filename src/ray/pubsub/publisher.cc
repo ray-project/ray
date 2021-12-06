@@ -23,11 +23,6 @@ namespace pub_internal {
 bool SubscriptionIndex::AddEntry(const std::string &key_id,
                                  const SubscriberID &subscriber_id) {
   if (key_id.empty()) {
-    // This subscriber will subscribe to all entities in the channel.
-    if (!subscribers_to_key_id_.empty()) {
-      // Skip if the channel is already in per-entity subscription mode.
-      return false;
-    }
     return subscribers_to_all_.insert(subscriber_id).second;
   }
 
@@ -57,16 +52,18 @@ std::vector<SubscriberID> SubscriptionIndex::GetSubscriberIdsByKeyId(
 
 bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
   // Erase subscriber of all keys.
-  bool erased = subscribers_to_all_.erase(subscriber_id) > 0;
+  if (subscribers_to_all_.erase(subscriber_id) > 0) {
+    return true;
+  }
 
-  auto subscribing_message_it = subscribers_to_key_id_.find(subscriber_id);
-  if (subscribing_message_it == subscribers_to_key_id_.end()) {
-    return erased;
+  auto subscribing_key_it = subscribers_to_key_id_.find(subscriber_id);
+  if (subscribing_key_it == subscribers_to_key_id_.end()) {
+    return false;
   }
 
   // Erase subscriber of individual keys.
-  auto &subscribing_messages = subscribing_message_it->second;
-  for (const auto &key_id : subscribing_messages) {
+  auto &subscribing_keys = subscribing_key_it->second;
+  for (const auto &key_id : subscribing_keys) {
     // Erase the subscriber from the object map.
     auto subscribers_it = key_id_to_subscribers_.find(key_id);
     if (subscribers_it == key_id_to_subscribers_.end()) {
@@ -78,7 +75,7 @@ bool SubscriptionIndex::EraseSubscriber(const SubscriberID &subscriber_id) {
       key_id_to_subscribers_.erase(subscribers_it);
     }
   }
-  subscribers_to_key_id_.erase(subscribing_message_it);
+  subscribers_to_key_id_.erase(subscribing_key_it);
   return true;
 }
 
@@ -289,6 +286,17 @@ bool Publisher::UnregisterSubscription(const rpc::ChannelType channel_type,
 bool Publisher::UnregisterSubscriber(const SubscriberID &subscriber_id) {
   absl::MutexLock lock(&mutex_);
   return UnregisterSubscriberInternal(subscriber_id);
+}
+
+void Publisher::UnregisterAll() {
+  absl::MutexLock lock(&mutex_);
+  std::vector<SubscriberID> ids;
+  for (const auto &[id, subscriber] : subscribers_) {
+    ids.push_back(id);
+  }
+  for (const auto &id : ids) {
+    UnregisterSubscriberInternal(id);
+  }
 }
 
 int Publisher::UnregisterSubscriberInternal(const SubscriberID &subscriber_id) {

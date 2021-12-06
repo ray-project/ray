@@ -219,6 +219,15 @@ std::string SubscriberChannel::DebugString() const {
 /// Subscriber
 ///////////////////////////////////////////////////////////////////////////////
 
+Subscriber::~Subscriber() {
+  if (!mutex_.LockWhenWithTimeout(absl::Condition(this, &Subscriber::CheckNoLeaks_Locked),
+                                  absl::Seconds(5))) {
+    // TODO(mwtian): ensure there is no leak during destruction.
+    RAY_LOG(DEBUG) << "Subscriber has inflight data during destruction";
+  }
+  mutex_.Unlock();
+}
+
 bool Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
                            const rpc::ChannelType channel_type,
                            const rpc::Address &publisher_address,
@@ -451,6 +460,10 @@ void Subscriber::SendCommandBatchIfPossible(const rpc::Address &publisher_addres
 
 bool Subscriber::CheckNoLeaks() const {
   absl::MutexLock lock(&mutex_);
+  return CheckNoLeaks_Locked();
+}
+
+bool Subscriber::CheckNoLeaks_Locked() const {
   bool leaks = false;
   for (const auto &channel_it : channels_) {
     if (!channel_it.second->CheckNoLeaks()) {

@@ -327,7 +327,7 @@ class Subscriber : public SubscriberInterface {
     }
   }
 
-  ~Subscriber() = default;
+  ~Subscriber();
 
   bool Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
                  const rpc::ChannelType channel_type,
@@ -381,7 +381,10 @@ class Subscriber : public SubscriberInterface {
   FRIEND_TEST(SubscriberTest, TestUnsubscribeInSubscriptionCallback);
   FRIEND_TEST(SubscriberTest, TestCommandsCleanedUponPublishFailure);
   // Testing only. Check if there are leaks.
-  bool CheckNoLeaks() const;
+  bool CheckNoLeaks() const LOCKS_EXCLUDED(mutex_);
+
+  // Makes sure destructor runs after there is no remaining data.
+  bool CheckNoLeaks_Locked() const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   ///
   /// Private fields

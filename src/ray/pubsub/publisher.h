@@ -298,6 +298,9 @@ class Publisher : public PublisherInterface {
   /// \return True if erased. False otherwise.
   bool UnregisterSubscriber(const SubscriberID &subscriber_id);
 
+  /// Flushes all inflight pollings and unregisters all subscribers.
+  void UnregisterAll();
+
   /// Check all subscribers, detect which subscribers are dead or its connection is timed
   /// out, and clean up their metadata. This uses the goal-oriented logic to clean up all
   /// metadata that can happen by subscriber failures. It is how it works;
