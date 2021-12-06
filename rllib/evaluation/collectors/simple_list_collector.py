@@ -373,8 +373,9 @@ class _AgentCollector:
             # lists. These are monolithic items (infos is a dict that
             # should not be further split, same for state-out items, which
             # could be custom dicts as well).
-            if col in [SampleBatch.INFOS, SampleBatch.ACTIONS
-                       ] or col.startswith("state_out_"):
+            if col == SampleBatch.INFOS or col.startswith("state_out_") or (
+                    col == SampleBatch.ACTIONS and
+                    not self.policy.config["_disable_action_flattening"]):
                 self.buffers[col] = [[data for _ in range(shift)]]
             else:
                 self.buffers[col] = [[v for _ in range(shift)]

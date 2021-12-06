@@ -16,6 +16,7 @@ try:
 except ImportError:
     smart_open = None
 
+from ray.rllib.models.modelv2 import restore_original_dimensions
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.policy.policy import Policy
@@ -23,7 +24,8 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch, \
     SampleBatch
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.compression import unpack_if_needed
-from ray.rllib.utils.spaces.space_utils import clip_action, normalize_action
+from ray.rllib.utils.spaces.space_utils import clip_action, \
+    flatten_to_single_ndarray, normalize_action
 from ray.rllib.utils.typing import FileType, SampleBatchType
 
 logger = logging.getLogger(__name__)
@@ -198,9 +200,20 @@ class JsonReader(InputReader):
         # necessary.
         if cfg.get("actions_in_input_normalized") is False:
             if isinstance(batch, SampleBatch):
-                batch[SampleBatch.ACTIONS] = normalize_action(
-                    batch[SampleBatch.ACTIONS], self.ioctx.worker.policy_map[
-                        "default_policy"].action_space_struct)
+                pol = self.ioctx.worker.policy_map["default_policy"]
+                # Unflatten actions so we can properly normalize.
+                if pol.config["_disable_action_flattening"] is False:
+                    raise ValueError(
+                        "Normalization of offline actions that are flattened "
+                        "is not supported! Make sure that you record actions "
+                        "into offline file with the "
+                        "`_disable_action_flattening=True` flag OR as already "
+                        "normalized (between -1.0 and 1.0) values. When "
+                        "reading already normalized action values, make sure "
+                        "to set `actions_in_input_normalized=True`.")
+                else:
+                    batch[SampleBatch.ACTIONS] = normalize_action(
+                        batch[SampleBatch.ACTIONS], pol.action_space_struct)
             else:
                 for pid, b in batch.policy_batches.items():
                     b[SampleBatch.ACTIONS] = normalize_action(
@@ -294,12 +307,15 @@ class JsonReader(InputReader):
             if policy.config["_disable_action_flattening"] and \
                     (k == SampleBatch.ACTIONS or
                      v.data_col == SampleBatch.ACTIONS):
-                policy_json_data[k] = tree.map_structure_up_to(
-                    policy.action_space_struct,
-                    lambda comp: np.array(comp),
-                    json_data[k],
-                    check_types=False,
-                )
+                try:#TODO
+                    policy_json_data[k] = tree.map_structure_up_to(
+                        policy.action_space_struct,
+                        lambda comp: np.array(comp),
+                        json_data[k],
+                        check_types=False,
+                    )
+                except Exception as e:
+                    raise e
             elif policy.config["_disable_preprocessor_api"] and \
                     (k == SampleBatch.OBS or
                      v.data_col == SampleBatch.OBS):

@@ -17,6 +17,7 @@ from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.tf_utils import get_placeholder
 from ray.rllib.utils.typing import LocalOptimizer, ModelGradients, \
     TensorType, TrainerConfigDict
@@ -327,9 +328,9 @@ class DynamicTFPolicy(TFPolicy):
                             self._extra_action_fetches = \
                             self.model(self._input_dict)
                     else:
-                        dist_inputs, self._state_out = self.model(
-                            self._input_dict, self._state_inputs,
-                            self._seq_lens)
+
+                        dist_inputs, self._state_out = self.model(self._input_dict)#, self._state_inputs,
+                            #self._seq_lens)
 
                 action_dist = dist_class(dist_inputs, self.model)
 
@@ -348,6 +349,11 @@ class DynamicTFPolicy(TFPolicy):
             callable(get_batch_divisibility_req) else \
             (get_batch_divisibility_req or 1)
 
+        prev_action_input = self._input_dict[SampleBatch.PREV_ACTIONS] if \
+            SampleBatch.PREV_ACTIONS in self._input_dict.accessed_keys else None
+        prev_reward_input = self._input_dict[SampleBatch.PREV_REWARDS] if \
+            SampleBatch.PREV_REWARDS in self._input_dict.accessed_keys else None
+
         super().__init__(
             observation_space=obs_space,
             action_space=action_space,
@@ -364,8 +370,8 @@ class DynamicTFPolicy(TFPolicy):
             model=self.model,
             state_inputs=self._state_inputs,
             state_outputs=self._state_out,
-            prev_action_input=self._input_dict.get(SampleBatch.PREV_ACTIONS),
-            prev_reward_input=self._input_dict.get(SampleBatch.PREV_REWARDS),
+            prev_action_input=prev_action_input,
+            prev_reward_input=prev_reward_input,
             seq_lens=self._seq_lens,
             max_seq_len=config["model"]["max_seq_len"],
             batch_divisibility_req=batch_divisibility_req,
@@ -607,18 +613,27 @@ class DynamicTFPolicy(TFPolicy):
         self.get_session().run(tf1.global_variables_initializer())
 
         logger.info("Testing `compute_actions` w/ dummy batch.")
-        actions, state_outs, extra_fetches = \
-            self.compute_actions_from_input_dict(
-                self._dummy_batch, explore=False, timestep=0)
-        for key, value in extra_fetches.items():
-            self._dummy_batch[key] = value
+        #actions, state_outs, extra_fetches = \
+        #    self.compute_actions_from_input_dict(
+        #        self._dummy_batch, explore=False, timestep=0)
+        # Fields that have not been accessed are not needed for action
+        # computations -> Tag them as `used_for_compute_actions=False`.
+        for key, view_req in self.view_requirements.items():
+            if key not in self._input_dict.accessed_keys:
+                view_req.used_for_compute_actions = False
+        for key, value in self._extra_action_fetches.items():
+            self._dummy_batch[key] = get_dummy_batch_for_space(
+                gym.spaces.Box(-1.0, 1.0, shape=value.shape.as_list()[1:],
+                    dtype=value.dtype.name),
+                batch_size=len(self._dummy_batch),
+            )
             self._input_dict[key] = get_placeholder(value=value, name=key)
             if key not in self.view_requirements:
                 logger.info("Adding extra-action-fetch `{}` to "
                             "view-reqs.".format(key))
                 self.view_requirements[key] = ViewRequirement(
                     space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype),
+                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype.name),
                     used_for_compute_actions=False,
                 )
         dummy_batch = self._dummy_batch
