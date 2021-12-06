@@ -109,7 +109,7 @@ class Std(AggregateFn):
     """Defines standard deviation aggregation.
 
     Uses Welford's online method for an accumulator-style computation of the
-    standard deviation. This method was chosen due to it's numerical
+    standard deviation. This method was chosen due to its numerical
     stability, and it being computable in a single pass.
     This may give different (but more accurate) results than NumPy, Pandas,
     and sklearn, which use a less numerically stable two-pass algorithm.
