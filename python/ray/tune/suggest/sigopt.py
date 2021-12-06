@@ -11,6 +11,7 @@ except ImportError:
     sgo = None
     Connection = None
 
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.suggest import Searcher
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,10 @@ class SigOptSearch(Searcher):
     You will need to use the `SigOpt experiment and space specification
     <https://app.sigopt.com/docs/overview/create>`_.
 
-    This module manages its own concurrency.
+    This searcher manages its own concurrency.
+    If this Searcher is used in a ``ConcurrencyLimiter``, the
+    ``max_concurrent`` value passed to it will override the value passed
+    here.
 
     Parameters:
         space (list of dict): SigOpt configuration. Parameters will be sampled
@@ -40,6 +44,9 @@ class SigOptSearch(Searcher):
         name (str): Name of experiment. Required by SigOpt.
         max_concurrent (int): Number of maximum concurrent trials supported
             based on the user's SigOpt plan. Defaults to 1.
+            If this Searcher is used in a ``ConcurrencyLimiter``, the
+            ``max_concurrent`` value passed to it will override the
+            value passed here.
         connection (Connection): An existing connection to SigOpt.
         experiment_id (str): Optional, if given will connect to an existing
             experiment. This allows for a more interactive experience with
@@ -141,8 +148,40 @@ class SigOptSearch(Searcher):
                 None) ^ (space is None), "space xor experiment_id must be set"
         assert type(max_concurrent) is int and max_concurrent > 0
 
-        if connection is not None:
-            self.conn = connection
+        self._experiment_id = experiment_id
+        self._name = name
+        self._max_concurrent = max_concurrent
+        self._connection = connection
+        self._observation_budget = observation_budget
+        self._project = project
+        self._space = space
+        self._metric = metric
+        self._mode = mode
+        self._live_trial_mapping = {}
+
+        self._points_to_evaluate = points_to_evaluate
+
+        self.experiment = None
+
+        super(SigOptSearch, self).__init__(metric=metric, mode=mode, **kwargs)
+        self._setup_optimizer()
+
+    def _setup_optimizer(self):
+        if self._metric is None and self._mode:
+            # If only a mode was passed, use anonymous metric
+            self._metric = DEFAULT_METRIC
+
+        if self._mode is None:
+            raise ValueError(
+                "`mode` argument passed to SigOptSearch must be set.")
+
+        if isinstance(self._metric, str):
+            self._metric = [self._metric]
+        if isinstance(self._mode, str):
+            self._mode = [self._mode]
+
+        if self._connection is not None:
+            self.conn = self._connection
         else:
             assert sgo is not None, """SigOpt must be installed!
                 You can install SigOpt with the command:
@@ -153,40 +192,55 @@ class SigOptSearch(Searcher):
             # Create a connection with SigOpt API, requires API key
             self.conn = sgo.Connection(client_token=os.environ["SIGOPT_KEY"])
 
-        self._max_concurrent = max_concurrent
-        if isinstance(metric, str):
-            metric = [metric]
-            mode = [mode]
-        self._metric = metric
-        self._live_trial_mapping = {}
-
-        if experiment_id is None:
+        if self._experiment_id is None:
             sigopt_params = dict(
-                name=name,
-                parameters=space,
+                name=self._name,
+                parameters=self._space,
                 parallel_bandwidth=self._max_concurrent)
 
-            if observation_budget is not None:
-                sigopt_params["observation_budget"] = observation_budget
+            if self._observation_budget is not None:
+                sigopt_params["observation_budget"] = self._observation_budget
 
-            if project is not None:
-                sigopt_params["project"] = project
+            if self._project is not None:
+                sigopt_params["project"] = self._project
 
-            if len(metric) > 1 and observation_budget is None:
+            if len(self._metric) > 1 and self._observation_budget is None:
                 raise ValueError(
                     "observation_budget is required for an"
                     "experiment with more than one optimized metric")
-            sigopt_params["metrics"] = self.serialize_metric(metric, mode)
+            sigopt_params["metrics"] = self.serialize_metric(
+                self._metric, self._mode)
 
             self.experiment = self.conn.experiments().create(**sigopt_params)
         else:
-            self.experiment = self.conn.experiments(experiment_id).fetch()
+            self.experiment = self.conn.experiments(
+                self._experiment_id).fetch()
 
-        self._points_to_evaluate = points_to_evaluate
+    def set_search_properties(self, metric: Optional[str], mode: Optional[str],
+                              config: Dict, **spec) -> bool:
+        if config or self.experiment:
+            # no automatic conversion of search space just yet
+            return False
 
-        super(SigOptSearch, self).__init__(metric=metric, mode=mode, **kwargs)
+        if metric:
+            self._metric = metric
+        if mode:
+            self._mode = mode
+
+        self._setup_optimizer()
+        return True
+
+    def set_max_concurrency(self, max_concurrent: int) -> bool:
+        self._max_concurrent = max_concurrent
+        self.experiment = None
+        return True
 
     def suggest(self, trial_id: str):
+        # Required here and not in on __init__
+        # to make sure set_max_concurrency works correctly
+        if not self.experiment:
+            self._setup_optimizer()
+
         if self._max_concurrent:
             if len(self._live_trial_mapping) >= self._max_concurrent:
                 return None

@@ -236,7 +236,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   if (options_.worker_type == WorkerType::WORKER) {
     periodical_runner_.RunFnPeriodically(
-        [this] { CheckForRayletFailure(); },
+        [this] { ExitIfParentRayletDies(); },
         RayConfig::instance().raylet_death_check_interval_milliseconds());
   }
 
@@ -668,23 +668,17 @@ void CoreWorker::RegisterToGcs() {
   RAY_CHECK_OK(gcs_client_->Workers().AsyncAdd(worker_data, nullptr));
 }
 
-void CoreWorker::CheckForRayletFailure() {
-  auto env_pid = RayConfig::instance().RAYLET_PID();
-  bool should_shutdown = IsRayletFailed(env_pid);
+void CoreWorker::ExitIfParentRayletDies() {
+  RAY_CHECK(options_.worker_type == WorkerType::WORKER);
+  RAY_CHECK(!RayConfig::instance().RAYLET_PID().empty());
+  auto raylet_pid = static_cast<pid_t>(std::stoi(RayConfig::instance().RAYLET_PID()));
+  bool should_shutdown = !IsProcessAlive(raylet_pid);
   if (should_shutdown) {
     std::ostringstream stream;
     stream << "Shutting down the core worker because the local raylet failed. "
-           << "Check out the raylet.out log file.";
-    if (!env_pid.empty()) {
-      auto pid = static_cast<pid_t>(std::stoi(env_pid));
-      stream << " Raylet pid: " << pid;
-    }
+           << "Check out the raylet.out log file. Raylet pid: " << raylet_pid;
     RAY_LOG(WARNING) << stream.str();
-    if (options_.worker_type == WorkerType::WORKER) {
-      task_execution_service_.post([this]() { Shutdown(); }, "CoreWorker.Shutdown");
-    } else {
-      Shutdown();
-    }
+    task_execution_service_.post([this]() { Shutdown(); }, "CoreWorker.Shutdown");
   }
 }
 

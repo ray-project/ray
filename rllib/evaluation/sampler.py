@@ -18,7 +18,8 @@ from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.evaluation.sample_batch_builder import \
     MultiAgentSampleBatchBuilder
-from ray.rllib.env.base_env import BaseEnv, ASYNC_RESET_RETURN
+from ray.rllib.env.base_env import BaseEnv, convert_to_base_env, \
+    ASYNC_RESET_RETURN
 from ray.rllib.env.wrappers.atari_wrappers import get_wrapper_by_cls, \
     MonitorEnv
 from ray.rllib.models.preprocessors import Preprocessor
@@ -235,7 +236,7 @@ class SyncSampler(SamplerInput):
             if tf_sess is not None:
                 deprecation_warning(old="tf_sess")
 
-        self.base_env = BaseEnv.to_base_env(env)
+        self.base_env = convert_to_base_env(env)
         self.rollout_fragment_length = rollout_fragment_length
         self.horizon = horizon
         self.extra_batches = queue.Queue()
@@ -384,7 +385,7 @@ class AsyncSampler(threading.Thread, SamplerInput):
             assert getattr(f, "is_concurrent", False), \
                 "Observation Filter must support concurrent updates."
 
-        self.base_env = BaseEnv.to_base_env(env)
+        self.base_env = convert_to_base_env(env)
         threading.Thread.__init__(self)
         self.queue = queue.Queue(5)
         self.extra_batches = queue.Queue()
@@ -966,10 +967,12 @@ def _process_observations(
             # Horizon hit and we have a soft horizon (no hard env reset).
             if hit_horizon and soft_horizon:
                 episode.soft_reset()
-                resetted_obs: Dict[AgentID, EnvObsType] = all_agents_obs
+                resetted_obs: Dict[EnvID, Dict[AgentID, EnvObsType]] = \
+                    {env_id: all_agents_obs}
             else:
                 del active_episodes[env_id]
-                resetted_obs: Dict[AgentID, EnvObsType] = base_env.try_reset(
+                resetted_obs: Dict[EnvID, Dict[AgentID, EnvObsType]] = \
+                    base_env.try_reset(
                     env_id)
             # Reset not supported, drop this env from the ready list.
             if resetted_obs is None:
@@ -981,6 +984,7 @@ def _process_observations(
             # If reset is async, we will get its result in some future poll.
             elif resetted_obs != ASYNC_RESET_RETURN:
                 new_episode: Episode = active_episodes[env_id]
+                resetted_obs = resetted_obs[env_id]
                 if observation_fn:
                     resetted_obs: Dict[AgentID, EnvObsType] = observation_fn(
                         agent_obs=resetted_obs,

@@ -79,6 +79,7 @@ void GcsServer::Start() {
             rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
             rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
             rpc::ChannelType::RAY_LOG_CHANNEL,
+            rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL,
         },
         /*periodical_runner=*/&pubsub_periodical_runner_,
         /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
