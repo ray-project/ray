@@ -529,7 +529,9 @@ class MultiActionDistribution(TFActionDistribution):
         def map_(val, dist):
             # Remove extra categorical dimension.
             if isinstance(dist, Categorical):
-                val = tf.cast(tf.squeeze(val, axis=-1) if len(val.shape) > 1 else val, tf.int32)
+                val = tf.cast(
+                    tf.squeeze(val, axis=-1)
+                    if len(val.shape) > 1 else val, tf.int32)
             return dist.logp(val)
 
         # Remove extra categorical dimension and take the logp of each

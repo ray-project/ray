@@ -374,8 +374,8 @@ class _AgentCollector:
             # should not be further split, same for state-out items, which
             # could be custom dicts as well).
             if col == SampleBatch.INFOS or col.startswith("state_out_") or (
-                    col == SampleBatch.ACTIONS and
-                    not self.policy.config["_disable_action_flattening"]):
+                    col == SampleBatch.ACTIONS
+                    and not self.policy.config["_disable_action_flattening"]):
                 self.buffers[col] = [[data for _ in range(shift)]]
             else:
                 self.buffers[col] = [[v for _ in range(shift)]

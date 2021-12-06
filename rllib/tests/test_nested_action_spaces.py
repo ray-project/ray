@@ -12,7 +12,6 @@ from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.utils.test_utils import framework_iterator
 
-
 SPACES = {
     "dict": Dict({
         "a": Dict({
@@ -20,7 +19,8 @@ SPACES = {
             "ab": MultiDiscrete([4, 3]),
         }),
         "b": Discrete(3),
-        "c": Tuple([Box(0, 10, (2, ), dtype=np.int32), Discrete(2)]),
+        "c": Tuple([Box(0, 10, (2, ), dtype=np.int32),
+                    Discrete(2)]),
         "d": Box(0, 3, (), dtype=np.int64),
     }),
     "tuple": Tuple([
@@ -35,14 +35,14 @@ SPACES = {
         }),
     ]),
     "multidiscrete": MultiDiscrete([2, 3, 4]),
-    # "intbox": Box(0, 100, (2, ), dtype=np.int32),
+    "intbox": Box(0, 100, (2, ), dtype=np.int32),
 }
 
 
 class NestedActionSpacesTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init(num_cpus=5, local_mode=True)#TODO
+        ray.init(num_cpus=5)
 
     @classmethod
     def tearDownClass(cls):
@@ -65,7 +65,7 @@ class NestedActionSpacesTest(unittest.TestCase):
         # Pretend actions in offline files are already normalized.
         config["actions_in_input_normalized"] = True
 
-        for _ in framework_iterator(config, frameworks="torch"):#TODO
+        for _ in framework_iterator(config):
             for name, action_space in SPACES.items():
                 config["env_config"] = {
                     "action_space": action_space,
@@ -87,7 +87,8 @@ class NestedActionSpacesTest(unittest.TestCase):
                     if flatten:
                         assert isinstance(sample_batch["actions"], np.ndarray)
                         assert len(sample_batch["actions"].shape) == 2
-                        assert sample_batch["actions"].shape[0] == len(sample_batch)
+                        assert sample_batch["actions"].shape[0] == len(
+                            sample_batch)
                     else:
                         tree.assert_same_structure(
                             trainer.get_policy().action_space_struct,

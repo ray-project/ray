@@ -329,8 +329,8 @@ class DynamicTFPolicy(TFPolicy):
                             self.model(self._input_dict)
                     else:
 
-                        dist_inputs, self._state_out = self.model(self._input_dict)#, self._state_inputs,
-                            #self._seq_lens)
+                        dist_inputs, self._state_out = self.model(
+                            self._input_dict)
 
                 action_dist = dist_class(dist_inputs, self.model)
 
@@ -350,9 +350,11 @@ class DynamicTFPolicy(TFPolicy):
             (get_batch_divisibility_req or 1)
 
         prev_action_input = self._input_dict[SampleBatch.PREV_ACTIONS] if \
-            SampleBatch.PREV_ACTIONS in self._input_dict.accessed_keys else None
+            SampleBatch.PREV_ACTIONS in self._input_dict.accessed_keys \
+            else None
         prev_reward_input = self._input_dict[SampleBatch.PREV_REWARDS] if \
-            SampleBatch.PREV_REWARDS in self._input_dict.accessed_keys else None
+            SampleBatch.PREV_REWARDS in self._input_dict.accessed_keys \
+            else None
 
         super().__init__(
             observation_space=obs_space,
@@ -613,9 +615,6 @@ class DynamicTFPolicy(TFPolicy):
         self.get_session().run(tf1.global_variables_initializer())
 
         logger.info("Testing `compute_actions` w/ dummy batch.")
-        #actions, state_outs, extra_fetches = \
-        #    self.compute_actions_from_input_dict(
-        #        self._dummy_batch, explore=False, timestep=0)
         # Fields that have not been accessed are not needed for action
         # computations -> Tag them as `used_for_compute_actions=False`.
         for key, view_req in self.view_requirements.items():
@@ -623,7 +622,10 @@ class DynamicTFPolicy(TFPolicy):
                 view_req.used_for_compute_actions = False
         for key, value in self._extra_action_fetches.items():
             self._dummy_batch[key] = get_dummy_batch_for_space(
-                gym.spaces.Box(-1.0, 1.0, shape=value.shape.as_list()[1:],
+                gym.spaces.Box(
+                    -1.0,
+                    1.0,
+                    shape=value.shape.as_list()[1:],
                     dtype=value.dtype.name),
                 batch_size=len(self._dummy_batch),
             )
@@ -633,7 +635,10 @@ class DynamicTFPolicy(TFPolicy):
                             "view-reqs.".format(key))
                 self.view_requirements[key] = ViewRequirement(
                     space=gym.spaces.Box(
-                        -1.0, 1.0, shape=value.shape[1:], dtype=value.dtype.name),
+                        -1.0,
+                        1.0,
+                        shape=value.shape[1:],
+                        dtype=value.dtype.name),
                     used_for_compute_actions=False,
                 )
         dummy_batch = self._dummy_batch

@@ -92,10 +92,6 @@ class SampleBatch(dict):
         self.zero_padded = kwargs.pop("_zero_padded", False)
         # Whether this batch is used for training (vs inference).
         self._is_training = kwargs.pop("_is_training", None)
-        ## The observation space.
-        #self._observation_space = kwargs.pop("_observation_space", None)
-        ## The action space.
-        #self._action_space = kwargs.pop("_action_space", None)
 
         # Call super constructor. This will make the actual data accessible
         # by column name (str) via e.g. self["some-col"].
@@ -721,10 +717,7 @@ class SampleBatch(dict):
         value = dict.__getitem__(self, key)
         if self.get_interceptor is not None:
             if key not in self.intercepted_values:
-                try:#TODO
-                    self.intercepted_values[key] = self.get_interceptor(value)
-                except Exception as e:
-                    raise e
+                self.intercepted_values[key] = self.get_interceptor(value)
             value = self.intercepted_values[key]
         return value
 
