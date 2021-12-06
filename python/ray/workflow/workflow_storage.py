@@ -134,6 +134,7 @@ class WorkflowStorage:
             outer_most_step_id: See WorkflowStepContext.
         """
         tasks = []
+        dynamic_output_id = None
         if isinstance(ret, Workflow):
             # This workflow step returns a nested workflow.
             assert step_id != ret.step_id
@@ -154,9 +155,6 @@ class WorkflowStorage:
                 # tasks.append(self._put(self._key_step_output(step_id), ret))
                 dynamic_output_id = step_id
                 # TODO (yic): Delete exception file
-                tasks.append(
-                    self._update_dynamic_output(outer_most_step_id,
-                                                dynamic_output_id))
             else:
                 assert ret is None
                 promise = serialization.dump_to_storage(
@@ -167,6 +165,10 @@ class WorkflowStorage:
                 #     self._put(self._key_step_exception(step_id), exception))
 
         asyncio_run(asyncio.gather(*tasks))
+        if dynamic_output_id:
+            asyncio_run(
+                self._update_dynamic_output(outer_most_step_id,
+                                            dynamic_output_id))
 
     def load_step_func_body(self, step_id: StepID) -> Callable:
         """Load the function body of the workflow step.
