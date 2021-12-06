@@ -21,14 +21,13 @@
 
 namespace ray {
 
-class GcsServerTest : public ::testing::TestWithParam<char*> {
+class GcsServerTest  :public :: testing::Test {
  public:
   GcsServerTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
 
   virtual ~GcsServerTest() { TestSetupUtil::ShutDownRedisServers(); }
 
   void SetUp() override {
-    ray::RayConfig::instance().gcs_storage() = GetParam();
     gcs::GcsServerConfig config;
     config.grpc_server_port = 0;
     config.grpc_server_name = "MockedGcsServer";
@@ -37,14 +36,14 @@ class GcsServerTest : public ::testing::TestWithParam<char*> {
     config.node_ip_address = "127.0.0.1";
     config.enable_sharding_conn = false;
     config.redis_port = TEST_REDIS_SERVER_PORTS.front();
-    gcs_server_.reset(new gcs::GcsServer(config, io_service_));
+    gcs_server_ = std::make_unique<gcs::GcsServer>(config, io_service_);
     gcs_server_->Start();
 
-    thread_io_service_.reset(new std::thread([this] {
+    thread_io_service_ = std::make_unique<std::thread>([this] {
       std::unique_ptr<boost::asio::io_service::work> work(
           new boost::asio::io_service::work(io_service_));
       io_service_.run();
-    }));
+    });
 
     // Wait until server starts listening.
     while (gcs_server_->GetPort() == 0) {
@@ -525,14 +524,8 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   ASSERT_TRUE(result->worker_address().worker_id() ==
               worker_data->worker_address().worker_id());
 }
-
 // TODO(sang): Add tests after adding asyncAdd
 
-
-INSTANTIATE_TEST_CASE_P(
-    GcsServerTest,
-    GcsServerTestFixture,
-    ::testing::Values("redis", "memory"));
 }  // namespace ray
 
 int main(int argc, char **argv) {
