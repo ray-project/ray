@@ -382,6 +382,25 @@ def test_imbalanced_replicas(ongoing_requests):
         assert new_num_replicas == 5
 
 
+@pytest.mark.parametrize("ongoing_requests", [[20, 0, 0, 0], [100, 0, 0, 0],
+                                              [10, 0, 0, 0]])
+def test_single_replica_receives_all_requests(ongoing_requests):
+    target_requests = 5
+
+    config = AutoscalingConfig(
+        min_replicas=1,
+        max_replicas=50,
+        target_num_ongoing_requests_per_replica=target_requests,
+        upscale_delay_s=0.0,
+        downscale_delay_s=0.0)
+
+    policy = BasicAutoscalingPolicy(config)
+
+    new_num_replicas = policy.get_decision_num_replicas(
+            current_num_ongoing_requests=ongoing_requests,
+            curr_target_num_replicas=4)
+    assert new_num_replicas == sum(ongoing_requests) / target_requests
+
 
 if __name__ == "__main__":
     import sys
