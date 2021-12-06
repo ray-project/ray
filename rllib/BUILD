@@ -1264,7 +1264,7 @@ py_test(
 )
 
 py_test(
-    name = "test_re3",
+    name = "test_random_encoder",
     tags = ["team:ml", "utils"],
     size = "large",
     srcs = ["utils/exploration/tests/test_random_encoder.py"]
