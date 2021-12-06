@@ -13,6 +13,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.train import Trainer, CheckpointStrategy
 from ray.train.backend import BackendConfig, Backend, \
     BackendExecutor
+from ray.train.constants import TRAIN_ENABLE_WORKER_SPREAD_ENV
 from ray.train.torch import TorchConfig
 from ray.train.tensorflow import TensorflowConfig
 from ray.train.horovod import HorovodConfig
@@ -151,6 +152,28 @@ def test_start_shutdown(ray_start_2_cpus, num_workers):
     assert ray.available_resources()["CPU"] == 2
 
 
+def test_env_var(ray_start_2_cpus):
+    """Tests if Train env vars are propagated to the BackendExecutor."""
+    config = TestConfig()
+
+    os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV] = "1"
+
+    class EnvBackendExecutor(BackendExecutor):
+        def __init__(self, *args, **kwargs):
+            assert TRAIN_ENABLE_WORKER_SPREAD_ENV in os.environ and \
+                   os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV] == "1"
+            super().__init__(*args, **kwargs)
+
+    with patch.object(ray.train.trainer, "BackendExecutor",
+                      EnvBackendExecutor):
+        trainer = Trainer(config, num_workers=1)
+        trainer.start()
+        trainer.run(lambda: 1)
+        trainer.shutdown()
+
+    del os.environ[TRAIN_ENABLE_WORKER_SPREAD_ENV]
+
+
 def test_run(ray_start_2_cpus):
     config = TestConfig()
 
@@ -275,7 +298,7 @@ def test_run_iterator(ray_start_2_cpus):
 
     count = 0
     for results in iterator:
-        assert (value["index"] == count for value in results)
+        assert all(value["index"] == count for value in results)
         count += 1
 
     assert count == 3
@@ -1012,12 +1035,13 @@ def test_dataset_pipeline(ray_start_4_cpus):
     dataset = ray.data.range(num_data).repeat()
 
     def get_dataset():
-        pipeline_iterator = train.get_dataset_shard().iter_datasets()
+        pipeline_iterator = train.get_dataset_shard().iter_epochs()
         data_all_epochs = []
         for _ in range(num_epochs):
             dataset_this_epoch = next(pipeline_iterator)
             data_this_epoch = []
-            for batch in dataset_this_epoch.iter_batches():
+            for batch in dataset_this_epoch.iter_batches(
+                    batch_format="native"):
                 data_this_epoch.extend(batch)
             data_all_epochs.append(data_this_epoch)
         return data_all_epochs
@@ -1037,12 +1061,13 @@ def test_dataset_pipeline_shuffle(ray_start_4_cpus):
     dataset = ray.data.range(num_data).repeat().random_shuffle_each_window()
 
     def get_dataset():
-        pipeline_iterator = train.get_dataset_shard().iter_datasets()
+        pipeline_iterator = train.get_dataset_shard().iter_epochs()
         data_all_epochs = []
         for _ in range(2):
             dataset_this_epoch = next(pipeline_iterator)
             data_this_epoch = []
-            for batch in dataset_this_epoch.iter_batches():
+            for batch in dataset_this_epoch.iter_batches(
+                    batch_format="native"):
                 data_this_epoch.extend(batch)
 
             if len(data_all_epochs) > 0:

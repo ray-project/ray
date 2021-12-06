@@ -33,6 +33,10 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 # same type as the metadata that describes each block in the partition.
 BlockPartitionMetadata = "BlockMetadata"
 
+# TODO(ekl) replace this with just `BlockPartition` once block splitting is on
+# by default. When block splitting is off, the type is a plain block.
+MaybeBlockPartition = Union[Block, BlockPartition]
+
 
 @DeveloperAPI
 class BlockMetadata:

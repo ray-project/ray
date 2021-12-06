@@ -28,6 +28,7 @@ SUPPORTED_BAZEL = (4, 2, 1)
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
+BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
 
 PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
@@ -209,6 +210,7 @@ if setup_spec.type == SetupType.RAY:
             "gpustat >= 1.0.0b1",  # for windows
             "opencensus",
             "prometheus_client >= 0.7.1",
+            "smart_open"
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi"],
         "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
@@ -222,6 +224,8 @@ if setup_spec.type == SetupType.RAY:
     if sys.version_info >= (3, 7):
         # Numpy dropped python 3.6 support in 1.20.
         setup_spec.extras["data"].append("numpy >= 1.20")
+    else:
+        setup_spec.extras["data"].append("numpy >= 1.19")
 
     # Ray Serve depends on the Ray dashboard components.
     setup_spec.extras["serve"] = list(
@@ -264,7 +268,7 @@ if setup_spec.type == SetupType.RAY:
         "numpy >= 1.19.3; python_version >= '3.9'",
         "protobuf >= 3.15.3",
         "pyyaml",
-        "redis >= 3.5.0, < 4.0.0",
+        "redis >= 3.5.0",
     ]
 
 
@@ -493,6 +497,9 @@ def build(build_python, build_java, build_cpp):
             ".".join(map(str, SUPPORTED_BAZEL)), bazel_version_str))
 
     bazel_flags = ["--verbose_failures"]
+    if BAZEL_LIMIT_CPUS:
+        n = int(BAZEL_LIMIT_CPUS)  # the value must be an int
+        bazel_flags.append(f"--local_cpu_resources={n}")
 
     if not is_automated_build:
         bazel_precmd_flags = []

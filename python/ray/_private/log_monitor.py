@@ -12,6 +12,7 @@ import time
 import traceback
 
 import ray.ray_constants as ray_constants
+import ray._private.gcs_pubsub as gcs_pubsub
 import ray._private.gcs_utils as gcs_utils
 import ray._private.services as services
 import ray._private.utils
@@ -24,7 +25,7 @@ from ray._private.ray_logging import setup_component_logger
 logger = logging.getLogger(__name__)
 
 # The groups are worker id, job id, and pid.
-JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-(\d+)-(\d+)")
+JOB_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+)")
 # The groups are job id.
 RUNTIME_ENV_SETUP_PATTERN = re.compile(".*runtime_env_setup-(\d+).log")
 # Log name update interval under pressure.
@@ -98,6 +99,10 @@ class LogMonitor:
         self.logs_dir = logs_dir
         self.redis_client = ray._private.services.create_redis_client(
             redis_address, password=redis_password)
+        self.publisher = None
+        if gcs_pubsub.gcs_pubsub_enabled():
+            gcs_addr = gcs_utils.get_gcs_address_from_redis(self.redis_client)
+            self.publisher = gcs_pubsub.GcsPublisher(address=gcs_addr)
         self.log_filenames = set()
         self.open_file_infos = []
         self.closed_file_infos = []
@@ -261,17 +266,20 @@ class LogMonitor:
             nonlocal lines_to_publish
             nonlocal anything_published
             if len(lines_to_publish) > 0:
-                self.redis_client.publish(
-                    gcs_utils.LOG_FILE_CHANNEL,
-                    json.dumps({
-                        "ip": self.ip,
-                        "pid": file_info.worker_pid,
-                        "job": file_info.job_id,
-                        "is_err": file_info.is_err_file,
-                        "lines": lines_to_publish,
-                        "actor_name": file_info.actor_name,
-                        "task_name": file_info.task_name,
-                    }))
+                data = {
+                    "ip": self.ip,
+                    "pid": file_info.worker_pid,
+                    "job": file_info.job_id,
+                    "is_err": file_info.is_err_file,
+                    "lines": lines_to_publish,
+                    "actor_name": file_info.actor_name,
+                    "task_name": file_info.task_name,
+                }
+                if self.publisher:
+                    self.publisher.publish_logs(data)
+                else:
+                    self.redis_client.publish(gcs_utils.LOG_FILE_CHANNEL,
+                                              json.dumps(data))
                 anything_published = True
                 lines_to_publish = []
 

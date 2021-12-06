@@ -225,6 +225,13 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 
+def _format_link(link: str):
+    # Use ANSI escape code to allow link to be clickable
+    # https://buildkite.com/docs/pipelines/links-and-images
+    # -in-log-output
+    return r"\033]1339;url='" + link + r"'\a\n"
+
+
 def getenv_default(key: str, default: Optional[str] = None):
     """Return environment variable with default value"""
     # If the environment variable is set but "", still return default
@@ -278,6 +285,8 @@ RETRY_MULTIPLIER = 2
 
 
 class ExitCode(enum.Enum):
+    # If you change these, also change the `retry` section
+    # in `build_pipeline.py` and the `reason()` function in `run_e2e.sh`
     UNSPECIFIED = 2
     UNKNOWN = 3
     RUNTIME_ERROR = 4
@@ -535,15 +544,6 @@ def _load_config(local_dir: str, config_file: Optional[str]) -> Optional[Dict]:
 
     content = jinja2.Template(content).render(env=env)
     return yaml.safe_load(content)
-
-
-def _wrap_app_config_pip_installs(app_config: Dict[Any, Any]):
-    """Wrap pip package install in quotation marks"""
-    if app_config.get("python", {}).get("pip_packages"):
-        new_pip_packages = []
-        for pip_package in app_config["python"]["pip_packages"]:
-            new_pip_packages.append(f"\"{pip_package}\"")
-        app_config["python"]["pip_packages"] = new_pip_packages
 
 
 def has_errored(result: Dict[Any, Any]) -> bool:
@@ -897,8 +897,9 @@ def wait_for_build_or_raise(sdk: AnyscaleSDK,
             continue
 
         if build.status == "succeeded":
-            logger.info(f"Link to app config build: "
-                        f"{anyscale_app_config_build_url(build_id)}")
+            logger.info(
+                f"Link to app config build: "
+                f"{_format_link(anyscale_app_config_build_url(build_id))}")
             return build_id
 
     if last_status == "failed":
@@ -989,7 +990,7 @@ def create_and_wait_for_session(
     logger.info(f"Starting session {session_name} ({session_id})")
     session_url = anyscale_session_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id)
-    logger.info(f"Link to session: {session_url}")
+    logger.info(f"Link to session: {_format_link(session_url)}")
 
     result = sdk.start_session(session_id, start_session_options={})
     sop_id = result.result.id
@@ -1037,7 +1038,7 @@ def run_session_command(sdk: AnyscaleSDK,
     logger.info(f"Running command in session {session_id}: \n" f"{full_cmd}")
     session_url = anyscale_session_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"], session_id=session_id)
-    logger.info(f"Link to session: {session_url}")
+    logger.info(f"Link to session: {_format_link(session_url)}")
     result_queue.put(State(state_str, time.time(), None))
     result = sdk.create_session_command(
         dict(session_id=session_id, shell_command=full_cmd))
@@ -1371,9 +1372,6 @@ def run_test_config(
         raise ValueError(
             "'autosuspend_mins' is only supported if 'use_connect' is True.")
 
-    # Only wrap pip packages after we installed the app config packages
-    _wrap_app_config_pip_installs(app_config)
-
     # Add information to results dict
     def _update_results(results: Dict):
         if "last_update" in results:
@@ -1521,8 +1519,10 @@ def run_test_config(
                         create_or_find_compute_template(
                             sdk, project_id, compute_tpl)
 
-                    logger.info(f"Link to compute template: "
-                                f"{anyscale_compute_tpl_url(compute_tpl_id)}")
+                    url = _format_link(
+                        anyscale_compute_tpl_url(compute_tpl_id))
+
+                    logger.info(f"Link to compute template: {url}")
 
                     # Find/create app config
                     if app_config_id is None:
@@ -1878,7 +1878,7 @@ def run_test_config(
 
     project_url = anyscale_project_url(
         project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"])
-    logger.info(f"Link to project: {project_url}")
+    logger.info(f"Link to project: {_format_link(project_url)}")
 
     msg = f"This will now run test {test_name}."
     if smoke_test:
@@ -1967,9 +1967,14 @@ def run_test_config(
         logger.info(f"Moving results dir {temp_dir} to persistent location "
                     f"{out_dir}")
 
-        shutil.rmtree(out_dir, ignore_errors=True)
-        shutil.copytree(temp_dir, out_dir)
-        logger.info(f"Dir contents: {os.listdir(out_dir)}")
+        try:
+            shutil.rmtree(out_dir, ignore_errors=True)
+            shutil.copytree(temp_dir, out_dir)
+            logger.info(f"Dir contents: {os.listdir(out_dir)}")
+        except Exception as e:
+            logger.error(
+                f"Ran into error when copying results dir to persistent "
+                f"location: {str(e)}")
 
     return result
 
@@ -2114,6 +2119,7 @@ def run_test(test_config_file: str,
             # catch these cases.
             exit_code = result.get("exit_code", ExitCode.UNSPECIFIED.value)
             logger.error(last_logs)
+            logger.info(f"Exiting with exit code {exit_code}")
             sys.exit(exit_code)
 
         return report_kwargs

@@ -15,7 +15,11 @@ Datasets uses Ray tasks to read data from remote storage. When reading from a fi
 ..
   https://docs.google.com/drawings/d/15B4TB8b5xN15Q9S8-s0MjW6iIvo_PrH7JtV1fL123pU/edit
 
-In the common case, each read task produces a single output block. Read tasks may split the output into multiple blocks if the data exceeds the target max block size (500MiB by default). This automatic block splitting avoids out-of-memory errors when reading very large single files (e.g., a 100-gigabyte CSV file). All of the built-in datasources except for JSON currently support automatic block splitting.
+In the common case, each read task produces a single output block. Read tasks may split the output into multiple blocks if the data exceeds the target max block size (2GiB by default). This automatic block splitting avoids out-of-memory errors when reading very large single files (e.g., a 100-gigabyte CSV file). All of the built-in datasources except for JSON currently support automatic block splitting.
+
+.. note::
+
+  Block splitting is currently off by default. See the block size tuning section below on how to enable block splitting.
 
 Deferred Read Task Execution
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -26,7 +30,7 @@ When a Dataset is created using ``ray.data.read_*``, only the first read task wi
 Dataset Transforms
 ------------------
 
-Datasets use either Ray tasks or Ray actors to transform datasets (i.e., for ``.map``, ``.flat_map``, or ``.map_batches``). By default, tasks are used (``compute="tasks"``). Actors can be specified with ``compute="actors"``, in which case an autoscaling pool of Ray actors will be used to apply transformations. Using actors allows for expensive state initialization (e.g., for GPU-based tasks) to be re-used. Whichever compute strategy is used, each map task generally takes in one block and produces one or more output blocks. The output block splitting rule is the same as for file reads (blocks are split after hitting the target max block size of 500MiB):
+Datasets use either Ray tasks or Ray actors to transform datasets (i.e., for ``.map``, ``.flat_map``, or ``.map_batches``). By default, tasks are used (``compute="tasks"``). Actors can be specified with ``compute="actors"``, in which case an autoscaling pool of Ray actors will be used to apply transformations. Using actors allows for expensive state initialization (e.g., for GPU-based tasks) to be re-used. Whichever compute strategy is used, each map task generally takes in one block and produces one or more output blocks. The output block splitting rule is the same as for file reads (blocks are split after hitting the target max block size of 2GiB):
 
 .. image:: dataset-map.svg
    :width: 650px
@@ -105,6 +109,10 @@ The number of read tasks can also be increased by increasing the ``parallelism``
 Tuning Max Block Size
 ~~~~~~~~~~~~~~~~~~~~~
 
-The max target block size can be adjusted via the Dataset context API. For example, to configure a max target block size of 64MB, run ``ray.data.context.DatasetContext.get_current().target_max_block_size = 64_000_000`` prior to creating the Dataset. Lower block sizes reduce the max amount of object store and Python heap memory required during execution. However, having too many blocks may introduce task scheduling overheads. We do not recommend adjusting this value for most workloads.
+Block splitting is off by default. To enable block splitting, run ``ray.data.context.DatasetContext.get_current().block_splitting_enabled = True``.
+
+Once enabled, the max target block size can be adjusted via the Dataset context API. For example, to configure a max target block size of 8GiB, run ``ray.data.context.DatasetContext.get_current().target_max_block_size = 8192 * 1024 * 1024`` prior to creating the Dataset. Lower block sizes reduce the max amount of object store and Python heap memory required during execution. However, having too many blocks may introduce task scheduling overheads.
+
+We do not recommend adjusting this value for most workloads. However, if shuffling a large amount of data, increasing the block size limit reduces the number of intermediate blocks (as a rule of thumb, shuffle creates ``O(num_blocks**2)`` intermediate blocks). Alternatively, you can ``.repartition()`` the dataset to reduce the number of blocks prior to shuffle/groupby operations. If you're seeing out of memory errors during map tasks, reducing the max block size may also be worth trying.
 
 Note that the number of blocks a Dataset created from ``ray.data.read_*`` contains is not fully known until all read tasks are fully executed. The number of blocks printed in the Dataset's string representation is initially set to the number of read tasks generated. To view the actual number of blocks created after block splitting, use ``len(ds.get_internal_block_refs())``, which will block until all data has been read.

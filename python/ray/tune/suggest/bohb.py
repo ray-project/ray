@@ -128,8 +128,6 @@ class TuneBOHB(Searcher):
             assert mode in ["min", "max"], "`mode` must be 'min' or 'max'."
         self._max_concurrent = max_concurrent
         self.trial_to_params = {}
-        self.running = set()
-        self.paused = set()
         self._metric = metric
 
         self._bohb_config = bohb_config
@@ -205,12 +203,9 @@ class TuneBOHB(Searcher):
             # This parameter is not used in hpbandster implementation.
             config, _ = self.bohber.get_config(None)
         self.trial_to_params[trial_id] = copy.deepcopy(config)
-        self.running.add(trial_id)
         return unflatten_list_dict(config)
 
     def on_trial_result(self, trial_id: str, result: Dict):
-        if trial_id not in self.paused:
-            self.running.add(trial_id)
         if "hyperband_info" not in result:
             logger.warning("BOHB Info not detected in result. Are you using "
                            "HyperBandForBOHB as a scheduler?")
@@ -223,23 +218,11 @@ class TuneBOHB(Searcher):
                           result: Optional[Dict] = None,
                           error: bool = False):
         del self.trial_to_params[trial_id]
-        if trial_id in self.paused:
-            self.paused.remove(trial_id)
-        if trial_id in self.running:
-            self.running.remove(trial_id)
 
     def to_wrapper(self, trial_id: str, result: Dict) -> _BOHBJobWrapper:
         return _BOHBJobWrapper(self._metric_op * result[self.metric],
                                result["hyperband_info"]["budget"],
                                self.trial_to_params[trial_id])
-
-    def on_pause(self, trial_id: str):
-        self.paused.add(trial_id)
-        self.running.discard(trial_id)
-
-    def on_unpause(self, trial_id: str):
-        self.paused.discard(trial_id)
-        self.running.add(trial_id)
 
     @staticmethod
     def convert_search_space(spec: Dict) -> "ConfigSpace.ConfigurationSpace":

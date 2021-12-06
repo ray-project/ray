@@ -1222,6 +1222,13 @@ py_test(
 )
 
 py_test(
+    name = "policy/tests/test_rnn_sequencing",
+    tags = ["team:ml", "policy"],
+    size = "small",
+    srcs = ["policy/tests/test_rnn_sequencing.py"]
+)
+
+py_test(
     name = "policy/tests/test_sample_batch",
     tags = ["team:ml", "policy"],
     size = "small",
@@ -2328,34 +2335,34 @@ py_test(
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-num-episodes=13"]
+    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=13"]
 )
 
 py_test(
-    name = "examples/parallel_evaluation_and_training_auto_num_episodes_tf",
+    name = "examples/parallel_evaluation_and_training_auto_episodes_tf",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-num-episodes=auto"]
+    args = ["--as-test", "--stop-reward=50.0", "--num-cpus=6", "--evaluation-duration=auto"]
 )
 
 py_test(
-    name = "examples/parallel_evaluation_and_training_11_episodes_tf2",
+    name = "examples/parallel_evaluation_and_training_211_ts_tf2",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-episodes=11"]
+    args = ["--as-test", "--framework=tf2", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=211", "--evaluation-duration-unit=timesteps"]
 )
 
 py_test(
-    name = "examples/parallel_evaluation_and_training_14_episodes_torch",
+    name = "examples/parallel_evaluation_and_training_auto_ts_torch",
     main = "examples/parallel_evaluation_and_training.py",
     tags = ["team:ml", "examples", "examples_P"],
     size = "medium",
     srcs = ["examples/parallel_evaluation_and_training.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-episodes=14"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-workers=3", "--evaluation-duration=auto", "--evaluation-duration-unit=timesteps"]
 )
 
 py_test(
@@ -2494,10 +2501,10 @@ py_test(
 )
 
 py_test(
-    name = "examples/remote_vector_env_with_custom_api",
+    name = "examples/remote_base_env_with_custom_api",
     tags = ["team:ml", "examples", "examples_R"],
     size = "medium",
-    srcs = ["examples/remote_vector_env_with_custom_api.py"],
+    srcs = ["examples/remote_base_env_with_custom_api.py"],
     args = ["--stop-iters=3"]
 )
 
@@ -2717,8 +2724,16 @@ py_test(
 #
 # Tag: documentation
 #
-# NOTE: Add tests alphabetically into this list.
+# NOTE: Add tests alphabetically to this list.
 # --------------------------------------------------------------------
+
+py_test(
+    name = "examples/documentation/custom_gym_env",
+    main = "examples/documentation/custom_gym_env.py",
+    tags = ["team:ml", "documentation"],
+    size = "medium",
+    srcs = ["examples/documentation/custom_gym_env.py"],
+)
 
 py_test(
     name = "examples/documentation/rllib_in_60s",
@@ -2726,4 +2741,20 @@ py_test(
     tags = ["team:ml", "documentation"],
     size = "medium",
     srcs = ["examples/documentation/rllib_in_60s.py"],
+)
+
+py_test(
+    name = "examples/documentation/rllib_on_ray_readme",
+    main = "examples/documentation/rllib_on_ray_readme.py",
+    tags = ["team:ml", "documentation"],
+    size = "medium",
+    srcs = ["examples/documentation/rllib_on_ray_readme.py"],
+)
+
+py_test(
+    name = "examples/documentation/rllib_on_rllib_readme",
+    main = "examples/documentation/rllib_on_rllib_readme.py",
+    tags = ["team:ml", "documentation"],
+    size = "medium",
+    srcs = ["examples/documentation/rllib_on_rllib_readme.py"],
 )

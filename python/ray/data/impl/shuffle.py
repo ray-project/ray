@@ -23,7 +23,7 @@ def simple_shuffle(input_blocks: BlockList,
                    map_ray_remote_args: Optional[Dict[str, Any]] = None,
                    reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
                    _spread_resource_prefix: Optional[str] = None) -> BlockList:
-    input_blocks = list(input_blocks.iter_blocks())
+    input_blocks = input_blocks.get_blocks()
     if map_ray_remote_args is None:
         map_ray_remote_args = {}
     if reduce_ray_remote_args is None:

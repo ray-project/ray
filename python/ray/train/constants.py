@@ -19,10 +19,6 @@ NODE_IP = "_node_ip"
 PID = "_pid"
 TIME_TOTAL_S = "_time_total_s"
 
-# Env var name
-ENABLE_DETAILED_AUTOFILLED_METRICS_ENV = (
-    "TRAIN_RESULT_ENABLE_DETAILED_AUTOFILLED_METRICS")
-
 # Will not be reported unless ENABLE_DETAILED_AUTOFILLED_METRICS_ENV
 # env var is not 0
 DETAILED_AUTOFILLED_KEYS = {DATE, HOSTNAME, NODE_IP, PID, TIME_TOTAL_S}
@@ -44,6 +40,10 @@ TUNE_CHECKPOINT_FILE_NAME = "checkpoint"
 # This needs to be added to the checkpoint dictionary so if the Tune trial
 # is restarted, the checkpoint_id can continue to increment.
 TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
+
+# Env var name
+ENABLE_DETAILED_AUTOFILLED_METRICS_ENV = (
+    "TRAIN_RESULT_ENABLE_DETAILED_AUTOFILLED_METRICS")
 
 # Integer value which if set will override the value of
 # Backend.share_cuda_visible_devices. 1 for True, 0 for False.
