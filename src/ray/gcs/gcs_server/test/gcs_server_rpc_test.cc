@@ -21,13 +21,14 @@
 
 namespace ray {
 
-class GcsServerTest : public ::testing::Test {
+class GcsServerTest : public ::testing::TestWithParam<char*> {
  public:
   GcsServerTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
 
   virtual ~GcsServerTest() { TestSetupUtil::ShutDownRedisServers(); }
 
   void SetUp() override {
+    ray::RayConfig::instance().gcs_storage() = GetParam();
     gcs::GcsServerConfig config;
     config.grpc_server_port = 0;
     config.grpc_server_name = "MockedGcsServer";
@@ -527,6 +528,11 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
 
 // TODO(sang): Add tests after adding asyncAdd
 
+
+INSTANTIATE_TEST_CASE_P(
+    GcsServerTest,
+    GcsServerTestFixture,
+    ::testing::Values("redis", "memory"));
 }  // namespace ray
 
 int main(int argc, char **argv) {

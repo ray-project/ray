@@ -280,7 +280,7 @@ RAY_CONFIG(uint64_t, gcs_max_concurrent_resource_pulls, 100)
 RAY_CONFIG(bool, grpc_based_resource_broadcast, true)
 // Feature flag to enable grpc based pubsub in GCS.
 RAY_CONFIG(bool, gcs_grpc_based_pubsub, false)
-// Storage backend for gcs
+// Storage backend for gcs. It can be redis or memory
 RAY_CONFIG(std::string, gcs_storage, "redis")
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
