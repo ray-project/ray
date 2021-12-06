@@ -5,6 +5,7 @@ ARG BUILDKITE_PULL_REQUEST
 ARG BUILDKITE_COMMIT
 ARG BUILDKITE_PULL_REQUEST_BASE_BRANCH
 ARG PYTHON=3.6
+ARG INSTALL_DEPENDENCIES
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
@@ -62,6 +63,8 @@ WORKDIR /ray
 COPY . .
 RUN ./ci/travis/ci.sh init
 RUN bash --login -i ./ci/travis/ci.sh build
+
+RUN (if [ "${INSTALL_DEPENDENCIES}" == "ML" ]; then RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 bash --login -i ./ci/travis/install-dependencies.sh; fi)
 
 # Run determine test to run
 RUN bash --login -i -c "python ./ci/travis/determine_tests_to_run.py --output=json > affected_set.json"
