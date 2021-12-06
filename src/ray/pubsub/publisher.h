@@ -48,9 +48,8 @@ class SubscriptionIndex {
   /// NOTE: The method is idempotent. If it adds a duplicated entry, it will be no-op.
   bool AddEntry(const std::string &key_id, const SubscriberID &subscriber_id);
 
-  /// Returns the set of subscriber ids that are subscribing to the given object ids.
-  absl::optional<std::reference_wrapper<const absl::flat_hash_set<SubscriberID>>>
-  GetSubscriberIdsByKeyId(const std::string &key_id) const;
+  /// Returns a vector of subscriber ids that are subscribing to the given object ids.
+  std::vector<SubscriberID> GetSubscriberIdsByKeyId(const std::string &key_id) const;
 
   /// Erases the subscriber from the index.
   /// Returns whether the subscriber exists before the call.
