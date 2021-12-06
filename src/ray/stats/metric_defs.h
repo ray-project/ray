@@ -48,9 +48,7 @@ DECLARE_stats(grpc_server_req_handling);
 DECLARE_stats(grpc_server_req_finished);
 
 /// Object Manager.
-DECLARE_stats(num_chunks_received_total);
-
-DECLARE_stats(num_chunks_received_failed);
+DECLARE_stats(num_chunks_received);
 
 /// Pull Manager
 DECLARE_stats(num_bytes_available);
@@ -97,10 +95,10 @@ DECLARE_stats(cumulative_restore_requests);
 ///
 
 /// Object Lifecycle Manager.
-DECLARE_stats(num_objects_by_state);
-DECLARE_stats(num_object_bytes_by_state);
-DECLARE_stats(num_objects_by_type);
-DECLARE_stats(num_object_bytes_by_type);
+DECLARE_stats(plasma_num_local_objects_by_state);
+DECLARE_stats(plasma_num_local_bytes_by_state);
+DECLARE_stats(plasma_num_local_objects_by_type);
+DECLARE_stats(plasma_num_local_bytes_by_type);
 
 /// Plasma Store
 DECLARE_stats(num_pending_creation_requests);

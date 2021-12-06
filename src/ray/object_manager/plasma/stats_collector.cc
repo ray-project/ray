@@ -169,24 +169,38 @@ void ObjectStatsCollector::OnObjectRefDecreased(const LocalObject &obj) {
 }
 
 void ObjectStatsCollector::RecordMetrics() const {
-  ray::stats::STATS_num_objects_by_state.Record(num_objects_spillable_, "Spillable");
-  ray::stats::STATS_num_object_bytes_by_state.Record(num_bytes_spillable_, "Spillable");
-  ray::stats::STATS_num_objects_by_state.Record(num_objects_unsealed_, "Unsealed");
-  ray::stats::STATS_num_object_bytes_by_state.Record(num_bytes_unsealed_, "Unsealed");
-  ray::stats::STATS_num_objects_by_state.Record(num_objects_in_use_, "InUse");
-  ray::stats::STATS_num_object_bytes_by_state.Record(num_bytes_in_use_, "InUse");
-  ray::stats::STATS_num_objects_by_state.Record(num_objects_evictable_, "Evictable");
-  ray::stats::STATS_num_object_bytes_by_state.Record(num_bytes_evictable_, "Evictable");
+  ray::stats::STATS_plasma_num_local_objects_by_state.Record(num_objects_spillable_,
+                                                             "Spillable");
+  ray::stats::STATS_plasma_num_local_bytes_by_state.Record(num_bytes_spillable_,
+                                                           "Spillable");
+  ray::stats::STATS_plasma_num_local_objects_by_state.Record(num_objects_unsealed_,
+                                                             "Unsealed");
+  ray::stats::STATS_plasma_num_local_bytes_by_state.Record(num_bytes_unsealed_,
+                                                           "Unsealed");
+  ray::stats::STATS_plasma_num_local_objects_by_state.Record(num_objects_in_use_,
+                                                             "InUse");
+  ray::stats::STATS_plasma_num_local_bytes_by_state.Record(num_bytes_in_use_, "InUse");
+  ray::stats::STATS_plasma_num_local_objects_by_state.Record(num_objects_evictable_,
+                                                             "Evictable");
+  ray::stats::STATS_plasma_num_local_bytes_by_state.Record(num_bytes_evictable_,
+                                                           "Evictable");
 
-  ray::stats::STATS_num_objects_by_type.Record(num_objects_created_by_worker_, "Primary");
-  ray::stats::STATS_num_object_bytes_by_type.Record(num_bytes_created_by_worker_,
-                                                    "Primary");
-  ray::stats::STATS_num_objects_by_type.Record(num_objects_restored_, "Restored");
-  ray::stats::STATS_num_object_bytes_by_type.Record(num_bytes_restored_, "Restored");
-  ray::stats::STATS_num_objects_by_type.Record(num_objects_received_, "Transferred");
-  ray::stats::STATS_num_object_bytes_by_type.Record(num_bytes_received_, "Transferred");
-  ray::stats::STATS_num_objects_by_type.Record(num_objects_errored_, "ErrorObject");
-  ray::stats::STATS_num_object_bytes_by_type.Record(num_bytes_errored_, "ErrorObject");
+  ray::stats::STATS_plasma_num_local_objects_by_type.Record(
+      num_objects_created_by_worker_, "Primary");
+  ray::stats::STATS_plasma_num_local_bytes_by_type.Record(num_bytes_created_by_worker_,
+                                                          "Primary");
+  ray::stats::STATS_plasma_num_local_objects_by_type.Record(num_objects_restored_,
+                                                            "Restored");
+  ray::stats::STATS_plasma_num_local_bytes_by_type.Record(num_bytes_restored_,
+                                                          "Restored");
+  ray::stats::STATS_plasma_num_local_objects_by_type.Record(num_objects_received_,
+                                                            "Transferred");
+  ray::stats::STATS_plasma_num_local_bytes_by_type.Record(num_bytes_received_,
+                                                          "Transferred");
+  ray::stats::STATS_plasma_num_local_objects_by_type.Record(num_objects_errored_,
+                                                            "ErrorObject");
+  ray::stats::STATS_plasma_num_local_bytes_by_type.Record(num_bytes_errored_,
+                                                          "ErrorObject");
 }
 
 void ObjectStatsCollector::GetDebugDump(std::stringstream &buffer) const {

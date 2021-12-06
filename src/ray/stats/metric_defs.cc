@@ -85,11 +85,7 @@ DEFINE_stats(grpc_server_req_finished, "Finished request number in grpc server",
              ("Method"), (), ray::stats::COUNT);
 
 /// Object Manager.
-DEFINE_stats(num_chunks_received_total, "Number object chunks received.", (), (),
-             ray::stats::GAUGE);
-
-DEFINE_stats(num_chunks_received_failed,
-             "Number of object chunks failed to be transferred.", ("TYPE"), (),
+DEFINE_stats(num_chunks_received, "Number object chunks received.", ("Type"), (),
              ray::stats::GAUGE);
 
 /// Pull Manager
@@ -180,16 +176,16 @@ DEFINE_stats(cumulative_restore_requests, "Cumulative number of restore requests
 ///
 
 /// Object Lifecycle Manager.
-DEFINE_stats(num_objects_by_state,
+DEFINE_stats(plasma_num_local_objects_by_state,
              "The number of objects per state. E.g., Spillable, In use, Evictable.",
              ("State"), (), ray::stats::GAUGE);
-DEFINE_stats(num_object_bytes_by_state, "The number of objects per state in bytes.",
+DEFINE_stats(plasma_num_local_bytes_by_state, "The number of objects per state in bytes.",
              ("State"), (), ray::stats::GAUGE);
 DEFINE_stats(
-    num_objects_by_type,
+    plasma_num_local_objects_by_type,
     "The number of objects per type. E.g., Primary copy, Transferred, ErrorObject.",
     ("CreationType"), (), ray::stats::GAUGE);
-DEFINE_stats(num_object_bytes_by_type, "The number of objects per type in bytes.",
+DEFINE_stats(plasma_num_local_bytes_by_type, "The number of objects per type in bytes.",
              ("CreationType"), (), ray::stats::GAUGE);
 
 /// Plasma Store

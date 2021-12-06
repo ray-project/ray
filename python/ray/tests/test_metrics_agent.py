@@ -64,8 +64,7 @@ _METRICS = [
     "ray_grpc_server_req_new_total",
     "ray_grpc_server_req_handling_total",
     "ray_grpc_server_req_finished_total",
-    "ray_num_chunks_received_total",
-    "ray_num_chunks_received_failed",
+    "ray_num_chunks_received",
     "ray_num_bytes_available",
     "ray_num_bytes_being_pulled",
     "ray_num_bytes_being_pulled_pinned",
@@ -98,10 +97,10 @@ _METRICS = [
     "ray_pending_spill_bytes",
     "ray_cumulative_spill_requests",
     "ray_cumulative_restore_requests",
-    "ray_num_objects_by_state",
-    "ray_num_object_bytes_by_state",
-    "ray_num_objects_by_type",
-    "ray_num_object_bytes_by_type",
+    "ray_plasma_num_local_objects_by_state",
+    "ray_plasma_num_local_bytes_by_state",
+    "ray_plasma_num_local_objects_by_type",
+    "ray_plasma_num_local_bytes_by_type",
     "ray_num_pending_creation_requests",
     "ray_num_pending_creation_bytes",
 ]
@@ -192,7 +191,7 @@ def _setup_cluster_for_test(ray_start_cluster):
 @pytest.mark.skipif(
     prometheus_client is None, reason="Prometheus not installed")
 def test_metrics_export_end_to_end(_setup_cluster_for_test):
-    TEST_TIMEOUT_S = 20
+    TEST_TIMEOUT_S = 30
 
     prom_addresses, autoscaler_export_addr = _setup_cluster_for_test
 
