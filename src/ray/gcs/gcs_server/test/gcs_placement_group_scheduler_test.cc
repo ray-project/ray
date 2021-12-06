@@ -567,19 +567,16 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPackStrategyLargeBundlesScheduling) {
       Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK, 15);
   auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(request, "");
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
-  RAY_CHECK(raylet_clients_[0]->num_lease_requested > 0);
-  RAY_CHECK(raylet_clients_[1]->num_lease_requested > 0);
-  for (int index = 0; index < raylet_clients_[0]->num_lease_requested; ++index) {
-    ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
-  }
-  for (int index = 0; index < raylet_clients_[1]->num_lease_requested; ++index) {
-    ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
-  }
+  // Prepared resource is batched!
+  ASSERT_TRUE(raylet_clients_[0]->num_lease_requested == 1);
+  ASSERT_TRUE(raylet_clients_[1]->num_lease_requested == 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
   // Wait until all resources are prepared.
   WaitPendingDone(raylet_clients_[0]->commit_callbacks,
-                  raylet_clients_[0]->num_lease_requested);
+                  raylet_clients_[0]->num_prepared_bundle);
   WaitPendingDone(raylet_clients_[1]->commit_callbacks,
-                  raylet_clients_[1]->num_lease_requested);
+                  raylet_clients_[1]->num_prepared_bundle);
   for (int index = 0; index < raylet_clients_[0]->num_commit_requested; ++index) {
     ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   }
