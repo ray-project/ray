@@ -28,11 +28,18 @@ class MockActorInfoAccessor : public ActorInfoAccessor {
               (const MultiItemCallback<rpc::ActorTableData> &callback), (override));
   MOCK_METHOD(Status, AsyncGetByName,
               (const std::string &name, const std::string &ray_namespace,
-               const OptionalItemCallback<rpc::ActorTableData> &callback),
+               const OptionalItemCallback<rpc::ActorTableData> &callback,
+               int64_t timeout_ms),
               (override));
   MOCK_METHOD(Status, AsyncListNamedActors,
               (bool all_namespaces, const std::string &ray_namespace,
-               const OptionalItemCallback<std::vector<rpc::NamedActorInfo>> &callback),
+               const OptionalItemCallback<std::vector<rpc::NamedActorInfo>> &callback,
+               int64_t timeout_ms),
+              (override));
+  MOCK_METHOD(Status, SyncListNamedActors,
+              (bool all_namespaces, const std::string &ray_namespace,
+               std::vector<std::pair<std::string, std::string>> &actors,
+               int64_t timeout_ms),
               (override));
   MOCK_METHOD(Status, AsyncRegisterActor,
               (const TaskSpecification &task_spec, const StatusCallback &callback,
@@ -269,26 +276,33 @@ class MockPlacementGroupInfoAccessor : public PlacementGroupInfoAccessor {
  public:
   MOCK_METHOD(Status, AsyncCreatePlacementGroup,
               (const PlacementGroupSpecification &placement_group_spec,
-               const StatusCallback &callback),
+               const StatusCallback &callback, int64_t timeout_ms),
               (override));
+  MOCK_METHOD(Status, SyncCreatePlacementGroup,
+              (const PlacementGroupSpecification &placement_group_spec), (override));
   MOCK_METHOD(Status, AsyncGet,
               (const PlacementGroupID &placement_group_id,
                const OptionalItemCallback<rpc::PlacementGroupTableData> &callback),
               (override));
   MOCK_METHOD(Status, AsyncGetByName,
               (const std::string &placement_group_name, const std::string &ray_namespace,
-               const OptionalItemCallback<rpc::PlacementGroupTableData> &callback),
+               const OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
+               int64_t timeout_ms),
               (override));
   MOCK_METHOD(Status, AsyncGetAll,
               (const MultiItemCallback<rpc::PlacementGroupTableData> &callback),
               (override));
   MOCK_METHOD(Status, AsyncRemovePlacementGroup,
-              (const PlacementGroupID &placement_group_id,
-               const StatusCallback &callback),
+              (const PlacementGroupID &placement_group_id, const StatusCallback &callback,
+               int64_t timeout_ms),
               (override));
+  MOCK_METHOD(Status, SyncRemovePlacementGroup,
+              (const PlacementGroupID &placement_group_id), (override));
   MOCK_METHOD(Status, AsyncWaitUntilReady,
-              (const PlacementGroupID &placement_group_id,
-               const StatusCallback &callback),
+              (const PlacementGroupID &placement_group_id, const StatusCallback &callback,
+               int64_t timeout_ms),
+              (override));
+  MOCK_METHOD(Status, SyncWaitUntilReady, (const PlacementGroupID &placement_group_id, ),
               (override));
 };
 

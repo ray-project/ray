@@ -18,6 +18,13 @@
 
 #include "ray/gcs/gcs_client/gcs_client.h"
 
+namespace {
+inline int64_t GetGcsTimeoutMs() {
+  return absl::Seconds(RayConfig::instance().gcs_server_request_timeout_seconds()) /
+         absl::Milliseconds(1);
+}
+}  // namespace
+
 namespace ray {
 namespace gcs {
 
@@ -174,7 +181,7 @@ Status ActorInfoAccessor::AsyncGetAll(
 
 Status ActorInfoAccessor::AsyncGetByName(
     const std::string &name, const std::string &ray_namespace,
-    const OptionalItemCallback<rpc::ActorTableData> &callback) {
+    const OptionalItemCallback<rpc::ActorTableData> &callback, int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting actor info, name = " << name;
   rpc::GetNamedActorInfoRequest request;
   request.set_name(name);
@@ -189,27 +196,70 @@ Status ActorInfoAccessor::AsyncGetByName(
         }
         RAY_LOG(DEBUG) << "Finished getting actor info, status = " << status
                        << ", name = " << name;
-      });
+      },
+      /*timeout_ms*/ timeout_ms);
   return Status::OK();
+}
+
+Status ActorInfoAccessor::SyncGetByName(const std::string &name,
+                                        const std::string &ray_namespace,
+                                        rpc::ActorTableData &actor_table_data) {
+  auto ready_promise = std::make_shared<std::promise<Status>>(std::promise<Status>());
+  RAY_CHECK_OK(AsyncGetByName(
+      name, ray_namespace,
+      [ready_promise, &actor_table_data](
+          Status status, const boost::optional<rpc::ActorTableData> &result) {
+        if (status.ok() && result) {
+          // TODO(sang): Remove additional copy.
+          actor_table_data = *result;
+        }
+        ready_promise->set_value(status);
+      },
+      /*timeout_ms*/ GetGcsTimeoutMs()));
+  return ready_promise->get_future().get();
 }
 
 Status ActorInfoAccessor::AsyncListNamedActors(
     bool all_namespaces, const std::string &ray_namespace,
-    const OptionalItemCallback<std::vector<rpc::NamedActorInfo>> &callback) {
+    const OptionalItemCallback<std::vector<rpc::NamedActorInfo>> &callback,
+    int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Listing actors";
   rpc::ListNamedActorsRequest request;
   request.set_all_namespaces(all_namespaces);
   request.set_ray_namespace(ray_namespace);
   client_impl_->GetGcsRpcClient().ListNamedActors(
-      request, [callback](const Status &status, const rpc::ListNamedActorsReply &reply) {
+      request,
+      [callback](const Status &status, const rpc::ListNamedActorsReply &reply) {
         if (!status.ok()) {
           callback(status, boost::none);
         } else {
           callback(status, VectorFromProtobuf(reply.named_actors_list()));
         }
         RAY_LOG(DEBUG) << "Finished getting named actor names, status = " << status;
-      });
+      },
+      timeout_ms);
   return Status::OK();
+}
+
+Status ActorInfoAccessor::SyncListNamedActors(
+    bool all_namespaces, const std::string &ray_namespace,
+    std::vector<std::pair<std::string, std::string>> &actors) {
+  auto ready_promise = std::make_shared<std::promise<Status>>(std::promise<Status>());
+  RAY_CHECK_OK(AsyncListNamedActors(
+      all_namespaces, ray_namespace,
+      [&actors, ready_promise](
+          const Status &status,
+          const boost::optional<std::vector<rpc::NamedActorInfo>> &result) {
+        if (status.ok()) {
+          RAY_CHECK(result);
+          for (const auto &actor_info : *result) {
+            actors.push_back(
+                std::make_pair(actor_info.ray_namespace(), actor_info.name()));
+          }
+        }
+        ready_promise->set_value(status);
+      }));
+  return ready_promise->get_future().get();
 }
 
 Status ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_spec,
@@ -233,12 +283,9 @@ Status ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_
 
 Status ActorInfoAccessor::SyncRegisterActor(const ray::TaskSpecification &task_spec) {
   auto promise = std::make_shared<std::promise<Status>>();
-  int64_t timeout_ms =
-      absl::Seconds(RayConfig::instance().gcs_server_request_timeout_seconds()) /
-      absl::Milliseconds(1);
   RAY_UNUSED(AsyncRegisterActor(
       task_spec, [promise](const Status &status) { promise->set_value(status); },
-      timeout_ms));
+      GetGcsTimeoutMs()));
   auto future = promise->get_future();
   return future.get();
 }
@@ -1159,7 +1206,7 @@ PlacementGroupInfoAccessor::PlacementGroupInfoAccessor(GcsClient *client_impl)
 
 Status PlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
     const ray::PlacementGroupSpecification &placement_group_spec,
-    const StatusCallback &callback) {
+    const StatusCallback &callback, int64_t timeout_ms) {
   rpc::CreatePlacementGroupRequest request;
   request.mutable_placement_group_spec()->CopyFrom(placement_group_spec.GetMessage());
   client_impl_->GetGcsRpcClient().CreatePlacementGroup(
@@ -1181,12 +1228,24 @@ Status PlacementGroupInfoAccessor::AsyncCreatePlacementGroup(
         if (callback) {
           callback(status);
         }
-      });
+      },
+      timeout_ms);
   return Status::OK();
 }
 
+Status PlacementGroupInfoAccessor::SyncCreatePlacementGroup(
+    const ray::PlacementGroupSpecification &placement_group_spec) {
+  auto status_promise = std::make_shared<std::promise<Status>>();
+  RAY_CHECK_OK(AsyncCreatePlacementGroup(
+      placement_group_spec,
+      [status_promise](const Status &status) { status_promise->set_value(status); },
+      /*timeout_ms*/ GetGcsTimeoutMs()));
+  return status_promise->get_future().get();
+}
+
 Status PlacementGroupInfoAccessor::AsyncRemovePlacementGroup(
-    const ray::PlacementGroupID &placement_group_id, const StatusCallback &callback) {
+    const ray::PlacementGroupID &placement_group_id, const StatusCallback &callback,
+    int64_t timeout_ms) {
   rpc::RemovePlacementGroupRequest request;
   request.set_placement_group_id(placement_group_id.Binary());
   client_impl_->GetGcsRpcClient().RemovePlacementGroup(
@@ -1195,8 +1254,19 @@ Status PlacementGroupInfoAccessor::AsyncRemovePlacementGroup(
         if (callback) {
           callback(status);
         }
-      });
+      },
+      timeout_ms);
   return Status::OK();
+}
+
+Status PlacementGroupInfoAccessor::SyncRemovePlacementGroup(
+    const ray::PlacementGroupID &placement_group_id) {
+  auto status_promise = std::make_shared<std::promise<Status>>();
+  RAY_CHECK_OK(AsyncRemovePlacementGroup(
+      placement_group_id,
+      [status_promise](const Status &status) { status_promise->set_value(status); },
+      /*timeout_ms*/ GetGcsTimeoutMs()));
+  return status_promise->get_future().get();
 }
 
 Status PlacementGroupInfoAccessor::AsyncGet(
@@ -1222,14 +1292,16 @@ Status PlacementGroupInfoAccessor::AsyncGet(
 
 Status PlacementGroupInfoAccessor::AsyncGetByName(
     const std::string &name, const std::string &ray_namespace,
-    const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
+    const OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
+    int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting named placement group info, name = " << name;
   rpc::GetNamedPlacementGroupRequest request;
   request.set_name(name);
   request.set_ray_namespace(ray_namespace);
   client_impl_->GetGcsRpcClient().GetNamedPlacementGroup(
-      request, [name, callback](const Status &status,
-                                const rpc::GetNamedPlacementGroupReply &reply) {
+      request,
+      [name, callback](const Status &status,
+                       const rpc::GetNamedPlacementGroupReply &reply) {
         if (reply.has_placement_group_table_data()) {
           callback(status, reply.placement_group_table_data());
         } else {
@@ -1237,7 +1309,8 @@ Status PlacementGroupInfoAccessor::AsyncGetByName(
         }
         RAY_LOG(DEBUG) << "Finished getting named placement group info, status = "
                        << status << ", name = " << name;
-      });
+      },
+      /*timeout_ms*/ timeout_ms);
   return Status::OK();
 }
 
@@ -1256,7 +1329,8 @@ Status PlacementGroupInfoAccessor::AsyncGetAll(
 }
 
 Status PlacementGroupInfoAccessor::AsyncWaitUntilReady(
-    const PlacementGroupID &placement_group_id, const StatusCallback &callback) {
+    const PlacementGroupID &placement_group_id, const StatusCallback &callback,
+    int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Waiting for placement group until ready, placement group id = "
                  << placement_group_id;
   rpc::WaitPlacementGroupUntilReadyRequest request;
@@ -1269,8 +1343,19 @@ Status PlacementGroupInfoAccessor::AsyncWaitUntilReady(
         RAY_LOG(DEBUG)
             << "Finished waiting placement group until ready, placement group id = "
             << placement_group_id;
-      });
+      },
+      timeout_ms);
   return Status::OK();
+}
+
+Status PlacementGroupInfoAccessor::SyncWaitUntilReady(
+    const PlacementGroupID &placement_group_id) {
+  auto status_promise = std::make_shared<std::promise<Status>>();
+  RAY_CHECK_OK(AsyncWaitUntilReady(
+      placement_group_id,
+      [status_promise](const Status &status) { status_promise->set_value(status); },
+      /*timeout_ms*/ GetGcsTimeoutMs()));
+  return status_promise->get_future().get();
 }
 
 InternalKVAccessor::InternalKVAccessor(GcsClient *client_impl)
@@ -1281,13 +1366,15 @@ Status InternalKVAccessor::AsyncInternalKVGet(
   rpc::InternalKVGetRequest req;
   req.set_key(key);
   client_impl_->GetGcsRpcClient().InternalKVGet(
-      req, [callback](const Status &status, const rpc::InternalKVGetReply &reply) {
+      req,
+      [callback](const Status &status, const rpc::InternalKVGetReply &reply) {
         if (reply.status().code() == (int)StatusCode::NotFound) {
           callback(status, boost::none);
         } else {
           callback(status, reply.value());
         }
-      });
+      },
+      /*timeout_ms*/ GetGcsTimeoutMs());
   return Status::OK();
 }
 
@@ -1299,9 +1386,11 @@ Status InternalKVAccessor::AsyncInternalKVPut(const std::string &key,
   req.set_value(value);
   req.set_overwrite(overwrite);
   client_impl_->GetGcsRpcClient().InternalKVPut(
-      req, [callback](const Status &status, const rpc::InternalKVPutReply &reply) {
+      req,
+      [callback](const Status &status, const rpc::InternalKVPutReply &reply) {
         callback(status, reply.added_num());
-      });
+      },
+      /*timeout_ms*/ GetGcsTimeoutMs());
   return Status::OK();
 }
 
@@ -1310,9 +1399,11 @@ Status InternalKVAccessor::AsyncInternalKVExists(
   rpc::InternalKVExistsRequest req;
   req.set_key(key);
   client_impl_->GetGcsRpcClient().InternalKVExists(
-      req, [callback](const Status &status, const rpc::InternalKVExistsReply &reply) {
+      req,
+      [callback](const Status &status, const rpc::InternalKVExistsReply &reply) {
         callback(status, reply.exists());
-      });
+      },
+      /*timeout_ms*/ GetGcsTimeoutMs());
   return Status::OK();
 }
 
@@ -1321,9 +1412,11 @@ Status InternalKVAccessor::AsyncInternalKVDel(const std::string &key,
   rpc::InternalKVDelRequest req;
   req.set_key(key);
   client_impl_->GetGcsRpcClient().InternalKVDel(
-      req, [callback](const Status &status, const rpc::InternalKVDelReply &reply) {
+      req,
+      [callback](const Status &status, const rpc::InternalKVDelReply &reply) {
         callback(status);
-      });
+      },
+      /*timeout_ms*/ GetGcsTimeoutMs());
   return Status::OK();
 }
 
@@ -1333,20 +1426,21 @@ Status InternalKVAccessor::AsyncInternalKVKeys(
   rpc::InternalKVKeysRequest req;
   req.set_prefix(prefix);
   client_impl_->GetGcsRpcClient().InternalKVKeys(
-      req, [callback](const Status &status, const rpc::InternalKVKeysReply &reply) {
+      req,
+      [callback](const Status &status, const rpc::InternalKVKeysReply &reply) {
         if (!status.ok()) {
           callback(status, boost::none);
         } else {
           callback(status, VectorFromProtobuf(reply.results()));
         }
-      });
+      },
+      /*timeout_ms*/ GetGcsTimeoutMs());
   return Status::OK();
 }
 
 Status InternalKVAccessor::Put(const std::string &key, const std::string &value,
                                bool overwrite, bool &added) {
   std::promise<Status> ret_promise;
-  // SANG-TODO
   RAY_CHECK_OK(AsyncInternalKVPut(
       key, value, overwrite,
       [&ret_promise, &added](Status status, boost::optional<int> added_num) {
@@ -1359,7 +1453,6 @@ Status InternalKVAccessor::Put(const std::string &key, const std::string &value,
 Status InternalKVAccessor::Keys(const std::string &prefix,
                                 std::vector<std::string> &value) {
   std::promise<Status> ret_promise;
-  // SANG-TODO
   RAY_CHECK_OK(
       AsyncInternalKVKeys(prefix, [&ret_promise, &value](Status status, auto &values) {
         value = values.value_or(std::vector<std::string>());
@@ -1370,7 +1463,6 @@ Status InternalKVAccessor::Keys(const std::string &prefix,
 
 Status InternalKVAccessor::Get(const std::string &key, std::string &value) {
   std::promise<Status> ret_promise;
-  // SANG-TODO
   RAY_CHECK_OK(AsyncInternalKVGet(key, [&ret_promise, &value](Status status, auto &v) {
     if (v) {
       value = *v;
@@ -1382,7 +1474,6 @@ Status InternalKVAccessor::Get(const std::string &key, std::string &value) {
 
 Status InternalKVAccessor::Del(const std::string &key) {
   std::promise<Status> ret_promise;
-  // SANG-TODO
   RAY_CHECK_OK(AsyncInternalKVDel(
       key, [&ret_promise](Status status) { ret_promise.set_value(status); }));
   return ret_promise.get_future().get();
@@ -1390,7 +1481,6 @@ Status InternalKVAccessor::Del(const std::string &key) {
 
 Status InternalKVAccessor::Exists(const std::string &key, bool &exist) {
   std::promise<Status> ret_promise;
-  // SANG-TODO
   RAY_CHECK_OK(AsyncInternalKVExists(
       key, [&ret_promise, &exist](Status status, const boost::optional<bool> &value) {
         if (value) {

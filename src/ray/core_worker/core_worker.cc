@@ -1667,8 +1667,6 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 Status CoreWorker::CreatePlacementGroup(
     const PlacementGroupCreationOptions &placement_group_creation_options,
     PlacementGroupID *return_placement_group_id) {
-  std::shared_ptr<std::promise<Status>> status_promise =
-      std::make_shared<std::promise<Status>>();
   const auto &bundles = placement_group_creation_options.bundles;
   for (const auto &bundle : bundles) {
     for (const auto &resource : bundle) {
@@ -1690,11 +1688,8 @@ Status CoreWorker::CreatePlacementGroup(
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO) << "Submitting Placement Group creation to GCS: " << placement_group_id;
-  // SANG-TODO
-  RAY_UNUSED(gcs_client_->PlacementGroups().AsyncCreatePlacementGroup(
-      placement_group_spec,
-      [status_promise](const Status &status) { status_promise->set_value(status); }));
-  const auto &status = status_promise->get_future().get();
+  const auto status =
+      gcs_client_->PlacementGroups().SyncCreatePlacementGroup(placement_group_spec);
   if (status.IsTimedOut()) {
     std::ostringstream stream;
     stream << "There was timeout in creating the placement group of id "
@@ -1708,14 +1703,9 @@ Status CoreWorker::CreatePlacementGroup(
 }
 
 Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_id) {
-  std::shared_ptr<std::promise<Status>> status_promise =
-      std::make_shared<std::promise<Status>>();
   // Synchronously wait for placement group removal.
-  // SANG-TODO
-  RAY_UNUSED(gcs_client_->PlacementGroups().AsyncRemovePlacementGroup(
-      placement_group_id,
-      [status_promise](const Status &status) { status_promise->set_value(status); }));
-  const auto &status = status_promise->get_future().get();
+  const auto status =
+      gcs_client_->PlacementGroups().SyncRemovePlacementGroup(placement_group_id);
   if (status.IsTimedOut()) {
     std::ostringstream stream;
     stream << "There was timeout in removing the placement group of id "
@@ -1730,12 +1720,8 @@ Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_
 
 Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
                                            int timeout_seconds) {
-  auto status_promise = std::make_shared<std::promise<Status>>();
-  // SANG-TODO
-  RAY_CHECK_OK(gcs_client_->PlacementGroups().AsyncWaitUntilReady(
-      placement_group_id,
-      [status_promise](const Status &status) { status_promise->set_value(status); }));
-  const auto &status = status_promise->get_future().get();
+  const auto status =
+      gcs_client_->PlacementGroups().SyncWaitUntilReady(placement_group_id);
   if (status.IsTimedOut()) {
     std::ostringstream stream;
     stream << "There was timeout in waiting for placement group " << placement_group_id
@@ -1931,27 +1917,9 @@ CoreWorker::ListNamedActors(bool all_namespaces) {
 
   // This call needs to be blocking because we can't return until we get the
   // response from the RPC.
-  auto ready_promise = std::make_shared<std::promise<Status>>(std::promise<Status>());
   const auto &ray_namespace = job_config_->ray_namespace();
-  // SANG-TODO
-  RAY_CHECK_OK(gcs_client_->Actors().AsyncListNamedActors(
-      all_namespaces, ray_namespace,
-      [&actors, ready_promise](
-          const Status &status,
-          const boost::optional<std::vector<rpc::NamedActorInfo>> &result) {
-        if (status.ok()) {
-          RAY_CHECK(result);
-          for (const auto &actor_info : *result) {
-            actors.push_back(
-                std::make_pair(actor_info.ray_namespace(), actor_info.name()));
-          }
-        }
-        ready_promise->set_value(status);
-      }));
-
-  // Block until the RPC completes. Set a timeout to avoid hangs if the
-  // GCS service crashes.
-  const auto &status = ready_promise->get_future().get();
+  const auto status =
+      gcs_client_->Actors().SyncListNamedActors(all_namespaces, ray_namespace, actors);
   if (status.IsTimedOut()) {
     std::ostringstream stream;
     stream << "There was timeout in getting the list of named actors, "
