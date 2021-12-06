@@ -307,7 +307,9 @@ RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 RAY_CONFIG(int64_t, ping_gcs_rpc_server_interval_milliseconds, 1000)
 
 /// Maximum number of times to retry ping gcs rpc server when gcs server restarts.
-RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 600)
+/// ping_gcs_rpc_server_interval_milliseconds * ping_gcs_rpc_server_max_retries is
+/// recommended to be equivalent to gcs_server_request_timeout_seconds.
+RAY_CONFIG(int32_t, ping_gcs_rpc_server_max_retries, 60)
 
 /// Minimum interval between reconnecting gcs rpc server when gcs server restarts.
 RAY_CONFIG(int32_t, minimum_gcs_reconnect_interval_milliseconds, 5000)
