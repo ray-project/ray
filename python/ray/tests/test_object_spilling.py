@@ -670,9 +670,14 @@ def test_spill_worker_failure(ray_start_regular):
         import psutil
         for proc in psutil.process_iter():
             try:
-                if ray.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE \
-                        in proc.name():
+                name = ray.ray_constants.WORKER_PROCESS_TYPE_SPILL_WORKER_IDLE
+                if name in proc.name():
                     return proc
+                # for macOS
+                if proc.cmdline() and name in proc.cmdline()[0]:
+                    return proc
+            except psutil.AccessDenied:
+                pass
             except psutil.NoSuchProcess:
                 pass
 
