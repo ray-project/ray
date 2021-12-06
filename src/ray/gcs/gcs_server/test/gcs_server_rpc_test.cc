@@ -21,7 +21,7 @@
 
 namespace ray {
 
-class GcsServerTest  :public :: testing::Test {
+class GcsServerTest : public ::testing::Test {
  public:
   GcsServerTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
 

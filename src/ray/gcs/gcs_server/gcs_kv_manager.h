@@ -14,15 +14,15 @@
 
 #pragma once
 #include <memory>
-#include "absl/synchronization/mutex.h"
+
 #include "absl/container/btree_map.h"
+#include "absl/synchronization/mutex.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
 namespace ray {
 namespace gcs {
-
 
 /// \class InternalKVInterface
 /// The interface for internal kv implementation. Ideally we should merge this
@@ -34,7 +34,7 @@ class InternalKVInterface {
   ///
   /// \param key The key to fetch
   /// \param cb Callback function.
-  virtual void Get(const std::string& key,
+  virtual void Get(const std::string &key,
                    std::function<void(std::optional<std::string>)> cb) = 0;
 
   /// Associate key with value.
@@ -44,74 +44,73 @@ class InternalKVInterface {
   /// \param overwrite If the key has existed before this op, nothing will happen
   ///    unless `overwrite` is set to be true.
   /// \param cb Callback function.
-  virtual void Put(const std::string& key,
-                   const std::string& value,
-                   bool overwrite,
+  virtual void Put(const std::string &key, const std::string &value, bool overwrite,
                    std::function<void(bool)> cb) = 0;
 
   /// Delete the key from the store
   ///
   /// \param key The key to be deleted
   /// \param cb Callback function.
-  virtual void Del(const std::string& key, std::function<void(bool)> cb) = 0;
+  virtual void Del(const std::string &key, std::function<void(bool)> cb) = 0;
 
   /// Check whether the key exists in the store
   ///
   /// \param key The key to be checked.
   /// \param cb Callback function.
-  virtual void Exists(const std::string& key, std::function<void(bool)> cb) = 0;
+  virtual void Exists(const std::string &key, std::function<void(bool)> cb) = 0;
 
   /// Get the keys for a given prefix.
   ///
   /// \param prefix The prefix to be scaned.
   /// \param cb Callback function.
-  virtual void Keys(const std::string& prefix, std::function<void(std::vector<std::string>)> cb) = 0;
+  virtual void Keys(const std::string &prefix,
+                    std::function<void(std::vector<std::string>)> cb) = 0;
 
-  virtual ~InternalKVInterface() {};
+  virtual ~InternalKVInterface(){};
 };
-
 
 class RedisInternalKV : public InternalKVInterface {
  public:
-  RedisInternalKV(RedisClient* redis_client)
-      : redis_client_(redis_client) {}
+  RedisInternalKV(RedisClient *redis_client) : redis_client_(redis_client) {}
 
-  void Get(const std::string& key, std::function<void(std::optional<std::string>)> cb) override;
+  void Get(const std::string &key,
+           std::function<void(std::optional<std::string>)> cb) override;
 
-  void Put(const std::string& key, const std::string& value, bool overwrite, std::function<void(bool)> cb) override;
+  void Put(const std::string &key, const std::string &value, bool overwrite,
+           std::function<void(bool)> cb) override;
 
-  void Del(const std::string& key, std::function<void(bool)> cb) override;
+  void Del(const std::string &key, std::function<void(bool)> cb) override;
 
-  void Exists(const std::string& key, std::function<void(bool)> cb) override;
+  void Exists(const std::string &key, std::function<void(bool)> cb) override;
 
-  void Keys(const std::string& prefix, std::function<void(std::vector<std::string>)> cb) override;
-
+  void Keys(const std::string &prefix,
+            std::function<void(std::vector<std::string>)> cb) override;
 
  private:
-  RedisClient* redis_client_;
+  RedisClient *redis_client_;
 };
 
 class MemoryInternalKV : public InternalKVInterface {
  public:
-  MemoryInternalKV(instrumented_io_context* io_context)
-      : io_context_(io_context) {
+  MemoryInternalKV(instrumented_io_context *io_context) : io_context_(io_context) {
     RAY_CHECK(io_context != nullptr);
   }
-  void Get(const std::string& key, std::function<void(std::optional<std::string>)> cb) override;
+  void Get(const std::string &key,
+           std::function<void(std::optional<std::string>)> cb) override;
 
-  void Put(const std::string& key, const std::string& value, bool overwrite, std::function<void(bool)> cb) override;
+  void Put(const std::string &key, const std::string &value, bool overwrite,
+           std::function<void(bool)> cb) override;
 
-  void Del(const std::string& key, std::function<void(bool)> cb) override;
+  void Del(const std::string &key, std::function<void(bool)> cb) override;
 
-  void Exists(const std::string& key, std::function<void(bool)> cb) override;
+  void Exists(const std::string &key, std::function<void(bool)> cb) override;
 
-  void Keys(const std::string& prefix, std::function<void(std::vector<std::string>)> cb) override;
+  void Keys(const std::string &prefix,
+            std::function<void(std::vector<std::string>)> cb) override;
 
  private:
-  void RunCB(std::function<void()> cb) {
-    io_context_->post(std::move(cb));
-  }
-  instrumented_io_context* io_context_;
+  void RunCB(std::function<void()> cb) { io_context_->post(std::move(cb)); }
+  instrumented_io_context *io_context_;
   absl::btree_map<std::string, std::string> map_;
   absl::Mutex mu_;
 };
@@ -141,14 +140,11 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
                             rpc::InternalKVKeysReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  InternalKVInterface& GetInstance() {
-    return *kv_instance_;
-  }
+  InternalKVInterface &GetInstance() { return *kv_instance_; }
+
  private:
   std::unique_ptr<InternalKVInterface> kv_instance_;
 };
-
-
 
 }  // namespace gcs
 }  // namespace ray

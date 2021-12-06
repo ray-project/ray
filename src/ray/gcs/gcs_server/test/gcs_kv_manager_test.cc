@@ -12,33 +12,31 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
+
 #include <memory>
 
 #include "gtest/gtest.h"
 #include "ray/common/test_util.h"
-#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 
 class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
  public:
-  GcsKVManagerTest() {
-    ray::TestSetupUtil::StartUpRedisServers(std::vector<int>());
-  }
+  GcsKVManagerTest() { ray::TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
 
   void SetUp() override {
-    thread_io_service = std::make_unique<std::thread>(
-        [this] {
-          boost::asio::io_service::work work(io_service);
-          io_service.run();
-        });
+    thread_io_service = std::make_unique<std::thread>([this] {
+      boost::asio::io_service::work work(io_service);
+      io_service.run();
+    });
     ASSERT_TRUE(GetParam() == "redis" || GetParam() == "memory");
     ray::gcs::RedisClientOptions redis_client_options(
         "127.0.0.1", ray::TEST_REDIS_SERVER_PORTS.front(), "", false);
     redis_client = std::make_unique<ray::gcs::RedisClient>(redis_client_options);
     auto status = redis_client->Connect(io_service);
     RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
-    if(GetParam() == "redis") {
+    if (GetParam() == "redis") {
       kv_instance = std::make_unique<ray::gcs::RedisInternalKV>(redis_client.get());
-    } else if(GetParam() == "memory") {
+    } else if (GetParam() == "memory") {
       kv_instance = std::make_unique<ray::gcs::MemoryInternalKV>(&io_service);
     }
   }
@@ -54,31 +52,26 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
   std::unique_ptr<ray::gcs::InternalKVInterface> kv_instance;
 };
 
-
 TEST_P(GcsKVManagerTest, TestInternalKV) {
   kv_instance->Get("A", [](auto b) { ASSERT_FALSE(b.has_value()); });
   kv_instance->Put("A", "B", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Put("A", "C",  false, [](auto b) { ASSERT_FALSE(b); });
+  kv_instance->Put("A", "C", false, [](auto b) { ASSERT_FALSE(b); });
   kv_instance->Get("A", [](auto b) { ASSERT_EQ("B", *b); });
   kv_instance->Put("A", "C", true, [](auto b) { ASSERT_FALSE(b); });
   kv_instance->Get("A", [](auto b) { ASSERT_EQ("C", *b); });
 
   kv_instance->Put("A_1", "B", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Put("A_2", "C",  false, [](auto b) { ASSERT_FALSE(b); });
-  kv_instance->Put("A_3", "C",  false, [](auto b) { ASSERT_FALSE(b); });
+  kv_instance->Put("A_2", "C", false, [](auto b) { ASSERT_FALSE(b); });
+  kv_instance->Put("A_3", "C", false, [](auto b) { ASSERT_FALSE(b); });
 
   kv_instance->Keys("A_", [](std::vector<std::string> keys) {
-                            auto expected = std::vector<std::string>{"A_1", "A_2", "A_3"};
-                            ASSERT_EQ(expected, keys);
-                          });
+    auto expected = std::vector<std::string>{"A_1", "A_2", "A_3"};
+    ASSERT_EQ(expected, keys);
+  });
 }
 
-
-INSTANTIATE_TEST_SUITE_P(
-    GcsKVManagerTestFixture,
-    GcsKVManagerTest,
-    ::testing::Values("redis", "memory"));
-
+INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture, GcsKVManagerTest,
+                         ::testing::Values("redis", "memory"));
 
 int main(int argc, char **argv) {
   ::testing::InitGoogleTest(&argc, argv);
