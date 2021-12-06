@@ -265,13 +265,25 @@ class VectorEnvWrapper(BaseEnv):
 
     def __init__(self, vector_env: VectorEnv):
         self.vector_env = vector_env
-        self.action_space = vector_env.action_space
-        self.observation_space = vector_env.observation_space
         self.num_envs = vector_env.num_envs
         self.new_obs = None  # lazily initialized
         self.cur_rewards = [None for _ in range(self.num_envs)]
         self.cur_dones = [False for _ in range(self.num_envs)]
         self.cur_infos = [None for _ in range(self.num_envs)]
+
+        obs_space = {
+            _id: env.observation_space
+            for _id, env in enumerate(
+            self.vector_env.get_sub_environments())
+        }
+
+        act_space = {
+            _id: env.observation_space
+            for _id, env in enumerate(
+                self.vector_env.get_sub_environments())
+        }
+        self._observation_space = gym.spaces.Dict(obs_space)
+        self._action_space = gym.spaces.Dict(act_space)
 
     @override(BaseEnv)
     def poll(self) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict,
@@ -332,10 +344,10 @@ class VectorEnvWrapper(BaseEnv):
     @override(BaseEnv)
     @PublicAPI
     def observation_space(self) -> gym.spaces.Dict:
-        return gym.spaces.Dict({0: self.vector_env.observation_space})
+        return self._observation_space
 
     @property
     @override(BaseEnv)
     @PublicAPI
     def action_space(self) -> gym.Space:
-        return gym.spaces.Dict({0: self.vector_env.action_space})
+        return self._action_space
