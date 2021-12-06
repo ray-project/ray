@@ -11,6 +11,8 @@ import ray
 import ray.cluster_utils
 from ray._private.test_utils import wait_for_condition
 from ray.internal.internal_api import global_gc
+from ray.ray_constants import (
+    gcs_actor_scheduling_enabled, )
 
 logger = logging.getLogger(__name__)
 
@@ -181,6 +183,11 @@ def test_global_gc_when_full(shutdown_only):
         gc.enable()
 
 
+# TODO(Chong-Li): GCS-based scheduler should also support the GC based on
+# debug_dump_period_milliseconds.
+@pytest.mark.skipif(
+    gcs_actor_scheduling_enabled(),
+    reason="GCS-based scheduler currently does not support this.")
 def test_global_gc_actors(shutdown_only):
     ray.init(
         num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})

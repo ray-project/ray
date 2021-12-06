@@ -506,6 +506,9 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     assert errors[0].type == ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR
 
 
+@pytest.mark.skipif(
+    ray_constants.gcs_actor_scheduling_enabled(),
+    reason="GCS-based scheduler currently does not support this.")
 def test_warning_all_tasks_blocked(shutdown_only):
     ray.init(
         num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})
@@ -554,6 +557,9 @@ def test_warning_many_actor_tasks_queued(shutdown_only):
             msgs[3])
 
 
+@pytest.mark.skipif(
+    ray_constants.gcs_actor_scheduling_enabled(),
+    reason="GCS-based scheduler currently does not support this.")
 def test_warning_actor_waiting_on_actor(shutdown_only):
     ray.init(
         num_cpus=1, _system_config={"debug_dump_period_milliseconds": 500})

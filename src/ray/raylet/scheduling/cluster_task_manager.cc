@@ -96,8 +96,15 @@ bool ClusterTaskManager::SchedulePendingTasks() {
       if (node_id_string == self_node_id_.Binary()) {
         // Warning: WaitForTaskArgsRequests must execute (do not let it short
         // circuit if did_schedule is true).
-        bool task_scheduled = WaitForTaskArgsRequests(work);
-        did_schedule = task_scheduled || did_schedule;
+        if (task.GetTaskSpecification().IsActorCreationTask() &&
+            RayConfig::instance().gcs_actor_scheduling_enabled() &&
+            !IsLocallySchedulable(task)) {
+          work->reply->set_rejected(true);
+          work->callback();
+        } else {
+          bool task_scheduled = WaitForTaskArgsRequests(work);
+          did_schedule = task_scheduled || did_schedule;
+        }
       } else {
         // Should spill over to a different node.
         NodeID node_id = NodeID::FromBinary(node_id_string);

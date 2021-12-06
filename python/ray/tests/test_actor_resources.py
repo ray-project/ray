@@ -53,6 +53,7 @@ def test_actor_state():
     c2.increase.remote()
     c2.increase.remote()
     assert ray.get(c2.value.remote()) == 2
+    ray.shutdown()
 
 
 def test_actor_class_methods(ray_start_regular):
