@@ -202,12 +202,7 @@ template <typename T>
 void FillRandom(T *data) {
   RAY_CHECK(data != nullptr);
 
-  // NOTE(pcm): The right way to do this is to have one absl::BitGen per
-  // thread (using the thread_local keyword), but that's not supported on
-  // older versions of macOS (see https://stackoverflow.com/a/29929949)
-  static std::mutex random_engine_mutex;
-  std::lock_guard<std::mutex> lock(random_engine_mutex);
-  static absl::BitGen generator;
+  thread_local absl::BitGen generator;
   for (size_t i = 0; i < data->size(); i++) {
     (*data)[i] = static_cast<uint8_t>(
         absl::Uniform(generator, 0, std::numeric_limits<uint8_t>::max()));

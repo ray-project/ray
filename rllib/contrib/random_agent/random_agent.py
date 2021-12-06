@@ -8,7 +8,7 @@ from ray.rllib.utils.typing import TrainerConfigDict
 # yapf: disable
 # __sphinx_doc_begin__
 class RandomAgent(Trainer):
-    """Policy that takes random actions and never learns."""
+    """Trainer that produces random actions and never learns."""
 
     @classmethod
     @override(Trainer)

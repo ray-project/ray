@@ -211,7 +211,8 @@ class RayActorError(RayError):
     executing a task, or because a task is submitted to a dead actor.
 
     If the actor is dead because of an exception thrown in its creation tasks,
-    RayActorError will contains this exception.
+    RayActorError will contain creation_task_error, which is used to
+    reconstruct the exception on the caller side.
     """
 
     def __init__(self,
@@ -245,8 +246,27 @@ class RayActorError(RayError):
             return ("The actor died because of an error" +
                     " raised in its creation task, " +
                     self.creation_task_error.__str__())
-        return (f"The actor died unexpectedly before finishing "
-                f"this task. Cause: {self.cause}")
+
+        base_error_msg = (
+            "The actor died unexpectedly before finishing this task")
+        if self.cause:
+            if self.cause.HasField("worker_died_context"):
+                return (f"{base_error_msg} "
+                        f"{self.cause.worker_died_context.error_message}")
+            elif self.cause.HasField("node_died_context"):
+                return (f"{base_error_msg} "
+                        f"{self.cause.node_died_context.error_message}")
+            elif self.cause.HasField("owner_died_context"):
+                return (f"{base_error_msg} "
+                        f"{self.cause.owner_died_context.error_message}")
+            elif self.cause.HasField("killed_by_app_context"):
+                return (f"{base_error_msg} "
+                        f"{self.cause.killed_by_app_context.error_message}")
+            elif self.cause.HasField("out_of_scope_context"):
+                return (f"{base_error_msg} "
+                        f"{self.cause.out_of_scope_context.error_message}")
+
+        return (f"{base_error_msg} due to an unknown reason.")
 
     @staticmethod
     def from_task_error(task_error):

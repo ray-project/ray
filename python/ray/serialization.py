@@ -185,6 +185,19 @@ class SerializationContext:
             raise DeserializationError()
         return obj
 
+    def _deserialize_actor_died_error(self, data, metadata_fields):
+        if not data:
+            return RayActorError()
+        pb_bytes = self._deserialize_msgpack_data(data, metadata_fields)
+        assert pb_bytes
+
+        ray_error_info = RayErrorInfo()
+        ray_error_info.ParseFromString(pb_bytes)
+        if ray_error_info.HasField("actor_init_failure"):
+            return RayError.from_bytes(pb_bytes)
+        else:
+            return RayActorError(cause=ray_error_info.actor_died_error)
+
     def _deserialize_object(self, data, metadata, object_ref):
         if metadata:
             metadata_fields = metadata.split(b",")
@@ -219,20 +232,8 @@ class SerializationContext:
             elif error_type == ErrorType.Value("WORKER_DIED"):
                 return WorkerCrashedError()
             elif error_type == ErrorType.Value("ACTOR_DIED"):
-                if data:
-                    pb_bytes = self._deserialize_msgpack_data(
-                        data, metadata_fields)
-                    if pb_bytes:
-                        ray_error_info = RayErrorInfo()
-                        ray_error_info.ParseFromString(pb_bytes)
-                        if ray_error_info.HasField("actor_init_failure"):
-                            return RayError.from_bytes(pb_bytes)
-                        else:
-                            print(ray_error_info)
-                            return RayActorError(
-                                cause=ray_error_info.actor_died.error_message)
-
-                return RayActorError()
+                return self._deserialize_actor_died_error(
+                    data, metadata_fields)
             elif error_type == ErrorType.Value("TASK_CANCELLED"):
                 return TaskCancelledError()
             elif error_type == ErrorType.Value("OBJECT_LOST"):

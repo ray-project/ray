@@ -17,6 +17,23 @@
 #include "msgpack.hpp"
 
 namespace {
+std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(const uint8_t *data,
+                                                             size_t data_size) {
+  auto metadata = const_cast<uint8_t *>(data);
+  auto meta_buffer =
+      std::make_shared<ray::LocalMemoryBuffer>(metadata, data_size, /*copy_data=*/true);
+  return meta_buffer;
+}
+
+std::shared_ptr<ray::LocalMemoryBuffer> MakeBufferFromString(const std::string &str) {
+  return MakeBufferFromString(reinterpret_cast<const uint8_t *>(str.data()), str.size());
+}
+
+std::shared_ptr<ray::LocalMemoryBuffer> MakeErrorMetadataBuffer(
+    ray::rpc::ErrorType error_type) {
+  std::string meta = std::to_string(static_cast<int>(error_type));
+  return MakeBufferFromString(meta);
+}
 
 /// Serialize the protobuf message to msg pack.
 ///
@@ -33,7 +50,7 @@ namespace {
 /// \param protobuf_message The protobuf message to serialize.
 /// \return The buffer that contains serialized msgpack message.
 template <class ProtobufMessage>
-std::unique_ptr<ray::LocalMemoryBuffer> SerializeErrorInfo(
+std::shared_ptr<ray::LocalMemoryBuffer> MakeSerializeErrorBuffer(
     const ProtobufMessage &protobuf_message) {
   // Structure of bytes stored in object store:
 
@@ -72,34 +89,17 @@ std::unique_ptr<ray::LocalMemoryBuffer> SerializeErrorInfo(
 
 namespace ray {
 
-std::shared_ptr<LocalMemoryBuffer> MakeBufferFromString(const uint8_t *data,
-                                                        size_t data_size) {
-  auto metadata = const_cast<uint8_t *>(data);
-  auto meta_buffer =
-      std::make_shared<LocalMemoryBuffer>(metadata, data_size, /*copy_data=*/true);
-  return meta_buffer;
-}
-
-std::shared_ptr<LocalMemoryBuffer> MakeBufferFromString(const std::string &str) {
-  return MakeBufferFromString(reinterpret_cast<const uint8_t *>(str.data()), str.size());
-}
-
-std::shared_ptr<LocalMemoryBuffer> MakeErrorMetadataBuffer(rpc::ErrorType error_type) {
-  std::string meta = std::to_string(static_cast<int>(error_type));
-  return MakeBufferFromString(meta);
-}
-
 RayObject::RayObject(rpc::ErrorType error_type, const rpc::RayErrorInfo *ray_error_info) {
   if (ray_error_info == nullptr) {
     Init(nullptr, MakeErrorMetadataBuffer(error_type), {});
     return;
   }
+
   // This is temporarily here because changing this requires changes in all language
   // frontend.
   // TODO(sang, lixin): Remove it.
-  const auto final_buffer = SerializeErrorInfo<rpc::RayErrorInfo>(*ray_error_info);
-  Init(MakeBufferFromString(final_buffer->Data(), final_buffer->Size()),
-       MakeErrorMetadataBuffer(error_type), {});
+  const auto error_buffer = MakeSerializeErrorBuffer<rpc::RayErrorInfo>(*ray_error_info);
+  Init(std::move(error_buffer), MakeErrorMetadataBuffer(error_type), {});
   return;
 }
 

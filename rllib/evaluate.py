@@ -309,8 +309,8 @@ def run(args, parser):
     # Make sure we have evaluation workers.
     if not config.get("evaluation_num_workers"):
         config["evaluation_num_workers"] = config.get("num_workers", 0)
-    if not config.get("evaluation_num_episodes"):
-        config["evaluation_num_episodes"] = 1
+    if not config.get("evaluation_duration"):
+        config["evaluation_duration"] = 1
     # Hard-override this as it raises a warning by Trainer otherwise.
     # Makes no sense anyways, to have it set to None as we don't call
     # `Trainer.train()` here.
@@ -401,7 +401,7 @@ def rollout(agent,
             saver.begin_rollout()
             eval_result = agent.evaluate()["evaluation"]
             # Increase timestep and episode counters.
-            eps = agent.config["evaluation_num_episodes"]
+            eps = agent.config["evaluation_duration"]
             episodes += eps
             steps += eps * eval_result["episode_len_mean"]
             # Print out results and continue.

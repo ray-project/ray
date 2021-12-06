@@ -188,7 +188,7 @@ def test_no_spurious_worker_startup(shutdown_only):
     # Check "debug_state.txt" to ensure no extra workers were started.
     session_dir = ray.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
-    debug_state_path = session_path / "debug_state.txt"
+    debug_state_path = session_path / "logs" / "debug_state.txt"
 
     def get_num_workers():
         with open(debug_state_path) as f:
