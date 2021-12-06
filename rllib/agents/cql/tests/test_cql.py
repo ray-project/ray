@@ -58,7 +58,7 @@ class TestCQL(unittest.TestCase):
         config["input_evaluation"] = ["is"]
 
         config["evaluation_interval"] = 2
-        config["evaluation_num_episodes"] = 10
+        config["evaluation_duration"] = 10
         config["evaluation_config"]["input"] = "sampler"
         config["evaluation_parallel_to_training"] = False
         config["evaluation_num_workers"] = 2

@@ -47,14 +47,18 @@ class JobConfig:
         """Serialize the struct into protobuf string"""
         return self.get_proto_job_config().SerializeToString()
 
-    def set_runtime_env(self, runtime_env: Optional[Dict[str, Any]]) -> None:
+    def set_runtime_env(self,
+                        runtime_env: Optional[Dict[str, Any]],
+                        validate: bool = False) -> None:
         """Modify the runtime_env of the JobConfig.
 
-        We don't validate the runtime_env here because it may go through some
-        translation before actually being passed to C++ (e.g., working_dir
-        translated from a local directory to a URI).
+        We don't validate the runtime_env by default here because it may go
+        through some translation before actually being passed to C++ (e.g.,
+        working_dir translated from a local directory to a URI.
         """
         self.runtime_env = runtime_env if runtime_env is not None else {}
+        if validate:
+            self.runtime_env = self._validate_runtime_env()[0]
         self._cached_pb = None
 
     def set_ray_namespace(self, ray_namespace: str) -> None:
