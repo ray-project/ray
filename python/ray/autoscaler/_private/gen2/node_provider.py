@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 
 INSTANCE_NAME_UUID_LEN = 8
 INSTANCE_NAME_MAX_LEN = 64
+PENDING_TIMEOUT = 120
 
 # TODO: move to constants
 PROFILE_NAME_DEFAULT = 'cx2-2x4'
@@ -121,7 +122,7 @@ class Gen2NodeProvider(NodeProvider):
 
         # Cache of node objects from the last nodes() call
         self.cached_nodes = {}
-        # self.pending_nodes = {}
+        self.pending_nodes = {}
         self.prev_nodes = {HEAD: set()}
         self.deleted_nodes = []
 
@@ -277,6 +278,26 @@ class Gen2NodeProvider(NodeProvider):
 
             node_ids = [node["resource_id"] for node in nodes]
 
+            # workaround for tagging + create not atomic
+            for pend_id in list(self.pending_nodes.keys()):
+                # check if instance already been found by tag search
+                if pend_id in found_nodes:
+                    if found_nodes[pend_id]['doc']['status'] == 'running':
+                        #the instance seems to be running, lets remove it from pendings
+                        self.pending_nodes.pop(pend_id, None)
+                else:
+                    # if instance in pendings for more than PENDING_TIMEOUT it is time to delete it
+                    pending_time = self.pending_nodes[pend_id] - time.time()
+                    logger.info(f'the instance {pend_id} is in pendings list for {pending_time}')
+                    if pending_time > PENDING_TIMEOUT:
+                        logger.error(f'pending timeout {PENDING_TIMEOUT} reached, deleting instance {pend_id}')
+                        self._delete_node(pend_id)
+                        self.pending_nodes.pop(pend_id)
+                    elif pend_id not in node_ids:
+                        # add it to the list of node ids. it is missing tags so it is not going to be updated
+                        node_ids.append(pend_id)
+                        self.cached_nodes[pend_id] = self.pending_nodes[pend_id]
+        
         return node_ids
 
     @log_in_out
@@ -598,7 +619,6 @@ class Gen2NodeProvider(NodeProvider):
 
     def _wait_running(self, instance_id):
         # if instance in pendings for more than PENDING_TIMEOUT it is time to delete it and raise
-        PENDING_TIMEOUT = 120
         start = time.time()
 
         instance = self.ibm_vpc_client.get_instance(instance_id).result
@@ -623,7 +643,12 @@ class Gen2NodeProvider(NodeProvider):
             name_tag=name_tag,
             uuid=uuid4().hex[:INSTANCE_NAME_UUID_LEN])
 
+        # create instance in vpc
         instance = self._create_instance(name, base_config)
+
+        # unfortunatelly, currently create and tag is not an atomic operation
+        # adding instance to cache to be returned by non_terminated_nodes but with no tags
+        self.pending_nodes[instance['id']] = instance
 
         # currently always creating public ip for head node
         if self._get_node_type(name) == 'head':
@@ -633,6 +658,7 @@ class Gen2NodeProvider(NodeProvider):
         self._wait_running(instance['id'])
 
         tags[TAG_RAY_CLUSTER_NAME] = self.cluster_name
+        tags[TAG_RAY_NODE_NAME] = name
 
         new_tags = [f"{k}:{v}" for k, v in tags.items()]
         if not self._global_tagging_with_retries(instance['crn'], 'attach_tag', tags=new_tags):
