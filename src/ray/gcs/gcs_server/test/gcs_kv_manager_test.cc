@@ -44,6 +44,8 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
   void TearDown() override {
     io_service.stop();
     thread_io_service->join();
+    redis_client.reset();
+    kv_instance.reset();
   }
 
   std::unique_ptr<ray::gcs::RedisClient> redis_client;
@@ -61,8 +63,8 @@ TEST_P(GcsKVManagerTest, TestInternalKV) {
   kv_instance->Get("A", [](auto b) { ASSERT_EQ("C", *b); });
 
   kv_instance->Put("A_1", "B", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Put("A_2", "C", false, [](auto b) { ASSERT_FALSE(b); });
-  kv_instance->Put("A_3", "C", false, [](auto b) { ASSERT_FALSE(b); });
+  kv_instance->Put("A_2", "C", false, [](auto b) { ASSERT_TRUE(b); });
+  kv_instance->Put("A_3", "C", false, [](auto b) { ASSERT_TRUE(b); });
 
   kv_instance->Keys("A_", [](std::vector<std::string> keys) {
     auto expected = std::vector<std::string>{"A_1", "A_2", "A_3"};
