@@ -683,10 +683,9 @@ class Gen2NodeProvider(NodeProvider):
             fip, instance["id"]))
 
         # check if floating ip is not attached yet
-        instance_primary_ni = instance["primary_network_interface"]
+        inst_p_nic = instance["primary_network_interface"]
 
-        if instance_primary_ni["primary_ipv4_address"] and \
-            instance_primary_ni["id"] == fip_id:
+        if inst_p_nic["primary_ipv4_address"] and inst_p_nic["id"] == fip_id:
             # floating ip already attached. do nothing
             logger.info("Floating IP {} already attached to eth0".format(fip))
         else:
