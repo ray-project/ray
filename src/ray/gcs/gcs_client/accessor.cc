@@ -609,7 +609,7 @@ Status NodeInfoAccessor::AsyncGetInternalConfig(
       request,
       [callback](const Status &status, const rpc::GetInternalConfigReply &reply) {
         if (status.ok()) {
-          RAY_LOG(ERROR) << "Fetched internal config: " << reply.config();
+          RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config();
         } else {
           RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
         }
