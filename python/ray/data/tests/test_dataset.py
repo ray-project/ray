@@ -524,15 +524,21 @@ def test_arrow_tensor_array_getitem(ray_start_regular_shared):
         np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
 
 
-@pytest.mark.parametrize("test_arr", [
-    [[1, 2], [3, 4], [5, 6], [7, 8]],
-    [[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]],
-    [[False, True], [True, False], [True, True], [False, False]],
+@pytest.mark.parametrize("test_arr,dtype", [
+    ([[1, 2], [3, 4], [5, 6], [7, 8]], None),
+    ([[1, 2], [3, 4], [5, 6], [7, 8]], np.int32),
+    ([[1, 2], [3, 4], [5, 6], [7, 8]], np.int16),
+    ([[1, 2], [3, 4], [5, 6], [7, 8]], np.longlong),
+    ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], None),
+    ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], np.float32),
+    ([[1.5, 2.5], [3.3, 4.2], [5.2, 6.9], [7.6, 8.1]], np.float16),
+    ([[False, True], [True, False], [True, True], [False, False]], None),
 ])
-def test_arrow_tensor_array_slice(test_arr):
+def test_arrow_tensor_array_slice(test_arr, dtype):
     # Test that ArrowTensorArray slicing works as expected.
-    arr = np.array(test_arr)
+    arr = np.array(test_arr, dtype=dtype)
     ata = ArrowTensorArray.from_numpy(arr)
+    np.testing.assert_array_equal(ata.to_numpy(), arr)
     slice1 = ata.slice(0, 2)
     np.testing.assert_array_equal(slice1.to_numpy(), arr[0:2])
     np.testing.assert_array_equal(slice1[1], arr[1])
