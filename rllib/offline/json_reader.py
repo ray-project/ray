@@ -184,11 +184,11 @@ class JsonReader(InputReader):
 
         # Clip actions (from any values into env's bounds), if necessary.
         cfg = self.ioctx.config
-        if cfg.get("clip_actions"):
+        if cfg.get("clip_actions") and self.ioctx.worker is not None:
             if isinstance(batch, SampleBatch):
                 batch[SampleBatch.ACTIONS] = clip_action(
-                    batch[SampleBatch.ACTIONS], self.ioctx.worker.policy_map[
-                        "default_policy"].action_space_struct)
+                    batch[SampleBatch.ACTIONS],
+                    self.default_policy.action_space_struct)
             else:
                 for pid, b in batch.policy_batches.items():
                     b[SampleBatch.ACTIONS] = clip_action(
@@ -196,10 +196,10 @@ class JsonReader(InputReader):
                         self.ioctx.worker.policy_map[pid].action_space_struct)
         # Re-normalize actions (from env's bounds to zero-centered), if
         # necessary.
-        if cfg.get("actions_in_input_normalized") is False:
+        if cfg.get("actions_in_input_normalized") is False and \
+                self.ioctx.worker is not None:
             if isinstance(batch, SampleBatch):
-                pol = self.ioctx.worker.policy_map["default_policy"]
-                # Unflatten actions so we can properly normalize.
+                pol = self.default_policy
                 # If we have a complex action space and actions were flattened
                 # and we have to normalize -> Error.
                 if isinstance(pol.action_space_struct, (tuple, dict)) and \
