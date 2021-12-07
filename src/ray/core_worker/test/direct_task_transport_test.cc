@@ -706,7 +706,27 @@ TEST(DirectTaskTransportTest, TestHandleRuntimeEnvSetupFailed) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
-TEST(DirectTaskTransportTest, TestHandleLocalRayletDied) {
+TEST(DirectTaskTransportTest, TestWorkerHandleLocalRayletDied) {
+  rpc::Address address;
+  auto raylet_client = std::make_shared<MockRayletClient>();
+  auto worker_client = std::make_shared<MockWorkerClient>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
+      [&](const rpc::Address &addr) { return worker_client; });
+  auto task_finisher = std::make_shared<MockTaskFinisher>();
+  auto actor_creator = std::make_shared<MockActorCreator>();
+  auto lease_policy = std::make_shared<MockLeasePolicy>();
+  CoreWorkerDirectTaskSubmitter submitter(
+      address, raylet_client, client_pool, nullptr, lease_policy, store, task_finisher,
+      NodeID::Nil(), WorkerType::WORKER, kLongTimeout, actor_creator, JobID::Nil(), 1,
+      absl::nullopt, 2);
+
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  ASSERT_TRUE(submitter.SubmitTask(task1).ok());
+  ASSERT_DEATH(raylet_client->FailWorkerLeaseDueToIOError(), "");
+}
+
+TEST(DirectTaskTransportTest, TestDriverHandleLocalRayletDied) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();

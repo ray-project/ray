@@ -107,7 +107,7 @@ inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
                   grpc_status.error_details());
   } else {
     // TODO(jjyao) Use IOError as the catch-all status for all
-    // the grpc status.
+    // the unhandled grpc status.
     // If needed, we can define a ray status for each grpc status in the future.
     return Status::IOError(GrpcStatusToRayStatusMessage(grpc_status));
   }

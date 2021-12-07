@@ -420,7 +420,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id, rpc::ErrorType error_ty
 
   // The worker failed to execute the task, so it cannot be borrowing any
   // objects.
-  RemoveFinishedTaskReferences(spec, /*release_lineage*/ true, rpc::Address(),
+  RemoveFinishedTaskReferences(spec, /*release_lineage=*/true, rpc::Address(),
                                ReferenceCounter::ReferenceTableProto());
   if (mark_task_object_failed) {
     MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info);

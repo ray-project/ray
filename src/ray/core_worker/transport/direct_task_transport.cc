@@ -612,6 +612,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
                              << "raylet because the raylet is unavailable (crashed). "
                              << "Error: " << status;
             if (worker_type_ == WorkerType::WORKER) {
+              RAY_LOG(WARNING) << "Terminating the worker due to local raylet death";
               QuickExit();
             }
             RAY_CHECK(worker_type_ == WorkerType::DRIVER);
