@@ -577,7 +577,9 @@ void NodeInfoAccessor::HandleNotification(const GcsNodeInfo &node_info) {
       removed_nodes_.insert(node_id);
     }
     GcsNodeInfo &cache_data = node_cache_[node_id];
-    node_change_callback_(node_id, cache_data);
+    if (node_change_callback_) {
+      node_change_callback_(node_id, cache_data);
+    }
   }
 }
 
