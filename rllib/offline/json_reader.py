@@ -200,7 +200,10 @@ class JsonReader(InputReader):
             if isinstance(batch, SampleBatch):
                 pol = self.ioctx.worker.policy_map["default_policy"]
                 # Unflatten actions so we can properly normalize.
-                if pol.config["_disable_action_flattening"] is False:
+                # If we have a complex action space and actions were flattened
+                # and we have to normalize -> Error.
+                if isinstance(pol.action_space_struct, (tuple, dict)) and \
+                        pol.config["_disable_action_flattening"] is False:
                     raise ValueError(
                         "Normalization of offline actions that are flattened "
                         "is not supported! Make sure that you record actions "

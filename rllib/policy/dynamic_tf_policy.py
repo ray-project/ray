@@ -614,7 +614,6 @@ class DynamicTFPolicy(TFPolicy):
         # Test calls depend on variable init, so initialize model first.
         self.get_session().run(tf1.global_variables_initializer())
 
-        logger.info("Testing `compute_actions` w/ dummy batch.")
         # Fields that have not been accessed are not needed for action
         # computations -> Tag them as `used_for_compute_actions=False`.
         for key, view_req in self.view_requirements.items():
