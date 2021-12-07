@@ -32,7 +32,7 @@ public class RayJavaLoggingTest extends BaseTest {
 
     public boolean log() {
       for (int i = 0; i < 100000; ++i) {
-        LOG.info("hello world, this is a log.");
+        LOG.debug("hello world, this is a log.");
       }
       return true;
     }

@@ -256,25 +256,20 @@ Process WorkerPool::StartWorkerProcess(
       }
     }
   }
-
-  // Append user-defined per-job options here
   if (language == Language::JAVA) {
+    // Append user-defined per-job options here
     if (!job_config->jvm_options().empty()) {
       options.insert(options.end(), job_config->jvm_options().begin(),
                      job_config->jvm_options().end());
     }
-  }
-
-  // Append Ray-defined per-process options here
-  if (language == Language::JAVA) {
+    // Append Ray-defined per-process options here
     options.push_back("-Dray.job.num-java-workers-per-process=" +
                       std::to_string(workers_to_start));
-  }
-
-  // Append startup-token for JAVA here
-  if (language == Language::JAVA) {
+    // Append startup-token for JAVA here
     options.push_back("-Dray.raylet.startup-token=" +
                       std::to_string(worker_startup_token_counter_));
+                      
+    options.push_back("-Dray.job.logging-level=" + job_config->logging_level());
   }
 
   // Append user-defined per-process options here

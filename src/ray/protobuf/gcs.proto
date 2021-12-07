@@ -312,6 +312,8 @@ message JobConfig {
   string ray_namespace = 5;
   // An opaque kv store for job related metadata.
   map<string, string> metadata = 6;
+  // Level of logging for user's code.
+  string logging_level = 7;
 }
 
 message JobTableData {
