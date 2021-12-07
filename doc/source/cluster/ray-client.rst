@@ -58,12 +58,12 @@ Calling ``ray.init()`` returns a ``ClientContext`` object. This object provides 
 
 .. code-block:: python
 
-   context = ray.init("anyscale://cluster1")
+   context = ray.init()
    ... # Computation in Cluster 1
    context.disconnect() # Manually disconnect
 
    # Start client using a `with` statement
-   with ray.init("anyscale://cluster2") as c2:
+   with ray.init() as c2:
        ... # Computation in Cluster 2
    # Automatically disconnect from cluster 2 after exiting the `with` block
 
