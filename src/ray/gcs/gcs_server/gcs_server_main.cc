@@ -57,6 +57,9 @@ int main(int argc, char *argv[]) {
 
   // IO Service for main loop.
   instrumented_io_context main_service;
+  // Ensure that the IO service keeps running. Without this, the main_service will exit
+  // as soon as there is no more work to be processed.
+  boost::asio::io_service::work work(main_service);
   // Put it into a block so that the resource will be deleted once finished
   {
     // Init backend client.
@@ -79,20 +82,16 @@ int main(int argc, char *argv[]) {
     }
 
     // The internal_config is only set on the gcs--other nodes get it from GCS.
-    auto work = std::make_unique<boost::asio::io_service::work>(main_service);
-    auto on_done = [&work](const ray::Status &status) {
+    auto on_done = [&main_service](const ray::Status &status) {
       RAY_CHECK(status.ok()) << "Failed to put internal config";
-      work.reset();
-      RAY_LOG(ERROR) << "INTERNAL SETTED";
     };
     ray::rpc::StoredConfig config;
     config.set_config(config_list);
     RAY_CHECK_OK(
         storage->InternalConfigTable().Put(ray::UniqueID::Nil(), config, on_done));
-    RAY_LOG(ERROR) << "Before RUN";
     main_service.run();
+    main_service.restart();
   }
-  RAY_LOG(ERROR) << "!!!!!!!!!!!!!!!!!!!!!";
 
   const ray::stats::TagsType global_tags = {
       {ray::stats::ComponentKey, "gcs_server"},
@@ -106,10 +105,6 @@ int main(int argc, char *argv[]) {
                       std::unordered_map<std::string, std::string>(), log_dir,
                       RayConfig::instance().event_level());
   }
-
-  // Ensure that the IO service keeps running. Without this, the main_service will exit
-  // as soon as there is no more work to be processed.
-  boost::asio::io_service::work work(main_service);
 
   ray::gcs::GcsServerConfig gcs_server_config;
   gcs_server_config.grpc_server_name = "GcsServer";
