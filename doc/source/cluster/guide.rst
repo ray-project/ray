@@ -50,7 +50,7 @@ This is because a given task or actor may be arbitrarily scheduled on any availa
 
 There are a few ways to set up this environment.
 
-- You can build all your files and dependencies into a Docker image and specify this in your :ref:`Cluster YAML Configuration<cluster-config>`.
+- You can build all your files and dependencies into a container image and specify this in your :ref:`Cluster YAML Configuration<cluster-config>`.
 
 - You can also install packages using ``setup_commands`` in the Ray Cluster configuration file (:ref:`reference<cluster-configuration-setup-commands>`).
 
