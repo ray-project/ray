@@ -102,6 +102,8 @@ class Process {
 // will be 1 (this simulates POSIX getppid()).
 pid_t GetParentPID();
 
+pid_t GetPID();
+
 bool IsParentProcessAlive();
 
 bool IsProcessAlive(pid_t pid);

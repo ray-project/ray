@@ -684,7 +684,7 @@ class Worker:
                         runtime_env, tmp_dir, logger=logger)
                     # Remove excludes, it isn't relevant after the upload step.
                     runtime_env.pop("excludes", None)
-                    job_config.set_runtime_env(runtime_env)
+                    job_config.set_runtime_env(runtime_env, validate=True)
 
                 serialized_job_config = pickle.dumps(job_config)
 

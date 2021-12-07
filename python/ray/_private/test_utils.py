@@ -12,21 +12,25 @@ import socket
 import math
 import traceback
 from typing import Optional, Any, List, Dict
-from contextlib import redirect_stdout, redirect_stderr
+from contextlib import redirect_stdout, redirect_stderr, contextmanager
+
 import yaml
 import logging
 import tempfile
 import grpc
+from grpc._channel import _InactiveRpcError
+import numpy as np
 
 import ray
 import ray._private.services
 import ray._private.utils
 import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
+from ray.core.generated import gcs_pb2
 from ray.core.generated import node_manager_pb2
 from ray.core.generated import node_manager_pb2_grpc
-from ray.core.generated import gcs_pb2
-from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsSubscriber
+from ray._private.gcs_pubsub import gcs_pubsub_enabled, GcsErrorSubscriber, \
+    GcsLogSubscriber
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray.util.queue import Queue, _QueueActor, Empty
 from ray.scripts.scripts import main as ray_main
@@ -513,9 +517,9 @@ def get_non_head_nodes(cluster):
 def init_error_pubsub():
     """Initialize redis error info pub/sub"""
     if gcs_pubsub_enabled():
-        s = GcsSubscriber(
+        s = GcsErrorSubscriber(
             channel=ray.worker.global_worker.gcs_channel.channel())
-        s.subscribe_error()
+        s.subscribe()
     else:
         s = ray.worker.global_worker.redis_client.pubsub(
             ignore_subscribe_messages=True)
@@ -532,17 +536,11 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
     deadline = time.time() + timeout
     msgs = []
     while time.time() < deadline and len(msgs) < num:
-        if isinstance(subscriber, GcsSubscriber):
-            try:
-                _, error_data = subscriber.poll_error(timeout=deadline -
-                                                      time.time())
-            except grpc.RpcError as e:
-                # Failed to match error message before timeout.
-                if e.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
-                    logging.warning("get_error_message() timed out")
-                    return []
-                # Otherwise, the error is unexpected.
-                raise
+        if isinstance(subscriber, GcsErrorSubscriber):
+            _, error_data = subscriber.poll(timeout=deadline - time.time())
+            if not error_data:
+                # Timed out before any data is received.
+                break
         else:
             msg = subscriber.get_message()
             if msg is None:
@@ -560,11 +558,15 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
 
 def init_log_pubsub():
     """Initialize redis error info pub/sub"""
-    p = ray.worker.global_worker.redis_client.pubsub(
-        ignore_subscribe_messages=True)
-    log_pubsub_channel = gcs_utils.LOG_FILE_CHANNEL
-    p.psubscribe(log_pubsub_channel)
-    return p
+    if gcs_pubsub_enabled():
+        s = GcsLogSubscriber(
+            channel=ray.worker.global_worker.gcs_channel.channel())
+        s.subscribe()
+    else:
+        s = ray.worker.global_worker.redis_client.pubsub(
+            ignore_subscribe_messages=True)
+        s.psubscribe(gcs_utils.LOG_FILE_CHANNEL)
+    return s
 
 
 def get_log_message(subscriber,
@@ -582,11 +584,17 @@ def get_log_message(subscriber,
     deadline = time.time() + timeout
     msgs = []
     while time.time() < deadline and len(msgs) < num:
-        msg = subscriber.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            continue
-        logs_data = json.loads(ray._private.utils.decode(msg["data"]))
+        if isinstance(subscriber, GcsLogSubscriber):
+            logs_data = subscriber.poll(timeout=deadline - time.time())
+            if not logs_data:
+                # Timed out before any data is received.
+                break
+        else:
+            msg = subscriber.get_message()
+            if msg is None:
+                time.sleep(0.01)
+                continue
+            logs_data = json.loads(ray._private.utils.decode(msg["data"]))
 
         if job_id and job_id != logs_data["job"]:
             continue
@@ -613,11 +621,17 @@ def get_log_batch(subscriber,
     deadline = time.time() + timeout
     batches = []
     while time.time() < deadline and len(batches) < num:
-        msg = subscriber.get_message()
-        if msg is None:
-            time.sleep(0.01)
-            continue
-        logs_data = json.loads(ray._private.utils.decode(msg["data"]))
+        if isinstance(subscriber, GcsLogSubscriber):
+            logs_data = subscriber.poll(timeout=deadline - time.time())
+            if not logs_data:
+                # Timed out before any data is received.
+                break
+        else:
+            msg = subscriber.get_message()
+            if msg is None:
+                time.sleep(0.01)
+                continue
+            logs_data = json.loads(ray._private.utils.decode(msg["data"]))
 
         if job_id and job_id != logs_data["job"]:
             continue
@@ -949,11 +963,16 @@ def get_and_run_node_killer(node_kill_interval_s,
 
     @ray.remote(num_cpus=0)
     class NodeKillerActor:
-        def __init__(self, head_node_id, node_kill_interval_s: float = 60):
+        def __init__(self,
+                     head_node_id,
+                     node_kill_interval_s: float = 60,
+                     max_nodes_to_kill: int = 2):
             self.node_kill_interval_s = node_kill_interval_s
             self.is_running = False
             self.head_node_id = head_node_id
             self.killed_nodes = set()
+            self.done = asyncio.get_event_loop().create_future()
+            self.max_nodes_to_kill = max_nodes_to_kill
             # -- logger. --
             logging.basicConfig(level=logging.INFO)
 
@@ -965,26 +984,42 @@ def get_and_run_node_killer(node_kill_interval_s,
             while self.is_running:
                 node_to_kill_ip = None
                 node_to_kill_port = None
-                nodes = ray.nodes()
-                alive_nodes = self._get_alive_nodes(nodes)
-                for node in nodes:
-                    node_id = node["NodeID"]
-                    # make sure at least 1 worker node is alive.
-                    if (node["Alive"] and node_id != self.head_node_id
-                            and node_id not in self.killed_nodes
-                            and alive_nodes > 2):
-                        node_to_kill_ip = node["NodeManagerAddress"]
-                        node_to_kill_port = node["NodeManagerPort"]
-                        break
+                while node_to_kill_port is None and self.is_running:
+                    nodes = ray.nodes()
+                    alive_nodes = self._get_alive_nodes(nodes)
+                    for node in nodes:
+                        node_id = node["NodeID"]
+                        # make sure at least 1 worker node is alive.
+                        if (node["Alive"] and node_id != self.head_node_id
+                                and node_id not in self.killed_nodes
+                                and alive_nodes > 2):
+                            node_to_kill_ip = node["NodeManagerAddress"]
+                            node_to_kill_port = node["NodeManagerPort"]
+                            break
+                    # Give the cluster some time to start.
+                    await asyncio.sleep(0.1)
+
+                if not self.is_running:
+                    break
+
+                sleep_interval = np.random.rand() * self.node_kill_interval_s
+                time.sleep(sleep_interval)
 
                 if node_to_kill_port is not None:
-                    self._kill_raylet(
-                        node_to_kill_ip, node_to_kill_port, graceful=False)
+                    try:
+                        self._kill_raylet(
+                            node_to_kill_ip, node_to_kill_port, graceful=False)
+                    except Exception:
+                        pass
                     logging.info(
-                        "Killing a node of address: "
+                        f"Killed node {node_id} at address: "
                         f"{node_to_kill_ip}, port: {node_to_kill_port}")
                     self.killed_nodes.add(node_id)
-                await asyncio.sleep(self.node_kill_interval_s)
+                if len(self.killed_nodes) >= self.max_nodes_to_kill:
+                    break
+                await asyncio.sleep(self.node_kill_interval_s - sleep_interval)
+
+            self.done.set_result(True)
 
         async def stop_run(self):
             was_running = self.is_running
@@ -993,14 +1028,18 @@ def get_and_run_node_killer(node_kill_interval_s,
 
         async def get_total_killed_nodes(self):
             """Get the total number of killed nodes"""
-            return len(self.killed_nodes)
+            await self.done
+            return self.killed_nodes
 
         def _kill_raylet(self, ip, port, graceful=False):
             raylet_address = f"{ip}:{port}"
             channel = grpc.insecure_channel(raylet_address)
             stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-            stub.ShutdownRaylet(
-                node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+            try:
+                stub.ShutdownRaylet(
+                    node_manager_pb2.ShutdownRayletRequest(graceful=graceful))
+            except _InactiveRpcError:
+                assert not graceful
 
         def _get_alive_nodes(self, nodes):
             alive_nodes = 0
@@ -1026,3 +1065,11 @@ def get_and_run_node_killer(node_kill_interval_s,
     if not no_start:
         node_killer.run.remote()
     return node_killer
+
+
+@contextmanager
+def chdir(d: str):
+    old_dir = os.getcwd()
+    os.chdir(d)
+    yield
+    os.chdir(old_dir)
