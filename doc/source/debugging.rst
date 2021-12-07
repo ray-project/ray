@@ -132,9 +132,9 @@ of what the event stats look like:
 
 Callback latency injection
 ---------------------
-Sometimes, bugs are caused by rpc issues, for example, due to the delay of some request, the system goes to a deadlock.
-To debug and reproduce this kind of issues, we need to have a way to inject latency for rpc request. To enable this,
-``RAY_testing_asio_delay_us`` is introduced. If you'd like to make the callback of some rpc request be executed after some time,
+Sometimes, bugs are caused by RPC issues, for example, due to the delay of some requests, the system goes to a deadlock.
+To debug and reproduce this kind of issue, we need to have a way to inject latency for the RPC request. To enable this,
+``RAY_testing_asio_delay_us`` is introduced. If you'd like to make the callback of some RPC requests be executed after some time,
 you can do it with this variable. For example:
 
 .. code-block:: shell
@@ -143,6 +143,6 @@ you can do it with this variable. For example:
 
 
 The syntax for this is ``RAY_testing_asio_delay_us="method1=min_us:max_us,method2=min_us:max_us"``. Entries are comma separated.
-There is a special method ``*`` which means all methods. It has lower priority compared with other entries.
+There is a special method ``*`` which means all methods. It has a lower priority compared with other entries.
 
 .. _`issues`: https://github.com/ray-project/ray/issues
