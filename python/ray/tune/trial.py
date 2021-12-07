@@ -317,7 +317,7 @@ class Trial:
         self.metric_n_steps = {}
 
         self.export_formats = export_formats
-        self.status = Trial.PENDING
+        self._status = Trial.PENDING
         self.start_time = None
         self.logdir = None
         self.runner = None
@@ -430,7 +430,7 @@ class Trial:
         If the trial is in ERROR state, the most recent PERSISTENT checkpoint
         is returned.
         """
-        if self.status == Trial.ERROR:
+        if self._status == Trial.ERROR:
             checkpoint = self.checkpoint_manager.newest_persistent_checkpoint
         else:
             checkpoint = self.checkpoint_manager.newest_checkpoint
@@ -506,7 +506,7 @@ class Trial:
         Raises:
             ValueError if trial status is running.
         """
-        if self.status is Trial.RUNNING:
+        if self._status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
 
         placement_group_factory = None
@@ -540,9 +540,13 @@ class Trial:
         # No need to invalidate state cache: location is not stored in json
         # self.invalidate_json_state()
 
+    @property
+    def status(self):
+        return self._status
+
     def set_status(self, status):
         """Sets the status of the trial."""
-        self.status = status
+        self._status = status
         if status == Trial.RUNNING:
             if self.start_time is None:
                 self.start_time = time.time()
@@ -680,7 +684,7 @@ class Trial:
         return get_trainable_cls(self.trainable_name)
 
     def is_finished(self):
-        return self.status in [Trial.ERROR, Trial.TERMINATED]
+        return self._status in [Trial.ERROR, Trial.TERMINATED]
 
     @property
     def is_restoring(self):
