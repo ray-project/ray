@@ -30,41 +30,41 @@ namespace gcs {
 /// right now.
 class InternalKVInterface {
  public:
-  /// Get the value associated with `key`
+  /// Get the value associated with `key`.
   ///
-  /// \param key The key to fetch
-  /// \param cb Callback function.
+  /// \param key The key to fetch.
+  /// \param callback Callback function.
   virtual void Get(const std::string &key,
-                   std::function<void(std::optional<std::string>)> cb) = 0;
+                   std::function<void(std::optional<std::string>)> callback) = 0;
 
-  /// Associate key with value.
+  /// Associate a key with the specified value.
   ///
-  /// \param key The key for the pair
-  /// \param value The value for the pair
-  /// \param overwrite If the key has existed before this op, nothing will happen
-  ///    unless `overwrite` is set to be true.
-  /// \param cb Callback function.
+  /// \param key The key for the pair.
+  /// \param value The value for the pair.
+  /// \param overwrite Whether to overwrite existing values. Otherwise, the update
+  ///   will be ignored.
+  /// \param callback Callback function.
   virtual void Put(const std::string &key, const std::string &value, bool overwrite,
-                   std::function<void(bool)> cb) = 0;
+                   std::function<void(bool)> callback) = 0;
 
-  /// Delete the key from the store
+  /// Delete the key from the store.
   ///
-  /// \param key The key to be deleted
-  /// \param cb Callback function.
-  virtual void Del(const std::string &key, std::function<void(bool)> cb) = 0;
+  /// \param key The key to be deleted.
+  /// \param callback Callback function.
+  virtual void Del(const std::string &key, std::function<void(bool)> callback) = 0;
 
-  /// Check whether the key exists in the store
+  /// Check whether the key exists in the store.
   ///
   /// \param key The key to be checked.
-  /// \param cb Callback function.
-  virtual void Exists(const std::string &key, std::function<void(bool)> cb) = 0;
+  /// \param callback Callback function.
+  virtual void Exists(const std::string &key, std::function<void(bool)> callback) = 0;
 
   /// Get the keys for a given prefix.
   ///
   /// \param prefix The prefix to be scaned.
-  /// \param cb Callback function.
+  /// \param callback Callback function.
   virtual void Keys(const std::string &prefix,
-                    std::function<void(std::vector<std::string>)> cb) = 0;
+                    std::function<void(std::vector<std::string>)> callback) = 0;
 
   virtual ~InternalKVInterface(){};
 };
@@ -74,17 +74,17 @@ class RedisInternalKV : public InternalKVInterface {
   RedisInternalKV(RedisClient *redis_client) : redis_client_(redis_client) {}
 
   void Get(const std::string &key,
-           std::function<void(std::optional<std::string>)> cb) override;
+           std::function<void(std::optional<std::string>)> callback) override;
 
   void Put(const std::string &key, const std::string &value, bool overwrite,
-           std::function<void(bool)> cb) override;
+           std::function<void(bool)> callback) override;
 
-  void Del(const std::string &key, std::function<void(bool)> cb) override;
+  void Del(const std::string &key, std::function<void(bool)> callback) override;
 
-  void Exists(const std::string &key, std::function<void(bool)> cb) override;
+  void Exists(const std::string &key, std::function<void(bool)> callback) override;
 
   void Keys(const std::string &prefix,
-            std::function<void(std::vector<std::string>)> cb) override;
+            std::function<void(std::vector<std::string>)> callback) override;
 
  private:
   RedisClient *redis_client_;
@@ -96,23 +96,22 @@ class MemoryInternalKV : public InternalKVInterface {
     RAY_CHECK(io_context != nullptr);
   }
   void Get(const std::string &key,
-           std::function<void(std::optional<std::string>)> cb) override;
+           std::function<void(std::optional<std::string>)> callback) override;
 
   void Put(const std::string &key, const std::string &value, bool overwrite,
-           std::function<void(bool)> cb) override;
+           std::function<void(bool)> callback) override;
 
-  void Del(const std::string &key, std::function<void(bool)> cb) override;
+  void Del(const std::string &key, std::function<void(bool)> callback) override;
 
-  void Exists(const std::string &key, std::function<void(bool)> cb) override;
+  void Exists(const std::string &key, std::function<void(bool)> callback) override;
 
   void Keys(const std::string &prefix,
-            std::function<void(std::vector<std::string>)> cb) override;
+            std::function<void(std::vector<std::string>)> callback) override;
 
  private:
-  void RunCB(std::function<void()> cb) { io_context_->post(std::move(cb)); }
   instrumented_io_context *io_context_;
-  absl::btree_map<std::string, std::string> map_;
   absl::Mutex mu_;
+  absl::btree_map<std::string, std::string> map_ GUARDED_BY(mu_);
 };
 
 /// This implementation class of `InternalKVHandler`.
