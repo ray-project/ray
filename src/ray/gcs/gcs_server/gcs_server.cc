@@ -71,17 +71,16 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   // Init internal config
   auto on_done = [this](const ray::Status &status) {
     RAY_CHECK(status.ok()) << "Failed to put internal config";
-    RAY_LOG(ERROR) << "PUT OK";
     this->main_service_.stop();
   };
   ray::rpc::StoredConfig stored_config;
   stored_config.set_config(config_.config_list);
   RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(ray::UniqueID::Nil(),
                                                              stored_config, on_done));
-  RAY_LOG(ERROR) << "BEFORE PUT";
+  // Run the main service to make the Put in sync mode
   main_service_.run();
+  // Reset the main service to the initial status
   main_service_.restart();
-  RAY_LOG(ERROR) << "AFTER PUT";
 
   // Init GCS publisher instance.
   std::unique_ptr<pubsub::Publisher> inner_publisher;
