@@ -151,14 +151,11 @@ class LogTrialStartTest(unittest.TestCase):
     def test_set_global_experiment(self, experiment, offline_experiment):
         for option in ['online', 'offline']:
             logger = self.loggers[option]
-            with (
-                patch('comet_ml.config.set_global_experiment')
-                as set_global_experiment
-            ):
+            with (patch('comet_ml.config.set_global_experiment') as mock):
                 logger.log_trial_start(self.trials[0])
-                set_global_experiment.assert_called_with(None)
-                set_global_experiment.assert_called_once()
-                set_global_experiment.reset_mock()
+                mock.assert_called_with(None)
+                mock.assert_called_once()
+                mock.reset_mock()
 
     def test_experiment_addtags(self, experiment, offline_experiment):
         logger = self.loggers['online']
