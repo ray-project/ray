@@ -27,7 +27,7 @@ GcsInternalKVManager::GcsInternalKVManager(const RedisClientOptions &redis_optio
     threads_.emplace_back(std::make_unique<std::thread>(cb));
   }
   redis_client_ = std::make_unique<RedisClient>(redis_options);
-  redis_client_->Connect(io_service_);
+  RAY_CHECK_OK(redis_client_->Connect(io_service_));
 }
 
 void GcsInternalKVManager::Stop() {
