@@ -101,6 +101,7 @@ CORE_NIGHTLY_TESTS = {
     "~/ray/release/nightly_tests/chaos_test.yaml": [
         "chaos_many_actors",
         "chaos_many_tasks_no_object_store",
+        "chaos_pipelined_ingestion_1500_gb_15_windows",
     ],
     "~/ray/release/microbenchmark/microbenchmark.yaml": [
         "microbenchmark",
