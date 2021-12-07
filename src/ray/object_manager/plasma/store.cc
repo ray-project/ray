@@ -549,9 +549,10 @@ std::string PlasmaStore::GetDebugDump() const {
          << (allocator_.GetFootprintLimit() / 1e9) << " GB\n";
   buffer << "- num bytes created total: "
          << object_lifecycle_mgr_.GetNumBytesCreatedTotal() << "\n";
-  buffer << create_request_queue_.NumPendingRequests()
-         << " pending objects of total size "
-         << create_request_queue_.NumPendingBytes() / 1024 / 1024 << "MB\n";
+  auto num_pending_requests = create_request_queue_.NumPendingRequests();
+  auto num_pending_bytes = create_request_queue_.NumPendingBytes();
+  buffer << num_pending_requests << " pending objects of total size "
+         << num_pending_bytes / 1024 / 1024 << "MB\n";
   object_lifecycle_mgr_.GetDebugDump(buffer);
   return buffer.str();
 }

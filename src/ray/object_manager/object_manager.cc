@@ -848,10 +848,6 @@ std::string ObjectManager::DebugString() const {
   std::stringstream result;
   result << "ObjectManager:";
   result << "\n- num local objects: " << local_objects_.size();
-  result << "\n- available memory: " << config_.object_store_memory - used_memory_;
-  result << "\n- used memory: " << used_memory_;
-  result << "\n- fallback allocated memory: "
-         << plasma::plasma_store_runner->GetFallbackAllocated();
   result << "\n- num active wait requests: " << active_wait_requests_.size();
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
   result << "\n- num pull requests: " << pull_manager_->NumActiveRequests();
