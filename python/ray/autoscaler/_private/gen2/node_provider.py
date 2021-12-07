@@ -702,37 +702,36 @@ class Gen2NodeProvider(NodeProvider):
         query += f" AND tags:\"{TAG_RAY_LAUNCH_CONFIG}:\
             {tags[TAG_RAY_LAUNCH_CONFIG]}\""
 
-        with self.lock:
+        try:
+            result = self.global_search_service.search(
+                query=query, fields=["*"]).get_result()
+        except ApiException as e:
+            cli_logger.warning(
+                f"failed to query global search service with message: "
+                f"{e.message}, reiniting now")
+            self.global_search_service = GlobalSearchV2(IAMAuthenticator(
+                self.iam_api_key))
+            result = self.global_search_service.search(
+                query=query, fields=["*"]).get_result()
+
+        items = result["items"]
+        nodes = []
+
+        # filter instances by state (stopped,stopping)
+        for node in items:
+            instance_id = node["resource_id"]
             try:
-                result = self.global_search_service.search(
-                    query=query, fields=["*"]).get_result()
-            except ApiException as e:
-                cli_logger.warning(
-                    f"failed to query global search service with message: "
-                    f"{e.message}, reiniting now")
-                self.global_search_service = GlobalSearchV2(
-                    IAMAuthenticator(self.iam_api_key))
-                result = self.global_search_service.search(
-                    query=query, fields=["*"]).get_result()
-
-            items = result["items"]
-            nodes = []
-
-            # filter instances by state (stopped,stopping)
-            for node in items:
-                instance_id = node["resource_id"]
-                try:
-                    instance = self.ibm_vpc_client.get_instance(
-                        instance_id).result
-                    state = instance["status"]
-                    if state in ["stopped", "stopping"]:
-                        nodes.append(node)
-                except Exception as e:
-                    cli_logger.warning(instance_id)
-                    if e.message == "Instance not found":
-                        continue
-                    raise e
-            return nodes
+                instance = self.ibm_vpc_client.get_instance(
+                    instance_id).result
+                state = instance["status"]
+                if state in ["stopped", "stopping"]:
+                    nodes.append(node)
+            except Exception as e:
+                cli_logger.warning(instance_id)
+                if e.message == "Instance not found":
+                    continue
+                raise e
+        return nodes
 
     def _wait_running(self, instance_id):
         # if instance starting longer than PENDING_TIMEOUT delete it
