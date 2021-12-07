@@ -351,7 +351,6 @@ Process::Process(const char *argv[], void *io_service, std::error_code &ec, bool
     p_ = std::make_shared<ProcessFD>(std::move(procfd));
   }
   startup_token_ = (startup_token >= 0) ? startup_token: GetNewStartupToken();
-  RAY_LOG(INFO) << "Process::Process(..., " << startup_token <<") -> " << startup_token_;
 }
 
 std::error_code Process::Call(const std::vector<std::string> &args,

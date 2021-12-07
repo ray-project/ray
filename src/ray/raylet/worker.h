@@ -125,7 +125,6 @@ class Worker : public WorkerInterface {
   Worker(const JobID &job_id, const int runtime_env_hash, const WorkerID &worker_id,
          const Language &language, rpc::WorkerType worker_type,
          const std::string &ip_address, std::shared_ptr<ClientConnection> connection,
-         // rpc::ClientCallManager &client_call_manager, StartupToken startup_token);
          rpc::ClientCallManager &client_call_manager);
   /// A destructor responsible for freeing all worker state.
   ~Worker() {}
