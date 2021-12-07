@@ -3,6 +3,7 @@ import copy
 import logging
 import operator
 import threading
+import traceback
 import time
 
 from ray.autoscaler.tags import (TAG_RAY_LAUNCH_CONFIG, TAG_RAY_NODE_STATUS,
@@ -91,6 +92,14 @@ class NodeLauncher(threading.Thread):
                     "Failed to launch {} nodes of type " + node_type + ".",
                     quantity=count,
                     aggregate=operator.add)
+                # Log traceback from failed node creation only once per minute
+                # to avoid spamming driver logs with tracebacks.
+                self.event_summarizer.add_once_per_interval(
+                    message="Node creation failed. See the traceback below."
+                    " See autoscaler logs for further details.\n"
+                    f"{traceback.format_exc()}",
+                    key="Failed to create node.",
+                    interval_s=60)
                 logger.exception("Launch failed")
             finally:
                 self.pending.dec(node_type, count)

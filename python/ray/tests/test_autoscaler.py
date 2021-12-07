@@ -1279,12 +1279,15 @@ class AutoscalingTest(unittest.TestCase):
         assert len(self.provider.non_terminated_nodes({})) == 0
         autoscaler.update()
 
-        msg = "Failed to launch 2 nodes of type ray-legacy-worker-node-type."
+        # Expect the next two messages in the logs.
+        msg1 = "Failed to launch 2 nodes of type ray-legacy-worker-node-type."
+        msg2 = 'Node creation failed. See the traceback below. See autoscaler logs for further details.\nTraceback (most recent call last):\n  File "/Users/dmitrigekhtman/anaconda3/envs/raymaster38/lib/python3.8/site-packages/ray/autoscaler/_private/node_launcher.py", line 87, in run\n    self._launch_node(config, count, node_type)\n  File "/Users/dmitrigekhtman/anaconda3/envs/raymaster38/lib/python3.8/site-packages/ray/autoscaler/_private/node_launcher.py", line 71, in _launch_node\n    self.provider.create_node_with_resources(node_config, node_tags, count,\n  File "/Users/dmitrigekhtman/anaconda3/envs/raymaster38/lib/python3.8/site-packages/ray/autoscaler/node_provider.py", line 137, in create_node_with_resources\n    return self.create_node(node_config, tags, count)\n  File "/Users/dmitrigekhtman/code/ray/python/ray/tests/test_autoscaler.py", line 360, in create_node\n    raise Exception\nException\n'  # noqa
 
-        def expected_message_logged():
-            return msg in autoscaler.event_summarizer.summary()
+        def expected_messages_logged():
+            summary = autoscaler.event_summarizer.summary()
+            return (msg1 in summary) and (msg2 in summary)
 
-        self.waitFor(expected_message_logged)
+        self.waitFor(expected_messages_logged)
 
     def testReadonlyNodeProvider(self):
         config = copy.deepcopy(SMALL_CLUSTER)
