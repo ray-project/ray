@@ -284,8 +284,8 @@ class Gen2NodeProvider(NodeProvider):
 
                     # workarround for case when called to refresh head ip with
                     # wrong unintialized tags after head node already created
-                    if "ray-node-status:uninitialized" in query\
-                        and "ray-node-type:head" in query:
+                    if "ray-node-status:uninitialized" in query and \
+                            "ray-node-type:head" in query:
                         break
 
                     # save currently missing nodes
