@@ -51,12 +51,10 @@ class Backend(metaclass=Singleton):
     def on_start(self, worker_group: WorkerGroup,
                  backend_config: BackendConfig):
         """Logic for starting this backend."""
-        pass
 
     def on_shutdown(self, worker_group: WorkerGroup,
                     backend_config: BackendConfig):
         """Logic for shutting down the backend."""
-        pass
 
     def handle_failure(self, worker_group: WorkerGroup,
                        failed_worker_indexes: List[int],
