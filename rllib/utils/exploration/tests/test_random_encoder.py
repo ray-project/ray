@@ -35,7 +35,7 @@ class TestRE3(unittest.TestCase):
         class RE3Callbacks(RE3UpdateCallbacks, config["callbacks"]):
             pass
 
-        config["env"] = "LunarLanderContinuous-v2"
+        config["env"] = "Pendulum-v1"
         config["seed"] = 12345
         config["callbacks"] = RE3Callbacks
         config["exploration_config"] = {
@@ -53,7 +53,7 @@ class TestRE3(unittest.TestCase):
         for i in range(num_iterations):
             result = trainer.train()
             print(result)
-            if result["episode_reward_max"] > 0.0:
+            if result["episode_reward_max"] > -900.0:
                 print("Reached goal after {} iters!".format(i))
                 learnt = True
                 break
