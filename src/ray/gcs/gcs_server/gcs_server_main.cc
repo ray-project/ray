@@ -78,20 +78,20 @@ int main(int argc, char *argv[]) {
     }
 
     // The internal_config is only set on the gcs--other nodes get it from GCS.
-    std::promise<void> promise;
     auto work = std::make_unique<boost::asio::io_service::work>(main_service);
-    auto on_done = [&promise, &work](const ray::Status &status) {
-                     promise.set_value();
+    auto on_done = [&work](const ray::Status &status) {
                      RAY_CHECK(status.ok()) << "Failed to put internal config";
                      work.reset();
+                     RAY_LOG(ERROR) << "INTERNAL SETTED";
                    };
     ray::rpc::StoredConfig config;
     config.set_config(config_list);
     RAY_CHECK_OK(
         storage->InternalConfigTable().Put(ray::UniqueID::Nil(), config, on_done));
+    RAY_LOG(ERROR) << "Before RUN";
     main_service.run();
   }
-
+  RAY_LOG(ERROR) << "!!!!!!!!!!!!!!!!!!!!!";
 
   const ray::stats::TagsType global_tags = {
       {ray::stats::ComponentKey, "gcs_server"},
