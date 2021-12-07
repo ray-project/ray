@@ -214,6 +214,8 @@ import anyscale.conf
 from anyscale.api import instantiate_api_client
 from anyscale.controllers.session_controller import SessionController
 from anyscale.sdk.anyscale_client.sdk import AnyscaleSDK
+from anyscale.sdk.anyscale_client.models import (CreateProductionJob,
+                                                 ProductionJob)
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -226,6 +228,9 @@ logger.addHandler(handler)
 
 
 def _format_link(link: str):
+    # Below doesn't quite work yet, so just returnning noop
+    return link
+
     # Use ANSI escape code to allow link to be clickable
     # https://buildkite.com/docs/pipelines/links-and-images
     # -in-log-output
@@ -1497,11 +1502,70 @@ def run_test_config(
 
     def _run(logger):
         # These values will be set as the test runs.
+        anyscale.conf.CLI_TOKEN = GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"]
+        test_uses_anyscale_job = test_config["run"].get("use_anyscale_job")
+
+        if test_uses_anyscale_job:
+            _run_with_job(logger)
+        else:
+            _run_with_session(logger)
+
+    def _run_with_job(logger):
+        assert "prepare" not in test_config["run"], (
+            "prepare command is not supported for job mode")
+
+        # TODO(simon): configurable
+        working_dir_url = f"https://github.com/ray-project/ray/archive/refs/heads/master.zip"
+        requests.head(working_dir_url).raise_for_status()
+
+        app_config_id = app_config_id_override
+        build_id = build_id_override
+
+        # Find/create compute template
+        compute_tpl_id, _ = create_or_find_compute_template(
+            sdk, project_id, compute_tpl)
+        url = _format_link(anyscale_compute_tpl_url(compute_tpl_id))
+        logger.info(f"Link to compute template: {url}")
+
+        # Find/create app config
+        if app_config_id is None:
+            app_config_id, _ = create_or_find_app_config(
+                sdk, project_id, app_config)
+        else:
+            logger.info(f"Using override app config {app_config_id}")
+        if build_id is None:
+            # We might have already retrieved the build ID when
+            # installing app config packages locally if using
+            # connect, so only get the build ID if it's not set.
+            build_id = wait_for_build_or_raise(sdk, app_config_id)
+
+        job_resp: ProductionJob = sdk.create_job(
+            CreateProductionJob(
+                name=session_name,
+                description="",
+                project_id=GLOBAL_CONFIG["ANYSCALE_PROJECT"],
+                config={
+                    "compute_config_id": compute_tpl_id,
+                    "build_id": build_id,
+                    "runtime_env": {
+                        "working_dir": working_dir_url,
+                        "env_vars": {
+                            "IS_SMOKE_TEST": "0",
+                        }
+                    },
+                    "entrypoint": test_config["run"]["script"],
+                    "max_retries": 1
+                })).result
+        print(job_resp)
+
+        # TODO
+        # support test state file for reporting
+        # support support error handling
+
+    def _run_with_session(logger):
         session_url = None
         runtime = None
-        anyscale.conf.CLI_TOKEN = GLOBAL_CONFIG["ANYSCALE_CLI_TOKEN"]
         test_uses_ray_connect = test_config["run"].get("use_connect")
-
         session_id = None
         scd_id = None
         try:

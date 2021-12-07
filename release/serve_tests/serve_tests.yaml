@@ -33,7 +33,8 @@
   run:
     timeout: 7200
     long_running: False
-    script: python workloads/serve_micro_benchmark.py
+    use_anyscale_job: True
+    script: python release/serve_tests/workloads/serve_micro_benchmark.py
 
   smoke_test:
     timeout: 600

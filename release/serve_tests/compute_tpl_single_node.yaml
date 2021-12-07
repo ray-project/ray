@@ -1,4 +1,6 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+# cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
+# aioa_aws_242090849690_us_west_2_0000
+cloud_id: cld_HSrCZdMCYDe1NmMCJhYRgQ4p
 region: us-west-2
 
 max_workers: 0
