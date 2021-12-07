@@ -101,8 +101,6 @@ enum class StatusCode : char {
   ObjectAlreadySealed = 23,
   ObjectStoreFull = 24,
   TransientObjectStoreFull = 25,
-  // grpc status
-  GrpcUnavailable = 26,
 };
 
 #if defined(__clang__)
