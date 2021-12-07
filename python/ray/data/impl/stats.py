@@ -253,7 +253,7 @@ class DatasetPipelineStats:
             out += "\n"
         out += "##### Overall Pipeline Time Breakdown #####\n"
         # Drop the first sample since there's no pipelining there.
-        wait_time_s = self.wait_time_s[1:]
+        wait_time_s = self.wait_time_s[1 if exclude_first_window else 0:]
         if wait_time_s:
             out += ("* Time stalled waiting for next dataset: "
                     "{} min, {} max, {} mean, {} total\n".format(
