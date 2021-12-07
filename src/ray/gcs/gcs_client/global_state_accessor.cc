@@ -291,24 +291,25 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKV(const std::strin
 }
 
 std::pair<bool, std::string> GlobalStateAccessor::GetSystemConfig() {
-  std::promise<std::string> promise;
+  std::promise<std::pair<bool, std::string>> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetInternalConfig(
         [&promise](const Status &status,
                    const boost::optional<std::string> &stored_raylet_config) {
-          RAY_CHECK_OK(status);
-          promise.set_value(*stored_raylet_config);
+          std::pair<bool, std::string> res;
+          res.first = (status.ok() && stored_raylet_config);
+          if (res.first) {
+            res.second = (*stored_raylet_config);
+          }
+          promise.set_value(res);
         }));
   }
-  auto future = promise.get_future();
-  if (future.wait_for(std::chrono::seconds(
-          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
-      std::future_status::ready) {
+  auto res = promise.get_future().get();
+  if (!res.first) {
     RAY_LOG(WARNING) << "Failed to get system config within the timeout setting.";
-    return std::make_pair(false, std::string());
   }
-  return std::make_pair(true, future.get());
+  return res;
 }
 
 ray::Status GlobalStateAccessor::GetNodeToConnectForDriver(

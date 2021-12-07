@@ -168,8 +168,8 @@ class GlobalStateAccessor {
 
   /// Get the serialized system config from GCS.
   ///
-  /// \return The serialized system config.
-  std::string GetSystemConfig() LOCKS_EXCLUDED(mutex_);
+  /// \return first: success or not, second: the serialized system config.
+  std::pair<bool, std::string> GetSystemConfig() LOCKS_EXCLUDED(mutex_);
 
   /// Get the node to connect for a Ray driver.
   ///
