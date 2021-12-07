@@ -2026,7 +2026,7 @@ def test_map_batch(ray_start_regular_shared, tmp_path):
         # The pandas column is "0", and it originally has rows from 0~299.
         # After the map batch, it should have 1~300.
         row = ds_list[i]
-        assert row["0"] == i + 1
+        assert row["value"] == i + 1
     assert ds.count() == 300
 
     # Test the lambda returns different types than the batch_format
@@ -3529,12 +3529,6 @@ def test_sort_simple(ray_start_regular_shared):
     assert ds.count() == 0
 
 
-# TODO (kfstorm): Ideally, this test case should be enabled without condition.
-# But it has to be disabled when pandas block format is disabled because we
-# don't want to change the behavior when using only arrow block format.
-@pytest.mark.skipif(
-    not ray.data.context.DatasetContext.get_current().enable_pandas_block,
-    reason="not implemented")
 def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "2": np.random.rand(10)})
     ray.data.from_pandas(df)
