@@ -37,7 +37,7 @@ class TrialExecutorInsufficientResourcesTest(unittest.TestCase):
         self.cluster.shutdown()
 
     # no autoscaler case, resource is not sufficient. Log warning for now.
-    @patch.object(ray.tune.trial_executor.logger, "warning")
+    @patch.object(ray.tune.insufficient_resources_manager.logger, "warning")
     def testRaiseErrorNoAutoscaler(self, mocked_warn):
         class FailureInjectorCallback(Callback):
             """Adds random failure injection to the TrialExecutor."""
@@ -177,14 +177,14 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         self.trial_executor.fetch_result(trial)
-        checkpoint = self.trial_executor.pause_trial(trial)
+        self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.trial_executor.start_trial(trial, checkpoint)
+        self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
-    def _testPauseUnpause(self, result_buffer_length):
+    def _testPauseAndStart(self, result_buffer_length):
         """Tests that unpausing works for trials being processed."""
         os.environ["TUNE_RESULT_BUFFER_LENGTH"] = f"{result_buffer_length}"
         os.environ["TUNE_RESULT_BUFFER_MIN_TIME_S"] = "1"
@@ -201,8 +201,6 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.assertEqual(trial.last_result.get(TRAINING_ITERATION), base)
         self.trial_executor.pause_trial(trial)
         self.assertEqual(Trial.PAUSED, trial.status)
-        self.trial_executor.unpause_trial(trial)
-        self.assertEqual(Trial.PENDING, trial.status)
         self.trial_executor.start_trial(trial)
         self.assertEqual(Trial.RUNNING, trial.status)
         trial.last_result = self.trial_executor.fetch_result(trial)[-1]
@@ -210,14 +208,14 @@ class RayTrialExecutorTest(unittest.TestCase):
         self.trial_executor.stop_trial(trial)
         self.assertEqual(Trial.TERMINATED, trial.status)
 
-    def testPauseUnpauseNoBuffer(self):
-        self._testPauseUnpause(0)
+    def testPauseAndStartNoBuffer(self):
+        self._testPauseAndStart(0)
 
-    def testPauseUnpauseTrivialBuffer(self):
-        self._testPauseUnpause(1)
+    def testPauseAndStartTrivialBuffer(self):
+        self._testPauseAndStart(1)
 
-    def testPauseUnpauseActualBuffer(self):
-        self._testPauseUnpause(8)
+    def testPauseAndStartActualBuffer(self):
+        self._testPauseAndStart(8)
 
     def testNoResetTrial(self):
         """Tests that reset handles NotImplemented properly."""

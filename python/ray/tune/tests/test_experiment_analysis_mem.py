@@ -12,7 +12,7 @@ import ray
 from ray.tune import (run, Trainable, sample_from, ExperimentAnalysis,
                       grid_search)
 from ray.tune.result import DEBUG_METRICS
-from ray.tune.utils.mock import MyTrainableClass
+from ray.tune.utils.mock_trainable import MyTrainableClass
 from ray.tune.utils.serialization import TuneFunctionEncoder
 
 
