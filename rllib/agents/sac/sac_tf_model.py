@@ -242,6 +242,8 @@ class SACTFModel(TFModelV2):
             if self.concat_obs_and_actions:
                 input_dict = {"obs": tf.concat([model_out, actions], axis=-1)}
             else:
+                # TODO(junogng) : SampleBatch doesn't support list columns yet.
+                #     Use ModelInputDict.
                 input_dict = {"obs": force_list(model_out) + [actions]}
         # Discrete case -> return q-vals for all actions.
         else:

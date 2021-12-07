@@ -2501,10 +2501,10 @@ py_test(
 )
 
 py_test(
-    name = "examples/remote_vector_env_with_custom_api",
+    name = "examples/remote_base_env_with_custom_api",
     tags = ["team:ml", "examples", "examples_R"],
     size = "medium",
-    srcs = ["examples/remote_vector_env_with_custom_api.py"],
+    srcs = ["examples/remote_base_env_with_custom_api.py"],
     args = ["--stop-iters=3"]
 )
 

@@ -208,9 +208,8 @@ class RayTrialExecutor(TrialExecutor):
         self.pg_recon_interval = float(
             os.environ.get("TUNE_PLACEMENT_GROUP_RECON_INTERVAL", "5"))
 
-        self._default_buffer_length = result_buffer_length or int(
-            os.getenv("TUNE_RESULT_BUFFER_LENGTH", 1000))
-        self._buffer_length = result_buffer_length
+        self._buffer_length = result_buffer_length or int(
+            os.getenv("TUNE_RESULT_BUFFER_LENGTH", 1))
 
         self._buffer_min_time_s = float(
             os.getenv("TUNE_RESULT_BUFFER_MIN_TIME_S", 0.))
@@ -420,25 +419,13 @@ class RayTrialExecutor(TrialExecutor):
                 len(self._running) // 10))
         with self._change_working_directory(trial):
             buffer_length = self._buffer_length
-
-            # If buffer length has not been explicitly set, we determine
-            # it automatically
-            if buffer_length is None:
-                if trial.checkpoint_at_end:
-                    # If a trial checkpoint can be triggered externally,
-                    # it is not safe to buffer results.
-                    buffer_length = 1
-                else:
-                    # Else, use the default buffer length
-                    buffer_length = self._default_buffer_length
-            else:
-                if trial.checkpoint_at_end:
-                    if log_once("trial_executor_buffer_checkpoint"):
-                        logger.warning(
-                            "You passed `checkpoint_at_end` to `tune.run()`, "
-                            "but still requested buffered training. "
-                            "If used with a custom stopper or early stopping, "
-                            "checkpoints may be created later than desired.")
+            if buffer_length > 1 and trial.checkpoint_at_end:
+                # If a trial checkpoint can be triggered externally,
+                # it is not safe to buffer results.
+                if log_once("trial_executor_buffer_checkpoint"):
+                    logger.warning("Disabling buffered training as you passed "
+                                   "`checkpoint_at_end` to `tune.run()`.")
+                buffer_length = 1
 
             if buffer_length > 1:
                 if trial.checkpoint_freq > 0:
@@ -590,6 +577,9 @@ class RayTrialExecutor(TrialExecutor):
 
     def _find_item(self, dictionary, item):
         out = [rid for rid, t in dictionary.items() if t is item]
+        assert len(
+            out
+        ) <= 1, "Expecting one future for any given trial at any given time."
         return out
 
     def stop_trial(self,
