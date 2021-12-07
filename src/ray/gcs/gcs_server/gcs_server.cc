@@ -46,11 +46,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       pubsub_periodical_runner_(main_service_),
       periodical_runner_(main_service),
       is_started_(false),
-      is_stopped_(false) {}
-
-GcsServer::~GcsServer() { Stop(); }
-
-void GcsServer::Start() {
+      is_stopped_(false) {
   // Init backend client.
   RedisClientOptions redis_client_options(config_.redis_address, config_.redis_port,
                                           config_.redis_password,
@@ -63,6 +59,29 @@ void GcsServer::Start() {
   gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
       main_service_, redis_client_->GetPrimaryContext(), [this]() { Stop(); });
   gcs_redis_failure_detector_->Start();
+
+  // Init gcs table storage.
+  if (RayConfig::instance().gcs_storage() == "redis") {
+    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
+  } else if (RayConfig::instance().gcs_storage() == "memory") {
+    gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(main_service_);
+  } else {
+    RAY_LOG(FATAL) << "Unsupported gcs storage: " << RayConfig::instance().gcs_storage();
+  }
+  // Init internal config
+  auto on_done = [this](const ray::Status &status) {
+                   RAY_CHECK(status.ok()) << "Failed to put internal config";
+                   RAY_LOG(ERROR) << "PUT OK";
+                   this->main_service_.stop();
+                 };
+  ray::rpc::StoredConfig stored_config;
+  stored_config.set_config(config_.config_list);
+  RAY_CHECK_OK(
+      gcs_table_storage_->InternalConfigTable().Put(ray::UniqueID::Nil(), stored_config, on_done));
+  RAY_LOG(ERROR) << "BEFORE PUT";
+  main_service_.run();
+  main_service_.restart();
+  RAY_LOG(ERROR) << "AFTER PUT";
 
   // Init GCS publisher instance.
   std::unique_ptr<pubsub::Publisher> inner_publisher;
@@ -89,14 +108,11 @@ void GcsServer::Start() {
   gcs_publisher_ =
       std::make_shared<GcsPublisher>(redis_client_, std::move(inner_publisher));
 
-  // Init gcs table storage.
-  if (RayConfig::instance().gcs_storage() == "redis") {
-    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client_);
-  } else if (RayConfig::instance().gcs_storage() == "memory") {
-    gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(main_service_);
-  } else {
-    RAY_LOG(FATAL) << "Unsupported gcs storage: " << RayConfig::instance().gcs_storage();
-  }
+}
+
+GcsServer::~GcsServer() { Stop(); }
+
+void GcsServer::Start() {
   // Load gcs tables data asynchronously.
   auto gcs_init_data = std::make_shared<GcsInitData>(gcs_table_storage_);
   gcs_init_data->AsyncLoad([this, gcs_init_data] { DoStart(*gcs_init_data); });
