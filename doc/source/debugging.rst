@@ -131,7 +131,7 @@ of what the event stats look like:
     NodeManagerService.grpc_server.PinObjectIDs - 40000 total (0 active), CPU time: mean = 194.860 us, total = 7.794 s
 
 Callback latency injection
----------------------
+--------------------------
 Sometimes, bugs are caused by RPC issues, for example, due to the delay of some requests, the system goes to a deadlock.
 To debug and reproduce this kind of issue, we need to have a way to inject latency for the RPC request. To enable this,
 ``RAY_testing_asio_delay_us`` is introduced. If you'd like to make the callback of some RPC requests be executed after some time,
