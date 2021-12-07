@@ -1846,7 +1846,7 @@ class Dataset(Generic[T]):
             A list of iterators over record batches.
         """
 
-        time_start = time.monotonic()
+        time_start = time.perf_counter()
 
         def format_batch(batch: Block, format: str) -> BatchType:
             if batch_format == "native":
@@ -1865,25 +1865,21 @@ class Dataset(Generic[T]):
         batcher = Batcher(batch_size=batch_size)
 
         def batch_block(block: ObjectRef[Block]):
-            process_start = time.monotonic()
-            block = ray.get(block)
-            batcher.add(block)
-            self._stats.iter_process_s += time.monotonic() - process_start
+            with self._stats.iter_get_s.timer():
+                block = ray.get(block)
+                batcher.add(block)
             while batcher.has_batch():
-                process_start = time.monotonic()
-                result = format_batch(batcher.next_batch(), batch_format)
-                user_start = time.monotonic()
-                self._stats.iter_process_s += user_start - process_start
-                yield result
-                self._stats.iter_user_s += time.monotonic() - user_start
+                with self._stats.iter_format_batch_s.timer():
+                    result = format_batch(batcher.next_batch(), batch_format)
+                with self._stats.iter_user_s.timer():
+                    yield result
 
         block_window = []  # Handle empty sliding window gracefully.
         for block_window in _sliding_window(self._blocks.iter_blocks(),
                                             prefetch_blocks + 1):
             block_window = list(block_window)
-            wait_start = time.monotonic()
-            ray.wait(block_window, num_returns=1, fetch_local=True)
-            self._stats.iter_wait_s += time.monotonic() - wait_start
+            with self._stats.iter_wait_s.timer():
+                ray.wait(block_window, num_returns=1, fetch_local=True)
             yield from batch_block(block_window[0])
 
         # Consume remainder of final block window.
@@ -1892,11 +1888,10 @@ class Dataset(Generic[T]):
 
         # Yield any remainder batches.
         if batcher.has_any() and not drop_last:
-            user_start = time.monotonic()
-            yield format_batch(batcher.next_batch(), batch_format)
-            self._stats.iter_user_s += time.monotonic() - user_start
+            with self._stats.iter_user_s.timer():
+                yield format_batch(batcher.next_batch(), batch_format)
 
-        self._stats.iter_total_s += time.monotonic() - time_start
+        self._stats.iter_total_s.add(time.perf_counter() - time_start)
 
     def to_torch(self,
                  *,

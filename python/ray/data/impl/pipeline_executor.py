@@ -50,7 +50,7 @@ class PipelineExecutor:
 
     def __next__(self):
         output = None
-        start = time.monotonic()
+        start = time.perf_counter()
 
         while output is None:
             if all(s is None for s in self._stages):
@@ -91,7 +91,7 @@ class PipelineExecutor:
                 except StopIteration:
                     pass
 
-        self._pipeline._stats.wait_time_s.append(time.monotonic() - start)
+        self._pipeline._stats.wait_time_s.append(time.perf_counter() - start)
         self._pipeline._stats.add(output._stats)
         return output
 

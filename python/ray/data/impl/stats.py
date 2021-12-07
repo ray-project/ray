@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from typing import List, Optional, Dict, Set, Tuple
 import time
 import collections
@@ -17,6 +18,27 @@ def fmt(seconds: float) -> str:
         return str(round(seconds * 1000 * 1000, 2)) + "us"
 
 
+class Timer:
+    """Helper class for tracking accumulated time (in seconds)."""
+
+    def __init__(self):
+        self._value: float = 0
+
+    @contextmanager
+    def timer(self) -> None:
+        time_start = time.perf_counter()
+        try:
+            yield
+        finally:
+            self._value += time.perf_counter() - time_start
+
+    def add(self, value: float) -> None:
+        self._value += value
+
+    def get(self) -> float:
+        return self._value
+
+
 class _DatasetStatsBuilder:
     """Helper class for building dataset stats.
 
@@ -27,13 +49,13 @@ class _DatasetStatsBuilder:
     def __init__(self, stage_name: str, parent: "DatasetStats"):
         self.stage_name = stage_name
         self.parent = parent
-        self.start_time = time.monotonic()
+        self.start_time = time.perf_counter()
 
     def build(self, final_blocks: BlockList) -> "DatasetStats":
         stats = DatasetStats(
             stages={self.stage_name: final_blocks.get_metadata()},
             parent=self.parent)
-        stats.time_total_s = time.monotonic() - self.start_time
+        stats.time_total_s = time.perf_counter() - self.start_time
         return stats
 
 
@@ -86,10 +108,11 @@ class DatasetStats:
         self.stats_actor = stats_actor
 
         # Iteration stats, filled out if the user iterates over the dataset.
-        self.iter_wait_s: float = 0
-        self.iter_process_s: float = 0
-        self.iter_user_s: float = 0
-        self.iter_total_s: float = 0
+        self.iter_wait_s: Timer = Timer()
+        self.iter_get_s: Timer = Timer()
+        self.iter_format_batch_s: Timer = Timer()
+        self.iter_user_s: Timer = Timer()
+        self.iter_total_s: Timer = Timer()
 
     def child_builder(self, name: str) -> _DatasetStatsBuilder:
         """Start recording stats for an op of the given name (e.g., map)."""
@@ -130,12 +153,15 @@ class DatasetStats:
 
     def _summarize_iter(self) -> str:
         out = ""
-        if self.iter_total_s or self.iter_wait_s or self.iter_process_s:
+        if self.iter_total_s.get() or self.iter_wait_s.get(
+        ) or self.iter_process_s.get():
             out += "\nDataset iterator time breakdown:\n"
-            out += "* In ray.wait(): {}\n".format(fmt(self.iter_wait_s))
-            out += "* In format_batch(): {}\n".format(fmt(self.iter_process_s))
-            out += "* In user code: {}\n".format(fmt(self.iter_user_s))
-            out += "* Total time: {}\n".format(fmt(self.iter_total_s))
+            out += "* In ray.wait(): {}\n".format(fmt(self.iter_wait_s.get()))
+            out += "* In ray.get(): {}\n".format(fmt(self.iter_get_s.get()))
+            out += "* In format_batch(): {}\n".format(
+                fmt(self.iter_format_batch_s.get()))
+            out += "* In user code: {}\n".format(fmt(self.iter_user_s.get()))
+            out += "* Total time: {}\n".format(fmt(self.iter_total_s.get()))
         return out
 
     def _summarize_blocks(self, blocks: List[BlockMetadata]) -> str:
@@ -206,9 +232,9 @@ class DatasetPipelineStats:
         self.wait_time_s = []
 
         # Iteration stats, filled out if the user iterates over the pipeline.
-        self.iter_wait_s: float = 0
-        self.iter_user_s: float = 0
-        self.iter_total_s: float = 0
+        self.iter_wait_s: Timer = Timer()
+        self.iter_user_s: Timer = Timer()
+        self.iter_total_s: Timer = Timer()
 
     def add(self, stats: DatasetStats) -> None:
         """Called to add stats for a newly computed window."""
@@ -217,7 +243,7 @@ class DatasetPipelineStats:
             self.history_buffer.pop(0)
         self.count += 1
 
-    def summary_string(self) -> str:
+    def summary_string(self, exclude_first_window: bool = True) -> str:
         """Return a human-readable summary of this pipeline's stats."""
         already_printed = set()
         out = ""
@@ -233,7 +259,8 @@ class DatasetPipelineStats:
                     "{} min, {} max, {} mean, {} total\n".format(
                         fmt(min(wait_time_s)), fmt(max(wait_time_s)),
                         fmt(np.mean(wait_time_s)), fmt(sum(wait_time_s))))
-        out += "* Time in dataset iterator: {}\n".format(fmt(self.iter_wait_s))
-        out += "* Time in user code: {}\n".format(fmt(self.iter_user_s))
-        out += "* Total time: {}\n".format(fmt(self.iter_total_s))
+        out += "* Time in dataset iterator: {}\n".format(
+            fmt(self.iter_wait_s.get()))
+        out += "* Time in user code: {}\n".format(fmt(self.iter_user_s.get()))
+        out += "* Total time: {}\n".format(fmt(self.iter_total_s.get()))
         return out

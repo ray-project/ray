@@ -167,14 +167,14 @@ def read_datasource(datasource: Datasource[T],
 
     def remote_read(i: int, task: ReadTask) -> MaybeBlockPartition:
         DatasetContext._set_current(context)
-        start_time, start_cpu = time.monotonic(), time.process_time()
+        start_time, start_cpu = time.perf_counter(), time.process_time()
         exec_stats = BlockExecStats()
 
         # Execute the read task.
         block = task()
 
         exec_stats.cpu_time_s = time.process_time() - start_cpu
-        exec_stats.wall_time_s = time.monotonic() - start_time
+        exec_stats.wall_time_s = time.perf_counter() - start_time
         if context.block_splitting_enabled:
             metadata = task.get_metadata()
             metadata.exec_stats = exec_stats

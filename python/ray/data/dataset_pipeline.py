@@ -101,22 +101,22 @@ class DatasetPipeline(Generic[T]):
         """
 
         def gen_batches() -> Iterator[BatchType]:
-            time_start = time.monotonic()
+            time_start = time.perf_counter()
 
             for ds in self.iter_datasets():
-                wait_start = time.monotonic()
+                wait_start = time.perf_counter()
                 for batch in ds.iter_batches(
                         prefetch_blocks=prefetch_blocks,
                         batch_size=batch_size,
                         batch_format=batch_format,
                         drop_last=drop_last):
-                    self._stats.iter_wait_s += time.monotonic() - wait_start
-                    user_start = time.monotonic()
-                    yield batch
-                    wait_start = time.monotonic()
-                    self._stats.iter_user_s += wait_start - user_start
+                    self._stats.iter_wait_s.add(time.perf_counter() -
+                                                wait_start)
+                    with self._stats.iter_user_s.timer():
+                        yield batch
+                    wait_start = time.perf_counter()
 
-            self._stats.iter_total_s += time.monotonic() - time_start
+            self._stats.iter_total_s.add(time.perf_counter() - time_start)
 
         return gen_batches()
 
@@ -580,9 +580,16 @@ class DatasetPipeline(Generic[T]):
             "`foreach_dataset` has been renamed to `foreach_window`.")
 
     @DeveloperAPI
-    def stats(self) -> str:
-        """Returns a string containing execution timing information."""
-        return self._stats.summary_string()
+    def stats(self, exclude_first_window: bool = True) -> str:
+        """Returns a string containing execution timing information.
+
+        Args:
+            exclude_first_window: Whether to exclude the first window from
+                the pipeline time breakdown. This is generally a good idea
+                since there is always a stall waiting for the first window to
+                be initially computed, which can be misleading in the stats.
+        """
+        return self._stats.summary_string(exclude_first_window)
 
     @staticmethod
     def from_iterable(iterable: Iterable[Callable[[], Dataset[T]]],
