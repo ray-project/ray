@@ -197,11 +197,11 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     PrepareResources(bundles, gcs_node_manager_.GetAliveNode(node_id),
                      [this, bundles, node_id, lease_status_tracker, failure_callback,
                       success_callback](const Status &status) {
-                       for (const auto& bundle: bundles) {
+                       for (const auto &bundle : bundles) {
                          lease_status_tracker->MarkPrepareRequestReturned(node_id, bundle,
-                                                                        status);
+                                                                          status);
                        }
-                       
+
                        if (lease_status_tracker->AllPrepareRequestsReturned()) {
                          OnAllBundlePrepareRequestReturned(
                              lease_status_tracker, failure_callback, success_callback);
@@ -244,21 +244,21 @@ void GcsPlacementGroupScheduler::PrepareResources(
 
   const auto lease_client = GetLeaseClientFromNode(node.value());
   const auto node_id = NodeID::FromBinary(node.value()->node_id());
-    RAY_LOG(DEBUG) << "Preparing resource from node " << node_id
-                   << " for bundles: " << GetDebugStringForBundles(bundles);
+  RAY_LOG(DEBUG) << "Preparing resource from node " << node_id
+                 << " for bundles: " << GetDebugStringForBundles(bundles);
 
   lease_client->PrepareBundleResources(
       bundles, [node_id, bundles, callback](
                    const Status &status, const rpc::PrepareBundleResourcesReply &reply) {
         auto result = reply.success() ? Status::OK()
                                       : Status::IOError("Failed to reserve resource");
-          if (result.ok()) {
-            RAY_LOG(DEBUG) << "Finished leasing resource from " << node_id
-                           << " for bundles: " << GetDebugStringForBundles(bundles);
-          } else {
-            RAY_LOG(DEBUG) << "Failed to lease resource from " << node_id
-                           << " for bundles: " << GetDebugStringForBundles(bundles);
-          }
+        if (result.ok()) {
+          RAY_LOG(DEBUG) << "Finished leasing resource from " << node_id
+                         << " for bundles: " << GetDebugStringForBundles(bundles);
+        } else {
+          RAY_LOG(DEBUG) << "Failed to lease resource from " << node_id
+                         << " for bundles: " << GetDebugStringForBundles(bundles);
+        }
         callback(result);
       });
 }

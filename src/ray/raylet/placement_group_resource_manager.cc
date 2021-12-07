@@ -68,8 +68,7 @@ bool NewPlacementGroupResourceManager::PrepareBundles(
     }
   }
   if (preparing_bundles.size() == 0) {
-    RAY_LOG(DEBUG)
-        << "All bundles have been already prepared. Do nothing.";
+    RAY_LOG(DEBUG) << "All bundles have been already prepared. Do nothing.";
     return true;
   }
 

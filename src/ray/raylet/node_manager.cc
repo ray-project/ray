@@ -1641,8 +1641,8 @@ void NodeManager::HandlePrepareBundleResources(
     bundle_specs.emplace_back(
         std::make_shared<BundleSpecification>(request.bundle_specs(index)));
   }
-    RAY_LOG(DEBUG) << "Request to prepare resources for bundles: "
-                   << GetDebugStringForBundles(bundle_specs);
+  RAY_LOG(DEBUG) << "Request to prepare resources for bundles: "
+                 << GetDebugStringForBundles(bundle_specs);
   auto prepared = placement_group_resource_manager_->PrepareBundles(bundle_specs);
   reply->set_success(prepared);
   send_reply_callback(Status::OK(), nullptr, nullptr);
