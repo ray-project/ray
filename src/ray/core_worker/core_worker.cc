@@ -2003,7 +2003,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
                                         const size_t &data_size,
                                         const std::shared_ptr<Buffer> &metadata,
                                         const std::vector<ObjectID> &contained_object_ids,
-                                        int64_t &task_output_inlined_bytes,
+                                        int64_t *task_output_inlined_bytes,
                                         std::shared_ptr<RayObject> *return_object) {
   rpc::Address owner_address(options_.is_local_mode
                                  ? rpc::Address()
