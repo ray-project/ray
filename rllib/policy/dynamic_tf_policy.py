@@ -679,7 +679,8 @@ class DynamicTFPolicy(TFPolicy):
                         key not in [
                             SampleBatch.EPS_ID, SampleBatch.AGENT_INDEX,
                             SampleBatch.UNROLL_ID, SampleBatch.DONES,
-                            SampleBatch.REWARDS, SampleBatch.INFOS]:
+                            SampleBatch.REWARDS, SampleBatch.INFOS,
+                            SampleBatch.OBS_EMBEDS]:
                     if key in self.view_requirements:
                         self.view_requirements[key].used_for_training = False
                     if key in self._loss_input_dict:
