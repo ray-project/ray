@@ -31,6 +31,7 @@
 
 from collections import Iterable
 import numbers
+import os
 from typing import Sequence, Any, Union, Tuple, Optional, Callable
 
 import numpy as np
@@ -47,6 +48,24 @@ from pandas.core.indexers import check_array_indexer, validate_indices
 import pyarrow as pa
 
 from ray.util.annotations import PublicAPI
+
+try:
+    # Try to get CHAR_BIT from the system config. Only available in Unix-like
+    # operating systems. Returns -1 if config not set, may raise an exception
+    # on some platforms.
+    _CHAR_BIT = os.sysconf("SC_CHAR_BIT")
+except Exception:
+    # Consider CHAR_BIT to be unknown.
+    _CHAR_BIT = -1
+
+if _CHAR_BIT < 0:
+    # If CHAR_BIT is unknown, set to 8, which is the enforced value by POSIX
+    # and all recent Windows versions.
+    _CHAR_BIT = 8
+
+if _CHAR_BIT != 8:
+    raise RuntimeError(
+        f"Datasets only supports platforms with 8-bit bytes, got {_CHAR_BIT}")
 
 # -----------------------------------------------------------------------------
 #                       Pandas extension type and array
@@ -1290,7 +1309,7 @@ class ArrowTensorArray(pa.ExtensionArray):
         else:
             # We assume all other array types are accessed via byte array
             # offsets.
-            buffer_item_width = value_type.bit_width // 8
+            buffer_item_width = value_type.bit_width // _CHAR_BIT
         # Number of items per inner ndarray.
         num_items_per_element = np.prod(shape) if shape else 1
         # Base offset into data buffer, e.g. due to zero-copy slice.
