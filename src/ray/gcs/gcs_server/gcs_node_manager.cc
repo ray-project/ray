@@ -155,6 +155,7 @@ void GcsNodeManager::HandleGetInternalConfig(const rpc::GetInternalConfigRequest
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
+  RAY_LOG(ERROR) << "InternalConfig" ;
   RAY_CHECK_OK(
       gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(), get_system_config));
   ++counts_[CountType::GET_INTERNAL_CONFIG_REQUEST];

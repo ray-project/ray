@@ -298,6 +298,7 @@ std::string GlobalStateAccessor::GetSystemConfig() {
         [&promise](const Status &status,
                    const boost::optional<std::string> &stored_raylet_config) {
           RAY_CHECK_OK(status);
+          RAY_LOG(ERROR) << "GetSystemConfig";
           promise.set_value(*stored_raylet_config);
         }));
   }
