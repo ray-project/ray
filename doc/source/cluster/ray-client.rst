@@ -54,7 +54,7 @@ Ray Client is used when the address passed into ``ray.init`` is prefixed with ``
 Client context
 --------------
 
-Calling ``ray.init("anyscale://...")`` returns a ``ClientContext`` object. This object provides information about the cluster (Python version, Ray version, and a URL to the Ray dashboard). The ``ClientContext`` also provides a ``disconnect()`` method that will disconnect from the current cluster. Finally, you may also use ``ClientContext`` as a context manager, which will automatically call ``disconnect()`` for you after the with block is complete.
+Calling ``ray.init()`` returns a ``ClientContext`` object. This object provides information about the cluster (Python version, Ray version, and a URL to the Ray dashboard). The ``ClientContext`` also provides a ``disconnect()`` method that will disconnect from the current cluster. Finally, you may also use ``ClientContext`` as a context manager, which will automatically call ``disconnect()`` for you after the with block is complete.
 
 .. code-block:: python
 
