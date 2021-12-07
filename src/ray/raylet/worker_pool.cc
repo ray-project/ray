@@ -808,17 +808,17 @@ void WorkerPool::PopDeleteWorker(
 }
 
 void WorkerPool::InvokePopWorkerCallbackForProcess(
-    absl::flat_hash_map<Process, TaskWaitingForWorkerInfo> &starting_workers_to_tasks,
+    absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo> &starting_workers_to_tasks,
     const Process &proc, const std::shared_ptr<WorkerInterface> &worker,
     const PopWorkerStatus &status, bool *found, bool *worker_used, TaskID *task_id) {
   *found = false;
   *worker_used = false;
   RAY_LOG(INFO) << "InvokePopWorkerCallbackForProcess looking for " << proc.GetStartupToken() << " for pid " << proc.GetId();
-  auto it = starting_workers_to_tasks.find(proc);
+  auto it = starting_workers_to_tasks.find(proc.GetStartupToken());
   if (it != starting_workers_to_tasks.end()) {
     *found = true;
     *task_id = it->second.task_id;
-    RAY_LOG(INFO) << "InvokePopWorkerCallbackForProcess found " << it->first.GetStartupToken() << ", pid " << it->first.GetId();
+    RAY_LOG(INFO) << "InvokePopWorkerCallbackForProcess found " << it->first;
     const auto &callback = it->second.callback;
     RAY_CHECK(callback);
     *worker_used = callback(worker, status);
@@ -826,7 +826,7 @@ void WorkerPool::InvokePopWorkerCallbackForProcess(
   } else {
     RAY_LOG(INFO) << "InvokePopWorkerCallbackForProcess could not find process, valid tokens are:";
     for (it = starting_workers_to_tasks.begin(); it != starting_workers_to_tasks.end(); it++) {
-      RAY_LOG(INFO) << "InvokePopWorkerCallbackForProcess " << it->first.GetStartupToken() << ", pid " << it->first.GetId();
+      RAY_LOG(INFO) << "InvokePopWorkerCallbackForProcess " << it->first;
     }
     RAY_LOG(INFO) << "InvokePopWorkerCallbackForProcess --------------------------";
   }
@@ -1047,11 +1047,12 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();
       auto task_info = TaskWaitingForWorkerInfo{task_spec.TaskId(), callback};
-      RAY_LOG(INFO) << "PopWorker started proc w/token " << proc.GetStartupToken() << ", pid " << proc.GetId() << " dedicated " << dedicated;
+      StartupToken token = proc.GetStartupToken();
+      RAY_LOG(INFO) << "PopWorker started proc w/token " << token << ", pid " << proc.GetId() << " dedicated " << dedicated;
       if (dedicated) {
-        state.starting_dedicated_workers_to_tasks[proc] = std::move(task_info);
+        state.starting_dedicated_workers_to_tasks[token] = std::move(task_info);
       } else {
-        state.starting_workers_to_tasks[proc] = std::move(task_info);
+        state.starting_workers_to_tasks[token] = std::move(task_info);
       }
     } else {
       // TODO(SongGuyang): Wait until a worker is pushed or a worker can be started If
